@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
 use muster_core::harnesses;
 use muster_core::mirror::backend::{Adapter, PaneId, SplitAxis};
+use muster_core::names::{Mint, Minter};
 use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
@@ -40,6 +41,9 @@ pub fn can_answer(request: &Request) -> bool {
                 | request::Payload::SendToPane(_)
                 | request::Payload::WatchPanes(_)
                 | request::Payload::CompactPane(_)
+                | request::Payload::HidePane(_)
+                | request::Payload::ShowPane(_)
+                | request::Payload::QuietPane(_)
         )
     )
 }
@@ -91,6 +95,20 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
             let pane = named(&compact.pane_id, "compacted")?;
             respond(compact_pane(&socket, pane, &compact.focus)?)
         }
+        Some(request::Payload::HidePane(hide)) => {
+            let pane = named(&hide.pane_id, "hidden")?;
+            respond(move_hiding(&socket, pane, true)?)
+        }
+        // With no window there is no keyboard to move, so `take_focus` asks for nothing here: the
+        // pane is shown, and joins the next window that opens.
+        Some(request::Payload::ShowPane(show)) => {
+            let pane = named(&show.pane_id, "shown")?;
+            respond(move_hiding(&socket, pane, false)?)
+        }
+        Some(request::Payload::QuietPane(quiet)) => {
+            let pane = named(&quiet.pane_id, "made quiet")?;
+            respond(quiet_pane(&socket, pane, quiet.quiet)?)
+        }
         _ => Err(Trouble::Refused(
             "this asks something only a window can answer, and no window answered. That is a bug \
              in muster: nothing else should have been sent here."
@@ -122,7 +140,35 @@ fn asked(
     socket: &Path,
     service: daemon_proto::request::Service,
 ) -> Result<daemon_proto::Answer, Trouble> {
-    let mut stream = daemon::connect(socket, ConnectionKind::Control)?;
+    let stream = daemon::connect(socket, ConnectionKind::Control)?;
+    answered(stream, socket, service)
+}
+
+/// [`asked`], of a daemon that keeps hidden tabs and quiet panes, refusing `what` for an older
+/// one, which would drop both without a word.
+fn asked_of_one_that_hides(
+    socket: &Path,
+    service: daemon_proto::request::Service,
+    what: &str,
+) -> Result<daemon_proto::Answer, Trouble> {
+    let (stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
+    let speaks = welcome.protocol.unwrap_or_default();
+    if speaks.minor < daemon_proto::version::HIDDEN_AND_QUIET {
+        return Err(Trouble::Refused(format!(
+            "this machine's muster-daemon speaks protocol {speaks}, which cannot {what}, so \
+             nothing was changed. Update Muster; a new daemon takes over from an old one when \
+             the app starts."
+        )));
+    }
+    answered(stream, socket, service)
+}
+
+/// Sends one request on `stream` and waits for its answer.
+fn answered(
+    mut stream: UnixStream,
+    socket: &Path,
+    service: daemon_proto::request::Service,
+) -> Result<daemon_proto::Answer, Trouble> {
     let _ = stream.set_read_timeout(Some(PATIENCE));
     connection::send(&mut stream, &daemon_proto::Request { id: 1, service: Some(service) })
         .map_err(|error| Trouble::Unreachable(format!("{}: {error}", socket.display())))?;
@@ -309,6 +355,83 @@ fn compact_pane(socket: &Path, pane: &str, focus: &str) -> Result<Response, Trou
     })
 }
 
+/// Moves a pane into a new tab of its own, hidden or not, as a window's hide and show do. A pane
+/// already where it was asked to be is left there.
+fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trouble> {
+    let held = snapshot(socket)?;
+    let Some(tab) = held.tabs.iter().find(|tab| {
+        let mut panes = Vec::new();
+        panes_of(tab.root.as_ref(), &mut panes);
+        panes.iter().any(|held| held == pane)
+    }) else {
+        return Ok(failure(format!(
+            "the muster-daemon at {} holds no pane called {pane}, so nothing was {}. `muster \
+             window` lists the panes this machine has.",
+            socket.display(),
+            if hidden { "hidden" } else { "shown" }
+        )));
+    };
+    if tab.hidden == hidden {
+        return Ok(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+    }
+    let tab = Minter::new(Mint::Drawn).tab().to_string();
+    let placement = daemon_proto::Placement {
+        r#where: Some(daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
+            tab,
+            label: Some(daemon_proto::Label::default()),
+            hidden,
+        })),
+    };
+    let answer = asked_of_one_that_hides(
+        socket,
+        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
+            request: Some(daemon_proto::pane_request::Request::Move(
+                daemon_proto::pane_request::Move {
+                    pane: pane.to_string(),
+                    placement: Some(placement),
+                },
+            )),
+        }),
+        if hidden { "hide a pane" } else { "show a hidden pane" },
+    )?;
+    Ok(changed(answer))
+}
+
+/// Makes a pane quiet or lets it notify again: `quiet`, or the other of what it is now.
+fn quiet_pane(socket: &Path, pane: &str, quiet: Option<bool>) -> Result<Response, Trouble> {
+    let quiet = match quiet {
+        Some(quiet) => quiet,
+        None => !snapshot(socket)?.panes.iter().any(|held| held.pane == pane && held.quiet),
+    };
+    let answer = asked_of_one_that_hides(
+        socket,
+        daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
+            request: Some(daemon_proto::pane_request::Request::Quiet(
+                daemon_proto::pane_request::Quiet { pane: pane.to_string(), quiet },
+            )),
+        }),
+        "make a pane quiet",
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => failure(format!(
+            "the muster-daemon at {} holds no pane called {pane}, so nothing was changed. \
+             `muster window` lists the panes this machine has.",
+            socket.display()
+        )),
+        _ => changed(answer),
+    })
+}
+
+/// A daemon's answer to a change, as the window's own answer.
+fn changed(answer: daemon_proto::Answer) -> Response {
+    match answer.outcome() {
+        daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => {
+            Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
+        }
+        _ => failure(answer.reason),
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // What the daemon holds, as a window would describe it
 
@@ -393,49 +516,45 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
     let machine = this_machine();
     let records: BTreeMap<&str, &daemon_proto::Pane> =
         snapshot.panes.iter().map(|pane| (pane.pane.as_str(), pane)).collect();
-    let tabs = snapshot
-        .tabs
-        .iter()
-        .map(|tab| {
-            let mut panes = Vec::new();
-            panes_of(tab.root.as_ref(), &mut panes);
-            muster_proto::RosterTab {
-                daemon_ids: vec![machine.clone()],
-                tab_id: tab.tab.clone(),
-                label: tab.label.as_ref().and_then(|label| label.text.clone()).unwrap_or_default(),
-                given_name: tab
-                    .label
-                    .as_ref()
-                    .and_then(|label| label.text.clone())
-                    .unwrap_or_default(),
-                panes: panes
-                    .into_iter()
-                    .map(|pane| {
-                        let record = records.get(pane.as_str());
-                        let label = record.and_then(|record| record.label.clone());
-                        muster_proto::RosterPane {
-                            daemon_id: machine.clone(),
-                            label: label.clone().unwrap_or_else(|| {
-                                record
-                                    .map_or_else(String::new, |record| directory_name(&record.cwd))
-                            }),
-                            given_name: label.unwrap_or_default(),
-                            subtitle: record
-                                .map_or_else(String::new, |record| record.title.clone()),
-                            pane_id: pane,
-                            ..muster_proto::RosterPane::default()
-                        }
-                    })
-                    .collect(),
-                ..muster_proto::RosterTab::default()
-            }
-        })
-        .collect();
+    let (hidden, shown): (Vec<&daemon_proto::Tab>, Vec<&daemon_proto::Tab>) =
+        snapshot.tabs.iter().partition(|tab| tab.hidden);
+    let roster_tab = |tab: &daemon_proto::Tab| {
+        let mut panes = Vec::new();
+        panes_of(tab.root.as_ref(), &mut panes);
+        muster_proto::RosterTab {
+            daemon_ids: vec![machine.clone()],
+            tab_id: tab.tab.clone(),
+            label: tab.label.as_ref().and_then(|label| label.text.clone()).unwrap_or_default(),
+            given_name: tab.label.as_ref().and_then(|label| label.text.clone()).unwrap_or_default(),
+            panes: panes
+                .into_iter()
+                .map(|pane| {
+                    let record = records.get(pane.as_str());
+                    let label = record.and_then(|record| record.label.clone());
+                    muster_proto::RosterPane {
+                        daemon_id: machine.clone(),
+                        label: label.clone().unwrap_or_else(|| {
+                            record.map_or_else(String::new, |record| directory_name(&record.cwd))
+                        }),
+                        given_name: label.unwrap_or_default(),
+                        subtitle: record.map_or_else(String::new, |record| record.title.clone()),
+                        quiet: record.is_some_and(|record| record.quiet),
+                        pane_id: pane,
+                        ..muster_proto::RosterPane::default()
+                    }
+                })
+                .collect(),
+            ..muster_proto::RosterTab::default()
+        }
+    };
+    let tabs = shown.into_iter().map(roster_tab).collect();
+    let hidden = hidden.into_iter().map(roster_tab).collect();
     let directories: BTreeSet<String> =
         snapshot.panes.iter().map(|pane| pane.cwd.clone()).filter(|cwd| !cwd.is_empty()).collect();
     muster_proto::Window {
         roster: Some(muster_proto::RosterChanged {
             tabs,
+            hidden,
             ..muster_proto::RosterChanged::default()
         }),
         panes: snapshot.panes.iter().map(|pane| pane_state(&machine, pane)).collect(),

@@ -239,6 +239,8 @@ fn described_split(split: &muster_proto::SplitPane) -> Value {
             ("run", said(&split.run)),
             ("name", said(&split.name)),
             ("take_focus", split.take_focus.then_some(json!(true))),
+            ("quiet", split.quiet.then_some(json!(true))),
+            ("hidden", split.hidden.then_some(json!(true))),
         ])
     })
 }
@@ -283,6 +285,21 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
         }),
         request::Payload::ZoomPane(zoom) => json!({
             "zoom_pane": fields([("pane_id", said(&zoom.pane_id))])
+        }),
+        request::Payload::HidePane(hide) => json!({
+            "hide_pane": fields([("pane_id", said(&hide.pane_id))])
+        }),
+        request::Payload::ShowPane(show) => json!({
+            "show_pane": fields([
+                ("pane_id", said(&show.pane_id)),
+                ("take_focus", show.take_focus.then_some(json!(true))),
+            ])
+        }),
+        request::Payload::QuietPane(quiet) => json!({
+            "quiet_pane": fields([
+                ("pane_id", said(&quiet.pane_id)),
+                ("quiet", quiet.quiet.map(|quiet| json!(quiet))),
+            ])
         }),
         request::Payload::CreateTab(create) => json!({
             "create_tab": fields([

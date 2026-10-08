@@ -273,6 +273,14 @@ pub struct Attention {
     /// for each would teach somebody to mute everything.
     rang: BTreeSet<PaneKey>,
 
+    /// Panes whose daemon says they are quiet, which ask for nobody: no banner, and nothing for
+    /// going to what asks to go to. Their state still paints, `done` included, because that is
+    /// what a pane is rather than what Muster does about it. Unlike a mute, which keeps every
+    /// pane asking without a banner, a quiet pane is one the person has said is somebody
+    /// else's to watch - the agent that made it - so a chord to the most urgent ask must not
+    /// land there either.
+    quiet: BTreeSet<PaneKey>,
+
     notifications: Notifications,
 }
 
@@ -449,6 +457,32 @@ impl Attention {
         Observed { attend, reported: false }
     }
 
+    /// Takes the daemon's word on whether a pane is quiet, with what the pane is now.
+    ///
+    /// A pane made quiet stops asking, and says so when a banner stood for what it asked. One
+    /// made to ask again asks silently for what it is in, as a pane met for the first time
+    /// does ([`Attention::met`]): its blocking or finishing happened while it was quiet, and a
+    /// banner now would be news from before.
+    pub fn quiet(
+        &mut self,
+        pane: &PaneKey,
+        quiet: bool,
+        state: AgentState,
+        finished: bool,
+    ) -> Option<Attend> {
+        if quiet {
+            return self.quiet.insert(pane.clone()).then(|| self.withdraw(pane)).flatten();
+        }
+        if self.quiet.remove(pane) && !self.seen(pane) {
+            if state == AgentState::Blocked {
+                self.ask_silently(pane, Alert::Blocked);
+            } else if finished {
+                self.ask_silently(pane, Alert::Done);
+            }
+        }
+        None
+    }
+
     /// A program in the pane rang the bell. Returns whether that marked the pane, which it does
     /// unless somebody is looking at it or it is marked already.
     pub fn bell(&mut self, pane: &PaneKey) -> bool {
@@ -476,6 +510,7 @@ impl Attention {
     pub fn notified(&mut self, pane: &PaneKey, note: Note, agent: Option<&str>) -> Option<Attend> {
         if agent.is_some()
             || self.seen(pane)
+            || self.quiet.contains(pane)
             || matches!(self.alert(pane), Some(Alert::Blocked | Alert::Stuck | Alert::Notified))
         {
             return None;
@@ -551,6 +586,7 @@ impl Attention {
     /// pane is one that answers a click by focusing nothing.
     pub fn forget(&mut self, pane: &PaneKey) -> Option<Attend> {
         self.rang.remove(pane);
+        self.quiet.remove(pane);
         self.finished.remove(pane);
         self.reported.remove(pane);
         self.visible.remove(pane);
@@ -628,6 +664,9 @@ impl Attention {
         if self.alert(pane) == Some(alert) {
             return None;
         }
+        if self.quiet.contains(pane) {
+            return self.withdraw(pane);
+        }
         let had_banner = self.raised.get(pane).is_some_and(|raised| raised.announced);
         let announced = self.notifications.allows(alert);
         self.stamp(pane, alert, announced);
@@ -640,7 +679,7 @@ impl Attention {
 
     /// Starts this pane asking with no banner, unless it already asks for the same.
     fn ask_silently(&mut self, pane: &PaneKey, alert: Alert) {
-        if self.alert(pane) != Some(alert) {
+        if self.alert(pane) != Some(alert) && !self.quiet.contains(pane) {
             self.stamp(pane, alert, false);
         }
     }

@@ -1492,6 +1492,125 @@
           "local/w1:p1 stuck"
         ]
       }
+    },
+    {
+      "name": "a quiet pane that blocks asks for nobody",
+      "why": "The case quiet is for: an agent's sub-agent at a permission prompt is the agent's to see, which it does through messaging, and the person said so by making the pane quiet. No banner, and nothing for the chord to the most urgent ask to land on.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "quiet": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "idle",
+            "finished": true
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
+    },
+    {
+      "name": "making a pane quiet takes down what it was asking",
+      "why": "A banner standing for a pane the person has just said not to be told about would be the interruption they asked to be spared, arriving anyway.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "quiet": "local/w1:p2"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked",
+          "local/w1:p2 withdrawn"
+        ],
+        "asking": []
+      }
+    },
+    {
+      "name": "a pane no longer quiet asks for what it is in without a banner",
+      "why": "It blocked while it was quiet, so a banner now would be news from before, as one for a pane met at launch would be. It asks, so the chord to it works, and its next change is announced as any pane's is.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "quiet": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "quiet": "local/w1:p2",
+            "on": false
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "working"
+          },
+          {
+            "pane": "local/w1:p2",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "local/w1:p2 blocked"
+        ],
+        "asking": [
+          "local/w1:p2 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a quiet pane's program asks for nobody either",
+      "why": "Quiet is about the pane, not about which of its states is speaking: a program's own notification is a banner like any other.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "quiet": "local/w1:p2"
+          },
+          {
+            "pane": "local/w1:p2",
+            "notification": {
+              "title": "build",
+              "body": "done"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "notified": [],
+        "asking": []
+      }
     }
   ]
 }

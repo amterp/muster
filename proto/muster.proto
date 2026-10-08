@@ -89,6 +89,9 @@ message Request {
     StillOpen still_open = 69;
     LeaveGroup leave_group = 70;
     DeleteGroup delete_group = 71;
+    HidePane hide_pane = 72;
+    ShowPane show_pane = 73;
+    QuietPane quiet_pane = 74;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -305,6 +308,47 @@ message CompactPane {
   // What the compaction should keep, for a harness that takes it, as Claude Code's `/compact`
   // does. One line. Empty compacts without one.
   string focus = 3;
+}
+
+// Takes a pane out of every window, its agent still running, into the list of hidden panes.
+//
+// The pane moves into a tab of its own that no window shows (RosterChanged.hidden), on its own
+// machine, so it stays hidden across the app quitting and the daemon restarting. A pane already
+// hidden is answered Ok, and nothing changes.
+message HidePane {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+}
+
+// Brings a hidden pane back, into a tab of its own in this window, listed after its others.
+//
+// A new tab rather than the place it left, which may have been rearranged, closed, or taken by
+// another window since; `pane move` takes it anywhere from there. A pane that is not hidden is
+// answered Ok, focused when `take_focus` asks.
+message ShowPane {
+  string daemon_id = 1;
+
+  // Never empty: the pane the keyboard is on cannot be hidden.
+  string pane_id = 2;
+
+  // Whether this window's keyboard goes to it, which brings its tab on screen. What a click on
+  // a hidden row means; a script says.
+  bool take_focus = 3;
+}
+
+// Makes a pane quiet - nothing about it is raised for the person, no banner and no ask, while
+// its state still shows - or lets it ask again. The pane's daemon keeps it, so every window
+// agrees and it outlives a restart.
+message QuietPane {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+
+  // What to make it. Absent is the other of what it is now, which is what a menu item means.
+  optional bool quiet = 3;
 }
 
 // Closes a tab, and every pane in it.
@@ -860,6 +904,14 @@ message SplitPane {
   // Separate from `daemon_id`, which names the machine holding the pane being split and is
   // refused when it disagrees with the pane: the two answer different questions.
   string new_pane_daemon_id = 9;
+
+  // Makes the new pane quiet (QuietPane) from its first moment, before it can ask.
+  bool quiet = 10;
+
+  // Makes it hidden (HidePane) from the start: a tab of its own on the split pane's machine,
+  // that no window shows, rather than a split. Refused with `take_focus`, since nothing shows
+  // it, and with `new_pane_daemon_id`.
+  bool hidden = 11;
 }
 
 // Sends text to a pane, whether or not anything is showing it.
@@ -1046,6 +1098,11 @@ message CreateTab {
   // gives: the tab is made behind the one on screen, listed in the agent list,
   // since the tab on screen is where the keyboard is. A window showing no tab shows it anyway.
   bool take_focus = 6;
+
+  // SplitPane's, and mean what they mean there. A hidden tab is taken by no window, so it is
+  // refused with `take_focus`.
+  bool quiet = 7;
+  bool hidden = 8;
 }
 
 message ClosePane {
@@ -2381,6 +2438,11 @@ message RosterChanged {
   // Which question the numbers on those rows are answering.
   Counting counting = 2;
 
+  // The tabs no window shows, which hiding a pane makes, and the panes in them. Unnumbered and
+  // never on screen, so every place and press is zero. Every window lists the same ones, because
+  // a hidden tab is its daemon's fact rather than any window's; ShowPane brings one back.
+  repeated RosterTab hidden = 5;
+
   // What the numbered chords are counting at this moment.
   //
   // Not a second source for what reaches which row - that stays on the rows below, where a
@@ -2569,6 +2631,9 @@ message RosterPane {
   // manifests it holds. Carried here so a menu greys its Compact Agent item without asking the
   // core as it opens; false for a pane running no agent.
   bool compactable = 11;
+
+  // Whether nothing about it is raised for the person (QuietPane), as its daemon says.
+  bool quiet = 12;
 }
 
 // Everything this window is showing, as one message.

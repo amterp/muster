@@ -97,6 +97,12 @@ pub enum Action {
     /// a row exists and why it is not in this list. This one names nowhere, so a chord and a
     /// menu item can mean it.
     MovePaneToNewTab,
+    /// Takes the pane the keyboard is on out of the window, its agent still running, into the
+    /// list of hidden panes it is brought back from.
+    HidePane,
+    /// Makes the pane the keyboard is on quiet, so that it raises nothing for the person, or
+    /// lets it ask again. A toggle, like zoom.
+    QuietPane,
     ClosePane,
     NextPane,
     PreviousPane,
@@ -183,7 +189,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 59] = [
+    pub const ALL: [Action; 61] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -199,6 +205,8 @@ impl Action {
         Action::RenamePane,
         Action::CompactPane,
         Action::MovePaneToNewTab,
+        Action::HidePane,
+        Action::QuietPane,
         Action::ClosePane,
         Action::NextPane,
         Action::PreviousPane,
@@ -262,6 +270,8 @@ impl Action {
             Action::RenameTab => "rename_tab",
             Action::CloseTab => "close_tab",
             Action::MovePaneToNewTab => "move_pane_to_new_tab",
+            Action::HidePane => "hide_pane",
+            Action::QuietPane => "quiet_pane",
             Action::ClosePane => "close_pane",
             Action::NextPane => "next_pane",
             Action::PreviousPane => "previous_pane",
@@ -356,6 +366,8 @@ impl Action {
             | Action::SplitUp
             | Action::MovePaneToNewTab
             | Action::CompactPane
+            | Action::HidePane
+            | Action::QuietPane
             | Action::CloseTab
             | Action::ReopenWindow
             | Action::QuitAndCloseSessions

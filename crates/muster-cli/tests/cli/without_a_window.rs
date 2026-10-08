@@ -14,7 +14,7 @@ use std::sync::mpsc::{self, Receiver};
 use muster::proto::{OpenWindow, Request, Response, Startup, request, response};
 use muster_daemon_proto::{self as proto, session_request};
 use muster_harness::requests::{
-    beside, close_request, create, expect, in_new_tab, make, pane, session, until_text,
+    beside, close_request, create, expect, in_new_tab, make, pane, session, snapshot, until_text,
 };
 use muster_harness::{Daemon, PATIENCE, until_some};
 use prost::Message;
@@ -109,7 +109,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
         "the listing has to say which daemon answered, so nobody reads it as a window's:\n{listed}"
     );
     assert!(listed.contains("t1") && listed.contains("p1") && listed.contains("p2"), "{listed}");
-    assert!(!listed.contains("(hidden)"), "with no window, nothing is hidden from one:\n{listed}");
+    assert!(!listed.contains("(off screen)"), "with no window, nothing is off screen:\n{listed}");
 
     let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
     assert_eq!(listed["answered_by"], json!("daemon"), "{listed}");
@@ -137,6 +137,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_send_the_pane_never_shows_is_refused(&here);
     keys_are_pressed_without_a_window(&here);
     a_wait_on_an_agent_that_stops_reading_is_refused(&here);
+    hiding_and_quiet_are_asked_of_the_daemon(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
@@ -231,6 +232,64 @@ fn a_compaction_is_asked_of_the_daemon(here: &Here) {
     });
     let refused = refused_with(&here.muster(&["pane", "compact", "--pane", "p1"]), 1);
     assert!(refused.contains("runs no agent"), "{refused}");
+}
+
+/// A pane is hidden, made quiet and shown again with no window, by the daemon holding it, which
+/// is what lets a machine keep a hidden pane while nothing is attached to it.
+fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
+    let mut control = here.daemon.connect();
+    let tab_of = |control: &mut _, pane: &str| {
+        let held = snapshot(control);
+        held.tabs
+            .into_iter()
+            .find(|tab| tab_shape_holds(tab, pane))
+            .unwrap_or_else(|| panic!("{pane} is in no tab"))
+    };
+    ok(&here.muster(&["pane", "hide", "--pane", "p2"]));
+    assert!(tab_of(&mut control, "p2").hidden, "p2's tab is not hidden");
+    let listed = ok(&here.muster(&["window"]));
+    let hidden_from = listed.lines().position(|line| line == "hidden");
+    let p2_at = listed.lines().position(|line| line.contains("p2"));
+    assert!(
+        matches!((hidden_from, p2_at), (Some(heading), Some(row)) if row > heading),
+        "p2 is not listed under `hidden`:\n{listed}"
+    );
+
+    ok(&here.muster(&["pane", "quiet", "--pane", "p2"]));
+    let quiet = |control: &mut _| {
+        snapshot(control)
+            .panes
+            .into_iter()
+            .find(|pane| pane.pane == "p2")
+            .is_some_and(|pane| pane.quiet)
+    };
+    assert!(quiet(&mut control), "p2 is not quiet");
+    assert!(
+        ok(&here.muster(&["window"]))
+            .lines()
+            .any(|line| line.contains("p2") && line.contains("(quiet)"))
+    );
+    ok(&here.muster(&["pane", "quiet", "--pane", "p2", "--off"]));
+    assert!(!quiet(&mut control), "p2 is still quiet");
+
+    ok(&here.muster(&["pane", "show", "--pane", "p2"]));
+    assert!(!tab_of(&mut control, "p2").hidden, "p2's tab is still hidden");
+    // Showing a pane that is not hidden is already done, and says so as a success.
+    ok(&here.muster(&["pane", "show", "--pane", "p2"]));
+}
+
+fn tab_shape_holds(tab: &proto::Tab, pane: &str) -> bool {
+    fn holds(node: &proto::Node, pane: &str) -> bool {
+        match node.node.as_ref() {
+            Some(proto::node::Node::Pane(held)) => held == pane,
+            Some(proto::node::Node::Split(split)) => {
+                split.first.as_ref().is_some_and(|first| holds(first, pane))
+                    || split.second.as_ref().is_some_and(|second| holds(second, pane))
+            }
+            None => false,
+        }
+    }
+    tab.root.as_ref().is_some_and(|root| holds(root, pane))
 }
 
 /// `window --watch --json` says each pane as it stands, then each change.

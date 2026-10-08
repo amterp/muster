@@ -330,6 +330,9 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
+        request::Payload::HidePane(hide) => hide_pane(window, &hide),
+        request::Payload::ShowPane(show) => show_pane(window, &show),
+        request::Payload::QuietPane(quiet) => quiet_pane(window, &quiet),
         request::Payload::RenameTab(rename) => rename_tab(window, &rename),
         request::Payload::CloseTab(close) => close_tab(window, &close),
         // Answered when the panes have been handed back, not when the message was read. The
@@ -459,6 +462,49 @@ fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
     let focus = Some(compact.focus.trim().to_string()).filter(|focus| !focus.is_empty());
     act(window, &compact.daemon_id, &compact.pane_id, Keyboard::StaysPut, |pane| {
         BackendIntent::CompactPane { pane, focus }
+    })
+}
+
+/// Takes a pane out of every window into the hidden list, its agent still running. The keyboard
+/// does not follow it anywhere; one that was on it falls to the first pane left in its tab.
+fn hide_pane(window: WindowId, hide: &proto::HidePane) -> Response {
+    let target = match target(window, &hide.daemon_id, &hide.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    placed(session::hide_pane(window, &target.daemon, &pane).map(|()| Response::ok()), &target)
+}
+
+/// Brings a hidden pane back into this window, in a tab of its own.
+fn show_pane(window: WindowId, show: &proto::ShowPane) -> Response {
+    if show.pane_id.is_empty() {
+        return Response::failure(
+            "a request to show a pane named none, so nothing was shown. The pane the keyboard \
+             is on is never hidden; `muster window` lists the hidden ones under `hidden`, with \
+             the name to use here.",
+        );
+    }
+    let target = match target(window, &show.daemon_id, &show.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    placed(
+        session::show_pane(window, &target.daemon, &pane, show.take_focus).map(|()| Response::ok()),
+        &target,
+    )
+}
+
+/// Makes a pane quiet or lets it ask again. Being made quiet is not being looked at, so the
+/// keyboard stays where it is.
+fn quiet_pane(window: WindowId, quiet: &proto::QuietPane) -> Response {
+    act(window, &quiet.daemon_id, &quiet.pane_id, Keyboard::StaysPut, |pane| {
+        BackendIntent::QuietPane { pane, quiet: quiet.quiet }
     })
 }
 
@@ -1051,9 +1097,10 @@ fn held_elsewhere(pane: &PaneId, holder: &DaemonId, named: &str) -> Response {
 /// inherit from, so the daemon would start it in a home directory - and the answer somebody
 /// pressing the key means is "where I already am", which the mirror already knows.
 fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
-    let cwd = (!create.cwd.is_empty()).then(|| create.cwd.clone());
-    let run = (!create.run.is_empty()).then(|| create.run.clone());
-    let name = (!create.name.is_empty()).then(|| create.name.clone());
+    if create.hidden && create.take_focus {
+        return Response::failure(HIDDEN_AND_FOCUSED);
+    }
+    let making = Making::of(&create.cwd, &create.run, &create.name, create.quiet);
     let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
 
     // A window showing nothing, answered before anything else because every rule below starts
@@ -1075,14 +1122,35 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
                  daemon.unavailable records above say which, if a daemon was meant to be there.",
             );
         };
-        return open_a_tab(window, &daemon, None, keyboard, cwd, run, name);
+        return open_a_tab(window, &daemon, None, keyboard, making, create.hidden);
     }
 
     let target = match target(window, &create.daemon_id, &create.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
-    open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, cwd, run, name)
+    open_a_tab(window, &target.daemon, target.pane.as_ref(), keyboard, making, create.hidden)
+}
+
+/// Why a pane made hidden cannot also take the keyboard.
+const HIDDEN_AND_FOCUSED: &str = "a pane cannot be made hidden and take the keyboard: no window \
+     shows a hidden pane, so there would be nothing for the keyboard to be on. Nothing was made. \
+     Make it hidden, or make it with the keyboard and hide it later.";
+
+/// What a request making a pane asks of the pane itself, beyond where it goes.
+struct Making {
+    cwd: Option<String>,
+    run: Option<String>,
+    name: Option<String>,
+    quiet: bool,
+}
+
+impl Making {
+    /// From a request's fields, where empty means unsaid.
+    fn of(cwd: &str, run: &str, name: &str, quiet: bool) -> Making {
+        let said = |text: &str| (!text.is_empty()).then(|| text.to_string());
+        Making { cwd: said(cwd), run: said(run), name: said(name), quiet }
+    }
 }
 
 /// Asks one machine for a tab, starting where `from` is when nobody said where.
@@ -1093,19 +1161,28 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
 /// machine and somebody is typing into it. In a window showing nothing there is no cursor to
 /// drag and no other pane to leave it on, and honouring the flag there would show a pane
 /// nobody can type into until they click it.
+///
+/// A hidden tab is taken by no window, so nothing follows it: there is nowhere for the keyboard
+/// to be on it, even in a window showing nothing.
 fn open_a_tab(
     window: WindowId,
     daemon: &DaemonId,
     from: Option<&PaneId>,
     keyboard: Keyboard,
-    cwd: Option<String>,
-    run: Option<String>,
-    name: Option<String>,
+    making: Making,
+    hidden: bool,
 ) -> Response {
+    let Making { cwd, run, name, quiet } = making;
     let cwd = cwd.or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)));
-    let keyboard =
-        if session::focused_daemon(window).is_none() { Keyboard::Follows } else { keyboard };
-    let intent = BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name };
+    let keyboard = if hidden {
+        Keyboard::StaysPut
+    } else if session::focused_daemon(window).is_none() {
+        Keyboard::Follows
+    } else {
+        keyboard
+    };
+    let intent =
+        BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name, quiet, hidden };
     relayed(submit(window, daemon, &intent, keyboard))
 }
 
@@ -1591,15 +1668,13 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
     let response = if let Some(pane) = session::transcript_pane(daemon, group) {
         relayed(session::focus(window, daemon, &pane).map(|()| went(pane.to_string())))
     } else {
-        let opened = open_a_tab(
-            window,
-            daemon,
-            None,
-            Keyboard::Follows,
-            None,
-            Some(command),
-            Some(transcript::pane_name(group)),
-        );
+        let making = Making {
+            cwd: None,
+            run: Some(command),
+            name: Some(transcript::pane_name(group)),
+            quiet: false,
+        };
+        let opened = open_a_tab(window, daemon, None, Keyboard::Follows, making, false);
         if let Some(response::Payload::Made(made)) = &opened.payload {
             went(made.pane_id.clone())
         } else {
@@ -1996,25 +2071,39 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
             split.side
         ));
     };
+    if split.hidden && split.take_focus {
+        return Response::failure(HIDDEN_AND_FOCUSED);
+    }
     let keyboard = if split.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
     // Empty is the daemon's own rule rather than this process's directory, and for a split
     // that rule is "wherever the pane you split was".
-    let cwd = (!split.cwd.is_empty()).then(|| split.cwd.clone());
-    let run = (!split.run.is_empty()).then(|| split.run.clone());
-    let name = (!split.name.is_empty()).then(|| split.name.clone());
+    let making = Making::of(&split.cwd, &split.run, &split.name, split.quiet);
 
     let target = match target(window, &split.daemon_id, &split.pane_id) {
         Ok(target) => target,
         Err(refusal) => return *refusal,
     };
     let (daemon, pane) = (target.daemon.clone(), target.pane.clone());
+    let onto = &split.new_pane_daemon_id;
+    // A pane made hidden is not a split: no window shows it, so it goes in a tab of its own,
+    // starting where the split pane is, or on the machine named for it with nothing to inherit.
+    if split.hidden {
+        if !onto.is_empty() && onto != daemon.as_str() {
+            let onto = DaemonId::new(onto);
+            if !session::is_following(&onto) {
+                return no_such_daemon(window, &onto);
+            }
+            return open_a_tab(window, &onto, None, keyboard, making, true);
+        }
+        return open_a_tab(window, &daemon, pane.as_ref(), keyboard, making, true);
+    }
     // A machine showing nothing has nothing to split, and what was asked for is a pane on it.
     // Refusing here would leave `--daemon` unable to reach the machine it is most needed for -
     // the one holding no panes, which is every devenv on the day it is attached.
     let Some(pane) = pane else {
-        return open_a_tab(window, &daemon, None, keyboard, cwd, run, name);
+        return open_a_tab(window, &daemon, None, keyboard, making, false);
     };
-    let onto = &split.new_pane_daemon_id;
+    let Making { cwd, run, name, quiet } = making;
     if !onto.is_empty() && onto != daemon.as_str() {
         return split_onto(window, &DaemonId::new(onto), &pane, side, keyboard, split);
     }
@@ -2031,6 +2120,7 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
                 cwd,
                 run,
                 name,
+                quiet,
             },
             keyboard,
         ),
@@ -2067,19 +2157,22 @@ fn split_onto(
              name came from an older window - `muster window` lists the panes this one has."
         ));
     };
-    let cwd = (!split.cwd.is_empty()).then(|| split.cwd.clone());
-    let run = (!split.run.is_empty()).then(|| split.run.clone());
-    let name = (!split.name.is_empty()).then(|| split.name.clone());
-    let intent = match session::pane_in_part(window, onto, &tab) {
-        Some(pane) => BackendIntent::SplitPane {
+    let Making { cwd, run, name, quiet } =
+        Making::of(&split.cwd, &split.run, &split.name, split.quiet);
+    let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
+        BackendIntent::SplitPane {
             pane,
             side,
             ratio: (split.ratio > 0.0).then_some(split.ratio),
             cwd,
             run,
             name,
-        },
-        None => BackendIntent::JoinTab { tab, cwd, run, name },
+            quiet,
+        }
+    } else {
+        // Every part of a tab is hidden or not alike, so a part made from a hidden pane is too.
+        let hidden = session::tab_is_hidden(&tab);
+        BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden }
     };
     let split = session::daemon_holding(beside)
         .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });

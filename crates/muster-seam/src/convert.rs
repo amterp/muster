@@ -12,7 +12,7 @@ use muster_core::composition::{DaemonId, View, ViewNode};
 use muster_core::config::Rgb;
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
-use muster_core::roster::{Numbering, Roster, machine_color};
+use muster_core::roster::{Numbering, Roster, RosterTab, machine_color};
 
 use crate::proto;
 use crate::session::{DaemonHealth, PaneAgent};
@@ -119,45 +119,52 @@ pub(crate) fn roster(
                 restarted: machine.restarted.clone().unwrap_or_default(),
             })
             .collect(),
-        tabs: roster
-            .tabs
+        tabs: roster.tabs.iter().map(|tab| roster_tab(tab, Some(numbering))).collect(),
+        hidden: roster.hidden.iter().map(|tab| roster_tab(tab, None)).collect(),
+    }
+}
+
+/// One tab and its panes, with the chords `numbering` puts on them. A hidden tab has none, since
+/// nothing numbers it.
+fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTab {
+    proto::RosterTab {
+        tab_id: tab.id.to_string(),
+        daemon_ids: tab.daemons.iter().map(ToString::to_string).collect(),
+        // Zero is proto3's own spelling for a field nobody set, and the handler
+        // already reads it as no place at all - so a number too large to send
+        // arrives as unnameable rather than as a different tab. No window holds
+        // four billion tabs; this is a floor, not a case anybody meets. Same for a
+        // pane's place, below.
+        place: u32::try_from(tab.place).unwrap_or_default(),
+        tab_press: numbering.map_or(0, |numbering| pressed(numbering.chord_on_tab(tab).tab)),
+        armed: numbering.is_some_and(|numbering| numbering.armed_on(tab)),
+        label: tab.label.clone(),
+        on_screen: tab.on_screen,
+        // Empty is how a string field says nothing was named, the same spelling the
+        // appearance vocabulary uses. An optional carrying a name nobody could have
+        // typed - the empty one - is not a state worth a wire representation.
+        given_name: tab.given_name.clone().unwrap_or_default(),
+        panes: tab
+            .panes
             .iter()
-            .map(|tab| proto::RosterTab {
-                tab_id: tab.id.to_string(),
-                daemon_ids: tab.daemons.iter().map(ToString::to_string).collect(),
-                // Zero is proto3's own spelling for a field nobody set, and the handler
-                // already reads it as no place at all - so a number too large to send
-                // arrives as unnameable rather than as a different tab. No window holds
-                // four billion tabs; this is a floor, not a case anybody meets. Same for a
-                // pane's place, below.
-                place: u32::try_from(tab.place).unwrap_or_default(),
-                tab_press: pressed(numbering.chord_on_tab(tab).tab),
-                armed: numbering.armed_on(tab),
-                label: tab.label.clone(),
-                on_screen: tab.on_screen,
-                // Empty is how a string field says nothing was named, the same spelling the
-                // appearance vocabulary uses. An optional carrying a name nobody could have
-                // typed - the empty one - is not a state worth a wire representation.
-                given_name: tab.given_name.clone().unwrap_or_default(),
-                panes: tab
-                    .panes
-                    .iter()
-                    .map(|pane| {
-                        let chord = numbering.chord_on_pane(tab, pane);
-                        proto::RosterPane {
-                            daemon_id: pane.key.daemon.to_string(),
-                            pane_id: pane.key.pane.to_string(),
-                            place: u32::try_from(pane.place).unwrap_or_default(),
-                            tab_press: pressed(chord.tab),
-                            pane_press: pressed(chord.pane),
-                            label: pane.label.clone(),
-                            on_screen: pane.on_screen,
-                            subtitle: pane.subtitle.clone().unwrap_or_default(),
-                            given_name: pane.given_name.clone().unwrap_or_default(),
-                            compactable: pane.compactable,
-                        }
-                    })
-                    .collect(),
+            .map(|pane| {
+                let (tab_press, pane_press) = numbering.map_or((0, 0), |numbering| {
+                    let chord = numbering.chord_on_pane(tab, pane);
+                    (pressed(chord.tab), pressed(chord.pane))
+                });
+                proto::RosterPane {
+                    daemon_id: pane.key.daemon.to_string(),
+                    pane_id: pane.key.pane.to_string(),
+                    place: u32::try_from(pane.place).unwrap_or_default(),
+                    tab_press,
+                    pane_press,
+                    label: pane.label.clone(),
+                    on_screen: pane.on_screen,
+                    subtitle: pane.subtitle.clone().unwrap_or_default(),
+                    given_name: pane.given_name.clone().unwrap_or_default(),
+                    compactable: pane.compactable,
+                    quiet: pane.quiet,
+                }
             })
             .collect(),
     }

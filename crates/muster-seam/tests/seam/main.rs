@@ -15,6 +15,7 @@ mod dispatch;
 mod effects;
 mod focus_history;
 mod handing_over;
+mod hiding;
 mod holding;
 mod inherited;
 mod just_made;

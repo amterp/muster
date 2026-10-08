@@ -481,6 +481,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             generation: 1,
             root: nested(&ids),
             zoomed: None,
+            hidden: false,
         }],
         panes: ids.iter().map(|id| agent_pane(id, &tab)).collect(),
         restored_from_file: false,
@@ -543,6 +544,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         unreadable: false,
         adapter: muster_core::mirror::Adapter::Reporting,
         unread_input: None,
+        quiet: false,
     }
 }
 

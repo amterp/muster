@@ -151,7 +151,68 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     only_making_a_pane_prints_a_pane(&made_pane, &tab, &inside(&first));
     a_tab_nobody_holds_is_refused_by_name(&inside(&first));
     a_mistyped_flag_is_refused_and_says_what_was_meant(&inside(&first));
+    a_pane_is_hidden_quiet_and_brought_back(daemon.root(), &inside(&first));
     with_no_window_to_ask_nothing_is_guessed(daemon.root());
+}
+
+/// The headless agent: a pane made hidden and quiet, which no window shows and which is still
+/// typed into and read by name, then brought back, let notify again, and closed.
+fn a_pane_is_hidden_quiet_and_brought_back(root: &Path, environment: &[(&str, String)]) {
+    let made = run(&["pane", "new", "--hidden", "--quiet"], environment);
+    assert_eq!(made.code, 0, "`muster pane new --hidden` failed: {}", made.errors);
+    let hidden = made.out.trim().to_string();
+    let listed = |window: &Value| -> Option<Value> {
+        window["hidden"]
+            .as_array()?
+            .iter()
+            .flat_map(|tab| tab["panes"].as_array().into_iter().flatten())
+            .find(|pane| pane["pane"] == json!(hidden))
+            .cloned()
+    };
+    let window = until_some("the window to list the pane as hidden and quiet", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        (listed(&window)?["quiet"] == json!(true)).then_some(window)
+    });
+    assert!(
+        !window["panes"].as_array().unwrap().iter().any(|pane| pane["pane"] == json!(hidden)),
+        "a hidden pane is listed among the window's own: {window}"
+    );
+    let readable = run(&["window"], environment);
+    let row = readable.out.lines().find(|line| line.contains(&hidden)).unwrap_or_default();
+    assert!(
+        readable.out.lines().any(|line| line == "hidden") && row.contains("(quiet)"),
+        "`muster window` does not list the pane under `hidden`, saying it is quiet:\n{}",
+        readable.out
+    );
+    assert!(!row.contains("(off screen)"), "a hidden pane is not off screen, it is hidden: {row}");
+
+    // Typed into by name, though nothing shows it, as an agent instructing a sub-agent does.
+    let ran = root.join("hidden-ran.txt");
+    let sending = format!("printf 'ran' > {}", ran.display());
+    let sent = run(&["pane", "send", "--pane", &hidden, &sending, "--enter"], environment);
+    assert_eq!(sent.code, 0, "sending to a hidden pane failed: {}", sent.errors);
+    until_file(&ran, "text sent to a hidden pane to have run there");
+
+    let shown = run(&["pane", "show", "--pane", &hidden], environment);
+    assert_eq!(shown.code, 0, "`muster pane show` failed: {}", shown.errors);
+    let quieted = run(&["pane", "quiet", "--pane", &hidden, "--off"], environment);
+    assert_eq!(quieted.code, 0, "`muster pane quiet --off` failed: {}", quieted.errors);
+    until_some("the pane to be back in the window and to notify again", || {
+        let window = json_from(&run(&["window", "--json"], environment));
+        let pane = window["panes"].as_array()?.iter().find(|pane| pane["pane"] == json!(hidden))?;
+        (pane["quiet"] == json!(false) && listed(&window).is_none()).then_some(())
+    });
+
+    let hid = run(&["pane", "hide", "--pane", &hidden], environment);
+    assert_eq!(hid.code, 0, "`muster pane hide` failed: {}", hid.errors);
+    until_some("the pane to be hidden again", || {
+        listed(&json_from(&run(&["window", "--json"], environment)))
+    });
+    let closed = run(&["pane", "close", "--pane", &hidden], environment);
+    assert_eq!(closed.code, 0, "closing a hidden pane by name failed: {}", closed.errors);
+    until_some("the hidden pane to close", || {
+        listed(&json_from(&run(&["window", "--json"], environment))).is_none().then_some(())
+    });
 }
 
 /// A send whose text never went through a shell's quoting (kan a_2M9T8iOgk).

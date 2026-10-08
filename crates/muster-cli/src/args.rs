@@ -24,9 +24,9 @@ use muster_core::input::check_sent_keys;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    MoveTab, OpenTranscript, ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig,
-    RenamePane, RenameTab, Request, ResizePane, SendToPane, SplitPane, ToggleSidebar, WatchPanes,
-    ZoomPane, request,
+    HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
+    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, ShowPane, SplitPane,
+    ToggleSidebar, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -546,6 +546,19 @@ enum Doing {
         /// Move the window's keyboard to it
         #[arg(long)]
         focus: bool,
+
+        /// Raise nothing for the person about it: no notification, and nothing for the chord
+        /// to whatever is asking to go to. Its state still shows
+        #[arg(long)]
+        quiet: bool,
+
+        /// Make it hidden from the start, in a tab of its own that no window shows. `pane
+        /// show` brings it back
+        //
+        // Not a split, so the sides are refused rather than ignored, and so is --focus: no
+        // window shows the pane, so there is nothing for the keyboard to be on.
+        #[arg(long, conflicts_with_all = ["left", "right", "up", "down", "focus"])]
+        hidden: bool,
     },
 
     /// Call a pane something. An empty name takes the name away again
@@ -572,6 +585,39 @@ enum Doing {
         /// harness takes one
         #[arg(value_name = "FOCUS")]
         focus: Vec<String>,
+    },
+
+    /// Take a pane out of every window, its agent still running, into the hidden list
+    Hide {
+        /// The pane to hide, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+    },
+
+    /// Bring a hidden pane back, into a tab of its own in this window
+    Show {
+        /// The pane to bring back. `muster window` lists the hidden ones
+        //
+        // Required, and $MUSTER_PANE is not read: the pane this runs in is the one somebody is
+        // looking at, so it is not the hidden one.
+        #[arg(long, value_name = "REF", required = true)]
+        pane: String,
+
+        /// Move the window's keyboard to it, bringing its tab on screen
+        #[arg(long)]
+        focus: bool,
+    },
+
+    /// Make a pane quiet, so that nothing about it is raised for the person, or with --off let
+    /// it notify again
+    Quiet {
+        /// The pane to make quiet, or the one this is running in
+        #[arg(long, value_name = "REF")]
+        pane: Option<String>,
+
+        /// Let it notify again
+        #[arg(long)]
+        off: bool,
     },
 
     /// Type text into a pane and press keys in it, whether or not anything is showing it
@@ -1070,13 +1116,27 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
     })
 }
 
+#[expect(clippy::too_many_lines, reason = "one arm per pane verb, each a request")]
 fn pane(
     doing: &Doing,
     environment: &BTreeMap<String, String>,
     here: Option<&Path>,
 ) -> Result<Asking, Failure> {
     Ok(match doing {
-        Doing::New { left, right, up, down, pane, daemon, cwd, run, name, focus } => {
+        Doing::New {
+            left,
+            right,
+            up,
+            down,
+            pane,
+            daemon,
+            cwd,
+            run,
+            name,
+            focus,
+            quiet,
+            hidden,
+        } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
             // should be able to send it straight back. Saying nothing means right, because that is
@@ -1095,9 +1155,25 @@ fn pane(
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
+                quiet: *quiet,
+                hidden: *hidden,
                 ..SplitPane::default()
             }))
         }
+        Doing::Hide { pane } => send(request::Payload::HidePane(HidePane {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            ..HidePane::default()
+        })),
+        Doing::Show { pane, focus } => send(request::Payload::ShowPane(ShowPane {
+            pane_id: pane.clone(),
+            take_focus: *focus,
+            ..ShowPane::default()
+        })),
+        Doing::Quiet { pane, off } => send(request::Payload::QuietPane(QuietPane {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            quiet: Some(!*off),
+            ..QuietPane::default()
+        })),
         Doing::Rename { pane, name } => send(request::Payload::RenamePane(RenamePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             name: name.join(" "),
@@ -1255,6 +1331,7 @@ fn tab(
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
+                ..CreateTab::default()
             }))
         }
         WithTab::Focus { tab, next, previous } => {

@@ -79,6 +79,23 @@ fn roster_conformance() {
                         .collect::<Vec<String>>()
                 )),
             ),
+            // The tabs no window shows and their panes, only when there are any, so the cases about
+            // anything else need not say there are none.
+            (
+                "hidden",
+                Some(
+                    roster
+                        .hidden
+                        .iter()
+                        .flat_map(|tab| {
+                            std::iter::once(describe_tab(tab))
+                                .chain(tab.panes.iter().map(move |pane| describe_pane(tab, pane)))
+                        })
+                        .collect::<Vec<String>>(),
+                )
+                .filter(|hidden| !hidden.is_empty())
+                .map(|hidden| json!(hidden)),
+            ),
         ]))
     });
 
@@ -230,7 +247,7 @@ fn describe_tab(tab: &RosterTab) -> String {
         tab.place,
         tab.label,
         described("given-name", tab.given_name.as_deref()),
-        if tab.on_screen { "on-screen" } else { "hidden" }
+        if tab.on_screen { "on-screen" } else { "off-screen" }
     )
 }
 
@@ -249,14 +266,15 @@ fn described(key: &str, value: Option<&str>) -> String {
 /// without counting rows back up to the heading it belongs to.
 fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
     format!(
-        "{} place={} tab={} label={:?}{}{} {}",
+        "{} place={} tab={} label={:?}{}{} {}{}",
         pane.key,
         pane.place,
         tab.id,
         pane.label,
         described("subtitle", pane.subtitle.as_deref()),
         described("given-name", pane.given_name.as_deref()),
-        if pane.on_screen { "on-screen" } else { "hidden" }
+        if pane.on_screen { "on-screen" } else { "off-screen" },
+        if pane.quiet { " quiet" } else { "" }
     )
 }
 

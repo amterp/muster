@@ -49,6 +49,15 @@ pub struct Roster {
     /// vanish from the window entirely, and a machine you asked to see and cannot use is the
     /// bug `a_2HpkpfIfq` was about.
     pub machines: Vec<RosterMachine>,
+
+    /// The tabs no window shows, which are what hiding a pane makes: each pane hidden on its
+    /// own tab, and any pane made beside one in it.
+    ///
+    /// Apart from `tabs` because nothing about them is the window's: no chord reaches them, no
+    /// place numbers them, and nothing draws them, so every `place` here is 0 and every
+    /// `on_screen` false. Listed so that what their agents are doing is still in view and each
+    /// can be brought back. Every window lists the same ones, because hiding is a daemon's fact.
+    pub hidden: Vec<RosterTab>,
 }
 
 /// One attached machine, as something to say a word about and somewhere to put a pane.
@@ -215,6 +224,8 @@ pub struct RosterPane {
     /// Whether its agent can be compacted, as its daemon says: what a menu offering to compact it
     /// greys itself out on.
     pub compactable: bool,
+    /// Whether it raises nothing for the person, as its daemon says.
+    pub quiet: bool,
 }
 
 /// What the next press names.
@@ -529,6 +540,7 @@ impl Roster {
                             given_name: given_name(pane.name.as_deref()),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
+                            quiet: pane.quiet,
                             key,
                         }
                     })
@@ -569,7 +581,14 @@ impl Roster {
             })
             .collect();
 
-        Roster { tabs, machines }
+        let hidden = hidden_tabs(composition, &mirror);
+
+        Roster { tabs, machines, hidden }
+    }
+
+    /// Every hidden pane, in the order they are listed.
+    pub fn hidden_panes(&self) -> impl Iterator<Item = &RosterPane> {
+        self.hidden.iter().flat_map(|tab| tab.panes.iter())
     }
 
     /// Every tab in the window, in the order they are numbered.
@@ -645,6 +664,54 @@ impl Roster {
             },
         }
     }
+}
+
+/// Every hidden tab the window's daemons hold, a tab spanning machines once, in the order the
+/// daemons are attached and then the order each opened its tabs.
+///
+/// A hidden tab nobody named is called `hidden` rather than numbered: nothing places it.
+fn hidden_tabs<'a>(
+    composition: &Composition,
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+) -> Vec<RosterTab> {
+    let mut hidden: Vec<RosterTab> = Vec::new();
+    for daemon in composition.daemons() {
+        let Some(held) = mirror(&daemon.id) else { continue };
+        for part in held.tabs().filter(|tab| tab.hidden) {
+            let at = if let Some(at) = hidden.iter().position(|tab| tab.id == part.id) {
+                at
+            } else {
+                let name = tab_name(part);
+                hidden.push(RosterTab {
+                    id: part.id.clone(),
+                    daemons: Vec::new(),
+                    place: 0,
+                    label: name.unwrap_or("hidden").to_string(),
+                    on_screen: false,
+                    given_name: name.map(str::to_string),
+                    panes: Vec::new(),
+                });
+                hidden.len() - 1
+            };
+            let tab = &mut hidden[at];
+            tab.daemons.push(daemon.id.clone());
+            for pane in ordered_panes(held, &part.id) {
+                let label = pane_label(pane);
+                tab.panes.push(RosterPane {
+                    key: PaneKey::new(&daemon.id, &pane.id),
+                    place: 0,
+                    place_in_tab: tab.panes.len() + 1,
+                    subtitle: pane_subtitle(pane, &label),
+                    label,
+                    given_name: given_name(pane.name.as_deref()),
+                    on_screen: false,
+                    compactable: pane.compactable,
+                    quiet: pane.quiet,
+                });
+            }
+        }
+    }
+    hidden
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.

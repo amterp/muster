@@ -93,6 +93,7 @@ pub(crate) fn read_tab(given: &Value) -> Tab {
         generation: given.get("generation").and_then(Value::as_u64).unwrap_or_default(),
         root: read_node(given.get("root").unwrap_or(&Value::Null)),
         zoomed: optional(given, "zoomed").map(PaneId::new),
+        hidden: given.get("hidden").and_then(Value::as_bool).unwrap_or_default(),
     }
 }
 
@@ -123,6 +124,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
             program: text(unread, "program"),
             pid: 0,
         }),
+        quiet: given.get("quiet").and_then(Value::as_bool).unwrap_or_default(),
     }
 }
 

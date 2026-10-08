@@ -162,6 +162,7 @@ pub fn pane(record: proto::Pane) -> Pane {
             program: unread.program,
             pid: unread.pid,
         }),
+        quiet: record.quiet,
     }
 }
 
@@ -174,6 +175,7 @@ pub fn tab(record: proto::Tab) -> Option<Tab> {
         generation: label.generation,
         root: node(record.root?)?,
         zoomed: record.zoomed.map(PaneId::new),
+        hidden: record.hidden,
     })
 }
 

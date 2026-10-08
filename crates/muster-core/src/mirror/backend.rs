@@ -106,6 +106,9 @@ pub struct Pane {
     pub adapter: Adapter,
     /// The pane's program has stopped reading its input, as its daemon measured it.
     pub unread_input: Option<UnreadInput>,
+    /// Whether the person is told nothing about this pane: no banner, and no ask. Its state
+    /// still shows. The daemon's fact, so every window agrees and it survives a restart.
+    pub quiet: bool,
 }
 
 /// Input a pane's program has left unread, as it stood when its daemon called it stopped.
@@ -215,6 +218,9 @@ pub struct Tab {
     pub generation: u64,
     pub root: LayoutNode,
     pub zoomed: Option<PaneId>,
+    /// No window shows it: its panes are hidden, listed apart and brought back from there. The
+    /// daemon's fact, set when the tab is made.
+    pub hidden: bool,
 }
 
 /// Which way a split divides its area.

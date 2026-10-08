@@ -555,7 +555,14 @@ pub(super) fn open_a_tab_if_the_window_is_empty(window: WindowId) {
 /// a daemon says no is written down once.
 pub(super) fn ask_for_a_tab(window: WindowId, daemon: &DaemonId) {
     log::info("tab.first.creating", fields! { "daemon" => daemon.to_string() });
-    let intent = BackendIntent::CreateTab { tab: mint_tab(), cwd: None, run: None, name: None };
+    let intent = BackendIntent::CreateTab {
+        tab: mint_tab(),
+        cwd: None,
+        run: None,
+        name: None,
+        quiet: false,
+        hidden: false,
+    };
     let asked = submit(window, daemon, &intent, Keyboard::Follows);
     if let Err(Refusal::Unanswered { detail, .. }) = &asked {
         log::warn(

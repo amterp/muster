@@ -400,6 +400,11 @@ fn tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
     window.roster.iter().flat_map(|roster| roster.tabs.iter())
 }
 
+/// The tabs no window shows, which hiding a pane makes.
+fn hidden_tabs(window: &Window) -> impl Iterator<Item = &muster_proto::RosterTab> {
+    window.roster.iter().flat_map(|roster| roster.hidden.iter())
+}
+
 /// A window as somebody reads it: its tabs, the panes in them, then the machines behind them.
 ///
 /// Tabs first because that is the window: it holds an ordered list of them and shows one, so a
@@ -486,6 +491,19 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
                     ));
                 }
             }
+        }
+    }
+
+    // Hidden panes, which no window shows, so no window's list above has them. Listed as a closed
+    // window's are, without places or the keyboard, because nothing draws them.
+    let hidden: Vec<&muster_proto::RosterTab> = hidden_tabs(window).collect();
+    if !hidden.is_empty() {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(styled("hidden", NAME));
+        for tab in hidden {
+            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine, false));
         }
     }
 
@@ -828,9 +846,12 @@ fn pane_line(
             line.push_str(&styled(&format!("  {said}"), QUIET));
         }
     }
-    // Only a window draws panes, so with none there is nothing to be hidden from.
+    if pane.quiet {
+        line.push_str(&styled("  (quiet)", QUIET));
+    }
+    // Only a window draws panes, so with none there is nothing to be off screen from.
     if drawn && !pane.on_screen {
-        line.push_str(&styled("  (hidden)", QUIET));
+        line.push_str(&styled("  (off screen)", QUIET));
     }
     // Last on the row and only with more than one machine attached, because a tab may span two
     // and the pane is the only thing that can say which. On one machine it is on every row and
@@ -1049,6 +1070,28 @@ fn since_json(since_ms: i64) -> Value {
 ///
 /// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
 /// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
+/// A tab this window neither places nor draws - another window's, or a hidden one - with its
+/// panes and what each is doing.
+fn unplaced_tab_json(
+    tab: &muster_proto::RosterTab,
+    states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
+) -> Value {
+    json!({
+        "tab": tab.tab_id,
+        "daemons": tab.daemon_ids,
+        "label": tab.label,
+        "given_name": tab.given_name,
+        "panes": tab.panes.iter().map(|pane| json!({
+            "pane": pane.pane_id,
+            "daemon": pane.daemon_id,
+            "label": pane.label,
+            "state": states.get(pane.pane_id.as_str())
+                .map_or("unknown", |agent| agent.state.as_str()),
+            "quiet": pane.quiet,
+        })).collect::<Vec<Value>>(),
+    })
+}
+
 fn window_json(window: &Window, others: Others) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
@@ -1096,6 +1139,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                         "pid": unread.pid,
                     })
                 }),
+                "quiet": pane.quiet,
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
@@ -1138,27 +1182,20 @@ fn window_json(window: &Window, others: Others) -> Value {
             json!({
                 "window": other.name,
                 "pid": if other.pid == 0 { Value::Null } else { json!(other.pid) },
-                "tabs": other.tabs.iter().map(|tab| json!({
-                    "tab": tab.tab_id,
-                    "daemons": tab.daemon_ids,
-                    "label": tab.label,
-                    "given_name": tab.given_name,
-                    "panes": tab.panes.iter().map(|pane| json!({
-                        "pane": pane.pane_id,
-                        "daemon": pane.daemon_id,
-                        "label": pane.label,
-                        "state": states.get(pane.pane_id.as_str())
-                            .map_or("unknown", |agent| agent.state.as_str()),
-                    })).collect::<Vec<Value>>(),
-                })).collect::<Vec<Value>>(),
+                "tabs": other.tabs.iter().map(|tab| unplaced_tab_json(tab, &states)).collect::<Vec<Value>>(),
             })
         })
         .collect();
     add_layout(window, &mut tabs_out, &mut panes, &mut other_windows);
+    // In the shape other windows' tabs take, and for the same reason: nothing here places or
+    // draws them.
+    let hidden: Vec<Value> =
+        hidden_tabs(window).map(|tab| unplaced_tab_json(tab, &states)).collect();
 
     json!({
         "name": window.name,
         "other_windows": other_windows,
+        "hidden": hidden,
         "daemons": daemons,
         "keyboard": keyboard,
         // Which tab the window is on, named once rather than repeated on every region below.

@@ -52,8 +52,8 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p2 place=1 tab=w1:t1 label=\"beta\" hidden",
-          "local/w1:p1 place=2 tab=w1:t1 label=\"alpha\" hidden"
+          "local/w1:p2 place=1 tab=w1:t1 label=\"beta\" off-screen",
+          "local/w1:p1 place=2 tab=w1:t1 label=\"alpha\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -108,8 +108,8 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -156,7 +156,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -202,7 +202,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"rad\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"rad\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -257,8 +257,8 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"w1:p1\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"w1:p2\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"w1:p1\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"w1:p2\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -304,7 +304,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"src\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"src\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -363,11 +363,11 @@
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" on-screen",
-          "local/w1:p9 place=2 tab=w1:t2 label=\"elsewhere\" hidden"
+          "local/w1:p9 place=2 tab=w1:t2 label=\"elsewhere\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -434,12 +434,12 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden",
-          "devenv/w2:p1 place=2 tab=w2:t1 label=\"there\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" off-screen",
+          "devenv/w2:p1 place=2 tab=w2:t1 label=\"there\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" hidden"
+          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" off-screen"
         ]
       }
     },
@@ -491,7 +491,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"shown\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -541,7 +541,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -614,12 +614,12 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"laptop\" hidden",
-          "devenv/w2:p1 place=2 tab=w2:t1 label=\"devenv\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"laptop\" off-screen",
+          "devenv/w2:p1 place=2 tab=w2:t1 label=\"devenv\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" hidden"
+          "w2:t1 on=devenv place=2 label=\"t1\" given-name=\"t1\" off-screen"
         ]
       }
     },
@@ -704,16 +704,16 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -769,7 +769,7 @@
         ],
         "panes": [
           "local/w1:p1 place=1 tab=w1:t1 label=\"zoomed\" on-screen",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"behind\" hidden"
+          "local/w1:p2 place=2 tab=w1:t1 label=\"behind\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -814,7 +814,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"nameless\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"nameless\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"Tab 1\" on-screen"
@@ -906,17 +906,17 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "stepped": "w2:t1",
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1005,17 +1005,17 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "stepped": "w1:t1",
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1104,17 +1104,17 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "stepped": "w2:t2",
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1203,17 +1203,17 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "stepped": "w1:t1",
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1301,17 +1301,17 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "stepped": "w2:t2",
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1398,16 +1398,16 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1494,16 +1494,16 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" hidden",
-          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" hidden",
-          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"second\" off-screen",
+          "devenv/w2:p1 place=3 tab=w2:t1 label=\"third\" off-screen",
+          "devenv/w2:p2 place=4 tab=w2:t2 label=\"fourth\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" hidden",
-          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w2:t1 on=devenv place=3 label=\"t1\" given-name=\"t1\" off-screen",
+          "w2:t2 on=devenv place=4 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -1548,7 +1548,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" subtitle=\"first working build\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" subtitle=\"first working build\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1595,7 +1595,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1643,7 +1643,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster \u00b7 claude\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1692,7 +1692,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"\ud83d\udd25 payments spike\" subtitle=\"first working build\" given-name=\"\ud83d\udd25 payments spike\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"\ud83d\udd25 payments spike\" subtitle=\"first working build\" given-name=\"\ud83d\udd25 payments spike\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1741,7 +1741,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1795,12 +1795,12 @@
           "local connected 2 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"muster\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"muster\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"muster\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"release\" given-name=\"release\" on-screen",
-          "w1:t2 on=local place=2 label=\"Tab 2\" hidden"
+          "w1:t2 on=local place=2 label=\"Tab 2\" off-screen"
         ]
       }
     },
@@ -1933,30 +1933,30 @@
           "local connected 11 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" hidden",
-          "local/w1:p2 place=2 tab=w1:t2 label=\"p2\" hidden",
-          "local/w1:p3 place=3 tab=w1:t3 label=\"p3\" hidden",
-          "local/w1:p4 place=4 tab=w1:t4 label=\"p4\" hidden",
-          "local/w1:p5 place=5 tab=w1:t5 label=\"p5\" hidden",
-          "local/w1:p6 place=6 tab=w1:t6 label=\"p6\" hidden",
-          "local/w1:p7 place=7 tab=w1:t7 label=\"p7\" hidden",
-          "local/w1:p8 place=8 tab=w1:t8 label=\"p8\" hidden",
-          "local/w1:p9 place=9 tab=w1:t9 label=\"p9\" hidden",
-          "local/w1:p10 place=10 tab=w1:t10 label=\"p10\" hidden",
-          "local/w1:p11 place=11 tab=w1:t11 label=\"p11\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t2 label=\"p2\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t3 label=\"p3\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t4 label=\"p4\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t5 label=\"p5\" off-screen",
+          "local/w1:p6 place=6 tab=w1:t6 label=\"p6\" off-screen",
+          "local/w1:p7 place=7 tab=w1:t7 label=\"p7\" off-screen",
+          "local/w1:p8 place=8 tab=w1:t8 label=\"p8\" off-screen",
+          "local/w1:p9 place=9 tab=w1:t9 label=\"p9\" off-screen",
+          "local/w1:p10 place=10 tab=w1:t10 label=\"p10\" off-screen",
+          "local/w1:p11 place=11 tab=w1:t11 label=\"p11\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" hidden",
-          "w1:t4 on=local place=4 label=\"t4\" given-name=\"t4\" hidden",
-          "w1:t5 on=local place=5 label=\"t5\" given-name=\"t5\" hidden",
-          "w1:t6 on=local place=6 label=\"t6\" given-name=\"t6\" hidden",
-          "w1:t7 on=local place=7 label=\"t7\" given-name=\"t7\" hidden",
-          "w1:t8 on=local place=8 label=\"t8\" given-name=\"t8\" hidden",
-          "w1:t9 on=local place=9 label=\"t9\" given-name=\"t9\" hidden",
-          "w1:t10 on=local place=10 label=\"t10\" given-name=\"t10\" hidden",
-          "w1:t11 on=local place=11 label=\"t11\" given-name=\"t11\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" off-screen",
+          "w1:t4 on=local place=4 label=\"t4\" given-name=\"t4\" off-screen",
+          "w1:t5 on=local place=5 label=\"t5\" given-name=\"t5\" off-screen",
+          "w1:t6 on=local place=6 label=\"t6\" given-name=\"t6\" off-screen",
+          "w1:t7 on=local place=7 label=\"t7\" given-name=\"t7\" off-screen",
+          "w1:t8 on=local place=8 label=\"t8\" given-name=\"t8\" off-screen",
+          "w1:t9 on=local place=9 label=\"t9\" given-name=\"t9\" off-screen",
+          "w1:t10 on=local place=10 label=\"t10\" given-name=\"t10\" off-screen",
+          "w1:t11 on=local place=11 label=\"t11\" given-name=\"t11\" off-screen"
         ]
       }
     },
@@ -2029,9 +2029,9 @@
           "local connected 3 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t1 label=\"third\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t1 label=\"third\" off-screen"
         ],
         "pressed": [
           "\u23182 of panes \u2192 pane local/w1:p2",
@@ -2132,11 +2132,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2144,7 +2144,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2238,11 +2238,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2250,7 +2250,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2345,11 +2345,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2358,7 +2358,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2453,11 +2453,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t3 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t3 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t3 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t3 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2465,8 +2465,8 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden",
-          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen",
+          "w1:t3 on=local place=3 label=\"t3\" given-name=\"t3\" off-screen"
         ]
       }
     },
@@ -2561,11 +2561,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2574,7 +2574,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2738,18 +2738,18 @@
           "local connected 12 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"p2\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"p3\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"p4\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"p5\" hidden",
-          "local/w1:p6 place=6 tab=w1:t2 label=\"p6\" hidden",
-          "local/w1:p7 place=7 tab=w1:t2 label=\"p7\" hidden",
-          "local/w1:p8 place=8 tab=w1:t2 label=\"p8\" hidden",
-          "local/w1:p9 place=9 tab=w1:t2 label=\"p9\" hidden",
-          "local/w1:p10 place=10 tab=w1:t2 label=\"p10\" hidden",
-          "local/w1:p11 place=11 tab=w1:t2 label=\"p11\" hidden",
-          "local/w1:p12 place=12 tab=w1:t2 label=\"p12\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"p1\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"p2\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"p3\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"p4\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"p5\" off-screen",
+          "local/w1:p6 place=6 tab=w1:t2 label=\"p6\" off-screen",
+          "local/w1:p7 place=7 tab=w1:t2 label=\"p7\" off-screen",
+          "local/w1:p8 place=8 tab=w1:t2 label=\"p8\" off-screen",
+          "local/w1:p9 place=9 tab=w1:t2 label=\"p9\" off-screen",
+          "local/w1:p10 place=10 tab=w1:t2 label=\"p10\" off-screen",
+          "local/w1:p11 place=11 tab=w1:t2 label=\"p11\" off-screen",
+          "local/w1:p12 place=12 tab=w1:t2 label=\"p12\" off-screen"
         ],
         "pressed": [
           "\u23182 of tabs \u2192 tab w1:t2 landing on local/w1:p3",
@@ -2757,7 +2757,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2851,11 +2851,11 @@
           "local connected 5 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" hidden",
-          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" hidden",
-          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" hidden",
-          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"first\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"second\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t2 label=\"third\" off-screen",
+          "local/w1:p4 place=4 tab=w1:t2 label=\"fourth\" off-screen",
+          "local/w1:p5 place=5 tab=w1:t2 label=\"fifth\" off-screen"
         ],
         "pressed": [
           "\u23185 of tabs \u2192 nothing",
@@ -2863,7 +2863,7 @@
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
-          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" hidden"
+          "w1:t2 on=local place=2 label=\"t2\" given-name=\"t2\" off-screen"
         ]
       }
     },
@@ -2926,8 +2926,8 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" hidden",
-          "devenv/w2:p1 place=2 tab=w1:t1 label=\"there\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"here\" off-screen",
+          "devenv/w2:p1 place=2 tab=w1:t1 label=\"there\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local+devenv place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -2997,12 +2997,91 @@
           "local connected 3 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha · claude\" hidden",
-          "local/w1:p2 place=2 tab=w1:t1 label=\"beta · gemini\" hidden",
-          "local/w1:p3 place=3 tab=w1:t1 label=\"gamma\" hidden"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha \u00b7 claude\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta \u00b7 gemini\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t1 label=\"gamma\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "a hidden tab is listed apart, unnumbered, and quiet panes say so",
+      "why": "A hidden pane is one somebody put out of sight with its agent still running. No window shows it and no chord reaches it, so it takes no place in the window's order - numbering it would shift every chord below it - and is listed apart so that what its agent is doing stays in view and it can be brought back. Quiet is said on every row, hidden or not, because a menu offers to take it back.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "root": {
+                  "axis": "rows",
+                  "ratio": 0.5,
+                  "first": "w1:p2",
+                  "second": "w1:p3"
+                },
+                "hidden": true
+              },
+              {
+                "id": "w1:t3",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha",
+                "quiet": true
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/beta",
+                "agent": "claude",
+                "quiet": true
+              },
+              {
+                "id": "w1:p3",
+                "cwd": "/src/gamma"
+              },
+              {
+                "id": "w1:p4",
+                "cwd": "/src/delta"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "showing": [
+          "local/w1:p1"
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 4 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" on-screen quiet",
+          "local/w1:p4 place=2 tab=w1:t3 label=\"delta\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen",
+          "w1:t3 on=local place=2 label=\"Tab 2\" off-screen"
+        ],
+        "hidden": [
+          "w1:t2 on=local place=0 label=\"hidden\" off-screen",
+          "local/w1:p2 place=0 tab=w1:t2 label=\"beta \u00b7 claude\" off-screen quiet",
+          "local/w1:p3 place=0 tab=w1:t2 label=\"gamma\" off-screen"
         ]
       }
     }

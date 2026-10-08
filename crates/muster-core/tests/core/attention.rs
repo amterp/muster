@@ -97,6 +97,7 @@ struct Run {
     reported: Vec<String>,
 }
 
+#[expect(clippy::too_many_lines, reason = "one arm per kind of event a case can give")]
 fn fold(given: &Value) -> Result<Run, CaseError> {
     let mut run = Run {
         attention: Attention::new(),
@@ -173,6 +174,12 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             messaged(&mut run, event, message)?;
             continue;
         }
+        // The pane's daemon says it is quiet now, or with `"on": false` that it is not, while
+        // the pane is in whatever state the case last gave it.
+        if event.get("quiet").is_some() {
+            quieted(&mut run, event)?;
+            continue;
+        }
         // A program in the pane rang the bell.
         if event.get("rang").is_some() {
             let pane = read_pane(event, "rang")?;
@@ -213,6 +220,17 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         run.backend.insert(pane, state);
     }
     Ok(run)
+}
+
+/// Tells the window its daemon says a pane is quiet, or with `"on": false` that it is not.
+fn quieted(run: &mut Run, event: &Value) -> Result<(), CaseError> {
+    let pane = read_pane(event, "quiet")?;
+    let on = event.get("on").and_then(Value::as_bool).unwrap_or(true);
+    let state = run.backend.get(&pane).copied().unwrap_or(AgentState::Unknown);
+    if run.attention.quiet(&pane, on, state, finished(event)) == Some(Attend::Withdrawn) {
+        run.notified.push(withdrawn(&pane));
+    }
+    Ok(())
 }
 
 /// Tells the window what a group's daemon says now waits for the human there.

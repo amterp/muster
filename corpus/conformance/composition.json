@@ -5168,6 +5168,110 @@
           "r0 tab=w1:t1 w1:p1* zoomed"
         ]
       }
+    },
+    {
+      "name": "a tab that is hidden has no region, held or not",
+      "why": "Hiding a pane moves it into a tab no window shows, and the daemon announces that tab to every window. One that held the tab before it was hidden, or holds it by mistake, must not open a region onto it: a region is what draws a pane, and a hidden pane is one somebody put out of sight. The window goes on showing what it still has.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "before": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "after": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "before"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "after"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
     }
   ]
 }

@@ -1352,6 +1352,14 @@ impl Session {
         })
     }
 
+    /// Whether this pane is in a tab no window shows.
+    fn hidden(&self, daemon: &DaemonId, pane: &PaneId) -> bool {
+        self.backends.get(daemon).is_some_and(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.pane(pane).and_then(|held| mirror.tab(&held.tab)).is_some_and(|tab| tab.hidden)
+        })
+    }
+
     /// Whether the daemon still holds this pane.
     ///
     /// Asked of the mirror, which is a daemon's own answer as of the last thing it said, and
@@ -1629,6 +1637,13 @@ impl Session {
     }
 
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
+    fn quiet(&self, pane: &PaneKey) -> bool {
+        self.backends.get(&pane.daemon).is_some_and(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.pane(&pane.pane).is_some_and(|record| record.quiet)
+        })
+    }
+
     fn finished_unseen(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
             let mirror = poison::lock(&backend.mirror, "mirror");
@@ -1794,6 +1809,15 @@ impl Session {
                      list outlives by a moment."
                 ))
             })?;
+            // `focus` shows a hidden pane before it gets here, so this is a caller that went
+            // around it. A region onto a hidden tab would be drawn once and closed by the next
+            // reconcile.
+            if mirror.tab(&held.tab).is_some_and(|tab| tab.hidden) {
+                return Err(Refusal::Declined(format!(
+                    "{pane} is hidden, so no window shows it and the keyboard stayed where it \
+                     was. `muster pane show --pane {pane} --focus` brings it back."
+                )));
+            }
             held.tab.clone()
         };
         // Another window's tab stays in that window. Surfacing it here would take its terminals
@@ -2368,7 +2392,12 @@ pub(crate) fn submit_from(
             | BackendIntent::CompactPane { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
+            | BackendIntent::QuietPane { .. }
             | BackendIntent::MovePane { .. } => None,
+            // A hidden pane is in no window, so no region could ever be asked for, and it is
+            // reached only by its name - from the hidden list or a script that made it - never
+            // by being whatever the keyboard happened to be on.
+            BackendIntent::ClosePane { pane } if session.hidden(daemon, pane) => None,
             // Where a new pane goes is a fact about the tab's tree, on the same terms as
             // moving one, so this asks the window rather than requiring it: the keyboard
             // follows the new pane when a region is showing the tab it landed in, and stays
@@ -2445,7 +2474,9 @@ pub(crate) fn submit_from(
     // them somewhere they did not ask to go. A window showing nothing shows the tab whatever was
     // asked, because a window with a tab and nothing on screen is a blank one. The tab is listed
     // and named either way, and `muster tab focus` goes to it.
-    if let Some(tab) = created_tab {
+    if created_tab.is_some()
+        && let Some(tab) = made_tab(intent)
+    {
         let composition = &mut session.windows[window].composition;
         composition.hold(tab.clone());
         let shown =
@@ -2512,10 +2543,14 @@ pub(crate) fn submit_from(
 ///
 /// A move into a Muster tab on another machine makes a part of that tab here, under a name the
 /// window already holds, so it is not one - and neither is a pane joining such a tab.
+///
+/// Nor is a hidden tab, which no window takes.
 fn made_tab(intent: &BackendIntent) -> Option<&TabId> {
     match intent {
-        BackendIntent::CreateTab { tab, .. }
-        | BackendIntent::MovePane { to: MoveDestination::NewTab { tab, .. }, .. } => Some(tab),
+        BackendIntent::CreateTab { tab, hidden: false, .. }
+        | BackendIntent::MovePane {
+            to: MoveDestination::NewTab { tab, hidden: false, .. }, ..
+        } => Some(tab),
         _ => None,
     }
 }
@@ -2833,6 +2868,11 @@ fn not_showing(daemon: &DaemonId) -> String {
 /// forward: ⌘⇧A and a group's transcript pick a pane wherever it is, and showing it here would
 /// take its terminals from the window showing them.
 pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+    // Going to a hidden pane brings it back first, into the window that asked: a banner about
+    // it, the chord to whatever asks, and a click on its row all mean "show me this".
+    if is_hidden(daemon, pane) {
+        return show_pane(asked, daemon, pane, true);
+    }
     let (tab, window) = {
         let session = poison::lock(&SESSION, "session");
         let tab = session.locate(pane).map(|(_, tab)| tab);
@@ -3219,9 +3259,57 @@ pub(crate) fn move_pane_to_new_tab(
 ) -> Result<(), Refusal> {
     let intent = BackendIntent::MovePane {
         pane: pane.clone(),
-        to: MoveDestination::NewTab { tab: mint_tab(), name },
+        to: MoveDestination::NewTab { tab: mint_tab(), name, hidden: false },
     };
     submit(window, daemon, &intent, Keyboard::StaysPut).map(drop)
+}
+
+/// Takes a pane out of every window, its agent still running: a move into a tab of its own
+/// that no window shows. A pane already hidden is left as it is.
+///
+/// Its tab rather than a flag on the pane, so that every pane is still in exactly one tab and
+/// the daemon's restore and handover need nothing new; the tab it leaves closes if the pane was
+/// its last, as any move out of a tab does.
+pub(crate) fn hide_pane(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+    if is_hidden(daemon, pane) {
+        return Ok(());
+    }
+    let intent = BackendIntent::MovePane {
+        pane: pane.clone(),
+        to: MoveDestination::NewTab { tab: mint_tab(), name: None, hidden: true },
+    };
+    submit(window, daemon, &intent, Keyboard::StaysPut).map(drop)
+}
+
+/// Brings a hidden pane back into this window, in a tab of its own after its others, and puts
+/// the keyboard on it when asked. A pane that is not hidden is only focused, when asked.
+///
+/// A new tab rather than the place it left: that tab may have been rearranged, closed, or taken
+/// by another window since, and a rule somebody can predict is worth more than one that is
+/// usually nicer. `pane move` takes it anywhere from there.
+pub(crate) fn show_pane(
+    window: WindowId,
+    daemon: &DaemonId,
+    pane: &PaneId,
+    take_focus: bool,
+) -> Result<(), Refusal> {
+    if is_hidden(daemon, pane) {
+        move_pane_to_new_tab(window, daemon, pane, None)?;
+    }
+    if take_focus { focus(window, daemon, pane) } else { Ok(()) }
+}
+
+/// Whether the pane is in a tab no window shows.
+pub(crate) fn is_hidden(daemon: &DaemonId, pane: &PaneId) -> bool {
+    poison::lock(&SESSION, "session").hidden(daemon, pane)
+}
+
+/// Whether any followed daemon holds a part of this tab that is hidden.
+pub(crate) fn tab_is_hidden(tab: &TabId) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    session.backends.values().any(|backend| {
+        poison::lock(&backend.mirror, "mirror").tab(tab).is_some_and(|held| held.hidden)
+    })
 }
 
 /// A name for a tab this window is about to ask for, unique across every machine it shows.
@@ -5102,10 +5190,21 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             }
             let finished = session.finished_unseen(&key);
             let state = session.agent_state(&key).unwrap_or(AgentState::Unknown);
+            // Before it is met, so that a quiet pane met blocked does not ask.
+            let quiet = session.quiet(&key);
+            session.attention.quiet(&key, quiet, state, finished);
             if session.attention.met(&key, state, finished) {
                 session.report_seen(std::slice::from_ref(&key));
             }
             None
+        }
+        // Whether a pane is quiet travels with what names it, so this is where it changes.
+        Change::PaneRelabelled(pane) => {
+            let key = PaneKey::new(daemon, pane);
+            let mut session = poison::lock(&SESSION, "session");
+            let (quiet, finished) = (session.quiet(&key), session.finished_unseen(&key));
+            let state = session.agent_state(&key).unwrap_or(AgentState::Unknown);
+            session.attention.quiet(&key, quiet, state, finished).map(|attend| (key, attend))
         }
         Change::PaneRemoved(pane) => {
             let key = PaneKey::new(daemon, pane);

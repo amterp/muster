@@ -1360,6 +1360,9 @@ public enum Core {
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
     case .compactPane: return "compact_pane"
+    case .hidePane: return "hide_pane"
+    case .showPane: return "show_pane"
+    case .quietPane: return "quiet_pane"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
     case .endNumberedChord: return "end_numbered_chord"

@@ -2582,6 +2582,126 @@
       "expect": {
         "refused": "Muster ships no adapter for \"gemini\", so there is nothing to install. It has one for claude-code, codex, opencode; every other harness is read off its screen (`muster docs harnesses`)."
       }
+    },
+    {
+      "name": "hiding names the pane, or the one this runs in",
+      "why": "An agent hides its own pane as readily as another's, so with no --pane it is the pane this command runs in, as every pane verb reads it.",
+      "given": {
+        "argv": [
+          "pane",
+          "hide"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "hide_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "showing names a pane and never the one this runs in",
+      "why": "The pane a command runs in is one somebody is looking at, so it is not the hidden one; reading $MUSTER_PANE here would show nothing and say it had.",
+      "given": {
+        "argv": [
+          "pane",
+          "show"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "showing a pane takes the keyboard only when asked",
+      "why": "A script bringing a pane back must not drag somebody's cursor to it, which is the rule every verb that makes or moves a pane follows.",
+      "given": {
+        "argv": [
+          "pane",
+          "show",
+          "--pane",
+          "p1w3r07bsd",
+          "--focus"
+        ]
+      },
+      "expect": {
+        "request": {
+          "show_pane": {
+            "pane_id": "p1w3r07bsd",
+            "take_focus": true
+          }
+        }
+      }
+    },
+    {
+      "name": "quiet says what to make the pane, so a script need not know what it was",
+      "why": "A toggle is what a menu item means, and a script run twice would undo itself with one. So the CLI always says which: quiet, or with --off not.",
+      "given": {
+        "argv": [
+          "pane",
+          "quiet",
+          "--pane",
+          "p1w3r07bsd",
+          "--off"
+        ]
+      },
+      "expect": {
+        "request": {
+          "quiet_pane": {
+            "pane_id": "p1w3r07bsd",
+            "quiet": false
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane can be made hidden and quiet from the start",
+      "why": "The headless sub-agent: made where no window shows it and where nothing it does interrupts the person, in one request so it never asks before it is quiet.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--pane",
+          "p1w3r07bsd",
+          "--hidden",
+          "--quiet",
+          "--run",
+          "claude"
+        ]
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "pane_id": "p1w3r07bsd",
+            "side": "right",
+            "run": "claude",
+            "quiet": true,
+            "hidden": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane made hidden takes no side",
+      "why": "A hidden pane is a tab of its own, not a split, so a side would say where it goes and be ignored. Refused rather than ignored.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--hidden",
+          "--down"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
     }
   ]
 }

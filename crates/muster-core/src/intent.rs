@@ -73,7 +73,11 @@ pub enum MoveDestination {
     ///
     /// `name` is what to call the new tab, or nothing to leave it unnamed. The dance this
     /// replaces could not name it at all.
-    NewTab { tab: TabId, name: Option<String> },
+    ///
+    /// `hidden` makes a tab no window shows, which is what hiding a pane is: the pane goes on
+    /// running in a tab of its own that is listed apart, and showing it again is a move into a
+    /// new tab that is not hidden.
+    NewTab { tab: TabId, name: Option<String>, hidden: bool },
 
     /// Into a Muster tab that exists, wherever in it this pane's machine lands.
     ///
@@ -134,6 +138,9 @@ pub enum BackendIntent {
         /// to be able to say which is which, and a rename arriving separately would leave the
         /// pane briefly nameless in every window showing it.
         name: Option<String>,
+        /// Whether to make it quiet (`crate::mirror::Pane::quiet`). With the pane rather than
+        /// after it for the reason `name` is: a pane quieted a moment late has already asked.
+        quiet: bool,
     },
     ClosePane {
         pane: PaneId,
@@ -158,6 +165,10 @@ pub enum BackendIntent {
         /// caller equipping one and not the other would have to race a shell prompt itself.
         run: Option<String>,
         name: Option<String>,
+        quiet: bool,
+        /// A tab no window shows, so the window that asked does not take it: a pane made hidden
+        /// from the start, which is an agent nobody is looking at.
+        hidden: bool,
     },
     /// Makes a pane on this machine as a new part of a Muster tab another machine already holds
     /// part of, which is what splitting a laptop pane onto a devenv means when the devenv has no
@@ -177,6 +188,10 @@ pub enum BackendIntent {
         /// Both mean what they mean on [`BackendIntent::SplitPane`].
         run: Option<String>,
         name: Option<String>,
+        quiet: bool,
+        /// Whether the tab being joined is hidden. Every part of a tab says the same, so a pane
+        /// split from a hidden one onto another machine is hidden there too.
+        hidden: bool,
     },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
@@ -269,6 +284,16 @@ pub enum BackendIntent {
         focus: Option<String>,
     },
 
+    /// Makes a pane quiet, or lets it ask for the person again.
+    ///
+    /// `None` is the other of what it is now, read from the mirror as zoom is, which is what a
+    /// menu item means; `Some` is what a script means, which must not depend on what the pane
+    /// was before.
+    QuietPane {
+        pane: PaneId,
+        quiet: Option<bool>,
+    },
+
     /// Calls a tab what somebody wants to call it.
     ///
     /// Separate from [`BackendIntent::RenamePane`] rather than one verb over a target, because
@@ -306,19 +331,21 @@ impl BackendIntent {
             ),
             // A command line, for the reason above and one more: an environment set on the way
             // to a program is a normal thing to type, and a token is a normal thing to set.
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name } => format!(
+            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet } => format!(
                 "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
-                 run: {}, name: {} }}",
+                 run: {}, name: {}, quiet: {quiet} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
-            BackendIntent::CreateTab { tab, cwd, run, name } => format!(
-                "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {} }}",
+            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden } => format!(
+                "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
+                 hidden: {hidden} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
-            BackendIntent::JoinTab { tab, cwd, run, name } => format!(
-                "JoinTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {} }}",
+            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden } => format!(
+                "JoinTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
+                 hidden: {hidden} }}",
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),

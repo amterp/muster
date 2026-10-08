@@ -296,6 +296,7 @@ fn a_new_tab_is_made_and_then_shown() {
         run: String::new(),
         name: String::new(),
         take_focus: true,
+        ..CreateTab::default()
     })));
 
     let view = latest_view().expect("the window was showing something before it asked");

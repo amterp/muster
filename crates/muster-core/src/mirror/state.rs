@@ -451,11 +451,12 @@ impl Mirror {
 }
 
 /// Whether what a list of panes says of a pane has moved: the things it names it by, and
-/// whether its agent can be compacted, which the list's menus offer on.
+/// whether its agent can be compacted or it is quiet, which the list's menus offer on.
 fn relabelled(before: &Pane, now: &Pane) -> bool {
     before.cwd != now.cwd
         || before.agent != now.agent
         || before.compactable != now.compactable
+        || before.quiet != now.quiet
         || before.name != now.name
         || before.title != now.title
 }
@@ -469,7 +470,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
         || before.unread_input != now.unread_input
 }
 
-/// Whether a tab's tree or its zoom has moved.
+/// Whether a tab's tree, its zoom or whether it is hidden has moved.
 fn arrangement_moved(before: &Tab, now: &Tab) -> bool {
-    before.root != now.root || before.zoomed != now.zoomed
+    before.root != now.root || before.zoomed != now.zoomed || before.hidden != now.hidden
 }

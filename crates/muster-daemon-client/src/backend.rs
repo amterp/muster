@@ -122,6 +122,24 @@ impl DaemonBackend {
         self.ask(Service::Tab(proto::TabRequest { request: Some(request) }))
     }
 
+    /// Refuses `what` unless the daemon keeps hidden tabs and quiet panes. An older one drops
+    /// both fields without a word, so a pane meant to be hidden would show and one meant to be
+    /// quiet would ask.
+    fn hides_and_quiets(&self, what: &str) -> Result<(), Refusal> {
+        let speaks = self.connection.control().and_then(|control| control.welcome().protocol);
+        match speaks {
+            Some(speaks) if speaks.minor < muster_daemon_proto::version::HIDDEN_AND_QUIET => {
+                Err(Refusal::Declined(format!(
+                    "{} runs a muster-daemon speaking protocol {speaks}, which cannot {what}, so \
+                     nothing was changed. Update Muster; a new daemon takes over from an old one \
+                     when the app starts.",
+                    self.description
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
     fn mint_pane(&self) -> PaneId {
         self.minter.lock().unwrap_or_else(PoisonError::into_inner).pane()
     }
@@ -132,7 +150,15 @@ impl DaemonBackend {
         cwd: Option<String>,
         run: Option<String>,
         name: Option<String>,
+        quiet: bool,
     ) -> Result<PaneId, Refusal> {
+        let hidden = matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden);
+        if hidden {
+            self.hides_and_quiets("make a hidden pane")?;
+        }
+        if quiet {
+            self.hides_and_quiets("make a quiet pane")?;
+        }
         let pane = self.mint_pane();
         self.pane_request(pane_request::Request::Create(pane_request::Create {
             pane: pane.to_string(),
@@ -142,7 +168,7 @@ impl DaemonBackend {
             env: self.environment.clone().into_iter().collect(),
             command: run,
             label: name,
-            quiet: false,
+            quiet,
         }))
         .map_err(|refusal| match refusal {
             Refusal::Unanswered { detail, .. } => {
@@ -161,11 +187,7 @@ impl DaemonBackend {
             Some(last) => beside(&last, Side::Right),
             // A part of a grouped tab starts unnamed, and the window names it after the rest
             // when the daemon announces it.
-            None => placement::Where::NewTab(placement::NewTab {
-                tab: tab.to_string(),
-                label: Some(proto::Label::default()),
-                hidden: false,
-            }),
+            None => new_tab(tab, false),
         }
     }
 
@@ -173,17 +195,22 @@ impl DaemonBackend {
     fn destination(&self, to: MoveDestination) -> (placement::Where, Option<TabId>) {
         match to {
             MoveDestination::Beside { pane, side, .. } => (beside(&pane, side), None),
-            MoveDestination::NewTab { tab, name } => {
+            MoveDestination::NewTab { tab, name, hidden } => {
                 let label = proto::Label { generation: u64::from(name.is_some()), text: name };
                 let placement = placement::Where::NewTab(placement::NewTab {
                     tab: tab.to_string(),
                     label: Some(label),
-                    hidden: false,
+                    hidden,
                 });
                 (placement, Some(tab))
             }
             MoveDestination::Tab { tab } => (self.placement_in(&tab), None),
         }
+    }
+
+    fn is_quiet(&self, pane: &PaneId) -> bool {
+        let mirror = self.mirror.lock().unwrap_or_else(PoisonError::into_inner);
+        mirror.pane(pane).is_some_and(|held| held.quiet)
     }
 
     fn is_zoomed(&self, pane: &PaneId) -> bool {
@@ -195,6 +222,15 @@ impl DaemonBackend {
     }
 }
 
+/// A tab here, or this machine's part of a Muster tab, unnamed.
+fn new_tab(tab: &TabId, hidden: bool) -> placement::Where {
+    placement::Where::NewTab(placement::NewTab {
+        tab: tab.to_string(),
+        label: Some(proto::Label::default()),
+        hidden,
+    })
+}
+
 fn beside(pane: &PaneId, side: Side) -> placement::Where {
     placement::Where::Beside(placement::Beside {
         pane: pane.to_string(),
@@ -204,37 +240,28 @@ fn beside(pane: &PaneId, side: Side) -> placement::Where {
 }
 
 impl BackendChannel for DaemonBackend {
+    #[expect(clippy::too_many_lines, reason = "one arm per intent, each a request")]
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         let done = Ok(Outcome::default());
         match intent.clone() {
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name } => {
+            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet } => {
                 let placement = placement::Where::Beside(placement::Beside {
                     pane: pane.to_string(),
                     side: convert::side(side).into(),
                     ratio,
                 });
-                let created = self.create(placement, cwd, run, name)?;
+                let created = self.create(placement, cwd, run, name, quiet)?;
                 Ok(Outcome { created: Some(created), created_tab: None })
             }
-            BackendIntent::CreateTab { tab, cwd, run, name } => {
-                let placement = placement::Where::NewTab(placement::NewTab {
-                    tab: tab.to_string(),
-                    label: Some(proto::Label::default()),
-                    hidden: false,
-                });
-                let created = self.create(placement, cwd, run, name)?;
+            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden } => {
+                let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
                 Ok(Outcome { created: Some(created), created_tab: Some(tab) })
             }
             // The same placement `placement_in` asks for when a moved pane is this machine's
             // first in the tab, and unnamed for the same reason: the window names this part
             // after the rest when the daemon announces it.
-            BackendIntent::JoinTab { tab, cwd, run, name } => {
-                let placement = placement::Where::NewTab(placement::NewTab {
-                    tab: tab.to_string(),
-                    label: Some(proto::Label::default()),
-                    hidden: false,
-                });
-                let created = self.create(placement, cwd, run, name)?;
+            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden } => {
+                let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
                 Ok(Outcome { created: Some(created), created_tab: None })
             }
             BackendIntent::ClosePane { pane } => {
@@ -267,6 +294,9 @@ impl BackendChannel for DaemonBackend {
                 done
             }
             BackendIntent::MovePane { pane, to } => {
+                if matches!(to, MoveDestination::NewTab { hidden: true, .. }) {
+                    self.hides_and_quiets("hide a pane")?;
+                }
                 let (placement, created_tab) = self.destination(to);
                 self.pane_request(pane_request::Request::Move(pane_request::Move {
                     pane: pane.to_string(),
@@ -300,6 +330,15 @@ impl BackendChannel for DaemonBackend {
             BackendIntent::CompactPane { pane, focus } => {
                 let compact = pane_request::Compact { pane: pane.to_string(), focus };
                 self.pane_request(pane_request::Request::Compact(compact))?;
+                done
+            }
+            BackendIntent::QuietPane { pane, quiet } => {
+                self.hides_and_quiets("make a pane quiet")?;
+                let quiet = quiet.unwrap_or_else(|| !self.is_quiet(&pane));
+                self.pane_request(pane_request::Request::Quiet(pane_request::Quiet {
+                    pane: pane.to_string(),
+                    quiet,
+                }))?;
                 done
             }
             BackendIntent::RenameTab { tab, name, generation } => {

@@ -88,6 +88,8 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
             cwd: None,
             run: None,
             name: Some("first".into()),
+            quiet: false,
+            hidden: false,
         })
         .unwrap();
     let (pane, tab) = (made.created.unwrap(), TabId::new("t1"));
@@ -107,6 +109,7 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
             cwd: None,
             run: None,
             name: None,
+            quiet: false,
         })
         .unwrap()
         .created
@@ -126,6 +129,8 @@ fn zooming_twice_puts_the_tab_back() {
         cwd: None,
         run: None,
         name: None,
+        quiet: false,
+        hidden: false,
     });
     let pane = made.unwrap().created.unwrap();
     let zoomed = |followed: &Followed, pane: &PaneId| {
@@ -161,6 +166,8 @@ fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
         cwd: None,
         run: Some(run.into()),
         name: None,
+        quiet: false,
+        hidden: false,
     });
     let pane = made.unwrap().created.unwrap();
 
@@ -196,6 +203,8 @@ fn a_daemon_that_comes_back_is_followed_again() {
             cwd: None,
             run: None,
             name: None,
+            quiet: false,
+            hidden: false,
         })
         .unwrap();
 
@@ -215,6 +224,8 @@ fn a_daemon_that_comes_back_is_followed_again() {
         cwd: None,
         run: None,
         name: None,
+        quiet: false,
+        hidden: false,
     });
     assert!(made.is_ok(), "requests work again: {made:?}");
     drop(followed.follower);
@@ -361,6 +372,8 @@ fn the_census_asks_each_daemon_what_it_holds() {
             cwd: None,
             run: None,
             name: None,
+            quiet: false,
+            hidden: false,
         })
         .unwrap();
     let records = daemon.root().join("records");
@@ -428,6 +441,8 @@ fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
                 cwd: None,
                 run: None,
                 name: None,
+                quiet: false,
+                hidden: false,
             });
             let _ = answered.send(made.map(|outcome| outcome.created_tab));
         }),
@@ -467,6 +482,8 @@ fn a_paste_too_large_to_send_leaves_typing_working() {
         cwd: None,
         run: None,
         name: None,
+        quiet: false,
+        hidden: false,
     });
     let pane = made.unwrap().created.unwrap();
     let mut control = daemon.connect();

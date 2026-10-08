@@ -669,6 +669,10 @@ impl Composition {
     /// describes it (kan a_2Mhi0EZlv). Nothing is owed a column, so a machine whose last pane
     /// closes simply stops contributing tabs (kan a_2I6h18OU6).
     ///
+    /// **A hidden tab has no region in any window**, held or not: a region onto a part its
+    /// machine says is hidden goes as though the part had closed. Every part of a tab is made
+    /// hidden or not alike, and its panes are listed apart ([`crate::roster::Roster::hidden`]).
+    ///
     /// One daemon at a time, and only its own regions. Streams from different daemons have
     /// no mutual order, so a pass over every region would resolve one daemon's regions
     /// against another daemon's news (`architecture.md`, cross-daemon order is core order). A
@@ -679,14 +683,17 @@ impl Composition {
             return;
         }
         let was_at = self.showing_at();
-        let held: Vec<TabId> =
-            mirror.tabs().map(|tab| tab.id.clone()).filter(|tab| self.held.contains(tab)).collect();
+        let held: Vec<TabId> = mirror
+            .tabs()
+            .filter(|tab| !tab.hidden && self.held.contains(&tab.id))
+            .map(|tab| tab.id.clone())
+            .collect();
         for tab in held {
             self.open_region(daemon, tab);
         }
 
         for tab in &mut self.tabs {
-            let held = mirror.tab(&tab.id).is_some();
+            let held = mirror.tab(&tab.id).is_some_and(|held| !held.hidden);
             tab.regions.retain(|region| &region.daemon != daemon || held);
             for region in tab.regions.iter_mut().filter(|region| &region.daemon == daemon) {
                 // The pane list decides whether the keyboard's pane is still there, and the
