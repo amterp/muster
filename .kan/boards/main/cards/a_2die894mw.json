@@ -12,6 +12,12 @@
       "body": "2026-10-07: hide and quiet landed (pane new --hidden --quiet, pane hide/show/quiet, a Hidden section in the agent list). extras/skill/SKILL.md says nothing yet about making helpers hidden and quiet; that belongs to this design.",
       "created_at_millis": 1791426655421,
       "id": "c_2dmW0Md4H"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-07: MIP-7 drafted (docs/mip/0007-sub-agents.md, status Draft) for the owner to decide. Two questions for amterp: the word ('helper' recommended over 'sub-agent', which already means a harness's own Task agents on the same rows) and whether helpers are quiet by default.",
+      "created_at_millis": 1791430397494,
+      "id": "c_2do5LxG2g"
     }
   ],
   "created_at_millis": 1791417434682,
@@ -21,7 +27,7 @@
   "position": "aR",
   "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
   "type": "feature",
-  "updated_at_millis": 1791426655421,
+  "updated_at_millis": 1791430397494,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434682}
   ]

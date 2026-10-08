@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-devenv-daemon",
+  "alias_explicit": false,
+  "area": [
+    "devenv"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791429986337,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-07 with the laptop-gone work. While the laptop sleeps with its ssh forward open, every post from a devenv agent to a group kept on the laptop waits out its patience (15 s for a post) and exits 4, again and again, until sshd on the devenv gives up the stalled connection, which can take a long time. The devenv daemon could notice the silent link sooner - a heartbeat on the link, or remembering that the last call went unanswered and refusing at once for a while - so an agent learns in milliseconds rather than paying 15 s per attempt.",
+  "id": "a_2dnuejQbJ",
+  "position": "b0y",
+  "title": "A devenv daemon could notice a silent link to a sleeping laptop sooner",
+  "type": "enhancement",
+  "updated_at_millis": 1791429986337,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791429986337}
+  ]
+}
