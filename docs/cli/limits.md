@@ -139,9 +139,11 @@ one.
 
 A terminal in **canonical mode** - anything reading stdin without a line editor of its own,
 `cat` and a shell script's `read` among them - accepts a line of at most 1024 bytes including
-its terminator, and **discards a longer one whole** rather than cutting it. The screen still
+its terminator, and **never delivers a longer one** rather than cutting it. The screen still
 echoes the first thousand-odd characters, so a pane read afterwards looks like a message that
-arrived and stopped. It did not arrive at all. This is the receiving terminal's limit rather
+arrived and stopped. It did not arrive at all, and on macOS the terminal then drops every byte
+sent after it, the Return included, so nothing more reaches that program until `--key ctrl+c`
+interrupts it. This is the receiving terminal's limit rather
 than Muster's or the daemon's, and a program that has taken the terminal for itself, which every
 agent harness has, is not held to it. An interactive shell is not affected - readline and zle run
 in raw mode.

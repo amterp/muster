@@ -460,7 +460,7 @@ fn a_wait_on_an_agent_that_stops_reading_is_refused(here: &Here) {
     assert_eq!(p2["unread_input"]["bytes"], json!(14), "the line sent, and its Return: {listed}");
 }
 
-/// A line over 1024 bytes into `cat`, which reads in canonical mode, is discarded whole, and a
+/// A line over 1024 bytes into `cat`, which reads in canonical mode, is never delivered, and a
 /// confirmed send says so with the window's own words rather than exiting 0.
 fn a_send_the_pane_never_shows_is_refused(here: &Here) {
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "cat"]));
@@ -473,6 +473,14 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
         refused.contains("does not show on it") && refused.contains("canonical mode"),
         "{refused}"
     );
+
+    // The terminal holds what fit of that line and drops every byte after it, a Return included,
+    // so `cat` never gets a line and nothing sent to p1 shows until Ctrl-C clears it.
+    let ran = here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo held"]);
+    refused_with(&ran, 1);
+    ok(&here.muster(&["pane", "send", "--pane", "p1", "--key", "ctrl+c"]));
+    ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo cleared"]));
+    until_text(&mut control, "p1", "cleared\n");
 }
 
 /// Keys go to the daemon as the window sends them, and a Return pressed alone is a send of its

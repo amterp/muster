@@ -227,8 +227,9 @@ pub fn confirm(
              before, so whatever is running there did not take it. Three things do this. A \
              dialog or menu redraws itself unchanged when it is pasted at, since it reads keys: \
              `--key` presses them. A terminal in canonical mode - anything reading stdin without \
-             a line editor - discards a line over 1024 bytes whole rather than cutting it, and \
-             says nothing (`muster docs limits`). And a harness that folds a long paste into a \
+             a line editor - never delivers a line over 1024 bytes, says nothing, and takes \
+             nothing sent after it until `--key ctrl+c` interrupts what is reading \
+             (`muster docs limits`). And a harness that folds a long paste into a \
              placeholder draws neither the text nor an error, which reads here the same way. \
              `muster pane read --pane {pane}` shows what it does draw."
         ),
