@@ -590,11 +590,6 @@ impl Roster {
         Roster { tabs, machines, hidden }
     }
 
-    /// Every hidden pane, in the order they are listed.
-    pub fn hidden_panes(&self) -> impl Iterator<Item = &RosterPane> {
-        self.hidden.iter().flat_map(|tab| tab.panes.iter())
-    }
-
     /// Every tab in the window, in the order they are numbered.
     pub fn tabs(&self) -> impl Iterator<Item = &RosterTab> {
         self.tabs.iter()

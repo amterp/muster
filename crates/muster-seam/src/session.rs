@@ -1702,7 +1702,7 @@ impl Session {
         })
     }
 
-    /// Whether a pane's daemon says its agent finished and nobody has seen it since.
+    /// Whether a pane's daemon holds it quiet: nothing about it asks for the person.
     fn quiet(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
             let mirror = poison::lock(&backend.mirror, "mirror");
@@ -1710,6 +1710,7 @@ impl Session {
         })
     }
 
+    /// Whether a pane's daemon says its agent finished and nobody has seen it since.
     fn finished_unseen(&self, pane: &PaneKey) -> bool {
         self.backends.get(&pane.daemon).is_some_and(|backend| {
             let mirror = poison::lock(&backend.mirror, "mirror");

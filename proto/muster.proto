@@ -910,9 +910,9 @@ message SplitPane {
   // Makes the new pane quiet (QuietPane) from its first moment, before it can ask.
   bool quiet = 10;
 
-  // Makes it hidden (HidePane) from the start: a tab of its own on the split pane's machine,
-  // that no window shows, rather than a split. Refused with `take_focus`, since nothing shows
-  // it, and with `new_pane_daemon_id`.
+  // Makes it hidden (HidePane) from the start: a tab of its own that no window shows, rather
+  // than a split - on the split pane's machine in its directory, or on `new_pane_daemon_id`'s
+  // machine when that names another. Refused with `take_focus`, since nothing shows it.
   bool hidden = 11;
 }
 
