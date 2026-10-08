@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::across::{Away, Call, Folded, Found, HumanHome, Peer, Tell, base};
 use crate::names::{check_addressee, check_group, check_participant, is_human, split_machine};
 use crate::{
-    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Policy, Refusal, Saved, Store, What,
-    default_name, pair_group,
+    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, MUSTER, Policy, Refusal, Saved, Store,
+    What, default_name, pair_group,
 };
 
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
@@ -238,6 +238,22 @@ pub struct Wake {
     pub name: String,
     pub via: Via,
     pub notice: Notice,
+}
+
+/// Messages that wait on a member in a pane: the oldest of what it has not read in a group that
+/// would wake it, by somebody other than Muster.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Holding {
+    pub name: String,
+    pub pane: String,
+    pub group: String,
+    /// The oldest such message, and when it was posted, in the host's milliseconds.
+    pub first: u64,
+    pub first_at_ms: u64,
+    /// Whoever posted them, oldest first.
+    pub authors: Vec<String>,
+    /// Whether it has been woken for the group since it last read it.
+    pub woken: bool,
 }
 
 /// What a post did for each participant it was meant to wake.
@@ -794,6 +810,23 @@ impl<S: Store> Messaging<S> {
             urgent,
         };
         let seq = self.append(group, message, now_ms)?;
+        Ok(self.posted(author, group, seq, addressees, urgent, from, presence, now_ms))
+    }
+
+    /// Reaches whoever a message just appended as `seq` is for, on this machine, and says which
+    /// machines to tell of it.
+    #[allow(clippy::too_many_arguments)]
+    fn posted(
+        &mut self,
+        author: &str,
+        group: &str,
+        seq: u64,
+        addressees: Vec<String>,
+        urgent: bool,
+        from: Option<&str>,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Posted {
         let targets = self.targets(group, &self.groups[group].policy, author, addressees);
         let mut posted = Posted {
             author: author.to_string(),
@@ -825,7 +858,34 @@ impl<S: Store> Messaging<S> {
         if let Err(Refusal::Store { error }) = self.save() {
             posted.unsaved = Some(error);
         }
-        Ok(posted)
+        posted
+    }
+
+    /// Posts what Muster has to say in a group, as [`MUSTER`], to `to`: that a message waits on
+    /// a member who cannot be got to read it. Held to no policy and no guard, since it is not a
+    /// member speaking, and only where the group is kept: a replica's home would hold Muster to
+    /// both.
+    pub fn post_as_muster(
+        &mut self,
+        group: &str,
+        to: Vec<String>,
+        body: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Posted, Refusal> {
+        check_body(body)?;
+        if !self.groups.contains_key(group) {
+            return Err(Refusal::NoSuchGroup { group: group.to_string() });
+        }
+        self.here(group)?;
+        let message = What::Message {
+            author: MUSTER.to_string(),
+            to: to.clone(),
+            body: body.to_string(),
+            urgent: false,
+        };
+        let seq = self.append(group, message, now_ms)?;
+        Ok(self.posted(MUSTER, group, seq, to, false, None, presence, now_ms))
     }
 
     /// What became of the wakes a post returned: a participant whose inbox would not take one
@@ -2456,6 +2516,68 @@ impl<S: Store> Messaging<S> {
                 participant.pane.clone().map(|pane| (participant.name.clone(), pane))
             })
             .collect()
+    }
+
+    /// Every member in a pane that a message waits on: in each group, the oldest message it has
+    /// not read that would wake it, by anybody but Muster, whose own word about a stall is not
+    /// itself something to stall on.
+    pub fn holding(&self) -> Vec<Holding> {
+        let mut holding = Vec::new();
+        for participant in self.participants.values().filter(|participant| !participant.gone) {
+            let Some(pane) = &participant.pane else { continue };
+            for (group, kept) in &self.groups {
+                if !kept.members.contains(&participant.name) {
+                    continue;
+                }
+                let (cursor, until) = self.span(&participant.name, group);
+                let waiting: Vec<&Entry> = kept
+                    .log
+                    .iter()
+                    .filter(|entry| entry.seq > cursor && entry.seq < until)
+                    .filter(|entry| {
+                        let What::Message { author, to, .. } = &entry.what else { return false };
+                        let wakes = if to.is_empty() {
+                            kept.policy.rings(author, &participant.name)
+                        } else {
+                            to.contains(&participant.name)
+                        };
+                        wakes && author != &participant.name && author != MUSTER
+                    })
+                    .collect();
+                let Some(first) = waiting.first() else { continue };
+                let mut authors: Vec<String> = Vec::new();
+                for author in waiting.iter().filter_map(|entry| entry.author()) {
+                    if !authors.iter().any(|known| known == author) {
+                        authors.push(author.to_string());
+                    }
+                }
+                holding.push(Holding {
+                    name: participant.name.clone(),
+                    pane: pane.clone(),
+                    group: group.clone(),
+                    first: first.seq,
+                    first_at_ms: first.at_ms,
+                    authors,
+                    woken: participant.woken.contains(group),
+                });
+            }
+        }
+        holding
+    }
+
+    /// Wakes `name` for `group` again, whose last wake never landed - its ring ended untaken, so
+    /// it is no longer counted woken - and which still has the group unread. Not the wake a
+    /// timer may never send (MIP-4, section 5): that one is for an agent that was reached and
+    /// went on with something else, and this one is for an agent nothing reached.
+    pub fn wake_again(&mut self, name: &str, group: &str, presence: &dyn Presence) -> Option<Wake> {
+        let participant = self.participants.get(name)?;
+        if participant.woken.contains(group) {
+            return None;
+        }
+        let via = Self::via(participant, presence).ok()?;
+        let notice = self.notice(name, group)?;
+        self.participants.get_mut(name)?.woken.insert(group.to_string());
+        Some(Wake { name: name.to_string(), via, notice })
     }
 
     /// `name`'s agent went idle. For each group it was woken for and has still not read, wake

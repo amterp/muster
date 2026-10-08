@@ -33,6 +33,8 @@ pub(crate) struct Seen {
     /// The id its agent reported for its session, when its manifest names a command that wakes
     /// the session by it (`super::command`).
     pub(crate) session: Option<String>,
+    /// The pane's program, when it has stopped reading its input, and what it left unread.
+    pub(crate) stopped: Option<(String, u32)>,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -100,6 +102,10 @@ impl Panes {
                     rename,
                     compact: pane.compaction.wanted().map(str::to_string),
                     session,
+                    stopped: record
+                        .unread_input
+                        .as_ref()
+                        .map(|unread| (unread.program.clone(), unread.bytes)),
                     agent,
                     io: io.clone(),
                 }

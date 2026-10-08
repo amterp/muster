@@ -4,6 +4,11 @@ use crate::Refusal;
 /// section 10); the `@` keeps the name out of reach of any participant's own.
 pub const HUMAN: &str = "@human";
 
+/// Muster itself, as the author of what it says in a group about the group: that a message waits
+/// on a member who cannot be got to read it. Never a participant and never addressed, and out of
+/// reach of any participant's name for the reason `@human` is.
+pub const MUSTER: &str = "@muster";
+
 const LONGEST: usize = 64;
 
 /// A group's log is a file named `<group>.log`, and a file name is at most 255 bytes.

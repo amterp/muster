@@ -21,13 +21,15 @@ pub use across::{
     Route, Settle, Settled, Tell, heard,
 };
 pub use entry::{Change, Entry, What};
-pub use names::{HUMAN, LONGEST_GROUP, default_name, is_machine, pair_group, split_machine};
+pub use names::{
+    HUMAN, LONGEST_GROUP, MUSTER, default_name, is_machine, pair_group, split_machine,
+};
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
-    Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Inbox, Joined,
-    Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read, Removed,
-    Ringable, Via, Waited, Wake,
+    Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding, Inbox,
+    Joined, Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read,
+    Removed, Ringable, Via, Waited, Wake,
 };
 pub use store::{GroupRecord, Memory, Saved, Store};
 

@@ -14,6 +14,7 @@ pub(crate) mod peer;
 mod presence;
 mod prompt;
 mod renames;
+mod stalls;
 mod store;
 mod typist;
 mod wire;
@@ -559,6 +560,14 @@ impl Messages {
                 let _ = wait.send(WaitEnded::Left);
             }
         }
+    }
+
+    /// Whether a wake for `name` about `group` is on its way: waiting to be rung, rung and not yet
+    /// taken, or handed to its session by command.
+    fn wakes_for(&self, name: &str, group: &str) -> bool {
+        self.pending.iter().any(|wake| wake.name == name && wake.notice.group == group)
+            || self.rung.iter().any(|rung| rung.is_for(name, group))
+            || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
     }
 
     /// Ends the waits a change answered and sorts its wakes: sent now, rung now, or left for the

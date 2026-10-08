@@ -47,6 +47,7 @@ use super::compacts::{self, Compacting};
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt};
 use super::renames::{self, Typing};
+use super::stalls::{self, Stalls};
 use super::{Messages, notice_of};
 use crate::session::Shared;
 use crate::writer::Input;
@@ -128,6 +129,13 @@ pub(crate) struct Rung {
     /// How many times a returned ring found its prompt empty with input still unread in its
     /// terminal: not taken, only not yet read, until it has waited too long for that.
     unread: u8,
+}
+
+impl Rung {
+    /// Whether this is a ring for `name` about `group`.
+    pub(crate) fn is_for(&self, name: &str, group: &str) -> bool {
+        self.wake.name == name && self.wake.notice.group == group
+    }
 }
 
 /// Whether a pane may be rung now.
@@ -324,6 +332,13 @@ pub(crate) struct Commanded {
     wake: Wake,
     session: String,
     at: Instant,
+}
+
+impl Commanded {
+    /// Whether this is a wake for `name` about `group`.
+    pub(crate) fn is_for(&self, name: &str, group: &str) -> bool {
+        self.wake.name == name && self.wake.notice.group == group
+    }
 }
 
 /// Hands each wake to its session through the command its agent's manifest names, once its
@@ -594,12 +609,16 @@ fn run(shared: &Weak<Shared>) {
     let mut typing = Typing::new();
     let mut compacting = Compacting::new();
     let mut moving = Moving::new();
+    let mut stalls = Stalls::new(Instant::now());
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
         std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
         sleep = look(&shared, &mut before, &mut typing, &mut compacting, &mut moving);
+        // On its own clock rather than the doorbell's: a stall is a group nothing moves, which
+        // is exactly when nothing would wake the doorbell to look.
+        sleep = sleep.min(stalls::look(&shared, &mut stalls));
     }
 }
 

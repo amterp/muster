@@ -156,7 +156,12 @@ impl Daemon {
     /// The built daemon, able to detect the fake agent a test runs with [`Daemon::run_agent`]
     /// and drives with [`Daemon::set_agent_state`].
     pub fn start_detecting() -> Daemon {
-        Daemon::launch(built_daemon(), &[], &[], None, crate::agents::install)
+        Daemon::start_detecting_with(&[])
+    }
+
+    /// [`Daemon::start_detecting`], with more in the daemon's environment.
+    pub fn start_detecting_with(environment: &[(&str, &str)]) -> Daemon {
+        Daemon::launch(built_daemon(), environment, &[], None, crate::agents::install)
     }
 
     fn launch(

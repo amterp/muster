@@ -33,6 +33,15 @@ impl Agent {
         agent
     }
 
+    /// [`Agent::in_a_pane`], on a daemon with more in its environment.
+    fn in_a_pane_with(environment: &[(&str, &str)]) -> Agent {
+        let daemon = Daemon::start_detecting_with(environment);
+        let mut control = daemon.connect();
+        make(&mut control, create("p1", in_new_tab("t1")));
+        daemon.run_agent("p1");
+        Agent { daemon, control }
+    }
+
     /// A daemon with pane `p1` at its shell, where no agent runs yet.
     fn to_come() -> Agent {
         let daemon = Daemon::start_detecting();
@@ -98,6 +107,35 @@ impl Agent {
             let rung = self.rung();
             (rung.len() >= times).then_some(rung)
         })
+    }
+
+    /// What `name` has not read yet, each message as `author: body`, which reading marks read.
+    fn read_as(&mut self, name: &str) -> Vec<String> {
+        let caller = msg_request::Caller {
+            as_name: Some(name.to_string()),
+            ..msg_request::Caller::default()
+        };
+        let service = Service::Msg(proto::MsgRequest {
+            caller: Some(caller),
+            request: Some(Asked::Read(msg_request::Read { group: None })),
+        });
+        let asked = expect(&mut self.control, service, proto::Outcome::Done);
+        let Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+            answer: Some(Answer::Entries(entries)),
+            ..
+        })) = &asked.answer.detail
+        else {
+            panic!("expected entries, got {:?}", asked.answer.detail);
+        };
+        let mut messages = Vec::new();
+        for group in &entries.groups {
+            for entry in &group.entries {
+                if let Some(msg_answer::entry::What::Message(message)) = &entry.what {
+                    messages.push(format!("{}: {}", message.author, message.body));
+                }
+            }
+        }
+        messages
     }
 
     /// Pauses or resumes a group, as the integrator.
@@ -920,4 +958,55 @@ fn a_ring_an_agent_stops_reading_before_taking_ends() {
         .unwrap_or_else(|| panic!("the ring never ended"));
     assert!(line.line.contains("its program has stopped reading its input"), "{}", line.line);
     assert_eq!(agent.pressed(), 0, "Return was pressed again into a pane that was not reading");
+}
+
+/// A message that waits on an agent whose program stopped reading holds its group up. Once it
+/// has for long enough, Muster tells whoever posted it why it has not answered, in the group,
+/// once, and records the stall in the run log with the whole group as it stood.
+#[test]
+fn a_group_held_up_on_an_agent_that_stopped_reading_is_told_why_once() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "12000")]);
+    let mut logging = following(&agent.daemon);
+    agent.type_in("deaf 40", true);
+    std::thread::sleep(Duration::from_secs(2));
+    agent.post("p1", "a brief");
+
+    let stalled = r#""event":"msg.group.stalled""#;
+    let logged = logging.logged_until(stalled, Duration::from_secs(40));
+    let line = logged
+        .iter()
+        .find(|line| line.line.contains(stalled))
+        .unwrap_or_else(|| panic!("the stall was never recorded"));
+    for said in [r#""member":"p1""#, r#""activity":"stuck""#, r#""unlock":"tell""#] {
+        assert!(line.line.contains(said), "{said} in {}", line.line);
+    }
+    assert!(line.line.contains("integrator: not in a pane here"), "{}", line.line);
+
+    let told = r#""event":"msg.group.told""#;
+    logging.logged_until(told, Duration::from_secs(10));
+    let read = agent.read_as("integrator");
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].starts_with("@muster: p1 has not read #4, from integrator")
+            && read[0].contains("stopped reading its input"),
+        "{read:?}"
+    );
+
+    std::thread::sleep(Duration::from_secs(6));
+    assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told twice");
+}
+
+/// A post that fails to trigger the agent it was for - rung, the ring read, and nothing done -
+/// holds its group up too, and whoever posted it is told so, once.
+#[test]
+fn a_group_held_up_on_an_agent_that_ignored_its_ring_is_told_why() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "12000")]);
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+
+    let mut logging = following(&agent.daemon);
+    logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(40));
+    let read = agent.read_as("integrator");
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(read[0].contains("it was rung, and has neither read it nor gone to work"), "{read:?}");
 }
