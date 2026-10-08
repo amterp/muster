@@ -2824,13 +2824,22 @@ message PaneStateChanged {
   string daemon_id = 3;
   string pane_id = 1;
 
-  // working, blocked, stuck, waiting, idle, done, or unknown. Never empty - a pane whose
-  // harness the backend cannot classify is `unknown`, which renders as itself. An agent we
+  // working, blocked, stuck, waiting, idle, done, unknown, or unreachable. Never empty - a pane
+  // whose harness the backend cannot classify is `unknown`, which renders as itself. An agent we
   // failed to read is not an agent that finished. `waiting` is an idle agent that said it
   // ended its turn to wait on work it started itself, and `facts.waiting` says on what.
   // `stuck` is an agent whose program has stopped reading its input, and `unread_input` says
-  // what it left.
+  // what it left. `unreachable` is a pane whose daemon this window cannot reach, so whatever it
+  // last read is a guess about the present: `last_state` keeps that, and `since_ms` is when the
+  // daemon stopped answering.
   string state = 2;
+
+  // What the pane read before its daemon stopped answering, while `state` is `unreachable`;
+  // empty otherwise. Beside the state rather than in it, so that nothing filtering on a state -
+  // `select(.state == "blocked")`, a wait for `idle` - takes a pane on a rebooted machine for a
+  // live one (kan a_2cJ6cgiLw). The rest of this message is the same guess, kept for whoever
+  // wants to know what the agent was doing when the window lost it.
+  string last_state = 13;
 
   // When the agent last changed what it was doing, in milliseconds since the epoch.
   //

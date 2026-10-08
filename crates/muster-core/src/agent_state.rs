@@ -15,6 +15,11 @@
 /// input, which the daemon puts on the pane's record beside whatever detection last read. The
 /// screen shows what it showed before it stopped, so detection reads on as if nothing happened;
 /// a stuck agent will not finish, answer a dialog or take a message until it reads again.
+///
+/// Nor is `Unreachable`, and no agent is ever in it. It is a pane whose daemon this window cannot
+/// reach, so what the daemon last said is a guess about the present: a rebooted devenv's agents
+/// are gone while its mirror still says `idle`. The window keeps that last state beside it rather
+/// than under it, so nothing that filters on a state reads a dead pane as a live one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentState {
     Working,
@@ -24,11 +29,12 @@ pub enum AgentState {
     Idle,
     Done,
     Unknown,
+    Unreachable,
 }
 
 impl AgentState {
     /// Every state, so a test can assert the corpus covers them all.
-    pub const ALL: [AgentState; 7] = [
+    pub const ALL: [AgentState; 8] = [
         AgentState::Working,
         AgentState::Blocked,
         AgentState::Stuck,
@@ -36,6 +42,7 @@ impl AgentState {
         AgentState::Idle,
         AgentState::Done,
         AgentState::Unknown,
+        AgentState::Unreachable,
     ];
 
     /// Reads a backend's spelling of a state, treating anything unrecognized as `Unknown`.
@@ -53,6 +60,7 @@ impl AgentState {
             "waiting" => AgentState::Waiting,
             "idle" => AgentState::Idle,
             "done" => AgentState::Done,
+            "unreachable" => AgentState::Unreachable,
             _ => AgentState::Unknown,
         }
     }
@@ -81,6 +89,7 @@ impl AgentState {
             AgentState::Idle => "idle",
             AgentState::Done => "done",
             AgentState::Unknown => "unknown",
+            AgentState::Unreachable => "unreachable",
         }
     }
 }
@@ -105,9 +114,19 @@ impl Until {
         for word in words {
             // Strict rather than `from_backend`, which reads a word it does not know as
             // `unknown`: a caller who typed `idel` would otherwise be waiting for a shell.
+            if word == AgentState::Unreachable.as_str() {
+                return Err("`unreachable` cannot be waited for: a pane whose machine stops \
+                            answering ends a wait on it as unanswered, and a wait on every pane \
+                            carries on without it."
+                    .to_string());
+            }
             let Some(state) = AgentState::ALL.into_iter().find(|state| state.as_str() == word)
             else {
-                let states: Vec<_> = AgentState::ALL.iter().map(|state| state.as_str()).collect();
+                let states: Vec<_> = AgentState::ALL
+                    .iter()
+                    .filter(|state| **state != AgentState::Unreachable)
+                    .map(|state| state.as_str())
+                    .collect();
                 return Err(format!(
                     "`{word}` is not a state a pane can be in, so there is nothing to wait for. \
                      The states are {}.",

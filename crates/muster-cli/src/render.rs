@@ -862,13 +862,21 @@ fn pane_line(
     line
 }
 
-/// What else is worth a glance about a pane's agent, each a few words: a program that has
-/// stopped reading, how full its context is, its sub-agents, whether its screen can be read, an
+/// What else is worth a glance about a pane's agent, each a few words - or for a pane whose
+/// daemon cannot be reached, only what it read before: a program that has stopped reading, how full its context is, its sub-agents, whether its screen can be read, an
 /// adapter that could report and does not, a bell nobody heard, and a program's progress.
 ///
 /// The model and the cost are left to `--json`: they change what somebody does next less often
 /// than they would lengthen every line.
 fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
+    // Everything else here is a claim about the present, which a window that cannot reach the
+    // pane's daemon cannot make. What the pane read before is the one thing worth keeping.
+    if agent.state == "unreachable" {
+        return (!agent.last_state.is_empty())
+            .then(|| format!("(was {})", agent.last_state))
+            .into_iter()
+            .collect();
+    }
     let mut notes = Vec::new();
     // First, since it says why the state is what it is. On any pane, agent or not: a shell's
     // program that stopped reading is just as unable to take what is sent to it.
@@ -1088,6 +1096,9 @@ fn unplaced_tab_json(
             "label": pane.label,
             "state": states.get(pane.pane_id.as_str())
                 .map_or("unknown", |agent| agent.state.as_str()),
+            "last_state": states.get(pane.pane_id.as_str())
+                .map(|agent| agent.last_state.as_str())
+                .filter(|last| !last.is_empty()),
             "quiet": pane.quiet,
         })).collect::<Vec<Value>>(),
     })
@@ -1126,6 +1137,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "given_name": pane.given_name,
                 "subtitle": pane.subtitle,
                 "state": states.get(pane.pane_id.as_str()).map_or("unknown", |agent| agent.state.as_str()),
+                "last_state": states.get(pane.pane_id.as_str()).map(|agent| agent.last_state.as_str()).filter(|last| !last.is_empty()),
                 "since": states.get(pane.pane_id.as_str()).map_or(Value::Null, |agent| since_json(agent.since_ms)),
                 "reported": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.reported),
                 "unreadable": states.get(pane.pane_id.as_str()).is_some_and(|agent| agent.unreadable),
@@ -1655,6 +1667,61 @@ mod tests {
         assert!(row("p1").contains("stuck"), "{text}");
         assert!(row("p1").contains("(codex has not read 2817 bytes of input)"), "{text}");
         assert!(!row("p2").contains("has not read"), "{text}");
+    }
+
+    /// A pane whose daemon the window cannot reach says what it read before, and nothing that
+    /// would pass for the present: no context, no colour of a live state, and `--json` keeps
+    /// the old state apart from `state` so a filter on `blocked` does not find it.
+    #[test]
+    fn an_unreachable_pane_says_what_it_was_and_nothing_more() {
+        use muster_proto::{
+            AgentFacts, PaneStateChanged, RosterChanged, RosterPane, RosterTab, Window,
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![
+                PaneStateChanged {
+                    pane_id: "p1".to_string(),
+                    state: "unreachable".to_string(),
+                    last_state: "blocked".to_string(),
+                    facts: Some(AgentFacts { context_used: Some(41.0), ..AgentFacts::default() }),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p2".to_string(),
+                    state: "idle".to_string(),
+                    ..PaneStateChanged::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["state"], "unreachable", "{json}");
+        assert_eq!(json["panes"][0]["last_state"], "blocked", "{json}");
+        assert!(json["panes"][1]["last_state"].is_null(), "{json}");
+        let text = window_text(&window, 0, Others::All, false);
+        let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
+        assert!(row("p1").contains("unreachable"), "{text}");
+        assert!(row("p1").contains("(was blocked)"), "{text}");
+        assert!(!row("p1").contains("context"), "a dead pane's context read as current: {text}");
+        assert!(!row("p2").contains("was"), "{text}");
+        assert_eq!(
+            agent_style("unreachable"),
+            QUIET,
+            "an unreachable pane took a live state's colour"
+        );
     }
 
     /// Under `--layout`, a pane in another window, open or closed, has a frame in its own tab like

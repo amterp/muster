@@ -402,8 +402,9 @@ changed. Two windows can therefore give one pane two different `since` values.
 
 `muster window --watch` and `muster pane wait` are told what the window is told. While a daemon is
 `stale` - a dropped VPN, a devenv restarting - the window hears nothing about its panes, so neither
-does a watch. A watch prints a line when the daemon goes stale and another when it is back, and a
-wait on one of its panes exits 4, however briefly the daemon was gone. When the daemon comes back,
+does a watch. A watch prints a line when the daemon goes stale, then each of its panes as
+`unreachable`, and the same again when it is back; a wait on one of its panes exits 4, however
+briefly the daemon was gone. When the daemon comes back,
 a pane that changed during the gap is heard as one change, stamped with the moment the window got
 back, and anything it did in between - a finish followed by new work - is not heard at all. If the
 window quits, a watch ends with exit 3.

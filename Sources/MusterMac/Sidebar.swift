@@ -534,9 +534,15 @@ public enum SidebarModel {
   }
 
   /// A pane row's second line: what a waiting agent waits on, which says more than its title
-  /// while it waits, and otherwise the core's.
+  /// while it waits, and otherwise the core's - unless the pane's machine cannot be reached,
+  /// when the line says so and what the pane was doing before, rather than a title that reads
+  /// like a live agent's.
   public static func subtitle(_ subtitle: String, agent: PaneAgent) -> String {
-    agent.state == "waiting" && !agent.waiting.isEmpty ? "waiting on \(agent.waiting)" : subtitle
+    if agent.state == "unreachable" {
+      return agent.lastState.isEmpty ? "unreachable" : "unreachable · was \(agent.lastState)"
+    }
+    return agent.state == "waiting" && !agent.waiting.isEmpty
+      ? "waiting on \(agent.waiting)" : subtitle
   }
 
   /// A small mark at a pane row's trailing edge. Each is there only when it says something, so
@@ -568,6 +574,9 @@ public enum SidebarModel {
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
     if row.quiet { marks.append(.quiet) }
+    // The rest are about the agent as it is now, which nobody can say for a pane whose machine
+    // cannot be reached: a context ring on a rebooted devenv's agent reads as an agent alive.
+    if agent.state == "unreachable" { return marks }
     if agent.unreadable { marks.append(.unreadable) }
     if agent.rang { marks.append(.bell) }
     if agent.subagents > 0 { marks.append(.subagents(agent.subagents)) }
@@ -607,7 +616,13 @@ public enum SidebarModel {
     if let machine = row.machine { lines.append("on \(machine.daemon)") }
     guard let agent = row.agent else { return lines.joined(separator: "\n") }
     var state = agent.state
-    if agent.reported { state += ", as the agent reports" }
+    if agent.state == "unreachable" {
+      // What follows is what the agent said before, and has to read as that.
+      state = "its machine cannot be reached"
+      if !agent.lastState.isEmpty { state += "; it was \(agent.lastState) when last heard from" }
+    } else if agent.reported {
+      state += ", as the agent reports"
+    }
     lines.append(state)
     if let unread = agent.unreadInput {
       let since = Date(timeIntervalSince1970: TimeInterval(unread.sinceMS) / 1000)

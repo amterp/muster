@@ -837,6 +837,11 @@ pub(crate) struct Session {
     /// and a daemon's events carry no time.
     state_since: BTreeMap<PaneKey, i64>,
 
+    /// The daemons this window cannot reach, and since when, in milliseconds since the epoch.
+    /// Every pane on one reads `unreachable` from that moment, its last state kept beside it,
+    /// until the daemon answers again (`fn health`).
+    unreachable_since: BTreeMap<DaemonId, i64>,
+
     /// The human's groups as the shell was last told them, so it is told only of a change.
     groups_sent: Vec<MessageGroup>,
 
@@ -1258,6 +1263,10 @@ impl Session {
             window.composition.detach_daemon(daemon);
         }
         self.peering.retain(|(near, far), _| near != daemon && far != daemon);
+        // A daemon attached again starts from what it says then, not from this one's absence.
+        if self.unreachable_since.remove(daemon).is_some() {
+            self.attention.reachable(daemon, true);
+        }
         self.backends.remove(daemon)
     }
 
@@ -1745,16 +1754,27 @@ impl Session {
 
     /// One pane's agent as this window paints it, from what its daemon said: `waiting` for an
     /// idle agent waiting on its own work, and `done` laid over a finish nobody has seen.
+    ///
+    /// And `unreachable` over all of it while its daemon does not answer, with what it would
+    /// otherwise read kept as `last_state`: a guess about the present is labeled as one, so a
+    /// rebooted devenv's agents do not go on reading `idle` and `blocked` for days.
     fn presented(
         &self,
         key: &PaneKey,
         pane: &muster_core::mirror::Pane,
         progress: Option<Progress>,
     ) -> PaneAgent {
+        let state = self.attention.presented(key, pane.presented_state());
+        let since_ms = self.state_since.get(key).copied().unwrap_or_default();
+        let (state, since_ms, last_state) = match self.unreachable_since.get(&key.daemon) {
+            Some(since) => (AgentState::Unreachable, *since, Some(state)),
+            None => (state, since_ms, None),
+        };
         PaneAgent {
             pane: key.clone(),
-            state: self.attention.presented(key, pane.presented_state()),
-            since_ms: self.state_since.get(key).copied().unwrap_or_default(),
+            state,
+            last_state,
+            since_ms,
             reported: pane.reported,
             unreadable: pane.unreadable,
             facts: pane.facts.clone(),
@@ -4050,6 +4070,8 @@ pub(crate) struct OtherWindow {
 pub(crate) struct PaneAgent {
     pub pane: PaneKey,
     pub state: AgentState,
+    /// What it read before its daemon stopped answering, while `state` is `Unreachable`.
+    pub last_state: Option<AgentState>,
     /// When the agent last changed state, in milliseconds since the epoch. Zero for a pane
     /// nothing has stamped, which a window only holds between a daemon describing a pane and
     /// that change reaching `report`.
@@ -5957,9 +5979,42 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
     // output with it and says so once, naming the machine; eight more rows saying each of its
     // panes stopped painting would bury the one that names the cause.
     watchdog::daemon_away(daemon, health == Health::Stale);
+    let crossed = reachable(daemon, health == Health::Connected);
     let heard = DaemonHealth { daemon: daemon.clone(), health, detail: detail.to_string() };
     ffi::emit(&Event::new(event::Payload::BackendHealth(convert::backend_health(&heard))));
     watch::publish(&Seen::Health(heard));
+    if let Some(panes) = crossed {
+        for pane in &panes {
+            announce_state(pane);
+        }
+        announce_asking();
+    }
+}
+
+/// Records whether the window can reach `daemon` now, and when that changed, returns every pane
+/// it holds: each reads `unreachable` from the moment it stopped answering, or its own state
+/// again once it answers, and asks for somebody only while it can be reached.
+///
+/// Only a crossing between answering and not counts, the rule a watch follows: stale and
+/// disconnected are one fact here, and a stale daemon is announced again on every reconnect it
+/// tries.
+fn reachable(daemon: &DaemonId, answering: bool) -> Option<Vec<PaneKey>> {
+    let mut session = poison::lock(&SESSION, "session");
+    let crossed = if answering {
+        session.unreachable_since.remove(daemon).is_some()
+    } else if session.unreachable_since.contains_key(daemon) {
+        false
+    } else {
+        session.unreachable_since.insert(daemon.clone(), clock::wall_clock_millis());
+        true
+    };
+    if !crossed {
+        return None;
+    }
+    session.attention.reachable(daemon, answering);
+    let backend = session.backends.get(daemon)?;
+    let mirror = poison::lock(&backend.mirror, "mirror");
+    Some(mirror.panes().map(|pane| PaneKey::new(daemon, &pane.id)).collect())
 }
 
 /// Tells a window that has just opened how each daemon's connection stands.

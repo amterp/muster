@@ -281,6 +281,14 @@ pub struct Attention {
     /// land there either.
     quiet: BTreeSet<PaneKey>,
 
+    /// Daemons this window cannot reach, whose panes and groups ask for nobody while it cannot.
+    /// What they raised is kept rather than withdrawn: a dropped VPN that comes straight back
+    /// must not post every banner again, and an agent that was blocked before the drop is
+    /// asking again the moment its daemon says so. What goes is the ask itself - a chord to
+    /// the most urgent ask, or a window saying something waits, on a pane whose agent may be
+    /// long gone.
+    away: BTreeSet<DaemonId>,
+
     notifications: Notifications,
 }
 
@@ -319,7 +327,8 @@ impl Attention {
     /// Whether anything is asking at all: what [`Attention::asking`] would say is not empty,
     /// without sorting anything to say it.
     pub fn anything_asking(&self) -> bool {
-        !self.raised.is_empty() || !self.messages.is_empty()
+        self.raised.keys().any(|pane| !self.away.contains(&pane.daemon))
+            || self.messages.keys().any(|group| !self.away.contains(&group.daemon))
     }
 
     /// Every pane asking for somebody, the one being waited on first.
@@ -329,12 +338,29 @@ impl Attention {
     /// reader working down this list works down it in the order that costs least. Within one
     /// alert, the pane that started asking first comes first, having waited longest.
     pub fn asking(&self) -> Vec<(Asker, Alert)> {
-        let panes = self.raised.iter().map(|(pane, raised)| (Asker::Pane(pane.clone()), raised));
-        let groups =
-            self.messages.iter().map(|(group, (raised, _))| (Asker::Group(group.clone()), raised));
+        let panes = self
+            .raised
+            .iter()
+            .filter(|(pane, _)| !self.away.contains(&pane.daemon))
+            .map(|(pane, raised)| (Asker::Pane(pane.clone()), raised));
+        let groups = self
+            .messages
+            .iter()
+            .filter(|(group, _)| !self.away.contains(&group.daemon))
+            .map(|(group, (raised, _))| (Asker::Group(group.clone()), raised));
         let mut asking: Vec<(Asker, &Raised)> = panes.chain(groups).collect();
         asking.sort_by_key(|(_, raised)| (raised.alert, raised.order));
         asking.into_iter().map(|(asker, raised)| (asker, raised.alert)).collect()
+    }
+
+    /// Whether this window can reach `daemon`. While it cannot, nothing on it asks
+    /// ([`Attention::asking`]); what it raised waits, unannounced, for it to answer again.
+    pub fn reachable(&mut self, daemon: &DaemonId, reachable: bool) {
+        if reachable {
+            self.away.remove(daemon);
+        } else {
+            self.away.insert(daemon.clone());
+        }
     }
 
     /// What a group's daemon now says waits for the human there: nothing, once the human has

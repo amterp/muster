@@ -1634,6 +1634,72 @@
         "notified": [],
         "asking": []
       }
+    },
+    {
+      "name": "a pane on a machine the window cannot reach asks for nobody",
+      "why": "A rebooted devenv left its agents' last states in the window for two days, one of them asking for the person. What its daemon last said is a guess about the present, so a chord to the most urgent ask must not land there and the window must not say something waits. The banner it already raised is not taken back: it was true when it was posted.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "devenv/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "pane": "local/w1:p3",
+            "state": "blocked"
+          },
+          {
+            "unreachable": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "devenv/w1:p2 blocked",
+          "local/w1:p3 blocked"
+        ],
+        "asking": [
+          "local/w1:p3 blocked"
+        ]
+      }
+    },
+    {
+      "name": "a machine reached again asks again without a second banner",
+      "why": "The common way to lose a machine is a VPN or a lid that comes straight back. Its blocked agent is still blocked, so it asks again, and announcing it again would post a banner for every blip.",
+      "given": {
+        "focused": true,
+        "visible": [
+          "local/w1:p1"
+        ],
+        "events": [
+          {
+            "pane": "devenv/w1:p2",
+            "state": "blocked"
+          },
+          {
+            "unreachable": "devenv"
+          },
+          {
+            "reachable": "devenv"
+          },
+          {
+            "pane": "devenv/w1:p2",
+            "state": "blocked"
+          }
+        ]
+      },
+      "expect": {
+        "notified": [
+          "devenv/w1:p2 blocked"
+        ],
+        "asking": [
+          "devenv/w1:p2 blocked"
+        ]
+      }
     }
   ]
 }

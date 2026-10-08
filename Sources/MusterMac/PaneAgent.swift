@@ -26,8 +26,11 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
     public var pid: Int
   }
 
-  /// `working`, `blocked`, `stuck`, `waiting`, `idle`, `done` or `unknown`.
+  /// `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
   public var state: String
+  /// What it read before its machine stopped answering, while `state` is `unreachable`; empty
+  /// otherwise. Everything else here is from then too.
+  public var lastState = ""
   /// Whether the state is the agent's own report rather than what Muster read off its screen.
   public var reported = false
   /// Whether Muster's rules have stopped reading this agent's screen.
@@ -58,6 +61,7 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
 
   init(_ changed: Muster_PaneStateChanged) {
     self.init(state: changed.state)
+    lastState = changed.lastState
     reported = changed.reported
     unreadable = changed.unreadable
     rang = changed.rang

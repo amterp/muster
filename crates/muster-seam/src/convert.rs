@@ -23,6 +23,7 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         daemon_id: agent.pane.daemon.to_string(),
         pane_id: agent.pane.pane.to_string(),
         state: agent.state.as_str().to_string(),
+        last_state: agent.last_state.map(|state| state.as_str().to_string()).unwrap_or_default(),
         since_ms: agent.since_ms,
         reported: agent.reported,
         unreadable: agent.unreadable,

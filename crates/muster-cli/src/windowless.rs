@@ -495,6 +495,8 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         daemon_id: daemon_id.to_string(),
         pane_id: pane.pane.clone(),
         state: state_of(pane).as_str().to_string(),
+        // Read from the daemon itself, so it answered.
+        last_state: String::new(),
         // The daemon does not say since when, and a window says when it first saw a pane.
         since_ms: 0,
         label: label_of(pane),

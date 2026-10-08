@@ -753,6 +753,24 @@ struct SidebarTests {
     #expect(caption.map(SidebarModel.accessories(of:)) == [])
   }
 
+  @Test("a pane whose machine cannot be reached says so, and what it was, and nothing current")
+  func anUnreachablePaneSaysWhatItWas() {
+    let key = PaneKey(daemon: "devenv", pane: "w1:p1")
+    let roster = roster([tab("devenv", panes: [pane("devenv", "w1:p1")])])
+    var agent = PaneAgent(state: "unreachable")
+    agent.lastState = "blocked"
+    agent.subagents = 2
+    agent.contextUsed = 64
+    agent.rang = true
+    let row = SidebarModel.rows(roster: roster, agents: [key: agent]).first { $0.isPane }
+    #expect(row?.subtitle == "unreachable · was blocked")
+    #expect(row.map(SidebarModel.accessories(of:)) == [])
+    #expect(
+      row.map(SidebarModel.details(of:))?.contains("was blocked when last heard from") == true)
+    // Painted as nothing in particular, the way a state the window cannot vouch for is.
+    #expect(!PaneAppearance.isHighlighted(state: "unreachable"))
+  }
+
   @Test("the context ring warms as the context fills, rather than flipping at a line")
   func theContextRingWarmsGradually() {
     let blends = stride(from: Float(0), through: 100, by: 5).map(SidebarModel.contextBlend(used:))

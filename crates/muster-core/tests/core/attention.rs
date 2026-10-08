@@ -139,6 +139,15 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             record(&mut run, &noticed);
             continue;
         }
+        // The window lost the daemon, or with `reachable` reached it again.
+        if let Some(daemon) = event.get("unreachable").and_then(Value::as_str) {
+            run.attention.reachable(&DaemonId::new(daemon), false);
+            continue;
+        }
+        if let Some(daemon) = event.get("reachable").and_then(Value::as_str) {
+            run.attention.reachable(&DaemonId::new(daemon), true);
+            continue;
+        }
         // A daemon refused the window's report that it saw these panes, as one handing its
         // panes to another does.
         if event.get("refused").is_some() {

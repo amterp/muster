@@ -100,4 +100,10 @@ fn a_wait_nothing_can_meet_is_refused() {
     assert!(refused(&[], Some(0.0)).contains("more than 0"));
     assert!(refused(&[], Some(101.0)).contains("at most 100"));
     assert!(refused(&[], Some(f32::NAN)).contains("percent"));
+    // A pane whose machine goes away already ends a wait on it, so this could never be met.
+    assert!(refused(&["unreachable"], None).contains("unanswered"));
+    assert!(
+        !refused(&["idel"], None).contains("unreachable"),
+        "a state nothing can wait for was offered to somebody who mistyped one"
+    );
 }

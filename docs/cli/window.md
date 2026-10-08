@@ -166,7 +166,9 @@ One entry per pane every followed daemon holds, on screen or not.
   failing that its word, then its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
-- `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done` or `unknown`.
+- `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
+- `last_state` - what the pane read before its machine stopped answering, while `state` is
+  `unreachable`; `null` otherwise. Every other field is from then too.
 - `reported` - whether the state is the agent's own report rather than what Muster read off its
   screen.
 - `unreadable` - whether Muster's rules have stopped reading this agent's screen. Its state is
@@ -355,14 +357,21 @@ until the program reads again; interrupting it, or ending it and resuming its se
 `unread_input` says which program and what it left. A program that has not read anything yet, an
 agent still starting, is never called stuck.
 
+`unreachable` is a pane on a machine the window cannot reach: a dropped VPN, or a devenv that
+rebooted and took its agents with it. What its daemon last said is a guess about the present, so
+it is kept apart, in `last_state`, where `select(.state == "blocked")` and `pane wait --until idle`
+do not find it. `since` is when the machine stopped answering. The row says `(was blocked)` and
+drops its other notes, and the pane asks for nobody until its machine answers again.
+
 `done` is an agent that finished while nobody was looking. The daemon keeps the finish, so a
 window opened later still says `done`, and it lasts until a window that has the keyboard shows
 the pane - which clears it for every window - or until the agent works, waits on somebody, or
 says it is waiting on its own work. A daemon that restarts forgets it, so a script should not expect a `done` to outlive one.
 
 The state column is coloured: `working` cyan, `blocked` yellow, `stuck` magenta, `done` green,
-`waiting` blue. `idle` and
-`unknown` are dimmed, because they are the resting answer and the row already prints the word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
+`waiting` blue. `idle`,
+`unknown` and `unreachable` are dimmed, because the first two are the resting answer, the third is no answer the
+window can vouch for, and the row already prints the word. It is the same legend the window itself paints, where `blocked` is orange - the sixteen
 colours a terminal has hold no orange, and yellow is the nearest slot.
 
 **These are fixed, and the window's are not.** `[colors] agent_*` repaints the window; this

@@ -61,6 +61,16 @@
       "expect": {
         "state": "stuck"
       }
+    },
+    {
+      "name": "unreachable",
+      "why": "A pane on a machine this window cannot reach: what its daemon last said is a guess about the present, so a window presents it this way and keeps that state beside it as the last one known. No daemon sends it, and the seam and the CLI read the word back.",
+      "given": {
+        "backendValue": "unreachable"
+      },
+      "expect": {
+        "state": "unreachable"
+      }
     }
   ]
 }

@@ -223,10 +223,11 @@ the history its bridge was replayed on attaching, and everything since, on which
 full-screen program it reaches that program's screen and none of the history under it. A pane's text read by the CLI
 or an agent comes from the daemon instead, and has a reach of its own (`cli/limits.md`).
 
-Agent states are working / blocked / stuck / waiting / idle / done / **unknown** - seven; unknown renders as itself,
-never as success. State is daemon truth, but three of the seven are presented by the window from facts the daemon
-holds, so the vocabulary has to carry those facts. `waiting` is an idle agent that said, through the daemon's `report
---waiting`, that it ended its turn to wait on work it started itself. It has not finished and nobody is holding it up,
+Agent states are working / blocked / stuck / waiting / idle / done / **unknown** / unreachable - eight; unknown
+renders as itself, never as success. State is daemon truth, but three of the eight are presented by the window from
+facts the daemon holds, and one from the window's own connection to it, so the vocabulary has to carry those facts.
+`waiting` is an idle agent that said, through the daemon's `report --waiting`, that it ended its turn to wait on work
+it started itself. It has not finished and nobody is holding it up,
 so it is neither idle nor done, and a caller waiting for `idle` is not answered by it.
 
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
@@ -239,6 +240,14 @@ reading since it took the terminal: a count that went down, or nothing left of i
 An agent still starting has read nothing yet, and input sent as it was launched waits for it legitimately. The daemon
 puts `unread_input` on the pane's record, with the program and what it left, and the core lays `stuck` over whatever
 state an agent pane has while that holds. A pane running no agent gets the fact and no state.
+
+`unreachable` is a pane whose daemon the window cannot reach, laid over every pane on that daemon from the moment it
+stops answering until it answers again. What the daemon last said stays, as `last_state` beside the state rather
+than as it. A devenv that rebooted showed its fifteen agents as `idle`, `done` and blocked on the person for two days,
+with only the machine's line saying `stale` (kan a_2cJ6cgiLw); a flag beside the old state would have left every
+filter on `blocked` and every wait for `idle` finding them. While it lasts nothing on that daemon asks for anybody,
+and what it raised before is kept rather than withdrawn, so a dropped VPN that comes straight back posts no banner
+twice.
 
 `done` is an agent that finished while nobody looked, and its two halves have different owners. **The daemon holds the
 finish; the window decides the look.** muster-daemon reports four states and never `done`, and marks a pane's record
@@ -260,9 +269,10 @@ until the next look reports it again. It is not sent again at once, since a daem
 that too.
 
 **One legend, and the window holds it.** working cyan, blocked orange, stuck pink, waiting indigo, done green, idle
-grey, and unknown a fainter grey rather than a hue of its own. The window's palette is canonical because that is where attention lives: a person
-reads borders and dots all day and reads `muster window` when something has already gone strangely, so the surface
-with the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
+grey, and unknown a fainter grey rather than a hue of its own, which unreachable shares: neither is an answer the
+window can vouch for. The window's palette is canonical because that is where attention lives: a person reads
+borders and dots all day and reads `muster window` when something has already gone strangely, so the surface with
+the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
 and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
 vocabulary this product is about.
 
@@ -1083,7 +1093,8 @@ Health is per-connection *and* per-channel, and it is state, not an error path:
 
 - **connected**: live control plane, live pane channels.
 - **stale**: the control plane is silent or wedged (SSH up, daemon unresponsive), or a pane channel dropped. Render
-  the last mirror and last frames, marked stale. Pane-channel recovery is a forced full repaint; control-plane
+  the last mirror and last frames, marked stale; while the control plane is down, every pane's state reads
+  `unreachable` with its last one kept beside it. Pane-channel recovery is a forced full repaint; control-plane
   recovery is a fresh snapshot. The two recover independently.
 - **disconnected**: render the labeled last mirror; reconnect resyncs everything.
 
