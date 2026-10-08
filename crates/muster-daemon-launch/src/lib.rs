@@ -31,17 +31,30 @@ pub fn dial(
     let mut stream = UnixStream::connect(socket).map_err(|error| {
         HandshakeError::Unreachable(format!("could not connect to {}: {error}", socket.display()))
     })?;
-    silence_sigpipe(&stream).map_err(|error| {
+    let welcome = handshake(&mut stream, socket, kind, client)?;
+    Ok((stream, welcome))
+}
+
+/// [`dial`]'s handshake, on a stream its caller connected itself: for a caller that tells the
+/// ways a connection fails apart before there is a handshake to bound, as `muster` does a
+/// sandbox's refusal from an empty socket. `socket` is only for what an error says.
+pub fn handshake(
+    stream: &mut UnixStream,
+    socket: &Path,
+    kind: ConnectionKind,
+    client: &str,
+) -> Result<Welcome, HandshakeError> {
+    silence_sigpipe(stream).map_err(|error| {
         HandshakeError::Unreachable(format!(
             "could not stop a write to {} from ending this process ({error}), so it was not used",
             socket.display()
         ))
     })?;
-    bounded(&stream, Some(HANDSHAKE_PATIENCE)).map_err(|error| {
+    bounded(stream, Some(HANDSHAKE_PATIENCE)).map_err(|error| {
         HandshakeError::Unreachable(format!("could not bound the handshake: {error}"))
     })?;
     let started = Instant::now();
-    let welcome = match connection::open(&mut stream, kind, client) {
+    let welcome = match connection::open(stream, kind, client) {
         Ok(welcome) => welcome,
         // A timeout reads as an error like any other, so the clock says which it was.
         Err(HandshakeError::Unreachable(why) | HandshakeError::Garbled(why))
@@ -57,10 +70,10 @@ pub fn dial(
     };
     // From here the connection's own reader waits as long as the daemon is quiet, which on a
     // control connection is most of the time.
-    bounded(&stream, None).map_err(|error| {
+    bounded(stream, None).map_err(|error| {
         HandshakeError::Unreachable(format!("could not unbound the connection: {error}"))
     })?;
-    Ok((stream, welcome))
+    Ok(welcome)
 }
 
 /// A line a start writes to the stderr file it shares with any other start on that socket, so

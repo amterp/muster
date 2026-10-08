@@ -596,3 +596,32 @@ fn a_policy_file_with_a_key_nobody_reads_is_refused() {
     assert!(complained(&made).contains("is not a policy"), "{}", complained(&made));
     assert_eq!(ok(&muster(&daemon, &["msg", "groups"])), "no groups");
 }
+
+/// A daemon that accepts and never answers - stopped, or deadlocked - fails a `msg` verb within
+/// the handshake's bound, and is not taken for an empty socket that wants a daemon started.
+#[test]
+fn a_daemon_that_accepts_and_never_answers_fails_the_verb_within_seconds() {
+    let root = std::env::temp_dir().join(format!("muster-msg-silent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let socket = root.join("daemon.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    std::thread::spawn(move || {
+        // Held, not read: each connection stays open and nothing ever comes back.
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+
+    let started = std::time::Instant::now();
+    let read = muster_with(&socket, &["msg", "--as", "a", "read"], None);
+    assert!(started.elapsed() < Duration::from_secs(8), "waited {:?}", started.elapsed());
+    assert_eq!(read.status.code(), Some(3), "{}", complained(&read));
+    assert!(
+        complained(&read).contains("accepted the connection and did not answer"),
+        "{}",
+        complained(&read)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

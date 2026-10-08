@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
-use muster_daemon_proto::connection::{self, HandshakeError};
+use muster_daemon_proto::connection::HandshakeError;
 use muster_daemon_proto::{ConnectionKind, install};
 
 use crate::{Trouble, environment};
@@ -102,22 +102,25 @@ fn open(
         }
         _ => Missed::Otherwise(nobody_at(socket, &error)),
     })?;
-    let welcome = connection::open(&mut stream, kind, &client).map_err(|error| {
-        Missed::Otherwise(match error {
-            HandshakeError::Refused(refused) => Trouble::Refused(format!(
-                "the muster-daemon at {} would not talk to this muster: {}",
-                socket.display(),
-                refused.reason
-            )),
-            HandshakeError::Unreachable(why)
-            | HandshakeError::Garbled(why)
-            | HandshakeError::Stalled(why) => Trouble::Unreachable(format!(
-                "no muster-daemon answered at {} ({why}). One runs while Muster does; set \
+    // Bounded, so a daemon that accepts and never answers - stopped, or deadlocked - fails the
+    // verb within seconds rather than holding it, and whoever ran it, for ever.
+    let welcome =
+        muster_daemon_launch::handshake(&mut stream, socket, kind, &client).map_err(|error| {
+            Missed::Otherwise(match error {
+                HandshakeError::Refused(refused) => Trouble::Refused(format!(
+                    "the muster-daemon at {} would not talk to this muster: {}",
+                    socket.display(),
+                    refused.reason
+                )),
+                HandshakeError::Unreachable(why)
+                | HandshakeError::Garbled(why)
+                | HandshakeError::Stalled(why) => Trouble::Unreachable(format!(
+                    "no muster-daemon answered at {} ({why}). One runs while Muster does; set \
                  ${SOCKET} to reach another.",
-                socket.display()
-            )),
-        })
-    })?;
+                    socket.display()
+                )),
+            })
+        })?;
     Ok((stream, welcome))
 }
 
