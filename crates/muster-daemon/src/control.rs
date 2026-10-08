@@ -32,8 +32,9 @@ const QUEUE_DEPTH: usize = 4096;
 const STOP_FLUSH: Duration = Duration::from_secs(2);
 /// How long a report waits for a starting daemon's manifests before it is attributed to
 /// nothing. They take tens of milliseconds to compile in a release build, and longer in a debug
-/// build on a loaded machine.
-const MANIFESTS_PATIENCE: Duration = Duration::from_secs(2);
+/// build on a loaded machine. Half of `muster-daemon report`'s own patience, which covers dialing
+/// and the answer too: a wait as long as the reporter's would time the reporter out instead.
+const MANIFESTS_PATIENCE: Duration = Duration::from_secs(1);
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
