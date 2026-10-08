@@ -17,6 +17,9 @@ use crate::{Trouble, environment};
 /// Names the daemon a pane runs on; every pane Muster makes has it.
 pub const SOCKET: &str = "MUSTER_DAEMON_SOCKET";
 
+/// The daemon asked here, as a refusal names it.
+pub(crate) const OURS: &str = "this machine's muster-daemon";
+
 /// `$MUSTER_DAEMON_SOCKET`, which names the daemon a pane runs on, else this install's daemon
 /// under Muster's home.
 pub fn socket(environment: &BTreeMap<String, String>) -> Option<PathBuf> {

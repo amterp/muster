@@ -5726,17 +5726,18 @@ pub(crate) fn send_to_pane(
         // An older daemon would ignore the keys and press the Return alone, which can take a
         // dialog's other answer. A window hands an older daemon over to this build's when it can,
         // so this is a daemon that refused the handover.
-        let speaks =
-            backend.follower.connection().control().and_then(|control| control.welcome().protocol);
-        if let Some(speaks) = speaks
-            && !keys.is_empty()
-            && speaks.minor < muster_daemon_proto::version::KEYS_IN_A_SEND
+        let control = backend.follower.connection().control();
+        if !keys.is_empty()
+            && let Some(control) = control
+            && let Some(refused) = muster_daemon_proto::version::too_old(
+                &format!("the daemon {daemon}"),
+                control.welcome().protocol.as_ref(),
+                muster_daemon_proto::version::KEYS_IN_A_SEND,
+                "press keys",
+                "sent",
+            )
         {
-            return Err(Refusal::Declined(format!(
-                "{daemon} runs a muster-daemon speaking protocol {speaks}, which cannot press \
-                 keys, so nothing was sent. Update Muster; a new daemon takes over from an old \
-                 one when the app starts."
-            )));
+            return Err(Refusal::Declined(refused));
         }
         Arc::clone(&backend.input)
     };

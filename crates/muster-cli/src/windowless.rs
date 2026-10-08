@@ -187,11 +187,16 @@ fn ok() -> Response {
 
 /// The refusal for a pane this daemon does not hold, saying what was not `done` to it.
 fn not_held(socket: &Path, pane: &str, done: &str) -> Response {
-    failure(format!(
-        "the muster-daemon at {} holds no pane called {pane}, so nothing was {done}. `muster \
-         window` lists the panes this machine has.",
+    failure(not_held_said(socket, pane, done))
+}
+
+fn not_held_said(socket: &Path, pane: &str, done: &str) -> String {
+    format!(
+        "the muster-daemon at {} holds no pane called {pane}, so nothing was {done}. Either it \
+         closed, or the name is from another machine - `muster window` lists the panes this one \
+         has.",
         socket.display()
-    ))
+    )
 }
 
 fn pane_service(request: daemon_proto::pane_request::Request) -> daemon_proto::request::Service {
@@ -218,13 +223,15 @@ fn asked_of_one_that_hides(
     what: &str,
 ) -> Result<daemon_proto::Answer, Trouble> {
     let (stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
-    let speaks = welcome.protocol.unwrap_or_default();
-    if speaks.minor < daemon_proto::version::HIDDEN_AND_QUIET {
-        return Err(Trouble::Refused(format!(
-            "this machine's muster-daemon speaks protocol {speaks}, which cannot {what}, so \
-             nothing was changed. Update Muster; a new daemon takes over from an old one when \
-             the app starts."
-        )));
+    let hides = daemon_proto::version::HIDDEN_AND_QUIET;
+    if let Some(refused) = daemon_proto::version::too_old(
+        daemon::OURS,
+        welcome.protocol.as_ref(),
+        hides,
+        what,
+        "changed",
+    ) {
+        return Err(Trouble::Refused(refused));
     }
     answered(stream, socket, service)
 }
@@ -322,11 +329,9 @@ fn read_page(
     .map_err(|trouble| trouble.detail().to_string())?;
     match answer.detail {
         Some(daemon_proto::answer::Detail::Text(text)) => Ok(text),
-        _ if answer.outcome() == daemon_proto::Outcome::NotThere => Err(format!(
-            "the muster-daemon at {} holds no pane called {pane}. Either it closed, or the \
-             name is from another machine - `muster window` lists the panes this one has.",
-            socket.display()
-        )),
+        _ if answer.outcome() == daemon_proto::Outcome::NotThere => {
+            Err(not_held_said(socket, pane, "read"))
+        }
         _ => Err(format!(
             "the muster-daemon at {} would not read pane {pane}: {}",
             socket.display(),
@@ -352,13 +357,13 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     let before = if send.confirm { pane_text::before_sending(read) } else { String::new() };
     let typed = daemon::connect_welcomed(socket, ConnectionKind::Input).and_then(
         |(mut stream, welcome)| {
-            let speaks = welcome.protocol.unwrap_or_default();
-            if !send.keys.is_empty() && speaks.minor < daemon_proto::version::KEYS_IN_A_SEND {
-                return Err(Trouble::Refused(format!(
-                    "this machine's muster-daemon speaks protocol {speaks}, which cannot press \
-                     keys, so nothing was sent. Update Muster; a new daemon takes over from an \
-                     old one when the app starts."
-                )));
+            let keys = daemon_proto::version::KEYS_IN_A_SEND;
+            let speaks = welcome.protocol.as_ref();
+            if !send.keys.is_empty()
+                && let Some(refused) =
+                    daemon_proto::version::too_old(daemon::OURS, speaks, keys, "press keys", "sent")
+            {
+                return Err(Trouble::Refused(refused));
             }
             let event = daemon_proto::InputEvent {
                 pane: pane.to_string(),
@@ -948,12 +953,7 @@ pub fn follow(
     } else {
         for named in &pane_ids {
             if !snapshot.panes.iter().any(|pane| &pane.pane == named) {
-                return Err(Trouble::Refused(format!(
-                    "the muster-daemon at {} holds no pane called {named}, so there is nothing \
-                     to watch. Either it closed, or the name is from another machine - `muster \
-                     window` lists the panes this one has.",
-                    socket.display()
-                )));
+                return Err(Trouble::Refused(not_held_said(&socket, named, "watched")));
             }
         }
         Some(pane_ids.into_iter().collect())

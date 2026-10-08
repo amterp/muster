@@ -667,12 +667,10 @@ fn ask_once(
     };
     let speaks = welcome.protocol.unwrap_or_default();
     if let Some((cannot, minor)) = needs_minor(request)
-        && speaks.minor < minor
+        && let Some(refused) =
+            proto::version::too_old(daemon::OURS, Some(&speaks), minor, cannot, "done")
     {
-        return Err(Trouble::Refused(format!(
-            "this machine's muster-daemon speaks protocol {speaks}, which cannot {cannot}. \
-             Update Muster; a new daemon takes over from an old one when the app starts."
-        )));
+        return Err(Trouble::Refused(refused));
     }
     let waits = blocks(request);
     let _ = stream.set_read_timeout(if waits { None } else { Some(PATIENCE) });

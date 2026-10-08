@@ -126,17 +126,19 @@ impl DaemonBackend {
     /// both fields without a word, so a pane meant to be hidden would show and one meant to be
     /// quiet would ask.
     fn hides_and_quiets(&self, what: &str) -> Result<(), Refusal> {
-        let speaks = self.connection.control().and_then(|control| control.welcome().protocol);
-        match speaks {
-            Some(speaks) if speaks.minor < muster_daemon_proto::version::HIDDEN_AND_QUIET => {
-                Err(Refusal::Declined(format!(
-                    "{} runs a muster-daemon speaking protocol {speaks}, which cannot {what}, so \
-                     nothing was changed. Update Muster; a new daemon takes over from an old one \
-                     when the app starts.",
-                    self.description
-                )))
-            }
-            _ => Ok(()),
+        // Not connected, nothing can be asked, and the request says so itself.
+        let Some(control) = self.connection.control() else { return Ok(()) };
+        let speaks = control.welcome().protocol.as_ref();
+        let hides = muster_daemon_proto::version::HIDDEN_AND_QUIET;
+        match muster_daemon_proto::version::too_old(
+            &self.description,
+            speaks,
+            hides,
+            what,
+            "changed",
+        ) {
+            Some(refused) => Err(Refusal::Declined(refused)),
+            None => Ok(()),
         }
     }
 
