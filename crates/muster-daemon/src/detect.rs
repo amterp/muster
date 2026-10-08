@@ -6,7 +6,7 @@
 //! every other report, so the reader never waits on the session.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
@@ -24,6 +24,8 @@ use crate::pane::PaneIo;
 pub(crate) struct Detecting {
     /// None until the first load lands.
     manifests: Mutex<Option<Arc<Manifests>>>,
+    /// Told when `manifests` first holds some, for a reader that cannot go on without them.
+    loaded: Condvar,
     /// `~/.muster/agent-detection/`, read again whenever the manifests are.
     overrides: Option<PathBuf>,
 }
@@ -33,7 +35,8 @@ impl Detecting {
     /// patterns takes tens of milliseconds, which a daemon's first answer must not wait for;
     /// until they land, panes simply are not detected yet.
     pub(crate) fn start(overrides: Option<PathBuf>) -> Arc<Detecting> {
-        let detecting = Arc::new(Detecting { manifests: Mutex::new(None), overrides });
+        let detecting =
+            Arc::new(Detecting { manifests: Mutex::new(None), loaded: Condvar::new(), overrides });
         let loading = Arc::clone(&detecting);
         let started =
             std::thread::Builder::new().name("detect load".to_string()).spawn(move || {
@@ -41,6 +44,7 @@ impl Detecting {
                 // An app's manifests that arrived first include these, and win.
                 poison::lock(&loading.manifests, "daemon.detect.manifests")
                     .get_or_insert_with(|| Arc::new(loaded));
+                loading.loaded.notify_all();
             });
         if let Err(error) = started {
             log::error(
@@ -59,6 +63,18 @@ impl Detecting {
         poison::lock(&self.manifests, "daemon.detect.manifests").clone()
     }
 
+    /// [`Detecting::manifests`], waiting up to `patience` for the first load. For a reader whose
+    /// answer is wrong rather than late without them: a report taken before they land is
+    /// attributed to nothing, which a pane with no agent detected yet accepts.
+    pub(crate) fn manifests_within(&self, patience: Duration) -> Option<Arc<Manifests>> {
+        let manifests = poison::lock(&self.manifests, "daemon.detect.manifests");
+        let (manifests, _) = poison::recover(
+            self.loaded.wait_timeout_while(manifests, patience, |manifests| manifests.is_none()),
+            "daemon.detect.manifests",
+        );
+        manifests.clone()
+    }
+
     /// Compiles the manifests again, with the app's. Tens of milliseconds, and it reads the
     /// override directory, which can be on a mount that hangs: never done under the session
     /// lock.
@@ -75,6 +91,7 @@ impl Detecting {
         if changed.as_ref().is_none_or(|changed| !changed.is_empty()) {
             *manifests = Some(Arc::new(loaded));
         }
+        self.loaded.notify_all();
         changed.unwrap_or_default()
     }
 }

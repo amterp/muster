@@ -30,6 +30,10 @@ const QUEUE_DEPTH: usize = 4096;
 
 /// How long a `stop` waits for its answer to be written before the daemon exits anyway.
 const STOP_FLUSH: Duration = Duration::from_secs(2);
+/// How long a report waits for a starting daemon's manifests before it is attributed to
+/// nothing. They take tens of milliseconds to compile in a release build, and longer in a debug
+/// build on a loaded machine.
+const MANIFESTS_PATIENCE: Duration = Duration::from_secs(2);
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
@@ -319,7 +323,8 @@ fn handle(
 }
 
 /// The nearest agent above a report's sender, for a report; read before the session's lock is
-/// taken, since the walk reads the process table a process at a time.
+/// taken, since the walk reads the process table a process at a time. Waits briefly for a
+/// starting daemon's manifests, since a hook can report the moment a restarted daemon listens.
 fn sender_of(
     peer: Option<u32>,
     service: Option<&Service>,
@@ -329,7 +334,8 @@ fn sender_of(
         service,
         Some(Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }))
     );
-    attribution::sender(peer.filter(|_| report)?, &*shared.detecting.manifests()?)
+    let peer = peer.filter(|_| report)?;
+    attribution::sender(peer, &*shared.detecting.manifests_within(MANIFESTS_PATIENCE)?)
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is
