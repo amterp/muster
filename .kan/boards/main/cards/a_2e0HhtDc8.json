@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-claude-pane-whose",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791459471760,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-07/08 on the installed 0.13.0 app and daemon (pid 22427, ~/.muster/daemon/release.log). Two long-lived Claude Code panes in one tab - the integrator p29tc9yqkt and a worker p29te1jh5d - stopped producing daemon.agent.turn_ended after 04:08Z (worker's last at 04:08:42, integrator's at 03:56:55) while other panes on the same daemon kept producing it until 07:39Z. Both then read 'working' in muster window for 7+ hours while sitting at an empty prompt, their title glyph showing idle (✳).\n\nThe cost: the worker's 'done' message at 04:11:34Z was posted with deferred: muster-integrator (correctly - the integrator was mid-turn), and the deferred ring never fired, because the integrator never read idle again. Nothing re-rang, and the group-stall detection built the same night would not catch it either, since it only judges members that are not working. A whole parallel-work session sat stalled for 7 hours.\n\nNot yet known: why the turn-end reports stopped for those two panes only (hook timing out under load, the plugin's hook failing, something else) - check the panes' hook output and the daemon's report handling. Things that might be true: the screen reading idle for minutes while the adapter last said working should win (or trigger a check), rather than the adapter's last word standing forever; and a deferred ring could have a ceiling after which it rings regardless and logs why.",
+  "id": "a_2e0HhtDc8",
+  "position": "b0j",
+  "title": "A Claude pane whose turn-end report is lost reads working forever, and its messages wait with it",
+  "type": "bug",
+  "updated_at_millis": 1791459471760,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791459471760}
+  ]
+}
