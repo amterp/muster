@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.4
+// Version: 1.5
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -249,6 +249,17 @@ message PaneRequest {
     Seen seen = 10;
     // Since 1.3.
     Compact compact = 11;
+    // Since 1.5.
+    Quiet quiet = 12;
+  }
+
+  // Sets whether the pane is quiet: whether a view raises anything for the person about it.
+  // A view still shows its state; what it leaves out is every banner and every ask. The daemon
+  // only keeps the fact, writes it down and hands it to every view. ALREADY_SO when the pane
+  // already is as asked. Since 1.5.
+  message Quiet {
+    string pane = 1;
+    bool quiet = 2;
   }
 
   // Somebody has seen these panes: a window with the keyboard shows them. Clears each one's
@@ -290,6 +301,8 @@ message PaneRequest {
     // Run through the pane's shell, which the pane drops back to when it exits.
     optional string command = 6;
     optional string label = 7;
+    // Starts it quiet (`Pane.quiet`). Since 1.5.
+    bool quiet = 8;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
@@ -413,6 +426,8 @@ message Placement {
   message NewTab {
     string tab = 1;
     Label label = 2;
+    // Makes the tab hidden (`Tab.hidden`). Since 1.5.
+    bool hidden = 3;
   }
 }
 
@@ -727,6 +742,10 @@ message MsgAnswer {
   // Since 1.3. What to call the human where an answer shows it, as SetHumanName set it; empty
   // when nothing did.
   string human_name = 3;
+  // Since 1.5. What each participant named after its pane (`p29te12q4t`) is called (`otter`):
+  // the pane's name now, or the last this machine saw once the pane has closed. For an answer to
+  // show it by, beside the id, which stays the address.
+  map<string, string> called = 4;
   oneof answer {
     Joined joined = 10;
     Left left = 11;
@@ -811,6 +830,8 @@ message MsgAnswer {
     UNTIL_AGENT = 3;
     // Since 1.3. For an urgent post: its agent to be out of a dialog, working or idle.
     UNTIL_UNBLOCKED = 4;
+    // Since 1.5. Its agent's program to read its input again, having stopped.
+    UNTIL_READING = 5;
   }
 
   enum Reach {
@@ -845,6 +866,8 @@ message MsgAnswer {
     ACTIVITY_IDLE = 3;
     // Idle, having said it is waiting on work of its own.
     ACTIVITY_WAITING = 4;
+    // Since 1.5. Its program has stopped reading its input (`Pane.unread_input`).
+    ACTIVITY_STUCK = 5;
   }
 
   // What `read` and `log` return, a group at a time.
@@ -1235,6 +1258,34 @@ message Pane {
   // agent reports or ends a turn without having reported, and again when the agent changes or
   // leaves. Since 1.3.
   Adapter adapter = 14;
+  // Since 1.5. The program in the foreground of the pane's terminal has stopped reading it:
+  // having been seen to read, it has left input unread for several seconds and read nothing
+  // since. Absent while it reads, and whenever the daemon cannot tell. A view shows a pane whose
+  // agent this holds as stuck.
+  UnreadInput unread_input = 15;
+  // A view raises nothing for the person about this pane: no banner, and no ask. Set when the
+  // pane is made or with `PaneRequest.Quiet`, and written to the state file. Since 1.5.
+  bool quiet = 16;
+  // Since 1.5. A short word the daemon drew for the pane (`otter`) as it was made, which the pane
+  // goes by while it has no `label`. A pane's name is its label, or failing that this word, and
+  // no two live panes on one daemon share a name, so a name says which pane it is on this
+  // machine. A drawn word is never typed into the agent's session, as a label is. Kept for the
+  // pane's life and written to the state file; free for another pane once this one closes.
+  optional string word = 17;
+}
+
+// Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon
+// first called it stopped. Not updated while it stays stopped.
+message UnreadInput {
+  // Bytes waiting in the terminal for the program to read: whole lines only, when the terminal
+  // is line by line.
+  uint32 bytes = 1;
+  // Since when, in milliseconds since the Unix epoch, by the daemon's clock.
+  uint64 since_ms = 2;
+  // The foreground process group's leader: the program, as its own argv[0] names it, else as
+  // the kernel does.
+  string program = 3;
+  int32 pid = 4;
 }
 
 // Whether a pane's agent reports itself (`PaneRequest.Report`).
@@ -1282,6 +1333,10 @@ message Tab {
   Label label = 2;
   Node root = 3;
   optional string zoomed = 4;
+  // No view shows the tab or its panes, which go on running; a view lists them apart, to be
+  // brought back. Set only when the tab is made (`Placement.NewTab.hidden`): bringing a pane
+  // back moves it into a tab that is not. Written to the state file. Since 1.5.
+  bool hidden = 5;
 }
 
 // A tab's name, as a person gave it. Every daemon holding part of a grouped tab stores it, and
