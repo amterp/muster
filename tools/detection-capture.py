@@ -31,8 +31,8 @@ free models refuse 1.3.15.
 a session starts, with its config in <out> and no credentials: `claude-startup` the theme picker,
 the question about an API key in its environment (one that is not a key, with a base URL at
 127.0.0.1:9, so nothing reaches the network or any account), the security notes, the folder trust
-dialog and the bypass permissions warning, accepting each, and `claude-signin` the login method
-picker a config with no key shows.
+dialog and the bypass permissions warning, accepting each, then the /login menu opened from the
+prompt, and `claude-signin` the login method picker a config with no key shows.
 
 `codex-startup` and `codex-signin` record Codex's startup screens rather than its turns, as cases
 for `codex`, with its home in <out> and a model provider at 127.0.0.1:9, so nothing they run
@@ -373,6 +373,16 @@ def claude_startup(capture: Capture) -> None:
     capture.pump(15, b"bypass permissions on")
     capture.pump(2)
     capture.mark("idle after the startup screens", "idle", "Every startup screen answered: Claude Code at its prompt box.")
+    # /login opened from the prompt offers the first-run login picker's options, and is a menu
+    # somebody opened rather than a screen the session is waiting on.
+    capture.send("/login")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(15, b"login method")
+    capture.pump(2)
+    capture.mark("the /login menu", "unknown", "/login opened from the prompt: nobody is waiting on anybody, and the state stays what it was.", skip=True)
+    capture.send("\x1b")
+    capture.pump(2)
 
 
 def claude_signin(capture: Capture) -> None:

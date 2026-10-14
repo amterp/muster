@@ -190,6 +190,20 @@
       }
     },
     {
+      "name": "claude: a session quoting the first-run screens is still at work",
+      "why": "first_run_theme, first_run_security_notes and login_method sit above every working rule and read words, so each stands aside when a horizontal rule is in its region: none of those screens draws one, and a session always does, as the top of its prompt box. Here an agent prints this repository's recording of them mid-turn. No herdr test: the rules are Muster's.",
+      "given": {
+        "agent": "claude",
+        "screen": " ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n❯ Show me what Claude Code draws before a session starts\n\n⏺ Bash(sed -n 10,60p corpus/claude-code-2.1.299/startup-dialogs.txt)\n  ⎿      Choose the text style that looks best with your terminal\n         To change this later, run /theme\n         Security notes:\n         Press Enter to continue…\n         Select login method:\n         ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n           2. Anthropic Console account · API usage billing\n     … +43 lines (ctrl+o to expand)\n\n· Brewing…\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:06] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◐ Claude Code"
+      },
+      "expect": {
+        "state": "working",
+        "rule": "osc_title_working",
+        "visible": true
+      }
+    },
+    {
       "name": "claude: nothing at all is the idle fallback",
       "why": "With no title, no progress and an empty screen, a known agent is idle and not visibly so. (claude_empty_osc_empty_screen_is_idle_fallback)",
       "given": {

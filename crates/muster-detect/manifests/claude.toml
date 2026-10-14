@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.10.13.3"
+version = "2026.10.13.4"
 min_engine_version = 12
 updated_at = "2026-10-13T00:00:00Z"
 aliases = ["claude-code"]
@@ -183,6 +183,11 @@ all = [
 # says idle, so without these they read idle by no rule. Above every working rule, for
 # live_blocked_form's reason. Words are matched across lines, since each wraps in a narrow pane
 # (docs/observations/claude-code-2.1.299.md, section 2).
+#
+# Being above the working rules, each is kept to the screen it names: none of the three draws a
+# horizontal rule, and a session always does, as the top of its prompt box. So the same words
+# quoted in a session's output - this repository's own recordings of these screens, say - leave
+# the session's state alone. The transcript viewer is kept out by its footer.
 [[rules]]
 id = "first_run_theme"
 state = "blocked"
@@ -191,6 +196,10 @@ region = "bottom_non_empty_lines(30)"
 visible_blocker = true
 # Read by its words, not its options: /theme opened from the prompt offers the same ones.
 regex = ['(?i)choose\s+the\s+text\s+style', '(?i)to\s+change\s+this\s+later,\s+run\s+/theme']
+not = [
+  { regex = ['(?m)^\s*─{3}'] },
+  { contains = ["showing detailed transcript"] },
+]
 
 [[rules]]
 id = "first_run_security_notes"
@@ -200,6 +209,22 @@ region = "bottom_non_empty_lines(20)"
 visible_blocker = true
 contains = ["security notes:"]
 regex = ['(?i)press\s+enter\s+to\s+continue']
+not = [
+  { regex = ['(?m)^\s*─{3}'] },
+  { contains = ["showing detailed transcript"] },
+]
+
+# /login opened from the prompt draws the login picker under a title and an Esc footer, in a
+# session nobody is waiting on: above login_method, so the state stays what it was. Its top
+# border is a row of ▔ rather than a horizontal rule, so own_menu's region does not find it
+# (corpus/claude-code-2.1.299/startup-dialogs.txt).
+[[rules]]
+id = "login_menu"
+state = "unknown"
+priority = 1160
+region = "bottom_non_empty_lines(20)"
+skip_state_update = true
+contains = ["select login method:", "esc to cancel"]
 
 [[rules]]
 id = "login_method"
@@ -209,6 +234,10 @@ region = "bottom_non_empty_lines(20)"
 visible_blocker = true
 contains = ["select login method:"]
 regex = ['(?i)claude\s+account\s+with\s+subscription', '(?i)anthropic\s+console\s+account']
+not = [
+  { regex = ['(?m)^\s*─{3}'] },
+  { contains = ["showing detailed transcript"] },
+]
 
 [[rules]]
 id = "live_prompt_box"

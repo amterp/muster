@@ -32,6 +32,10 @@ An installed Claude Code in a folder it has not seen opens on the trust dialog a
 "No, exit" selected above "Yes, I trust this folder". The dialog was whole 0.5 s after `claude`
 started and unchanged at 8 s (`startup-dialogs.txt`).
 
+`/login` typed at the prompt opens the login picker's words and options under a "Login" title, a
+top border of `▔` and an "Esc to cancel" footer. None of the three screens without a footer draws
+a row of `─`; a session draws one as the top of its prompt box (`startup-dialogs.txt`).
+
 ## What this decides for Muster
 
 `claude.toml`'s `live_turn_working` reads a spinner line without a timer only when the text
@@ -43,7 +47,9 @@ messages for about forty minutes.
 
 `claude.toml` reads the theme picker, the security notes and the login picker as blocked, by
 their words, since no footer or prompt box is there to read (section 2). The other three
-startup screens already read blocked by `live_blocked_form`.
+startup screens already read blocked by `live_blocked_form`. Those words read blocked only with
+no row of `─` among them, so a session quoting them keeps its state, and `/login` opened from the
+prompt is a menu someone opened, which leaves the state as it was.
 
 So when `muster pane wait --until idle,blocked` answered `idle` at the trust dialog, the rules had
 not misread it. The detector publishes a new agent before its screen counts, three seconds after

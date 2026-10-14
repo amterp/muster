@@ -782,6 +782,21 @@
       },
       "name": "claude 2.1.299: login method picker",
       "why": "A fresh install with no API key asks how to log in before any session starts."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Opus 5.5 · API Usage Billing\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Login\n\n   Claude Code can be used with your Claude subscription or billed based on API usage through\n   your Console account.\n\n   Select login method:\n\n   ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n     2. Anthropic Console account · API usage billing\n     3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI\n\n   Esc to cancel\n",
+        "title": "✳ Claude Code",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Opus 5.5 · API Usage Billing\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Login\n\n   Claude Code can be used with your Claude subscription or billed based on API usage through\n   your Console account.\n\n   Select login method:\n\n   ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n     2. Anthropic Console account · API usage billing\n     3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI\n\n   Esc to cancel"
+      },
+      "name": "claude 2.1.299: the /login menu",
+      "why": "/login opened from the prompt offers the login method picker a fresh install shows, under a title and an Esc footer: a menu somebody opened, so the state stays what it was."
     }
   ]
 }

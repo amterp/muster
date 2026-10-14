@@ -72,6 +72,24 @@ came in this order, each answered with the keys after it:
   Down, Return: the prompt box, "Opus 5.5 · API Usage Billing", "⏵⏵ bypass permissions on". No
   request was sent.
 
+  /login, Return:
+
+    ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+      Login
+
+      Claude Code can be used with your Claude subscription or billed based on API usage through
+      your Console account.
+
+      Select login method:
+
+      ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise
+        2. Anthropic Console account · API usage billing
+        3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI
+
+      Esc to cancel
+
+  in place of the prompt box, then Esc.
+
 Every screen but the last had no window title; the prompt box came with "✳ Claude Code".
 
 claude-signin: no API key, `claude`. The theme picker as above, Return, then:
@@ -95,3 +113,6 @@ every one after it: the same words as above, with no onboarding before it.
 With the built-in claude manifest at 2026.10.13.2, the theme picker, the security notes and the
 login method picker read idle by no rule; the API key question, the trust dialog and the bypass
 warning read blocked by live_blocked_form, at every moment the trust dialog was taken.
+
+The /login menu was recorded later the same day, as the last step of claude-startup. With the
+built-in claude manifest at 2026.10.13.3 it read blocked by login_method.
