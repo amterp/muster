@@ -44,3 +44,7 @@ messages for about forty minutes.
 `claude.toml` reads the theme picker, the security notes and the login picker as blocked, by
 their words, since no footer or prompt box is there to read (section 2). The other three
 startup screens already read blocked by `live_blocked_form`.
+
+So when `muster pane wait --until idle,blocked` answered `idle` at the trust dialog, the rules had
+not misread it. The detector publishes a new agent before its screen counts, three seconds after
+it starts, and had published it `idle`; it now publishes it `unknown` until then.

@@ -561,7 +561,7 @@ impl Run {
     /// Starts claude in the pane and waits out its grace.
     fn start_agent(&mut self) {
         self.pane.group = Some(AGENT_GROUP);
-        assert_eq!(self.tick(), Some(published(Some(claude()), State::Idle)));
+        assert_eq!(self.tick(), Some(published(Some(claude()), State::Unknown)));
         self.settle();
     }
 
@@ -588,17 +588,32 @@ fn a_pane_with_no_agent_is_unknown_and_ticks_slowly() {
 }
 
 #[test]
-fn a_new_agent_is_idle_at_once_and_its_screen_waits_out_the_grace() {
+fn a_new_agent_is_unknown_at_once_and_its_screen_waits_out_the_grace() {
     let mut run = Run::new();
     run.tick();
     run.paint("busy");
     run.pane.group = Some(AGENT_GROUP);
 
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Unknown)));
     assert_eq!(run.next, TICK_IDENTIFIED);
     let (after, publication) = run.until_published(Duration::from_secs(10)).unwrap();
     assert_eq!(publication, published(Some(claude()), State::Working));
     assert!(after > STARTUP_GRACE, "working was published {after:?} in, inside the grace");
+}
+
+/// Claude Code's folder-trust dialog is on screen within a second of starting. Something waiting
+/// for the agent to be idle or blocked must get blocked, never an idle from before the screen
+/// counted.
+#[test]
+fn a_dialog_drawn_inside_the_grace_is_the_first_state_after_unknown() {
+    let mut run = Run::new();
+    run.tick();
+    run.pane.group = Some(AGENT_GROUP);
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Unknown)));
+    run.paint("allow?");
+
+    let published_states = run.run_for(STARTUP_GRACE + Duration::from_secs(1), None);
+    assert_eq!(published_states, [published(Some(claude()), State::Blocked)]);
 }
 
 #[test]
@@ -708,7 +723,8 @@ fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
     assert_eq!(run.pane.progress, "", "progress was cleared on the agent change");
 
     run.paint("nothing");
-    assert_eq!(run.until_published(Duration::from_secs(1)), None, "the stale title counted");
+    let first = run.until_published(Duration::from_secs(1)).map(|(_, publication)| publication);
+    assert_eq!(first, Some(published(Some(claude()), State::Idle)), "the stale title counted");
 
     run.pane.set_title("⠄ fresh");
     run.paint("nothing still");
@@ -726,7 +742,7 @@ fn reset_forgets_the_agent_and_finds_it_again() {
     run.detector.reset();
     assert_eq!(run.detector.agent(), None);
     run.next = Duration::ZERO;
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Unknown)));
     run.settle();
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
 }
@@ -772,7 +788,8 @@ fn a_title_written_again_after_an_agent_change_counts_though_it_is_the_same() {
     run.pane.set_title("⠂ working on it");
     run.start_agent();
     run.paint("nothing");
-    assert_eq!(run.until_published(Duration::from_secs(1)), None, "the old agent's title");
+    let first = run.until_published(Duration::from_secs(1)).map(|(_, publication)| publication);
+    assert_eq!(first, Some(published(Some(claude()), State::Idle)), "the old agent's title");
 
     // A restarted agent writing the title its predecessor left, word for word.
     run.pane.set_title("⠂ working on it");
@@ -891,7 +908,7 @@ fn a_report_during_the_grace_is_published_at_once() {
     let mut run = Run::new();
     run.tick();
     run.pane.group = Some(AGENT_GROUP);
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Unknown)));
     run.report(State::Working);
     assert_eq!(run.tick(), Some(reported(State::Working)));
 }

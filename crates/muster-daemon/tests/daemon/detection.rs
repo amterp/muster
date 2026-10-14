@@ -230,6 +230,55 @@ fn the_herdr_probe_detection_scenario_settles_with_and_without_a_viewer() {
     println!("settled with a viewer:  {:?} (herdr: {HERDR_VIEWED:?})", seconds(&viewed));
 }
 
+/// An agent's first state is what its screen reads, never an idle from before the screen counted.
+/// Claude Code opens on its folder-trust dialog, and Codex given a first prompt opens at work:
+/// `muster pane wait --until idle,blocked` straight after starting either would have returned
+/// that idle, and whatever it was waiting to send would land in the dialog or the turn.
+#[test]
+fn an_agent_that_opens_blocked_or_working_is_never_idle_first() {
+    for (argument, opens) in
+        [("dialog", proto::AgentState::Blocked), ("working", proto::AgentState::Working)]
+    {
+        let seen = states_from_the_first_frame(argument, opens);
+        let claude = |state| (Some("claude".to_string()), state);
+        assert_eq!(seen.last(), Some(&claude(opens)), "{argument}: {seen:?}");
+        assert!(
+            !seen.contains(&claude(proto::AgentState::Idle)),
+            "{argument}, idle first: {seen:?}"
+        );
+    }
+}
+
+/// Every agent and state the pane is published with, from starting the fake agent with
+/// `argument` until it reads `opens`.
+fn states_from_the_first_frame(
+    argument: &str,
+    opens: proto::AgentState,
+) -> Vec<(Option<String>, proto::AgentState)> {
+    let home =
+        Home::new(&format!("opens-{argument}"), &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    make(&mut control, create("p1", in_new_tab("t-p1")));
+    until_text(&mut control, "p1", "$");
+    type_line(&mut input, "p1", &format!("{} {argument}", home.agent("claude").display()));
+
+    let mut seen = Vec::new();
+    let started = Instant::now();
+    while started.elapsed() < SETTLE_LIMIT {
+        let now = detected(&mut control, "p1");
+        if seen.last() != Some(&now) {
+            seen.push(now.clone());
+        }
+        if now == (Some("claude".to_string()), opens) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    seen
+}
+
 const SPRITE: &str = r#"
 id = "sprite"
 

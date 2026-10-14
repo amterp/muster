@@ -473,9 +473,12 @@ impl Detector {
             pane.clear_progress();
             self.title_writes_at_change = Some(pane.title_writes());
             if agent.is_some() {
+                // Unknown until its screen counts, not idle as herdr had it: a dialog an agent
+                // opens before its session starts is on screen inside the grace, and a caller
+                // told idle there - `pane wait`, the doorbell - would type into the dialog.
                 self.startup_grace_until = Some(now + STARTUP_GRACE);
-                self.published = PublishState { state: State::Idle, visible: true };
-                foreground.emitted = self.conclude(agent, State::Idle);
+                self.published = PublishState { state: State::Unknown, visible: false };
+                foreground.emitted = self.conclude(agent, State::Unknown);
             } else {
                 self.startup_grace_until = None;
             }
