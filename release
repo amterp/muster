@@ -60,6 +60,28 @@ fn bumped(version, bump):
         return "{major}.{minor + 1}.0"
     return "{major}.{minor}.{patch + 1}"
 
+fn parts_of(version):
+    return version.split(".").map(fn(p) parse_int(p))
+
+fn newer(version, than):
+    a = parts_of(version)
+    b = parts_of(than)
+    for i in range(3):
+        if a[i] != b[i]:
+            return a[i] > b[i]
+    return false
+
+// Whether `target` is a `bump` of `version` by any amount: 0.16.0 is a minor bump of 0.14.0 when
+// 0.15.0 was bumped and never published.
+fn raises(version, target, bump):
+    a = parts_of(version)
+    b = parts_of(target)
+    if bump == "major":
+        return b[0] > a[0] and b[1] == 0 and b[2] == 0
+    if bump == "minor":
+        return b[0] == a[0] and b[1] > a[1] and b[2] == 0
+    return b[0] == a[0] and b[1] == a[1] and b[2] > a[2]
+
 fn cask_marker_line():
     for line in read_file(CASK).content.split_lines():
         if line.starts_with("  # Still ") and "'s checksum, until the notarized " in line:
@@ -200,18 +222,26 @@ current = workspace_version()
 latest = latest_tag()
 pending_marker = cask_marker_line()
 
+// The version Cargo.toml is bumped from. It is the last release, unless a release was bumped and
+// then abandoned before anything was published: that version may already be in somebody's hands
+// as a local build, so it is skipped rather than published as a different tree.
+base = latest
 if pending_marker == "":
-    target = bumped(latest, bump)
-    if current != latest:
+    abandoned = current != latest and newer(current, latest) and not quiet $`git ls-remote --tags origin refs/tags/v{current} | grep -q .`.ok
+    if abandoned:
+        base = current
+        print("{current} was bumped and never published, so it is skipped.")
+    else if current != latest:
         fail(["Cargo.toml says {current}, but the last release is {latest} and the cask names no release under way.",
               "Impact: there is no telling which version this is meant to release.",
-              "Set Cargo.toml back to {latest} to release {target}, or finish {current} by hand."])
+              "Set Cargo.toml back to {latest} to release {bumped(latest, bump)}, or finish {current} by hand."])
+    target = bumped(base, bump)
     resuming = false
 else:
     target = current
     resuming = true
     tagged = quiet $`git rev-parse -q --verify refs/tags/v{target} >/dev/null`.ok
-    if not tagged and bumped(latest, bump) != target:
+    if not tagged and not raises(latest, target, bump):
         fail(["A {target} release is under way, which is not a {bump} bump of {latest}.",
               "Run this again with the bump that started it."])
     print("A {target} release is under way: picking up where it stopped.")
@@ -232,10 +262,10 @@ if not resuming:
               "Commit or stash them, then run this again."])
 
     cargo = read_file("Cargo.toml").content
-    if cargo.count("\nversion = \"{latest}\"\n") != 1:
-        fail(["Cargo.toml has no single 'version = \"{latest}\"' line to bump.",
+    if cargo.count("\nversion = \"{base}\"\n") != 1:
+        fail(["Cargo.toml has no single 'version = \"{base}\"' line to bump.",
               "Bump [workspace.package] version by hand and run this again."])
-    write_file("Cargo.toml", cargo.replace("\nversion = \"{latest}\"\n", "\nversion = \"{target}\"\n"))
+    write_file("Cargo.toml", cargo.replace("\nversion = \"{base}\"\n", "\nversion = \"{target}\"\n"))
     quiet $`cargo metadata -q --format-version 1 >/dev/null`
 
     cask = read_file(CASK).content
