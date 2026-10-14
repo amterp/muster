@@ -19,7 +19,7 @@
 //! manifests and reads the override directory without it, and `pane.read` formats its page
 //! without it.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
@@ -361,8 +361,9 @@ pub(crate) struct Session {
     /// message service decided it in: two posts decided one after the other can reach here the
     /// other way round, and the older must not overwrite the newer.
     human: BTreeMap<String, (u64, proto::msg_answer::Notice)>,
-    /// The names agents joined messaging by, which no pane is drawn, as messaging keeps them.
-    joined: Arc<Mutex<BTreeSet<String>>>,
+    /// The agents that joined messaging by names of their own, which no pane is drawn, nor given
+    /// while they are live, as messaging keeps them.
+    joined: crate::messages::Joined,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
@@ -1249,6 +1250,11 @@ impl Session {
         {
             return Err(name_held(given, holder));
         }
+        if let Some(given) = &given
+            && let Some(who) = self.joined_by(given, &create.pane)
+        {
+            return Err(name_joined(given, &who));
+        }
         let target = self.target(create.placement, &create.pane)?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
@@ -1855,6 +1861,22 @@ impl Session {
             );
             return changed;
         }
+        if let Some(holder) =
+            given_name(Some(&taken)).and_then(|taken| self.joined_by(taken, &name))
+        {
+            log::info(
+                "session.name.held",
+                fields! {
+                    "pane" => name,
+                    "agent" => agent,
+                    "holder" => holder,
+                    "impact" => "the pane keeps its name, since an agent here joined messaging by \
+                                 what its agent's session is called, and a post to it would \
+                                 mean both",
+                },
+            );
+            return changed;
+        }
         let pane = &mut self.panes[index];
         log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
         pane.record.label = Some(taken);
@@ -2139,6 +2161,11 @@ impl Session {
             && let Some(holder) = self.called(given, &rename.pane)
         {
             return name_held(given, holder);
+        }
+        if let Some(given) = given
+            && let Some(who) = self.joined_by(given, &rename.pane)
+        {
+            return name_joined(given, &who);
         }
         // Back to its word, which another pane may have been named since.
         let word = self.panes[index].record.word.clone();
@@ -3030,8 +3057,26 @@ impl Session {
     fn draw_word(&self, besides: Option<&str>) -> String {
         let joined = poison::lock(&self.joined, "daemon.messages.joined");
         muster_core::words::draw(|word| {
-            besides == Some(word) || self.called(word, "").is_some() || joined.contains(word)
+            besides == Some(word) || self.called(word, "").is_some() || joined.contains_key(word)
         })
+    }
+
+    /// The live agent that joined messaging by `name`, other than one in `naming`, described for
+    /// a refusal: a pane given that name would make a post to it mean two agents. Live as a post
+    /// judges it (`muster_msg`'s `pane_called`): its pane is open here, or, with no pane, it has
+    /// not left and its inbox answers.
+    fn joined_by(&self, name: &str, naming: &str) -> Option<String> {
+        // Copied out, so the inbox probe below never holds up messaging's updates to the set.
+        let known = poison::lock(&self.joined, "daemon.messages.joined").get(name)?.clone();
+        match known.pane.as_deref() {
+            Some(pane) if pane == naming => None,
+            Some(pane) => self.pane_index(pane).map(|_| format!("{name} (pane {pane})")),
+            None if !known.gone && crate::messages::inbox_answers(&known) => {
+                let at = known.inbox.as_ref().map_or("", |inbox| inbox.socket.as_str());
+                Some(format!("{name} (the session at {at})"))
+            }
+            None => None,
+        }
     }
 
     fn tab_index(&self, tab: &str) -> Option<usize> {
@@ -3053,6 +3098,15 @@ fn scrollback(settings: &proto::Settings) -> usize {
 /// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.
 fn given_name(label: Option<&str>) -> Option<&str> {
     label.map(str::trim).filter(|label| !label.is_empty())
+}
+
+/// A pane cannot be called what an agent here joined messaging by while that agent is live,
+/// because `--to` the name would then mean both.
+fn name_joined(name: &str, who: &str) -> Reply {
+    Reply::refused(format!(
+        "{name:?} is the name {who} joined messaging by, and a post to it would then mean two \
+         agents; choose another name, or have that agent join under another"
+    ))
 }
 
 /// A pane cannot be called what another pane here is, because a name says which pane it is.

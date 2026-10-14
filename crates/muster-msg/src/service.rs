@@ -1695,14 +1695,15 @@ impl<S: Store> Messaging<S> {
         true
     }
 
-    /// The names participants here took for themselves, rather than being their panes': no
-    /// pane should be drawn one, or a post to it would mean two agents.
-    pub fn joined_names(&self) -> BTreeSet<String> {
+    /// The participants here who took a name for themselves, rather than being their panes',
+    /// by that name: no pane should be drawn one, nor given one while its participant is live,
+    /// or a post to it would mean two agents.
+    pub fn joined(&self) -> BTreeMap<String, Participant> {
         self.participants
             .values()
             .filter(|known| known.pane.as_deref() != Some(known.name.as_str()))
             .filter(|known| known.name != HUMAN && split_machine(&known.name).is_none())
-            .map(|known| known.name.clone())
+            .map(|known| (known.name.clone(), known.clone()))
             .collect()
     }
 

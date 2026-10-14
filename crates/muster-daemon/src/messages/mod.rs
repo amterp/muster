@@ -22,7 +22,7 @@ mod wire;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use peer::Peers;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -34,8 +34,8 @@ use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
     Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Found, Inbox,
-    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Policy, Presence, Reach, Refusal, Route,
-    Settled, Tell, Via, Wake, What,
+    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Participant, Policy, Presence, Reach,
+    Refusal, Route, Settled, Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -89,9 +89,19 @@ pub(crate) struct Messages {
     /// Changes made by the request being handled, for the other machines with members in
     /// their groups to be sent once this lock is let go.
     telling: Vec<Tell>,
-    /// The names participants took for themselves, which the session draws no pane's word from.
-    /// A lock of its own, taken last and alone, so the session reads it without this one.
-    joined: Arc<Mutex<BTreeSet<String>>>,
+    /// The participants who took names for themselves, which the session draws no pane's word
+    /// from and gives no pane while they are live. A lock of its own, taken last and alone, so
+    /// the session reads it without this one.
+    joined: Joined,
+}
+
+/// The participants who took names for themselves, by name, as the session reads them.
+pub(crate) type Joined = Arc<Mutex<BTreeMap<String, Participant>>>;
+
+/// Whether a participant's session still answers at its inbox, as messaging judges one with no
+/// pane.
+pub(crate) fn inbox_answers(participant: &Participant) -> bool {
+    inbox::Sockets.alive(participant)
 }
 
 #[derive(Debug)]
@@ -110,7 +120,7 @@ impl Messages {
         let service = Messaging::restore(files, found.saved, found.logs);
         // A window that attends this daemon is told these by its snapshot.
         let human_groups = service.human_groups();
-        let joined = Arc::new(Mutex::new(service.joined_names()));
+        let joined = Arc::new(Mutex::new(service.joined()));
         Messages {
             // A wake the daemon before this one deferred and never rang is lost with it, and one
             // it rang cannot be told from one it did not, so each is rung again once its pane
@@ -136,12 +146,12 @@ impl Messages {
     }
 
     /// The names participants took for themselves, kept current after every request.
-    pub(crate) fn joined(&self) -> Arc<Mutex<BTreeSet<String>>> {
+    pub(crate) fn joined(&self) -> Joined {
         Arc::clone(&self.joined)
     }
 
     fn note_joined(&self) {
-        *poison::lock(&self.joined, "daemon.messages.joined") = self.service.joined_names();
+        *poison::lock(&self.joined, "daemon.messages.joined") = self.service.joined();
     }
 
     /// What waits for the human, in each group with anything waiting.
@@ -1709,7 +1719,7 @@ pub(super) fn reach_of(reach: Reach) -> msg_answer::Reach {
 }
 
 pub(super) fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
-    let map = |map: &std::collections::BTreeMap<String, Vec<String>>| {
+    let map = |map: &BTreeMap<String, Vec<String>>| {
         map.iter()
             .map(|(author, names)| {
                 (author.clone(), proto::msg_request::Names { names: names.clone() })

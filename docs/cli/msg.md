@@ -59,7 +59,9 @@ script, which has no session of its own to move, may act `--as` anyone. A sessio
 pane takes back the name the session before it held there. The pane's agent is the new session
 now, so the old one keeps the name only while its own inbox still answers, as when one agent is
 started inside another in the same pane. Nor may a session take a new name that a pane other than
-its own goes by, since `--to` that name would then mean two agents. A participant nothing can
+its own goes by, since `--to` that name would then mean two agents. The same holds the other way:
+`pane new --name` and `pane rename` refuse a name an agent here joined by while it is live, and a
+session renamed to one in its harness leaves its pane's name as it was. A participant nothing can
 wake, such as one made by `join --name` from a plain shell, counts as gone.
 
 Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as

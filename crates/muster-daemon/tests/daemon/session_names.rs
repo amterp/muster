@@ -170,6 +170,37 @@ fn a_session_name_another_pane_has_does_not_rename_the_pane() {
     assert_eq!(p1.label(), None);
 }
 
+/// Nor does the pane take the name a live agent joined messaging by: `--to` that name would then
+/// mean both.
+#[test]
+fn a_session_name_a_live_agent_joined_by_does_not_rename_the_pane() {
+    use std::os::unix::fs::MetadataExt;
+
+    let mut p1 = Pane::named(None);
+    let socket = p1.daemon.root().join("critic.inbox.sock");
+    let _listening = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let inode = std::fs::metadata(&socket).unwrap().ino();
+    let caller = proto::msg_request::Caller {
+        inbox: Some(proto::msg_request::Inbox { socket: socket.display().to_string(), inode }),
+        ..Default::default()
+    };
+    let join = proto::msg_request::Request::Join(proto::msg_request::Join {
+        name: Some("critic".to_string()),
+        group: Some("g".to_string()),
+        pull: false,
+    });
+    let joining = proto::request::Service::Msg(proto::MsgRequest {
+        caller: Some(caller),
+        request: Some(join),
+    });
+    expect(&mut p1.control, joining, proto::Outcome::Done);
+
+    p1.daemon.run_agent("p1");
+    p1.reports("");
+    p1.reports("critic");
+    assert_eq!(p1.label(), None);
+}
+
 #[test]
 fn a_session_name_needs_its_agent_and_counts_only_from_the_agent_in_the_pane() {
     let mut p1 = Pane::named(None);

@@ -352,6 +352,45 @@ fn a_post_to_a_panes_title_is_refused_naming_the_pane() {
     );
 }
 
+/// The reverse of a join refused a name a pane goes by: a pane is not given the name a live agent
+/// joined by, so `--to` that name keeps meaning one agent. Once that agent's session has gone,
+/// the name is free.
+#[test]
+fn a_pane_is_not_named_what_a_live_agent_joined_by() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let heron = Inbox::bind(&daemon, "heron");
+    join(&mut control, &heron.caller(), "heron", "g");
+
+    let made = proto::pane_request::Create {
+        label: Some("heron".to_string()),
+        ..create("p2", beside("p1", proto::Side::Right))
+    };
+    let refused = expect(
+        &mut control,
+        pane(proto::pane_request::Request::Create(made)),
+        proto::Outcome::Refused,
+    );
+    assert!(
+        refused.answer.reason.contains("joined messaging by"),
+        "a pane made with a joined agent's name should say so: {}",
+        refused.answer.reason
+    );
+    let renaming = || {
+        pane(proto::pane_request::Request::Rename(proto::pane_request::Rename {
+            pane: "p1".to_string(),
+            label: Some("heron".to_string()),
+        }))
+    };
+    expect(&mut control, renaming(), proto::Outcome::Refused);
+
+    let path = heron.path.clone();
+    drop(heron);
+    std::fs::remove_file(&path).unwrap();
+    expect(&mut control, renaming(), proto::Outcome::Done);
+}
+
 #[test]
 fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let daemon = daemon();
