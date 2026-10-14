@@ -1328,10 +1328,8 @@ final class SidebarRowView: NSView {
 
   /// Draws `row`, taking away whatever the row this view last showed had and this one does not.
   func show(_ row: SidebarModel.Row) {
-    // Panes indent under their tab caption, and sit flush when there is none. The list is
-    // 200pt wide, so a level of nesting that buys nothing is a level that costs a word off
-    // every label.
-    indented = row.isPane && row.tab != nil
+    // Panes indent under their tab caption, and stay indented in a list that draws none.
+    indented = row.isPane
     isTab = row.isTab
     layerColors = []
     for layer in [highlight, swatch, showing, dot, progressTrack, progressBar] {
