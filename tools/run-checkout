@@ -1,0 +1,38 @@
+#!/bin/bash
+# Runs this checkout's debug build beside an installed Muster without touching it.
+#
+# A checkout's build already gets a daemon of its own (dev-<hash>.sock), but in the release's
+# home it would still repoint ~/.muster/bin/muster at its own CLI on launch, so every release
+# pane would run the checkout's `muster`. A separate MUSTER_HOME moves that link, the window
+# state, the command sockets and the run log out of the release's way.
+#
+# The environment is cleared to what a Dock launch gets, because run from a pane this process
+# carries that pane's MUSTER_* and Ghostty variables, and the dev daemon would hand them on to
+# every pane it spawns.
+#
+# Build first with ./dev -b (or any ./dev that builds). config.toml is linked from ~/.muster on
+# the first run so both builds share keymap and fonts; replace the link with a file to diverge.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+app="$repo/.build/debug/muster"
+home="${MUSTER_DEV_HOME:-$HOME/.muster-dev}"
+
+if [[ ! -x "$app" ]]; then
+  echo "run-checkout: no build at $app. Run ./dev -b first." >&2
+  exit 1
+fi
+
+mkdir -p "$home"
+if [[ ! -e "$home/config.toml" && -f "$HOME/.muster/config.toml" ]]; then
+  ln -s "$HOME/.muster/config.toml" "$home/config.toml"
+fi
+
+out="$home/run.out"
+env -i \
+  HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/zsh}" \
+  TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+  MUSTER_HOME="$home" \
+  nohup "$app" "$@" >"$out" 2>&1 </dev/null &
+
+echo "pid $! · home $home · output $out"

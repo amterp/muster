@@ -203,6 +203,12 @@ nobody had chosen. Out of the gate because nothing in the gate needs one, and it
 descriptor ceiling launchd imposes on a GUI-launched process. The signature is ad-hoc, which is what macOS needs to
 run a Mach-O at all and asserts nothing about who built it.
 
+**`tools/run-checkout` runs this tree's debug build beside an installed Muster**, for trying a change on a machine
+that also uses the release. A checkout's build already gets its own daemon, but in the release's home its launch
+would repoint `~/.muster/bin/muster` at the checkout's CLI for every release pane, so the script runs it under
+`~/.muster-dev` (`MUSTER_DEV_HOME` moves it) with `config.toml` linked from `~/.muster`, and with the environment a
+Dock launch gets rather than the pane's. Build first with `./dev -b`.
+
 **`MUSTER_SIGN_IDENTITY` is what makes a bundle somebody else can run**, and `./dev --notarize` is the rest of it.
 Set the variable to a Developer ID and the same `--bundle` signs with it instead, under the hardened runtime and with
 `packaging/muster-release.entitlements` rather than the debug entitlement SwiftPM signs a local build with - and the
