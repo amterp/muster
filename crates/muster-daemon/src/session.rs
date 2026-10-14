@@ -40,7 +40,7 @@ use proto::{Outcome, pane_request, session_request, tab_request};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
 use crate::data::Data;
-use crate::detect::{self, Detecting};
+use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
 use crate::messages::{Doorbell, Messages, Peers};
@@ -118,7 +118,6 @@ impl Shared {
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
         let Saved { persister, settings, restoring } = saved;
-        let watched = overrides.clone();
         let built = Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -205,18 +204,16 @@ impl Shared {
         });
         // Not from inside `new_cyclic`: until it returns, the weak handle cannot be upgraded, and
         // the watcher would read that as the daemon having stopped and end for good.
-        if let Some(overrides) = watched {
-            let (stopping, reloading) = (Arc::downgrade(&built), Arc::downgrade(&built));
-            detect::watch_overrides(
-                overrides,
-                move || stopping.upgrade().is_none_or(|shared| shared.lock().stopping),
-                move || {
-                    if let Some(shared) = reloading.upgrade() {
-                        shared.reload_overrides();
-                    }
-                },
-            );
-        }
+        let (stopping, reloading) = (Arc::downgrade(&built), Arc::downgrade(&built));
+        detect::watch_overrides(
+            Arc::clone(&built.detecting),
+            move || stopping.upgrade().is_none_or(|shared| shared.lock().stopping),
+            move || {
+                if let Some(shared) = reloading.upgrade() {
+                    shared.reload_overrides();
+                }
+            },
+        );
         built
     }
 
@@ -572,7 +569,7 @@ pub(crate) struct Loading {
 }
 
 impl Loading {
-    pub(crate) fn load(&self) -> Manifests {
+    pub(crate) fn load(&self) -> Loaded {
         self.detecting.load(&self.app)
     }
 }
@@ -2505,7 +2502,7 @@ impl Session {
     /// detected differently now. A pane whose agent's manifest is unchanged keeps its state:
     /// the app sends its manifests on every connect, and starting every pane over would publish
     /// each working agent idle through a startup grace, then working again.
-    pub(crate) fn manifests_loaded(&mut self, loading: Loading, loaded: Manifests) -> Reply {
+    pub(crate) fn manifests_loaded(&mut self, loading: Loading, loaded: Loaded) -> Reply {
         if loading.load < self.manifests_adopted {
             // A later send already put its manifests in use, and they supersede these: nothing
             // this send asked for was put in use.

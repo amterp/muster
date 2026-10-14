@@ -23,11 +23,32 @@ use crate::pane::PaneIo;
 #[derive(Debug)]
 pub(crate) struct Detecting {
     /// None until the first load lands.
-    manifests: Mutex<Option<Arc<Manifests>>>,
-    /// Told when `manifests` first holds some, for a reader that cannot go on without them.
+    in_use: Mutex<Option<InUse>>,
+    /// Told when `in_use` first holds some, for a reader that cannot go on without them.
     loaded: Condvar,
     /// `~/.muster/agent-detection/`, read again whenever the manifests are.
     overrides: Option<PathBuf>,
+}
+
+/// The manifests in use, and the override directory they were read from.
+#[derive(Debug)]
+struct InUse {
+    manifests: Arc<Manifests>,
+    overrides: Option<Fingerprint>,
+}
+
+/// Manifests from [`Detecting::load`], with the override directory they read: none when it
+/// changed while they were loading, so what they read is not known.
+#[derive(Debug)]
+pub(crate) struct Loaded {
+    manifests: Manifests,
+    overrides: Option<Fingerprint>,
+}
+
+impl From<Loaded> for InUse {
+    fn from(loaded: Loaded) -> InUse {
+        InUse { manifests: Arc::new(loaded.manifests), overrides: loaded.overrides }
+    }
 }
 
 impl Detecting {
@@ -36,14 +57,14 @@ impl Detecting {
     /// until they land, panes simply are not detected yet.
     pub(crate) fn start(overrides: Option<PathBuf>) -> Arc<Detecting> {
         let detecting =
-            Arc::new(Detecting { manifests: Mutex::new(None), loaded: Condvar::new(), overrides });
+            Arc::new(Detecting { in_use: Mutex::new(None), loaded: Condvar::new(), overrides });
         let loading = Arc::clone(&detecting);
         let started =
             std::thread::Builder::new().name("detect load".to_string()).spawn(move || {
                 let loaded = load(&[], loading.overrides.as_deref());
                 // An app's manifests that arrived first include these, and win.
-                poison::lock(&loading.manifests, "daemon.detect.manifests")
-                    .get_or_insert_with(|| Arc::new(loaded));
+                poison::lock(&loading.in_use, "daemon.detect.manifests")
+                    .get_or_insert_with(|| loaded.into());
                 loading.loaded.notify_all();
             });
         if let Err(error) = started {
@@ -60,39 +81,64 @@ impl Detecting {
     }
 
     pub(crate) fn manifests(&self) -> Option<Arc<Manifests>> {
-        poison::lock(&self.manifests, "daemon.detect.manifests").clone()
+        let in_use = poison::lock(&self.in_use, "daemon.detect.manifests");
+        in_use.as_ref().map(|in_use| Arc::clone(&in_use.manifests))
     }
 
     /// [`Detecting::manifests`], waiting up to `patience` for the first load. For a reader whose
     /// answer is wrong rather than late without them: a report taken before they land is
     /// attributed to nothing, which a pane with no agent detected yet accepts.
     pub(crate) fn manifests_within(&self, patience: Duration) -> Option<Arc<Manifests>> {
-        let manifests = poison::lock(&self.manifests, "daemon.detect.manifests");
-        let (manifests, _) = poison::recover(
-            self.loaded.wait_timeout_while(manifests, patience, |manifests| manifests.is_none()),
+        let in_use = poison::lock(&self.in_use, "daemon.detect.manifests");
+        let (in_use, _) = poison::recover(
+            self.loaded.wait_timeout_while(in_use, patience, |in_use| in_use.is_none()),
             "daemon.detect.manifests",
         );
-        manifests.clone()
+        in_use.as_ref().map(|in_use| Arc::clone(&in_use.manifests))
     }
 
     /// Compiles the manifests again, with the app's. Tens of milliseconds, and it reads the
     /// override directory, which can be on a mount that hangs: never done under the session
     /// lock.
-    pub(crate) fn load(&self, app: &[(String, String)]) -> Manifests {
+    pub(crate) fn load(&self, app: &[(String, String)]) -> Loaded {
         load(app, self.overrides.as_deref())
     }
 
     /// Puts manifests from [`Detecting::load`] in use, and returns the agents whose manifest
     /// changed: only their panes need detecting afresh.
-    pub(crate) fn adopt(&self, loaded: Manifests) -> Vec<Agent> {
-        let mut manifests = poison::lock(&self.manifests, "daemon.detect.manifests");
-        // Before the first load, nothing has been detected by anything.
-        let changed = manifests.as_ref().map(|current| loaded.changed_since(current));
-        if changed.as_ref().is_none_or(|changed| !changed.is_empty()) {
-            *manifests = Some(Arc::new(loaded));
-        }
+    pub(crate) fn adopt(&self, loaded: Loaded) -> Vec<Agent> {
+        let mut in_use = poison::lock(&self.in_use, "daemon.detect.manifests");
+        let changed = match in_use.as_mut() {
+            // Before the first load, nothing has been detected by anything.
+            None => {
+                *in_use = Some(loaded.into());
+                Vec::new()
+            }
+            Some(current) => {
+                let changed = loaded.manifests.changed_since(&current.manifests);
+                if !changed.is_empty() {
+                    current.manifests = Arc::new(loaded.manifests);
+                }
+                // Unchanged manifests were read from this directory as much as from the last.
+                current.overrides = loaded.overrides;
+                changed
+            }
+        };
         self.loaded.notify_all();
-        changed.unwrap_or_default()
+        changed
+    }
+
+    /// Whether the override directory holds something other than what the manifests in use
+    /// were read from, or what they read is not known. Compared with that rather than with the
+    /// last look, since a load can read the directory between two looks: a file saved and
+    /// deleted again between them would be a change neither look saw, leaving the deleted
+    /// manifest in use. False until the first load lands, which reads the directory itself.
+    fn overrides_moved(&self) -> bool {
+        let Some(overrides) = &self.overrides else { return false };
+        // Read with no lock held: the directory can sit on a mount that hangs.
+        let now = fingerprint(overrides);
+        let in_use = poison::lock(&self.in_use, "daemon.detect.manifests");
+        in_use.as_ref().is_some_and(|in_use| in_use.overrides.as_ref() != Some(&now))
     }
 }
 
@@ -118,9 +164,9 @@ fn overrides_look() -> Duration {
 
 /// What the override directory holds, as far as telling a change goes: each manifest's name,
 /// size and when it was last written. Empty for a directory that is not there.
-fn fingerprint(
-    overrides: &std::path::Path,
-) -> Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)> {
+type Fingerprint = Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)>;
+
+fn fingerprint(overrides: &std::path::Path) -> Fingerprint {
     let Ok(entries) = std::fs::read_dir(overrides) else { return Vec::new() };
     let mut seen: Vec<_> = entries
         .flatten()
@@ -139,26 +185,25 @@ fn fingerprint(
 }
 
 /// Looks at a person's override directory every [`OVERRIDES_LOOK`], and calls `changed` when what
-/// it holds has changed since the last look. On a thread of its own, never joined: the directory
-/// can sit on a mount that hangs, and a look that hangs costs only this thread. Ends once
-/// `stopped` says so.
+/// it holds differs from what the manifests in use were read from, which loading them again puts
+/// right. On a thread of its own, never joined: the directory can sit on a mount that hangs, and a
+/// look that hangs costs only this thread. Ends once `stopped` says so. Nothing to look at for a
+/// daemon with no override directory.
 pub(crate) fn watch_overrides(
-    overrides: PathBuf,
+    detecting: Arc<Detecting>,
     stopped: impl Fn() -> bool + Send + 'static,
     changed: impl Fn() + Send + 'static,
 ) {
+    let Some(overrides) = detecting.overrides.clone() else { return };
     let watching =
         std::thread::Builder::new().name("detect overrides".to_string()).spawn(move || {
             let look = overrides_look();
-            let mut last = fingerprint(&overrides);
             loop {
                 std::thread::sleep(look);
                 if stopped() {
                     return;
                 }
-                let now = fingerprint(&overrides);
-                if now != last {
-                    last = now;
+                if detecting.overrides_moved() {
                     log::info(
                         "daemon.detect.overrides_changed",
                         fields! { "directory" => overrides.display() },
@@ -180,9 +225,16 @@ pub(crate) fn watch_overrides(
     }
 }
 
-fn load(app: &[(String, String)], overrides: Option<&std::path::Path>) -> Manifests {
+fn load(app: &[(String, String)], overrides: Option<&std::path::Path>) -> Loaded {
     let started = Instant::now();
+    // The directory is read at the end of a load that compiles every built-in manifest first,
+    // which can take long enough under load for a file to be saved meanwhile. So it is looked at
+    // on both sides of the load, and a load it changed during reads as unknown, which the next
+    // look loads again.
+    let before = overrides.map(fingerprint).unwrap_or_default();
     let (manifests, warnings) = Manifests::load(app, overrides);
+    let after = overrides.map(fingerprint).unwrap_or_default();
+    let seen = (before == after).then_some(after);
     for warning in &warnings {
         // A warning's text already says what it costs and what to do.
         log::warn("daemon.detect.manifest_ignored", fields! { "warning" => warning });
@@ -195,7 +247,7 @@ fn load(app: &[(String, String)], overrides: Option<&std::path::Path>) -> Manife
             "ms" => started.elapsed().as_millis(),
         },
     );
-    manifests
+    Loaded { manifests, overrides: seen }
 }
 
 /// One pane's detection, owned by its reader.
@@ -485,5 +537,43 @@ mod tests {
         let carried = handed_over();
         let resumed = Detection::resumed(Some(100), &carried, now, 7);
         assert_eq!(resumed.carried(now), carried);
+    }
+
+    const SPRITE: &str = r#"
+id = "sprite"
+
+[[rules]]
+id = "working"
+state = "working"
+priority = 10
+region = "whole_recent"
+contains = ["probe-state:working"]
+"#;
+
+    /// An override deleted after the manifests in use were read with it is a change, though no
+    /// look ever saw it there: a load that reads the directory between two looks is how a
+    /// deleted manifest went on detecting its agent.
+    #[test]
+    fn an_override_deleted_after_the_manifests_read_it_is_a_change() {
+        let overrides =
+            std::env::temp_dir().join(format!("muster-detect-moved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&overrides);
+        std::fs::create_dir_all(&overrides).unwrap();
+        std::fs::write(overrides.join("sprite.toml"), SPRITE).unwrap();
+        let detecting = Detecting::start(Some(overrides.clone()));
+        let manifests = detecting.manifests_within(Duration::from_secs(30));
+        assert!(manifests.expect("the first load").agent_named("sprite").is_some());
+        assert!(!detecting.overrides_moved(), "nothing has changed since the load");
+
+        std::fs::remove_file(overrides.join("sprite.toml")).unwrap();
+        assert!(detecting.overrides_moved());
+        let changed = detecting.adopt(detecting.load(&[]));
+        assert_eq!(changed.iter().map(Agent::id).collect::<Vec<_>>(), ["sprite"]);
+        assert!(!detecting.overrides_moved(), "the reload read the directory as it is now");
+
+        // A load the directory changed during says nothing of what it read.
+        detecting.adopt(Loaded { manifests: Manifests::built_in(), overrides: None });
+        assert!(detecting.overrides_moved());
+        let _ = std::fs::remove_dir_all(&overrides);
     }
 }
