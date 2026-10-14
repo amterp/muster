@@ -1,0 +1,97 @@
+What Claude Code 2.1.299 shows before a session starts.
+
+Recorded 2026-10-13 on macOS 26.4.1 / arm64, Claude Code 2.1.299, in a 100x30 pseudo-terminal, by
+`tools/detection-capture.py --harness claude-startup` and `claude-signin`, with CLAUDE_CONFIG_DIR a
+fresh directory in the capture folder and no credentials in the environment. The screens,
+rendered, are the "claude 2.1.299" cases in corpus/conformance/agent-detection-recorded.json.
+<folder> is the capture folder.
+
+claude-startup: ANTHROPIC_API_KEY set to a string that is not a key, ANTHROPIC_BASE_URL
+http://127.0.0.1:9, where nothing listens, and `claude --dangerously-skip-permissions`. The screens
+came in this order, each answered with the keys after it:
+
+    Let's get started.
+
+    Choose the text style that looks best with your terminal
+    To change this later, run /theme
+
+        Auto (match terminal)
+    ❯ ✔ Dark mode
+        Light mode
+        ... (four more), then a sample diff and "Syntax theme: Monokai Extended"
+
+  Return. No footer.
+
+    Detected a custom API key in your environment
+
+    ANTHROPIC_API_KEY: sk-ant-...00000000000000000000
+
+    Do you want to use this API key?
+      Yes
+    ❯ No (recommended)
+
+    Enter to confirm · Esc to cancel
+
+  Up, Return.
+
+    Security notes:
+
+    1. Claude can make mistakes.
+       ...
+    2. Due to prompt injection risks, only use it with code you trust
+       ...
+
+    Press Enter to continue…
+
+  Return.
+
+    Accessing workspace:
+
+    <folder>
+
+    Quick safety check: Is this a project you created or one you trust? ...
+
+    Claude Code'll be able to read, edit, and execute files here.
+
+    Security guide
+
+    ❯ No, exit
+      Yes, I trust this folder
+
+    Enter to confirm · Esc to cancel
+
+  Down, Return.
+
+    WARNING: Claude Code running in Bypass Permissions mode
+    ...
+    ❯ No, exit
+      Yes, I accept
+
+    Enter to confirm · Esc to cancel
+
+  Down, Return: the prompt box, "Opus 5.5 · API Usage Billing", "⏵⏵ bypass permissions on". No
+  request was sent.
+
+Every screen but the last had no window title; the prompt box came with "✳ Claude Code".
+
+claude-signin: no API key, `claude`. The theme picker as above, Return, then:
+
+    Claude Code can be used with your Claude subscription or billed based on API usage through
+    your Console account.
+
+    Select login method:
+
+    ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise
+      2. Anthropic Console account · API usage billing
+      3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI
+
+  No footer. Nothing was chosen.
+
+The folder trust dialog with the recording machine's own config, from a scratch script built on
+tools/detection-capture.py: `claude --model haiku` in a fresh folder under $TMPDIR, screens taken
+0.5, 1, 2, 4 and 8 seconds after it started. The dialog was whole in the first and unchanged in
+every one after it: the same words as above, with no onboarding before it.
+
+With the built-in claude manifest at 2026.10.13.2, the theme picker, the security notes and the
+login method picker read idle by no rule; the API key question, the trust dialog and the bypass
+warning read blocked by live_blocked_form, at every moment the trust dialog was taken.

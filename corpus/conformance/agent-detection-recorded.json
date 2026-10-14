@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. Claude Code 2.1.299's were recorded with one short turn on Haiku; the last ends on a Bash command longer than the pane, whose row, cut off with an ellipsis, read as the spinner until the spinner's timerless pattern was narrowed to words. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. Claude Code 2.1.299's were recorded with one short turn on Haiku; the last ends on a Bash command longer than the pane, whose row, cut off with an ellipsis, read as the spinner until the spinner's timerless pattern was narrowed to words. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code 2.1.299's screens before a first session were recorded with its config in the capture directory and no credentials: the API key it was asked about is not one, with a base URL nothing listens at, so they reached no account.",
   "cases": [
     {
       "expect": {
@@ -684,6 +684,104 @@
       },
       "name": "claude 2.1.299: idle after a turn ending on a long Bash call",
       "why": "A turn ended on a Bash call too long for the pane, whose row is cut off with an ellipsis like a spinner's words."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Let's get started.\n\n Choose the text style that looks best with your terminal\n To change this later, run /theme\n\n     Auto (match terminal)\n ❯ ✔ Dark mode\n     Light mode\n     Dark mode (colorblind-friendly)\n     Light mode (colorblind-friendly)\n     Dark mode (ANSI colors only)\n     Light mode (ANSI colors only)\n\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  1  function greet() {\n  2 -  console.log(\"Hello, World!\");\n  2 +  console.log(\"Hello, Claude!\");\n  3  }\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  Syntax theme: Monokai Extended (ctrl+t to disable)\n",
+        "title": "",
+        "typed": "                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Let's get started.\n\n Choose the text style that looks best with your terminal\n To change this later, run /theme\n\n     Auto (match terminal)\n ❯ ✔ Dark mode\n     Light mode\n     Dark mode (colorblind-friendly)\n     Light mode (colorblind-friendly)\n     Dark mode (ANSI colors only)\n     Light mode (ANSI colors only)\n\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n     function greet() {\n  2 -  console.log(\"Hello, World!\");\n  2 +  console.log(\"Hello, Claude!\");\n     }\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  Syntax theme: Monokai Extended (ctrl+t to disable)"
+      },
+      "name": "claude 2.1.299: theme picker",
+      "why": "A fresh install asks for a theme before anything else."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Detected a custom API key in your environment\n\n  ANTHROPIC_API_KEY: sk-ant-...00000000000000000000\n\n  Do you want to use this API key?\n\n    Yes\n  ❯ No (recommended)\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "",
+        "typed": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  Detected a custom API key in your environment\n\n  ANTHROPIC_API_KEY: sk-ant-...00000000000000000000\n\n  Do you want to use this API key?\n\n    Yes\n  ❯ No (recommended)\n\n  Enter to confirm · Esc to cancel"
+      },
+      "name": "claude 2.1.299: API key question",
+      "why": "Claude Code asks whether to use the API key it found in its environment."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Security notes:\n\n 1. Claude can make mistakes.\n    You're responsible for Claude's actions and should always\n    review them, especially when running code.\n\n 2. Due to prompt injection risks, only use it with code you trust\n    Learn more: https://code.claude.com/docs/en/security\n\n Press Enter to continue…\n",
+        "title": "",
+        "typed": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Security notes:\n\n 1. Claude can make mistakes.\n    You're responsible for Claude's actions and should always\n    review them, especially when running code.\n\n 2. Due to prompt injection risks, only use it with code you trust\n    Learn more: https://code.claude.com/docs/en/security\n\n Press Enter to continue…"
+      },
+      "name": "claude 2.1.299: security notes",
+      "why": "Claude Code's security notes, waiting for Return."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n Accessing workspace:\n\n /tmp/capture\n\n\n Quick safety check: Is this a project you created or one you trust? (Like your own code, a\n well-known open source project, or work from your team). If not, take a moment to review what's in\n this folder first.\n\n Claude Code'll be able to read, edit, and execute files here.\n\n Security guide\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n",
+        "title": "",
+        "typed": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n Accessing workspace:\n\n /tmp/capture\n\n\n Quick safety check: Is this a project you created or one you trust? (Like your own code, a\n well-known open source project, or work from your team). If not, take a moment to review what's in\n this folder first.\n\n Claude Code'll be able to read, edit, and execute files here.\n\n Security guide\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel"
+      },
+      "name": "claude 2.1.299: folder trust dialog",
+      "why": "Claude Code asks whether to trust a folder it has not seen, \"No, exit\" selected."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  WARNING: Claude Code running in Bypass Permissions mode\n\n  In Bypass Permissions mode, Claude Code will not ask for your approval before running\n  potentially dangerous commands.\n  This mode should only be used in a sandboxed container/VM that has restricted internet access\n  and can easily be restored if damaged.\n\n  By proceeding, you accept all responsibility for actions taken while running in Bypass\n  Permissions mode.\n\n  https://code.claude.com/docs/en/security\n\n  ❯ No, exit\n    Yes, I accept\n\n  Enter to confirm · Esc to cancel\n",
+        "title": "",
+        "typed": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  WARNING: Claude Code running in Bypass Permissions mode\n\n  In Bypass Permissions mode, Claude Code will not ask for your approval before running\n  potentially dangerous commands.\n  This mode should only be used in a sandboxed container/VM that has restricted internet access\n  and can easily be restored if damaged.\n\n  By proceeding, you accept all responsibility for actions taken while running in Bypass\n  Permissions mode.\n\n  https://code.claude.com/docs/en/security\n\n  ❯ No, exit\n    Yes, I accept\n\n  Enter to confirm · Esc to cancel"
+      },
+      "name": "claude 2.1.299: bypass permissions warning",
+      "why": "Started in bypass mode, Claude Code asks to have its risks accepted, \"No, exit\" selected."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;0;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Opus 5.5 · API Usage Billing\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents\n",
+        "title": "✳ Claude Code",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Opus 5.5 · API Usage Billing\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents"
+      },
+      "name": "claude 2.1.299: idle after the startup screens",
+      "why": "Every startup screen answered: Claude Code at its prompt box."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Claude Code can be used with your Claude subscription or billed based on API usage through your\n Console account.\n\n Select login method:\n\n ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n   2. Anthropic Console account · API usage billing\n   3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI\n",
+        "title": "",
+        "typed": "Welcome to Claude Code v2.1.299\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Claude Code can be used with your Claude subscription or billed based on API usage through your\n Console account.\n\n Select login method:\n\n ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n   2. Anthropic Console account · API usage billing\n   3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, Google Vertex AI"
+      },
+      "name": "claude 2.1.299: login method picker",
+      "why": "A fresh install with no API key asks how to log in before any session starts."
     }
   ]
 }

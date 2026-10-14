@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.10.13.2"
+version = "2026.10.13.3"
 min_engine_version = 12
 updated_at = "2026-10-13T00:00:00Z"
 aliases = ["claude-code"]
@@ -177,6 +177,38 @@ all = [
     { line_regex = ['^\s*\x{276F}?\s*Decline\b'] },
   ] },
 ]
+
+# A fresh install asks for a theme, shows security notes and, with no API key, asks how to log
+# in, before any session starts. None has a footer live_blocked_form reads, and nothing on screen
+# says idle, so without these they read idle by no rule. Above every working rule, for
+# live_blocked_form's reason. Words are matched across lines, since each wraps in a narrow pane
+# (docs/observations/claude-code-2.1.299.md, section 2).
+[[rules]]
+id = "first_run_theme"
+state = "blocked"
+priority = 1150
+region = "bottom_non_empty_lines(30)"
+visible_blocker = true
+# Read by its words, not its options: /theme opened from the prompt offers the same ones.
+regex = ['(?i)choose\s+the\s+text\s+style', '(?i)to\s+change\s+this\s+later,\s+run\s+/theme']
+
+[[rules]]
+id = "first_run_security_notes"
+state = "blocked"
+priority = 1150
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["security notes:"]
+regex = ['(?i)press\s+enter\s+to\s+continue']
+
+[[rules]]
+id = "login_method"
+state = "blocked"
+priority = 1150
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["select login method:"]
+regex = ['(?i)claude\s+account\s+with\s+subscription', '(?i)anthropic\s+console\s+account']
 
 [[rules]]
 id = "live_prompt_box"

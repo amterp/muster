@@ -27,6 +27,13 @@ first moment of a turn). It runs with its data and config in <out> and no creden
 only OpenCode's free models answer; `--binary` names a build other than the one on PATH, since its
 free models refuse 1.3.15.
 
+`claude-startup` and `claude-signin` record the screens a fresh Claude Code install shows before
+a session starts, with its config in <out> and no credentials: `claude-startup` the theme picker,
+the question about an API key in its environment (one that is not a key, with a base URL at
+127.0.0.1:9, so nothing reaches the network or any account), the security notes, the folder trust
+dialog and the bypass permissions warning, accepting each, and `claude-signin` the login method
+picker a config with no key shows.
+
 `codex-startup` and `codex-signin` record Codex's startup screens rather than its turns, as cases
 for `codex`, with its home in <out> and a model provider at 127.0.0.1:9, so nothing they run
 reaches the network or any account: `codex-startup` the folder trust dialog and the hooks review,
@@ -318,6 +325,83 @@ CLAUDE = Harness(
         "plan": claude_plan,
         "bash": claude_bash,
     },
+)
+
+# Claude Code with its config in the capture's folder and no credentials, for the screens a fresh
+# install shows before a session starts. The API key is not one, and is sent nowhere: the base URL
+# is a port nothing listens at.
+def claude_fresh(out: Path, api_key: bool) -> dict[str, str]:
+    config = out / ".claude-config"
+    config.mkdir(exist_ok=True)
+    environment = {"CLAUDE_CONFIG_DIR": str(config), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    if api_key:
+        environment["ANTHROPIC_API_KEY"] = "sk-ant-api03-not-a-key-" + "0" * 40
+        environment["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:9"
+    return environment
+
+
+DOWN, UP = "\x1b[B", "\x1b[A"
+
+
+def press(capture: Capture, keys: list[str]) -> None:
+    for key in keys:
+        capture.send(key)
+        capture.pump(0.3)
+
+
+def claude_startup(capture: Capture) -> None:
+    # Each screen is answered the way that moves on to the next: the theme as it is, the key, the
+    # folder (the capture's own) and bypass mode accepted.
+    capture.pump(20, b"/theme")
+    capture.pump(2)
+    capture.mark("theme picker", "blocked", "A fresh install asks for a theme before anything else.")
+    # Each screen, and the keys that answer it once it has been marked.
+    screens = [
+        (b"API key", "API key question", "Claude Code asks whether to use the API key it found in its environment.", [UP, "\r"]),
+        (b"Security notes", "security notes", "Claude Code's security notes, waiting for Return.", ["\r"]),
+        (b"trust this folder", "folder trust dialog", "Claude Code asks whether to trust a folder it has not seen, \"No, exit\" selected.", [DOWN, "\r"]),
+        (b"Bypass Permissions mode", "bypass permissions warning", "Started in bypass mode, Claude Code asks to have its risks accepted, \"No, exit\" selected.", [DOWN, "\r"]),
+    ]
+    answer = ["\r"]
+    for wanted, name, note, then in screens:
+        press(capture, answer)
+        capture.pump(15, wanted)
+        capture.pump(2)
+        capture.mark(name, "blocked", note)
+        answer = then
+    press(capture, answer)
+    capture.pump(15, b"bypass permissions on")
+    capture.pump(2)
+    capture.mark("idle after the startup screens", "idle", "Every startup screen answered: Claude Code at its prompt box.")
+
+
+def claude_signin(capture: Capture) -> None:
+    capture.pump(20, b"/theme")
+    capture.pump(2)
+    capture.send("\r")
+    capture.pump(15, b"login method")
+    capture.pump(2)
+    capture.mark("login method picker", "blocked", "A fresh install with no API key asks how to log in before any session starts.")
+
+
+CLAUDE_STARTUP = Harness(
+    argv=lambda out: ["claude", "--dangerously-skip-permissions"],
+    strip=("CLAUDE", "MUSTER_"),
+    start=claude_startup,
+    phases={},
+    environment=lambda out: claude_fresh(out, api_key=True),
+    credentials=False,
+    agent="claude",
+)
+
+CLAUDE_SIGNIN = Harness(
+    argv=lambda out: ["claude"],
+    strip=("CLAUDE", "MUSTER_"),
+    start=claude_signin,
+    phases={},
+    environment=lambda out: claude_fresh(out, api_key=False),
+    credentials=False,
+    agent="claude",
 )
 
 # --- Codex -------------------------------------------------------------------------------------
@@ -663,6 +747,8 @@ OPENCODE = Harness(
 
 HARNESSES = {
     "claude": CLAUDE,
+    "claude-startup": CLAUDE_STARTUP,
+    "claude-signin": CLAUDE_SIGNIN,
     "codex": CODEX,
     "codex-startup": CODEX_STARTUP,
     "codex-signin": CODEX_SIGNIN,
