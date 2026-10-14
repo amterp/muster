@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::names::{Mint, Minter, could_be_minted};
+use muster_core::names::{CLOCK_SKEW, Mint, Minter, could_be_minted};
 use serde_json::{Value, json};
 
 #[test]
@@ -126,7 +126,13 @@ fn a_word_is_a_minted_name_only_if_it_was_minted_by_then() {
     let tab = Minter::new(Mint::Replayed { at, seed: 7 }).tab().to_string();
     assert!(could_be_minted(&tab, 't', at), "{tab} as it was minted");
     assert!(could_be_minted(&tab, 't', at + Duration::from_hours(24)), "{tab} a day on");
-    assert!(!could_be_minted(&tab, 't', at - Duration::from_secs(10)), "{tab} a tick before");
+    // Minted on a machine whose clock runs ahead of this one.
+    assert!(could_be_minted(&tab, 't', at - Duration::from_mins(5)), "{tab} five minutes before");
+    assert!(could_be_minted(&tab, 't', at - CLOCK_SKEW), "{tab} the most skew taken");
+    assert!(
+        !could_be_minted(&tab, 't', at - CLOCK_SKEW - Duration::from_secs(10)),
+        "{tab} past it"
+    );
     assert!(!could_be_minted(&tab, 'p', at), "{tab} is not a pane's");
 
     // Of the shape, and decoding to 2034.

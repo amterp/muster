@@ -184,6 +184,9 @@ fn spell(at: SystemTime, entropy: &mut impl RandomSource, prefix: char) -> Strin
 /// name also says when it was made, and no name was made after `now`, so the word's time has to
 /// be past too - which `pretenders`, read as one, puts in 2034. Names minted before May 2026,
 /// when the tick count still fit in four characters, are not recognized.
+///
+/// Past by [`CLOCK_SKEW`], since the name may have been minted on another machine whose clock
+/// runs ahead of this one: a devenv's tab read as no name would be renamed past again.
 pub fn could_be_minted(word: &str, letter: char, now: SystemTime) -> bool {
     let Some(rest) = word.strip_prefix(letter) else { return false };
     if rest.len() != 9 || !rest.chars().all(|c| ALPHABET.contains(c)) {
@@ -195,8 +198,14 @@ pub fn could_be_minted(word: &str, letter: char, now: SystemTime) -> bool {
     let generator = spelling();
     let tick = generator.tick_size().unwrap_or(Duration::from_secs(10));
     let made = u32::try_from(ticks).ok().and_then(|ticks| tick.checked_mul(ticks));
-    made.and_then(|made| generator.epoch().checked_add(made)).is_some_and(|made| made <= now)
+    made.and_then(|made| generator.epoch().checked_add(made))
+        .is_some_and(|made| made <= now + CLOCK_SKEW)
 }
+
+/// How far ahead of this machine's clock another machine's may run and still have its names
+/// recognized here. A day: far more than a synced clock drifts, and far less than the years
+/// ahead an ordinary word decodes to.
+pub const CLOCK_SKEW: Duration = Duration::from_hours(24);
 
 /// A last resort when the machine will not hand over entropy.
 ///
