@@ -1604,6 +1604,7 @@
         "otter registered"
       ] }
     },
+    {"name": "a name a gone session joined by means the pane that goes by it now", "why": "A session that joined as `heron` in a pane since closed can never read a post again while another pane goes by `heron`, since joining by a name another pane goes by is refused. So it no longer makes the name mean two agents, and the post reaches the pane rather than being refused over a dead letter. Seen with an integrator whose pane was named after a participant a session from the week before had joined by.", "given": {"steps": [{"do": "agent", "pane": "p9", "state": "idle"}, {"session": "c", "do": "join", "name": "heron", "pane": "p9"}, {"do": "pane", "pane": "p9", "state": "closed"}, {"do": "agent", "pane": "p1", "state": "idle", "called": "heron"}, {"session": "i", "do": "join", "name": "integrator"}, {"session": "i", "do": "post", "to": ["heron"], "body": "brief"}]}, "expect": {"said": ["p9 idle","heron registered","p9 closed","p1 idle","integrator registered","integrator posted #4 to heron+integrator; woke p1 [heron+integrator #4-4 x1 to-you:1 from integrator] rung p1"]}},
     {
       "name": "a group's member is added by its pane's name",
       "why": "`group add` takes a pane wherever `--to` does, by its name as by its id.",

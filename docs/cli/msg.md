@@ -96,7 +96,9 @@ linked to it (below), so `otter@devenv` reaches the devenv's `otter`.
 A name is read the way `muster pane send --pane` reads one: a pane's id first, whatever any pane
 is called, then a name. A name that means more than one agent - a pane here and a pane on a
 linked machine, or a pane and a participant who joined by that name - is refused, naming each,
-and its id or `name@machine` says which. A daemon draws no pane a word somebody here joined by.
+and its id or `name@machine` says which. A participant whose session has gone, and whose pane has
+closed with it, does not count: it cannot join by that name again while a pane goes by it, so the
+pane is the only agent the name can reach. A daemon draws no pane a word somebody here joined by.
 `group add` takes a pane by its name as `--to` does.
 
 ## A group's policy

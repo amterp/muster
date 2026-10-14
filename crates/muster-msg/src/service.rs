@@ -1565,6 +1565,11 @@ impl<S: Store> Messaging<S> {
     /// name that means somebody else as well - a participant who joined by that name, or
     /// whoever another machine said it means in `found` - is refused, naming each, rather than
     /// reaching whichever is nearest. Nothing, when no pane here goes by `typed`.
+    ///
+    /// A participant who joined by that name counts only while it could still read a post: while
+    /// it is alive, or its pane is still open. One whose session has gone with its pane can
+    /// never come back while this pane goes by the name, since joining by a name another pane
+    /// goes by is refused, so the pane is the only agent the name can reach.
     fn pane_called(
         &self,
         typed: &str,
@@ -1582,7 +1587,11 @@ impl<S: Store> Messaging<S> {
         let Some(pane) = presence.pane_named(typed) else { return Ok(None) };
         let holder = self.by_pane(&pane).unwrap_or_else(|| pane.clone());
         let mut candidates = vec![holder.clone()];
-        if typed != holder && self.participants.contains_key(typed) {
+        let still_there = |known: &Participant| {
+            alive(known, presence)
+                || known.pane.as_deref().is_some_and(|theirs| presence.has_pane(theirs))
+        };
+        if typed != holder && self.participants.get(typed).is_some_and(still_there) {
             candidates.push(typed.to_string());
         }
         candidates
