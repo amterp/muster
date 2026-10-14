@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "release-build-and",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1791753031377,
+  "creator": "Alexander Terp",
+  "description": "`./release` runs its three long steps one after another, about 45 minutes end to end (measured on 0.14.0 and 0.15.0):\n\n| Step | Time |\n|---|---|\n| Local `./dev` and `./dev --contract` | ~10 min |\n| CI gate on the pushed release commit (macOS gate, then the Linux suites) | ~20-22 min |\n| `release.yml`: build, sign, notarize, staple | ~11.5 min |\n\nThe script tags only after the CI gate passes, and the tag is what starts `release.yml`. So the build and notarization wait behind a gate that is re-checking the tree the local gate just passed. Running them alongside the gate would cut about 11 minutes from every release, and releases are frequent (0.10 to 0.15 took two weeks).\n\nThe CI wait itself is worth keeping. It is the first clean-machine run of whatever was unpushed (71 commits for 0.15.0), and its Linux suites are the one check the local gate does not run.\n\nOne option: the script pushes main and the tag together, `release.yml` creates the GitHub release as a draft, and the script publishes the draft and updates the casks only once the gate is green. A red gate would leave a draft and a tag to delete, with nothing published. Things to work out:\n\n- `release.yml`'s header says it does not wait on the gate because a tag points at a commit that already passed. That stops being true here, and the draft is what keeps a red gate from publishing.\n- The release job shares the gate's caches and counts on them being warm. Started alongside the gate, it restores the previous main commit's caches instead. Probably still warm for libghostty and dependencies, but worth measuring.\n- The script resumes from the cask's \"Still X's checksum\" line and from whether the tag is pushed. A pushed tag with an unpublished draft is a new state it has to resume from.",
+  "id": "a_2fzSX8lz0",
+  "position": "b11",
+  "title": "./release: build and notarize the release while CI gates its commit",
+  "type": "enhancement",
+  "updated_at_millis": 1791753031377,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791753031377}
+  ]
+}

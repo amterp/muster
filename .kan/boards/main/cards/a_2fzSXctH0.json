@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-removed-agent",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791753031679,
+  "creator": "Alexander Terp",
+  "description": "Failed six CI gate runs since it landed in 5dd1f60c (2026-10-04): on ad3c14f4, a94c519c, 7cfbd037, 2381be5d, and twice on 3c19b6e9, the 0.15.0 release commit. Never seen locally, alone or in the gate. Every failure stops at the same step: saving the override applies, removing it does not.\n\n```\ntimed out after 20s waiting for p1 to be None Unknown.\n  it was Some(\"sprite\") Idle, reported: false, facts: None\n```\n\nThe same step every time suggests a real bug that load exposes, rather than a slow runner: an agent still detected by a manifest the person deleted.\n\nRuled out by reading the code: a stale reload replacing a newer one (`manifests_loaded` drops a load older than the last one adopted), and a removal not counting as a change (`Manifests::changed_since` lists removed agents). Not yet read: what a pane's detector does after `reset_detection` when its agent no longer has a manifest. The fake agent prints nothing after `tick 0`, so anything that waits for output or a tick before dropping the agent would wait forever.\n\nThe timeout message carries nothing from the daemon's log. `daemon.detect.overrides_changed` and `daemon.detect.loaded` from a failing run would say whether the removal was seen and adopted. To reproduce locally, injecting a sleep in the reload or the reset path and running the daemon suite may work where plain load does not.",
+  "id": "a_2fzSXctH0",
+  "position": "b0l",
+  "title": "A removed agent-detection override never applies under CI load (override test fails at removal)",
+  "type": "bug",
+  "updated_at_millis": 1791753031679,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791753031679}
+  ]
+}
