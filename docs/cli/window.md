@@ -350,8 +350,9 @@ window answering, the daemon's tabs are watched the same way.
 idle agent that said it ended its turn to wait on work it started itself, a gate or a build: it
 has not finished and nobody is holding it up, and `facts.waiting` says on what. It lasts until
 the agent ends a later turn without saying it again, or somebody prompts it. `unknown` is
-the ordinary answer for a pane running a plain shell, and also for a pane whose harness could
-not be read: an agent Muster failed to read is not an agent that finished.
+the ordinary answer for a pane running a plain shell, for a pane whose harness could not be read,
+and for an agent in its first few seconds, until its screen has been read: an agent Muster has
+not read is not an agent that finished.
 
 `stuck` is an agent whose program has stopped reading its input: having been seen to read, it has
 left what was sent to it unread for 5 seconds and read nothing since. Its screen still shows what

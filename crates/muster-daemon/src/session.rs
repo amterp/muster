@@ -2501,7 +2501,7 @@ impl Session {
     /// Puts loaded manifests in use, and starts detection over in the panes whose agent is
     /// detected differently now. A pane whose agent's manifest is unchanged keeps its state:
     /// the app sends its manifests on every connect, and starting every pane over would publish
-    /// each working agent idle through a startup grace, then working again.
+    /// each working agent unknown through a startup grace, then working again.
     pub(crate) fn manifests_loaded(&mut self, loading: Loading, loaded: Loaded) -> Reply {
         if loading.load < self.manifests_adopted {
             // A later send already put its manifests in use, and they supersede these: nothing
