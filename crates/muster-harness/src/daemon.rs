@@ -285,18 +285,18 @@ impl Daemon {
             {
                 panic!(
                     "muster-daemon exited with {status} before answering.\n  Impact: this test \
-                     has no daemon.\n  Check {} and {}.",
-                    self.root.join("stderr.log").display(),
-                    self.root.join("daemon.log").display()
+                     has no daemon.\n  Its stderr ended:\n{}  Its log ended:\n{}",
+                    tail(&self.root.join("stderr.log")),
+                    tail(&self.root.join("daemon.log"))
                 );
             }
             std::thread::sleep(Duration::from_millis(1));
         }
         panic!(
             "muster-daemon did not answer on {} within {PATIENCE:?}.\n  Impact: this test has no \
-             daemon.\n  Check {} for why.",
+             daemon.\n  Its log ended:\n{}",
             self.socket_path.display(),
-            self.root.join("daemon.log").display()
+            tail(&self.root.join("daemon.log"))
         );
     }
 
@@ -518,6 +518,28 @@ impl Daemon {
 /// A replace request in flight.
 #[derive(Debug)]
 pub struct Replacing(std::thread::JoinHandle<proto::Answer>);
+
+/// The last lines of a log under a test's root, indented for a panic message. The root goes
+/// when the test unwinds, so a message that only named the file would point at nothing - and on
+/// CI there is no machine left to look on either.
+fn tail(path: &Path) -> String {
+    const LINES: usize = 15;
+    let text = match std::fs::read(path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(error) => return format!("    (could not read {}: {error})\n", path.display()),
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return "    (nothing)\n".to_owned();
+    }
+    let mut tail = String::new();
+    for line in &lines[lines.len().saturating_sub(LINES)..] {
+        tail.push_str("    ");
+        tail.push_str(line);
+        tail.push('\n');
+    }
+    tail
+}
 
 fn daemon_block(id: &str, socket: &Path) -> String {
     format!("[[daemon]]\nid = {id:?}\nsocket = {:?}\n", socket.to_string_lossy())
