@@ -59,6 +59,24 @@ func controlCharacterIsUnwound() throws {
   #expect(translated.key == "KeyC")
 }
 
+@Test("a key whose character is a control character carries no text, and keeps its shift")
+func controlCharacterKeysCarryNoText() throws {
+  // The encoder treats shift as spent on any text it is given, so Shift+Tab sent with a
+  // tab as its text reaches a program in kitty keyboard mode as a bare Tab.
+  let shiftTab = try #require(key("\u{19}", unshifted: "\t", keyCode: 0x30, flags: .shift))
+  let translated = shiftTab.musterKeyEvent(action: "press", isComposing: false)
+  #expect(translated.key == "Tab")
+  #expect(translated.text == "")
+  #expect(translated.modifiers.contains("shift"))
+
+  for (characters, keyCode, name) in [("\t", 0x30, "Tab"), ("\r", 0x24, "Enter")] {
+    let event = try #require(key(characters, keyCode: UInt16(keyCode)))
+    let translated = event.musterKeyEvent(action: "press", isComposing: false)
+    #expect(translated.key == name)
+    #expect(translated.text == "", "\(name) is encoded from its key, not from text")
+  }
+}
+
 @Test("a function key is a key, not a glyph nobody has")
 func functionKeysCarryNoText() throws {
   // Arrows and function keys arrive as private-use codepoints. Sent as text they would

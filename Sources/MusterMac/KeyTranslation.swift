@@ -54,8 +54,16 @@ extension NSEvent {
 
     // A control character means macOS already applied ctrl. The encoder does its own
     // control mapping, and would otherwise apply it twice.
+    //
+    // Undoing ctrl leaves a character for ctrl+C, but not for Tab, Return or Escape, whose
+    // characters are control characters with or without it. Those go with no text, as
+    // Ghostty's app sends them: given text, the encoder counts shift as spent on it, so a
+    // program in kitty keyboard mode gets a bare Tab for Shift+Tab and a bare Return for
+    // Shift+Return.
     if scalar.value < 0x20 {
-      return self.characters(byApplyingModifiers: modifierFlags.subtracting(.control))
+      let unwound = characters(byApplyingModifiers: modifierFlags.subtracting(.control))
+      guard let first = unwound?.unicodeScalars.first, first.value >= 0x20 else { return nil }
+      return unwound
     }
 
     // Function keys arrive as private-use codepoints. They are keys, not text, and sending
