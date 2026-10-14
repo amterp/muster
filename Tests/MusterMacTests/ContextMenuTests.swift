@@ -327,6 +327,26 @@ struct ContextMenuTests {
     #expect(told == ["The pane was not hidden: this daemon is too old to hide a pane"])
   }
 
+  /// A tab rename is asked for from a sheet, which closes before the answer comes: the window
+  /// shows the core's reason only if the rename hands it back.
+  @Test("a refused tab rename hands back the core's reason")
+  func aRefusedTabRenameSaysWhy() {
+    _ = seam(
+      RecordingDispatcher { request in
+        guard case .renameTab = request.payload, request.renameTab.name == "release" else {
+          return nil
+        }
+        var failure = Muster_Failure()
+        failure.reason = "the machine holding this tab is gone"
+        return .failure(failure)
+      })
+
+    #expect(Core.renameTab(name: "notes", tabID: "t1w3r07bsd") == nil)
+    #expect(
+      Core.renameTab(name: "release", tabID: "t1w3r07bsd") == "the machine holding this tab is gone"
+    )
+  }
+
   /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
   /// so the menu hands that to the window to ask first rather than sending it.
   @Test("a group row leaves the group it names, and asks before deleting it")

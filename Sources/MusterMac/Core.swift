@@ -581,18 +581,20 @@ public enum Core {
     return refusal(send(request))
   }
 
-  /// Calls a tab what somebody wants to call it.
+  /// Calls a tab what somebody wants to call it, and answers why not if it was refused - by an
+  /// older daemon, or a machine that has gone.
   ///
   /// An empty tab id means the tab the keyboard's pane is in, which is what a menu item means -
   /// there is no other way for one to point at a tab. No machine goes with it: a Muster tab may
   /// hold panes on two, and the core renames every half of one.
-  public static func renameTab(name: String, tabID: String = "") {
+  @discardableResult
+  public static func renameTab(name: String, tabID: String = "") -> String? {
     var rename = Muster_RenameTab()
     rename.tabID = tabID
     rename.name = name
     var request = Muster_Request()
     request.renameTab = rename
-    send(request)
+    return refusal(send(request))
   }
 
   /// Grows the focused pane against its neighbour, by the daemon's own step.

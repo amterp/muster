@@ -259,6 +259,11 @@ public enum PaneRefusal {
   public static let quiet = "The pane’s notifications did not change"
 }
 
+/// What a refused tab request did not do, as the heading over the core's reason.
+public enum TabRefusal {
+  public static let rename = "The tab was not renamed"
+}
+
 @MainActor
 public enum ContextMenus {
   /// Shows the person a request the core refused, with a heading saying what did not happen.

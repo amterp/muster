@@ -999,8 +999,9 @@ extension MusterWindow {
 
   /// Names the tab the keyboard's pane is in, having asked what to call it.
   @objc public func renameTab(_ sender: Any?) {
-    askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") { name in
-      Core.renameTab(name: name)
+    askToName(subject: "tab", current: tabHolding(keyboardKey)?.givenName ?? "") {
+      [weak self] name in
+      if let why = Core.renameTab(name: name) { self?.tell(TabRefusal.rename, why) }
     }
   }
 
@@ -1090,8 +1091,10 @@ extension MusterWindow {
 
   func rename(tab: String) {
     let current = roster.tabs.first { $0.id == tab }?.givenName ?? ""
-    askToName(subject: "tab", current: current) { name in
-      Core.renameTab(name: name, tabID: tab)
+    askToName(subject: "tab", current: current) { [weak self] name in
+      if let why = Core.renameTab(name: name, tabID: tab) {
+        self?.tell(TabRefusal.rename, why)
+      }
     }
   }
 
