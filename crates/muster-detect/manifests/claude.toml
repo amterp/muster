@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.10.04.2"
+version = "2026.10.13.2"
 min_engine_version = 12
-updated_at = "2026-10-04T00:00:00Z"
+updated_at = "2026-10-13T00:00:00Z"
 aliases = ["claude-code"]
 
 # Typed at an empty prompt with a Return, as a person names a session: what `/resume` lists and
@@ -50,7 +50,10 @@ region = "bottom_non_empty_lines(12)"
 visible_working = true
 any = [
   { line_regex = ['^\s*[⏸⏵].*esc to interrupt(?:\s|·|$)'] },
-  { line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2733}\x{2736}\x{273B}\x{273D}]\s+\S.*…(?:\s+\(\d+[smh](?:\s|·)|\s*$)'] },
+  # A spinner with no timer yet says only words. Claude Code 2.1.299 draws each finished Bash
+  # call as `· $ <command>…`, cut to the pane's width, which is not words and not a spinner
+  # (docs/observations/claude-code-2.1.299.md, section 1).
+  { line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2733}\x{2736}\x{273B}\x{273D}]\s+(?:\S.*…\s+\(\d+[smh](?:\s|·)|\p{L}[\w ,’-]*…\s*$)'] },
 ]
 # What is typed into the prompt box while Claude works is queued and taken into the running
 # turn, so an urgent message may be typed here. Read in the box alone: the request that started

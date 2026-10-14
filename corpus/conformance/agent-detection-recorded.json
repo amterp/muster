@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. Claude Code 2.1.299's were recorded with one short turn on Haiku; the last ends on a Bash command longer than the pane, whose row, cut off with an ellipsis, read as the spinner until the spinner's timerless pattern was narrowed to words. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code showed no folder-trust prompt, so that state is not here.",
   "cases": [
     {
       "expect": {
@@ -642,6 +642,48 @@
       },
       "name": "codex 0.160.0: sign-in screen",
       "why": "A Codex with no login and no other provider asks how to sign in before anything else."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;0;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"edit <filepath> to...\"\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:06] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Claude Code",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:06] /tmp/capture\n  ⏸ manual mode on · ← for agents"
+      },
+      "name": "claude 2.1.299: idle at the prompt",
+      "why": "Claude Code waiting at its prompt box for a request."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;3;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else, then reply with the single word\n  done: echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy\n  dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n· Brewing…\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:06] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "◐ Claude Code",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else, then reply with the single word\n  done: echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy\n  dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n· Brewing…\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:06] /tmp/capture\n  ⏸ manual mode on · ← for agents"
+      },
+      "name": "claude 2.1.299: the moment a turn starts",
+      "why": "A third of a second after the request was sent, before the spinner has a timer."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "claude",
+        "progress": "4;0;",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else, then reply with the single word\n  done: echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy\n  dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog\n· $ echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy do…\n\n⏺ done\n\n✻ Worked for 3s · done 11:09 pm\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:54] /tmp/capture\n  ⏸ manual mode on · ← for agents\n",
+        "title": "✳ Echo pangram shell command",
+        "typed": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n\n❯ Run this exact shell command with the Bash tool and nothing else, then reply with the single word\n  done: echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy\n  dog the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog\n· $ echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy do…\n\n⏺ done\n\n✻ Worked for 3s · done 11:09 pm\n\n\n\n\n\n\n\n\n\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [23:09:54] /tmp/capture\n  ⏸ manual mode on · ← for agents"
+      },
+      "name": "claude 2.1.299: idle after a turn ending on a long Bash call",
+      "why": "A turn ended on a Bash call too long for the pane, whose row is cut off with an ellipsis like a spinner's words."
     }
   ]
 }

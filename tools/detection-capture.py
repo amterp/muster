@@ -16,8 +16,9 @@ Claude Code's phases, in order: `start` (the folder trust prompt, idle at its pr
 (menus opened from the prompt), `permission` (working on a request, blocked on a Bash
 permission prompt, idle after refusing it), `queue` (at work with its prompt box empty, holding a
 draft, and with a message queued), `plan` (plan mode's approval dialog, at work right after
-approving it, idle after declining another). `--only` runs the named phases after `start`, and
-`--size` a narrower pane, where a dialog's question wraps.
+approving it, idle after declining another), `bash` (the moment a turn starts, and idle after a
+turn that ran a Bash command longer than the pane). `--only` runs the named phases after `start`,
+and `--size` a narrower pane, where a dialog's question wraps.
 
 OpenCode's, after `start`: `draft`, `turn` (rung as the doorbell rings, at work, idle after),
 `permission` (its config asks before a shell command), `steer` (typing while it works, and
@@ -280,11 +281,43 @@ def claude_plan(capture: Capture) -> None:
             capture.mark("idle after declining the plan", "idle", "The plan dialog left with Esc; Claude Code back at its prompt, still planning.")
 
 
+# Longer than any pane it is recorded in, so the row Claude Code draws for the finished call is
+# cut off with an ellipsis.
+LONG_ECHO = "echo " + " ".join(["the quick brown fox jumps over the lazy dog"] * 4)
+
+
+def claude_bash(capture: Capture) -> None:
+    capture.send(f"Run this exact shell command with the Bash tool and nothing else, then reply with the single word done: {LONG_ECHO}")
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(0.3)
+    capture.mark("the moment a turn starts", "working", "A third of a second after the request was sent, before the spinner has a timer.")
+    # Allowed if it asks: the command only prints.
+    asked_from = len(capture.raw)
+    done = lambda title: title.startswith("✳ ") or b"proceed" in capture.raw[asked_from:]
+    if capture.until_title(90, done) and b"proceed" in capture.raw[asked_from:]:
+        capture.pump(1)
+        capture.send("\r")
+        capture.until_title(90, lambda title: title.startswith("✳ "))
+    capture.pump(3)
+    capture.mark(
+        "idle after a turn ending on a long Bash call",
+        "idle",
+        "A turn ended on a Bash call too long for the pane, whose row is cut off with an ellipsis like a spinner's words.",
+    )
+
+
 CLAUDE = Harness(
     argv=lambda out: ["claude", "--permission-mode", "default"],
     strip=("CLAUDE", "MUSTER_"),
     start=claude_start,
-    phases={"menus": claude_menus, "permission": claude_permission, "queue": claude_queue, "plan": claude_plan},
+    phases={
+        "menus": claude_menus,
+        "permission": claude_permission,
+        "queue": claude_queue,
+        "plan": claude_plan,
+        "bash": claude_bash,
+    },
 )
 
 # --- Codex -------------------------------------------------------------------------------------

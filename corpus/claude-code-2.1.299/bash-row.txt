@@ -1,0 +1,32 @@
+How Claude Code 2.1.299 draws a turn that ran a Bash command wider than the pane.
+
+Recorded 2026-10-13 on macOS 26.4.1 / arm64, Claude Code 2.1.299 on Haiku 5.5, in a 100x30
+pseudo-terminal, by `ANTHROPIC_MODEL=haiku tools/detection-capture.py --only bash`. The screens,
+rendered, are the "claude 2.1.299" cases in corpus/conformance/agent-detection-recorded.json.
+
+The request: "Run this exact shell command with the Bash tool and nothing else, then reply with
+the single word done: echo the quick brown fox jumps over the lazy dog" with the sentence four
+times, 180 characters with the `echo`. It ran without asking.
+
+A third of a second after Return, the title "◐ Claude Code", and above the prompt box:
+
+    · Brewing…
+
+with no timer after the word.
+
+Once the turn ended, the title "✳ Echo pangram shell command", and below the request:
+
+    · $ echo the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy do…
+
+    ⏺ done
+
+    ✻ Worked for 3s · done 11:09 pm
+
+The finished call is one row, `· $ ` and the command, cut off with an ellipsis at the pane's
+edge. It starts with the spinner's `·` and ends with the spinner's `…`. Nothing else was drawn
+for the call: no output, no "Ran 1 shell command".
+
+The built-in claude manifest at 2026.10.04.2 read that idle screen as working, by
+live_turn_working, whose timerless spinner pattern took any text before the ellipsis. At
+2026.10.13.2, which needs words before it, the screen reads idle by live_prompt_box and
+`· Brewing…` still reads working.

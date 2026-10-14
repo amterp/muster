@@ -274,3 +274,20 @@ fn a_claude_permission_prompt_is_blocked_while_something_else_animates() {
     let detection = Manifests::built_in().detect(Some(&Agent::new("claude")), input);
     assert_eq!(detection.state, State::Blocked, "{detection:?}");
 }
+
+/// Claude Code's spinner before it has a timer says only words, `· Brewing…`, and a finished Bash
+/// call is drawn as `· $ <command>…` when it is wider than the pane. Both start with the same glyph
+/// and end in an ellipsis; only the first is a turn at work. Each screen has an idle title, so the
+/// line alone decides (docs/observations/claude-code-2.1.299.md, section 1).
+#[test]
+fn a_claude_spinner_without_a_timer_is_working_and_a_cut_off_bash_row_is_not() {
+    let rule = "─".repeat(100);
+    let screen = |line: &str| format!("{line}\n\n{rule}\n❯ \n{rule}\n  ⏸ manual mode on\n");
+    let read = |line: &str| {
+        let screen = screen(line);
+        let input = Input { screen: &screen, title: "✳ Claude Code", progress: "" };
+        Manifests::built_in().detect(Some(&Agent::new("claude")), input).state
+    };
+    assert_eq!(read("· Brewing…"), State::Working);
+    assert_eq!(read("· $ echo the quick brown fox jumps over the lazy do…"), State::Idle);
+}
