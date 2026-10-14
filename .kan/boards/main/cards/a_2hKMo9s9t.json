@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791950623538,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-13 on 0.15.0. Pane p2be76c5k6 is named `muster-integrator`, and the agent in it is also a participant named `muster-integrator` in several groups (it was addressed that way by a post from another pane). A worker running `muster msg post --to muster-integrator \"...\"` was refused as ambiguous: \"could be p2be76c5k6 or muster-integrator\". Both candidates are the same agent, in the same pane. Posting with `--to p2be76c5k6` worked.\n\nThe parallel-work skill tells every worker to post `--to \u003cintegrator pane name\u003e`, so each worker in a round hits this. Two candidates that resolve to the same pane (the participant holds that pane) are one recipient and should not be ambiguous. Card a_2dog2o3cN (across machines, `whom` prefers a pane name over a participant of the same name) is in the same lookup.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b0w",
+  "position": "YxE",
   "title": "msg post --to \u003cpane name\u003e is refused as ambiguous when the pane and a participant of that name are one agent",
   "type": "bug",
-  "updated_at_millis": 1791950623538,
+  "updated_at_millis": 1791951372041,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791950623538}
+    {"field":"column","value":"backlog-hi","at":1791950623538},
+    {"field":"column","value":"done","at":1791951372041}
   ]
 }
