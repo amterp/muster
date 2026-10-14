@@ -485,22 +485,27 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
 
 /// Keys go to the daemon as the window sends them, and a Return pressed alone is a send of its
 /// own. A key nobody knows is refused before anything is sent.
+///
+/// At p1's shell, which keeps the line it ran on screen. The agent in p2 repaints over a line
+/// the moment it reads it, so the text would show only for the 50ms before the Return, and a
+/// confirmation that reads after that window refuses it.
 fn keys_are_pressed_without_a_window(here: &Here) {
     ok(&here.muster(&[
         "pane",
         "send",
         "--pane",
-        "p2",
+        "p1",
         "--key",
         "enter",
         "--confirm",
         "echo keyed",
     ]));
     let mut control = here.daemon.connect();
-    until_text(&mut control, "p2", "keyed\n");
-    ok(&here.muster(&["pane", "send", "--pane", "p2", "--enter", "--confirm"]));
+    // The output's own row, which only the Return running the command prints.
+    until_text(&mut control, "p1", "\nkeyed\n");
+    ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm"]));
     let refused =
-        refused_with(&here.muster(&["pane", "send", "--pane", "p2", "--key", "hyper"]), 1);
+        refused_with(&here.muster(&["pane", "send", "--pane", "p1", "--key", "hyper"]), 1);
     assert!(refused.contains("nothing was sent"), "{refused}");
 }
 
