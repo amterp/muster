@@ -16,11 +16,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use clap::{ArgGroup, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use muster_core::input::check_sent_keys;
+use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
@@ -1190,11 +1191,25 @@ fn pane(
             quiet: Some(!*off),
             ..QuietPane::default()
         })),
-        Doing::Rename { pane, name } => send(request::Payload::RenamePane(RenamePane {
-            pane_id: pane_ref(pane.as_ref(), environment),
-            name: name.join(" "),
-            ..RenamePane::default()
-        })),
+        Doing::Rename { pane, name } => {
+            if pane.is_none() {
+                let meant = if running_in(environment).is_some() {
+                    "the pane this runs in"
+                } else {
+                    "the pane the keyboard is on"
+                };
+                target_in_name(
+                    Renamed { verb: "pane", flag: "--pane", noun: "a pane's id" },
+                    meant,
+                    name,
+                )?;
+            }
+            send(request::Payload::RenamePane(RenamePane {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                name: name.join(" "),
+                ..RenamePane::default()
+            }))
+        }
         Doing::Compact { pane, focus } => compact(pane.as_ref(), focus, environment),
         Doing::Send { pane, keys, enter, confirm, file, text } => {
             check_sent_keys(keys).map_err(Failure::Refused)?;
@@ -1372,12 +1387,50 @@ fn tab(
             tab_id: tab.clone().unwrap_or_default(),
             window: window.unwrap_or_default().to_string(),
         })),
-        WithTab::Rename { tab, name } => send(request::Payload::RenameTab(RenameTab {
-            tab_id: tab.clone().unwrap_or_default(),
-            name: name.join(" "),
-            ..RenameTab::default()
-        })),
+        WithTab::Rename { tab, name } => {
+            if tab.is_none() {
+                let renamed = Renamed { verb: "tab", flag: "--tab", noun: "a tab's name" };
+                target_in_name(renamed, "the tab the window's keyboard is in", name)?;
+            }
+            send(request::Payload::RenameTab(RenameTab {
+                tab_id: tab.clone().unwrap_or_default(),
+                name: name.join(" "),
+                ..RenameTab::default()
+            }))
+        }
     })
+}
+
+/// What a rename is of, as its refusal spells it.
+#[derive(Clone, Copy)]
+struct Renamed {
+    verb: &'static str,
+    flag: &'static str,
+    noun: &'static str,
+}
+
+/// Refuses a rename with no target whose new name starts with one.
+///
+/// NAME takes every word, so `muster tab rename t29vgmaqym CHAT NOTES` meant for that tab renames
+/// whichever tab the keyboard is in - another session's, often - and says nothing (kan
+/// a_2dntpGvyP). Refused rather than taken as the target: a word that only looks minted would
+/// then rename something nobody meant.
+fn target_in_name(renamed: Renamed, meant: &str, name: &[String]) -> Result<(), Failure> {
+    let Renamed { verb, flag, noun } = renamed;
+    let name = name.join(" ");
+    let (first, rest) = name.trim().split_once(char::is_whitespace).unwrap_or((name.trim(), ""));
+    if !could_be_minted(first, verb.chars().next().unwrap_or_default(), SystemTime::now()) {
+        return Ok(());
+    }
+    let rest = match rest.trim() {
+        "" => "NAME",
+        rest => rest,
+    };
+    Err(Failure::Refused(format!(
+        "nothing was renamed: `{first}` is {noun}, and NAME is only what to call it, so this \
+         would have renamed {meant} to `{name}`. To rename {first}: `muster {verb} rename \
+         {flag} {first} {rest}`"
+    )))
 }
 
 /// The first of these words whose flag was given.

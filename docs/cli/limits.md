@@ -85,7 +85,10 @@ out of the window rather than out of its environment:
       --arg me "$MUSTER_PANE" '.panes[] | select(.pane == $me) | .tab')" 'the build'
 
 `muster tab rename` with no `--tab` is not that. It means the tab the window's keyboard is in,
-which is what a chord means and is a different tab whenever the keyboard is somewhere else.
+which is what a chord means and is a different tab whenever the keyboard is somewhere else. A name
+that starts with a tab's name, as in `muster tab rename t29vgmaqym notes`, is refused with no
+`--tab`, since it is nearly always the tab that was meant; `pane rename` refuses a pane's id the
+same way.
 
 ## A read stops at 4 MiB
 

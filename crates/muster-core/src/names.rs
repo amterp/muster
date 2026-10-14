@@ -177,6 +177,27 @@ fn spell(at: SystemTime, entropy: &mut impl RandomSource, prefix: char) -> Strin
     format!("{prefix}{drawn}")
 }
 
+/// Whether `word` could be a name minted for the noun `letter` stands for, by `now`.
+///
+/// For a command line whose words might be meant as a pane or tab rather than as text, which a
+/// shape alone cannot tell: `pretenders` is a `p` and nine characters of the alphabet. A minted
+/// name also says when it was made, and no name was made after `now`, so the word's time has to
+/// be past too - which `pretenders`, read as one, puts in 2034. Names minted before May 2026,
+/// when the tick count still fit in four characters, are not recognized.
+pub fn could_be_minted(word: &str, letter: char, now: SystemTime) -> bool {
+    let Some(rest) = word.strip_prefix(letter) else { return false };
+    if rest.len() != 9 || !rest.chars().all(|c| ALPHABET.contains(c)) {
+        return false;
+    }
+    let ticks = rest[..5]
+        .chars()
+        .fold(0_u64, |count, c| count * 32 + ALPHABET.find(c).map_or(0, |at| at as u64));
+    let generator = spelling();
+    let tick = generator.tick_size().unwrap_or(Duration::from_secs(10));
+    let made = u32::try_from(ticks).ok().and_then(|ticks| tick.checked_mul(ticks));
+    made.and_then(|made| generator.epoch().checked_add(made)).is_some_and(|made| made <= now)
+}
+
 /// A last resort when the machine will not hand over entropy.
 ///
 /// `getrandom` does not fail on any platform Muster runs on. It is caught anyway because

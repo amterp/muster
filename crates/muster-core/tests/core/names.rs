@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use conformance::{CaseError, Conformance, fields};
-use muster_core::names::{Mint, Minter};
+use muster_core::names::{Mint, Minter, could_be_minted};
 use serde_json::{Value, json};
 
 #[test]
@@ -115,6 +115,25 @@ fn a_name_is_never_drawn_twice() {
         let name = minter.pane().to_string();
         assert!(drawn.insert(name.clone()), "{name} was drawn twice");
     }
+}
+
+/// A word on a command line is taken for a minted name only if it could have been minted by
+/// then: a pane's or tab's name meant as the target of a rename is refused, and an ordinary word
+/// of the same shape must not be.
+#[test]
+fn a_word_is_a_minted_name_only_if_it_was_minted_by_then() {
+    let at = instant(DEFAULT_INSTANT).expect("the default instant reads");
+    let tab = Minter::new(Mint::Replayed { at, seed: 7 }).tab().to_string();
+    assert!(could_be_minted(&tab, 't', at), "{tab} as it was minted");
+    assert!(could_be_minted(&tab, 't', at + Duration::from_hours(24)), "{tab} a day on");
+    assert!(!could_be_minted(&tab, 't', at - Duration::from_secs(10)), "{tab} a tick before");
+    assert!(!could_be_minted(&tab, 'p', at), "{tab} is not a pane's");
+
+    // Of the shape, and decoding to 2034.
+    assert!(!could_be_minted("pretenders", 'p', at));
+    // One character short of the shape.
+    assert!(!could_be_minted("presenter", 'p', at));
+    assert!(!could_be_minted("p29vgmaqyl", 'p', at), "`l` is not in the alphabet");
 }
 
 fn mint(given: &Value) -> Result<Mint, CaseError> {

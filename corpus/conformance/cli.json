@@ -1023,6 +1023,79 @@
       }
     },
     {
+      "name": "a tab's name as the first word of a rename with no --tab is refused",
+      "why": "NAME takes every word and the tab is `--tab`, so `tab rename t29vgmaqym CHAT NOTES`, meant for that tab, renamed whichever tab the keyboard was in - another session's - to `t29vgmaqym CHAT NOTES`, and nothing said so. Nobody chooses a minted name as a name, so the command is refused with the spelling that was meant rather than guessed at.",
+      "given": {
+        "argv": [
+          "tab",
+          "rename",
+          "t29vgmaqym",
+          "CHAT",
+          "NOTES"
+        ]
+      },
+      "expect": {
+        "refused": "nothing was renamed: `t29vgmaqym` is a tab's name, and NAME is only what to call it, so this would have renamed the tab the window's keyboard is in to `t29vgmaqym CHAT NOTES`. To rename t29vgmaqym: `muster tab rename --tab t29vgmaqym CHAT NOTES`"
+      }
+    },
+    {
+      "name": "a pane's id as the whole name of a rename with no --pane is refused",
+      "why": "The same mistake for a pane, where leaving out `--pane` means the pane the command runs in: an agent renaming another pane would rename itself to that pane's id.",
+      "given": {
+        "argv": [
+          "pane",
+          "rename",
+          "p1w3r07bsd"
+        ],
+        "env": {
+          "MUSTER_PANE": "p2be85exs5"
+        }
+      },
+      "expect": {
+        "refused": "nothing was renamed: `p1w3r07bsd` is a pane's id, and NAME is only what to call it, so this would have renamed the pane this runs in to `p1w3r07bsd`. To rename p1w3r07bsd: `muster pane rename --pane p1w3r07bsd NAME`"
+      }
+    },
+    {
+      "name": "a minted name as the first word is taken as text once the tab is named",
+      "why": "With `--tab` given nothing picks a target for the caller, so a name that starts with a tab's name is what was asked for.",
+      "given": {
+        "argv": [
+          "tab",
+          "rename",
+          "--tab",
+          "t29vgmaqym",
+          "t1w3r07bsd",
+          "notes"
+        ]
+      },
+      "expect": {
+        "request": {
+          "rename_tab": {
+            "tab_id": "t29vgmaqym",
+            "name": "t1w3r07bsd notes"
+          }
+        }
+      }
+    },
+    {
+      "name": "an ordinary word shaped like a minted name is a name",
+      "why": "`pretenders` is a `p` and nine characters of the alphabet ids are spelled in, but read as an id it was made in 2034. An id is only taken for one if it could have been made by now, so an ordinary name is never refused for its shape.",
+      "given": {
+        "argv": [
+          "pane",
+          "rename",
+          "pretenders"
+        ]
+      },
+      "expect": {
+        "request": {
+          "rename_pane": {
+            "name": "pretenders"
+          }
+        }
+      }
+    },
+    {
       "name": "closing with nothing named closes the pane this is running in",
       "why": "Consistent with every other command, and worth pinning precisely because it is the surprising one: an agent that runs this ends the shell its own process is in. The help says so; this makes sure the behaviour matches what the help says.",
       "given": {
