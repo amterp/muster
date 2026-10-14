@@ -18,7 +18,7 @@ use muster_daemon_proto::{self as proto, pane_request, request::Service, session
 use prost::Message;
 
 use crate::attribution;
-use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
+use crate::session::{Handled, Probed, Replacement, Reply, Session, Shared, Stop};
 use crate::{handoff, messages};
 
 /// How many messages a connection may have waiting before the daemon gives up on it.
@@ -231,7 +231,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         // the next, once letting go of this one has done the work it left on panes' terminals,
         // so an answer still means the request has taken effect. A snapshot leaves no such work,
         // and its answer goes under this lock, beside the state it describes.
-        let sender = sender_of(peer, request.service.as_ref(), shared);
+        let (sender, probed) = before_lock(peer, request.service.as_ref(), shared);
         let handled = match request.service {
             // Outside the session's lock: messages have their own (crate::messages).
             Some(Service::Msg(request)) => {
@@ -239,7 +239,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             }
             Some(service) => {
                 let mut session = locked();
-                match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
+                match handle(&mut session, service, sender.as_ref(), probed, &outbox, shared) {
                     Handled::Snapshot(reply) => {
                         let timing = Answered::after(request.id, name, received, lock);
                         answer(&session, &outbox, reply, timing);
@@ -295,6 +295,7 @@ fn handle(
     session: &mut Session,
     service: Service,
     sender: Option<&attribution::Sender>,
+    probed: Probed,
     outbox: &Outbox,
     shared: &Shared,
 ) -> Handled {
@@ -316,11 +317,24 @@ fn handle(
             )
         })
     );
+    session.probed = probed;
     let handled = session.handle(service, outbox);
+    session.probed = Probed::default();
     if names && matches!(&handled, Handled::Reply(reply) if reply.outcome == proto::Outcome::Done) {
         shared.doorbell.nudge();
     }
     handled
+}
+
+/// What a request needs found out before the session's lock is taken, since finding either out
+/// can wait: who sent a report, and whether the inboxes of agents it would name a pane after
+/// answer.
+fn before_lock(
+    peer: Option<u32>,
+    service: Option<&Service>,
+    shared: &Shared,
+) -> (Option<attribution::Sender>, Probed) {
+    (sender_of(peer, service, shared), Probed::before(&shared.joined, service))
 }
 
 /// The nearest agent above a report's sender, for a report; read before the session's lock is

@@ -105,6 +105,9 @@ pub(crate) struct Shared {
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
     pub(crate) socket: Socket,
+    /// The session's view of who joined messaging by what name, for a request to probe the
+    /// inboxes it would name a pane after before the session's lock is taken.
+    pub(crate) joined: crate::messages::Joined,
 }
 
 impl Shared {
@@ -159,6 +162,7 @@ impl Shared {
                 doorbell: Doorbell::default(),
                 peers: Peers::beside(&socket.path),
                 detecting: Arc::clone(&detecting),
+                joined: Arc::clone(&joined),
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
@@ -178,6 +182,7 @@ impl Shared {
                         .map(|notice| (notice.group.clone(), (0, notice)))
                         .collect(),
                     joined,
+                    probed: Probed::default(),
                     inherited,
                     home,
                     data,
@@ -361,6 +366,9 @@ pub(crate) struct Session {
     /// The agents that joined messaging by names of their own, which no pane is drawn, nor given
     /// while they are live, as messaging keeps them.
     joined: crate::messages::Joined,
+    /// What the request being handled found at the inboxes of the agents it would name a pane
+    /// after, set around [`Session::handle`] by the connection that took the lock.
+    pub(crate) probed: Probed,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
@@ -3061,14 +3069,13 @@ impl Session {
     /// The live agent that joined messaging by `name`, other than one in `naming`, described for
     /// a refusal: a pane given that name would make a post to it mean two agents. Live as a post
     /// judges it (`muster_msg`'s `pane_called`): its pane is open here, or, with no pane, it has
-    /// not left and its inbox answers.
+    /// not left and its inbox answered when [`Probed`] asked, before this lock was taken.
     fn joined_by(&self, name: &str, naming: &str) -> Option<String> {
-        // Copied out, so the inbox probe below never holds up messaging's updates to the set.
         let known = poison::lock(&self.joined, "daemon.messages.joined").get(name)?.clone();
         match known.pane.as_deref() {
             Some(pane) if pane == naming => None,
             Some(pane) => self.pane_index(pane).map(|_| format!("{name} (pane {pane})")),
-            None if !known.gone && crate::messages::inbox_answers(&known) => {
+            None if !known.gone && self.probed.answers(&known) => {
                 let at = known.inbox.as_ref().map_or("", |inbox| inbox.socket.as_str());
                 Some(format!("{name} (the session at {at})"))
             }
@@ -3095,6 +3102,46 @@ fn scrollback(settings: &proto::Settings) -> usize {
 /// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.
 fn given_name(label: Option<&str>) -> Option<&str> {
     label.map(str::trim).filter(|label| !label.is_empty())
+}
+
+/// Whether the inboxes of agents a request would name a pane after answered, asked before the
+/// session's lock is taken: an inbox is asked by connecting, which waits up to a second on a
+/// session that has stopped reading, and every request here would wait with it.
+#[derive(Debug, Default)]
+pub(crate) struct Probed(Vec<(Option<muster_msg::Inbox>, bool)>);
+
+impl Probed {
+    /// Asks the inbox of the agent with no pane that joined by the name `service` would give a
+    /// pane - a new pane's, a rename's, or a session's its pane would follow - if there is one.
+    pub(crate) fn before(joined: &crate::messages::Joined, service: Option<&Service>) -> Probed {
+        let name = match service {
+            Some(Service::Pane(proto::PaneRequest { request: Some(request) })) => match request {
+                pane_request::Request::Create(create) => create.label.as_deref(),
+                pane_request::Request::Rename(rename) => rename.label.as_deref(),
+                pane_request::Request::Report(report) => report.session_name.as_deref(),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(name) = given_name(name) else { return Probed::default() };
+        // Copied out, so the probe never holds up messaging's updates to the set.
+        let known = poison::lock(joined, "daemon.messages.joined").get(name).cloned();
+        let Some(known) = known.filter(|known| known.pane.is_none() && !known.gone) else {
+            return Probed::default();
+        };
+        let answered = crate::messages::inbox_answers(&known);
+        Probed(vec![(known.inbox, answered)])
+    }
+
+    /// Whether `participant`'s inbox answered. One that was not asked - it joined by the name
+    /// after the probe, or with another inbox - counts as answering: refusing a name that turns
+    /// out free costs a retry, and giving one that is not makes a post to it mean two agents.
+    fn answers(&self, participant: &muster_msg::Participant) -> bool {
+        self.0
+            .iter()
+            .find(|(inbox, _)| *inbox == participant.inbox)
+            .is_none_or(|(_, answered)| *answered)
+    }
 }
 
 /// A pane cannot be called what an agent here joined messaging by while that agent is live,
@@ -3347,6 +3394,36 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// An agent's inbox is asked before the session's lock is taken, and only the answer is read
+    /// under it: one that was not asked, because it joined after the probe, counts as live.
+    #[test]
+    fn a_name_is_probed_before_the_lock_and_an_agent_not_probed_counts_as_live() {
+        let joiner = |socket: &str| -> muster_msg::Participant {
+            serde_json::from_value(serde_json::json!({
+                "name": "critic",
+                "inbox": { "socket": socket, "inode": 1 },
+            }))
+            .unwrap()
+        };
+        let gone = joiner("/nonexistent/critic.sock");
+        let by_name: crate::messages::Joined =
+            Arc::new(Mutex::new(BTreeMap::from([("critic".to_string(), gone.clone())])));
+        let renaming = |label: &str| {
+            Service::Pane(proto::PaneRequest {
+                request: Some(pane_request::Request::Rename(pane_request::Rename {
+                    pane: "p1".to_string(),
+                    label: Some(label.to_string()),
+                })),
+            })
+        };
+
+        let probed = Probed::before(&by_name, Some(&renaming(" critic ")));
+        assert!(!probed.answers(&gone), "an inbox that is not there does not answer");
+        assert!(probed.answers(&joiner("/elsewhere/critic.sock")), "one not asked counts as live");
+        let unasked = Probed::before(&by_name, Some(&renaming("builder")));
+        assert!(unasked.answers(&gone), "a name nobody joined by asks no inbox");
     }
 
     #[test]
