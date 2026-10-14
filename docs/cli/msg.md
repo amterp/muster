@@ -93,6 +93,13 @@ joining, and the log shows the pane leaving and the name joining. From then on t
 that participant. A name or pane that means nobody on this machine is looked for on the machines
 linked to it (below), so `otter@devenv` reaches the devenv's `otter`.
 
+A pane's title, the second line of its row in `muster window`, is not an address: the program in
+the pane writes it and rewrites it as it works. A harness's `/rename` reaches `--to` by renaming the
+pane, where its adapter reports the session's name (`muster docs harnesses`). Words that are no
+pane's name and cannot be a participant's, but that a pane here shows as its title, are refused
+naming that pane's id, so `--to "BUILD LEAD"` says which pane to post to. A leading status symbol,
+such as Claude Code's `✳`, is not part of what a title says.
+
 A name is read the way `muster pane send --pane` reads one: a pane's id first, whatever any pane
 is called, then a name. A name that means more than one agent - a pane here and a pane on a
 linked machine, or a pane and a participant who joined by that name - is refused, naming each,

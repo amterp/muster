@@ -25,6 +25,8 @@ struct Sessions {
     open: RefCell<BTreeMap<String, bool>>,
     /// What each pane is called, when a step said.
     names: RefCell<BTreeMap<String, String>>,
+    /// What each pane shows as its title, when a step said.
+    titles: RefCell<BTreeMap<String, String>>,
     /// Whether a window is attending, which wakes the human.
     attended: Cell<bool>,
 }
@@ -64,6 +66,10 @@ impl Presence for Sessions {
 
     fn pane_named(&self, name: &str) -> Option<String> {
         self.names.borrow().iter().find(|(_, called)| *called == name).map(|(pane, _)| pane.clone())
+    }
+
+    fn titles(&self) -> Vec<(String, String)> {
+        self.titles.borrow().iter().map(|(pane, title)| (pane.clone(), title.clone())).collect()
     }
 
     fn attended(&self) -> bool {
@@ -137,7 +143,8 @@ fn rung(via: &Via) -> String {
 fn refused(refusal: &Refusal) -> String {
     let detail = match refusal {
         Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
-        Refusal::WhichParticipant { name, candidates } => {
+        Refusal::WhichParticipant { name, candidates }
+        | Refusal::Titled { name, panes: candidates } => {
             format!("{name} {}", candidates.join(","))
         }
         Refusal::Unreachable { group, machine }
@@ -353,6 +360,7 @@ fn pane(sessions: &Sessions, step: &Value) -> String {
         "closed" => {
             sessions.agents.borrow_mut().remove(&pane);
             sessions.names.borrow_mut().remove(&pane);
+            sessions.titles.borrow_mut().remove(&pane);
             sessions.open.borrow_mut().remove(&pane)
         }
         _ => sessions.open.borrow_mut().remove(&pane),
@@ -361,10 +369,14 @@ fn pane(sessions: &Sessions, step: &Value) -> String {
     format!("{pane} {}", text("state"))
 }
 
-/// A step's `called`, what its pane goes by from then on.
+/// A step's `called`, what its pane goes by from then on, and its `title`, what the pane's
+/// program has written to its title bar.
 fn called(sessions: &Sessions, pane: &str, step: &Value) {
     if let Some(called) = step.get("called").and_then(Value::as_str) {
         sessions.names.borrow_mut().insert(pane.to_string(), called.to_string());
+    }
+    if let Some(title) = step.get("title").and_then(Value::as_str) {
+        sessions.titles.borrow_mut().insert(pane.to_string(), title.to_string());
     }
 }
 

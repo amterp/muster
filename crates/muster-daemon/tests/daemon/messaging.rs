@@ -324,6 +324,34 @@ fn a_session_restarted_in_its_pane_takes_back_its_name() {
     assert_eq!(tests, [("tests", Some(second_path), msg_answer::Liveness::Alive)]);
 }
 
+/// What a pane's program writes to its title bar reaches the refusal of a post that named the
+/// pane by it, so the agent is told the id to use.
+#[test]
+fn a_post_to_a_panes_title_is_refused_naming_the_pane() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let titling = "printf '\\033]2;✳ BUILD LEAD\\033\\\\'; cat".to_string();
+    make(
+        &mut control,
+        proto::pane_request::Create { command: Some(titling), ..create("p1", in_new_tab("t1")) },
+    );
+    join(&mut control, &named("a"), "a", "g");
+
+    let refused = until_some("the pane's title to reach the refusal", || {
+        let asked = expect(
+            &mut control,
+            post_to(&named("a"), "BUILD LEAD", "report"),
+            proto::Outcome::Refused,
+        );
+        (msg_answer(&asked).refusal == "titled").then_some(asked)
+    });
+    assert!(
+        refused.answer.reason.contains("post --to p1"),
+        "the refusal should give the pane's id to post to: {}",
+        refused.answer.reason
+    );
+}
+
 #[test]
 fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let daemon = daemon();

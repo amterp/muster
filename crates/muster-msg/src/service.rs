@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::across::{Away, Call, Folded, Found, HumanHome, Peer, Tell, base};
-use crate::names::{check_addressee, check_group, check_participant, is_human, split_machine};
+use crate::names::{
+    check_addressee, check_group, check_participant, is_human, split_machine, title_says,
+};
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, MUSTER, Policy, Refusal, Saved, Store,
     What, default_name, pair_group,
@@ -145,6 +147,12 @@ pub trait Presence {
     /// The open pane called `name`, which a post may address by that name as by its id.
     fn pane_named(&self, _name: &str) -> Option<String> {
         None
+    }
+
+    /// Each open pane with a title, and the title: what its program last wrote to the terminal's
+    /// title bar. Never an address, only a pointer to one when somebody types it as if it were.
+    fn titles(&self) -> Vec<(String, String)> {
+        Vec::new()
     }
 
     /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
@@ -1555,7 +1563,7 @@ impl<S: Store> Messaging<S> {
         // somebody may have named a pane `🤖 A`.
         let pane = self.pane_called(name, found, presence)?;
         if pane.is_none() {
-            check_addressee(name)?;
+            check_addressee(name).map_err(|bad| titled(name, presence).unwrap_or(bad))?;
         }
         self.addressee(pane.as_deref().unwrap_or(name), author, found, group, presence)
     }
@@ -2815,6 +2823,22 @@ impl<S: Store> Messaging<S> {
             human_home: self.human_home.clone(),
         }
     }
+}
+
+/// The refusal for a `--to` that is no pane's name and cannot be a participant's, when it is
+/// what panes here show as their title: it names those panes, by the id a post can use.
+fn titled(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
+    let mut panes: Vec<String> = presence
+        .titles()
+        .into_iter()
+        .filter(|(_, title)| title_says(title, typed))
+        .map(|(pane, _)| pane)
+        .collect();
+    if panes.is_empty() {
+        return None;
+    }
+    panes.sort_unstable();
+    Some(Refusal::Titled { name: typed.to_string(), panes })
 }
 
 pub(crate) fn check_body(body: &str) -> Result<(), Refusal> {

@@ -36,6 +36,21 @@ pub(crate) fn check_addressee(name: &str) -> Result<(), Refusal> {
     }
 }
 
+/// Whether a pane's title is `typed`, as somebody reading it off `muster window` would copy it.
+///
+/// A harness may lead its title with a status symbol, as Claude Code's `✳ BUILD LEAD` does, so
+/// one leading symbol and the space after it are not part of what the title says.
+pub(crate) fn title_says(title: &str, typed: &str) -> bool {
+    let title = title.trim();
+    if title == typed {
+        return true;
+    }
+    let mut characters = title.chars();
+    characters.next().is_some_and(|first| !first.is_alphanumeric())
+        && characters.next().is_some_and(char::is_whitespace)
+        && characters.as_str().trim_start() == typed
+}
+
 /// Whether `name` can name a machine: the characters a participant's name may hold.
 pub fn is_machine(name: &str) -> bool {
     !name.is_empty() && name.len() <= LONGEST && name.chars().all(allowed)
@@ -122,6 +137,19 @@ mod tests {
         assert!(check_addressee("a b@devenv").is_err());
         assert!(is_human("@human") && is_human("@human@laptop"));
         assert!(!is_human("critic@devenv"));
+    }
+
+    #[test]
+    fn a_title_says_what_follows_a_status_symbol() {
+        assert!(title_says("BUILD LEAD", "BUILD LEAD"));
+        assert!(title_says("  BUILD LEAD ", "BUILD LEAD"));
+        assert!(title_says("✳ BUILD LEAD", "BUILD LEAD"));
+        assert!(title_says("◑ BUILD LEAD", "BUILD LEAD"));
+        assert!(title_says("🤖 A", "🤖 A"));
+        assert!(!title_says("✳ BUILD LEAD tonight", "BUILD LEAD"), "not a substring");
+        assert!(!title_says("✳BUILD LEAD", "BUILD LEAD"), "a symbol is set off by a space");
+        assert!(!title_says("A BUILD LEAD", "BUILD LEAD"), "a letter is not a symbol");
+        assert!(!title_says("", "BUILD LEAD"));
     }
 
     #[test]

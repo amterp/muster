@@ -70,6 +70,8 @@ pub(crate) struct Panes {
     open: HashMap<String, bool>,
     /// What each open pane is called, by its name.
     names: HashMap<String, String>,
+    /// What each open pane with a title shows in its title bar, by its name.
+    titles: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
     attended: bool,
 }
@@ -113,16 +115,20 @@ impl Panes {
                 }
             });
             let name = record.name().map(str::to_string);
-            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME, name)
+            let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
+            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME, name, title)
         });
         let mut panes = Panes { attended: session.attended(), ..Panes::default() };
         drop(session);
-        for (pane, seen, young, name) in read {
+        for (pane, seen, young, name, title) in read {
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
             }
             if let Some(name) = name {
                 panes.names.insert(pane.clone(), name);
+            }
+            if let Some(title) = title {
+                panes.titles.insert(pane.clone(), title);
             }
             panes.open.insert(pane, young);
         }
@@ -197,6 +203,10 @@ impl Presence for Panes {
             (Some((pane, _)), None) => Some(pane.clone()),
             _ => None,
         }
+    }
+
+    fn titles(&self) -> Vec<(String, String)> {
+        self.titles.iter().map(|(pane, title)| (pane.clone(), title.clone())).collect()
     }
 
     fn doorbell(&self, pane: &str) -> Ringable {

@@ -33,6 +33,13 @@ pub enum Refusal {
     NoSuchParticipant {
         name: String,
     },
+    /// Nothing is called this, and it cannot be a participant's name, but it is what these
+    /// panes here show as their title: what a harness writes in the terminal's title bar, which
+    /// is not an address because the harness rewrites it as its agent works.
+    Titled {
+        name: String,
+        panes: Vec<String>,
+    },
     /// Members on several machines go by this name; `name@machine` says which.
     WhichParticipant {
         name: String,
@@ -142,6 +149,7 @@ impl Refusal {
             Refusal::GroupNameClash { .. } => "group_name_clash",
             Refusal::PairTooLong { .. } => "pair_too_long",
             Refusal::NoSuchParticipant { .. } => "no_such_participant",
+            Refusal::Titled { .. } => "titled",
             Refusal::WhichParticipant { .. } => "which_participant",
             Refusal::Unreachable { .. } => "unreachable",
             Refusal::Unchecked { .. } => "unchecked",

@@ -1490,6 +1490,20 @@ pub(super) fn words(refusal: &Refusal) -> String {
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} could be {}; say which, by one of those", candidates.join(" or "))
         }
+        Refusal::Titled { name, panes } => match panes.as_slice() {
+            [pane] => format!(
+                "no pane is called {name:?}, and it cannot be a participant's name, but it is \
+                 the title of pane {pane}: post --to {pane}. A title is what the program in a \
+                 pane writes to its title bar, and changes as it works, so it is not an address"
+            ),
+            _ => format!(
+                "no pane is called {name:?}, and it cannot be a participant's name, but it is \
+                 the title of panes {}: post --to whichever of those you meant. A title is what \
+                 the program in a pane writes to its title bar, and changes as it works, so it \
+                 is not an address",
+                panes.join(", ")
+            ),
+        },
         Refusal::Unreachable { group, machine } => format!(
             "{group} is kept on {machine}, which this machine cannot reach now: messages cross \
              machines only while a Muster window is attached to both, and its connection to \
