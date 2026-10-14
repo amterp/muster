@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-checkout-build-in",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791982239199,
+  "creator": "Alexander Terp",
+  "description": "Every launch repoints `\u003chome\u003e/bin/muster` at its own CLI (`Sources/MusterMac/CommandsLocation.swift`), and the daemon puts that directory first on every pane's PATH. MIP-6 section 5 says a development build and the release may share a home, each with its own daemon and app lock. They cannot share this link: launch a checkout build with the default home and every pane on the release daemon now runs the checkout's `muster` against the release window, until the release app is launched again.\n\nFound 2026-10-14 while setting this laptop up to run Homebrew's Muster day to day and HEAD beside it. `tools/run-checkout` sidesteps it with a home of its own (`~/.muster-dev`), which is also why a checkout run there needs `config.toml` linked across.\n\nOptions: only the release install writes `~/.muster/bin/muster` and a development build uses `bin/\u003cinstall\u003e/muster` or no link; or the link becomes a per-install directory the daemon of that install puts on its own panes' PATH. The daemon-data `bin/muster` shim, which runs `~/.muster/bin/muster`, has to follow whichever is chosen.",
+  "id": "a_2hXdHAnFC",
+  "position": "b0z",
+  "title": "A checkout build in the release's home takes over every release pane's muster",
+  "type": "bug",
+  "updated_at_millis": 1791982239199,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791982239199}
+  ]
+}

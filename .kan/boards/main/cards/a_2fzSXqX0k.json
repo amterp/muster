@@ -6,6 +6,14 @@
     "devenv"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-14: probably superseded. This Mac now runs Homebrew's release (0.16.0) for daily use and upgrades with `muster upgrade`. HEAD runs beside it from the debug build under its own home via `tools/run-checkout`, so nothing replaces /Applications/Muster.app any more. Close unless a signed local bundle is still wanted.",
+      "created_at_millis": 1791982239253,
+      "id": "c_2hXdHJTV4"
+    }
+  ],
   "created_at_millis": 1791753031816,
   "creator": "Alexander Terp",
   "description": "Updating this Mac from main means waiting about 45 minutes for the release path (CI gate, then notarization), though notarization only matters for a copy another Mac downloads. Done by hand on 2026-10-11, 0.13.0 to 0.15.0:\n\n```sh\nMUSTER_INSTALL=release \\\nMUSTER_SIGN_IDENTITY=\"Developer ID Application: Alexander Terp (CV4835A2BN)\" \\\n./dev --bundle\n# quit Muster, replace /Applications/Muster.app with .build/muster.app, reopen it with env -i\n```\n\nBoth settings matter. `MUSTER_INSTALL=release` names the daemon's socket, so the new app takes over the release daemon's panes rather than starting a second daemon. The Developer ID keeps macOS permissions: TCC keys a Developer ID grant to team and bundle id, but an ad-hoc build's to its cdhash, which changes every build. All five panes and Full Disk Access survived the swap.\n\nA command could do the build and the swap, refusing when the keychain holds no Developer ID, since an ad-hoc build in /Applications silently drops every permission. Open questions: a `./dev` flag or a script of its own like `./release` (`./dev` builds and checks a tree); whether it refuses a dirty tree; and what it says about Homebrew's record, which keeps naming the version brew installed, so a later `brew upgrade` or Upgrade muster replaces the local build with the release - which is also the way back.",
@@ -13,7 +21,7 @@
   "position": "b12",
   "title": "Install a Developer ID-signed build of this tree into /Applications in one command",
   "type": "enhancement",
-  "updated_at_millis": 1791753031816,
+  "updated_at_millis": 1791982239253,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791753031816}
   ]
