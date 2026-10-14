@@ -60,11 +60,14 @@ cask "muster" do
   #
   # The link goes with an ordinary uninstall rather than waiting for `zap`,
   # because once the bundle is gone it points at nothing and the only thing that
-  # would have repaired it is the app that just left. Deleted rather than
-  # trashed: a dangling link on somebody's PATH is worse than no link, and a
-  # dangling link in the Trash is just confusing.
-  uninstall quit:   "dev.amterp.muster",
-            delete: "~/.muster/bin/muster"
+  # would have repaired it is the app that just left. Trashed rather than
+  # deleted, because brew runs every `delete:` through sudo, existing file or
+  # not, and an upgrade is an uninstall: each one asked for a password, and
+  # under `muster upgrade` it asked in a tab whose window had already quit.
+  # Brew reads this stanza from the version being replaced, so the first
+  # upgrade off a release that still says `delete:` asks once more.
+  uninstall quit:  "dev.amterp.muster",
+            trash: "~/.muster/bin/muster"
 
   zap trash: [
     "~/.muster",
