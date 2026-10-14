@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791946590262,
   "creator": "Alexander Terp",
   "description": "GitHub issue #2 part 1 (Muster 0.15.0, Linux devenv): a restarted agent cannot rejoin a group under its own name from its own pane. In pane P, `muster msg join --name tests --group G` was refused:\n\n```\nmuster: tests is the name of a session that is still running (/run/user/\u003cuid\u003e/cc-socks/\u003cpid\u003e.sock); join under another name\n```\n\nThat socket does not exist and that pid is not running. `muster msg who --group G --json` reports `tests` as `liveness: alive, activity: working, pane: P`, and P is the pane the new session runs in. Liveness seems to come from the pane's activity rather than from the registered session, so the dead session looks alive because a new agent is busy in the same pane. `muster docs` says joining under a gone participant's name takes it over; here that never happens.\n\nTwo changes would fix it: judge a session participant's liveness by its messaging socket or pid rather than its pane's activity, and allow the takeover when the joiner runs in the participant's own pane. The refusal text is `Refusal::NameInUse` in `crates/muster-daemon/src/messages/mod.rs`.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "a5",
+  "position": "YxF",
   "title": "msg join refuses a name held by a dead session in the joiner's own pane",
   "type": "bug",
-  "updated_at_millis": 1791946590262,
+  "updated_at_millis": 1791950708185,
   "history": [
-    {"field":"column","value":"next","at":1791946590262}
+    {"field":"column","value":"next","at":1791946590262},
+    {"field":"column","value":"done","at":1791950708185}
   ]
 }

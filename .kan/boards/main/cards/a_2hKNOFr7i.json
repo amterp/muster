@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "a-finished-claude",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791950645903,
+  "creator": "Alexander Terp",
+  "description": "Claude Code 2.1.299 draws each finished Bash call as one row, `· $ \u003ccommand\u003e…`, cut off with an ellipsis at the pane's width. The second pattern in claude.toml's `live_turn_working` matches any line that starts with a spinner glyph (`·` is one) and ends in `…`, so it reads that row as the spinner. A turn whose last 12 non-empty lines include such a row stays `working` after it ends: the Stop hook's idle report is never confirmed by the rules and expires, and the rules then hold `working` indefinitely.\n\nThe doorbell defers messages while a pane is working, so nothing rings that agent until something else redraws its screen. On 2026-10-13 tai-integrator sat at `working` from 22:24 to 23:03 and muster-integrator from 22:21, with every post from their slots and from PARKAN held (`msg.posted` with `deferred` set, no `turn_ended`). Integrators hit this most because they end turns on long `muster pane send` and `git` commands.\n\nHotfix in place on the owner's laptop: `~/.muster/agent-detection/claude.toml`, the built-in manifest at version 2026.10.13.1 with the timerless branch narrowed to spinner text that is plain words:\n\n    (?:\\S.*…\\s+\\(\\d+[smh](?:\\s|·)|\\p{L}[\\w ,’-]*…\\s*$)\n\nThe daemon loaded it, both integrators' turns ended within a second, and every held message rang. A built-in manifest with a newer version supersedes the override, but delete the file once the fix ships.\n\nTo do: take the same change into the built-in manifest, and record a 2.1.299 screen with a turn ending on a truncated Bash row into the detection corpus (`tools/detection-capture.py`), since the corpus has no 2.1.299 capture and no timerless spinner line, so nothing tests either branch today.",
+  "id": "a_2hKNOFr7i",
+  "position": "!!!!!!V",
+  "title": "🐛 A finished Claude Code turn reads as working when its last lines are long Bash calls, and messages for it are held",
+  "type": "bug",
+  "updated_at_millis": 1791950645903,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791950645903}
+  ]
+}
