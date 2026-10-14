@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791429954453,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-07: 'muster tab rename t29vgmaqym CHAT NOTES' (meaning: rename that tab) renamed the tab the window's keyboard was in - another session's tab - to 't29vgmaqym CHAT NOTES', because NAME is variadic and the tab is --tab. Nothing said so, and the other session noticed only later. A first word that is a live tab's id (or a pane's) is almost certainly meant as the target: refuse it with the --tab spelling, or take it as the tab. pane rename is worth the same check.",
   "id": "a_2dntpGvyP",
-  "position": "b0i",
+  "position": "Yx6",
   "title": "tab rename with a tab id as its first word renames the keyboard's tab to the id",
   "type": "bug",
-  "updated_at_millis": 1791429954453,
+  "updated_at_millis": 1791952343162,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791429954453}
+    {"field":"column","value":"backlog-hi","at":1791429954453},
+    {"field":"column","value":"done","at":1791952343162}
   ]
 }

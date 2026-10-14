@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791946591091,
   "creator": "Alexander Terp",
   "description": "GitHub issue #2 part 6 (Codex 0.162.1): `pane wait --until idle` answers idle for a new pane whose first prompt has not started running yet, so a director cannot tell \"not started\" from \"done\".\n\nA Codex pane was started with `muster pane new --down --name '\u003cname\u003e' --run \"\u003ccodex launch\u003e '\u003cfirst prompt: join a group, then end your turn\u003e'\"`, followed by `muster pane wait --pane \u003cid\u003e --until idle,blocked --timeout 180`. The wait printed `\u003cid\u003e  idle` at once, but `pane read` straight after showed Codex mid-turn on that first prompt (\"Working (7s)\"), and `msg who` did not list the new member yet. A second wait answered idle again once the turn really finished.\n\nHolding a pane started with `--run` and a first prompt at working, or at a starting state, until its adapter reports the first turn would fix it. Failing that, `docs/cli/` could say that a wait after `pane new` must first wait `--until working`, as it already does for handing an idle agent work. The docs fallback is a workaround for every director, so the state fix is preferred. Check that the same gap exists for Claude Code, whose adapter reports differently.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b0p",
+  "position": "Yx7",
   "title": "pane wait reports a new pane idle while its first prompt is still running",
   "type": "bug",
-  "updated_at_millis": 1791946591091,
+  "updated_at_millis": 1791952343071,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946591091}
+    {"field":"column","value":"backlog-hi","at":1791946591091},
+    {"field":"column","value":"done","at":1791952343071}
   ]
 }

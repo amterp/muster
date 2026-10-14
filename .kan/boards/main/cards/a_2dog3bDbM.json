@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791431808852,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-07. The pane menus now show a refused rename, hide, show or quiet in a sheet (ConfirmSheet.tell). Rename Tab still drops its response, so a refused tab rename (an older daemon, a gone machine) closes the sheet with nothing said. Tab names have no uniqueness rule, so it is rarer, not impossible.",
   "id": "a_2dog3bDbM",
-  "position": "b10",
+  "position": "Yx5",
   "title": "Rename Tab discards a refusal, like the pane menus did",
   "type": "bug",
-  "updated_at_millis": 1791431808852,
+  "updated_at_millis": 1791952343247,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791431808852}
+    {"field":"column","value":"backlog-lo","at":1791431808852},
+    {"field":"column","value":"done","at":1791952343247}
   ]
 }

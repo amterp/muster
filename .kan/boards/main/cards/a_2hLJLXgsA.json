@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-tab-on-a-daemon",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791952873746,
+  "creator": "Alexander Terp",
+  "description": "Failed once in a local full gate on 2026-10-13 at load 10.9 (commit 74ae33c3), and passed 5 of 5 run alone straight after:\n\n```\ncrates/muster-seam/tests/daemon_still_starting.rs:173:5:\nassertion `left == right` failed: the window let go of its tab on a daemon still starting\n  left: [\"t-left\", \"t2beqvfmy1\"]\n  right: [\"t-left\"]\n```\n\nThe window kept `t-left`, which is what the test is about, but the record also held a freshly minted tab. So under load the window opened a tab of its own before (or while) the record was read back, likely because the silent daemon or the open took longer than some window the test leans on. Nothing landed that night touched the seam's window or tab code. Decide whether the assert should only require `t-left` to be held, or whether a window on a still-starting daemon should never mint a tab, and fix whichever is wrong.",
+  "id": "a_2hLJLXgsA",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b0x",
+  "title": "🎲 a_tab_on_a_daemon_still_starting_stays_this_windows saw a second tab under load",
+  "type": "bug",
+  "updated_at_millis": 1791952873746,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791952873746}
+  ]
+}
