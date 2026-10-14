@@ -352,8 +352,9 @@ just cannot see what it does with it:
 
 That asks for a bridge, and it keeps the agent. `muster pane close` also gets the pane a fresh
 start, by ending what is running in it, which is rarely what somebody staring at a stuck agent
-wants. Quitting Muster ends nothing, and the window that opens next gives every pane a bridge
-again, so quitting and reopening is a reattach of every pane at once.
+wants. Quitting Muster ends no agent - Quit and Close Sessions is the one quit that does - and the
+window that opens next gives every pane a bridge again, so quitting and reopening is a reattach of
+every pane at once.
 
 The usual thing in the way is the connection to the pane's machine: a devenv that is down, or an
 ssh that has not come back. The window says so on the pane's row in the roster. Once the machine
