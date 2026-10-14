@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791951372444,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-13 alongside the fix for a_2hKMo9s9t, which stops a gone participant from making a pane name ambiguous. A live one still can: `pane new --name`, `pane rename`, or a harness /rename the pane follows can give a pane a name a live participant on this machine joined by, because the daemon checks only drawn words against joined names (`session.rs::draw_word`). After that, `msg post --to` the name is refused as ambiguous until one side changes.\n\nOptions: refuse `pane new --name` and `pane rename` to a live participant's name, as `join` refuses a pane's name; for a harness rename, keep the pane's old name and log it, as `session.name.held` does for a name another pane holds. Card a_2dog2o3cN is in the same lookup.",
   "id": "a_2hKgI2Qj7",
-  "position": "b13",
+  "position": "YxC",
   "title": "A pane can be named after a live participant elsewhere, and --to that name is then ambiguous",
   "type": "bug",
-  "updated_at_millis": 1791951372444,
+  "updated_at_millis": 1791951792455,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791951372444}
+    {"field":"column","value":"backlog-lo","at":1791951372444},
+    {"field":"column","value":"done","at":1791951792455}
   ]
 }

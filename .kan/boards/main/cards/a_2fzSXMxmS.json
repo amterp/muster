@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791753031513,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-11: the 0.15.0 release commit's CI gate failed with `muster-daemon exited with signal: 6 (SIGABRT) before answering` in `messaging::a_policy_file_with_a_key_nobody_reads_is_refused`. Reproduced locally once in 12 runs of the CLI suite, three copies at a time. With the harness now printing the daemon's stderr when it dies at startup, dyld said:\n\n```\ndyld: Library not loaded: @rpath/libghostty-vt.dylib\n  Referenced from: \u003cuuid\u003e .../target/tmp/start-73078-0/muster-daemon\n  Reason: tried: '.../target/tmp/start-73078-0/../../../deps/ghostty/zig-out/lib/libghostty-vt.dylib' (no such file), ...\n```\n\nThe daemon that died belonged to test process 73053, not to the process that made `start-73078-0`. `Installed::new` in `crates/muster-cli/tests/cli/messaging.rs` hard-links `target/debug/muster-daemon` into `target/tmp/start-\u003cpid\u003e-\u003cn\u003e/`, so every test's daemon is one file under two names. The likely mechanism, not proven separately: macOS reports a hard-linked executable's path through whichever link it resolved last, dyld resolves `@loader_path` from that path, and once the other test's `Drop` has removed its folder, the rpath lookup through it fails and dyld aborts.\n\nThe helper hard-links on purpose: a copied binary is held by macOS's first-exec scan. Some options: keep the per-process folders until the test process ends rather than removing them per test; a symlink, if the CLI's lookup for a daemon beside itself still sees the install layout; or one copy per test process, paying the scan once.\n\nSeen in the same stress run, maybe unrelated: `harness::a_dry_run_prints_what_would_run_and_runs_nothing` got no exit code (the `muster` CLI killed by a signal) and empty stderr. The CLI does not load libghostty-vt, so it is not this dyld failure.",
   "id": "a_2fzSXMxmS",
-  "position": "b0k",
+  "position": "YxB",
   "title": "CLI tests: Installed's hard-linked daemon can make another test's daemon abort in dyld",
   "type": "bug",
-  "updated_at_millis": 1791753031513,
+  "updated_at_millis": 1791951951715,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791753031513}
+    {"field":"column","value":"backlog-hi","at":1791753031513},
+    {"field":"column","value":"done","at":1791951951715}
   ]
 }
