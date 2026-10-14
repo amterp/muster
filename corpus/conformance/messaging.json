@@ -647,6 +647,60 @@
       ] }
     },
     {
+      "name": "a session restarted in its pane takes back the name the one before it held there",
+      "why": "The pane's agent is the new session itself, so it is no sign that the old one still runs: its own inbox is. Refusing would leave a restarted agent unable to rejoin under its own name (MIP-4, section 3).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "tests", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "s1", "do": "dies"},
+        {"session": "s2", "do": "join", "name": "tests", "group": "g", "pane": "p1"},
+        {"do": "who", "group": "g"},
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "a", "do": "post", "body": "welcome back"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "tests joined g (created)",
+        "a joined g",
+        "died",
+        "tests joined g (took over)",
+        "a alive, tests alive (working)",
+        "p1 idle",
+        "a posted #4 to g; woke tests [g #4-4 x1 to-you:0 from a] rung p1"
+      ] }
+    },
+    {
+      "name": "a session still running in a pane keeps its name from another started in the same pane",
+      "why": "An agent nested in a pane's own session shares the pane, so the pane cannot tell them apart; the first session's inbox still answering says it has not gone (MIP-4, section 3).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "do": "join", "name": "tests", "group": "g", "pane": "p1"},
+        {"session": "s2", "do": "join", "name": "tests", "group": "g", "pane": "p1"},
+        {"session": "s2", "do": "read", "as": "tests", "pane": "p1"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "tests joined g (created)",
+        "refused name_in_use tests at /tmp/cc-socks/s1.sock",
+        "refused name_in_use tests at /tmp/cc-socks/s1.sock"
+      ] }
+    },
+    {
+      "name": "an agent with no inbox leaves its name to the session after it in its pane",
+      "why": "An agent whose harness has no inbox is there only as its pane, and the session that follows it there is what is in the pane now (MIP-4, section 3).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"do": "join", "name": "tests", "group": "g", "pane": "p1"},
+        {"session": "s2", "do": "join", "name": "tests", "group": "g", "pane": "p1"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "tests joined g (created)",
+        "tests joined g"
+      ] }
+    },
+    {
       "name": "an agent that goes idle without reading is woken once more, and not again",
       "why": "A wake may land while an agent is busy with something it then finishes; one more, saying the messages are still unread, and then nothing until it reads (MIP-4, section 5).",
       "given": { "steps": [

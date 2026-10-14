@@ -55,9 +55,12 @@ names those groups so you can leave the ones you are done with:
 
 A join that leaves you in groups besides the one it joined says so too, `; also in review`. A
 session may not become one that is still running, with `join --name` or with `--as`; a shell or a
-script, which has no session of its own to move, may act `--as` anyone. Nor may it take a new name
-that a pane other than its own goes by, since `--to` that name would then mean two agents. A
-participant nothing can wake, such as one made by `join --name` from a plain shell, counts as gone.
+script, which has no session of its own to move, may act `--as` anyone. A session restarted in a
+pane takes back the name the session before it held there. The pane's agent is the new session
+now, so the old one keeps the name only while its own inbox still answers, as when one agent is
+started inside another in the same pane. Nor may a session take a new name that a pane other than
+its own goes by, since `--to` that name would then mean two agents. A participant nothing can
+wake, such as one made by `join --name` from a plain shell, counts as gone.
 
 Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as
 you can post as anyone.

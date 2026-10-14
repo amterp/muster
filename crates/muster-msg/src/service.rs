@@ -424,6 +424,14 @@ pub(crate) fn alive(participant: &Participant, presence: &dyn Presence) -> bool 
     participant.name == HUMAN || (!participant.gone && presence.alive(participant))
 }
 
+/// Whether the session that joined with `inbox` still runs, judged by its inbox alone: an agent
+/// in its pane may be another session than the one that joined from there.
+fn still_running(inbox: &Inbox, presence: &dyn Presence) -> bool {
+    let mut session = Participant::named("");
+    session.inbox = Some(inbox.clone());
+    presence.alive(&session)
+}
+
 #[derive(Debug)]
 pub(crate) struct Group {
     pub(crate) policy: Policy,
@@ -1756,6 +1764,11 @@ impl<S: Store> Messaging<S> {
     /// replace the live one's, and it would never be woken again. A caller carrying no address,
     /// such as a script, moves nothing, so it may act as anyone.
     ///
+    /// In the participant's own pane, its pane's agent is the caller, which says nothing about
+    /// whether the session that joined from there still runs: a session restarted in a pane
+    /// takes back the name the one before it held there, and only another session still running
+    /// in the pane, such as an agent nested in it, keeps it.
+    ///
     /// A new name is refused too while a pane here other than the caller's goes by it: `--to`
     /// that name would then mean two agents, and say neither.
     pub(crate) fn may_become(
@@ -1772,9 +1785,21 @@ impl<S: Store> Messaging<S> {
                 _ => Ok(()),
             };
         };
-        let elsewhere = (caller.inbox.is_some() && existing.inbox != caller.inbox)
-            || (caller.pane.is_some() && existing.pane.is_some() && existing.pane != caller.pane);
-        if name != HUMAN && elsewhere && alive(existing, presence) {
+        let in_use = if caller.pane.is_some() && existing.pane == caller.pane {
+            !existing.gone
+                && existing
+                    .inbox
+                    .as_ref()
+                    .filter(|inbox| caller.inbox.as_ref() != Some(*inbox))
+                    .is_some_and(|inbox| still_running(inbox, presence))
+        } else {
+            let elsewhere = (caller.inbox.is_some() && existing.inbox != caller.inbox)
+                || (caller.pane.is_some()
+                    && existing.pane.is_some()
+                    && existing.pane != caller.pane);
+            elsewhere && alive(existing, presence)
+        };
+        if name != HUMAN && in_use {
             let inbox = existing.inbox.as_ref().map(|inbox| inbox.socket.clone());
             return Err(Refusal::NameInUse { name: name.to_string(), inbox });
         }
@@ -1951,11 +1976,7 @@ impl<S: Store> Messaging<S> {
         let pane = caller.pane.as_ref()?;
         let made = self.participants.get(pane)?;
         let another = made.inbox.as_ref().filter(|inbox| caller.inbox.as_ref() != Some(*inbox));
-        let theirs = another.is_some_and(|inbox| {
-            let mut session = Participant::named(pane);
-            session.inbox = Some(inbox.clone());
-            presence.alive(&session)
-        });
+        let theirs = another.is_some_and(|inbox| still_running(inbox, presence));
         (made.pane.as_ref() == Some(pane) && !theirs).then(|| pane.clone())
     }
 

@@ -284,6 +284,46 @@ fn a_session_whose_inbox_is_gone_is_not_woken_and_reads_as_gone() {
     assert_eq!(liveness, [("a", msg_answer::Liveness::Alive), ("b", msg_answer::Liveness::Gone)]);
 }
 
+/// The pane's agent is the restarted session itself, which makes the one before it look alive
+/// to anything judging by the pane; its own inbox says whether it still runs.
+#[test]
+fn a_session_restarted_in_its_pane_takes_back_its_name() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    let in_p1 = |inbox: &Inbox| msg_request::Caller { pane: Some("p1".into()), ..inbox.caller() };
+    let joining = |name: &str| {
+        Asked::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("g".to_string()),
+            pull: false,
+        })
+    };
+    let (first, second) = (Inbox::bind(&daemon, "first"), Inbox::bind(&daemon, "second"));
+    expect(&mut control, msg(&in_p1(&first), joining("tests")), proto::Outcome::Done);
+
+    let refused =
+        expect(&mut control, msg(&in_p1(&second), joining("tests")), proto::Outcome::Refused);
+    assert_eq!(msg_answer(&refused).refusal, "name_in_use", "{}", refused.answer.reason);
+
+    let first_path = first.path.clone();
+    drop(first);
+    std::fs::remove_file(&first_path).unwrap();
+    expect(&mut control, msg(&in_p1(&second), joining("tests")), proto::Outcome::Done);
+    let who = msg(&named("reader"), Asked::Who(msg_request::Who { group: Some("g".into()) }));
+    let who = expect(&mut control, who, proto::Outcome::Done);
+    let Some(Answer::Members(members)) = &msg_answer(&who).answer else { panic!() };
+    let tests: Vec<_> = members
+        .members
+        .iter()
+        .map(|member| (member.name.as_str(), member.inbox.clone(), member.liveness()))
+        .collect();
+    let second_path = second.path.display().to_string();
+    assert_eq!(tests, [("tests", Some(second_path), msg_answer::Liveness::Alive)]);
+}
+
 #[test]
 fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let daemon = daemon();
