@@ -41,9 +41,9 @@ each one. `muster window` leads a pane's row with its name, and `--json` carries
 
 Every command that acts on a pane takes `--pane`. Leaving it out means the pane the command is
 running in, read from `$MUSTER_PANE`, and failing that the pane the window's keyboard is on.
-Giving it empty is not leaving it out: `--pane ""` is refused, as is an empty tab or `msg post
---to` name, because it is nearly always a shell variable that was never set, and the pane the
-keyboard is on is the worst place for that to land.
+Giving it empty is not leaving it out: `--pane ""` is refused, as is an empty tab, `--daemon` or
+`msg post --to` name, because it is nearly always a shell variable that was never set, and the pane
+the keyboard is on is the worst place for that to land.
 
 Muster sets `$MUSTER_PANE`, the id, in every pane it creates, and `$MUSTER_PANE_NAME`, what the
 pane was called as it was made: a program's environment cannot follow a rename, so `muster

@@ -196,6 +196,21 @@
       }
     },
     {
+      "name": "an empty machine is refused rather than read as the one the keyboard is on",
+      "why": "`--daemon \"$HOST\"` with HOST unset would otherwise put the pane on whichever machine the keyboard is on, the same mistake an empty pane makes, so the same rule refuses it.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--daemon",
+          ""
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
       "name": "an exported but empty MUSTER_PANE is not an answer",
       "why": "An exported-but-empty variable is a normal state of a shell profile, and of a herdr pane restored after a daemon restart - those get no launch environment at all. Read as a real answer it would send a request naming the pane called `\"\"`, which no window holds, instead of falling through to the pane the keyboard is on.",
       "given": {

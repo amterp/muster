@@ -431,7 +431,7 @@ enum AboutWindows {
     New {
         /// Ask this machine for the window's first tab, by its id as `muster window` prints it,
         /// rather than the first one on this machine
-        #[arg(long, value_name = "ID", conflicts_with = "tab")]
+        #[arg(long, value_name = "ID", value_parser = reference, conflicts_with = "tab")]
         daemon: Option<String>,
 
         /// Open the window onto this tab instead, taking it from whichever window holds it
@@ -535,7 +535,7 @@ enum Doing {
 
         /// The machine to put it on: beside --pane when one is named, or on its own for a
         /// machine you have no pane on
-        #[arg(long, value_name = "ID")]
+        #[arg(long, value_name = "ID", value_parser = reference)]
         daemon: Option<String>,
 
         /// Where it starts, or the directory the split came from
@@ -875,7 +875,7 @@ enum WithTab {
         pane: Option<String>,
 
         /// The machine to make it on, instead of naming a pane in it
-        #[arg(long, value_name = "ID", group = "somewhere")]
+        #[arg(long, value_name = "ID", value_parser = reference, group = "somewhere")]
         daemon: Option<String>,
 
         /// Where its pane starts, or that pane's own directory
@@ -1543,7 +1543,7 @@ fn pane_ref(named: Option<&String>, environment: &BTreeMap<String, String>) -> S
     named.cloned().or_else(|| running_in(environment)).unwrap_or_default()
 }
 
-/// A pane, tab or addressee as typed, refusing an empty one.
+/// A pane, tab, machine or addressee as typed, refusing an empty one.
 ///
 /// Empty is what the schema reads as no answer given, so `--pane ""` would otherwise act on the
 /// pane the window's keyboard is on - which may be the one somebody is typing in. Nobody types an
@@ -1551,11 +1551,12 @@ fn pane_ref(named: Option<&String>, environment: &BTreeMap<String, String>) -> S
 /// for is better refused than carried out somewhere else (kan a_2hIftnZi2).
 pub(crate) fn reference(typed: &str) -> Result<String, String> {
     if typed.is_empty() {
-        return Err("an empty name is no pane, tab or participant, and nothing was sent. It is \
-                    refused rather than read as the flag left out, which acts on a default \
-                    nobody named - the pane this runs in, the one the keyboard is on, or a whole \
-                    group. An empty value is usually a shell variable that was never set. \
-                    `muster window` lists every pane and tab by name."
+        return Err("an empty name is no pane, tab, machine or participant, and nothing was \
+                    sent. It is refused rather than read as the flag left out, which acts on a \
+                    default nobody named - the pane this runs in, the one the keyboard is on, \
+                    that pane's machine, or a whole group. An empty value is usually a shell \
+                    variable that was never set. `muster window` lists every pane, tab and \
+                    machine by name."
             .to_string());
     }
     Ok(typed.to_string())
