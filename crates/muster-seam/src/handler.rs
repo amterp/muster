@@ -1506,11 +1506,17 @@ pub(crate) fn watch_panes(request: &proto::WatchPanes) -> Result<watch::Watch, B
     let until = Until::parse(&request.until, request.context_at_least)
         .map_err(|refusal| Box::new(Response::failure(refusal)))?;
 
-    let panes = if request.pane_ids.is_empty() {
+    // A watch is served by the endpoint and never passes through `handle`, so the names in it are
+    // put in place of ids here instead.
+    let mut pane_ids = request.pane_ids.clone();
+    session::address(&mut pane_ids.iter_mut().collect::<Vec<_>>())
+        .map_err(|ambiguous| Box::new(Response::failure(ambiguous)))?;
+
+    let panes = if pane_ids.is_empty() {
         None
     } else {
         let mut keys = BTreeSet::new();
-        for named in &request.pane_ids {
+        for named in &pane_ids {
             let pane = PaneId::new(named);
             let Some(daemon) = session::daemon_holding(&pane) else {
                 return Err(Box::new(Response::failure(format!(

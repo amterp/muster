@@ -43,6 +43,7 @@ fn a_caller_can_wait_on_an_agent_instead_of_polling() {
     a_wait_exits_when_the_agent_finishes(&open);
     a_layout_watch_draws_again_when_the_arrangement_moves(&open);
     a_pane_just_made_can_be_waited_on(&open);
+    a_pane_can_be_waited_on_by_its_name(&open);
     a_wait_on_an_agent_that_stops_reading_is_refused(&open);
 
     let ran = muster(&open, &["pane", "wait", "--pane", "p1nobody00", "--until", "idle"]);
@@ -292,6 +293,49 @@ fn a_pane_just_made_can_be_waited_on(open: &Open) {
         Some(0),
         "a pane made a moment ago could not be waited on: {}",
         String::from_utf8_lossy(&ran.stderr)
+    );
+}
+
+/// A wait names its pane the way every other `--pane` does, hidden or shown (kan a_2hIfsQHSz).
+///
+/// The name is one Claude Code's `/rename` gives a session, spaces and emoji included, since that
+/// is a name an agent waiting on another is handed.
+fn a_pane_can_be_waited_on_by_its_name(open: &Open) {
+    let name = "🤖 1 session";
+    let made = muster(open, &["pane", "new", "--hidden", "--name", name]);
+    assert!(
+        made.status.success(),
+        "`muster pane new --hidden --name` failed: {}",
+        String::from_utf8_lossy(&made.stderr)
+    );
+    let every_state = "working,blocked,idle,done,unknown";
+    let wait = |when: &str| {
+        let ran = muster(
+            open,
+            &["pane", "wait", "--pane", name, "--until", every_state, "--timeout", "10"],
+        );
+        assert_eq!(
+            ran.status.code(),
+            Some(0),
+            "a pane {when} could not be waited on by its name: {}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    };
+    wait("hidden from every window");
+
+    let shown = muster(open, &["pane", "show", "--pane", name]);
+    assert!(
+        shown.status.success(),
+        "`muster pane show` by name failed: {}",
+        String::from_utf8_lossy(&shown.stderr)
+    );
+    wait("shown in a tab");
+
+    let closed = muster(open, &["pane", "close", "--pane", name]);
+    assert!(
+        closed.status.success(),
+        "closing the pane by name failed: {}",
+        String::from_utf8_lossy(&closed.stderr)
     );
 }
 
