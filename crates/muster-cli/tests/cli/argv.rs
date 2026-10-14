@@ -143,6 +143,24 @@ fn text_that_is_not_text_is_refused() {
     );
 }
 
+/// An empty pane is refused naming the flag it was given to, and saying why.
+///
+/// Native rather than a corpus case, because the corpus pins only the kind of a usage error and
+/// the flag is the part a script author needs to find the unset variable.
+#[test]
+fn an_empty_pane_is_refused_naming_its_flag() {
+    let argv: Vec<String> = ["pane", "send", "--pane", "", "hello"].map(String::from).to_vec();
+    let Err(args::Failure::Usage(error)) = args::parse(&argv, &BTreeMap::new(), None) else {
+        panic!("an empty --pane was not refused by the command line");
+    };
+    let said = error.to_string();
+    assert!(
+        said.contains("--pane") && said.contains("never set"),
+        "the refusal should name --pane and say an empty value is usually an unset variable: \
+         {said}"
+    );
+}
+
 /// A send's request with its text filled in from the case's `input`, the way `run` fills it.
 ///
 /// A case with no `input` reads as an empty file, so a case about where the text comes from

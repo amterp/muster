@@ -119,7 +119,7 @@ pub enum Verb {
         #[arg(long, value_name = "GROUP")]
         group: Option<String>,
         /// Whom the message is for, comma-separated; everyone else in the group can still read it
-        #[arg(long, value_name = "NAMES", value_delimiter = ',')]
+        #[arg(long, value_name = "NAMES", value_delimiter = ',', value_parser = crate::args::reference)]
         to: Vec<String>,
         /// Post this file's contents
         #[arg(long, value_name = "PATH", conflicts_with = "text")]

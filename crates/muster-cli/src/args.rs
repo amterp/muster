@@ -303,7 +303,7 @@ enum What {
     // this is read. None of them is the sixth way, which is the pane this is running in.
     Focus {
         /// The pane to go to, or the one this is running in
-        #[arg(value_name = "REF", group = "somewhere")]
+        #[arg(value_name = "REF", value_parser = reference, group = "somewhere")]
         pane: Option<String>,
 
         /// Go to the next pane the window is showing, wrapping at the end
@@ -344,7 +344,7 @@ enum What {
     /// Fill the region with one pane, or put the others back
     Zoom {
         /// The pane to fill with, or the one this is running in
-        #[arg(value_name = "REF")]
+        #[arg(value_name = "REF", value_parser = reference)]
         pane: Option<String>,
     },
 
@@ -435,7 +435,7 @@ enum AboutWindows {
         daemon: Option<String>,
 
         /// Open the window onto this tab instead, taking it from whichever window holds it
-        #[arg(long, value_name = "TAB")]
+        #[arg(long, value_name = "TAB", value_parser = reference)]
         tab: Option<String>,
     },
 
@@ -530,7 +530,7 @@ enum Doing {
         down: bool,
 
         /// The pane to split, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// The machine to put it on: beside --pane when one is named, or on its own for a
@@ -571,7 +571,7 @@ enum Doing {
     /// Call a pane something. An empty name takes the name away again
     Rename {
         /// The pane to rename, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// What to call it, joined with spaces if it arrives in pieces
@@ -585,7 +585,7 @@ enum Doing {
     // turn ends. The daemon types it, under the rules it rings an agent by.
     Compact {
         /// The pane whose agent to compact, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// What the summary should keep, joined with spaces if it arrives in pieces, where the
@@ -597,7 +597,7 @@ enum Doing {
     /// Take a pane out of every window, its agent still running, into the hidden list
     Hide {
         /// The pane to hide, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
     },
 
@@ -607,7 +607,7 @@ enum Doing {
         //
         // Required, and $MUSTER_PANE is not read: the pane this runs in is the one somebody is
         // looking at, so it is not the hidden one.
-        #[arg(long, value_name = "REF", required = true)]
+        #[arg(long, value_name = "REF", value_parser = reference, required = true)]
         pane: String,
 
         /// Move the window's keyboard to it, bringing its tab on screen
@@ -619,7 +619,7 @@ enum Doing {
     /// it notify again
     Quiet {
         /// The pane to make quiet, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// Let it notify again
@@ -634,7 +634,7 @@ enum Doing {
     // who does sends twice.
     Send {
         /// The pane to type into, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// Press a key after the text, as a keystroke rather than pasted, so a dialog or menu
@@ -680,7 +680,7 @@ enum Doing {
         //
         // Required, unlike every other pane command, and $MUSTER_PANE is not read: the pane
         // this is running in is running this, so waiting on it has no useful answer.
-        #[arg(long, value_name = "REF", required = true)]
+        #[arg(long, value_name = "REF", value_parser = reference, required = true)]
         pane: Vec<String>,
 
         /// The states to wait for, comma-separated. idle is also met by done, and not by waiting
@@ -715,7 +715,7 @@ enum Doing {
     // there was no way to read it at all.
     Read {
         /// The pane to read, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// How many rows back to ask for. Omit for as far as the window will go
@@ -736,14 +736,14 @@ enum Doing {
     // on its own a few seconds after nothing dials one.
     Reattach {
         /// The pane to reattach, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
     },
 
     /// Close a pane, which ends what is running in it
     Close {
         /// The pane to close, or the one this is running in - which ends this command's own shell
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
     },
 
@@ -757,12 +757,12 @@ enum Doing {
     #[command(group = ArgGroup::new("somewhere").required(true))]
     Move {
         /// The pane to move, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// Where to put it: beside this pane with a side, or else in the same tab the two swap
         /// and in another it lands after this one
-        #[arg(long, group = "somewhere", value_name = "REF")]
+        #[arg(long, group = "somewhere", value_name = "REF", value_parser = reference)]
         onto: Option<String>,
 
         /// Put it in this tab, which may be one holding panes on another machine
@@ -770,7 +770,7 @@ enum Doing {
         // The one destination that crosses machines, because a tab is Muster's grouping rather
         // than a daemon's: the pane stays on its own machine and changes which tab it is in.
         // `--onto` cannot, because two panes in one tree are one machine's.
-        #[arg(long, group = "somewhere", value_name = "REF")]
+        #[arg(long, group = "somewhere", value_name = "REF", value_parser = reference)]
         tab: Option<String>,
 
         /// Give it a tab of its own instead, made by the move
@@ -844,7 +844,7 @@ enum Doing {
         column: bool,
 
         /// The pane to grow, or the one this is running in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
         /// How far, as a share of the region between 0 and 1. Omit for the window's own step
@@ -871,7 +871,7 @@ enum WithTab {
     // next. The tab's own name is one `muster window` away, on the row of the pane below.
     New {
         /// The pane whose machine the tab is made on, or the one this is running in
-        #[arg(long, value_name = "REF", group = "somewhere")]
+        #[arg(long, value_name = "REF", value_parser = reference, group = "somewhere")]
         pane: Option<String>,
 
         /// The machine to make it on, instead of naming a pane in it
@@ -904,7 +904,7 @@ enum WithTab {
     #[command(group = ArgGroup::new("which").required(true))]
     Focus {
         /// The tab to go to
-        #[arg(value_name = "REF", group = "which")]
+        #[arg(value_name = "REF", value_parser = reference, group = "which")]
         tab: Option<String>,
 
         /// Go to the next tab instead, wrapping at the end
@@ -921,7 +921,7 @@ enum WithTab {
     // limits` rather than beside the tab's other verbs, because what it costs is the same.
     Close {
         /// The tab to close, or the one the window's keyboard is in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         tab: Option<String>,
     },
 
@@ -933,14 +933,14 @@ enum WithTab {
     // reaches - and comes on screen.
     Move {
         /// The tab to move, or the one the window is showing. `--window` says where it goes
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         tab: Option<String>,
     },
 
     /// Call a tab something. An empty name takes the name away again
     Rename {
         /// The tab to rename, or the one the window's keyboard is in
-        #[arg(long, value_name = "REF")]
+        #[arg(long, value_name = "REF", value_parser = reference)]
         tab: Option<String>,
 
         /// What to call it, joined with spaces if it arrives in pieces
@@ -1541,6 +1541,24 @@ fn settled(path: &Path) -> String {
 /// still splits whatever somebody is looking at.
 fn pane_ref(named: Option<&String>, environment: &BTreeMap<String, String>) -> String {
     named.cloned().or_else(|| running_in(environment)).unwrap_or_default()
+}
+
+/// A pane, tab or addressee as typed, refusing an empty one.
+///
+/// Empty is what the schema reads as no answer given, so `--pane ""` would otherwise act on the
+/// pane the window's keyboard is on - which may be the one somebody is typing in. Nobody types an
+/// empty name on purpose: it is a shell variable that was never set, and the command it was meant
+/// for is better refused than carried out somewhere else (kan a_2hIftnZi2).
+pub(crate) fn reference(typed: &str) -> Result<String, String> {
+    if typed.is_empty() {
+        return Err("an empty name is no pane, tab or participant, and nothing was sent. It is \
+                    refused rather than read as the flag left out, which acts on a default \
+                    nobody named - the pane this runs in, the one the keyboard is on, or a whole \
+                    group. An empty value is usually a shell variable that was never set. \
+                    `muster window` lists every pane and tab by name."
+            .to_string());
+    }
+    Ok(typed.to_string())
 }
 
 /// Which pane and which machine a command that may name either is about.

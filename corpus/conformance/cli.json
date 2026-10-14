@@ -95,6 +95,107 @@
       }
     },
     {
+      "name": "an empty pane is refused rather than read as the one this is running in",
+      "why": "An empty value is a shell variable that was never set far more often than anything anybody meant, and the schema reads an empty pane as the one the window's keyboard is on. So `--pane \"$WORKER\"` with WORKER unset typed into whichever pane somebody was looking at and exited 0 (kan a_2hIftnZi2). Refused even with MUSTER_PANE set, because a flag given empty is not a flag left out: only leaving it out means the pane this runs in.",
+      "given": {
+        "argv": [
+          "pane",
+          "send",
+          "--pane",
+          "",
+          "hello",
+          "--enter"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "an empty tab is refused rather than read as the focused one",
+      "why": "The same mistake on a verb that ends things: an empty tab is the tab the keyboard is in, so `tab close --tab \"$TAB\"` with TAB unset would close every pane somebody was working in.",
+      "given": {
+        "argv": [
+          "tab",
+          "close",
+          "--tab",
+          ""
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "an empty pane to move onto is refused",
+      "why": "Every flag that names a pane takes one rule, so a script cannot find the one that still guesses.",
+      "given": {
+        "argv": [
+          "pane",
+          "move",
+          "--pane",
+          "p1w3r07bsd",
+          "--onto",
+          "",
+          "--down"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "an empty pane among several to wait on is refused",
+      "why": "A wait names its panes in a list, typically built from a shell array, which is where an off-by-one leaves an empty element.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--pane",
+          "",
+          "--until",
+          "idle"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "an empty pane to focus is refused",
+      "why": "The pane a focus names is an argument rather than a flag, and an unset variable empties it just the same.",
+      "given": {
+        "argv": [
+          "focus",
+          ""
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "an empty addressee is refused rather than dropped",
+      "why": "`--to \"$A,$B\"` with B unset leaves an empty name after the comma. Left out, `--to` wakes the whole group, so an empty name is refused rather than quietly reaching more agents than were named.",
+      "given": {
+        "argv": [
+          "msg",
+          "post",
+          "--to",
+          "critic,",
+          "hello"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
       "name": "an exported but empty MUSTER_PANE is not an answer",
       "why": "An exported-but-empty variable is a normal state of a shell profile, and of a herdr pane restored after a daemon restart - those get no launch environment at all. Read as a real answer it would send a request naming the pane called `\"\"`, which no window holds, instead of falling through to the pane the keyboard is on.",
       "given": {
