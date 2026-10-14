@@ -639,7 +639,8 @@ enum Doing {
         pane: Option<String>,
 
         /// Press a key after the text, as a keystroke rather than pasted, so a dialog or menu
-        /// reads it: down, up, esc, tab, a digit or letter, ctrl+c. Give it once per key
+        /// reads it: down, up, esc, tab, shift+tab, a digit or letter, ctrl+c. Give it once per
+        /// key
         //
         // Spelled as a keybinding in the config file is, by the same parser, so there is one
         // vocabulary for keys and its refusal already lists the names. No comma-separated form,

@@ -18,7 +18,9 @@ use proto::input_event::{self, Input as Event};
 /// libghostty's key codes, as a surface hands them over.
 const KEY_A: u32 = 20;
 const KEY_Z: u32 = 45;
+const KEY_TAB: u32 = 64;
 const KEY_ESCAPE: u32 = 120;
+const MODS_SHIFT: u32 = 1;
 
 const GRID: proto::Grid = proto::Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 };
 
@@ -248,6 +250,51 @@ fn keys_a_send_names_are_pressed_after_its_text_against_the_programs_modes() {
     }
     received(&dialog, &expected);
     received(&plain, b"hi\x1b[B2\x03\r");
+}
+
+/// `--key shift+tab` is what a terminal sends for it - written out rather than encoded, because
+/// these bytes are the convention a program cycling its modes on Shift+Tab is written against.
+#[test]
+fn shift_tab_by_name_is_back_tab_or_its_kitty_form() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let kitty = receiving(&mut control, &daemon, "kitty", b"\x1b[>1u");
+    let plain = receiving(&mut control, &daemon, "plain", b"");
+    let mut input = Input::connect(daemon.socket_path());
+    let send = || {
+        Event::Send(input_event::Send { keys: vec!["shift+tab".to_string()], ..Default::default() })
+    };
+    input.send("kitty", send());
+    input.send("plain", send());
+    received(&kitty, b"\x1b[9;2u");
+    received(&plain, b"\x1b[Z");
+}
+
+/// A Shift+Tab from the keyboard carries no text, which is what keeps its shift in kitty mode:
+/// with text, the encoder takes shift as spent on it and writes a bare Tab. AppKit's text for
+/// Shift+Tab is a control character, so the shell has to drop it as Ghostty's app does.
+#[test]
+fn a_shift_tab_with_no_text_keeps_its_shift_where_one_with_text_loses_it() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let kitty = b"\x1b[>1u";
+    let bare = receiving(&mut control, &daemon, "bare", kitty);
+    let texted = receiving(&mut control, &daemon, "texted", kitty);
+    let mut input = Input::connect(daemon.socket_path());
+    let shift_tab = |text: &str| {
+        Event::Key(input_event::Key {
+            action: proto::KeyAction::Press.into(),
+            key: KEY_TAB,
+            mods: MODS_SHIFT,
+            consumed_mods: MODS_SHIFT,
+            text: text.to_string(),
+            ..input_event::Key::default()
+        })
+    };
+    input.send("bare", shift_tab(""));
+    input.send("texted", shift_tab("\t"));
+    received(&bare, b"\x1b[9;2u");
+    received(&texted, b"\t");
 }
 
 /// A send naming a key the daemon cannot read is not written at all, text and Return included:

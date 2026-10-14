@@ -130,6 +130,11 @@ the dialog has drawn what one key did before it reads the next. Read the pane fi
 place in the list, and which one starts highlighted, are the harness's, and a list can wrap from
 its last option to its first.
 
+A key reaches a program outside a dialog too, encoded as a terminal encodes it for that program's
+modes. `--key shift+tab` is how one agent cycles another Claude Code's permission mode:
+
+    muster pane send --pane p1w3r0ab2n --key shift+tab
+
 Whether Return submits is the receiving harness's to decide, and exit 0 says the daemon took the
 text and the keys rather than that the agent heard them. Where that matters, ask:
 
