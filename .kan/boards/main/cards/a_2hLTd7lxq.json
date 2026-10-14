@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "handoff-detection",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791953269050,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-13 during throttled stress runs of the daemon suite (`taskpolicy -b`, load ~12): `detection::a_wait_ends_with_the_next_turn_after_a_handoff` failed once in 18 runs of the detection module, and in one earlier run it failed together with `a_finish_nobody_has_seen_is_still_unseen_after_a_handoff`, `a_working_agent_stays_working_across_a_handoff` and `a_finish_nobody_has_seen_is_kept_until_somebody_sees_it`. These tests drive the fake agent through reports and `daemon.replace`, never through USR1/USR2, so they are not the fake agent's lost byte (a_2cbKbB5Rs). Not investigated. Card a_2ccIWycOS (a handover refused under load in the CLI suite) may share a cause: a handoff step that does not survive a slow machine.",
+  "id": "a_2hLTd7lxq",
+  "position": "b0y",
+  "title": "🎲 Handoff detection tests fail together under load",
+  "type": "bug",
+  "updated_at_millis": 1791953269050,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791953269050}
+  ]
+}
