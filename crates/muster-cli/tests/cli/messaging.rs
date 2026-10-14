@@ -206,10 +206,15 @@ fn no_daemon_at_a_named_socket_exits_3_and_starts_none() {
 
 /// A `muster` laid out as an install lays it out, with a scratch Muster home and no daemon
 /// running: the CLI and the daemon side by side, as a build and a devenv install hold them, and
-/// the daemon's data beside it. Linked rather than copied, so macOS does not hold a binary it
-/// has never seen while it scans it, and under the target directory, where a debug daemon finds
+/// the daemon's data beside it, under the target directory, where a debug daemon finds
 /// libghostty-vt by a path relative to itself. Whatever daemon a test started is stopped when it
 /// ends.
+///
+/// Copied, not hard-linked, though macOS holds a binary it has never seen for about half a
+/// second while it scans it. A hard link gives every test's folder a name for one file, and dyld
+/// and `current_exe` can report the file by another test's name: once that test has removed its
+/// folder, a daemon resolving libghostty-vt through it aborts before it answers, and a CLI looks
+/// for its daemon in the wrong install.
 struct Installed {
     folder: std::path::PathBuf,
     home: std::path::PathBuf,
@@ -266,9 +271,7 @@ impl Drop for Installed {
 }
 
 fn place(from: &Path, to: &Path) {
-    if std::fs::hard_link(from, to).is_err() {
-        std::fs::copy(from, to).unwrap();
-    }
+    std::fs::copy(from, to).unwrap();
 }
 
 /// MIP-4 section 1: with no daemon running, a msg verb starts this install's, on the socket a
