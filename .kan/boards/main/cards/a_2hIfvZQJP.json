@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "pane-send-confirm-passed",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946591972,
+  "creator": "Alexander Terp",
+  "description": "`pane send --confirm` passed for text that then never reached a busy Claude Code pane. This is the opposite failure from card `pane-send-confirm` (GitHub issue #2 part 10), where confirm says a send failed that worked.\n\n2026-10-11, a local 0.15.0 build, from tooling feedback: a Claude Code worker mid-turn in bypass-permissions mode. `pane send --pane P \"\u003cabout 450 chars\u003e\" --confirm \u0026\u0026 pane send --pane P \" \" --enter` both exited 0. Four seconds later the prompt was empty and the text appeared nowhere in 200 rows of scrollback. Retyping it with `--confirm` showed it in the prompt, and a separate `\" \" --enter` then submitted it as a queued message.\n\nNot established: whether the text was lost, or taken into the running turn without being drawn. The worker's session JSONL would settle it, so read that first if it can be reproduced. `confirm` in `crates/muster-core/src/pane_text.rs` returns on the first read that shows the text and, by design, checks arrival rather than submission. The open questions are whether a busy TUI can redraw matched text away, and whether the second call's Return removed it.",
+  "id": "a_2hIfvZQJP",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b0u",
+  "title": "pane send --confirm passed, but the text never reached a busy Claude pane",
+  "type": "bug",
+  "updated_at_millis": 1791946606882,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946591972}
+  ]
+}

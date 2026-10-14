@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "a-tab-jumps-to-first",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946591772,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #2 part 4: a tab jumps to first place when another daemon's pane is split into it, and no verb moves a tab back.\n\nFrom a remote pane in the tab at place 5 of 5, `muster pane new --daemon local --pane \u003cremote pane\u003e --down --run ...`, then a second pane `--right` of that one, moved the tab to place 1. `muster window --json` now lists it first, with daemons `[\u003cremote\u003e, local]`; it is the only tab holding panes on both machines. `muster docs window` does not say that a tab's place changes when a pane from another daemon joins it. Keeping the tab's place would fix it; if the order is derived per daemon, a mixed tab could keep the place it already had.\n\nOnce moved, nothing can put the tab back. `muster tab` offers new, focus, close, move and rename, but `tab move` only hands a tab to another window, and `muster docs window` and `muster docs limits` describe each tab's `place` without a way to change it. An agent asked to \"move tab X to just below tab Y\" can read the order but has to hand the job back to the person. Something like `muster tab move --tab T --place 2` or `--after \u003ctab\u003e` within the window, documented next to `place`, would cover it. Card a_2JtSWvZUQ (a new tab goes on the end of the list) is about the same ordering and may want the same verb.",
+  "id": "a_2hIfvJdL0",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b0t",
+  "title": "A tab jumps to first place when another daemon's pane joins it, and no verb moves it back",
+  "type": "bug",
+  "updated_at_millis": 1791946591772,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946591772}
+  ]
+}

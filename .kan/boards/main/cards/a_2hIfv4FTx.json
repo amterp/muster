@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "auto-resume-cannot",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946591621,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #2 part 2: auto-resume cannot relaunch a Claude Code that was started through a wrapper. Inferred from the documented resume command and a probe, not seen in a real restart.\n\n`resume_agents` relaunches a pane as `claude {args} --resume \u003cid\u003e`, with the flags read off the running `claude` process (card a_2YXWVPfDI, \"A resumed agent keeps the flags it was started with\"). A wrapper that starts Claude Code with `--settings \u003ctemp file\u003e` and deletes the file after launch leaves a flag that no longer works:\n\n```\n$ claude --settings \u003cthat path\u003e -p ...\nError: Settings file not found\n```\n\nSo after a reboot, a crash or a daemon restart, every pane started through such a wrapper would drop back to a shell. A resume that did run would also miss the environment variables the wrapper sets.\n\nOne option: let the agent process name its own resume command, the way `MUSTER_AGENT` names the agent. A wrapper would export something like `MUSTER_RESUME='mywrapper --resume {session}'`, and the daemon would read it off the agent process in preference to the manifest's `resume`. Overriding `claude.toml` in `~/.muster/agent-detection/` would also work, but it freezes every other Claude Code detection rule at a copy. The code is `crates/muster-detect/src/resume.rs` and `crates/muster-detect/manifests/claude.toml`. Document whatever lands in `docs/cli/` next to `MUSTER_AGENT`.\n\nReproduce before building: start Claude Code in a pane through a wrapper that deletes its `--settings` file, restart the daemon, and watch what the pane does.",
+  "id": "a_2hIfv4FTx",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b0s",
+  "title": "Auto-resume cannot relaunch a Claude Code started through a wrapper",
+  "type": "bug",
+  "updated_at_millis": 1791946591621,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946591621}
+  ]
+}

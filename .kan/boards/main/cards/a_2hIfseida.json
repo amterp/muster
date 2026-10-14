@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "shift-tab-never",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "next",
+  "created_at_millis": 1791946590112,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #2 part 3: Shift+Tab does nothing in a Claude Code pane in Muster.app 0.15.0, local or on a remote daemon. In Ghostty the same key cycles Claude Code's permission modes. `~/.muster/config.toml` binds nothing to shift+tab, so Muster either swallows the key or encodes it differently (expected `CSI Z`, or the kitty-keyboard form when the program asks for it).\n\nNot yet checked: what a plain shell sees (`cat -v` in a pane), and whether it worked before 0.15.0. Start there; it splits \"the app eats the key\" from \"the app encodes it wrong\". Check the app's key equivalents too, since a menu item or the tab-cycling shortcuts could claim it before the surface does.\n\nSeparately, `pane send --key` has no way to press shift+tab, so an agent cannot cycle another agent's permission mode either. Add it alongside the fix.",
+  "id": "a_2hIfseida",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "a4",
+  "title": "Shift+Tab never reaches Claude Code in a pane",
+  "type": "bug",
+  "updated_at_millis": 1791946590112,
+  "history": [
+    {"field":"column","value":"next","at":1791946590112}
+  ]
+}

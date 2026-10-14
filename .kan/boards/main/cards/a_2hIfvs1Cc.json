@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-pane-blocked-at-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946592114,
+  "creator": "Alexander Terp",
+  "description": "A pane sat blocked at a permission dialog for over six hours overnight, and the only notice went to an agent that could not answer it.\n\n2026-10-12/13, laptop, from tooling feedback (Muster version not stated, 0.15.0 by the notice): an overnight orchestrator (Claude Code, bypass mode) stopped at a background subagent's permission dialog from 23:43 to 06:25, so nothing ran for about 6h40m. The only targeted notice was 0.15.0's `@muster` stall message, sent to the poster of the unread message, itself an idle agent.\n\n`crates/muster-daemon/src/messages/stalls.rs` tells only the poster, once per stall, and only when a message is unread. The `[notifications] blocked` banner fires once and is easy to miss on a machine nobody is watching.\n\nExpected: a pane blocked longer than some threshold escalates once to someone who can answer: `@human`, or a watcher pane named in config. A per-pane opt-in for \"runs unattended\" would keep interactive use quiet. The threshold, the target and the opt-in are design calls for whoever picks this up; record them in the commit or in `docs/configuration.md`.",
+  "id": "a_2hIfvs1Cc",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b0v",
+  "title": "A pane blocked at a dialog for hours tells only an agent that cannot answer",
+  "type": "feature",
+  "updated_at_millis": 1791946592114,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946592114}
+  ]
+}

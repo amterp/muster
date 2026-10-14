@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "More instances from tooling feedback: six more lost Returns at a dialog (2026-10-08, four on 10-09, one on 10-12). Two of the 10-09 losses came within a second of `pane wait` returning blocked, and a second identical send 8-40 s later worked every time, which fits \"blocked is reported before the dialog takes keys\". `--confirm` on a key-only send already checks that the pane changed (since 0.14.0) and could serve as the check, though a spinner also changes the pane.\n\nSeparate cause, not this card: two later losses (2026-09-28, 2026-10-12 with `/clear`) were slash commands sent as text, then Return in a second `pane send`. `Input::writes` in `crates/muster-daemon/src/writer.rs` documents that a harness takes a slash command only with its text and Return in one write, so that two-call recipe comes from the parallel-work skill, filed as feedback there.",
+      "created_at_millis": 1791946607150,
+      "id": "c_2hIgKBUFn"
+    }
+  ],
   "created_at_millis": 1791428201129,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-07 (Muster 0.14 app, Claude Code 2.1.293): pane wait --until blocked returned for a worker's plan-approval dialog, pane read showed the dialog with option 1 highlighted, and pane send \"\" --enter exited 0 - but the dialog stayed, and the pane read blocked 30 s later. A second identical send a minute later was taken at once. The first send's exit status said nothing was wrong. Earlier the same night the same sequence worked four times. Possibly the dialog was still being drawn, or still settling its input handling, when the Return arrived. Worth a look: whether --confirm (or a check that the pane changed) can tell a Return that was taken from one that was not, for keys as it now does for text.",
@@ -13,7 +21,7 @@
   "position": "b0g",
   "title": "A Return sent the moment a plan dialog reads blocked can be lost",
   "type": "bug",
-  "updated_at_millis": 1791428201129,
+  "updated_at_millis": 1791946607150,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791428201129}
   ]

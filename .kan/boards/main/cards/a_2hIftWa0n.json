@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "pane-send-confirm",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946590660,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #2 part 10: `pane send --confirm` reports that Codex did not take `/quit` when it did. After `muster pane send --pane \u003cid\u003e \"/quit\" --enter --confirm`, Codex took `/quit` and exited to the shell prompt, but send reported:\n\n```\nthe text was sent to pane \u003cid\u003e and does not show on it any more than it did before, so whatever is running there did not take it\n```\n\nfollowed by three possible causes, none of which applied. Taken at its word, the next step is to resend or press keys, which would type into the shell.\n\nThe check seems to look for the sent text on screen, which misfires whenever a program consumes the line and redraws: a quit, a slash command, a cleared prompt. Treating a changed screen, or a change in the pane's foreground process, as taken, and warning only when nothing on the pane changed, would fix it. It is not Codex-only. A tooling-feedback report saw it with Claude Code 2.1.296 and ordinary prompt text: `--confirm --enter` in one call exited 1 about 0.5 s after the previous turn's Stop, roughly once in 60 sends, while a UserPromptSubmit hook proved the prompt was submitted. `CONFIRM_WITHIN` is 1 s. Where the pane changed but the text cannot be found, reporting \"unknown\" (exit 4, as an unanswered send does) is more honest than \"did not take it\". The message comes from `crates/muster-core/src/pane_text.rs`. Earlier `--confirm` fixes (cards a_2cW56wz6X, a_2MGkaw6H5) are worth reading first so this does not undo them.\n\nThe opposite failure, `--confirm` passing for text that then vanished from a busy Claude Code pane, is card `pane-send-confirm-passed`; a fix to one should not reopen the other.",
+  "id": "a_2hIftWa0n",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b0n",
+  "title": "pane send --confirm says a program did not take a line it took and redrew",
+  "type": "bug",
+  "updated_at_millis": 1791946606949,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946590660}
+  ]
+}

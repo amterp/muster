@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "msg-post-to-refuses",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946591414,
+  "creator": "Alexander Terp",
+  "description": "GitHub issue #2 part 8: `msg post --to` refuses a pane title that contains a space, though the title is what `muster window` shows as the pane's label. A brief told an agent to report with `muster msg post --to \"BUILD LEAD\"`, the pane's title as set with Claude Code's `/rename`. The post failed:\n\n```\nmuster: \"BUILD LEAD\" cannot be a name: use letters, digits, '.', '_' and '-', at most 64 of them, or 250 for a group\n```\n\nThe title looks like an address but is not one, so the agent had to look up the pane id. The agent that wrote the brief made the same assumption, so every agent it briefs hits this; it happened twice in one session.\n\nResolving `--to` against pane titles when the value is not a valid name (exact match, refused if ambiguous) would fix it. Failing that, the error could name the id: `pane \"BUILD LEAD\" is \u003cid\u003e: use --to \u003cid\u003e`. The refusal is `Refusal::BadName` in `crates/muster-daemon/src/messages/mod.rs`. Card a_2b6Wx8Sox made naming a pane name the agent's session; whether `/rename` should go the other way and name the pane is the related question.",
+  "id": "a_2hIfujj4g",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b0r",
+  "title": "msg post --to refuses a pane title with a space",
+  "type": "enhancement",
+  "updated_at_millis": 1791946591414,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946591414}
+  ]
+}

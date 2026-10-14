@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "pane-send-pane-types",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1791946590831,
+  "creator": "Alexander Terp",
+  "description": "`muster pane send --pane \"\" \u003ctext\u003e` exits 0 and types into whichever pane the window's keyboard is on. In the report that was the caller's own pane; it could as easily be the pane the person is typing in. An explicitly empty REF should be refused; only an absent flag falls back to `$MUSTER_PANE`.\n\nSeen 2026-09-06 (pre-0.8.0, from tooling feedback), when a zsh array off-by-one sent four briefs to the wrong workers. The code is unchanged in 0.15.0: `pane_ref` in `crates/muster-cli/src/args.rs` keeps `Some(\"\")`, unlike `running_in`, which filters empties, and `handler::target` in `crates/muster-seam/src/handler.rs` turns an empty id into `session::focused_pane_on`.\n\nRefusing at parse time (a non-empty value parser) would cover every REF flag at once: `--pane`, `--onto`, `--tab`. Check `msg post --to \"\"` and the windowless path (`crates/muster-cli/src/windowless.rs`) too.",
+  "id": "a_2hIftnZi2",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b0o",
+  "title": "pane send --pane \"\" types into the window's focused pane",
+  "type": "bug",
+  "updated_at_millis": 1791946590831,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791946590831}
+  ]
+}
