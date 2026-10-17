@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "harness-test-daemons",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792271559724,
+  "creator": "Alexander Terp",
+  "description": "Filed by Quartermaster's orchestrator (an agent), not the owner: its attribution spike found these while sampling the Mac on 2026-10-17, and they are left untouched.\n\nTwo debug `muster-daemon`s started on 2026-10-03 10:59 from the muster-1 worktree are still alive 14 days later, reparented to launchd: pids 52348 and 52454, `~/src/muster-1/target/debug/muster-daemon --socket /tmp/muster-test/d37529-187/daemon.sock` and `.../d37712-187/daemon.sock`, `--data .../crates/muster-harness/../../deps/...`. Each holds one pane shell (`/bin/sh -l -i -c ... command eval \"$MUSTER_PANE_COMMAND\"`, pids 52364 and 52463) that starts a `sleep 1` every second: about 1,100 processes in 10 minutes between them, little CPU, but process churn every sampler on the Mac has to read. The `/tmp/muster-test/dNNNNN-187` socket names suggest a harness run whose test process died (or was killed) before its daemons were stopped, so nothing reaped them.\n\nWorth a look: whether muster-harness ties each daemon's life to the test process (a pipe the daemon watches, or a process group the harness kills on drop and on a panic), and whether `./dev --doctor` lists strays like these. Quartermaster has not signalled them; ending them is the owner's or muster's call.",
+  "id": "a_2jV1pAiFU",
+  "position": "b1P",
+  "tags": [
+    "quartermaster"
+  ],
+  "title": "🧟 Harness test daemons from 3 Oct still running, each pane shell looping sleep 1",
+  "type": "bug",
+  "updated_at_millis": 1792271559724,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792271559724}
+  ]
+}
