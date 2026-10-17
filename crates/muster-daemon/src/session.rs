@@ -339,8 +339,8 @@ pub(crate) struct Orphaned {
     pub(crate) maker: String,
     /// What the maker was called as it closed.
     pub(crate) called: String,
-    /// What each helper is called.
-    pub(crate) helpers: Vec<String>,
+    /// Each helper's pane, and what it is called.
+    pub(crate) helpers: Vec<(String, String)>,
 }
 
 /// Work on a pane's terminal that a request caused, done once the session is unlocked.
@@ -2265,14 +2265,21 @@ impl Session {
     /// are not yet marked, marks each and lets it ask for the person again, and keeps the maker
     /// for the person to be told of (MIP-7, section 6): they go on running, and nobody is left
     /// to hear from them. Says whether there were any.
+    ///
+    /// A daemon that is stopping orphans nothing: its helpers close with their maker, and both
+    /// come back from the state file it wrote as it began to stop.
     fn orphan(&mut self, maker: &str, called: &str) -> bool {
+        if self.stopping {
+            return false;
+        }
         let mut helpers = Vec::new();
         for index in 0..self.panes.len() {
             let record = &mut self.panes[index].record;
             if record.maker.as_deref() != Some(maker) || record.maker_closed {
                 continue;
             }
-            helpers.push(record.name().unwrap_or(&record.pane).to_string());
+            let name = record.name().unwrap_or(&record.pane).to_string();
+            helpers.push((record.pane.clone(), name));
             record.maker_closed = true;
             record.quiet = false;
             let record = record.clone();
@@ -2281,9 +2288,10 @@ impl Session {
         if helpers.is_empty() {
             return false;
         }
+        let names: Vec<&str> = helpers.iter().map(|(_, name)| name.as_str()).collect();
         log::info(
             "daemon.maker.closed",
-            fields! { "maker" => maker, "helpers" => helpers.join(",") },
+            fields! { "maker" => maker, "helpers" => names.join(",") },
         );
         self.orphans.push(Orphaned {
             maker: maker.to_string(),

@@ -1321,6 +1321,36 @@ fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
     );
 }
 
+/// A maker that closes together with its helpers, as a tab holding them all does, leaves nothing
+/// running, so the person is told nothing.
+#[test]
+fn a_maker_closing_with_its_helpers_tells_nobody() {
+    let mut agent = Agent::in_a_pane();
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", beside("p1", proto::Side::Right)));
+    agent.daemon.run_agent("p2");
+
+    let close = tab(proto::tab_request::Request::Close(proto::tab_request::Close {
+        tab: "t1".to_string(),
+    }));
+    expect(&mut agent.control, close, proto::Outcome::Done);
+    logging.logged_until(r#""event":"msg.helper.orphans_closed""#, Duration::from_secs(20));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new());
+}
+
+/// A daemon that stops closes every maker with its helpers, and both come back from its state
+/// file, so no maker counts as closed.
+#[test]
+fn a_daemon_stopping_closes_no_maker() {
+    let mut agent = Agent::in_a_pane();
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+
+    stop(&mut agent.daemon, &mut agent.control);
+    let log = std::fs::read_to_string(agent.daemon.root().join("daemon.log")).unwrap_or_default();
+    assert!(log.contains(r#""event":"daemon.stopped""#), "{log}");
+    assert!(!log.contains(r#""event":"daemon.maker.closed""#), "{log}");
+}
+
 /// A window that saw a maker on another machine close says so (MIP-7, section 6): its helpers
 /// here stop being quiet and are marked, the person is told once, and saying it again changes
 /// nothing. A maker open here has not closed.

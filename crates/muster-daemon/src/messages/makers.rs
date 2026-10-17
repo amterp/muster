@@ -267,13 +267,15 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         for orphaned in fresh.iter().filter(|_| !in_reach) {
             log::info(
                 "msg.helper.orphans_held",
-                fields! { "maker" => orphaned.maker, "helpers" => orphaned.helpers.join(",") },
+                fields! { "maker" => orphaned.maker, "helpers" => names(orphaned).join(",") },
             );
         }
         makers.held.extend(fresh);
         if in_reach {
             for orphaned in std::mem::take(&mut makers.held) {
-                tell_person(shared, &panes, &orphaned);
+                if let Some(open) = still_open(orphaned, &panes) {
+                    tell_person(shared, &panes, &open);
+                }
             }
         }
     }
@@ -377,12 +379,27 @@ fn helpers(
     helpers
 }
 
+fn names(orphaned: &Orphaned) -> Vec<&str> {
+    orphaned.helpers.iter().map(|(_, name)| name.as_str()).collect()
+}
+
+/// `orphaned` with only the helpers still open, or nothing when none is. A helper can close
+/// after its maker in one request, as a tab holding both does, or while the notice is held.
+fn still_open(mut orphaned: Orphaned, panes: &Panes) -> Option<Orphaned> {
+    orphaned.helpers.retain(|(pane, _)| panes.exists(pane));
+    if orphaned.helpers.is_empty() {
+        log::info("msg.helper.orphans_closed", fields! { "maker" => orphaned.maker });
+        return None;
+    }
+    Some(orphaned)
+}
+
 /// What the person is told of a maker that closed with its helpers still running.
 ///
 /// The command names the maker by its id, which its helpers still carry: its name went with it.
 fn orphaned_body(orphaned: &Orphaned) -> String {
     let (maker, id) = (&orphaned.called, &orphaned.maker);
-    match orphaned.helpers.as_slice() {
+    match names(orphaned).as_slice() {
         [only] => format!(
             "{maker} closed; its helper {only} is still running, and is no longer quiet. `muster \
              pane show --helpers-of {id}` brings it forward."
@@ -410,7 +427,7 @@ fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
             "msg.helper.orphans_untold",
             fields! {
                 "maker" => orphaned.maker,
-                "helpers" => orphaned.helpers.join(","),
+                "helpers" => names(orphaned).join(","),
                 "reason" => reply.reason,
                 "impact" => "the person was not told that these helpers are still running with \
                              nobody watching them; they are no longer quiet, so their next block \
@@ -572,7 +589,7 @@ mod tests {
         let orphaned = |helpers: &[&str]| Orphaned {
             maker: "p1".to_string(),
             called: "🤖 integrator".to_string(),
-            helpers: helpers.iter().map(|helper| (*helper).to_string()).collect(),
+            helpers: helpers.iter().map(|helper| (String::new(), (*helper).to_string())).collect(),
         };
         assert_eq!(
             orphaned_body(&orphaned(&["🤖 1", "maple", "cobalt"])),
