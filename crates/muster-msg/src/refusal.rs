@@ -187,4 +187,6 @@ pub enum Action {
     Delete,
     /// Make the group under a policy whose `membership` leaves its maker out.
     Make,
+    /// Set a policy whose `membership` names neither whoever sets it nor any member.
+    Strand,
 }

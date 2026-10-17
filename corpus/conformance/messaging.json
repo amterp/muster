@@ -1055,6 +1055,26 @@
       ] }
     },
     {
+      "name": "a group's policy is not set to one that leaves everyone in it out",
+      "why": "The same group `group new` refuses to make can otherwise be reached in two steps: an agent makes a group under the default policy, then sets the directed preset without holding `director`, and nobody in the group can add anyone, leave it or change it. The setter is refused, the group keeps its policy, and once a member holds a name the policy wants, the same policy is set.",
+      "given": { "steps": [
+        {"session": "sp", "do": "join", "name": "planner"},
+        {"session": "sp", "do": "group new", "group": "council"},
+        {"session": "sp", "do": "group set", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director"},
+        {"session": "sp", "do": "members", "group": "council", "add": ["director"]},
+        {"session": "sp", "do": "group set", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}}
+      ] },
+      "expect": { "said": [
+        "planner registered",
+        "planner made council, which changed nothing",
+        "refused not_permitted planner strand council (only director,@human)",
+        "director registered",
+        "planner changed the members of council (#3); added director",
+        "planner set the policy of council (#4)"
+      ] }
+    },
+    {
       "name": "a member of a directed council may address only the director and the human",
       "why": "Council v1's \"orchestrated mode\" existed only as a sentence in its skill, so nothing held agents to it. `allow` is enforced by the service (MIP-4, section 8).",
       "given": { "steps": [

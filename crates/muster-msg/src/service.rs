@@ -1348,8 +1348,19 @@ impl<S: Store> Messaging<S> {
         self.kept(group)?;
         let by = self.acting(caller, presence)?;
         self.permitted(group, &by, Action::SetPolicy)?;
-        let after = self.groups[group].head();
-        let policy = Policy { paused: self.groups[group].policy.paused, ..policy };
+        // As `group_new` refuses for its maker: a policy nobody in the group has a say under
+        // leaves a group none of its members can add to, leave or change.
+        let kept = &self.groups[group];
+        if !policy.permits(&by) && !kept.members.iter().any(|member| policy.permits(member)) {
+            return Err(Refusal::NotPermitted {
+                name: by,
+                group: group.to_string(),
+                action: Action::Strand,
+                permitted: policy.membership.clone(),
+            });
+        }
+        let after = kept.head();
+        let policy = Policy { paused: kept.policy.paused, ..policy };
         let seq = self.set_policy(group, &by, policy, now_ms)?;
         self.save()?;
         let mut changed = Changed::by(&by, group, Some(seq));

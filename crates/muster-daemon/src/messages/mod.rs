@@ -1683,6 +1683,13 @@ pub(super) fn words(refusal: &Refusal) -> String {
             names(permitted),
             messaging::command(JOIN, "--name <name>")
         ),
+        Refusal::NotPermitted { name, group, action: Action::Strand, permitted } => format!(
+            "that policy lets only {} add members to {group}, leave it or change it, and \
+             neither you, as {name}, nor any member of {group} is one of those, so nobody in it \
+             could run it. Add one of those names to {group} first, or set the policy from the \
+             human's own shell",
+            names(permitted)
+        ),
         Refusal::NotPermitted { name, group, action, permitted } => format!(
             "{group}'s policy does not let {name} {}; only {} may",
             action_words(*action, group),
@@ -1723,6 +1730,7 @@ fn action_words(action: Action, group: &str) -> String {
         Action::Resume => "resume it".to_string(),
         Action::Delete => "delete it".to_string(),
         Action::Make => "make it".to_string(),
+        Action::Strand => "set a policy that strands it".to_string(),
     }
 }
 

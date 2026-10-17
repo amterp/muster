@@ -1413,9 +1413,11 @@ fn a_leave_from_every_group_is_refused_before_any_is_left() {
     wire.join(Side::Laptop, &builder, Some("builder"), "review");
     let now = wire.tick();
     let (laptop, sessions) = wire.split(Side::Laptop);
-    // Made first: a group is not made under a policy that leaves its maker out.
-    laptop.group_new(&builder, "desk", None, sessions, now).unwrap();
-    laptop.group_set(&builder, "desk", directed(&["director"]), sessions, now).unwrap();
+    let director = session("director");
+    laptop.join(&director, Some("director"), None, sessions, now).unwrap();
+    laptop.group_new(&director, "desk", Some(directed(&["director"])), sessions, now).unwrap();
+    let builder_added = ["builder".to_string()];
+    laptop.group_members(&director, "desk", &builder_added, &[], &[], sessions, now).unwrap();
 
     let refused = laptop.route_leave(&builder, None, sessions);
     assert!(

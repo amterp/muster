@@ -378,6 +378,7 @@ fn action_to(action: Action) -> &'static str {
         Action::Resume => "resume",
         Action::Delete => "delete",
         Action::Make => "make",
+        Action::Strand => "strand",
     }
 }
 
@@ -392,6 +393,7 @@ fn action_from(action: &str) -> Option<Action> {
         "resume" => Action::Resume,
         "delete" => Action::Delete,
         "make" => Action::Make,
+        "strand" => Action::Strand,
         _ => return None,
     })
 }
@@ -434,6 +436,12 @@ mod tests {
                 name: "planner".into(),
                 group: "g".into(),
                 action: Action::Make,
+                permitted: vec!["director".into(), "@human".into()],
+            },
+            Refusal::NotPermitted {
+                name: "planner".into(),
+                group: "g".into(),
+                action: Action::Strand,
                 permitted: vec!["director".into(), "@human".into()],
             },
             Refusal::GroupExists { group: "g".into() },
