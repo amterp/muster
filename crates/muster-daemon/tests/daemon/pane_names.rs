@@ -45,7 +45,6 @@ fn a_pane_cannot_be_made_or_renamed_to_a_name_another_pane_has() {
         ..create("p1", in_new_tab("t1"))
     };
     make(&mut control, named);
-    let otter = word_of(&mut control, "p1");
 
     let again = pane_request::Create {
         label: Some("builder".to_string()),
@@ -58,14 +57,47 @@ fn a_pane_cannot_be_made_or_renamed_to_a_name_another_pane_has() {
     make(&mut control, create("p2", in_new_tab("t2")));
     let refused = rename(&mut control, "p2", Some("builder"));
     assert_eq!(refused.outcome(), proto::Outcome::Refused, "{}", refused.answer.reason);
-    // p1 goes by its label, so its word is not its name, and another pane may take it.
-    assert_eq!(rename(&mut control, "p2", Some(&otter)).outcome(), proto::Outcome::Done);
+}
 
-    // Back to its word, which p2 is called now: p1 is drawn another.
+/// A renamed pane keeps its word, and the agent list shows it beside the name, so the word stays
+/// that pane's: no pane is made, renamed or drawn to it, and the pane gets it back when its name
+/// is taken away.
+#[test]
+fn a_renamed_panes_word_stays_its_own() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let otter = word_of(&mut control, "p1");
+    assert_eq!(rename(&mut control, "p1", Some("builder")).outcome(), proto::Outcome::Done);
+    assert_eq!(word_of(&mut control, "p1"), otter, "a rename took the pane's word");
+
+    make(&mut control, create("p2", in_new_tab("t2")));
+    let refused = rename(&mut control, "p2", Some(&otter));
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("p1"), "names who has it: {}", refused.answer.reason);
+    let made =
+        pane_request::Create { label: Some(otter.clone()), ..create("p3", in_new_tab("t3")) };
+    assert_eq!(control.ask(create_request(made)).outcome(), proto::Outcome::Refused);
+
     assert_eq!(rename(&mut control, "p1", None).outcome(), proto::Outcome::Done);
-    let redrawn = word_of(&mut control, "p1");
-    assert_ne!(redrawn, otter);
-    assert!(WORDS.contains(&redrawn.as_str()));
+    assert_eq!(word_of(&mut control, "p1"), otter, "the pane did not get its own word back");
+}
+
+/// With every word but two taken by agents that joined messaging, one pane is drawn one of the two
+/// and renamed: the next pane is drawn the other, since a renamed pane's word is not drawn again.
+#[test]
+fn no_pane_is_drawn_a_word_a_renamed_pane_holds() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (taken, left) = WORDS.split_at(WORDS.len() - 2);
+    join_as(&mut control, taken);
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let first = word_of(&mut control, "p1");
+    assert_eq!(rename(&mut control, "p1", Some("builder")).outcome(), proto::Outcome::Done);
+    make(&mut control, create("p2", in_new_tab("t2")));
+    let second = word_of(&mut control, "p2");
+    assert_ne!(second, first, "a renamed pane's word was drawn again");
+    assert!(left.contains(&second.as_str()), "{second} is not one of the two left");
 }
 
 #[test]
@@ -106,11 +138,19 @@ fn a_pane_is_told_what_it_is_called() {
 /// no pane is drawn a word an agent here has joined by.
 #[test]
 fn no_pane_is_drawn_a_word_an_agent_joined_by() {
-    use proto::msg_request::{self, Request as Asked};
     let daemon = daemon();
     let mut control = daemon.connect();
     let (taken, left) = WORDS.split_at(WORDS.len() - 1);
-    for word in taken {
+    join_as(&mut control, taken);
+    make(&mut control, create("p1", in_new_tab("t1")));
+    assert_eq!(word_of(&mut control, "p1"), left[0]);
+}
+
+/// Joins one agent to messaging by each of `words`, which takes them from the words a pane can be
+/// drawn: a post to one would otherwise mean both.
+fn join_as(control: &mut Control, words: &[&str]) {
+    use proto::msg_request::{self, Request as Asked};
+    for word in words {
         let caller =
             msg_request::Caller { as_name: Some((*word).to_string()), ..Default::default() };
         let join = Asked::Join(msg_request::Join {
@@ -122,8 +162,6 @@ fn no_pane_is_drawn_a_word_an_agent_joined_by() {
             caller: Some(caller),
             request: Some(join),
         });
-        expect(&mut control, asked, proto::Outcome::Done);
+        expect(control, asked, proto::Outcome::Done);
     }
-    make(&mut control, create("p1", in_new_tab("t1")));
-    assert_eq!(word_of(&mut control, "p1"), left[0]);
 }

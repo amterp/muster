@@ -1293,9 +1293,9 @@ impl Session {
         }
         let given = given_name(create.label.as_deref()).map(str::to_string);
         if let Some(given) = &given
-            && let Some(holder) = self.called(given, &create.pane)
+            && let Some(taken) = self.name_taken(given, &create.pane)
         {
-            return Err(name_held(given, holder));
+            return Err(taken);
         }
         if let Some(given) = &given
             && let Some(who) = self.joined_by(given, &create.pane)
@@ -2232,9 +2232,9 @@ impl Session {
         }
         let given = given_name(rename.label.as_deref());
         if let Some(given) = given
-            && let Some(holder) = self.called(given, &rename.pane)
+            && let Some(taken) = self.name_taken(given, &rename.pane)
         {
-            return name_held(given, holder);
+            return taken;
         }
         if let Some(given) = given
             && let Some(who) = self.joined_by(given, &rename.pane)
@@ -3218,14 +3218,41 @@ impl Session {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }
 
-    /// The pane other than `except` that is called `name` here: one open, or one starting.
+    /// The pane other than `except` that `name` belongs to here: one called it, or one drawn it
+    /// as its word and named something else since.
+    ///
+    /// A renamed pane keeps its word, and the agent list shows it beside the given name, so the
+    /// word stays that pane's: drawn again for another pane, two rows would show it and a name
+    /// typed from one of them would reach the other.
     fn called(&self, name: &str, except: &str) -> Option<&str> {
+        self.answers_to(name, except).or_else(|| self.drawn(name, except))
+    }
+
+    /// The pane other than `except` whose name is `name` here: one open, or one starting.
+    fn answers_to(&self, name: &str, except: &str) -> Option<&str> {
         self.panes
             .iter()
             .map(|pane| &pane.record)
             .find(|record| record.pane != except && record.name() == Some(name))
             .map(|record| record.pane.as_str())
             .or_else(|| self.naming.get(name).filter(|pane| *pane != except).map(String::as_str))
+    }
+
+    /// The pane other than `except` that was drawn `word`, whatever it is called now.
+    fn drawn(&self, word: &str, except: &str) -> Option<&str> {
+        self.panes
+            .iter()
+            .map(|pane| &pane.record)
+            .find(|record| record.pane != except && record.word.as_deref() == Some(word))
+            .map(|record| record.pane.as_str())
+    }
+
+    /// Why a pane cannot be given `name`, when another pane here holds it.
+    fn name_taken(&self, name: &str, except: &str) -> Option<Reply> {
+        if let Some(holder) = self.answers_to(name, except) {
+            return Some(name_held(name, holder));
+        }
+        self.drawn(name, except).map(|holder| word_held(name, holder))
     }
 
     /// A word for a pane that no pane here is called, nor `besides`, the name it is being given,
@@ -3329,6 +3356,13 @@ fn name_held(name: &str, holder: &str) -> Reply {
     Reply::refused(format!(
         "pane {holder} on this daemon is already called {name:?}, and two panes cannot share a \
          name, since a name says which pane it is; choose another, or rename {holder} first"
+    ))
+}
+
+fn word_held(word: &str, holder: &str) -> Reply {
+    Reply::refused(format!(
+        "{word:?} is the word pane {holder} on this daemon was drawn, which it keeps after a \
+         rename and the agent list shows beside its name; choose another name"
     ))
 }
 

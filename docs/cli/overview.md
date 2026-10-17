@@ -37,7 +37,10 @@ rename`, or else a short word its daemon drew when it made the pane: `otter`, `m
 no two of which begin with the same three letters. A name is unique among one machine's open
 panes and free again once its pane closes. Two machines can each have an `otter`, and
 `otter@devenv` says which, by the machine name below; a name two panes share is refused, naming
-each one. `muster window` leads a pane's row with its name, and `--json` carries it as `name`.
+each one. A renamed pane keeps its word: the agent list shows it beside the new name, and no other
+pane on that machine is drawn it or named it, though the pane answers only to its new name until
+the name is taken away. `muster window` leads a pane's row with its name, and `--json` carries it
+as `name`.
 
 Every command that acts on a pane takes `--pane`. Leaving it out means the pane the command is
 running in, read from `$MUSTER_PANE`, and failing that the pane the window's keyboard is on.
