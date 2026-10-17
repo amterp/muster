@@ -1015,21 +1015,10 @@ fn posted_text(
         let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
             reached.iter().map(|reached| reached.name.clone()).collect()
         };
-        let doing: serde_json::Map<String, serde_json::Value> = posted
-            .reached
-            .iter()
-            .filter_map(|reached| {
-                Some((reached.name.clone(), activity(reached.activity())?.into()))
-            })
-            .collect();
-        let until: serde_json::Map<String, serde_json::Value> = deferred
-            .iter()
-            .map(|reached| (reached.name.clone(), until_key(reached.until()).into()))
-            .collect();
-        let held: serde_json::Map<String, serde_json::Value> = deferred
-            .iter()
-            .filter_map(|reached| Some((reached.name.clone(), reached.held.clone()?.into())))
-            .collect();
+        let everyone: Vec<&msg_answer::Reached> = posted.reached.iter().collect();
+        let doing = by_name(&everyone, |reached| activity(reached.activity()).map(Into::into));
+        let until = by_name(&deferred, |reached| Some(until_key(reached.until()).into()));
+        let held = by_name(&deferred, |reached| reached.held.clone().map(Into::into));
         let mut value = serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
@@ -1101,6 +1090,14 @@ fn posted_text(
         lines.join("\n")
     };
     if heard { Ok(text) } else { Err(Trouble::Unheard(text)) }
+}
+
+/// What `said` says of each of `reached`, by name, leaving out those it says nothing of.
+fn by_name(
+    reached: &[&msg_answer::Reached],
+    said: impl Fn(&msg_answer::Reached) -> Option<serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    reached.iter().filter_map(|reached| Some((reached.name.clone(), said(reached)?))).collect()
 }
 
 /// Why `reached` was not woken: `why`, unless it is the human, who is notified when a window

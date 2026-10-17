@@ -710,9 +710,8 @@ fn look(
     }
     let now = Instant::now();
     let (mut ringing, mut commanding) = (Reaching::new(), Reaching::new());
-    let pressing;
     let mut unfound = false;
-    {
+    let pressing = {
         let mut messages = shared.messages();
         if messages.handing_over {
             return LOOK_AGAIN;
@@ -762,16 +761,9 @@ fn look(
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     let since = moving_since(moving, pane, seen, now);
-                    let key = (wake.name.clone(), wake.notice.group.clone());
                     match reach(seen, now, is_urgent(&wake), since, messages.types(&wake)) {
-                        By::Command => {
-                            messages.in_hand.insert(key);
-                            commanding.push((wake, seen.clone()));
-                        }
-                        By::Typing(Now::Ring) => {
-                            messages.in_hand.insert(key);
-                            ringing.push((wake, seen.clone()));
-                        }
+                        By::Command => commanding.push((wake, seen.clone())),
+                        By::Typing(Now::Ring) => ringing.push((wake, seen.clone())),
                         By::Typing(Now::At(at)) => {
                             sooner(&mut next, at);
                             messages.pending.push(wake);
@@ -798,10 +790,18 @@ fn look(
                 fields! { "name" => wake.name, "pane" => pane, "why" => dropped },
             );
         }
-        pressing = unanswered_rings(&mut messages, &panes, now, moving, &mut next);
-    }
+        take_in_hand(&mut messages, &commanding, &ringing);
+        unanswered_rings(&mut messages, &panes, now, moving, &mut next)
+    };
     deliver(shared, commanding, ringing, pressing, &mut next);
     until(next, unfound)
+}
+
+/// Records the wakes a look is about to ring or hand to a command without the lock, which no
+/// other list holds meanwhile, as still on their way; [`deliver`] lets them go.
+fn take_in_hand(messages: &mut Messages, commanding: &Reaching, ringing: &Reaching) {
+    let in_hand = commanding.iter().chain(ringing).map(|(wake, _)| wake);
+    messages.in_hand.extend(in_hand.map(|wake| (wake.name.clone(), wake.notice.group.clone())));
 }
 
 /// Forgets the rings left in panes that have closed, and what held a pane's wake last look once

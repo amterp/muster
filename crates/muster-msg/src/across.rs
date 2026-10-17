@@ -61,6 +61,17 @@ impl Peer {
         }
     }
 
+    /// A member as the machine it is on said it, in this machine's names: its own, and those of
+    /// the groups where messages wait on it and of whoever posted them.
+    fn member(&self, member: Member) -> Member {
+        let unread = member.unread.into_iter().map(|unread| Unread {
+            group: self.inward(&unread.group),
+            authors: unread.authors.iter().map(|author| self.inward(author)).collect(),
+            ..unread
+        });
+        Member { name: self.inward(&member.name), unread: unread.collect(), ..member }
+    }
+
     fn entry(&self, entry: Entry) -> Entry {
         let what = match entry.what {
             What::Message { author, to, body, urgent } => What::Message {
@@ -718,26 +729,7 @@ impl<S: Store> Messaging<S> {
             Reply::Found(found) => Ok(Settled::Found(found)),
             Reply::Named(name) => Ok(Settled::Named(name.map(|name| peer.inward(&name)))),
             Reply::Members(members) => Ok(Settled::Members(
-                members
-                    .into_iter()
-                    .map(|member| Member {
-                        name: peer.inward(&member.name),
-                        unread: member
-                            .unread
-                            .into_iter()
-                            .map(|unread| Unread {
-                                group: peer.inward(&unread.group),
-                                authors: unread
-                                    .authors
-                                    .iter()
-                                    .map(|author| peer.inward(author))
-                                    .collect(),
-                                ..unread
-                            })
-                            .collect(),
-                        ..member
-                    })
-                    .collect(),
+                members.into_iter().map(|member| peer.member(member)).collect(),
             )),
             Reply::Caught(caught) => match self.apply_into(peer, caught, presence, now_ms, applied)
             {
