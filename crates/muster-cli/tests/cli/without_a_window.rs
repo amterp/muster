@@ -458,6 +458,14 @@ fn helpers_are_made_by_the_daemon(here: &Here) {
         .map(|pane| &pane["maker"])
         .collect();
     assert_eq!(makers, [&json!("p1"), &json!("p1")], "{window}");
+    // Read as a person reads it, each is listed under its maker by its word, as a window lists it.
+    let readable = ok(&here.muster(&["window"]));
+    for helper in [&first, &second] {
+        let record = held.panes.iter().find(|pane| &pane.pane == helper).expect("held");
+        let word = record.word.as_deref().expect("a helper has a word");
+        let row = readable.lines().find(|row| row.trim_start().starts_with(&format!("{word} ")));
+        assert!(row.is_some_and(|row| row.starts_with("         ")), "{word}:\n{readable}");
+    }
 
     // Shown together and hidden again, the tab whole.
     let helpers_tab = |control: &mut _| {

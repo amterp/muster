@@ -920,6 +920,7 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                             .and_then(|record| record.name())
                             .map(str::to_string)
                             .unwrap_or_default(),
+                        word: record.and_then(|record| record.word.clone()).unwrap_or_default(),
                         subtitle: record.map_or_else(String::new, |record| record.title.clone()),
                         quiet: record.is_some_and(|record| record.quiet),
                         maker: record.and_then(|record| record.maker.clone()).unwrap_or_default(),
