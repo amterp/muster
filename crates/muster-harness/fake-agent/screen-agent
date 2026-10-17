@@ -124,10 +124,12 @@ restate() {
 }
 
 # Each is written aside and renamed into place: a test waiting for a restarted agent's file to
-# change once read one truncated and not yet written, empty, on a loaded machine.
-printf '%s\n' $$ > "$HOME/fake-agent-pid.new" && mv "$HOME/fake-agent-pid.new" "$HOME/fake-agent-pid"
+# change once read one truncated and not yet written, empty, on a loaded machine. The pid goes
+# last, so a new pid means the other two are this agent's: a test that waited for it read the
+# arguments the agent before had written.
 printf '%s\n' "$*" > "$HOME/fake-agent-args.new" && mv "$HOME/fake-agent-args.new" "$HOME/fake-agent-args"
 env > "$HOME/fake-agent-env.new" && mv "$HOME/fake-agent-env.new" "$HOME/fake-agent-env"
+printf '%s\n' $$ > "$HOME/fake-agent-pid.new" && mv "$HOME/fake-agent-pid.new" "$HOME/fake-agent-pid"
 trap 'signalled=yes; restate blocked' USR1
 trap 'signalled=yes; restate working' USR2
 
