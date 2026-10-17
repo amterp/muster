@@ -21,6 +21,7 @@ mod typist;
 mod wire;
 
 pub(crate) use doorbell::Doorbell;
+pub(crate) use makers::Need;
 pub(crate) use peer::Peers;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

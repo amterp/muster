@@ -28,6 +28,7 @@ use crate::compaction::Compaction;
 use crate::detect::{self, Detecting, Detection};
 use crate::effects::{self, Happened, Reported, Reports};
 use crate::hold::{Hold, Leaving};
+use crate::messages::Need;
 use crate::persist::Persister;
 use crate::process;
 use crate::pty;
@@ -805,6 +806,9 @@ pub(crate) struct Pane {
     /// against `compact_at`. Not handed over: a daemon that took the pane over hears the
     /// context again from its next report.
     pub(crate) compaction: Compaction,
+    /// What its maker has been told it needs and it still needs, as the maker watch
+    /// (`messages::makers`) last said, for a handoff to carry.
+    pub(crate) maker_told: Option<Need>,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -1018,6 +1022,7 @@ impl Pane {
             session_id: None,
             resume: None,
             resume_missed: None,
+            maker_told: None,
         })
     }
 

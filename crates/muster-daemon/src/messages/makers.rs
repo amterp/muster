@@ -123,6 +123,12 @@ pub(crate) struct Makers {
     asked_ms: HashMap<String, u64>,
     /// Makers that closed whose notice waits for the person's machine to be linked to this one.
     held: Vec<Orphaned>,
+    /// What each helper's maker has been told it needs, as the session last heard, so that a
+    /// daemon taking the panes over does not tell them again.
+    told: BTreeMap<String, Need>,
+    /// What the daemon that handed these panes over had told each helper's maker, by the helper,
+    /// taken as told when the helper is first weighed here.
+    carried: BTreeMap<String, Need>,
 }
 
 impl Makers {
@@ -138,7 +144,15 @@ impl Makers {
             there: HashMap::new(),
             asked_ms: HashMap::new(),
             held: Vec::new(),
+            told: BTreeMap::new(),
+            carried: BTreeMap::new(),
         }
+    }
+
+    /// What each helper's maker has been told it needs and it still needs.
+    fn telling(&self) -> BTreeMap<String, Need> {
+        let told = self.watches.iter().filter(|(_, watch)| watch.told);
+        told.filter_map(|(pane, watch)| Some((pane.clone(), watch.need?.0))).collect()
     }
 
     /// Weighs what each of `helpers` needs now and says whom to tell; `called` is what each
@@ -152,7 +166,14 @@ impl Makers {
         self.watches.retain(|pane, _| helpers.iter().any(|helper| helper.pane == *pane));
         let mut tells = Vec::new();
         for helper in helpers {
-            let watch = self.watches.entry(helper.pane.clone()).or_default();
+            let watch = self.watches.entry(helper.pane.clone()).or_insert_with(|| {
+                let carried = self.carried.remove(&helper.pane);
+                Watch {
+                    need: carried.map(|need| (need, now_ms)),
+                    told: carried.is_some(),
+                    ..Watch::default()
+                }
+            });
             match helper.activity {
                 Some(Activity::Working | Activity::Waiting) => {
                     if !watch.at_work {
@@ -255,13 +276,16 @@ fn body(helper: &Helper, need: Need, called: &BTreeMap<String, String>, worked_m
 pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
     let (fresh, helping) = {
         let mut session = shared.lock();
+        makers.carried.append(&mut session.take_carried_told());
         (session.take_orphans(), session.has_helpers())
     };
     if fresh.is_empty() && makers.held.is_empty() && !helping {
         makers.watches.clear();
+        keep_told(shared, makers);
         return NOTHING_DUE;
     }
     let panes = Panes::of(shared);
+    makers.carried.retain(|pane, _| panes.exists(pane));
     if !fresh.is_empty() || !makers.held.is_empty() {
         let in_reach = shared.messages().service.human_in_reach(&panes);
         for orphaned in fresh.iter().filter(|_| !in_reach) {
@@ -303,7 +327,18 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
             makers.there.remove(&tell.maker);
         }
     }
+    keep_told(shared, makers);
     makers.due(now_ms())
+}
+
+/// Gives the session what each helper's maker has been told, when that has changed, for a
+/// handoff to carry.
+fn keep_told(shared: &Shared, makers: &mut Makers) {
+    let telling = makers.telling();
+    if makers.told != telling {
+        shared.lock().set_makers_told(&telling);
+        makers.told = telling;
+    }
 }
 
 /// Asks the machines linked to this one which participant each maker not here is, for each
@@ -599,6 +634,23 @@ mod tests {
         assert!(orphaned_body(&orphaned(&["🤖 1"])).starts_with(
             "🤖 integrator closed; its helper 🤖 1 is still running, and is no longer quiet."
         ));
+    }
+
+    /// A block the daemon that handed the panes over told of is not told again, while it lasts;
+    /// blocking again afterwards is.
+    #[test]
+    fn a_block_told_before_a_handoff_is_not_told_again() {
+        let mut makers = makers();
+        let called = called();
+        makers.carried = BTreeMap::from([("p2".to_string(), Need::Blocked)]);
+        assert!(makers.judge(&[maple(Activity::Blocked)], &called, SETTLE_MS * 3).is_empty());
+        assert_eq!(makers.telling(), BTreeMap::from([("p2".to_string(), Need::Blocked)]));
+
+        makers.judge(&[maple(Activity::Working)], &called, SETTLE_MS * 4);
+        assert!(makers.telling().is_empty(), "no longer needed");
+        makers.judge(&[maple(Activity::Blocked)], &called, SETTLE_MS * 5);
+        let tells = makers.judge(&[maple(Activity::Blocked)], &called, SETTLE_MS * 6);
+        assert_eq!(needs(&tells), [Need::Blocked]);
     }
 
     /// The next look is due when the oldest untold need reaches the settle.

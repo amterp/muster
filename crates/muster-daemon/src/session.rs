@@ -46,7 +46,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::{Doorbell, Messages, Peers};
+use crate::messages::{Doorbell, Messages, Need, Peers};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -114,6 +114,7 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
+    #[expect(clippy::too_many_lines, reason = "most of it is the session's struct, a field a line")]
     pub(crate) fn new(
         instance: u64,
         stopping: Sender<Stop>,
@@ -175,6 +176,7 @@ impl Shared {
                     settled,
                     deferred: Vec::new(),
                     orphans: Vec::new(),
+                    carried_told: BTreeMap::new(),
                     detecting,
                     app_manifests: Vec::new(),
                     manifest_loads: 0,
@@ -375,6 +377,9 @@ pub(crate) struct Session {
     /// Makers that closed with helpers still open here, for the doorbell's thread to tell the
     /// person of ([`Session::take_orphans`]).
     orphans: Vec<Orphaned>,
+    /// What the daemon that handed these panes over had told each helper's maker, for the
+    /// doorbell's thread to take ([`Session::take_carried_told`]).
+    carried_told: BTreeMap<String, Need>,
     /// The manifests every pane's agent is detected by, which each pane's reader reads.
     detecting: Arc<Detecting>,
     /// The manifests the app last sent, by name, which every reload layers in.
@@ -567,6 +572,7 @@ pub(crate) struct Resuming<'a> {
     pub(crate) resume: Option<&'a persist::Resume>,
     /// The number of the oldest row the replay holds.
     pub(crate) oldest_row: u64,
+    pub(crate) maker_told: Option<Need>,
 }
 
 pub(crate) struct HandedPane {
@@ -575,6 +581,7 @@ pub(crate) struct HandedPane {
     pub(crate) io: Arc<PaneIo>,
     pub(crate) turns: Turns,
     pub(crate) session_id: Option<String>,
+    pub(crate) maker_told: Option<Need>,
 }
 
 /// Why a daemon being replaced refuses a request that changes anything. A caller that means to
@@ -2318,6 +2325,19 @@ impl Session {
         std::mem::take(&mut self.orphans)
     }
 
+    /// What the daemon that handed these panes over had told each helper's maker, by the helper,
+    /// since this was last asked.
+    pub(crate) fn take_carried_told(&mut self) -> BTreeMap<String, Need> {
+        std::mem::take(&mut self.carried_told)
+    }
+
+    /// Keeps what each helper's maker has been told it needs, for a handoff to carry.
+    pub(crate) fn set_makers_told(&mut self, told: &BTreeMap<String, Need>) {
+        for pane in &mut self.panes {
+            pane.maker_told = told.get(&pane.record.pane).copied();
+        }
+    }
+
     fn resize(&mut self, resize: &pane_request::Resize) -> Reply {
         let Some(index) = self.tab_of(&resize.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", resize.pane));
@@ -3211,6 +3231,7 @@ impl Session {
                     io: Arc::clone(&pane.io),
                     turns: pane.turns,
                     session_id: pane.session_id.clone(),
+                    maker_told: pane.maker_told,
                 })
                 .collect(),
             persister: Arc::clone(&self.persister),
@@ -3331,6 +3352,10 @@ impl Session {
         .map_err(|error| format!("pane {name}: {error}"))?;
         pane.session_id = resuming.session_id.map(str::to_string);
         pane.resume = resuming.resume.cloned();
+        pane.maker_told = resuming.maker_told;
+        if let Some(need) = resuming.maker_told {
+            self.carried_told.insert(name, need);
+        }
         pane.describe_session();
         self.panes.push(pane);
         Ok(())

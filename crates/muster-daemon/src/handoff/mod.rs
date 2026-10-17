@@ -30,6 +30,7 @@ use crate::daemon_log::DaemonLog;
 use crate::data::Data;
 use crate::descriptors::Sealing;
 use crate::effects::Reported;
+use crate::messages::Need;
 use crate::pane::Turns;
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
@@ -347,6 +348,7 @@ fn handed(
                 reports_turns: pane.turns.reports_turns,
                 session_id: pane.session_id.clone(),
                 oldest_row: pane.io.screen().handed_over_oldest_row(),
+                maker_told: told(pane.maker_told).into(),
             })),
         )?;
         for piece in replay.chunks(PIECE) {
@@ -713,6 +715,7 @@ fn adopt_panes(
             width_px: u16::try_from(grid.width_px).unwrap_or(u16::MAX),
             height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
         };
+        let maker_told = need(pane.maker_told());
         let record = pane.record.unwrap_or_default();
         let resume = resumes.get(&record.pane);
         let adopted = shared.lock().adopt(
@@ -731,6 +734,7 @@ fn adopt_panes(
                 session_id: pane.session_id.as_deref(),
                 resume,
                 oldest_row: pane.oldest_row,
+                maker_told,
             },
         );
         if let Err(problem) = adopted {
@@ -738,6 +742,24 @@ fn adopt_panes(
         }
     }
     Ok(())
+}
+
+fn told(need: Option<Need>) -> handoff::Told {
+    match need {
+        Some(Need::Blocked) => handoff::Told::Blocked,
+        Some(Need::Stuck) => handoff::Told::Stuck,
+        // A need of idle is judged against when the helper last went to work, which a new
+        // daemon never saw, so it is never told again anyway.
+        Some(Need::Unreported) | None => handoff::Told::Nothing,
+    }
+}
+
+fn need(told: handoff::Told) -> Option<Need> {
+    match told {
+        handoff::Told::Blocked => Some(Need::Blocked),
+        handoff::Told::Stuck => Some(Need::Stuck),
+        handoff::Told::Nothing => None,
+    }
 }
 
 /// Tells the daemon handing over why this one will not take over, and says the same here.

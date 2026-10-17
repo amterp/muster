@@ -1282,6 +1282,33 @@ fn a_helper_at_a_dialog_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
 }
 
+/// A helper still blocked as a newer daemon takes its pane over has told its maker already, and
+/// the new daemon does not tell it again.
+#[test]
+fn a_helper_blocked_across_a_handoff_tells_its_maker_once() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    assert_eq!(agent.read_in_its_pane().len(), 1);
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    agent.control = agent.daemon.connect();
+    until_some("the helper to read blocked on the new daemon", || {
+        let panes = snapshot(&mut agent.control).panes;
+        let helper = panes.into_iter().find(|pane| pane.pane == "p2")?;
+        (helper.agent_state() == proto::AgentState::Blocked).then_some(())
+    });
+    // Any change in an agent wakes the doorbell's thread, which may otherwise sleep a minute.
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told again");
+}
+
 /// A maker that closes leaves its helpers running: each stops being quiet, since nobody is left
 /// to hear from it, and the person is told once, by `@muster` (MIP-7, section 6).
 #[test]
