@@ -9,6 +9,12 @@
       "body": "2026-10-17, a second trap for running main day to day: even with MUSTER_INSTALL=release, a bundle of unreleased main carries the last release's version (Cargo.toml says 0.16.0 until ./release bumps it), and the app hands an older daemon's panes over only to a newer version (muster-daemon-client/src/handover.rs, age_against compares major.minor.patch and ignores any suffix). So the new app adopts the running 0.16.0 daemon and every daemon-side change in main stays off until that daemon restarts, which ends every agent. A build meant to replace the release has to carry a version between the two, such as 0.16.1-dev, newer than the installed release and older than the next one, so brew's next upgrade still hands over. A script that builds and installs main this way (version, MUSTER_INSTALL, bundle, keep the old app aside, relaunch) would close both traps.",
       "created_at_millis": 1792256576706,
       "id": "c_2jOk34B0s"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17, the owner's plan for running unreleased main as the everyday Muster on the Mac mini, agreed but NOT to be done until he says so (his agents were busy; an app restart must not interrupt them). The Homebrew cask (0.16.0) is installed at /Applications/Muster.app.\n\nSteps:\n1. Ask the owner first, every time, and check `muster window` that nothing is mid-turn that he cares about. The handover keeps every agent's process running, but the window closes and reopens.\n2. Build in a throwaway worktree so main's version stays as ./release expects: `git worktree add ../muster-build main`, then in it set the workspace version in Cargo.toml to `0.16.1-dev` (newer than the installed 0.16.0, older than the next release, so this build's daemon is handed the panes, and brew's next upgrade hands them on again). Do not commit it. Check `df -h ~` first: a release build of everything plus both Linux daemons needs several GB.\n3. `MUSTER_INSTALL=release ./dev --bundle` there, so the bundle belongs to the release install (socket release.sock) rather than a dev-\u003chash\u003e one. Result: .build/muster.app.\n4. Quit Muster, move /Applications/Muster.app aside as Muster.app.0.16.0 (keep it; .old and .prev already exist from earlier swaps), `ditto` the new bundle to /Applications/Muster.app, and launch it.\n5. Verify: `muster daemons` and `muster window` show the release daemon at 0.16.1-dev and every pane still there with its agent; spot-check a few agents answer. An attached devenv gets this build's Linux daemon too.\n6. Then the hand checks from the 2026-10-17 round (helpers: --helper, the fold in the agent list, Show/Hide Helpers, the maker notice, the closed-maker banner; across machines from the devenv).\n\nRolling back: quit, put Muster.app.0.16.0 back. The daemon stays 0.16.1-dev until it restarts (an older app adopts a newer daemon as it is), so a full rollback means letting that daemon end, which ends its agents: avoid unless needed.\n\nRemove the worktree after (`git worktree remove ../muster-build`).",
+      "created_at_millis": 1792260759154,
+      "id": "c_2jQUqx2UN"
     }
   ],
   "created_at_millis": 1791810415852,
@@ -18,7 +24,7 @@
   "position": "a3k",
   "title": "A bundle built from a checkout starts its own daemon instead of taking over the installed one",
   "type": "bug",
-  "updated_at_millis": 1792256576706,
+  "updated_at_millis": 1792260759154,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791810415852},
     {"field":"column","value":"next","at":1792211139654}
