@@ -3,7 +3,10 @@
 # the director. A member may address only the director or the human; the director and the human
 # may address anyone. Only those two may add or remove members, the member itself included, or
 # change this policy.
-ring = { director = ["*"], "*" = ["director"] }
-allow = { director = ["*"], "@human" = ["*"], "*" = ["director", "@human"] }
-membership = ["director", "@human"]
+#
+# `{group}` is the group's name, filled in by `muster msg group new` and `group set`: the
+# director of `review` is `director-review`, so two councils at once each have their own.
+ring = { "director-{group}" = ["*"], "*" = ["director-{group}"] }
+allow = { "director-{group}" = ["*"], "@human" = ["*"], "*" = ["director-{group}", "@human"] }
+membership = ["director-{group}", "@human"]
 paused = false

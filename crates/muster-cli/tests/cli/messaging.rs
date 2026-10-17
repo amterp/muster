@@ -550,7 +550,7 @@ fn a_directed_council_holds_its_members_to_its_policy() {
     let policy = policy.display().to_string();
     let council = ["msg", "group", "new", "council", "--policy", policy.as_str()];
     assert_eq!(ok(&muster(&daemon, &council)), "made council and joined it");
-    ok(&muster(&daemon, &["msg", "--as", "director", "join", "--group", "council"]));
+    ok(&muster(&daemon, &["msg", "--as", "director-council", "join", "--group", "council"]));
     ok(&muster(&daemon, &["msg", "--as", "builder", "join"]));
     ok(&muster(&daemon, &["msg", "--as", "critic", "join"]));
     assert_eq!(
@@ -560,12 +560,16 @@ fn a_directed_council_holds_its_members_to_its_policy() {
 
     let left = muster(&daemon, &["msg", "--as", "builder", "leave", "--group", "council"]);
     assert_eq!(left.status.code(), Some(1), "{}", said(&left));
-    assert!(complained(&left).contains("only director or @human may"), "{}", complained(&left));
+    assert!(
+        complained(&left).contains("only director-council or @human may"),
+        "{}",
+        complained(&left)
+    );
     let aside = ["msg", "--as", "builder", "post", "--group", "council", "--to", "critic", "hi"];
     let aside = muster(&daemon, &aside);
     assert_eq!(aside.status.code(), Some(1), "{}", said(&aside));
     assert!(
-        complained(&aside).contains("you may address director or @human"),
+        complained(&aside).contains("you may address director-council or @human"),
         "{}",
         complained(&aside)
     );
@@ -579,7 +583,7 @@ fn a_directed_council_holds_its_members_to_its_policy() {
 
     assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "paused council");
     assert_eq!(ok(&muster(&daemon, &["msg", "pause", "council"])), "council was already paused");
-    let plan = ["msg", "--as", "director", "post", "--group", "council", "the", "plan"];
+    let plan = ["msg", "--as", "director-council", "post", "--group", "council", "the", "plan"];
     assert_eq!(
         ok(&muster(&daemon, &plan)),
         "posted #8 to council\nheld while council is paused: builder, critic"
@@ -591,14 +595,56 @@ fn a_directed_council_holds_its_members_to_its_policy() {
     );
     assert_eq!(
         ok(&muster(&daemon, &["msg", "groups"])),
-        "council  @human, builder, critic, director"
+        "council  @human, builder, critic, director-council"
     );
     assert_eq!(
         ok(&muster(&daemon, &["msg", "--as", "builder", "read"])),
         "--- council #6 | critic joined ---\n\
          --- council #7 | @human paused it ---\n\
-         --- council #8 | director ---\nthe plan\n--- end council #8 | director ---\n\
+         --- council #8 | director-council ---\nthe plan\n\
+         --- end council #8 | director-council ---\n\
          --- council #9 | @human resumed it ---"
+    );
+}
+
+/// Two councils convened at once from the one preset each get a director of their own, named
+/// for the group, where both once wanted `director`, which only one live session can hold. A
+/// group whose name cannot be part of a participant's is refused, naming what it would be.
+#[test]
+fn two_councils_at_once_each_have_their_own_director() {
+    let daemon = Daemon::start_built();
+    let policy = daemon.root().join("directed.toml");
+    std::fs::write(&policy, DIRECTED).unwrap();
+    let policy = policy.display().to_string();
+    for (group, member) in [("alpha", "builder-alpha"), ("beta", "builder-beta")] {
+        let director = format!("director-{group}");
+        ok(&muster(&daemon, &["msg", "--as", &director, "join"]));
+        let council = ["msg", "--as", &director, "group", "new", group, "--policy", &policy];
+        assert_eq!(ok(&muster(&daemon, &council)), format!("made {group} and joined it"));
+        ok(&muster(&daemon, &["msg", "--as", member, "join"]));
+        let add = ["msg", "--as", &director, "group", "add", group, member];
+        assert_eq!(ok(&muster(&daemon, &add)), format!("added {member} to {group}"));
+    }
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "groups"])),
+        "alpha  builder-alpha, director-alpha\nbeta   builder-beta, director-beta"
+    );
+
+    let set = ["msg", "--as", "director-beta", "group", "set", "beta", "--policy", &policy];
+    ok(&muster(&daemon, &set));
+    let groups: Value =
+        serde_json::from_str(&ok(&muster(&daemon, &["msg", "groups", "--json"]))).unwrap();
+    let beta = groups.to_string();
+    assert!(beta.contains(r#""membership":["director-beta","@human"]"#), "{beta}");
+    assert!(!beta.contains("{group}"), "{beta}");
+
+    let joined = ["msg", "group", "new", "a+b", "--policy", &policy];
+    let refused = muster(&daemon, &joined);
+    assert_eq!(refused.status.code(), Some(1), "{}", said(&refused));
+    assert!(
+        complained(&refused).contains(r#""director-a+b" cannot be a name"#),
+        "{}",
+        said(&refused)
     );
 }
 
@@ -616,12 +662,13 @@ fn a_council_is_not_made_by_an_agent_its_policy_gives_no_say() {
     let refused = muster(&daemon, &council);
     assert_eq!(refused.status.code(), Some(1), "{}", said(&refused));
     let complaint = complained(&refused);
-    assert!(complaint.contains("lets only director or @human add members"), "{complaint}");
+    assert!(complaint.contains("lets only director-council or @human add members"), "{complaint}");
     assert!(complaint.contains("muster msg join --name <name>"), "{complaint}");
     assert_eq!(ok(&muster(&daemon, &["msg", "groups"])), "no groups");
 
-    ok(&muster(&daemon, &["msg", "--as", "director", "join"]));
-    let council = ["msg", "--as", "director", "group", "new", "council", "--policy", &policy];
+    ok(&muster(&daemon, &["msg", "--as", "director-council", "join"]));
+    let council =
+        ["msg", "--as", "director-council", "group", "new", "council", "--policy", &policy];
     assert_eq!(ok(&muster(&daemon, &council)), "made council and joined it");
 }
 
@@ -634,7 +681,7 @@ fn a_group_is_deleted_by_whoever_its_policy_lets_change_it() {
     std::fs::write(&policy, DIRECTED).unwrap();
     let policy = policy.display().to_string();
     ok(&muster(&daemon, &["msg", "group", "new", "council", "--policy", policy.as_str()]));
-    ok(&muster(&daemon, &["msg", "--as", "director", "join", "--group", "council"]));
+    ok(&muster(&daemon, &["msg", "--as", "director-council", "join", "--group", "council"]));
     ok(&muster(&daemon, &["msg", "--as", "builder", "join"]));
     ok(&muster(&daemon, &["msg", "group", "add", "council", "builder"]));
 
@@ -642,10 +689,10 @@ fn a_group_is_deleted_by_whoever_its_policy_lets_change_it() {
     assert_eq!(refused.status.code(), Some(1), "{}", said(&refused));
     assert!(complained(&refused).contains("delete it"), "{}", complained(&refused));
 
-    let deleted = ["msg", "--as", "director", "group", "delete", "council"];
+    let deleted = ["msg", "--as", "director-council", "group", "delete", "council"];
     assert_eq!(
         ok(&muster(&daemon, &deleted)),
-        "deleted council (5 entries); let go: @human, builder, director"
+        "deleted council (5 entries); let go: @human, builder, director-council"
     );
     let groups = ok(&muster(&daemon, &["msg", "groups"]));
     assert!(!groups.contains("council"), "{groups}");

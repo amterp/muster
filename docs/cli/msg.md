@@ -147,6 +147,11 @@ field reads is refused, so a misspelled key is not quietly the default. Names ar
 `join` or by a post has the default. `group set` replaces the rest of the policy with a file's, and
 every change of policy, and every pause and resume, is a line in the group's log.
 
+`{group}` in a name is the group's own name, filled in by `group new` and `group set`, so one file
+can name a role per group. The council skill's `directed.toml` names its director
+`director-{group}`, since a name belongs to one live session on a machine: two councils made from
+it at once get `director-review` and `director-audit`.
+
 `pause G` keeps every post and wakes nobody but the human, and a post says who it held.
 `resume G` wakes each member once for what it has unread, including a member woken before the
 pause, and says whom it woke as a post does. Pausing is how a person reading along asks a busy

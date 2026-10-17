@@ -364,7 +364,12 @@ pub fn run(
         }
     }
     if let Some(path) = &messaging.policy_from {
-        let (policy, pauses) = read_policy(path)?;
+        let group = match messaging.request.request.as_ref() {
+            Some(Asked::GroupNew(new)) => new.group.as_str(),
+            Some(Asked::GroupSet(set)) => set.group.as_str(),
+            _ => "",
+        };
+        let (policy, pauses) = read_policy(path, group)?;
         match messaging.request.request.as_mut() {
             Some(Asked::GroupNew(new)) => new.policy = Some(policy),
             Some(Asked::GroupSet(set)) if pauses => {
@@ -509,8 +514,13 @@ fn everyone_and_the_human_by_author() -> BTreeMap<String, Vec<String>> {
     BTreeMap::from([("*".to_string(), vec!["*".to_string(), "@human".to_string()])])
 }
 
-/// The policy a file holds, and whether it says to be paused.
-fn read_policy(path: &str) -> Result<(msg_request::Policy, bool), Trouble> {
+/// What a policy file writes for the group's own name, so one file can name a role per group:
+/// `director-{group}` is `director-review` in `review`, and two groups made from it at once do
+/// not want the same participant, since a name is unique on its machine.
+const GROUP_IN_A_NAME: &str = "{group}";
+
+/// The policy a file holds for `group`, and whether it says to be paused.
+fn read_policy(path: &str, group: &str) -> Result<(msg_request::Policy, bool), Trouble> {
     let text = std::fs::read_to_string(path).map_err(|error| {
         Trouble::Refused(format!("could not read the policy file {path} ({error})."))
     })?;
@@ -521,14 +531,18 @@ fn read_policy(path: &str) -> Result<(msg_request::Policy, bool), Trouble> {
              example."
         ))
     })?;
+    let for_group = |name: String| name.replace(GROUP_IN_A_NAME, group);
+    let each = |names: Vec<String>| names.into_iter().map(for_group).collect::<Vec<_>>();
     let names = |map: BTreeMap<String, Vec<String>>| {
-        map.into_iter().map(|(author, names)| (author, msg_request::Names { names })).collect()
+        map.into_iter()
+            .map(|(author, names)| (for_group(author), msg_request::Names { names: each(names) }))
+            .collect()
     };
     let policy = msg_request::Policy {
         ring: names(file.ring),
         allow: names(file.allow),
-        membership: file.membership,
-        urgent: file.urgent.map(|names| msg_request::Names { names }),
+        membership: each(file.membership),
+        urgent: file.urgent.map(|names| msg_request::Names { names: each(names) }),
         paused: file.paused,
     };
     Ok((policy, file.paused))

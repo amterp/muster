@@ -51,10 +51,20 @@ const AGENDA: &str = "1. how items are stored on disk; 2. the commands; 3. due d
     6. searching and filtering; 7. undo; 8. importing and exporting; 9. configuration; \
     10. output for scripts; 11. performance with ten thousand items; 12. how it is tested";
 
+/// The name the director takes, per the council skill: named for its group, so that councils
+/// can run side by side.
+const DIRECTOR: &str = "director-council";
+
+/// Who posts from `pane`: its members post as the pane's name, and the director as the name it
+/// joined by.
+fn author(pane: &str) -> &str {
+    if pane == "director" { DIRECTOR } else { pane }
+}
+
 fn brief() -> String {
     format!(
         "You are the director of the council `council`. First run `muster msg join --name \
-         director --group council`. Its members are builder, who proposes, and critic, who finds \
+         {DIRECTOR} --group council`. Its members are builder, who proposes, and critic, who finds \
          what is wrong with a proposal. The question is {TOPIC}, and its agenda is: {AGENDA}.\n\n\
          Settle one aspect of the agenda per round, in order. In each round, address builder with \
          `muster msg post --group council --to builder` and ask for a proposal; when it answers, \
@@ -156,7 +166,7 @@ fn a_directed_council_of_three_sessions_runs_past_forty_messages_with_nobody_lea
 
     let wrap_up = || {
         let finish = "That is enough rounds: post the design to @human now, starting with DONE:.";
-        human(&["msg", "post", "--group", "council", "--to", "director", finish]);
+        human(&["msg", "post", "--group", "council", "--to", DIRECTOR, finish]);
     };
     let outcome = watch(&mut control, panes, wrap_up);
 
@@ -179,7 +189,7 @@ fn a_directed_council_of_three_sessions_runs_past_forty_messages_with_nobody_lea
     assert!(left.is_empty(), "{left:?} left the council:\n{}", transcript(&outcome.entries));
     assert!(messages >= 40, "only {messages} messages:\n{}", transcript(&outcome.entries));
     for name in panes {
-        let posted = posts.get(name).copied().unwrap_or(0);
+        let posted = posts.get(author(name)).copied().unwrap_or(0);
         assert!(posted >= 5, "{name} posted {posted} times:\n{}", transcript(&outcome.entries));
     }
 }
@@ -196,7 +206,7 @@ fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome
         let entries = entries_of(control, "council");
         let done = entries.iter().any(|entry| {
             matches!(&entry.what, Some(What::Message(message))
-                if message.author == "director" && message.body.trim_start().starts_with("DONE:"))
+                if message.author == DIRECTOR && message.body.trim_start().starts_with("DONE:"))
         });
         if done {
             return Outcome { entries, took: began.elapsed(), longest_idle };
@@ -205,7 +215,7 @@ fn watch(control: &mut Control, panes: [&str; 3], wrap_up: impl Fn()) -> Outcome
             .iter()
             .filter(|entry| {
                 matches!(&entry.what, Some(What::Message(message))
-                    if panes.contains(&message.author.as_str()))
+                    if panes.iter().any(|pane| author(pane) == message.author))
             })
             .count();
         if !told && posted >= WRAP_UP_AT {

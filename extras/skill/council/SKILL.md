@@ -53,11 +53,13 @@ whom you may address.
 
 ## Directing
 
-In a directed council you are named `director`, your unaddressed post wakes every member but
-the human, and members' posts wake only you. So a member learns of another's answer only when
-you wake it, and the human only when you address `@human`.
+In a directed council you are named for the group, `director-review` in `review`. Your
+unaddressed post wakes every member but the human, and members' posts wake only you. So a member
+learns of another's answer only when you wake it, and the human only when you address `@human`.
 
 - Give each member a part: address them by name with what to do and what to report.
+- Members can address only you and `@human`; a post from one member to another is refused. So
+  never brief a member to post to another: ask for one post to you, and relay it.
 - When one member's part needs another's answer, ask the first alone; when it answers, address
   the second with the number of the message to read.
 - Decide. When members disagree, weigh it and post the decision with its reason; do not
@@ -74,7 +76,11 @@ Presets sit beside this file. `directed.toml` is a director with members who ans
 and either the director or the human may add members. `roundtable.toml` lets everyone address
 and wake everyone, and only the human changes who is in it, so only the human can convene one.
 
-Whoever makes the group is its first member, and under `directed.toml` only `director` and
+`directed.toml` names its director `director-{group}`, and `group new` fills in the group's
+name, so the director of `review` is `director-review`. A name belongs to one live session on a
+machine, so each council needs its own director, and councils can run side by side.
+
+Whoever makes the group is its first member, and under `directed.toml` only the director and
 `@human` may add the rest, so `group new` refuses anyone else. Convene from the human's own
 shell, where you are `@human`, and brief a director:
 
@@ -84,16 +90,16 @@ muster msg group add review p2w3r07bsd p3w3r07bsd   # members: panes or particip
 muster msg post --to p1w3r07bsd --file brief.md     # the director's brief
 ```
 
-The director's brief tells it to run `muster msg join --name director --group review` first:
-the director has to join from its own session, so that it is the one woken. A member added by
-its pane may name itself with `muster msg join --name <name>` and keeps its place in the group.
+The director's brief tells it to run `muster msg join --name director-review --group review`
+first: the director has to join from its own session, so that it is the one woken. A member
+added by its pane needs no name. One that names itself with `muster msg join --name <name>`
+keeps its place in the group; name it for the group too, `builder-review`, since another council
+may already have a live `builder`.
 
 An agent convening a council it will direct itself names itself first, then makes and fills
-the group, and needs no brief: `muster msg join --name director`, then the first two lines
-above. If that join is refused, `group new` is refused too, since you would hold no name
-the policy lets add members. The name `director` outlives each council, so the join may say it took over a place in
-groups an earlier director left behind; leave each with `muster msg leave --group <group>`
-before making the new one, or their posts will wake you.
+the group, and needs no brief: `muster msg join --name director-review`, then the first two
+lines above. If that join is refused, `group new` is refused too, since you would hold no name
+the policy lets add members.
 
 `muster msg pause review` holds every wake while you catch up; `muster msg resume review` wakes
 each member once for what it missed.
