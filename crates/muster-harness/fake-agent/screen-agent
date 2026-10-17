@@ -1,5 +1,9 @@
-#!/bin/sh
+#!/bin/dash
 # A fake agent that the daemon detects by reading its screen.
+#
+# Dash rather than sh, which is bash 3.2 on macOS. Under bash, a line typed just after SIGUSR2
+# lost its last character in most runs on a loaded machine, and under dash in none: dash runs a
+# trap only between commands. Debian's /bin/sh is dash too, so both platforms run one shell.
 #
 # It paints a marker line and says nothing, so it exercises the path a real coding agent
 # takes: the daemon analyzes the pane against a detection manifest and decides. Install
@@ -136,8 +140,8 @@ fi
 while :; do
     IFS= read -r line
     read_status=$?
-    # A signal's trap has painted, and may have cut the read short: dash then says it failed,
-    # as it does at the end of input, while bash reads on.
+    # A signal's trap has painted, and cut a read that was waiting short: dash then says it
+    # failed, as it does at the end of input.
     if [ -n "$signalled" ]; then
         signalled=
         [ "$read_status" -ne 0 ] && continue
