@@ -482,11 +482,13 @@ message Placement {
     bool hidden = 3;
   }
 
-  // Among the other helpers of the pane's maker (`Create.maker`, which it needs): in the first
-  // hidden tab here that holds one, as a column after the rest, each column as wide as the
-  // others; or, when no hidden tab here holds one, in a new hidden tab called `tab`. Decided as
-  // the pane is placed rather than as it is asked for, so two helpers made at once share one tab.
-  // Only a create places a pane here. Since 1.6.
+  // Among the other helpers of the pane's maker (`Create.maker`, which it needs), as a column
+  // after the rest, each column as wide as the others: in the tab this daemon made for that
+  // maker's helpers while it is hidden, or while it is on screen holding nothing but them, as Show
+  // Helpers leaves it; else in the first hidden tab here that holds one of them; else in a new
+  // hidden tab called `tab`, which is then the tab made for them. Never a tab on screen that a
+  // person made, even of helpers alone. Decided as the pane is placed rather than as it is asked
+  // for, so two helpers made at once share one tab. Only a create places a pane here. Since 1.6.
   message Helpers {
     string tab = 1;
     Label label = 2;

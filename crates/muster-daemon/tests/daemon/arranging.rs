@@ -264,6 +264,21 @@ fn a_helper_made_while_its_makers_helpers_are_shown_joins_them() {
     assert_eq!(tab_shape(&mut control, "t2"), "[h1|h2 0.50]");
 }
 
+/// A helper shown alone, in a tab of its own as showing one pane makes it, takes no new helper:
+/// that tab is the person's, and the next helper goes into a hidden tab.
+#[test]
+fn a_helper_shown_alone_takes_no_new_helper() {
+    let (_daemon, mut control) = two_panes();
+    make(&mut control, helper("h1", "a", among_helpers("t2", "a's helpers")));
+    expect(&mut control, moved("h1", in_new_tab("t5")), proto::Outcome::Done);
+
+    make(&mut control, helper("h2", "a", among_helpers("t3", "a's helpers")));
+    assert_eq!(tab_shape(&mut control, "t5"), "h1");
+    let held = snapshot(&mut control);
+    assert!(held.tabs.iter().any(|tab| tab.tab == "t3" && tab.hidden), "{:?}", held.tabs);
+    assert_eq!(tab_shape(&mut control, "t3"), "h2");
+}
+
 /// Where a helper goes is decided as it is placed, after its shell has started, so helpers made
 /// at the same moment on different connections still end up in one tab.
 #[test]

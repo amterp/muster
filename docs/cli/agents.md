@@ -446,7 +446,7 @@ that holds nothing but the maker's helpers, so a helper you moved into a tab bes
 stays there, and `pane hide --pane` hides it alone. Showing
 helpers already on screen and hiding helpers already hidden change nothing and exit 0; a pane with
 no helpers is refused. A helper shown with `pane show --pane` comes into a tab of its own, as any
-hidden pane does, and stays a helper.
+hidden pane does, and stays a helper, and a helper made after it does not join that tab.
 
 The agent list lists a maker's hidden helpers under its row rather than under Hidden, folded into
 one line, `3 helpers · 1 blocked`, whose dot is the most urgent state among them; a click opens it,

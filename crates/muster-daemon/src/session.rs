@@ -478,6 +478,9 @@ struct Tab {
     zoomed: Option<String>,
     /// No view shows it (`proto::Tab::hidden`). Set only when the tab is made.
     hidden: bool,
+    /// The maker it was made for, when it was made for a maker's helpers, which new helpers of
+    /// that maker join ([`Session::helpers_tab`]).
+    helpers_of: Option<String>,
 }
 
 impl Tab {
@@ -1631,17 +1634,29 @@ impl Session {
         Ok(())
     }
 
-    /// The first tab a new helper of `maker` joins: a hidden one holding a helper of it, or one
-    /// on screen holding nothing but its helpers, which Show Helpers brought forward.
+    /// The tab a new helper of `maker` joins: the tab made for its helpers while it is hidden, or
+    /// while Show Helpers has it on screen holding nothing but them. Else any hidden tab holding
+    /// one of its helpers, as a tab made before tabs said whom they were made for does. Never a
+    /// tab on screen that a person made, even of helpers alone.
     fn helpers_tab(&self, maker: &str) -> Option<usize> {
         let helps = |pane: &str| {
             self.pane_index(pane)
                 .is_some_and(|index| self.panes[index].record.maker.as_deref() == Some(maker))
         };
-        self.tabs.iter().position(|tab| {
-            let panes = tab.root.panes();
-            if tab.hidden { panes.into_iter().any(helps) } else { panes.into_iter().all(helps) }
-        })
+        let made_for = |tab: &Tab| tab.helpers_of.as_deref() == Some(maker);
+        self.tabs
+            .iter()
+            .position(|tab| made_for(tab) && tab.hidden)
+            .or_else(|| {
+                self.tabs
+                    .iter()
+                    .position(|tab| made_for(tab) && tab.root.panes().into_iter().all(helps))
+            })
+            .or_else(|| {
+                self.tabs
+                    .iter()
+                    .position(|tab| tab.hidden && tab.root.panes().into_iter().any(helps))
+            })
     }
 
     /// Puts a pane that is in no tab where `target` says, and announces the tab.
@@ -1654,20 +1669,22 @@ impl Session {
                 self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
             }
             Target::NewTab { name, label, hidden } => {
-                let tab =
-                    Tab { name, label, root: Node::Pane(pane.to_string()), zoomed: None, hidden };
+                let root = Node::Pane(pane.to_string());
+                let tab = Tab { name, label, root, zoomed: None, hidden, helpers_of: None };
                 let record = tab.record();
                 self.tabs.push(tab);
                 self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
             }
-            Target::Helpers { maker, name, label } => match self.helpers_tab(&maker) {
-                Some(index) => {
+            Target::Helpers { maker, name, label } => {
+                if let Some(index) = self.helpers_tab(&maker) {
                     self.tabs[index].root.append_column(pane);
                     let record = self.tabs[index].record();
                     self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+                } else {
+                    self.place(pane, Target::NewTab { name, label, hidden: true });
+                    self.tabs.last_mut().expect("a tab was just made").helpers_of = Some(maker);
                 }
-                None => self.place(pane, Target::NewTab { name, label, hidden: true }),
-            },
+            }
         }
     }
 
@@ -2963,6 +2980,7 @@ impl Session {
                     zoomed: tab.zoomed.clone(),
                     root: tab.root.clone(),
                     hidden: tab.hidden,
+                    helpers_of: tab.helpers_of.clone(),
                 })
                 .collect(),
             panes: self
@@ -3144,7 +3162,14 @@ impl Session {
             return;
         };
         let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
-        let tab = Tab { name: tab.name, label: tab.label, root, zoomed, hidden: tab.hidden };
+        let tab = Tab {
+            name: tab.name,
+            label: tab.label,
+            root,
+            zoomed,
+            hidden: tab.hidden,
+            helpers_of: tab.helpers_of,
+        };
         let record = tab.record();
         self.tabs.push(tab);
         self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
@@ -3384,6 +3409,7 @@ impl Session {
                 root: tab.root,
                 zoomed: tab.zoomed,
                 hidden: tab.hidden,
+                helpers_of: tab.helpers_of,
             });
         }
         Ok(())
@@ -3998,6 +4024,7 @@ mod tests {
                 second: Box::new(Node::Pane(panes[1].to_string())),
             },
             hidden: false,
+            helpers_of: None,
         };
         let tabs = [tab("t1", ["p1", "p2"]), tab("t2", ["p3", "p4"])];
         assert_eq!(in_no_tab(["p1", "p4"].into_iter(), &tabs), None);

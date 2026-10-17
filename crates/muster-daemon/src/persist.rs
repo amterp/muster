@@ -1,10 +1,10 @@
-//! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab and
-//! whether it is hidden, each pane's name, directory, whether it is quiet, its maker and whether
-//! that has closed, the command that starts its agent's session again, and the settings an app
-//! last gave. Never a title, an agent's state or facts, or whether a process is alive: those are
-//! observations, and a restarted daemon observes them afresh. The resume command is not one: it is built from the
-//! session id the agent's harness reported and the arguments the agent was started with, both of
-//! which a restarted daemon could never learn.
+//! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab, whether it
+//! is hidden and the maker it was made for the helpers of, each pane's name, directory, whether it
+//! is quiet, its maker and whether that has closed, the command that starts its agent's session
+//! again, and the settings an app last gave. Never a title, an agent's state or facts, or whether
+//! a process is alive: those are observations, and a restarted daemon observes them afresh. The
+//! resume command is not one: it is built from the session id the agent's harness reported and
+//! the arguments the agent was started with, both of which a restarted daemon could never learn.
 //!
 //! One JSON file beside the daemon's socket, written whole to a temporary file, synced and
 //! renamed over the last, so a crash at any point leaves either the old file or the new one. The
@@ -69,6 +69,9 @@ pub(crate) struct Tab {
     pub(crate) root: Node,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) hidden: bool,
+    /// The maker it was made for, when it was made for a maker's helpers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) helpers_of: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -681,6 +684,7 @@ mod tests {
                     second: Box::new(Node::Pane("p2".to_string())),
                 },
                 hidden: false,
+                helpers_of: None,
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
         }
@@ -817,7 +821,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 9] = [
+    const FIXTURES: [(&str, &[&str]); 10] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -831,6 +835,8 @@ mod tests {
         ("state-v1-helpers.json", &[]),
         // No setting: the first to hold a helper whose maker has closed.
         ("state-v1-maker-closed.json", &[]),
+        // No setting: the first to hold a tab made for a maker's helpers.
+        ("state-v1-helpers-tab.json", &[]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -896,6 +902,7 @@ mod tests {
                     zoomed: Some("p2".to_string()),
                     root: split(Axis::Columns, 0.3, "p1", "p2"),
                     hidden: false,
+                    helpers_of: None,
                 },
                 Tab {
                     name: "t2".to_string(),
@@ -903,6 +910,7 @@ mod tests {
                     zoomed: None,
                     root: split(Axis::Rows, 0.6, "p3", "p4"),
                     hidden: false,
+                    helpers_of: None,
                 },
             ],
             panes: vec![
