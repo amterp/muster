@@ -10,7 +10,7 @@
 //! output is a pipe or a file, or when `NO_COLOR` is set - so nothing here has to know which it is,
 //! and no agent reading a pipe ever sees an escape in the middle of a pane name.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anstyle::{AnsiColor, Style};
 use muster_core::AgentState;
@@ -465,13 +465,14 @@ fn other_heading(other: &muster_proto::OtherWindow) -> String {
 fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
-    let widths = Widths::across(window, &states, now_ms);
     let machines: Vec<&muster_proto::Machine> = window.daemons.iter().collect();
     let say_machine = machines.len() > 1;
-    let rows = Rows { widths: &widths, states: &states, now_ms, say_machine };
+    let drawing = Drawing::of(window, keyboard.as_deref(), say_machine);
+    let helpers = Helpers::of(window, others, drawing.as_ref());
+    let widths = Widths::across(window, &states, now_ms, &helpers);
+    let rows = Rows { widths: &widths, states: &states, now_ms, say_machine, helpers: &helpers };
 
     let mut lines: Vec<String> = Vec::new();
-    let drawing = Drawing::of(window, keyboard.as_deref(), say_machine);
     for tab in tabs(window) {
         match drawing.as_ref().and_then(|drawing| drawing.layout(&tab.tab_id)) {
             Some(layout) => {
@@ -506,8 +507,11 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
     }
 
     // Hidden panes, which no window shows, so no window's list above has them. Listed as a closed
-    // window's are, without places or the keyboard, because nothing draws them.
-    let hidden: Vec<&muster_proto::RosterTab> = hidden_tabs(window).collect();
+    // window's are, without places or the keyboard, because nothing draws them. A tab whose every
+    // pane is listed under its maker above has nothing left to list here.
+    let hidden: Vec<&muster_proto::RosterTab> = hidden_tabs(window)
+        .filter(|tab| tab.panes.iter().any(|pane| !helpers.moved(pane)))
+        .collect();
     if !hidden.is_empty() {
         if !lines.is_empty() {
             lines.push(String::new());
@@ -728,6 +732,7 @@ struct Rows<'a> {
     states: &'a BTreeMap<&'a str, &'a muster_proto::PaneStateChanged>,
     now_ms: i64,
     say_machine: bool,
+    helpers: &'a Helpers<'a>,
 }
 
 impl Rows<'_> {
@@ -739,10 +744,20 @@ impl Rows<'_> {
         drawn: bool,
     ) -> Vec<String> {
         let mut lines = vec![tab_line(self.widths, tab)];
-        for pane in &tab.panes {
-            lines.push(self.pane(pane, keyboard == Some(pane.pane_id.as_str()), drawn));
+        for pane in tab.panes.iter().filter(|pane| !self.helpers.moved(pane)) {
+            lines.push(self.pane(pane, keyboard == Some(pane.pane_id.as_str()), drawn, 0));
+            self.helper_rows(pane, 1, &mut lines);
         }
         lines
+    }
+
+    /// The rows of a pane's hidden helpers, each under its maker one level further in, and theirs
+    /// under them.
+    fn helper_rows(&self, maker: &muster_proto::RosterPane, depth: usize, lines: &mut Vec<String>) {
+        for helper in self.helpers.under(maker) {
+            lines.push(self.pane(helper, false, false, depth));
+            self.helper_rows(helper, depth + 1, lines);
+        }
     }
 
     /// One pane's row: which one has the keyboard in the gutter, then place, name, state, how long
@@ -752,7 +767,16 @@ impl Rows<'_> {
     /// marks the item you are on - a column would put eight blank spaces on every other row. Being
     /// off screen is a note after the label instead, because most panes are on screen and the
     /// exception is the thing worth saying.
-    fn pane(&self, pane: &muster_proto::RosterPane, has_keyboard: bool, drawn: bool) -> String {
+    ///
+    /// A helper listed under its maker, `depth` levels in, is named by its word rather than its id,
+    /// as the shorter of two names that both reach it, indented a level for each generation.
+    fn pane(
+        &self,
+        pane: &muster_proto::RosterPane,
+        has_keyboard: bool,
+        drawn: bool,
+        depth: usize,
+    ) -> String {
         let (widths, now_ms, say_machine) = (self.widths, self.now_ms, self.say_machine);
         let agent = self.states.get(pane.pane_id.as_str()).copied();
         let state = agent.map_or("unknown", |agent| agent.state.as_str());
@@ -761,7 +785,7 @@ impl Rows<'_> {
             "  {}{}  {}  {}  {}  {}",
             if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
             pad(&place(pane.place), widths.place, QUIET, Align::Right),
-            pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
+            pad(&Helpers::called(pane, depth), widths.name, PLAIN, Align::Left),
             pad(state, widths.state, agent_style(state), Align::Left),
             pad(&held, widths.held, QUIET, Align::Right),
             pane.label,
@@ -783,12 +807,26 @@ impl Rows<'_> {
                 line.push_str(&styled(&format!("  {said}"), QUIET));
             }
         }
-        if pane.quiet {
-            line.push_str(&styled("  (quiet)", QUIET));
+        match self.helpers.count(pane) {
+            0 => {}
+            1 => line.push_str(&styled("  1 helper", QUIET)),
+            count => line.push_str(&styled(&format!("  {count} helpers"), QUIET)),
+        }
+        match (depth > 0, pane.quiet) {
+            (true, true) => line.push_str(&styled("  (hidden, quiet)", QUIET)),
+            (true, false) => line.push_str(&styled("  (hidden)", QUIET)),
+            (false, true) => line.push_str(&styled("  (quiet)", QUIET)),
+            (false, false) => {}
         }
         // Only a window draws panes, so with none there is nothing to be off screen from.
         if drawn && !pane.on_screen {
             line.push_str(&styled("  (off screen)", QUIET));
+        }
+        // A helper not listed under its maker - in a tab of the window's, or with its maker gone
+        // or out of sight - still says whose it is.
+        if depth == 0 && !pane.maker.is_empty() {
+            let maker = self.helpers.name_of(&pane.maker);
+            line.push_str(&styled(&format!("  (helper of {maker})"), QUIET));
         }
         // Last on the row and only with more than one machine attached, because a tab may span two
         // and the pane is the only thing that can say which. On one machine it is on every row and
@@ -797,6 +835,110 @@ impl Rows<'_> {
             line.push_str(&styled(&format!("  ({})", pane.daemon_id), QUIET));
         }
         line
+    }
+}
+
+/// Which hidden helpers a window's listing prints under their maker's row rather than under
+/// `hidden`, and what it says of every pane's helpers.
+///
+/// A hidden helper moves under its maker when the maker has a row of its own: a pane in a listed
+/// tab, another window's, or a hidden pane, a helper among them. Everything else stays where it
+/// is: a helper in one of the window's tabs keeps its place and the keyboard's mark there, and a
+/// helper whose maker is not listed - closed, on a machine not attached, or drawn in `--layout`'s
+/// boxes - has nowhere else to go.
+#[derive(Default)]
+struct Helpers<'a> {
+    /// Each maker's hidden helpers that are listed under it, in the order the listing meets them.
+    under: BTreeMap<&'a str, Vec<&'a muster_proto::RosterPane>>,
+    /// Every helper in `under`, which its own tab no longer lists, with how far in its row is.
+    moved: BTreeMap<&'a str, (&'a muster_proto::RosterPane, usize)>,
+    /// How many helpers each maker has anywhere in the answer, moved or not.
+    counts: BTreeMap<&'a str, usize>,
+    /// What every pane in the answer is called, for a helper to name its maker by.
+    names: BTreeMap<&'a str, &'a str>,
+}
+
+impl<'a> Helpers<'a> {
+    fn of(window: &'a Window, others: Others, drawing: Option<&Drawing<'_>>) -> Helpers<'a> {
+        let drawn = |tab: &muster_proto::RosterTab| {
+            drawing.is_some_and(|drawing| drawing.layout(&tab.tab_id).is_some())
+        };
+        let other_tabs = window.windows.iter().filter(|other| others.include(other));
+        let hidden: Vec<&muster_proto::RosterPane> =
+            hidden_tabs(window).flat_map(|tab| tab.panes.iter()).collect();
+        let listed: Vec<&muster_proto::RosterPane> = tabs(window)
+            .chain(other_tabs.flat_map(|other| other.tabs.iter()))
+            .filter(|tab| !drawn(tab))
+            .flat_map(|tab| tab.panes.iter())
+            .chain(hidden.iter().copied())
+            .collect();
+        let every = tabs(window)
+            .chain(window.windows.iter().flat_map(|other| other.tabs.iter()))
+            .flat_map(|tab| tab.panes.iter())
+            .chain(hidden.iter().copied());
+
+        let mut helpers = Helpers::default();
+        for pane in every {
+            let name = if pane.name.is_empty() { &pane.pane_id } else { &pane.name };
+            helpers.names.insert(&pane.pane_id, name);
+            if !pane.maker.is_empty() {
+                *helpers.counts.entry(&pane.maker).or_default() += 1;
+            }
+        }
+        // A hidden helper whose maker has a row goes under it. Walked down from every pane that
+        // keeps a row of its own, so each helper is listed once and none is lost to a loop of
+        // makers, which no daemon writes and nothing here relies on.
+        let has_row: BTreeSet<&str> = listed.iter().map(|pane| pane.pane_id.as_str()).collect();
+        let mut children: BTreeMap<&str, Vec<&muster_proto::RosterPane>> = BTreeMap::new();
+        for helper in hidden.iter().filter(|helper| has_row.contains(helper.maker.as_str())) {
+            children.entry(&helper.maker).or_default().push(helper);
+        }
+        let goes_under = |pane: &&muster_proto::RosterPane| {
+            children.values().flatten().any(|child| child.pane_id == pane.pane_id)
+        };
+        let mut waiting: Vec<(&muster_proto::RosterPane, usize)> =
+            listed.iter().copied().filter(|pane| !goes_under(pane)).map(|pane| (pane, 0)).collect();
+        while let Some((maker, depth)) = waiting.pop() {
+            for helper in children.get(maker.pane_id.as_str()).into_iter().flatten() {
+                if !helpers.moved.contains_key(helper.pane_id.as_str()) {
+                    helpers.moved.insert(&helper.pane_id, (helper, depth + 1));
+                    helpers.under.entry(&maker.pane_id).or_default().push(helper);
+                    waiting.push((helper, depth + 1));
+                }
+            }
+        }
+        helpers
+    }
+
+    fn moved(&self, pane: &muster_proto::RosterPane) -> bool {
+        self.moved.contains_key(pane.pane_id.as_str())
+    }
+
+    fn under(&self, maker: &muster_proto::RosterPane) -> &[&'a muster_proto::RosterPane] {
+        self.under.get(maker.pane_id.as_str()).map_or(&[], Vec::as_slice)
+    }
+
+    fn count(&self, maker: &muster_proto::RosterPane) -> usize {
+        self.counts.get(maker.pane_id.as_str()).copied().unwrap_or_default()
+    }
+
+    /// A maker by its name when the answer lists it, and by its id when it does not.
+    fn name_of<'b>(&'b self, maker: &'b str) -> &'b str {
+        self.names.get(maker).copied().unwrap_or(maker)
+    }
+
+    /// Each helper listed under its maker, with how many levels in its row is.
+    fn rows(&self) -> impl Iterator<Item = (&'a muster_proto::RosterPane, usize)> + '_ {
+        self.moved.values().copied()
+    }
+
+    /// What a row names a pane by: its id, or listed under its maker its word, indented.
+    fn called(pane: &muster_proto::RosterPane, depth: usize) -> String {
+        if depth == 0 {
+            return pane.pane_id.clone();
+        }
+        let word = if pane.word.is_empty() { &pane.pane_id } else { &pane.word };
+        format!("{}{word}", "  ".repeat(depth))
     }
 }
 
@@ -1024,19 +1166,30 @@ impl Widths {
         window: &Window,
         states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
         now_ms: i64,
+        helpers: &Helpers<'_>,
     ) -> Widths {
         let mut widths = Widths { place: 1, name: 0, state: 0, held: 0 };
+        let mut fit = |pane: &muster_proto::RosterPane, depth: usize| {
+            widths.place = widths.place.max(pane.place.to_string().width());
+            widths.name = widths.name.max(Helpers::called(pane, depth).width());
+            let agent = states.get(pane.pane_id.as_str());
+            let state = agent.map_or("unknown", |agent| agent.state.as_str());
+            widths.state = widths.state.max(state.width());
+            let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
+            widths.held = widths.held.max(held.width());
+        };
+        // A helper listed under its maker is a row among the window's own, so it is measured
+        // with them.
+        for (helper, depth) in helpers.rows() {
+            fit(helper, depth);
+        }
+        for tab in tabs(window) {
+            for pane in &tab.panes {
+                fit(pane, 0);
+            }
+        }
         for tab in tabs(window) {
             widths.name = widths.name.max(tab.tab_id.width());
-            for pane in &tab.panes {
-                widths.place = widths.place.max(pane.place.to_string().width());
-                widths.name = widths.name.max(pane.pane_id.width());
-                let agent = states.get(pane.pane_id.as_str());
-                let state = agent.map_or("unknown", |agent| agent.state.as_str());
-                widths.state = widths.state.max(state.width());
-                let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
-                widths.held = widths.held.max(held.width());
-            }
         }
         widths
     }
@@ -1896,6 +2049,99 @@ mod tests {
         assert!(json["panes"][0]["maker"].is_null(), "{json}");
         assert_eq!(json["panes"][1]["maker"], "p1", "{json}");
         assert_eq!(json["hidden"][0]["panes"][0]["maker"], "p1", "{json}");
+    }
+
+    /// A window with a maker on screen, its hidden helpers and a helper of one of them, a helper
+    /// split beside it, and a hidden helper of a pane no window lists.
+    fn helpers_window() -> muster_proto::Window {
+        use muster_proto::{PaneStateChanged, RosterChanged, RosterPane, RosterTab, Window};
+        let pane = |id: &str, word: &str, maker: &str, quiet: bool| RosterPane {
+            pane_id: id.to_string(),
+            word: word.to_string(),
+            name: word.to_string(),
+            label: format!("🤖 {word}"),
+            maker: maker.to_string(),
+            quiet,
+            ..RosterPane::default()
+        };
+        let tab =
+            |id: &str, panes| RosterTab { tab_id: id.to_string(), panes, ..RosterTab::default() };
+        Window {
+            roster: Some(RosterChanged {
+                tabs: vec![tab(
+                    "t1",
+                    vec![pane("p1", "lead", "", false), pane("p2", "beside", "p1", false)],
+                )],
+                hidden: vec![
+                    tab(
+                        "t2",
+                        vec![
+                            pane("p3", "otter", "p1", false),
+                            pane("p4", "maple", "p1", true),
+                            pane("p5", "cobalt", "p3", false),
+                        ],
+                    ),
+                    tab("t3", vec![pane("p6", "stray", "p9gone", false)]),
+                ],
+                ..RosterChanged::default()
+            }),
+            panes: ["p1", "p2", "p3", "p4", "p5", "p6"]
+                .map(|pane| PaneStateChanged {
+                    pane_id: pane.to_string(),
+                    state: "idle".to_string(),
+                    ..PaneStateChanged::default()
+                })
+                .to_vec(),
+            ..Window::default()
+        }
+    }
+
+    fn unstyled(text: &str) -> String {
+        anstream::adapter::strip_str(text).to_string()
+    }
+
+    /// A maker's hidden helpers are listed under its row, by their words, a level in for each
+    /// generation, and their tab leaves the hidden list once it has nothing else in it.
+    #[test]
+    fn hidden_helpers_are_listed_under_their_maker() {
+        let text = unstyled(&window_text(&helpers_window(), 0, Others::All, false));
+        let rows: Vec<&str> = text.lines().map(str::trim_end).collect();
+        let lead = rows.iter().position(|row| row.contains("p1 ")).expect("the maker is listed");
+        let expected = [
+            "p1          idle    🤖 lead  3 helpers",
+            "  otter     idle    🤖 otter  1 helper  (hidden)",
+            "    cobalt  idle    🤖 cobalt  (hidden)",
+            "  maple     idle    🤖 maple  (hidden, quiet)",
+            "p2          idle    🤖 beside  (helper of lead)",
+        ];
+        let listed: Vec<&str> = rows[lead..lead + 5].iter().map(|row| row.trim_start()).collect();
+        let expected: Vec<&str> = expected.iter().map(|row| row.trim_start()).collect();
+        assert_eq!(listed, expected, "\n{text}");
+        // Each generation a level further in than its maker's name.
+        let name_at = |row: usize, name: &str| rows[row].find(name);
+        let maker_at = name_at(lead, "p1");
+        let levels = [(1, "otter", 2), (2, "cobalt", 4), (3, "maple", 2)];
+        for (row, name, indent) in levels {
+            assert_eq!(name_at(lead + row, name), maker_at.map(|at| at + indent), "\n{text}");
+        }
+        assert!(!text.contains("t2"), "the helpers' tab has nothing left to list:\n{text}");
+        // A helper whose maker nothing lists stays hidden, and says whose it is.
+        let stray = rows.iter().position(|row| row.contains("p6")).expect("the stray is listed");
+        assert!(rows[..stray].contains(&"hidden"), "{text}");
+        assert!(rows[stray].ends_with("(helper of p9gone)"), "{text}");
+    }
+
+    /// The columns stay in line through an indented helper: its state starts where its maker's
+    /// does.
+    #[test]
+    fn a_helpers_row_keeps_the_columns_in_line() {
+        let text = unstyled(&window_text(&helpers_window(), 0, Others::All, false));
+        let column = |pane: &str| {
+            let row = text.lines().find(|row| row.contains(pane)).unwrap_or_default();
+            row.find("idle")
+        };
+        assert_eq!(column("p1 "), column("cobalt"), "{text}");
+        assert_eq!(column("p1 "), column("otter"), "{text}");
     }
 
     /// A pane whose daemon the window cannot reach says what it read before, and nothing that

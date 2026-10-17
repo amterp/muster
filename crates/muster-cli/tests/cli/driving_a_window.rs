@@ -187,6 +187,17 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
     let row = window["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!(maker));
     assert_eq!(row.map(|row| &row["maker"]), Some(&Value::Null), "the agent is nobody's helper");
 
+    // Read as a person reads it, both are listed under the agent, a level in, and not under
+    // `hidden`, which they leave.
+    let readable = run(&["window"], environment).out;
+    let rows: Vec<&str> = readable.lines().collect();
+    let maker_row = rows.iter().position(|row| row.contains(maker)).expect("the agent is listed");
+    assert!(rows[maker_row].contains("2 helpers"), "{readable}");
+    for row in &rows[maker_row + 1..maker_row + 3] {
+        assert!(row.contains("(hidden)"), "a helper is not listed under its maker:\n{readable}");
+    }
+    assert!(!rows.contains(&"hidden"), "the helpers are listed under `hidden` too:\n{readable}");
+
     for helper in &helpers {
         let closed = run(&["pane", "close", "--pane", helper], environment);
         assert_eq!(closed.code, 0, "closing a helper failed: {}", closed.errors);

@@ -6,7 +6,8 @@ out what it did.
 
     tab 1  t1w3r07bsd  ~/src/muster  on screen
       ▸ 1  p1w3r07bsd  unknown   2h  ~/src/muster
-        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents
+        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents  1 helper
+             otter     working   5m  🤖 A1 · running the tests  (hidden)
     tab 2  t1w3r0h4kp  the build
         3  p1w3r0cd4x  blocked  40m  🤖 B  (off screen)
         4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (off screen)
@@ -46,6 +47,14 @@ No window holds their tabs, so they have no places and no keyboard, and every wi
 same ones. In `--json` they are `hidden[]`, in the shape `other_windows[].tabs[]` takes, and not in
 `panes[]`. Every pane there says what its agent is doing in the fields a pane in `panes[]` does -
 `state`, `since`, `facts`, `unread_input` and the rest - and carries `quiet` and `maker`.
+
+A helper an agent made with `pane new --helper` (`muster docs agents`, "An agent's helpers") is
+listed under its maker's row while it is hidden: a level in, by its word, `(hidden)` after its
+label, and a level further for a helper of a helper. Its maker's row counts its helpers,
+`1 helper` above. Its hidden tab is listed under `hidden` only while something else is in it. A
+helper with a place in one of the window's tabs stays there, where its place and the keyboard
+mean something, and so does a hidden one whose maker is not listed, closed or on a machine not
+attached; each says `(helper of <maker>)`.
 
 `--json` answers the same thing as one flat list of panes, which is what filtering wants:
 
