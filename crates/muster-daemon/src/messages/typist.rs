@@ -187,6 +187,6 @@ fn second_look<L: Line>(shared: &Shared, seen: &Seen, typed: &mut Typed<L::What>
             Second::Pressed
         }
         AtPrompt::Holds(_) => Second::Ended(format!("its prompt holds more than the {}", L::NOUN)),
-        AtPrompt::Not(why) => Second::Ended(why.to_string()),
+        AtPrompt::Not(unseen) => Second::Ended(unseen.why().to_string()),
     }
 }

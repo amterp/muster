@@ -23,7 +23,9 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_msg::{Activity, Holding, Presence, Ringable, Via};
 
+use super::doorbell::Held;
 use super::presence::Panes;
+use super::prompt::Unseen;
 use super::{delivering, now_ms, ring, told};
 use crate::session::Shared;
 
@@ -58,6 +60,12 @@ pub(crate) struct Member {
     pub(crate) doorbell: Ringable,
     /// A wake for it is queued, rung and not yet taken, or handed to a command.
     pub(crate) waking: bool,
+    /// What held the doorbell's last look to ring its pane, if anything did.
+    pub(crate) held: Option<Held>,
+    /// Its pane's size, columns by rows.
+    pub(crate) size: Option<(u16, u16)>,
+    /// The pane its tab is zoomed on, when the zoom hides its own.
+    pub(crate) zoomed_on: Option<String>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
 }
@@ -262,12 +270,7 @@ fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> Act 
     let waited = now_ms.saturating_sub(held.first_at_ms) / 1000;
     let waited =
         if waited >= 120 { format!("{} minutes", waited / 60) } else { format!("{waited}s") };
-    // As the CLI shows a name: `otter (p29te12q4t)`, the id being what still reaches it once
-    // another pane goes by the name.
-    let shown = |id: &str| match called.get(id) {
-        Some(name) if name != id => format!("{name} ({id})"),
-        _ => id.to_string(),
-    };
+    let shown = |id: &str| shown(called, id);
     // A member named after its pane has already said which pane it is.
     let pane =
         if held.pane == held.name { String::new() } else { format!(", {}", shown(&held.pane)) };
@@ -277,13 +280,22 @@ fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> Act 
         name = shown(&held.name),
         first = held.first,
         authors = held.authors.iter().map(|author| shown(author)).collect::<Vec<_>>().join(", "),
-        why = why(member),
+        why = why(member, called),
     );
     Act::Tell { group: held.group.clone(), to: waiting_on(member), body }
 }
 
+/// A participant or a pane as the CLI shows it: `otter (p29te12q4t)`, the id being what still
+/// reaches it once another pane goes by the name.
+fn shown(called: &BTreeMap<String, String>, id: &str) -> String {
+    match called.get(id) {
+        Some(name) if name != id => format!("{name} ({id})"),
+        _ => id.to_string(),
+    }
+}
+
 /// Why a member has not read what waits on it, as far as this daemon can see.
-fn why(member: &Member) -> String {
+fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
     if let Some((program, bytes)) = &member.stopped {
         return format!(
             "its program, {program}, has stopped reading its input and left {bytes} bytes unread, \
@@ -301,16 +313,34 @@ fn why(member: &Member) -> String {
              next reads"
                 .to_string()
         }
-        _ if member.waking => {
-            "a wake for it is waiting to be rung, held back by what its pane shows - something \
-             typed in its prompt, or a menu over it"
-                .to_string()
-        }
+        _ if member.waking => held(member, called),
         _ if member.holding.woken => {
             "it was rung, and has neither read it nor gone to work".to_string()
         }
         _ => "it was rung again, and still has not read it".to_string(),
     }
+}
+
+/// What holds a wake for a member, by what the doorbell last found in its pane.
+fn held(member: &Member, called: &BTreeMap<String, String>) -> String {
+    let mut said = match (member.held, member.size) {
+        (Some(Held::Draft), _) => {
+            "a wake for it is held because its prompt holds something typed and not sent"
+                .to_string()
+        }
+        (Some(Held::Unseen(Unseen::NoPrompt)), Some((cols, rows))) => format!(
+            "a wake for it is held because its prompt is not on its screen, which is \
+             {cols}x{rows} and may be too short to show it"
+        ),
+        (Some(Held::Unseen(unseen)), _) => {
+            format!("a wake for it is held because {}", unseen.why())
+        }
+        (None, _) => "a wake for it is waiting to be rung".to_string(),
+    };
+    if let Some(zoomed) = &member.zoomed_on {
+        said.push_str(&format!("; its tab is zoomed on {}, which hides it", shown(called, zoomed)));
+    }
+    said
 }
 
 fn moving(key: &(String, String), episode: &Episode, now_ms: u64) -> Act {
@@ -347,6 +377,12 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
                     doorbell: panes.doorbell(&holding.pane),
                     stopped: seen.and_then(|seen| seen.stopped.clone()),
                     waking,
+                    held: messages.held.get(&holding.pane).copied(),
+                    size: seen.map(|seen| {
+                        let grid = seen.io.grid();
+                        (grid.cols, grid.rows)
+                    }),
+                    zoomed_on: panes.zoomed_on(&holding.pane).map(str::to_string),
                     holding,
                 }
             })
@@ -355,8 +391,10 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
         (members, others, messages.service.called(&panes))
     };
     for member in &members {
-        if let Some(name) = panes.name_of(&member.holding.pane) {
-            called.insert(member.holding.pane.clone(), name);
+        for pane in std::iter::once(&member.holding.pane).chain(&member.zoomed_on) {
+            if let Some(name) = panes.name_of(pane) {
+                called.insert(pane.clone(), name);
+            }
         }
     }
     let acts = stalls.judge(&members, &called, now_ms());
@@ -417,6 +455,7 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
         Act::Stalled { member, held_ms, unlock } => {
             let held = &member.holding;
             let (program, bytes) = member.stopped.clone().unwrap_or_default();
+            let size = member.size.map_or(String::new(), |(cols, rows)| format!("{cols}x{rows}"));
             log::warn(
                 "msg.group.stalled",
                 fields! {
@@ -429,6 +468,9 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                     "authors" => held.authors.join(","),
                     "woken" => held.woken,
                     "waking" => member.waking,
+                    "held" => member.held.map_or("", Held::word),
+                    "size" => size,
+                    "zoomed_on" => member.zoomed_on.clone().unwrap_or_default(),
                     "rings" => member.doorbell == Ringable::Rings,
                     "program" => program,
                     "unread_bytes" => bytes,
@@ -515,6 +557,9 @@ mod tests {
             activity: Some(Activity::Idle),
             doorbell: Ringable::Rings,
             waking: false,
+            held: None,
+            size: Some((89, 9)),
+            zoomed_on: None,
             stopped: None,
         }
     }
@@ -686,5 +731,51 @@ mod tests {
         let acts = stalls.judge(&[blocked], &BTreeMap::new(), 1000 + AFTER);
         assert_eq!(kinds(&acts), ["stalled"]);
         assert!(matches!(acts[0], Act::Stalled { unlock: Unlock::Nothing, .. }));
+    }
+
+    /// The body of what whoever waits on `member` is told once it has held its group up.
+    fn told(member: Member, called: &BTreeMap<String, String>) -> String {
+        let acts = stalls().judge(&[member], called, 1000 + AFTER);
+        let Some(Act::Tell { body, .. }) = acts.last() else { panic!("{acts:?}") };
+        body.clone()
+    }
+
+    /// A held wake is explained by what the doorbell found in the pane, and never by a guess.
+    #[test]
+    fn a_held_wake_is_told_by_what_held_it() {
+        let waking = |held| Member { waking: true, held, ..worker() };
+        let none = BTreeMap::new();
+        let said = |held| told(waking(held), &none);
+        assert!(said(Some(Held::Draft)).contains("its prompt holds something typed and not sent"));
+        assert!(
+            said(Some(Held::Unseen(Unseen::NoPrompt)))
+                .contains("its prompt is not on its screen, which is 89x9 and may be too short"),
+        );
+        assert!(said(Some(Held::Unseen(Unseen::Covered))).contains("a menu, a viewer or a dialog"));
+        assert!(said(Some(Held::Unseen(Unseen::AtWork))).contains("reads as its agent at work"));
+        assert!(said(None).contains("a wake for it is waiting to be rung."));
+        for held in [None, Some(Held::Draft), Some(Held::Unseen(Unseen::NoPrompt))] {
+            assert!(!said(held).contains("menu over it"), "{held:?}");
+        }
+    }
+
+    /// A pane a zoom hides is said to be hidden, by the name of the pane its tab is zoomed on.
+    #[test]
+    fn a_held_wake_in_a_pane_a_zoom_hides_says_so() {
+        let called: BTreeMap<String, String> = [("p3".to_string(), "heron".to_string())].into();
+        let hidden = Member {
+            waking: true,
+            held: Some(Held::Unseen(Unseen::NoPrompt)),
+            zoomed_on: Some("p3".to_string()),
+            ..worker()
+        };
+        let body = told(hidden, &called);
+        assert!(
+            body.contains(
+                "89x9 and may be too short to show it; its tab is zoomed on heron (p3), \
+                           which hides it."
+            ),
+            "{body}"
+        );
     }
 }

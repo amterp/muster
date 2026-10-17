@@ -6,7 +6,7 @@
 //! Read with no lock held but the pane's own, just before each write, so what is typed answers
 //! to the screen as it is, not as it was when a post came in.
 
-use muster_detect::{Agent, Input, Prompt, System};
+use muster_detect::{Agent, Detection, Input, Prompt, State, System};
 use muster_vt::Grid;
 
 use crate::detect::Detecting;
@@ -19,19 +19,57 @@ pub(crate) enum AtPrompt {
     Empty { at_work: bool },
     /// Its prompt holds this: a draft, or a ring left unsent.
     Holds(String),
-    /// Not at its prompt, and why, for a log line.
-    Not(&'static str),
+    /// Not at its prompt, and why.
+    Not(Unseen),
+}
+
+/// Why the doorbell found no prompt to type into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unseen {
+    NoManifests,
+    Unreadable,
+    NotForeground,
+    /// A menu, a viewer or a dialog is drawn over its prompt.
+    Covered,
+    /// Its screen reads as its agent at work, whatever its state says: a screen the rules
+    /// misread, or a turn begun since its state was published.
+    AtWork,
+    /// No rule finds its prompt on its screen: a pane too short to show it, say.
+    NoPrompt,
+}
+
+impl Unseen {
+    pub(crate) fn why(self) -> &'static str {
+        match self {
+            Unseen::NoManifests => "detection has not loaded its manifests",
+            Unseen::Unreadable => "its manifest cannot read its prompt",
+            Unseen::NotForeground => "its agent is no longer in the foreground",
+            Unseen::Covered => "a menu, a viewer or a dialog covers its prompt",
+            Unseen::AtWork => "its screen reads as its agent at work",
+            Unseen::NoPrompt => "its prompt is not on its screen",
+        }
+    }
+
+    /// Why a screen whose prompt could not be read is not one, by what its rules make of it.
+    fn of(detection: &Detection) -> Unseen {
+        match detection.state {
+            _ if detection.skip_state_update => Unseen::Covered,
+            State::Blocked => Unseen::Covered,
+            State::Working => Unseen::AtWork,
+            State::Idle | State::Unknown => Unseen::NoPrompt,
+        }
+    }
 }
 
 /// `at_work` also takes the prompt of an agent at work, which takes what is typed there into
 /// the turn it is running.
 pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: bool) -> AtPrompt {
     let Some(manifests) = detecting.manifests() else {
-        return AtPrompt::Not("detection has not loaded its manifests");
+        return AtPrompt::Not(Unseen::NoManifests);
     };
     let agent = Agent::new(agent);
     if !manifests.reads_prompt(&agent) {
-        return AtPrompt::Not("its manifest cannot read its prompt");
+        return AtPrompt::Not(Unseen::Unreadable);
     }
     // Before the screen: an agent that has exited leaves its last frame above its shell's
     // prompt, which reads as its prompt still.
@@ -39,7 +77,7 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
     let group = io.foreground_group().and_then(|group| u32::try_from(group).ok());
     let found = muster_detect::probe(shell, group, &System, &manifests);
     if found.shell_in_foreground || found.agent.as_ref() != Some(&agent) {
-        return AtPrompt::Not("its agent is no longer in the foreground");
+        return AtPrompt::Not(Unseen::NotForeground);
     }
     let (grid, title) = {
         let screen = io.screen();
@@ -57,7 +95,7 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
     match read {
         Some(Prompt::Empty) => AtPrompt::Empty { at_work },
         Some(Prompt::Holds(held)) => AtPrompt::Holds(held),
-        None => AtPrompt::Not("its screen is not its prompt"),
+        None => AtPrompt::Not(Unseen::of(&manifests.detect(Some(&agent), input))),
     }
 }
 
@@ -98,6 +136,16 @@ pub(crate) fn as_typed(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_screen_with_no_prompt_is_told_by_what_its_rules_read() {
+        let read =
+            |state, skip| Detection { state, visible: true, skip_state_update: skip, rule: None };
+        assert_eq!(Unseen::of(&read(State::Unknown, true)), Unseen::Covered, "a menu");
+        assert_eq!(Unseen::of(&read(State::Blocked, false)), Unseen::Covered, "a dialog");
+        assert_eq!(Unseen::of(&read(State::Working, false)), Unseen::AtWork);
+        assert_eq!(Unseen::of(&read(State::Idle, false)), Unseen::NoPrompt, "the idle fallback");
+    }
 
     #[test]
     fn a_line_ending_in_a_word_with_an_at_is_typed_with_a_space_after_it() {

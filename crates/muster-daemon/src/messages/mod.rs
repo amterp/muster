@@ -76,6 +76,9 @@ pub(crate) struct Messages {
     /// Rings given up with their text possibly left unsent in a prompt, by pane: the text, and
     /// when it was typed. A later ring finding exactly that in the prompt sends it.
     left: HashMap<String, (String, Instant)>,
+    /// Why the doorbell's last look held a wake in each pane where one still waits, which a
+    /// stall notice says.
+    held: HashMap<String, doorbell::Held>,
     /// What waits for the human, changed by the request being handled, for the windows to be
     /// told once this lock is let go.
     told: Vec<msg_answer::Notice>,
@@ -133,6 +136,7 @@ impl Messages {
             stalled: HashSet::new(),
             hook_grace: HashMap::new(),
             left: HashMap::new(),
+            held: HashMap::new(),
             service,
             handing_over: false,
             waits: HashMap::new(),

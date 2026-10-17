@@ -77,6 +77,8 @@ pub(crate) struct Panes {
     /// Whether a restore is still bringing panes back: a pane not open yet may be one of them,
     /// with its agent resuming in it.
     restoring: bool,
+    /// The pane each pane a zoom hides is behind, by the hidden pane.
+    zoomed: HashMap<String, String>,
 }
 
 impl Panes {
@@ -124,6 +126,7 @@ impl Panes {
         let mut panes = Panes {
             attended: session.attended(),
             restoring: session.restoring(),
+            zoomed: session.zoomed_away().into_iter().collect(),
             ..Panes::default()
         };
         drop(session);
@@ -154,6 +157,11 @@ impl Panes {
     /// Whether the pane is open, agent or not.
     pub(crate) fn exists(&self, pane: &str) -> bool {
         self.open.contains_key(pane)
+    }
+
+    /// The pane `pane`'s tab is zoomed on, when the zoom hides `pane`.
+    pub(crate) fn zoomed_on(&self, pane: &str) -> Option<&str> {
+        self.zoomed.get(pane).map(String::as_str)
     }
 }
 

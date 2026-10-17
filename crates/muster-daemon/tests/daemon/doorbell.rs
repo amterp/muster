@@ -1039,6 +1039,41 @@ fn a_group_held_up_on_an_agent_that_stopped_reading_is_told_why_once() {
     assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told twice");
 }
 
+/// A wake held by what its pane shows is explained by that, and not by a guess: a menu over the
+/// agent's prompt, in a pane its tab's zoom hides behind another.
+#[test]
+fn a_group_held_up_on_a_wake_a_menu_holds_is_told_so() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "12000")]);
+    make(&mut agent.control, create("p2", beside("p1", proto::Side::Right)));
+    let zoom = proto::pane_request::Zoom { pane: "p2".to_string(), zoomed: true };
+    expect(
+        &mut agent.control,
+        pane(proto::pane_request::Request::Zoom(zoom)),
+        proto::Outcome::Done,
+    );
+    agent.type_in("menu", true);
+    agent.until_shows("PROBE-MENU");
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+
+    let stalled = r#""event":"msg.group.stalled""#;
+    let logged = logging.logged_until(stalled, Duration::from_secs(40));
+    let line = logged
+        .iter()
+        .find(|line| line.line.contains(stalled))
+        .unwrap_or_else(|| panic!("the stall was never recorded"));
+    for said in [r#""held":"covered""#, r#""zoomed_on":"p2""#] {
+        assert!(line.line.contains(said), "{said} in {}", line.line);
+    }
+
+    logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(10));
+    let read = agent.read_as("integrator");
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(read[0].contains("a menu, a viewer or a dialog covers its prompt"), "{read:?}");
+    assert!(read[0].contains("its tab is zoomed on "), "{read:?}");
+    assert!(read[0].contains("(p2), which hides it"), "{read:?}");
+}
+
 /// A post that fails to trigger the agent it was for - rung, the ring read, and nothing done -
 /// holds its group up too, and whoever posted it is told so, once.
 #[test]

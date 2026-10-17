@@ -1189,6 +1189,18 @@ impl Session {
         self.restoring
     }
 
+    /// Each pane a tab's zoom hides, with the pane its tab is zoomed on.
+    pub(crate) fn zoomed_away(&self) -> Vec<(String, String)> {
+        let mut hidden = Vec::new();
+        for tab in &self.tabs {
+            let Some(zoomed) = &tab.zoomed else { continue };
+            for pane in tab.root.panes().into_iter().filter(|pane| pane != zoomed) {
+                hidden.push((pane.to_string(), zoomed.clone()));
+            }
+        }
+        hidden
+    }
+
     /// Tells the windows what now waits for the human, as the message service decided it at
     /// `order`. A group whose count is 0 has nothing waiting any more.
     pub(crate) fn tell_human(&mut self, order: u64, notices: Vec<proto::msg_answer::Notice>) {

@@ -45,7 +45,7 @@ use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 use super::command;
 use super::compacts::{self, Compacting};
 use super::presence::{Panes, Seen};
-use super::prompt::{self, AtPrompt};
+use super::prompt::{self, AtPrompt, Unseen};
 use super::renames::{self, Typing};
 use super::stalls::{self, Stalls};
 use super::{Messages, notice_of};
@@ -135,6 +135,29 @@ impl Rung {
     /// Whether this is a ring for `name` about `group`.
     pub(crate) fn is_for(&self, name: &str, group: &str) -> bool {
         self.wake.name == name && self.wake.notice.group == group
+    }
+}
+
+/// What held the last wake the doorbell looked to ring in a pane, by what its prompt showed: what
+/// a stall notice says, in place of a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Held {
+    /// Its prompt holds something typed and not sent.
+    Draft,
+    Unseen(Unseen),
+}
+
+impl Held {
+    /// A word for a log line.
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Held::Draft => "draft",
+            Held::Unseen(Unseen::Covered) => "covered",
+            Held::Unseen(Unseen::AtWork) => "at_work",
+            Held::Unseen(Unseen::NoPrompt) => "no_prompt",
+            Held::Unseen(Unseen::NotForeground) => "not_foreground",
+            Held::Unseen(Unseen::NoManifests | Unseen::Unreadable) => "unreadable",
+        }
     }
 }
 
@@ -237,6 +260,7 @@ pub(crate) enum Came {
 pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came> {
     let mut rung = Vec::new();
     let mut waiting = Vec::new();
+    let mut held = Vec::new();
     let mut came = Vec::new();
     for (wake, seen) in ringing {
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&wake)) {
@@ -248,6 +272,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                     let at = Instant::now();
                     let mut messages = shared.messages();
                     messages.left.remove(pane_of(&wake));
+                    messages.held.remove(pane_of(&wake));
                     messages.type_instead.remove(&(wake.name.clone(), wake.notice.group.clone()));
                     drop(messages);
                     rung.push(Rung {
@@ -266,14 +291,16 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                     came.push(Came::Refused);
                 }
             }
-            AtPrompt::Holds(held) => {
-                send_left(shared, &wake, &seen, &held);
+            AtPrompt::Holds(draft) => {
+                send_left(shared, &wake, &seen, &draft);
                 waits(&wake, "its prompt is not empty");
+                held.push((pane_of(&wake).to_string(), Held::Draft));
                 waiting.push(wake);
                 came.push(Came::Waits);
             }
-            AtPrompt::Not(why) => {
-                waits(&wake, why);
+            AtPrompt::Not(unseen) => {
+                waits(&wake, unseen.why());
+                held.push((pane_of(&wake).to_string(), Held::Unseen(unseen)));
                 waiting.push(wake);
                 came.push(Came::Waits);
             }
@@ -293,6 +320,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
         });
         messages.rung.extend(rung);
         messages.pending.extend(waiting);
+        messages.held.extend(held);
     }
     came
 }
@@ -349,6 +377,7 @@ impl Commanded {
 fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
     let mut came = Vec::new();
     let mut waiting = Vec::new();
+    let mut held = Vec::new();
     for (wake, seen) in commanding {
         let pane = pane_of(&wake).to_string();
         let Some(session) = seen.session.clone() else { continue };
@@ -359,8 +388,10 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             came.push(Came::Waits);
             continue;
         }
-        if let AtPrompt::Not(why) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
-            waits(&wake, why);
+        if let AtPrompt::Not(unseen) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
+        {
+            waits(&wake, unseen.why());
+            held.push((pane.clone(), Held::Unseen(unseen)));
             waiting.push(wake);
             came.push(Came::Waits);
             continue;
@@ -375,7 +406,11 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             settle(shared, Ran { wake, pane, session, agent: seen.agent }, Err(refused));
             continue;
         };
-        shared.messages().commanding.insert(pane.clone());
+        {
+            let mut messages = shared.messages();
+            messages.commanding.insert(pane.clone());
+            messages.held.remove(&pane);
+        }
         let ran = Ran { wake, pane, session, agent: seen.agent };
         let unsettled_pane = ran.pane.clone();
         let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };
@@ -403,7 +438,9 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             );
         }
     }
-    shared.messages().pending.extend(waiting);
+    let mut messages = shared.messages();
+    messages.pending.extend(waiting);
+    messages.held.extend(held);
     came
 }
 
@@ -659,6 +696,9 @@ fn look(
             return LOOK_AGAIN;
         }
         messages.left.retain(|pane, _| panes.exists(pane));
+        // What held a pane's wake last look says nothing once no wake waits there.
+        let Messages { held, pending, .. } = &mut *messages;
+        held.retain(|pane, _| pending.iter().any(|wake| pane_of(wake) == pane));
         went_idle(&mut messages, before, &panes, now, &mut next);
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
@@ -966,7 +1006,7 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
                 rung.at = Instant::now();
                 pressed.push(rung);
             }
-            AtPrompt::Not(why) => ending.push((rung, why)),
+            AtPrompt::Not(unseen) => ending.push((rung, unseen.why())),
         }
     }
     if pressed.is_empty() && ending.is_empty() {
