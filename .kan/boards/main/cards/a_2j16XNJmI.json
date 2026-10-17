@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "hide-a-tab-with",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792200242493,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-12: \"ability to hide tab and its panes\".\n\nHiding works one pane at a time (a_2die7jO4X): the pane moves into a tab of its own that its daemon holds as hidden, keeps running, and comes back from the sidebar's Hidden list. The ask is the same for a whole tab, from its right-click menu, with `muster tab hide` beside it for parity.\n\nA hidden tab is already a tab its daemon holds that no window takes (`docs/architecture.md`, \"A hidden tab is its daemon's\"), and every part of a tab is hidden or shown alike. So hiding a tab might mean marking the existing tab hidden on each machine holding part of it, rather than moving its panes out one by one, which would keep its splits for when it comes back. Worth deciding: does showing it bring back the whole tab, splits included?\n\nRelated: a_2j16X83fe, collapsing the Hidden group, which matters more once whole tabs can land in it.",
+  "id": "a_2j16XNJmI",
+  "position": "b1A",
+  "title": "Hide a tab with every pane in it",
+  "type": "feature",
+  "updated_at_millis": 1792200242493,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792200242493}
+  ]
+}

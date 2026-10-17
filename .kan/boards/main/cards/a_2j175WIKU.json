@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "mark-an-agent-row",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792200263658,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-13: \"right click mark as unread\". Clarified 2026-10-16: agent rows only, for now.\n\nThe use is marking an email unread: you glance at an agent that finished and want it to keep asking until you come back. Today whether a pane has been seen is computed, never set: a pane focused and on screen is seen, and a finish there is not announced (`docs/architecture.md`, attention routing). Marking a row unread would put the pane back to `done` and into what `focus_asking` (⌘⇧A) walks, without raising a banner.\n\nTo decide:\n\n- The architecture says seen-ness \"decides what a pane is and is not a person's to configure\". This makes it a person's, for one gesture, so that line needs revisiting rather than routing around.\n- What clears it. The row you right-click is often the focused pane, so \"the next time it is seen\" would clear it at once. The next focus after focus has left it is likelier.\n- A CLI verb beside the menu item, since every action has one.",
+  "id": "a_2j175WIKU",
+  "position": "b1B",
+  "title": "Mark an agent row unread from its right-click menu",
+  "type": "feature",
+  "updated_at_millis": 1792200263658,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792200263658}
+  ]
+}

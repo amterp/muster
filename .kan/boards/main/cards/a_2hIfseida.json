@@ -12,6 +12,12 @@
       "body": "2026-10-13: fixed in code, not tried in the real app (the installed Muster could not be replaced that night). Cause: the window sent Shift+Tab with text \"\\t\" and shift marked consumed, so libghostty's kitty encoder (Claude Code's mode) dropped the shift and wrote a plain Tab; a plain shell (legacy mode) was unaffected. Commits 5095f784 (pane send --key shift+tab, bytes pinned by a test) and c21d7b3e (no text for a single control character, as Ghostty's keyAction does; Shift+Return now also keeps its shift in kitty mode). To check by hand after upgrading to 0.16.0: Shift+Tab cycles Claude Code's permission mode in a pane; 'printf \"\\e[\u003e1u\"; cat -v' then Shift+Tab shows ^[[9;2u. Move to done once seen.",
       "created_at_millis": 1791953239150,
       "id": "c_2hLSqxLJM"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Ctrl+Return may be broken by the same fix (a_2j1768I1p). Check both keys in one session.",
+      "created_at_millis": 1792200272716,
+      "id": "c_2j17KBEvW"
     }
   ],
   "created_at_millis": 1791946590112,
@@ -24,7 +30,7 @@
   "position": "a4",
   "title": "Shift+Tab never reaches Claude Code in a pane",
   "type": "bug",
-  "updated_at_millis": 1791953239150,
+  "updated_at_millis": 1792200272716,
   "history": [
     {"field":"column","value":"next","at":1791946590112}
   ]

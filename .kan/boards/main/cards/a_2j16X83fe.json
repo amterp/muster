@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "collapse-and-expand",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792200242335,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-12: \"collapse hidden tab\". Clarified 2026-10-16: every hidden pane is listed in the sidebar under what is effectively a tab called Hidden, and the ask is to collapse or expand that group.\n\nTo decide while building it:\n\n- Whether a collapsed group still says what is inside it: a count, and the most urgent state among its panes, so a hidden helper that is blocked is not lost from view.\n- Where the collapsed state lives. It is presentation rather than daemon state, so per window, kept in the window's saved arrangement beside tab order and widths, is the likely answer.",
+  "id": "a_2j16X83fe",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b17",
+  "title": "Collapse and expand the Hidden group in the sidebar",
+  "type": "enhancement",
+  "updated_at_millis": 1792200242335,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792200242335}
+  ]
+}
