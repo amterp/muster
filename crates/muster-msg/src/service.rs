@@ -939,6 +939,113 @@ impl<S: Store> Messaging<S> {
         Ok(self.posted(MUSTER, group, seq, to, false, None, presence, now_ms))
     }
 
+    /// Posts what Muster has to say to `to` about `about`, as [`MUSTER`]: a helper's maker told
+    /// that the helper needs it, or the human told that a maker closed with helpers still
+    /// running (MIP-7, sections 4 and 6). Each is a pane, or the human, made a participant as a
+    /// post to it would make it; `about` may be a pane closed since, which never took part, and
+    /// is then shown as `called`.
+    ///
+    /// It goes in the group of exactly the two when they have one, else the one group both are
+    /// in, and else the group a post from one to the other would make: so a notice stays out of
+    /// a council the two share beside a group of their own, and the reply addressed back lands
+    /// where the notice did whenever the two share one group only.
+    pub fn tell_as_muster(
+        &mut self,
+        to: &str,
+        about: &str,
+        called: Option<&str>,
+        body: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Posted, Refusal> {
+        check_body(body)?;
+        let to = self.party(to, None, presence)?;
+        let about = self.party(about, called, presence)?;
+        let group = self.group_of_two(&to, &about, now_ms)?;
+        self.post_as_muster(&group, vec![to], body, presence, now_ms)
+    }
+
+    /// The participant Muster speaks to or of for `name`: the human, where it is homed, or the
+    /// one in the pane `name`, made as an addressed pane's is, or as it was when it closed.
+    fn party(
+        &mut self,
+        name: &str,
+        called: Option<&str>,
+        presence: &dyn Presence,
+    ) -> Result<String, Refusal> {
+        if name == HUMAN {
+            self.human_here(presence)?;
+            if !self.participants.contains_key(HUMAN) {
+                self.make_addressed(HUMAN, presence);
+            }
+            return Ok(HUMAN.to_string());
+        }
+        if let Some(found) = self.by_pane(name) {
+            return Ok(found);
+        }
+        if !self.make_addressed(name, presence) {
+            let mut participant = Participant::named(name);
+            participant.pane = Some(name.to_string());
+            participant.called = called.map(str::to_string);
+            self.participants.insert(name.to_string(), participant);
+        }
+        Ok(name.to_string())
+    }
+
+    /// The group Muster tells `one` about `other` in ([`Self::tell_as_muster`]), made when
+    /// there is none to take.
+    fn group_of_two(&mut self, one: &str, other: &str, now_ms: u64) -> Result<String, Refusal> {
+        let shared: Vec<String> = self
+            .memberships(one)
+            .into_iter()
+            .filter(|group| self.groups[group].members.contains(other) && self.here(group).is_ok())
+            .collect();
+        if let Some(pair) = shared.iter().find(|group| self.groups[*group].members.len() == 2) {
+            return Ok(pair.clone());
+        }
+        if let [only] = shared.as_slice() {
+            return Ok(only.clone());
+        }
+        let group = self.pair_name(&[one, other])?;
+        self.ensure_group(&group, MUSTER, now_ms)?;
+        self.add_member(&group, one, now_ms)?;
+        self.add_member(&group, other, now_ms)?;
+        Ok(group)
+    }
+
+    /// When an agent in `author_pane` last posted to one in `reader_pane`, in the host's
+    /// milliseconds: a message in a group holding both, addressed to the reader or to nobody in
+    /// particular, which reaches every member it rings. Read from the transcripts, so a host
+    /// that restarted still knows.
+    pub fn last_post(&self, author_pane: &str, reader_pane: &str) -> Option<u64> {
+        let in_pane = |pane: &str| -> Vec<&str> {
+            self.participants
+                .values()
+                .filter(|participant| participant.pane.as_deref() == Some(pane))
+                .map(|participant| participant.name.as_str())
+                .collect()
+        };
+        let (authors, readers) = (in_pane(author_pane), in_pane(reader_pane));
+        let holds =
+            |group: &Group, names: &[&str]| names.iter().any(|n| group.members.contains(*n));
+        self.groups
+            .values()
+            .filter(|group| holds(group, &authors) && holds(group, &readers))
+            .filter_map(|group| {
+                group.log.iter().rev().find_map(|entry| match &entry.what {
+                    What::Message { author, to, .. }
+                        if authors.contains(&author.as_str())
+                            && (to.is_empty()
+                                || to.iter().any(|name| readers.contains(&name.as_str()))) =>
+                    {
+                        Some(entry.at_ms)
+                    }
+                    _ => None,
+                })
+            })
+            .max()
+    }
+
     /// What became of the wakes a post returned: a participant whose inbox would not take one
     /// is gone until it joins again.
     pub fn delivered(&mut self, wake: &Wake, reached: bool) -> Result<(), Refusal> {
