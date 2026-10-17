@@ -429,14 +429,20 @@ pub(super) const AT_A_DIALOG: &str = "it is at a dialog, waiting for somebody to
 pub(super) fn stopped_reading(program: &str, bytes: u32) -> String {
     format!(
         "its program, {program}, has stopped reading its input and left {bytes} bytes unread, so \
-         nothing reaches it until somebody interrupts it, or ends it and resumes its session"
+         nothing reaches it until somebody interrupts it"
     )
 }
 
 /// Why a member has not read what waits on it, as far as this daemon can see.
 fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
     if let Some((program, bytes)) = &member.stopped {
-        return stopped_reading(program, *bytes);
+        // Named by the command, since whoever is told is usually an agent that can run it. By
+        // its name, which `--pane` takes as it takes the id.
+        let pane = called.get(&member.holding.pane).unwrap_or(&member.holding.pane);
+        return format!(
+            "{}; `muster pane restart --pane {pane}` ends it and resumes its session",
+            stopped_reading(program, *bytes)
+        );
     }
     match member.activity {
         None => "no agent is in its pane any more".to_string(),
@@ -818,6 +824,7 @@ mod tests {
         assert_eq!(kinds(&acts), ["stalled", "tell"]);
         let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
         assert!(body.contains("codex, has stopped reading its input"), "{body}");
+        assert!(body.contains("`muster pane restart --pane p2` ends it"), "{body}");
     }
 
     /// A member at work is not holding anything up, and the clock starts over from when it was

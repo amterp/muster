@@ -311,7 +311,7 @@ starting, so agents resuming after a restart are not held up. If the agent's las
 never landed, it is woken once more. Otherwise, or if that does not move it either, whoever posted
 what waits is told why, in the group, by `@muster`:
 
-    @muster: otter (p2w3r07bsd) has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it, or ends it and resumes its session. Muster says this once; `muster window` shows its pane.
+    @muster: otter (p2w3r07bsd) has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it; `muster pane restart --pane otter` ends it and resumes its session. Muster says this once; `muster window` shows its pane.
 
 Once means once per message. An agent that works a turn and is free again with #4 still unread is
 held up on the same message: the stall is recorded again, and nobody is told again. One that reads
