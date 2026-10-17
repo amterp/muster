@@ -81,8 +81,8 @@ pub(crate) struct Panes {
     restoring: bool,
     /// The pane each pane a zoom hides is behind, by the hidden pane.
     zoomed: HashMap<String, String>,
-    /// The pane each helper was made by, by the helper (MIP-7): the maker may be on another
-    /// machine.
+    /// The pane each helper was made by, by the helper (MIP-7), while that has not closed: the
+    /// maker may be on another machine.
     makers: HashMap<String, String>,
 }
 
@@ -127,7 +127,8 @@ impl Panes {
             let name = record.name().map(str::to_string);
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
             let young = !loaded || io.age() < AGENT_TO_COME;
-            (record.pane.clone(), seen, young, name, title, record.maker.clone())
+            let maker = record.maker.clone().filter(|_| !record.maker_closed);
+            (record.pane.clone(), seen, young, name, title, maker)
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -168,7 +169,7 @@ impl Panes {
         self.open.contains_key(pane)
     }
 
-    /// Every helper open here, with the pane that made it.
+    /// Every helper open here whose maker has not closed, with the pane that made it.
     pub(crate) fn makers(&self) -> impl Iterator<Item = (&String, &String)> {
         self.makers.iter()
     }

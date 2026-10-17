@@ -1259,3 +1259,37 @@ fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
         "{read:?}"
     );
 }
+
+/// A window that saw a maker on another machine close says so (MIP-7, section 6): its helpers
+/// here stop being quiet and are marked, the person is told once, and saying it again changes
+/// nothing. A maker open here has not closed.
+#[test]
+fn a_maker_closed_on_another_machine_frees_its_helpers_here() {
+    let mut agent = Agent::in_a_pane();
+    let mut logging = following(&agent.daemon);
+    let quiet_helper = proto::pane_request::Create {
+        quiet: true,
+        ..helper("p2", "p9far", among_helpers("t2", "p9far's helpers"))
+    };
+    make(&mut agent.control, quiet_helper);
+    let mut window = agent.daemon.connect();
+    expect(&mut window, attending_request(), proto::Outcome::Done);
+    let closed = |maker: &str| {
+        pane(proto::pane_request::Request::MakerClosed(proto::pane_request::MakerClosed {
+            maker: maker.to_string(),
+            called: Some("🤖 far".to_string()),
+        }))
+    };
+
+    expect(&mut agent.control, closed("p9far"), proto::Outcome::Done);
+    logging.logged_until(r#""event":"msg.helper.orphans_told""#, Duration::from_secs(20));
+    let helper = snapshot(&mut agent.control).panes.into_iter().find(|pane| pane.pane == "p2");
+    assert!(helper.is_some_and(|helper| !helper.quiet && helper.maker_closed));
+    let read = agent.reading(msg_request::Caller::default());
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(read[0].contains("🤖 far closed; its helper "), "{read:?}");
+
+    expect(&mut agent.control, closed("p9far"), proto::Outcome::AlreadySo);
+    let refused = expect(&mut agent.control, closed("p1"), proto::Outcome::Refused);
+    assert!(refused.answer.reason.contains("has not closed"), "{}", refused.answer.reason);
+}

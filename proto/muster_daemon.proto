@@ -261,6 +261,8 @@ message PaneRequest {
     Quiet quiet = 12;
     // Since 1.6.
     Restart restart = 13;
+    // Since 1.6.
+    MakerClosed maker_closed = 14;
   }
 
   // Sets whether the pane is quiet: whether a view raises anything for the person about it.
@@ -311,6 +313,18 @@ message PaneRequest {
     string pane = 1;
     // Variables set for the resumed agent alone, typed ahead of its resume as `NAME=value`.
     map<string, string> env = 2;
+  }
+
+  // A helper's maker, a pane on another daemon, has closed (MIP-7, section 6): a window saw it
+  // close, or opened onto helpers whose maker no daemon holds. Each helper of it here stops being
+  // quiet and is marked (`Pane.maker_closed`), and the person is told once, in a message from
+  // `@muster` naming them, as when a maker here closes. ALREADY_SO when every helper of it here
+  // is marked already, or none is here. REFUSED when the maker is a pane open here: it has not
+  // closed. Since 1.6.
+  message MakerClosed {
+    string maker = 1;
+    // What the maker was called, for the person's notice. Absent: its id.
+    optional string called = 2;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -1375,6 +1389,10 @@ message Pane {
   // another machine: set when the pane is made (`Create.maker`), never changed, and written to the
   // state file. Absent for a pane nobody made as a helper.
   optional string maker = 21;
+  // Since 1.6. The pane's maker has closed, here or on another machine (`PaneRequest.MakerClosed`),
+  // so it is no longer quiet on its maker's behalf, nor watched for it. Set once, never cleared,
+  // and written to the state file.
+  bool maker_closed = 22;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

@@ -479,6 +479,8 @@ fn up(shared: &Arc<Shared>, link: &Arc<Link>, dialed: bool) {
             "dialed" => dialed,
         },
     );
+    // A notice held for the person until their machine was linked can go now.
+    shared.doorbell.nudge();
     let (link, shared) = (Arc::clone(link), Arc::clone(shared));
     let _ = std::thread::Builder::new().name("peer-refetch".to_string()).spawn(move || {
         refetch(&shared, &link);

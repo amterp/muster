@@ -692,3 +692,75 @@ fn the_humans_changes_to_a_group_kept_on_the_dialed_machine_are_carried_there() 
     let refused = near_control.ask(msg(&person, delete("desk@far")));
     assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
 }
+
+fn in_pane(pane: &str) -> msg_request::Caller {
+    msg_request::Caller { pane: Some(pane.to_string()), ..msg_request::Caller::default() }
+}
+
+/// A helper on the far machine whose maker is a pane on the near one tells it there when it
+/// blocks (MIP-7, section 4): the far daemon asks the near one who the maker's pane is, as a
+/// post `--to` it would. Its report to the maker counts, so going idle after it tells nobody.
+#[test]
+fn a_helper_tells_its_maker_on_the_linked_machine() {
+    let near = Daemon::start_detecting();
+    let far = Daemon::start_detecting_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut near_control, create("p1", in_new_tab("t1")));
+    near.run_agent("p1");
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let _holding = link(&near, &far, &mut near_log, 1);
+
+    make(&mut far_control, helper("p2", "p1", among_helpers("t1", "p1's helpers")));
+    far.run_agent("p2");
+    far.set_agent_state("p2", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Blocked);
+    far_log.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let (told, _) = read(&mut near_control, &in_pane("p1"));
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains(" @muster@") && told[0].contains(" is blocked at a dialog: "));
+
+    read(&mut far_control, &in_pane("p2"));
+    expect(
+        &mut far_control,
+        post(&in_pane("p2"), None, &["p1"], "my report"),
+        proto::Outcome::Done,
+    );
+    far.set_agent_state("p2", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(3));
+    let (after, _) = read(&mut near_control, &in_pane("p1"));
+    assert_eq!(after.len(), 1, "only the report: {after:?}");
+    assert!(after[0].ends_with(": my report"), "{after:?}");
+}
+
+/// A maker that closes on the far machine while no link is up leaves its helpers' notice for
+/// the person waiting there, since the person is homed on the near machine; once the link is
+/// back the near daemon has it, with Muster's words for the banner (MIP-7, section 6).
+#[test]
+fn a_maker_closing_on_the_linked_machine_reaches_the_person_once_linked() {
+    let near = daemon();
+    let far = Daemon::start_detecting();
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    let quiet = proto::pane_request::Create {
+        quiet: true,
+        ..helper("p2", "p1", among_helpers("t2", "p1's helpers"))
+    };
+    make(&mut far_control, quiet);
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    cut(holding, &mut near_log, &mut far_log, 1);
+
+    expect(&mut far_control, close_request("p1"), proto::Outcome::Done);
+    far_log.logged_until(r#""event":"msg.helper.orphans_held""#, Duration::from_secs(20));
+    assert!(snapshot(&mut near_control).human.is_empty(), "told before the link was back");
+
+    let _holding = link(&near, &far, &mut near_log, 2);
+    far_log.logged_until(r#""event":"msg.helper.orphans_told""#, Duration::from_secs(20));
+    let told = until_some("the near daemon to hold the notice", || {
+        snapshot(&mut near_control).human.into_iter().find(|told| told.count == 1)
+    });
+    assert!(told.said.contains(" closed; its helper "), "{told:?}");
+    assert!(told.said.contains("--helpers-of p1"), "{told:?}");
+}

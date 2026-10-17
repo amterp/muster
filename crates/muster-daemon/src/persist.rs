@@ -1,8 +1,8 @@
 //! What a daemon restart needs, kept on disk (MIP-3 section 2): the shape of every tab and
-//! whether it is hidden, each pane's name, directory, whether it is quiet and its maker, the
-//! command that starts its agent's session again, and the settings an app last gave. Never a
-//! title, an agent's state or facts, or whether a process is alive: those are observations, and a
-//! restarted daemon observes them afresh. The resume command is not one: it is built from the
+//! whether it is hidden, each pane's name, directory, whether it is quiet, its maker and whether
+//! that has closed, the command that starts its agent's session again, and the settings an app
+//! last gave. Never a title, an agent's state or facts, or whether a process is alive: those are
+//! observations, and a restarted daemon observes them afresh. The resume command is not one: it is built from the
 //! session id the agent's harness reported and the arguments the agent was started with, both of
 //! which a restarted daemon could never learn.
 //!
@@ -92,6 +92,9 @@ pub(crate) struct Pane {
     /// The pane that made it as its helper (`proto::Pane::maker`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) maker: Option<String>,
+    /// Its maker has closed (`proto::Pane::maker_closed`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) maker_closed: bool,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -655,6 +658,7 @@ mod tests {
             resume: None,
             quiet: false,
             maker: None,
+            maker_closed: false,
         }
     }
 
@@ -813,7 +817,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 8] = [
+    const FIXTURES: [(&str, &[&str]); 9] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -825,6 +829,8 @@ mod tests {
         ("state-v1-hidden-quiet.json", &[]),
         // No setting: the first to hold a helper's maker.
         ("state-v1-helpers.json", &[]),
+        // No setting: the first to hold a helper whose maker has closed.
+        ("state-v1-maker-closed.json", &[]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -849,6 +855,7 @@ mod tests {
             resume: None,
             quiet: false,
             maker: None,
+            maker_closed: false,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,

@@ -1141,6 +1141,7 @@ impl Session {
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
                 P::Quiet(quiet) => self.quiet(&quiet),
+                P::MakerClosed(closed) => self.maker_closed(&closed),
                 P::Restart(restart) => match self.restart(&restart) {
                     Ok(restarting) => return Handled::Restart(Box::new(restarting)),
                     Err(refused) => refused,
@@ -2243,7 +2244,8 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
-        self.orphaned(&removed.record);
+        let maker = &removed.record;
+        self.orphan(&maker.pane, maker.name().unwrap_or(&maker.pane));
         removed.io.mark_closed();
         self.emit(Payload::PaneClosed(proto::PaneClosed {
             pane: pane.to_string(),
@@ -2257,35 +2259,48 @@ impl Session {
         self.deferred.push(Deferred::HangUp(Box::new(removed), reason));
     }
 
-    /// When `maker` was the maker of helpers still open here, lets each of them ask for the
-    /// person again, and keeps the maker for the person to be told of (MIP-7, section 6): they
-    /// go on running, and nobody is left to hear from them.
-    fn orphaned(&mut self, maker: &proto::Pane) {
+    /// When `maker`, called `called` as it closed, was the maker of helpers still open here that
+    /// are not yet marked, marks each and lets it ask for the person again, and keeps the maker
+    /// for the person to be told of (MIP-7, section 6): they go on running, and nobody is left
+    /// to hear from them. Says whether there were any.
+    fn orphan(&mut self, maker: &str, called: &str) -> bool {
         let mut helpers = Vec::new();
         for index in 0..self.panes.len() {
             let record = &mut self.panes[index].record;
-            if record.maker.as_deref() != Some(maker.pane.as_str()) {
+            if record.maker.as_deref() != Some(maker) || record.maker_closed {
                 continue;
             }
             helpers.push(record.name().unwrap_or(&record.pane).to_string());
-            if record.quiet {
-                record.quiet = false;
-                let record = record.clone();
-                self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-            }
+            record.maker_closed = true;
+            record.quiet = false;
+            let record = record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         if helpers.is_empty() {
-            return;
+            return false;
         }
         log::info(
             "daemon.maker.closed",
-            fields! { "maker" => maker.pane, "helpers" => helpers.join(",") },
+            fields! { "maker" => maker, "helpers" => helpers.join(",") },
         );
         self.orphans.push(Orphaned {
-            maker: maker.pane.clone(),
-            called: maker.name().unwrap_or(&maker.pane).to_string(),
+            maker: maker.to_string(),
+            called: called.to_string(),
             helpers,
         });
+        true
+    }
+
+    /// A maker on another machine has closed, as a window saw ([`Self::orphan`]).
+    fn maker_closed(&mut self, closed: &pane_request::MakerClosed) -> Reply {
+        if self.pane_index(&closed.maker).is_some() {
+            return Reply::refused(format!(
+                "pane {} is open on this daemon, so it has not closed",
+                closed.maker
+            ));
+        }
+        let called = closed.called.as_deref().unwrap_or(&closed.maker);
+        if self.orphan(&closed.maker, called) { Reply::done() } else { Reply::already() }
     }
 
     /// The makers that closed with helpers open here since this was last asked.
@@ -2940,6 +2955,7 @@ impl Session {
                     resume: pane.resume.clone(),
                     quiet: pane.record.quiet,
                     maker: pane.record.maker.clone(),
+                    maker_closed: pane.record.maker_closed,
                 })
                 .collect(),
         }
@@ -3061,6 +3077,7 @@ impl Session {
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 quiet: pane.saved.quiet,
                 maker: pane.saved.maker,
+                maker_closed: pane.saved.maker_closed,
                 session_id: resume.as_ref().map(|resume| resume.session.clone()),
                 resume: resume.as_ref().map(persist::Resume::record),
                 ..proto::Pane::default()

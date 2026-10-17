@@ -2005,6 +2005,12 @@ impl<S: Store> Messaging<S> {
         self.human_home.as_ref().filter(|_| !presence.attended())
     }
 
+    /// Whether anything told to the human from here reaches them now: they are homed here, or on
+    /// a machine linked to this one.
+    pub fn human_in_reach(&self, presence: &dyn Presence) -> bool {
+        self.human_elsewhere(presence).is_none_or(|home| self.linked.contains(&home.machine))
+    }
+
     /// Refuses to act as this machine's human where it has none.
     pub(crate) fn human_here(&self, presence: &dyn Presence) -> Result<(), Refusal> {
         self.human_elsewhere(presence).map_or(Ok(()), |home| Err(home.refusal()))

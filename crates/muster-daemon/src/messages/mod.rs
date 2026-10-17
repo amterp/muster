@@ -1210,7 +1210,7 @@ fn finding<T>(
 
 /// Whom `name` means on each machine linked to this one, as this machine writes it: only the
 /// machine it names, for `name@machine`.
-fn whom(shared: &Shared, name: &str) -> Vec<String> {
+pub(crate) fn whom(shared: &Shared, name: &str) -> Vec<String> {
     let (base, machines) = match muster_msg::split_machine(name) {
         Some((base, machine)) => (base, vec![machine.to_string()]),
         None => (name, shared.peers.machines()),

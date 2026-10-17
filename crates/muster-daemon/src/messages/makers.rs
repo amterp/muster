@@ -4,22 +4,26 @@
 //! A helper is quiet, so none of that reaches the person; its maker made it and is the agent
 //! that can act on it. The helper's daemon watches its own helpers, since only it can see their
 //! panes, and tells the maker once each time, in a message from Muster (`@muster`) in the group
-//! the two share, in the stall watch's words (`super::stalls`). A helper whose maker is on
-//! another machine is not watched yet.
+//! the two share, in the stall watch's words (`super::stalls`). A maker on another machine is
+//! reached as MIP-4 section 11 reaches a member there: that machine says which participant the
+//! maker's pane is, over a link only a window attached to both makes, and the notice goes in a
+//! group kept here, which that machine is sent.
 //!
 //! A need is told once it has held for [`SETTLE`]: a dialog the person answers at once, or a turn
 //! the maker's next message starts again straight away, wakes nobody.
 //!
 //! When a maker's pane closes, its helpers go on running and stop being quiet, which the session
-//! does as the pane closes, and the person is told here, once per maker (MIP-7, section 6).
+//! does as the pane closes, and the person is told here, once per maker (MIP-7, section 6). On a
+//! machine the person is not homed on, that waits until their machine is linked to this one:
+//! a group made here while no link is up would never be sent there.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Activity, Presence};
+use muster_msg::{Activity, Presence, Reach};
 
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
@@ -36,6 +40,9 @@ const SETTLE_SAID: &str = "MUSTER_DAEMON_HELPER_SETTLE_MS";
 /// be told: every change in an agent wakes it anyway.
 const NOTHING_DUE: Duration = Duration::from_mins(1);
 
+/// How long a maker no linked machine had is left before they are asked again.
+const ASK_AGAIN: Duration = Duration::from_mins(1);
+
 fn settle() -> Duration {
     if cfg!(debug_assertions)
         && let Ok(said) = std::env::var(SETTLE_SAID)
@@ -46,11 +53,15 @@ fn settle() -> Duration {
     SETTLE
 }
 
-/// A helper with an agent in it, whose maker is a pane here, as this daemon sees it now.
+/// A helper with an agent in it, whose maker is a pane here or one another machine has, as this
+/// daemon sees it now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Helper {
     pub(crate) pane: String,
     pub(crate) maker: String,
+    /// Whom Muster tells: the maker's pane here, or the participant another machine said it is,
+    /// as this machine writes them (`claude@lap`).
+    pub(crate) to: String,
     pub(crate) activity: Option<Activity>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
@@ -81,6 +92,7 @@ impl Need {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Tell {
     pub(crate) maker: String,
+    pub(crate) to: String,
     pub(crate) helper: String,
     pub(crate) need: Need,
     pub(crate) body: String,
@@ -103,8 +115,14 @@ struct Watch {
 pub(crate) struct Makers {
     settle_ms: u64,
     watches: HashMap<String, Watch>,
-    /// Helpers whose maker is on another machine, said once each.
+    /// Helpers whose maker no machine linked to this one has, said once each.
     elsewhere: HashSet<String>,
+    /// The participant each maker on another machine is, as that machine said, by the maker.
+    there: HashMap<String, String>,
+    /// When each maker no linked machine had was last asked about, by the maker.
+    asked_ms: HashMap<String, u64>,
+    /// Makers that closed whose notice waits for the person's machine to be linked to this one.
+    held: Vec<Orphaned>,
 }
 
 impl Makers {
@@ -117,6 +135,9 @@ impl Makers {
             settle_ms: u64::try_from(settle.as_millis()).unwrap_or(u64::MAX),
             watches: HashMap::new(),
             elsewhere: HashSet::new(),
+            there: HashMap::new(),
+            asked_ms: HashMap::new(),
+            held: Vec::new(),
         }
     }
 
@@ -155,6 +176,7 @@ impl Makers {
             let worked_ms = now_ms.saturating_sub(watch.worked_since_ms.unwrap_or(now_ms));
             tells.push(Tell {
                 maker: helper.maker.clone(),
+                to: helper.to.clone(),
                 helper: helper.pane.clone(),
                 need,
                 body: body(helper, need, called, worked_ms),
@@ -231,24 +253,37 @@ fn body(helper: &Helper, need: Need, called: &BTreeMap<String, String>, worked_m
 /// Looks at each helper here, and tells its maker what it needs. Called by the doorbell's thread
 /// with no lock held, on every wake; says how long until the next look is due.
 pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
-    let (orphans, helping) = {
+    let (fresh, helping) = {
         let mut session = shared.lock();
         (session.take_orphans(), session.has_helpers())
     };
-    if orphans.is_empty() && !helping {
+    if fresh.is_empty() && makers.held.is_empty() && !helping {
         makers.watches.clear();
         return NOTHING_DUE;
     }
     let panes = Panes::of(shared);
-    for orphaned in &orphans {
-        tell_person(shared, &panes, orphaned);
+    if !fresh.is_empty() || !makers.held.is_empty() {
+        let in_reach = shared.messages().service.human_in_reach(&panes);
+        for orphaned in fresh.iter().filter(|_| !in_reach) {
+            log::info(
+                "msg.helper.orphans_held",
+                fields! { "maker" => orphaned.maker, "helpers" => orphaned.helpers.join(",") },
+            );
+        }
+        makers.held.extend(fresh);
+        if in_reach {
+            for orphaned in std::mem::take(&mut makers.held) {
+                tell_person(shared, &panes, &orphaned);
+            }
+        }
     }
+    find_elsewhere(shared, &panes, makers);
     let (helpers, called) = {
         let mut messages = shared.messages();
         if messages.handing_over {
             return NOTHING_DUE;
         }
-        let helpers = helpers(&messages.service, &panes, &mut makers.elsewhere);
+        let helpers = helpers(&messages.service, &panes, makers);
         (helpers, messages.service.called(&panes))
     };
     let mut called = called;
@@ -261,36 +296,82 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
     }
     let now = now_ms();
     for tell in makers.judge(&helpers, &called, now) {
-        tell_maker(shared, &panes, &tell);
+        if !tell_maker(shared, &panes, &tell) {
+            // Whoever is in the maker's pane there may have changed: asked again next time.
+            makers.there.remove(&tell.maker);
+        }
     }
     makers.due(now_ms())
 }
 
-/// Every helper here with an agent in it whose maker is a pane here.
+/// Asks the machines linked to this one which participant each maker not here is, for each
+/// maker not yet found and not asked about in the last [`ASK_AGAIN`]. With no lock held: each
+/// ask is a call over a link.
+fn find_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
+    let away: BTreeSet<&String> = panes
+        .makers()
+        .map(|(_, maker)| maker)
+        .filter(|maker| !panes.exists(maker) && !makers.there.contains_key(*maker))
+        .collect();
+    if away.is_empty() || shared.peers.machines().is_empty() {
+        return;
+    }
+    let now = now_ms();
+    let again_ms = u64::try_from(ASK_AGAIN.as_millis()).unwrap_or(u64::MAX);
+    for maker in away {
+        if makers.asked_ms.get(maker).is_some_and(|asked| now.saturating_sub(*asked) < again_ms) {
+            continue;
+        }
+        match super::whom(shared, maker).as_slice() {
+            [there] => {
+                makers.asked_ms.remove(maker);
+                makers.there.insert(maker.clone(), there.clone());
+            }
+            _ => {
+                makers.asked_ms.insert(maker.clone(), now);
+            }
+        }
+    }
+}
+
+/// Every helper here with an agent in it whose maker is a pane here, or one a linked machine
+/// said it has.
 fn helpers(
     service: &muster_msg::Messaging<super::store::Files>,
     panes: &Panes,
-    elsewhere: &mut HashSet<String>,
+    makers: &mut Makers,
 ) -> Vec<Helper> {
     let mut helpers = Vec::new();
     for (pane, maker) in panes.makers() {
-        if !panes.exists(maker) {
-            if elsewhere.insert(pane.clone()) {
+        let to = if panes.exists(maker) {
+            maker.clone()
+        } else if let Some(there) = makers.there.get(maker) {
+            there.clone()
+        } else {
+            if makers.elsewhere.insert(pane.clone()) {
                 log::debug(
                     "msg.helper.maker_elsewhere",
-                    fields! { "helper" => pane, "maker" => maker },
+                    fields! {
+                        "helper" => pane,
+                        "maker" => maker,
+                        "impact" => "its maker is not told when it needs somebody until a machine \
+                                     linked to this one says it has the maker's pane",
+                        "check" => "whether a window is attached to both machines, which is what \
+                                    links them",
+                    },
                 );
             }
             continue;
-        }
+        };
         let Some(seen) = panes.get(pane) else { continue };
         let idle = seen.activity == Some(Activity::Idle);
         helpers.push(Helper {
             pane: pane.clone(),
             maker: maker.clone(),
+            last_post_ms: if idle { service.last_post(pane, &to) } else { None },
+            to,
             activity: seen.activity,
             stopped: seen.stopped.clone(),
-            last_post_ms: if idle { service.last_post(pane, maker) } else { None },
         });
     }
     helpers
@@ -341,32 +422,37 @@ fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
     }
 }
 
-fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) {
+/// Tells a helper's maker what the helper needs, and says whether it reached them.
+fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
     log::info(
         "msg.helper.needs",
         fields! { "helper" => tell.helper, "maker" => tell.maker, "need" => tell.need.as_str() },
     );
     let delivered = delivering(shared, panes, |service| {
-        service.tell_as_muster(&tell.maker, &tell.helper, None, &tell.body, panes, now_ms())
+        service.tell_as_muster(&tell.to, &tell.helper, None, &tell.body, panes, now_ms())
     });
     match delivered {
         Ok(delivered) => {
             told("msg.helper.told", Some(tell.body.len()), &delivered);
+            !delivered.posted.reached.iter().any(|(_, reach)| *reach == Reach::Unreachable)
         }
-        Err(reply) => log::warn(
-            "msg.helper.untold",
-            fields! {
-                "helper" => tell.helper,
-                "maker" => tell.maker,
-                "need" => tell.need.as_str(),
-                "reason" => reply.reason,
-                "impact" => "the helper is quiet, so nobody hears that it needs somebody: its \
-                             maker was not told, and the person is not told while it is quiet",
-                "check" => "the reason: a group the two share kept on another machine, or a \
-                            store that would not write; `muster pane quiet --pane <helper> \
-                            --off` makes it ask the person instead",
-            },
-        ),
+        Err(reply) => {
+            log::warn(
+                "msg.helper.untold",
+                fields! {
+                    "helper" => tell.helper,
+                    "maker" => tell.maker,
+                    "need" => tell.need.as_str(),
+                    "reason" => reply.reason,
+                    "impact" => "the helper is quiet, so nobody hears that it needs somebody: its \
+                                 maker was not told, and the person is not told while it is quiet",
+                    "check" => "the reason: a maker on another machine whose link dropped, or a \
+                                store that would not write; `muster pane quiet --pane <helper> \
+                                --off` makes it ask the person instead",
+                },
+            );
+            false
+        }
     }
 }
 
@@ -385,6 +471,7 @@ mod tests {
         Helper {
             pane: "p2".to_string(),
             maker: "p1".to_string(),
+            to: "p1".to_string(),
             activity: Some(activity),
             stopped: None,
             last_post_ms: None,
