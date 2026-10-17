@@ -502,3 +502,15 @@ features disable daemon_auto_start`, which `muster harness install codex` runs, 
 off for sessions started later, one already running still serves them until `codex app-server daemon
 stop`, and `codex --no-daemon` keeps a single session out of it. `muster msg` run from under the
 app-server still acts as the first session's pane.
+
+## A closed maker's helpers are listed under Hidden, and a helper made while they are shown is not with them
+
+A helper is listed under its maker's row, and once the maker's pane has closed there is no row:
+its helpers go back under `hidden` in `muster window`, which still says whose each is (`(helper
+of …)`, and `maker` in `--json`), and under Hidden in the agent list. `muster pane show --helpers-of`
+with the closed maker's id, which the notice you were sent names, still brings them forward
+together.
+
+A maker's hidden helpers share one hidden tab, and once Show Helpers has brought that tab forward
+it is no longer hidden. A helper made while it is on screen goes into a hidden tab of its own,
+not beside the others, and the next Show Helpers brings that tab forward beside theirs.

@@ -87,9 +87,9 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Make the agents you run for your own work with `--helper`.** They are hidden and quiet: the
   person does not see or hear from them, and you are told, in a message from `@muster`, when one is
   blocked, stuck, or idle without having reported to you. Name each one. When the person wants to
-  watch one, say `muster pane show --pane <name>`. Close them when their work is done. An agent the
-  person asks you to start as a peer, to take part of the work at its own level, is not a helper:
-  make it with plain `muster pane new`.
+  watch them, say `muster pane show --helpers-of $MUSTER_PANE`, or Show Helpers on your row. Close
+  them when their work is done. An agent the person asks you to start as a peer, to take part of
+  the work at its own level, is not a helper: make it with plain `muster pane new`.
 - **`muster tab rename` without `--tab` renames the tab the person's keyboard is in**, not yours:
   name it from the `tab` on your own row of `muster window --json`.
 - **Fix a layout with `muster pane move`, never by closing a working agent.**

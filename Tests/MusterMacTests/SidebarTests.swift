@@ -550,6 +550,80 @@ struct SidebarTests {
     #expect(SidebarModel.summary(of: open[1]) == nil)
   }
 
+  /// A hidden helper of a pane with a row is listed under it, as the core says, folded into one
+  /// line that counts them and paints the most urgent state among them and theirs (MIP-7).
+  /// Opened, each helper's row follows a level further in, numbered by nothing, and a helper's
+  /// own helpers fold under it in turn. They leave the Hidden caption, which keeps only what
+  /// somebody hid by hand and is gone when nobody did.
+  @Test("a pane's hidden helpers fold under it into one line, and open a level further in")
+  func helpersFoldUnderTheirMaker() {
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let helper = { (id: String, maker: String) in
+      Roster.Pane(
+        key: key(id), label: id, onScreen: false, maker: maker, under: maker)
+    }
+    let helpersTab = tab(
+      "local", "w1:t2", place: 0,
+      panes: [helper("w1:h1", "w1:p1"), helper("w1:h2", "w1:p1"), helper("w1:g1", "w1:h1")])
+    let base = roster([
+      tab("local", panes: [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)])
+    ])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering, hidden: [helpersTab])
+    let agents: [PaneKey: PaneAgent] = [
+      key("w1:h1"): "working", key("w1:h2"): "idle", key("w1:g1"): "blocked",
+    ]
+
+    let folded = SidebarModel.rows(roster: roster, agents: agents)
+    #expect(folded.map(\.label) == ["w1:p1", "2 helpers · 1 blocked", "w1:p2"])
+    let line = folded[1]
+    #expect(line.kind == .helpers(count: 2, urgent: 1, open: false))
+    #expect(line.isHelpers && line.pane == key("w1:p1") && line.depth == 1)
+    #expect(line.state == "blocked", "a blocked helper of a helper was lost behind the fold")
+    #expect(SidebarModel.accessories(of: line) == [.helpers(open: false)])
+    #expect(!folded.contains { $0.isHiddenCaption }, "only helpers were hidden")
+
+    let open = SidebarModel.rows(roster: roster, agents: agents, helpersOpen: [key("w1:p1")])
+    #expect(
+      open.map(\.label) == [
+        "w1:p1", "2 helpers", "w1:h1", "1 helper · 1 blocked", "w1:h2", "w1:p2",
+      ])
+    #expect(open[1].state.isEmpty, "an open line's rows carry their own states")
+    #expect(open[2].hidden && open[2].kind == .pane(tabPress: 0, press: 0) && open[2].depth == 1)
+    #expect(open[3].depth == 2 && open[3].pane == key("w1:h1"))
+    #expect(
+      roster.helpers(of: key("w1:p1")) == ContextMenuModel.Helpers(canShow: true, canHide: false))
+    #expect(roster.helpers(of: key("w1:p2")) == nil, "a pane with no helpers has nothing to offer")
+
+    // A pane somebody hid by hand stays under the caption, which counts only it.
+    let byHand = tab(
+      "local", "w1:t3", place: 0, panes: [pane("local", "w1:p9", place: 0, press: 0)])
+    let both = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering,
+      hidden: [helpersTab, byHand])
+    let rows = SidebarModel.rows(roster: both, agents: agents, hiddenCollapsed: true)
+    #expect(rows.last?.kind == .hidden(panes: 1, urgent: 0, collapsed: true))
+  }
+
+  /// Hide Helpers takes back only a tab holding nothing but the pane's helpers, so a helper moved
+  /// beside somebody's own panes does not make the item live.
+  @Test("Hide Helpers is offered while a tab on screen holds nothing but the pane's helpers")
+  func hideHelpersIsOfferedForATabOfHelpers() {
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let helper = { (id: String) in
+      Roster.Pane(key: key(id), label: id, onScreen: false, maker: "w1:p1")
+    }
+    let mixed = roster([tab("local", panes: [pane("local", "w1:p1"), helper("w1:h1")])])
+    #expect(
+      mixed.helpers(of: key("w1:p1")) == ContextMenuModel.Helpers(canShow: false, canHide: false))
+    let shown = roster([
+      tab("local", panes: [pane("local", "w1:p1")]),
+      tab("local", "w1:t2", place: 2, panes: [helper("w1:h1"), helper("w1:h2")]),
+    ])
+    #expect(
+      shown.helpers(of: key("w1:p1")) == ContextMenuModel.Helpers(canShow: false, canHide: true))
+  }
+
   @Test("a folded caption's dot is the most urgent state under it, and none for agents at rest")
   func theMostUrgentStateRanksAsTheCoreDoes() {
     #expect(SidebarModel.mostUrgent(["working", "done", "stuck", "blocked"]) == "blocked")

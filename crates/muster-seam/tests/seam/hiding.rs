@@ -386,7 +386,7 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
     assert_ok(&hide());
     until("the helpers to go back", || tabs() == 1, || format!("{:?}", roster().tabs));
     assert_ok(&show());
-    until("the helpers to come forward named as they were", || tabs() == 2, || String::new());
+    until("the helpers to come forward named as they were", || tabs() == 2, String::new);
     assert_eq!(last_tab().label, "mine");
 
     // With a pane in it that is nobody's helper, the tab is somebody's own, and stays.

@@ -594,6 +594,30 @@ public enum Core {
     return refusal(send(request))
   }
 
+  /// Brings a pane's hidden helpers into this window together, in the tab they share, with the
+  /// keyboard on the first of them.
+  @discardableResult
+  public static func showHelpers(daemonID: String, paneID: String) -> String? {
+    var show = Muster_ShowHelpers()
+    show.daemonID = daemonID
+    show.paneID = paneID
+    show.takeFocus = true
+    var request = Muster_Request()
+    request.showHelpers = show
+    return refusal(send(request))
+  }
+
+  /// Sends a pane's helpers back out of every window, their agents still running.
+  @discardableResult
+  public static func hideHelpers(daemonID: String, paneID: String) -> String? {
+    var hide = Muster_HideHelpers()
+    hide.daemonID = daemonID
+    hide.paneID = paneID
+    var request = Muster_Request()
+    request.hideHelpers = hide
+    return refusal(send(request))
+  }
+
   /// Makes a pane quiet if it is not and lets it notify if it is, as a menu item means. Naming
   /// no pane means the keyboard's.
   @discardableResult

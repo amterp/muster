@@ -443,6 +443,13 @@ helpers already on screen and hiding helpers already hidden change nothing and e
 no helpers is refused. A helper shown with `pane show --pane` comes into a tab of its own, as any
 hidden pane does, and stays a helper.
 
+The agent list lists a maker's hidden helpers under its row rather than under Hidden, folded into
+one line, `3 helpers · 1 blocked`, whose dot is the most urgent state among them; a click opens it,
+and a helper's own helpers fold under it in turn. No chord reaches them, as none reaches a hidden
+pane, and a helper in a tab on screen keeps its row and its number there. The maker's right-click
+menu, and the line's, offer Show Helpers and Hide Helpers. A helper whose maker has closed stays
+under Hidden, since there is no row to list it under.
+
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
 stuck, or goes idle without having posted to its maker since it last went to work, and stays so
 for 10 seconds, its daemon tells the maker once, in a message from `@muster` that says why and

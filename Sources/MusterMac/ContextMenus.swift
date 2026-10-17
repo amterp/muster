@@ -20,6 +20,9 @@ public enum ContextChoice: Equatable, Sendable {
   /// `muster pane show --focus`, for a hidden pane's row. Not one of the core's actions: it
   /// names a pane no keyboard can be on.
   case showPane
+  /// `muster pane show --helpers-of --focus` and `pane hide --helpers-of`, for a maker's row.
+  case showHelpers
+  case hideHelpers
 }
 
 /// One line of a right-click menu.
@@ -41,6 +44,22 @@ public enum ContextEntry: Equatable, Sendable {
 /// actions, a copy of an id, or a `muster msg` verb, so a right-click does nothing a chord or the
 /// CLI cannot.
 public enum ContextMenuModel {
+  /// What a maker's row can do with its helpers (MIP-7, section 5): Show while any is hidden,
+  /// Hide while a tab on screen holds nothing but them.
+  public struct Helpers: Equatable, Sendable {
+    public let canShow: Bool
+    public let canHide: Bool
+
+    public init(canShow: Bool, canHide: Bool) {
+      self.canShow = canShow
+      self.canHide = canHide
+    }
+
+    var entries: [ContextEntry] {
+      [.item(.showHelpers, enabled: canShow), .item(.hideHelpers, enabled: canHide)]
+    }
+  }
+
   /// A pane's menu, modeled on the one Ghostty's own surface opens.
   ///
   /// The machine submenu is left out while one machine is attached. It would list only the
@@ -105,8 +124,12 @@ public enum ContextMenuModel {
   /// typed: no agent, or one whose manifest gives no compact line. Restart Agent is greyed out
   /// where there is no session to resume. It is offered off screen, unlike Close, because it
   /// asks first and the pane is still there afterwards, running its agent again.
+  ///
+  /// A pane with helpers gets Show Helpers and Hide Helpers beside Hide Pane; one with none gets
+  /// neither, which is most panes.
   public static func agentRow(
-    onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false, quiet: Bool = false
+    onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false, quiet: Bool = false,
+    helpers: Helpers? = nil
   ) -> [ContextEntry] {
     [
       .item(.action("rename_pane")),
@@ -114,6 +137,7 @@ public enum ContextMenuModel {
       .item(.action("restart_agent"), enabled: canRestart),
       .item(.action("move_pane_to_new_tab")),
       .item(.action("hide_pane")),
+    ] + (helpers?.entries ?? []) + [
       .toggle(.action("quiet_pane"), on: quiet),
       .separator,
       .item(.copyPaneID),
@@ -125,9 +149,8 @@ public enum ContextMenuModel {
   /// A hidden pane's row. Close is offered although nothing shows the pane: the rule that greys
   /// it out on an agent row keeps a destructive verb to panes somebody can see, and a hidden pane
   /// is one somebody put away on purpose and is looking at in this list.
-  public static func hiddenRow(quiet: Bool) -> [ContextEntry] {
-    [
-      .item(.showPane),
+  public static func hiddenRow(quiet: Bool, helpers: Helpers? = nil) -> [ContextEntry] {
+    [.item(.showPane)] + (helpers?.entries ?? []) + [
       .toggle(.action("quiet_pane"), on: quiet),
       .item(.action("rename_pane")),
       .separator,
@@ -135,6 +158,11 @@ public enum ContextMenuModel {
       .separator,
       .item(.action("close_pane")),
     ]
+  }
+
+  /// A maker's helpers line: the two things to do with all of them at once.
+  public static func helpersRow(_ helpers: Helpers) -> [ContextEntry] {
+    helpers.entries
   }
 
   /// A message group's row. Leaving is what closes a group for the human, and takes it off the
@@ -235,6 +263,8 @@ final class ContextMenu: NSMenu {
     case .leaveGroup: "Leave Group"
     case .deleteGroup: "Delete Group…"
     case .showPane: "Show Pane"
+    case .showHelpers: "Show Helpers"
+    case .hideHelpers: "Hide Helpers"
     }
   }
 }
@@ -262,6 +292,8 @@ public enum PaneRefusal {
   public static let show = "The pane was not shown"
   public static let quiet = "The pane’s notifications did not change"
   public static let restart = "The agent was not restarted"
+  public static let showHelpers = "The helpers were not shown"
+  public static let hideHelpers = "The helpers were not hidden"
 }
 
 /// What a refused tab request did not do, as the heading over the core's reason.
@@ -307,14 +339,16 @@ public enum ContextMenus {
   /// and the window asks first.
   public static func agentRow(
     _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false,
-    quiet: Bool = false, pasteboard: NSPasteboard = .general, window: String = "",
+    quiet: Bool = false, helpers: ContextMenuModel.Helpers? = nil,
+    pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
     refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.agentRow(
-        onScreen: onScreen, canCompact: canCompact, canRestart: canRestart, quiet: quiet),
+        onScreen: onScreen, canCompact: canCompact, canRestart: canRestart, quiet: quiet,
+        helpers: helpers),
       subject: subject(pane), window: window
     ) { choice in
       if case .action("restart_agent") = choice {
@@ -327,13 +361,27 @@ public enum ContextMenus {
 
   /// A hidden pane's row.
   public static func hiddenRow(
-    _ pane: PaneKey, quiet: Bool, pasteboard: NSPasteboard = .general, window: String = "",
+    _ pane: PaneKey, quiet: Bool, helpers: ContextMenuModel.Helpers? = nil,
+    pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.hiddenRow(quiet: quiet), subject: subject(pane), window: window
+      ContextMenuModel.hiddenRow(quiet: quiet, helpers: helpers), subject: subject(pane),
+      window: window
     ) {
       perform($0, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+    }
+  }
+
+  /// A maker's helpers line, whose subject is the maker.
+  public static func helpersRow(
+    _ maker: PaneKey, helpers: ContextMenuModel.Helpers, window: String = "",
+    refused: @escaping Refused = { _, _ in }
+  ) -> NSMenu {
+    ContextMenu.build(
+      ContextMenuModel.helpersRow(helpers), subject: subject(maker), window: window
+    ) {
+      perform($0, on: maker, pasteboard: .general, rename: { _ in }, refused: refused)
     }
   }
 
@@ -405,6 +453,14 @@ public enum ContextMenus {
     case .showPane:
       if let why = Core.showPane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.show, why)
+      }
+    case .showHelpers:
+      if let why = Core.showHelpers(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.showHelpers, why)
+      }
+    case .hideHelpers:
+      if let why = Core.hideHelpers(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.hideHelpers, why)
       }
     case .action("close_pane"): Core.closePane(daemonID: pane.daemon, paneID: pane.pane)
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)

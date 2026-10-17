@@ -59,10 +59,18 @@ public struct Roster: Equatable {
     /// takes the word out of `label` for it, so the word is drawn once.
     public let besideWord: String
 
+    /// The id of the pane that made it as its helper, empty for a pane nobody made (MIP-7).
+    public let maker: String
+
+    /// The id of the row it is listed beneath rather than where its tab puts it, as the core
+    /// decided: its maker's, for a hidden helper whose maker has a row. Empty for most panes.
+    public let under: String
+
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
-      resumesAs: String = "", quiet: Bool = false, word: String = "", besideWord: String? = nil
+      resumesAs: String = "", quiet: Bool = false, word: String = "", besideWord: String? = nil,
+      maker: String = "", under: String = ""
     ) {
       self.key = key
       self.place = place
@@ -77,6 +85,8 @@ public struct Roster: Equatable {
       self.quiet = quiet
       self.word = word
       self.besideWord = besideWord ?? label
+      self.maker = maker
+      self.under = under
     }
   }
 
@@ -230,6 +240,19 @@ public struct Roster: Equatable {
     panes.first { $0.key == key } ?? hiddenPanes.first { $0.key == key }
   }
 
+  /// What a pane's menu can do with its helpers, or nil for a pane that has none here.
+  ///
+  /// Show while any of them is hidden, and Hide while one of the window's tabs holds nothing
+  /// but its helpers: the tabs the core would show and hide (`show_helpers`, `hide_helpers`).
+  public func helpers(of key: PaneKey) -> ContextMenuModel.Helpers? {
+    let made = { (pane: Pane) in pane.maker == key.pane }
+    let hidden = hiddenPanes.contains(where: made)
+    let shown = tabs.filter { $0.panes.contains(where: made) }
+    guard hidden || !shown.isEmpty else { return nil }
+    return ContextMenuModel.Helpers(
+      canShow: hidden, canHide: shown.contains { $0.panes.allSatisfy(made) })
+  }
+
   /// Whether more than one machine is attached, which is when a pane row says which it is on.
   ///
   /// On one machine the answer is the same on every row and says nothing, and the window reads
@@ -289,6 +312,9 @@ public enum SidebarModel {
     /// The caption over the panes no window shows: how many there are, how many of those are in
     /// the state the caption's dot takes from them, and whether it is folded over them.
     case hidden(panes: Int, urgent: Int, collapsed: Bool)
+    /// The line under a pane over its hidden helpers (MIP-7): how many it has, how many of them
+    /// and theirs are in the state the line's dot takes from them, and whether it is open.
+    case helpers(count: Int, urgent: Int, open: Bool)
     /// The caption over the groups the human is in.
     case messages
     /// A group the human is in, with how many messages there would wake them and how many of
@@ -402,6 +428,10 @@ public enum SidebarModel {
     public var word = ""
     public var besideWord = ""
 
+    /// How many levels further in than a pane row this row sits: one for a helper listed under
+    /// its maker, and one more under a helper of its own.
+    public var depth = 0
+
     public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
 
     /// Whether picking this row means something.
@@ -431,6 +461,11 @@ public enum SidebarModel {
 
     public var isHiddenCaption: Bool {
       if case .hidden = kind { return true }
+      return false
+    }
+
+    public var isHelpers: Bool {
+      if case .helpers = kind { return true }
       return false
     }
   }
@@ -484,9 +519,15 @@ public enum SidebarModel {
   /// **A folded Hidden caption draws none of its panes**, and says what it is folded over
   /// instead: how many there are, and the dot of the most urgent state among them, so a hidden
   /// agent that is blocked is still something the list shows.
+  ///
+  /// **A pane's hidden helpers are listed under it, folded into one line** - `3 helpers · 1
+  /// blocked`, the dot the most urgent state among them and theirs - until `helpersOpen` holds
+  /// the pane (MIP-7, section 3). Which helpers go under which pane is the core's answer
+  /// (`Roster.Pane.under`), the one `muster window` lists them by. They leave the Hidden caption,
+  /// which keeps the panes somebody hid by hand, and carry no presses, as no hidden pane does.
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
-    groups: [MessageGroup] = [], hiddenCollapsed: Bool = false
+    groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = []
   ) -> [Row] {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
@@ -499,6 +540,46 @@ public enum SidebarModel {
       roster.spansMachines ? MachineMark(daemon: daemon, color: colors[daemon] ?? "") : nil
     }
     var rows: [Row] = []
+    var under: [String: [(pane: Roster.Pane, tab: String)]] = [:]
+    for tab in roster.hidden {
+      for pane in tab.panes where !pane.under.isEmpty {
+        under[pane.under, default: []].append((pane, tab.id))
+      }
+    }
+    func everyHelper(of maker: String) -> [Roster.Pane] {
+      (under[maker] ?? []).flatMap { [$0.pane] + everyHelper(of: $0.pane.key.pane) }
+    }
+    func appendHidden(_ pane: Roster.Pane, tab: String, depth: Int) {
+      let agent = agents[pane.key] ?? "unknown"
+      rows.append(
+        Row(
+          kind: .pane(tabPress: 0, press: 0), daemon: pane.key.daemon, tab: tab,
+          pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
+          givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
+          hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
+          machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
+          hidden: true, word: pane.word, besideWord: pane.besideWord, depth: depth))
+      appendHelpers(of: pane, tab: tab, depth: depth)
+    }
+    func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
+      guard let helpers = under[maker.key.pane], !helpers.isEmpty else { return }
+      let open = helpersOpen.contains(maker.key)
+      let states = everyHelper(of: maker.key.pane).map { (agents[$0.key] ?? "unknown").state }
+      let urgent = open ? nil : mostUrgent(states)
+      let kind = Kind.helpers(
+        count: helpers.count, urgent: states.filter { $0 == urgent }.count, open: open)
+      rows.append(
+        Row(
+          kind: kind, daemon: maker.key.daemon, tab: tab, pane: maker.key,
+          label: helpersLine(kind, state: urgent ?? ""), subtitle: "", givenName: "",
+          state: urgent ?? "", agent: nil, onScreen: false, hasKeyboard: false,
+          reservedPresses: twoPress ? 2 : 0, machine: nil, isSecondPress: false,
+          depth: depth + 1))
+      guard open else { return }
+      for helper in helpers {
+        appendHidden(helper.pane, tab: helper.tab, depth: depth + 1)
+      }
+    }
     for tab in roster.tabs {
       if captions {
         rows.append(
@@ -527,6 +608,7 @@ public enum SidebarModel {
             machine: mark(pane.key.daemon),
             isSecondPress: tab.armed,
             quiet: pane.quiet, word: pane.word, besideWord: pane.besideWord))
+        appendHelpers(of: pane, tab: tab.id, depth: 0)
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -537,8 +619,9 @@ public enum SidebarModel {
           onScreen: false,
           hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
     }
-    if !roster.hidden.isEmpty {
-      let states = roster.hiddenPanes.map { (agents[$0.key] ?? "unknown").state }
+    let hiddenRows = roster.hiddenPanes.filter { $0.under.isEmpty }
+    if !hiddenRows.isEmpty {
+      let states = hiddenRows.map { (agents[$0.key] ?? "unknown").state }
       let urgent = hiddenCollapsed ? mostUrgent(states) : nil
       rows.append(
         Row(
@@ -550,16 +633,8 @@ public enum SidebarModel {
           reservedPresses: 0, machine: nil, isSecondPress: false))
     }
     for tab in roster.hidden where !hiddenCollapsed {
-      for pane in tab.panes {
-        let agent = agents[pane.key] ?? "unknown"
-        rows.append(
-          Row(
-            kind: .pane(tabPress: 0, press: 0), daemon: pane.key.daemon, tab: tab.id,
-            pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
-            givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
-            hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
-            machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
-            hidden: true, word: pane.word, besideWord: pane.besideWord))
+      for pane in tab.panes where pane.under.isEmpty {
+        appendHidden(pane, tab: tab.id, depth: 0)
       }
     }
     if !groups.isEmpty {
@@ -590,9 +665,19 @@ public enum SidebarModel {
     ["blocked", "stuck", "done", "working"].first { states.contains($0) }
   }
 
+  /// What a pane's helpers line reads: `3 helpers`, and while folded `3 helpers · 1 blocked`
+  /// for the most urgent state among them, `state`.
+  public static func helpersLine(_ kind: Kind, state: String) -> String {
+    guard case .helpers(let count, let urgent, _) = kind else { return "" }
+    let helpers = count == 1 ? "1 helper" : "\(count) helpers"
+    return state.isEmpty ? helpers : "\(helpers) · \(urgent) \(state)"
+  }
+
   /// What hovering a Hidden caption says, and what VoiceOver reads for it: `3 hidden panes ·
-  /// 1 blocked` while folded, nil while its rows say it themselves.
+  /// 1 blocked` while folded, nil while its rows say it themselves. A helpers line says what it
+  /// reads.
   public static func summary(of row: Row) -> String? {
+    if row.isHelpers { return row.label }
     guard case .hidden(let panes, let urgent, let collapsed) = row.kind, collapsed else {
       return nil
     }
@@ -633,6 +718,8 @@ public enum SidebarModel {
     case hiddenPanes(Int)
     /// Whether the Hidden caption is folded, as the chevron a click on it turns.
     case disclosure(collapsed: Bool)
+    /// Whether a pane's helpers line is open, as the chevron a click on it turns.
+    case helpers(open: Bool)
   }
 
   /// The marks a row carries, left to right. The ones that ask somebody to look come first,
@@ -644,6 +731,9 @@ public enum SidebarModel {
     }
     if case .hidden(let panes, _, let collapsed) = row.kind {
       return (collapsed ? [.hiddenPanes(panes)] : []) + [.disclosure(collapsed: collapsed)]
+    }
+    if case .helpers(_, _, let open) = row.kind {
+      return [.helpers(open: open)]
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
@@ -959,6 +1049,15 @@ public final class SidebarView: NSView {
   /// Called when somebody clicks the Hidden caption, with whether they are asking to fold it.
   public var onHiddenToggled: ((Bool) -> Void)?
 
+  /// The panes whose helpers lines are open, drawn on the next `apply(roster:agents:keyboard:)`.
+  /// The window's own, unlike the Hidden caption's fold: nothing outside this window reads it,
+  /// and a relaunch folding them all again is the default anyway.
+  public var helpersOpen: Set<PaneKey> = []
+
+  /// Called when somebody clicks a pane's helpers line, with the pane and whether they are
+  /// asking to open it.
+  public var onHelpersToggled: ((PaneKey, Bool) -> Void)?
+
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
   /// The list is where you are already looking to decide which agent is which, so it is where
@@ -1152,7 +1251,7 @@ public final class SidebarView: NSView {
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(
       roster: roster, agents: agents, keyboard: keyboard, groups: groups,
-      hiddenCollapsed: hiddenCollapsed)
+      hiddenCollapsed: hiddenCollapsed, helpersOpen: helpersOpen)
     let previous = rows
     rows = fresh
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
@@ -1189,6 +1288,9 @@ public final class SidebarView: NSView {
       onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
     case .hidden(_, _, let collapsed):
       onHiddenToggled?(!collapsed)
+    case .helpers(_, _, let open):
+      guard let maker = rows[clicked].pane else { return }
+      onHelpersToggled?(maker, !open)
     case .messages:
       break
     }
@@ -1369,7 +1471,8 @@ final class SidebarRowView: NSView {
   /// Every layer's colour, kept to resolve again when the appearance changes: a layer holds a
   /// resolved colour, so one set once keeps light mode's in dark.
   private var layerColors: [(layer: CALayer, color: NSColor)] = []
-  private var indented = false
+  /// How many steps in from the list's edge the row starts.
+  private var indent = 0
   private var isTab = false
 
   /// Whether this row carries the keyboard marker.
@@ -1410,8 +1513,9 @@ final class SidebarRowView: NSView {
 
   /// Draws `row`, taking away whatever the row this view last showed had and this one does not.
   func show(_ row: SidebarModel.Row) {
-    // Panes indent under their tab caption, and stay indented in a list that draws none.
-    indented = row.isPane
+    // Panes indent under their tab caption, and stay indented in a list that draws none; a
+    // helper and its maker's helpers line go further in, a step for each level.
+    indent = (row.isPane || row.isHelpers ? 1 : 0) + row.depth
     isTab = row.isTab
     layerColors = []
     for layer in [highlight, swatch, showing, dot, progressTrack, progressBar] {
@@ -1443,6 +1547,16 @@ final class SidebarRowView: NSView {
       // A folded Hidden caption is the only one carrying a state: the most urgent of the panes
       // it is folded over.
       if row.isHiddenCaption, !row.state.isEmpty {
+        paint(dot, SidebarModel.dotColor(state: row.state))
+        layer?.addSublayer(dot)
+      }
+    case .helpers:
+      name.font = .systemFont(ofSize: 11, weight: .regular)
+      name.stringValue = row.label
+      name.textColor = .secondaryLabelColor
+      // Folded, it carries the most urgent state of the helpers it is folded over, as a folded
+      // Hidden caption does.
+      if !row.state.isEmpty {
         paint(dot, SidebarModel.dotColor(state: row.state))
         layer?.addSublayer(dot)
       }
@@ -1608,6 +1722,10 @@ final class SidebarRowView: NSView {
       return symbol(
         collapsed ? "chevron.right" : "chevron.down", tint: .tertiaryLabelColor,
         saying: collapsed ? "show hidden panes" : "fold hidden panes")
+    case .helpers(let open):
+      return symbol(
+        open ? "chevron.down" : "chevron.right", tint: .tertiaryLabelColor,
+        saying: open ? "fold helpers" : "show helpers")
     }
   }
 
@@ -1712,7 +1830,7 @@ final class SidebarRowView: NSView {
     if highlight.superlayer != nil {
       highlight.frame = bounds.insetBy(dx: 4, dy: 1)
     }
-    let left = SidebarRowView.inset + (indented ? SidebarRowView.indent : 0)
+    let left = SidebarRowView.inset + CGFloat(indent) * SidebarRowView.indent
     // Chord, then dot, then label, laid out from a running left edge rather than each from
     // `left`, because a pane row carries both: the chord says how to reach the row and the dot
     // says why you would want to, and they used to be alternatives only because a row was

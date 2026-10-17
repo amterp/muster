@@ -242,6 +242,15 @@ public final class MusterWindow: NSObject {
     sidebar.onHiddenToggled = { [weak self] collapsed in
       self?.speaking { Core.setHiddenCollapsed(collapsed) }
     }
+    sidebar.onHelpersToggled = { [weak self] maker, open in
+      guard let self else { return }
+      if open {
+        sidebar.helpersOpen.insert(maker)
+      } else {
+        sidebar.helpersOpen.remove(maker)
+      }
+      sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+    }
     sidebar.onPaneArranged = { [weak self] pane, onto in
       self?.speaking { Core.arrange(pane: pane, onto: onto) }
     }
@@ -1164,13 +1173,15 @@ extension MusterWindow {
     case .pane where row.hidden:
       guard let pane = row.pane else { return nil }
       return ContextMenus.hiddenRow(
-        pane, quiet: row.quiet, window: name, rename: { [weak self] in self?.rename(pane: $0) },
+        pane, quiet: row.quiet, helpers: roster.helpers(of: pane), window: name,
+        rename: { [weak self] in self?.rename(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .pane:
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
         canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true), quiet: row.quiet,
+        helpers: roster.helpers(of: pane),
         window: name, rename: { [weak self] in self?.rename(pane: $0) },
         restart: { [weak self] in self?.confirmRestart($0) },
         refused: { [weak self] in self?.tell($0, $1) })
@@ -1184,6 +1195,10 @@ extension MusterWindow {
       return ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
         [weak self] in self?.confirmDelete(daemon: daemon, group: group)
       }
+    case .helpers:
+      guard let maker = row.pane, let helpers = roster.helpers(of: maker) else { return nil }
+      return ContextMenus.helpersRow(
+        maker, helpers: helpers, window: name, refused: { [weak self] in self?.tell($0, $1) })
     case .machine, .messages, .hidden:
       return nil
     }

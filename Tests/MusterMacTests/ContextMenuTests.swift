@@ -337,6 +337,39 @@ struct ContextMenuTests {
     #expect(shown.allSatisfy { $0.daemonID == "laptop" && $0.takeFocus })
   }
 
+  /// A maker's row brings its helpers forward together and puts them away together, each item
+  /// live only when there is something for it to move; a pane with no helpers offers neither.
+  @Test("a maker's row offers Show Helpers and Hide Helpers, and each names the maker")
+  func aMakersRowShowsAndHidesItsHelpers() {
+    let recorder = recorder()
+    let helpers = ContextMenuModel.Helpers(canShow: true, canHide: false)
+    let menu = ContextMenus.agentRow(laptopPane, onScreen: true, helpers: helpers, rename: { _ in })
+    let mark = recorder.requests.count
+
+    #expect(
+      titles(menu) == [
+        "Rename Pane…", "Compact Agent", "Restart Agent…", "Move Pane to New Tab", "Hide Pane",
+        "Show Helpers", "Hide Helpers", "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
+      ])
+    #expect(item("Hide Helpers", in: menu)?.isEnabled == false)
+    choose("Show Helpers", in: menu)
+    let line = ContextMenus.helpersRow(
+      laptopPane, helpers: ContextMenuModel.Helpers(canShow: false, canHide: true))
+    #expect(titles(line) == ["Show Helpers", "Hide Helpers"])
+    choose("Hide Helpers", in: line)
+
+    let shown = recorder.sent(since: mark) {
+      if case .showHelpers = $0.payload { true } else { false }
+    }.map(\.showHelpers)
+    let hidden = recorder.sent(since: mark) {
+      if case .hideHelpers = $0.payload { true } else { false }
+    }.map(\.hideHelpers)
+    #expect(shown.map(\.paneID) == ["p1w3r07bsd"] && shown.allSatisfy(\.takeFocus))
+    #expect(hidden.map(\.paneID) == ["p1w3r07bsd"] && hidden.allSatisfy { $0.daemonID == "laptop" })
+    let plain = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
+    #expect(item("Show Helpers", in: plain) == nil)
+  }
+
   /// A pick the core refuses is shown to whoever picked it, with the core's reason: a menu that
   /// closed and changed nothing would leave that reason only on stderr.
   @Test("a refused pick hands the window the core's reason")

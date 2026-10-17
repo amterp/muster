@@ -136,7 +136,9 @@ extension Roster.Pane {
       resumesAs: pane.resumesAs,
       quiet: pane.quiet,
       word: pane.word,
-      besideWord: pane.besideWord)
+      besideWord: pane.besideWord,
+      maker: pane.maker,
+      under: pane.under)
   }
 }
 
