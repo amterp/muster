@@ -800,7 +800,14 @@ fn an_urgent_ring_read_before_its_return_is_taken_back_from_the_prompt() {
     agent.daemon.until_agent("p1", proto::AgentState::Blocked);
     let covered = r#""event":"msg.ring.covered""#;
     let logged = logging.logged_until(covered, Duration::from_secs(10));
-    assert!(logged.iter().any(|line| line.line.contains(covered)), "{logged:?}");
+    let line = logged.iter().find(|line| line.line.contains(covered));
+    let line = line.unwrap_or_else(|| panic!("{logged:?}"));
+    // What covered it is in the record by the rule that read the screen and the screen's shape,
+    // never its text.
+    assert!(line.line.contains(r#""rule":""#), "{}", line.line);
+    assert!(!line.line.contains(r#""rule":"""#), "{}", line.line);
+    assert!(!line.line.contains(r#""shape":"""#), "{}", line.line);
+    assert!(!line.line.contains("PROBE-PROMPT"), "{}", line.line);
     assert_eq!(agent.read_in_its_pane(), ["integrator: now"]);
 
     agent.daemon.unblock_agent_unasked();

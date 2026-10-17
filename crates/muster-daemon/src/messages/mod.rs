@@ -1500,7 +1500,7 @@ pub(crate) fn prompt_holds(
 ) -> Option<String> {
     match prompt::look(io, agent, detecting, true) {
         prompt::AtPrompt::Holds(held) => Some(held),
-        prompt::AtPrompt::Empty { .. } | prompt::AtPrompt::Not(_) => None,
+        prompt::AtPrompt::Empty { .. } | prompt::AtPrompt::Not(..) => None,
     }
 }
 

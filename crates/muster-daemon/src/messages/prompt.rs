@@ -21,8 +21,46 @@ pub(crate) enum AtPrompt {
     Empty { at_work: bool },
     /// Its prompt holds this: a draft, or a ring left unsent.
     Holds(String),
-    /// Not at its prompt, and why.
-    Not(Unseen),
+    /// Not at its prompt, why, and what the rules made of its screen.
+    Not(Unseen, Judged),
+}
+
+/// What detection made of a screen whose prompt it could not read, for the log: the rule that
+/// decided the screen, and the screen's [`shape`]. Never its text, since a screen holds what
+/// somebody typed. Empty when no screen was read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Judged {
+    pub(crate) rule: Option<String>,
+    pub(crate) shape: String,
+}
+
+/// How many of a screen's last rows its [`shape`] describes: a prompt box, what is drawn over or
+/// under it, and the footer.
+const SHAPE_ROWS: usize = 12;
+
+/// The last [`SHAPE_ROWS`] rows of `screen` that hold anything, each as its indent, its first
+/// character and its width: `0╭78 0│78 0╰78 0─160 0❯2 2a61`. Enough to see a box over the
+/// prompt, a rule drawn below it, or no caret at all; every letter is written `a` and every digit
+/// `#`, so nothing typed or printed can be read back from it.
+fn shape(screen: &str) -> String {
+    let mut rows: Vec<String> = screen
+        .lines()
+        .rev()
+        .filter(|line| !line.trim().is_empty())
+        .take(SHAPE_ROWS)
+        .map(|line| {
+            let indent = line.chars().take_while(|ch| ch.is_whitespace()).count();
+            let first = match line.chars().find(|ch| !ch.is_whitespace()) {
+                Some(ch) if ch.is_alphabetic() => 'a',
+                Some(ch) if ch.is_numeric() => '#',
+                Some(ch) => ch,
+                None => ' ',
+            };
+            format!("{indent}{first}{}", line.chars().count())
+        })
+        .collect();
+    rows.reverse();
+    rows.join(" ")
 }
 
 /// Why the doorbell found no prompt to type into.
@@ -71,11 +109,11 @@ impl Unseen {
 /// the turn it is running.
 pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: bool) -> AtPrompt {
     let Some(manifests) = detecting.manifests() else {
-        return AtPrompt::Not(Unseen::NoManifests);
+        return AtPrompt::Not(Unseen::NoManifests, Judged::default());
     };
     let agent = Agent::new(agent);
     if !manifests.reads_prompt(&agent) {
-        return AtPrompt::Not(Unseen::Unreadable);
+        return AtPrompt::Not(Unseen::Unreadable, Judged::default());
     }
     // Before the screen: an agent that has exited leaves its last frame above its shell's
     // prompt, which reads as its prompt still.
@@ -83,7 +121,7 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
     let group = io.foreground_group().and_then(|group| u32::try_from(group).ok());
     let found = muster_detect::probe(shell, group, &System, &manifests);
     if found.shell_in_foreground || found.agent.as_ref() != Some(&agent) {
-        return AtPrompt::Not(Unseen::NotForeground);
+        return AtPrompt::Not(Unseen::NotForeground, Judged::default());
     }
     let (grid, title) = {
         let screen = io.screen();
@@ -104,7 +142,8 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
         None => {
             let detection = manifests.detect(Some(&agent), input);
             let shows = detection.rule.as_deref().and_then(|rule| manifests.shows(&agent, rule));
-            AtPrompt::Not(Unseen::of(&detection, shows))
+            let judged = Judged { rule: detection.rule.clone(), shape: shape(&drawn) };
+            AtPrompt::Not(Unseen::of(&detection, shows), judged)
         }
     }
 }
@@ -186,6 +225,31 @@ mod tests {
         assert_eq!(Unseen::of(&menu, None).why(), "a menu, a viewer or a dialog covers its prompt");
         let working = Detection { state: State::Working, skip_state_update: false, ..menu };
         assert_eq!(Unseen::of(&working, Some("a box")), Unseen::AtWork, "not hidden");
+    }
+
+    /// A screen whose prompt could not be read is logged by where its rules, boxes and caret
+    /// are, and none of what is printed or typed on it.
+    #[test]
+    fn a_screen_is_logged_by_its_shape_and_never_its_text() {
+        let screen = [
+            "⏺ The token is sk-1234, printed",
+            "",
+            "✦ Heads up · a tip",
+            "  1: Learn more   2: Knew this already   0: Dismiss",
+            "──────────",
+            "❯\u{a0}a secret draft",
+            "──────────",
+            "  ⏵⏵ bypass permissions on",
+        ]
+        .join("\n");
+        let shaped = shape(&screen);
+        assert_eq!(shaped, "0⏺31 0✦18 2#51 0─10 0❯16 0─10 2⏵26");
+        for word in ["token", "sk", "1234", "secret", "Heads"] {
+            assert!(!shaped.contains(word), "{word} in {shaped}");
+        }
+
+        let tall = vec!["text"; SHAPE_ROWS + 5].join("\n");
+        assert_eq!(shape(&tall).split(' ').count(), SHAPE_ROWS, "the last rows only");
     }
 
     #[test]

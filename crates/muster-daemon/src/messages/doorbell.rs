@@ -49,7 +49,7 @@ use super::command;
 use super::compacts::{self, Compacting};
 use super::makers::{self, Makers};
 use super::presence::{Panes, Seen};
-use super::prompt::{self, AtPrompt, Unseen};
+use super::prompt::{self, AtPrompt, Judged, Unseen};
 use super::renames::{self, Typing};
 use super::stalls::{self, Stalls};
 use super::{Messages, notice_of};
@@ -311,8 +311,8 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 waiting.push(wake);
                 came.push(Came::Waits(Some(Held::Draft)));
             }
-            AtPrompt::Not(unseen) => {
-                waits(&wake, &unseen.why());
+            AtPrompt::Not(unseen, judged) => {
+                waits_unseen(&wake, &unseen, &judged);
                 held.push((pane_of(&wake).to_string(), Held::Unseen(unseen.clone())));
                 waiting.push(wake);
                 came.push(Came::Waits(Some(Held::Unseen(unseen))));
@@ -411,9 +411,10 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             came.push(Came::Waits(None));
             continue;
         }
-        if let AtPrompt::Not(unseen) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
+        if let AtPrompt::Not(unseen, judged) =
+            prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
         {
-            waits(&wake, &unseen.why());
+            waits_unseen(&wake, &unseen, &judged);
             held.push((pane.clone(), Held::Unseen(unseen)));
             waiting.push(wake);
             came.push(Came::Waits(None));
@@ -625,6 +626,20 @@ fn send_left(shared: &Shared, wake: &Wake, seen: &Seen, held: &str) {
 fn waits(wake: &Wake, why: &str) {
     // Debug: a draft left in a prompt is looked at again every few seconds.
     log::debug("msg.ring.waits", fields! { "name" => wake.name, "why" => why });
+}
+
+/// [`waits`], for a prompt the screen does not show, with what the rules made of the screen:
+/// which of its causes held the wake is otherwise lost once the screen is redrawn.
+fn waits_unseen(wake: &Wake, unseen: &Unseen, judged: &Judged) {
+    log::debug(
+        "msg.ring.waits",
+        fields! {
+            "name" => wake.name,
+            "why" => unseen.why(),
+            "rule" => judged.rule.as_deref().unwrap_or_default(),
+            "shape" => judged.shape,
+        },
+    );
 }
 
 /// The thread's handle, so a post or a change in a pane's agent can wake it.
@@ -1051,8 +1066,10 @@ fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
                 }
             }
             AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring".into())),
-            AtPrompt::Not(unseen) if !rung.returned => pressed.push(covered(rung, &unseen)),
-            AtPrompt::Not(unseen) => ending.push((rung, unseen.why())),
+            AtPrompt::Not(unseen, judged) if !rung.returned => {
+                pressed.push(covered(rung, &unseen, &judged));
+            }
+            AtPrompt::Not(unseen, _) => ending.push((rung, unseen.why())),
         }
     }
     if pressed.is_empty() && ending.is_empty() {
@@ -1097,13 +1114,13 @@ fn take_back(
         }
         AtPrompt::Empty { .. } => {}
         AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring".into())),
-        AtPrompt::Not(unseen) => pressed.push(covered(rung, &unseen)),
+        AtPrompt::Not(unseen, judged) => pressed.push(covered(rung, &unseen, &judged)),
     }
 }
 
 /// Keeps a ring whose Return is still to come while something hides its prompt, saying once
 /// what does: nothing else would send the ring, and the screen is not kept.
-fn covered(mut rung: Rung, unseen: &Unseen) -> Rung {
+fn covered(mut rung: Rung, unseen: &Unseen, judged: &Judged) -> Rung {
     if !rung.covered {
         log::info(
             "msg.ring.covered",
@@ -1111,6 +1128,8 @@ fn covered(mut rung: Rung, unseen: &Unseen) -> Rung {
                 "name" => rung.wake.name,
                 "group" => rung.wake.notice.group,
                 "why" => unseen.why(),
+                "rule" => judged.rule.as_deref().unwrap_or_default(),
+                "shape" => judged.shape,
             },
         );
     }

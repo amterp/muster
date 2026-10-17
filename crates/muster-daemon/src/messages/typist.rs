@@ -103,7 +103,7 @@ pub(crate) fn look<L: Line>(
         }
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
             AtPrompt::Empty { .. } => {}
-            AtPrompt::Holds(_) | AtPrompt::Not(_) => {
+            AtPrompt::Holds(_) | AtPrompt::Not(..) => {
                 doorbell::sooner(next, Instant::now() + doorbell::LOOK_AGAIN);
                 continue;
             }
@@ -195,6 +195,6 @@ fn second_look<L: Line>(shared: &Shared, seen: &Seen, typed: &mut Typed<L::What>
             Second::Pressed
         }
         AtPrompt::Holds(_) => Second::Ended(format!("its prompt holds more than the {}", L::NOUN)),
-        AtPrompt::Not(unseen) => Second::Ended(unseen.why().to_string()),
+        AtPrompt::Not(unseen, _) => Second::Ended(unseen.why().to_string()),
     }
 }
