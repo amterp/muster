@@ -130,7 +130,10 @@ A group made with `group new G --policy F` has the policy in file F, TOML with f
   member only the director or the human.
 - **`membership`** says who may change the group: join it, leave it, `group add` and `group
   remove`, `group set`, `pause` and `resume`, and `group delete`. Here a member cannot leave
-  on its own, and the refusal names who may dismiss it.
+  on its own, and the refusal names who may dismiss it. `group new` refuses a policy whose
+  `membership` leaves out whoever runs it: its maker would be its only member, able to add
+  nobody and never leave. Take one of the names it gives first (`muster msg join --name
+  director`), or make the group from the human's own shell, where you are `@human`.
 - **`urgent`** says who may post with `--urgent` (below). Here only the director and the human
   may interrupt an agent at work; a member's urgent post is refused, and the refusal names who
   may. It is refused rather than sent as an ordinary post, which would arrive later than its

@@ -581,6 +581,29 @@ fn a_directed_council_holds_its_members_to_its_policy() {
     );
 }
 
+/// An agent that does not hold a name the policy's membership gives is not let make the group,
+/// since as its only member it could add nobody and never leave, and it is told what would work.
+#[test]
+fn a_council_is_not_made_by_an_agent_its_policy_gives_no_say() {
+    let daemon = Daemon::start_built();
+    let policy = daemon.root().join("directed.toml");
+    std::fs::write(&policy, DIRECTED).unwrap();
+    let policy = policy.display().to_string();
+    ok(&muster(&daemon, &["msg", "--as", "planner", "join"]));
+
+    let council = ["msg", "--as", "planner", "group", "new", "council", "--policy", &policy];
+    let refused = muster(&daemon, &council);
+    assert_eq!(refused.status.code(), Some(1), "{}", said(&refused));
+    let complaint = complained(&refused);
+    assert!(complaint.contains("lets only director or @human add members"), "{complaint}");
+    assert!(complaint.contains("muster msg join --name <name>"), "{complaint}");
+    assert_eq!(ok(&muster(&daemon, &["msg", "groups"])), "no groups");
+
+    ok(&muster(&daemon, &["msg", "--as", "director", "join"]));
+    let council = ["msg", "--as", "director", "group", "new", "council", "--policy", &policy];
+    assert_eq!(ok(&muster(&daemon, &council)), "made council and joined it");
+}
+
 /// A council's member cannot delete it, and the one its policy names can: the group, its log
 /// and every member's place in it go, and the name is free again.
 #[test]

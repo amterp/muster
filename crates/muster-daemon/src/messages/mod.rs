@@ -1600,6 +1600,13 @@ pub(super) fn words(refusal: &Refusal) -> String {
              --urgent, and whom it is for are woken once they are idle",
             names(urgent)
         ),
+        Refusal::NotPermitted { name, group, action: Action::Make, permitted } => format!(
+            "that policy lets only {} add members to {group}, leave it or change it, and you \
+             would be its only member, as {name}, so nobody in it could run it. Take one of \
+             those names first with `{}`, or make the group from the human's own shell",
+            names(permitted),
+            messaging::command(JOIN, "--name <name>")
+        ),
         Refusal::NotPermitted { name, group, action, permitted } => format!(
             "{group}'s policy does not let {name} {}; only {} may",
             action_words(*action, group),
@@ -1639,6 +1646,7 @@ fn action_words(action: Action, group: &str) -> String {
         Action::Pause => "pause it".to_string(),
         Action::Resume => "resume it".to_string(),
         Action::Delete => "delete it".to_string(),
+        Action::Make => "make it".to_string(),
     }
 }
 

@@ -1039,6 +1039,22 @@
       ] }
     },
     {
+      "name": "a group is not made under a policy that leaves its maker out",
+      "why": "A new group's maker is its only member, so under a policy whose `membership` does not name the maker nobody in the group could add anyone, leave it or change it: an agent that made a directed council without holding `director` stranded it. The maker is refused before anything is made and told whom the policy wants, and a session holding that name then makes the same group.",
+      "given": { "steps": [
+        {"session": "sp", "do": "join", "name": "planner"},
+        {"session": "sp", "do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}},
+        {"session": "sd", "do": "join", "name": "director"},
+        {"session": "sd", "do": "group new", "group": "council", "policy": {"ring": {"director": ["*"], "*": ["director"]}, "allow": {"director": ["*"], "@human": ["*"], "*": ["director", "@human"]}, "membership": ["director", "@human"], "paused": false}}
+      ] },
+      "expect": { "said": [
+        "planner registered",
+        "refused not_permitted planner make council (only director,@human)",
+        "director registered",
+        "director made council (#3)"
+      ] }
+    },
+    {
       "name": "a member of a directed council may address only the director and the human",
       "why": "Council v1's \"orchestrated mode\" existed only as a sentence in its skill, so nothing held agents to it. `allow` is enforced by the service (MIP-4, section 8).",
       "given": { "steps": [

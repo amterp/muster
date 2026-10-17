@@ -365,6 +365,7 @@ fn action_to(action: Action) -> &'static str {
         Action::Pause => "pause",
         Action::Resume => "resume",
         Action::Delete => "delete",
+        Action::Make => "make",
     }
 }
 
@@ -378,6 +379,7 @@ fn action_from(action: &str) -> Option<Action> {
         "pause" => Action::Pause,
         "resume" => Action::Resume,
         "delete" => Action::Delete,
+        "make" => Action::Make,
         _ => return None,
     })
 }
@@ -415,6 +417,12 @@ mod tests {
                 group: "g".into(),
                 action: Action::SetPolicy,
                 permitted: vec!["director".into()],
+            },
+            Refusal::NotPermitted {
+                name: "planner".into(),
+                group: "g".into(),
+                action: Action::Make,
+                permitted: vec!["director".into(), "@human".into()],
             },
             Refusal::GroupExists { group: "g".into() },
             Refusal::NotAParticipant { name: Some("a".into()) },

@@ -75,8 +75,8 @@ and either the director or the human may add members. `roundtable.toml` lets eve
 and wake everyone, and only the human changes who is in it, so only the human can convene one.
 
 Whoever makes the group is its first member, and under `directed.toml` only `director` and
-`@human` may add the rest. So convene from the human's own shell, where you are `@human`, and
-brief a director:
+`@human` may add the rest, so `group new` refuses anyone else. Convene from the human's own
+shell, where you are `@human`, and brief a director:
 
 ```sh
 muster msg group new review --policy <this skill's directory>/directed.toml
@@ -90,7 +90,8 @@ its pane may name itself with `muster msg join --name <name>` and keeps its plac
 
 An agent convening a council it will direct itself names itself first, then makes and fills
 the group, and needs no brief: `muster msg join --name director`, then the first two lines
-above. The name `director` outlives each council, so the join may say it took over a place in
+above. If that join is refused, `group new` is refused too, since you would hold no name
+the policy lets add members. The name `director` outlives each council, so the join may say it took over a place in
 groups an earlier director left behind; leave each with `muster msg leave --group <group>`
 before making the new one, or their posts will wake you.
 

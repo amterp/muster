@@ -185,4 +185,6 @@ pub enum Action {
     Pause,
     Resume,
     Delete,
+    /// Make the group under a policy whose `membership` leaves its maker out.
+    Make,
 }

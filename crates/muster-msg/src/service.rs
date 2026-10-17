@@ -1173,6 +1173,16 @@ impl<S: Store> Messaging<S> {
             return Err(Refusal::GroupExists { group: group.to_string() });
         }
         let by = self.identify(caller, presence)?;
+        // Its maker is its only member, so a policy that gives the maker no say would leave a
+        // group nobody in it can add to, leave or change.
+        if let Some(policy) = policy.as_ref().filter(|policy| !policy.permits(&by)) {
+            return Err(Refusal::NotPermitted {
+                name: by,
+                group: group.to_string(),
+                action: Action::Make,
+                permitted: policy.membership.clone(),
+            });
+        }
         self.ensure_group(group, &by, now_ms)?;
         self.add_member(group, &by, now_ms)?;
         let mut seq = None;

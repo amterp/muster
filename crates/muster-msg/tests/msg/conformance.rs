@@ -196,6 +196,7 @@ fn action_word(action: Action) -> &'static str {
         Action::Pause => "pause",
         Action::Resume => "resume",
         Action::Delete => "delete",
+        Action::Make => "make",
     }
 }
 
