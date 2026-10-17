@@ -332,12 +332,14 @@ impl Detection {
             state: state_of(carried.emitted_state()),
             reported: carried.emitted_reported,
             unreadable: carried.emitted_unreadable,
+            waiting: None,
         });
         let concluded = carried.concluded.then(|| Publication {
             agent: carried.concluded_agent.as_deref().map(Agent::new),
             state: state_of(carried.concluded_state()),
             reported: false,
             unreadable: false,
+            waiting: None,
         });
         let report = carried.report_agent.as_deref().map(|agent| CarriedReport {
             agent: Agent::new(agent),

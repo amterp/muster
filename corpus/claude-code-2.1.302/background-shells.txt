@@ -1,0 +1,73 @@
+How Claude Code 2.1.302 says a turn ended with background shells still running, and how its
+footer counts them while it works.
+
+Captured 2026-10-17 on macOS from a Claude Code 2.1.302 pane in Muster 0.16.0, by `muster pane
+read --pane <its own pane> --rows 30`, run from a background shell of that same session: once
+during a turn, and once 15 seconds after a turn had ended, with `sleep 1200` and the capturing
+shell itself still running in the background. Not recorded by `tools/detection-capture.py`: this
+is the pane's text as a read returned it, not the bytes Claude Code wrote, and the pane's title
+and size were not noted. The rendered screens are the two "claude 2.1.302" background-shell cases
+in corpus/conformance/agent-detection-recorded.json.
+
+A turn that ends with background work still running says so at the end of its done line, `✻
+Brewed for 5m 32s · done 8:56 am · 2 shells still running`, and a background shell that ends
+starts the session's next turn. A done line read back from another pane on 2026-10-16
+(feedback-draft.txt) counted a monitor beside the shells: `2 shells, 1 monitor still running`.
+Muster 0.16.0 read the idle screen below as done.
+
+The footer under the prompt box counts the same shells, `⏵⏵ bypass permissions on · 1 shell`,
+while the session works as well as after.
+
+The screen 15 seconds after the turn ended, as the read returned it:
+
+      - Engine: manifests (engine 16) can give an idle rule a waiting key.
+      - Design change from the plan: a waiting rule only names what the agent is
+        waiting on. It never decides the state itself, and it applies only when
+        another rule has already read the screen as idle. I changed this because a
+        deciding rule at priority 955 would have won over the model-picker rule
+        (900) while shells ran. Muster would then read the pane as idle with a menu
+        open, and could type a wake into the picker.
+      - Detector: a wait appearing or going away is published even when the state
+        stays idle. A report that the agent is working publishes no wait, whatever
+        its screen still shows.
+      - Claude Code rule: it reads the end of the done line, · 2 shells, 1 monitor
+        still running, when that is the last thing above the prompt box. The · 1
+        shell footer below the box is never read. A monitor on its own doesn't
+        count.
+      - Tests: muster-detect passes, including new tests for the wait and the
+        existing recorded corpus.
+
+    ✻ Brewed for 5m 32s · done 8:56 am · 2 shells still running
+
+    ───────────────────────────────────────────────────────────────────── muster-1 ─
+    ❯ 
+    ────────────────────────────────────────────────────────────────────────────────
+      [08:56:09] ~/src/muster-1 on main1* | Opus 5.5 high | Senior SWE | ▓▓░░░░░░…
+      ⏵⏵ bypass permissions on · 2 shells
+
+The screen during a turn, with one background shell running, as the read returned it:
+
+           - Proto fields, if any, after the highest on main, under 1.6.
+           - Every new #[ignore] gets a SKIPPED_SUITES row.
+           - No em dashes, American spelling, 72-character commit lines, and no
+             "Co-Authored-By".
+         - Before editing: re-read each file, since the worktree moves to the
+           integration tip before
+           approval.
+    · $ git status --porcelain && git log --oneline -6
+    · $ git log --oneline -3 main; git log --oneline main1..main | head
+    · $ muster msg post --to MUSTER "slot 1: main1 is still at c762dff0 (my sta…
+
+    ⏺ I'm capturing real screens for the corpus now. One background shell keeps
+      running, and a second reads my own pane after my turn ends.
+    · $ sleep 1200
+    … $ sleep 3; muster pane read --pane "$MUSTER_PANE" --rows 30 > /private/tm…
+         (ctrl+b to run in background)
+
+    ✳ Propagating… (28s · ↓ 1.6k tokens)
+
+    ───────────────────────────────────────────────────────────────────── muster-1 ─
+    ❯ 
+    ────────────────────────────────────────────────────────────────────────────────
+      [08:50:11] ~/src/muster-1 on main1 | Opus 5.5 high | Senior SWE | ▓▓░░░░░░░…
+      ⏵⏵ bypass permissions on · 1 shell

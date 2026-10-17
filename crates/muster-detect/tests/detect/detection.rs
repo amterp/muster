@@ -20,6 +20,7 @@ fn detect(manifests: &Manifests, given: &Value) -> Result<Value, CaseError> {
         ("rule", detection.rule.map(|rule| json!(rule))),
         ("visible", detection.visible.then_some(json!(true))),
         ("skipStateUpdate", detection.skip_state_update.then_some(json!(true))),
+        ("waiting", detection.waiting.map(|waiting| json!(waiting))),
     ]))
 }
 
@@ -37,12 +38,13 @@ fn recorded_screen_conformance() {
     let manifests = Manifests::built_in();
     let corpus = Conformance::load("agent-detection-recorded.json");
     // A recorded case knows the state the agent was in, or that its screen is one to wait out,
-    // and nothing about which rule saw it.
+    // and what it was waiting on, and nothing about which rule saw it.
     let ran = corpus.run(|given| {
         let detected = detect(&manifests, given)?;
         Ok(fields([
             ("state", detected.get("state").cloned()),
             ("skipStateUpdate", detected.get("skipStateUpdate").cloned()),
+            ("waiting", detected.get("waiting").cloned()),
         ]))
     });
     assert_eq!(ran, corpus.cases.len());

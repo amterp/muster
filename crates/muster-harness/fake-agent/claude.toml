@@ -9,8 +9,8 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.16.1"
-min_engine_version = 15
+version = "2026.10.17.1"
+min_engine_version = 16
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
@@ -71,6 +71,15 @@ priority = 985
 region = "bottom_non_empty_lines(3)"
 line_regex = ['^PROBE-PROMPT>']
 prompt = '^PROBE-PROMPT>\s?'
+
+# What the agent at its prompt waits on, as Claude Code's done line counts the background shells
+# still running: said of a screen another rule reads idle, never deciding the state itself.
+[[rules]]
+id = "probe_running"
+state = "idle"
+region = "whole_recent"
+waiting = "its background shells"
+contains = ["probe-running"]
 
 # A menu opened from the prompt: a screen to wait out, as Claude Code's /mcp is.
 [[rules]]

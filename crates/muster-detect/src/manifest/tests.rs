@@ -233,6 +233,29 @@ fn a_rule_says_what_it_shows_over_the_prompt_only_where_it_covers_it() {
     assert!(with(15, blank).is_err(), "an empty shows");
 }
 
+/// `waiting` says what an agent at its prompt waits on, so it is taken only on a rule about
+/// idle that decides nothing, and only from a manifest that asks for the engine that reads it.
+#[test]
+fn a_rule_says_what_an_idle_agent_waits_on_only_where_it_reads_idle() {
+    let with = |engine: u32, rule: &str| {
+        Manifest::parse(&format!("id = \"x\"\nmin_engine_version = {engine}\n\n{rule}\n"))
+    };
+    let shells = "[[rules]]\nid = \"shells\"\nstate = \"idle\"\ncontains = [\"still running\"]\n\
+                  waiting = \"its background shells\"";
+    assert!(with(16, shells).is_ok(), "an idle rule may say what it waits on");
+    assert!(with(15, shells).is_err(), "engine 15");
+    let deciding = "[[rules]]\nid = \"shells\"\nstate = \"idle\"\nvisible_idle = true\n\
+                    contains = [\"still running\"]\nwaiting = \"its background shells\"";
+    assert!(with(16, deciding).is_err(), "a rule saying what is waited on decides nothing");
+
+    let busy = "[[rules]]\nid = \"busy\"\nstate = \"working\"\ncontains = [\"busy\"]\n\
+                waiting = \"its build\"";
+    assert!(with(16, busy).is_err(), "an agent at work waits on nothing");
+    let blank = "[[rules]]\nid = \"shells\"\nstate = \"idle\"\ncontains = [\"running\"]\n\
+                 waiting = \" \"";
+    assert!(with(16, blank).is_err(), "an empty waiting");
+}
+
 #[test]
 fn manifest_validation_rejects_excessive_rule_count() {
     let rule = |index| format!("[[rules]]\nid = \"rule_{index}\"\ncontains = [\"ready\"]\n");
@@ -739,4 +762,33 @@ fn the_prompt_of_an_agent_at_work_is_read_in_its_box_and_never_as_the_idle_promp
     // The screen works, and the title says nothing: still at work.
     let quiet = Input { screen: &working, title: "", progress: "" };
     assert_eq!(manifest.prompt_at_work(quiet, &working), Some(Prompt::Empty));
+}
+
+/// A rule with `waiting` names what an agent another rule reads idle is waiting on, and never
+/// decides a state of its own: a screen read as anything else waits on nothing, however much of
+/// it the rule matches.
+#[test]
+fn a_wait_is_said_only_of_a_screen_read_idle() {
+    let manifest = Manifest::parse(
+        "id = \"x\"\nmin_engine_version = 16\n\n\
+         [[rules]]\nid = \"prompt\"\nstate = \"idle\"\npriority = 10\ncontains = [\"ready>\"]\n\n\
+         [[rules]]\nid = \"menu\"\nstate = \"unknown\"\npriority = 5\nskip_state_update = true\n\
+         contains = [\"pick one\"]\n\n\
+         [[rules]]\nid = \"shells\"\nstate = \"idle\"\npriority = 50\n\
+         contains = [\"still running\"]\nwaiting = \"its background shells\"\n",
+    )
+    .expect("parses");
+    let read = |screen: &str| {
+        let detection = manifest.evaluate(Input { screen, ..Input::default() });
+        (detection.state, detection.rule, detection.waiting)
+    };
+    let shells = Some("its background shells".to_string());
+    assert_eq!(
+        read("1 shell still running\nready>"),
+        (State::Idle, Some("prompt".into()), shells.clone())
+    );
+    assert_eq!(read("ready>"), (State::Idle, Some("prompt".into()), None));
+    assert_eq!(read("1 shell still running"), (State::Idle, None, shells), "the idle fallback too");
+    let menu = read("1 shell still running\npick one");
+    assert_eq!(menu, (State::Unknown, Some("menu".into()), None), "the menu decides");
 }

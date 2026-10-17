@@ -401,6 +401,64 @@
         "rule": "osc_title_working",
         "visible": true
       }
+    },
+    {
+      "name": "claude: shells and a monitor still running when the turn ended is waiting on them",
+      "why": "Claude Code counts a monitor beside the shells, `2 shells, 1 monitor still running` (corpus/claude-code-2.1.302/feedback-draft.txt). A shell that ends starts the next turn, so the agent waits on it.",
+      "given": {
+        "agent": "claude",
+        "screen": "⏺ Started the gate in the background.\n\n✻ Crunched for 2m 23s · done 9:04 pm · 2 shells, 1 monitor still running\n\n───────────────────────────────────────────────────────────────────── agent ─\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on · 2 shells",
+        "title": ""
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "live_prompt_box",
+        "visible": true,
+        "waiting": "its background shells"
+      }
+    },
+    {
+      "name": "claude: a monitor alone still running when the turn ended is idle",
+      "why": "A monitor watches for something that may never happen, so an agent with only a monitor running is not said to wait on it: it is at its prompt, idle.",
+      "given": {
+        "agent": "claude",
+        "screen": "⏺ Started the gate in the background.\n\n✻ Crunched for 2m 23s · done 9:04 pm · 1 monitor still running\n\n───────────────────────────────────────────────────────────────────── agent ─\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on · 2 shells",
+        "title": ""
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "live_prompt_box",
+        "visible": true
+      }
+    },
+    {
+      "name": "claude: a done line wrapped in a narrow pane still says what runs",
+      "why": "Claude Code wraps its done line in a pane narrower than it, indenting what wraps, so its words are matched across lines.",
+      "given": {
+        "agent": "claude",
+        "screen": "⏺ Started the gate in the background.\n\n✻ Crunched for 2m 23s · done 9:04 pm · 2\n  shells still running\n\n───────────────────────────────────────────────────────────────────── agent ─\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on · 2 shells",
+        "title": ""
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "live_prompt_box",
+        "visible": true,
+        "waiting": "its background shells"
+      }
+    },
+    {
+      "name": "claude: a turn's own words about shells still running say nothing",
+      "why": "Only the done line, the last thing above the prompt box, says what the agent waits on: the same words in what the agent wrote are not it.",
+      "given": {
+        "agent": "claude",
+        "screen": "⏺ The gate is done · 1 shell still running\n\n✻ Crunched for 2m 23s · done 9:04 pm\n\n───────────────────────────────────────────────────────────────────── agent ─\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on · 2 shells",
+        "title": ""
+      },
+      "expect": {
+        "state": "idle",
+        "rule": "live_prompt_box",
+        "visible": true
+      }
     }
   ]
 }

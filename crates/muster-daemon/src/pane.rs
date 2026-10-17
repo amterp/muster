@@ -791,6 +791,7 @@ pub(crate) struct Pane {
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
 /// with the pane, since a daemon that took a pane over cannot tell either from its screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::struct_field_names, reason = "reports_turns is the handoff's own name for it")]
 pub(crate) struct Turns {
     /// Whether the agent said what it waits on since its last turn ended, which keeps the wait
     /// past the end of the turn it was said in.
@@ -798,13 +799,18 @@ pub(crate) struct Turns {
     /// Whether the agent reports its own state, so that its own idle report ends its turns
     /// rather than detection's reading of the screen.
     pub(crate) reports_turns: bool,
+    /// Whether what the agent waits on was read off its screen rather than said, which the
+    /// screen alone then ends: not the end of a turn, which a hook can report before the screen
+    /// says what still runs. Not handed over; a wait taken over is the agent's own, and lasts
+    /// until a turn ends without it.
+    pub(crate) wait_on_screen: bool,
 }
 
 impl Default for Turns {
     /// Taken as said for a pane nothing has told this daemon about, so a wait lasts a turn too
     /// long rather than too short.
     fn default() -> Turns {
-        Turns { wait_declared: true, reports_turns: false }
+        Turns { wait_declared: true, reports_turns: false, wait_on_screen: false }
     }
 }
 
@@ -1241,7 +1247,7 @@ impl Reader {
         let published = self.detection.tick(&self.io, &self.detecting, now).map(|publication| {
             let (agent, state) = detect::recorded(&publication);
             let (reported, unreadable) = (publication.reported, publication.unreadable);
-            Reported::Agent { agent, state, reported, unreadable }
+            Reported::Agent { agent, state, reported, unreadable, waiting: publication.waiting }
         });
         if let Some(Reported::Agent { state, .. }) = &published {
             // A turn a chore started - a rename, say - is not the agent's answer to anything,
@@ -1540,6 +1546,7 @@ mod tests {
             state: proto::AgentState::Working,
             reported: false,
             unreadable: false,
+            waiting: None,
         };
         let mut unsent = None;
         publish_agent(&reports, 1, Some(working.clone()), &mut unsent);

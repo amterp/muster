@@ -573,6 +573,32 @@ fn an_agent_waiting_on_its_own_work_has_not_finished() {
     assert!(!finished_unseen(&mut control, "p1"), "said after the finish, it takes it back");
 }
 
+/// What an idle agent's screen says it waits on is its wait, as if it had said so - Claude Code's
+/// done line counting background shells still running is one - so its turn ending there is no
+/// finish; and the wait ends once the screen stops saying it.
+#[test]
+fn an_agent_whose_screen_says_it_waits_on_its_own_work_has_not_finished() {
+    let home = Home::new("screen-waiting", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    type_line(&mut input, "p1", "say probe-running");
+    assert_eq!(waiting_on(&mut control), None, "at work, nothing is waited on");
+    type_line(&mut input, "p1", "rest");
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("its background shells"));
+    assert!(!finished_unseen(&mut control, "p1"), "waiting is not done");
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
+    assert_eq!(waiting_on(&mut control), None, "the screen no longer says it");
+    assert!(finished_unseen(&mut control, "p1"), "and the turn ends as any other");
+}
+
 /// With hooks, the agent's own turn end settles a wait, not a working report. A sub-agent's
 /// tool call can report working after the turn that declared the wait has ended, and is no new
 /// turn of the agent's.

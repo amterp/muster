@@ -32,9 +32,10 @@ use region::Region;
 /// `resume`, the command that starts a session again after a daemon restart, 13 `helpers`, the
 /// names the harness runs its own binary under for work that is not a session, and 14 a
 /// `[server]` table, the subcommand under which that binary serves sessions other than its own,
-/// and 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest,
-/// and a rule's `shows`, what a screen hiding the prompt shows.
-pub const ENGINE_VERSION: u32 = 15;
+/// 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest,
+/// and a rule's `shows`, what a screen hiding the prompt shows, and 16 an idle rule's `waiting`,
+/// the work of its own an agent at its prompt is waiting on.
+pub const ENGINE_VERSION: u32 = 16;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -73,6 +74,9 @@ const KEEPS_ENGINE_VERSION: u32 = 15;
 
 /// The engine version that introduced a rule's `shows`.
 const SHOWS_ENGINE_VERSION: u32 = 15;
+
+/// The engine version that introduced a rule's `waiting`.
+const WAITING_ENGINE_VERSION: u32 = 16;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -120,6 +124,9 @@ pub struct Detection {
     pub skip_state_update: bool,
     /// The id of the rule that decided, or none for the idle fallback and unknown agents.
     pub rule: Option<String>,
+    /// What an agent read as idle is waiting on, in words, when a rule with `waiting` matches:
+    /// work of its own that wakes it when it ends.
+    pub waiting: Option<String>,
 }
 
 /// What an agent's prompt holds, read off its screen ([`Manifest::prompt`]).
@@ -138,7 +145,7 @@ impl Detection {
     }
 
     pub(crate) fn fallback(state: State) -> Self {
-        Detection { state, visible: false, skip_state_update: false, rule: None }
+        Detection { state, visible: false, skip_state_update: false, rule: None, waiting: None }
     }
 }
 
@@ -198,6 +205,8 @@ struct Rule {
     prompt_placeholder: Option<Regex>,
     /// What a screen this rule decides shows over the agent's prompt, in words.
     shows: Option<String>,
+    /// What the agent this rule reads as idle is waiting on, in words.
+    waiting: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -259,15 +268,20 @@ impl Manifest {
     /// Every rule is evaluated; the highest priority that matches wins, the earlier of two
     /// equal ones; and a known agent that matches nothing is idle.
     pub fn evaluate(&self, input: Input<'_>) -> Detection {
-        let Some(rule) = self.decide(input) else {
-            return Detection::fallback(State::Idle);
+        let mut detection = match self.decide(input) {
+            Some(rule) => Detection {
+                state: rule.state,
+                visible: rule.visible,
+                skip_state_update: rule.skip_state_update,
+                rule: Some(rule.id.clone()),
+                waiting: None,
+            },
+            None => Detection::fallback(State::Idle),
         };
-        Detection {
-            state: rule.state,
-            visible: rule.visible,
-            skip_state_update: rule.skip_state_update,
-            rule: Some(rule.id.clone()),
+        if detection.state == State::Idle {
+            detection.waiting = self.waits_on(input).map(str::to_string);
         }
+        detection
     }
 
     /// What the screen the rule `rule` decides shows over the agent's prompt, in words, when the
@@ -376,8 +390,22 @@ impl Manifest {
     /// The rule that decides: every rule is evaluated, and the highest priority that matches
     /// wins, the earlier of two equal ones.
     fn decide(&self, input: Input<'_>) -> Option<&Rule> {
+        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_none()), input)
+    }
+
+    /// What the highest of the rules with `waiting` that match says an agent read as idle is
+    /// waiting on. They never decide the state, so a screen another rule reads otherwise - a
+    /// menu opened over the prompt - is never made idle by what still runs behind it.
+    fn waits_on(&self, input: Input<'_>) -> Option<&str> {
+        Self::first(self.rules.iter().filter(|rule| rule.waiting.is_some()), input)?
+            .waiting
+            .as_deref()
+    }
+
+    /// The highest priority of `rules` that matches, the earlier of two equal ones.
+    fn first<'a>(rules: impl Iterator<Item = &'a Rule>, input: Input<'_>) -> Option<&'a Rule> {
         let mut matched: Option<&Rule> = None;
-        for rule in &self.rules {
+        for rule in rules {
             if !rule.gate.matches_text(rule.region.slice(input)) {
                 continue;
             }
@@ -593,6 +621,7 @@ struct RawRule {
     prompt_margin: Option<String>,
     prompt_placeholder: Option<String>,
     shows: Option<String>,
+    waiting: Option<String>,
 }
 
 impl RawRule {
@@ -706,6 +735,9 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
         if rule.shows.is_some() {
             validate_shows(manifest, rule)?;
         }
+        if rule.waiting.is_some() {
+            validate_waiting(manifest, rule)?;
+        }
     }
     if let Some(session) = &manifest.session {
         validate_session(manifest, session)?;
@@ -729,6 +761,31 @@ fn validate_shows(manifest: &RawManifest, rule: &RawRule) -> Result<(), String> 
     if manifest.min_engine_version.unwrap_or(0) < SHOWS_ENGINE_VERSION {
         return Err(format!(
             "rule {} uses shows but min_engine_version is below {SHOWS_ENGINE_VERSION}",
+            rule.id
+        ));
+    }
+    Ok(())
+}
+
+/// `waiting` says what an agent at its prompt waits on, so it belongs on a rule about idle; and
+/// such a rule only says so of a screen another rule reads idle, so it decides nothing - no
+/// visible evidence, and no prompt.
+fn validate_waiting(manifest: &RawManifest, rule: &RawRule) -> Result<(), String> {
+    if rule.state != Some(RawState::Idle) {
+        return Err(format!("rule {} uses waiting without state = \"idle\"", rule.id));
+    }
+    if rule.visible_idle || rule.prompt.is_some() {
+        return Err(format!(
+            "rule {} uses waiting with visible_idle or prompt, but decides no state",
+            rule.id
+        ));
+    }
+    if rule.waiting.as_deref().is_some_and(|waiting| waiting.trim().is_empty()) {
+        return Err(format!("rule {} has an empty waiting", rule.id));
+    }
+    if manifest.min_engine_version.unwrap_or(0) < WAITING_ENGINE_VERSION {
+        return Err(format!(
+            "rule {} uses waiting but min_engine_version is below {WAITING_ENGINE_VERSION}",
             rule.id
         ));
     }
@@ -1135,6 +1192,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                     skip_state_update: rule.skip_state_update,
                     gate,
                     shows: rule.shows,
+                    waiting: rule.waiting,
                     id: rule.id,
                 })
             })

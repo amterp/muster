@@ -109,6 +109,12 @@ kimi, kiro, maki, pi, qodercli.
   engine 15). Claude Code's names its menus, its transcript viewer and the box its feedback tool
   leaves over the prompt once it has drafted a bug report, which takes digits and holds every
   wake until a person answers it.
+- **What it waits on, read off its screen**: a rule about idle may say in `waiting` what an agent
+  its other rules read idle is waiting on, and the pane reads `waiting` rather than idle, as if
+  the agent had said so with `report --waiting` (detection engine 16). Such a rule never decides
+  the state itself. Claude Code's reads the end of the line it prints as a turn ends, `· 2 shells
+  still running`, since a background shell that ends starts its next turn; a monitor alone does
+  not count. Needs no adapter.
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither

@@ -149,8 +149,13 @@ mod tests {
 
     #[test]
     fn a_screen_with_no_prompt_is_told_by_what_its_rules_read() {
-        let read =
-            |state, skip| Detection { state, visible: true, skip_state_update: skip, rule: None };
+        let read = |state, skip| Detection {
+            state,
+            visible: true,
+            skip_state_update: skip,
+            rule: None,
+            waiting: None,
+        };
         assert_eq!(Unseen::of(&read(State::Unknown, true), None), Unseen::Covered(None), "a menu");
         assert_eq!(
             Unseen::of(&read(State::Blocked, false), None),
@@ -174,6 +179,7 @@ mod tests {
             visible: false,
             skip_state_update: true,
             rule: None,
+            waiting: None,
         };
         let boxed = Unseen::of(&menu, Some("Claude Code's box for a bug report it drafted"));
         assert_eq!(boxed.why(), "Claude Code's box for a bug report it drafted covers its prompt");

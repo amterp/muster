@@ -93,12 +93,15 @@ pub struct Publication {
     pub reported: bool,
     /// The screen rules have stopped reading this agent's screen ([`reporting`]).
     pub unreadable: bool,
+    /// What the agent, idle, is waiting on, when its screen says ([`Detection::waiting`]): its
+    /// own work, which wakes it.
+    pub waiting: Option<String>,
 }
 
 impl Publication {
     /// What the screen rules concluded, before any report of the agent's own.
-    fn concluded(agent: Option<Agent>, state: State) -> Publication {
-        Publication { agent, state, reported: false, unreadable: false }
+    fn concluded(agent: Option<Agent>, state: State, waiting: Option<String>) -> Publication {
+        Publication { agent, state, reported: false, unreadable: false, waiting }
     }
 }
 
@@ -127,6 +130,10 @@ pub struct Detector {
     last_screen_scan_content_seq: Option<u64>,
     startup_grace_until: Option<Instant>,
     pending_idle: PendingIdle,
+    /// What the screen said the agent was waiting on when the published state was decided. Apart
+    /// from [`PublishState`], since a wait coming or going is published without a change of
+    /// state: the prompt box can be drawn a frame before the line saying what still runs.
+    waiting: Option<String>,
     /// How many title writes the pane had seen when the agent last changed. The title reads as
     /// empty until the next write, even one that repeats it: herdr dropped its copy of the title
     /// here and took the next OSC 0 or 2 as it came, and this title is the caller's.
@@ -165,6 +172,7 @@ impl Detector {
             last_screen_scan_content_seq: None,
             startup_grace_until: None,
             pending_idle: PendingIdle::default(),
+            waiting: None,
             title_writes_at_change: None,
             last_emitted: None,
             last_concluded: None,
@@ -190,6 +198,7 @@ impl Detector {
         self.last_screen_scan_content_seq = None;
         self.startup_grace_until = None;
         self.pending_idle.clear();
+        self.waiting = None;
         self.owed = true;
     }
 
@@ -239,6 +248,8 @@ impl Detector {
         detector.pending_foreground_shell_clear = carried.shell_clear_pending;
         detector.foreground_shell_exit_reported = carried.shell_exit_reported;
         detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
+        detector.waiting =
+            carried.concluded.as_ref().and_then(|concluded| concluded.waiting.clone());
         detector.last_concluded = carried.concluded;
         detector.reporting = Reporting::resumed(
             carried.report,
@@ -272,17 +283,25 @@ impl Detector {
     fn effective(&mut self, now: Instant) -> Option<Publication> {
         let concluded = self.last_concluded.clone().or_else(|| {
             let emitted = self.last_emitted.as_ref()?;
-            Some(Publication::concluded(emitted.agent.clone(), emitted.state))
+            Some(Publication::concluded(
+                emitted.agent.clone(),
+                emitted.state,
+                emitted.waiting.clone(),
+            ))
         })?;
         let agent = self.presence.current.as_ref();
         let exited = self.pending_foreground_shell_clear;
         let reported = self.reporting.in_force(agent, exited, now);
         let unreadable = self.reporting.unreadable(agent, reported, now);
+        let state = reported.unwrap_or(concluded.state);
         Some(Publication {
-            state: reported.unwrap_or(concluded.state),
+            state,
             reported: reported.is_some(),
             unreadable,
-            ..concluded
+            // A wait the screen shows is only what an idle agent is waiting on: one reported at
+            // work is at work, whatever its screen still says.
+            waiting: concluded.waiting.filter(|_| state == State::Idle),
+            agent: concluded.agent,
         })
     }
 
@@ -375,7 +394,13 @@ impl Detector {
         );
 
         let detection = if process_exited {
-            Detection { state: State::Idle, visible: true, skip_state_update: false, rule: None }
+            Detection {
+                state: State::Idle,
+                visible: true,
+                skip_state_update: false,
+                rule: None,
+                waiting: None,
+            }
         } else {
             let title = self.current_title(pane);
             let progress = pane.progress();
@@ -393,6 +418,7 @@ impl Detector {
         if !process_exited {
             self.reporting.rules(detection.state, detection.rule.is_some(), detection.visible, now);
         }
+        let waiting = detection.waiting;
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(
             self.published,
@@ -403,9 +429,13 @@ impl Detector {
             &mut self.pending_idle,
         ) {
             self.published = next;
+            self.waiting = waiting;
             if process_exited {
                 self.foreground_shell_exit_reported = true;
             }
+            emitted = self.conclude(agent, next.state).or(emitted);
+        } else if next == self.published && waiting != self.waiting {
+            self.waiting = waiting;
             emitted = self.conclude(agent, next.state).or(emitted);
         }
         emitted
@@ -478,6 +508,7 @@ impl Detector {
                 // told idle there - `pane wait`, the doorbell - would type into the dialog.
                 self.startup_grace_until = Some(now + STARTUP_GRACE);
                 self.published = PublishState { state: State::Unknown, visible: false };
+                self.waiting = None;
                 foreground.emitted = self.conclude(agent, State::Unknown);
             } else {
                 self.startup_grace_until = None;
@@ -526,7 +557,7 @@ impl Detector {
 
     /// Records what the rules concluded, returning it when it changed.
     fn conclude(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {
-        let publication = Publication::concluded(agent, state);
+        let publication = Publication::concluded(agent, state, self.waiting.clone());
         if self.last_concluded.as_ref() == Some(&publication) {
             return None;
         }

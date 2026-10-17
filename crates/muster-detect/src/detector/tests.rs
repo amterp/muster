@@ -576,7 +576,7 @@ impl Run {
 }
 
 fn published(agent: Option<Agent>, state: State) -> Publication {
-    Publication { agent, state, reported: false, unreadable: false }
+    Publication { agent, state, reported: false, unreadable: false, waiting: None }
 }
 
 #[test]
@@ -862,7 +862,7 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
 // ---- the agent's own reports ----
 
 fn reported(state: State) -> Publication {
-    Publication { agent: Some(claude()), state, reported: true, unreadable: false }
+    Publication { agent: Some(claude()), state, reported: true, unreadable: false, waiting: None }
 }
 
 impl Run {
@@ -1321,4 +1321,72 @@ fn an_agent_that_starts_after_the_windows_last_probe_is_still_found() {
 
     let found = run.until_published(Duration::from_secs(30));
     assert_eq!(found.map(|(_, publication)| publication.agent), Some(Some(claude())));
+}
+
+/// The markers' manifest with an idle rule that says what the agent waits on.
+const WAITING_RULE: &str = r#"
+id = "claude"
+version = "9999.1"
+min_engine_version = 16
+
+[[rules]]
+id = "busy"
+state = "working"
+priority = 10
+contains = ["busy"]
+
+[[rules]]
+id = "prompt"
+state = "idle"
+priority = 10
+visible_idle = true
+contains = ["ready>"]
+
+[[rules]]
+id = "shells"
+state = "idle"
+waiting = "its background shells"
+contains = ["still running"]
+"#;
+
+/// An agent at its prompt is published waiting on what its rule says, and published again once
+/// the wait comes or goes with the state still idle: the prompt box can be drawn a frame before
+/// the line saying what still runs. At work, nothing is waited on.
+#[test]
+fn a_wait_the_screen_shows_is_published_with_idle_and_whenever_it_changes() {
+    let mut run = Run::with_manifest(WAITING_RULE);
+    run.tick();
+    run.start_agent();
+    let waiting = |state: State, on: Option<&str>| Publication {
+        waiting: on.map(str::to_string),
+        ..published(Some(claude()), state)
+    };
+
+    run.paint("ready>");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, waiting(State::Idle, None));
+    run.paint("done · 1 shell still running\nready>");
+    let on_shells = waiting(State::Idle, Some("its background shells"));
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, on_shells);
+    run.paint("busy");
+    assert_eq!(
+        run.until_published(Duration::from_secs(1)).unwrap().1,
+        waiting(State::Working, None)
+    );
+    run.paint("done · 1 shell still running\nready>");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, on_shells);
+    run.paint("ready>");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, waiting(State::Idle, None));
+}
+
+/// A report of work outranks the screen, and what the screen says is waited on with it.
+#[test]
+fn an_agent_reported_at_work_waits_on_nothing() {
+    let mut run = Run::with_manifest(WAITING_RULE);
+    run.tick();
+    run.start_agent();
+    run.paint("done · 1 shell still running\nready>");
+    assert!(run.until_published(Duration::from_secs(1)).unwrap().1.waiting.is_some());
+    run.report(State::Working);
+    let publication = run.until_published(Duration::from_secs(1)).unwrap().1;
+    assert_eq!((publication.state, publication.waiting), (State::Working, None));
 }
