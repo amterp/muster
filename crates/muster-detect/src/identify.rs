@@ -254,7 +254,9 @@ fn wrapped_agent_name(
             script_arg_agent_name(argv, &["-e", "--eval", "-p", "--print"], &[], manifests)
         }
         "python" | "python3" => script_arg_agent_name(argv, &["-c"], &["-m"], manifests),
-        "sh" | "bash" | "zsh" | "fish" => script_arg_agent_name(argv, &["-c"], &[], manifests),
+        "sh" | "bash" | "dash" | "zsh" | "fish" => {
+            script_arg_agent_name(argv, &["-c"], &[], manifests)
+        }
         _ => None,
     }
 }
@@ -362,7 +364,7 @@ fn process_priority(process: &Process, normalized_name: &str) -> u8 {
 fn is_generic_runtime_or_shell(name: &str) -> bool {
     matches!(
         crate::manifests::lookup_name(path_basename(name)).as_str(),
-        "sh" | "bash" | "zsh" | "fish" | "tmux" | "node" | "bun" | "python" | "python3"
+        "sh" | "bash" | "dash" | "zsh" | "fish" | "tmux" | "node" | "bun" | "python" | "python3"
     )
 }
 
@@ -435,6 +437,17 @@ mod tests {
             ..server
         };
         assert_eq!(server_of(&claude, &manifests), None, "a server is only its own agent's");
+    }
+
+    /// A script with a shell's shebang is that shell running the script, and is named by the
+    /// script. Debian's `/bin/sh` is dash under its own name, and so is a `#!/bin/dash` script.
+    #[test]
+    fn a_script_a_shell_runs_is_named_by_the_script() {
+        let manifests = Manifests::built_in();
+        for shell in ["sh", "bash", "dash", "zsh"] {
+            let script = process(1, shell, &[&format!("/bin/{shell}"), "/home/a/bin/claude"]);
+            assert_eq!(normalized_process_name(&script, &manifests), "claude", "under {shell}");
+        }
     }
 
     #[test]
