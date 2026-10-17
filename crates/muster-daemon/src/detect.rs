@@ -162,6 +162,20 @@ fn overrides_look() -> Duration {
     OVERRIDES_LOOK
 }
 
+/// A debug build's [`Detector::SCREEN_WAIT`] in milliseconds, when set, so a test need not wait
+/// ten minutes for a wait read off the screen to run out.
+const SCREEN_WAIT_SAID: &str = "MUSTER_DAEMON_SCREEN_WAIT_MS";
+
+fn screen_wait() -> Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(SCREEN_WAIT_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return Duration::from_millis(millis);
+    }
+    Detector::SCREEN_WAIT
+}
+
 /// What the override directory holds, as far as telling a change goes: each manifest's name,
 /// size and when it was last written. Empty for a directory that is not there.
 type Fingerprint = Vec<(std::ffi::OsString, u64, Option<std::time::SystemTime>)>;
@@ -264,11 +278,9 @@ impl Detection {
     /// Detection for a pane whose shell is `shell`, when this daemon started one.
     pub(crate) fn new(shell: Option<i32>, now: Instant) -> Detection {
         let shell = shell.and_then(|pid| u32::try_from(pid).ok()).unwrap_or(0);
-        Detection {
-            detector: Detector::new(shell, now),
-            progress: Progress::default(),
-            due: now + Detector::FIRST_TICK,
-        }
+        let mut detector = Detector::new(shell, now);
+        detector.limit_waits(screen_wait());
+        Detection { detector, progress: Progress::default(), due: now + Detector::FIRST_TICK }
     }
 
     /// Where this pane's detection stands, for the daemon it is handed to.
@@ -376,11 +388,9 @@ impl Detection {
         if !carried.progress.is_empty() {
             progress.observe(format!("\x1b]9;{}\x07", carried.progress).as_bytes());
         }
-        Detection {
-            detector: Detector::resumed(shell, carried_here, now, title_writes),
-            progress,
-            due: now + Detector::FIRST_TICK,
-        }
+        let mut detector = Detector::resumed(shell, carried_here, now, title_writes);
+        detector.limit_waits(screen_wait());
+        Detection { detector, progress, due: now + Detector::FIRST_TICK }
     }
 
     /// What the pane's agent says about its own state, ticked on at once.

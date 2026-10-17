@@ -52,8 +52,10 @@ It blocks until the pane's agent is idle or blocked, prints the pane and its sta
 `p1w3r0ab2n  done` - and exits 0. `idle` is also met by `done`, which is an idle nobody has looked
 at, and not by `waiting`: an agent that ended its turn to wait on a gate it started has not
 finished, so the wait goes on until it has. A Claude Code whose turn ended with background shells
-still running is waiting on them, since a shell that ends starts its next turn, and so is one
-whose shell never ends, such as a dev server. Add `waiting` to the list to hear of that too.
+still running is waiting on them, since a shell that ends starts its next turn, but for 10 minutes
+at most: the line saying so stays for as long as a shell lives, so after that the pane reads idle,
+its turn finished, which is what a dev server left running comes to. Add `waiting` to the list to
+hear of a wait too.
 `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 

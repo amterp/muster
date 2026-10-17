@@ -1378,6 +1378,33 @@ fn a_wait_the_screen_shows_is_published_with_idle_and_whenever_it_changes() {
     assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, waiting(State::Idle, None));
 }
 
+/// A wait the screen goes on showing is published for the limit and no longer, even with the
+/// screen unchanged; the agent then reads plain idle until the screen stops showing it, and a
+/// new turn's wait has the whole limit again.
+#[test]
+fn a_wait_the_screen_shows_too_long_is_no_longer_published() {
+    let mut run = Run::with_manifest(WAITING_RULE);
+    run.detector.limit_waits(Duration::from_secs(5));
+    run.tick();
+    run.start_agent();
+    let waits = |run: &mut Run| run.until_published(Duration::from_secs(1)).unwrap().1.waiting;
+
+    run.paint("done · 1 shell still running\nready>");
+    assert_eq!(waits(&mut run).as_deref(), Some("its background shells"));
+    let (after, expired) = run.until_published(Duration::from_secs(10)).expect("expired");
+    assert_eq!((expired.state, expired.waiting), (State::Idle, None));
+    assert!(after >= Duration::from_secs(4), "published waiting for only {after:?}");
+    run.paint("done · 1 shell still running\nready> a draft");
+    assert_eq!(run.until_published(Duration::from_secs(10)), None, "the same wait, waited out");
+
+    run.paint("busy");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1.state, State::Working);
+    run.paint("done · 1 shell still running\nready>");
+    assert_eq!(waits(&mut run).as_deref(), Some("its background shells"));
+    let (after, _) = run.until_published(Duration::from_secs(10)).expect("expired again");
+    assert!(after >= Duration::from_secs(4), "published waiting for only {after:?}");
+}
+
 /// A report of work outranks the screen, and what the screen says is waited on with it.
 #[test]
 fn an_agent_reported_at_work_waits_on_nothing() {

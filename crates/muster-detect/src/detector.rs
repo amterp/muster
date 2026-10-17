@@ -134,6 +134,13 @@ pub struct Detector {
     /// from [`PublishState`], since a wait coming or going is published without a change of
     /// state: the prompt box can be drawn a frame before the line saying what still runs.
     waiting: Option<String>,
+    /// How long a wait the screen shows is published for ([`Detector::SCREEN_WAIT`]).
+    wait_limit: Duration,
+    /// When the screen began saying what the agent waits on, for as long as it goes on saying it.
+    waiting_since: Option<Instant>,
+    /// The screen has said what the agent waits on for longer than `wait_limit`, so the wait is
+    /// no longer published, until the screen stops saying it.
+    waited_out: bool,
     /// How many title writes the pane had seen when the agent last changed. The title reads as
     /// empty until the next write, even one that repeats it: herdr dropped its copy of the title
     /// here and took the next OSC 0 or 2 as it came, and this title is the caller's.
@@ -154,6 +161,12 @@ impl Detector {
     /// become the foreground.
     pub const FIRST_TICK: Duration = Duration::from_millis(50);
 
+    /// How long a wait read off the screen is published for. Claude Code's line at the end of a
+    /// turn says `1 shell still running` for as long as the shell lives, so a dev server left
+    /// running would otherwise hold its pane waiting, and its finish unmarked, for good. A test
+    /// run or a build is almost always done well inside this.
+    pub const SCREEN_WAIT: Duration = Duration::from_mins(10);
+
     /// A detector for the pane whose process is `shell`, created at `now`.
     pub fn new(shell: u32, now: Instant) -> Detector {
         Detector {
@@ -173,6 +186,9 @@ impl Detector {
             startup_grace_until: None,
             pending_idle: PendingIdle::default(),
             waiting: None,
+            wait_limit: Detector::SCREEN_WAIT,
+            waiting_since: None,
+            waited_out: false,
             title_writes_at_change: None,
             last_emitted: None,
             last_concluded: None,
@@ -199,6 +215,8 @@ impl Detector {
         self.startup_grace_until = None;
         self.pending_idle.clear();
         self.waiting = None;
+        self.waiting_since = None;
+        self.waited_out = false;
         self.owed = true;
     }
 
@@ -250,6 +268,8 @@ impl Detector {
         detector.title_writes_at_change = carried.title_pending.then_some(title_writes);
         detector.waiting =
             carried.concluded.as_ref().and_then(|concluded| concluded.waiting.clone());
+        // When it began is not carried, so the limit starts over from the handoff.
+        detector.waiting_since = detector.waiting.is_some().then_some(now);
         detector.last_concluded = carried.concluded;
         detector.reporting = Reporting::resumed(
             carried.report,
@@ -263,6 +283,11 @@ impl Detector {
 
     pub fn agent(&self) -> Option<&Agent> {
         self.presence.current.as_ref()
+    }
+
+    /// Publishes a wait the screen shows for `limit` instead of [`Detector::SCREEN_WAIT`].
+    pub fn limit_waits(&mut self, limit: Duration) {
+        self.wait_limit = limit;
     }
 
     /// The process group the pane's agent was found in; none while there is no agent, or it has
@@ -312,7 +337,7 @@ impl Detector {
         processes: &impl Processes,
         manifests: &Manifests,
     ) -> Tick {
-        let concluded = self.step(now, pane, processes, manifests);
+        let concluded = self.step(now, pane, processes, manifests).or_else(|| self.wait_out(now));
         if std::mem::take(&mut self.owed) && concluded.is_none() {
             self.conclude(self.presence.current.clone(), self.published.state);
         }
@@ -418,7 +443,7 @@ impl Detector {
         if !process_exited {
             self.reporting.rules(detection.state, detection.rule.is_some(), detection.visible, now);
         }
-        let waiting = detection.waiting;
+        let waiting = self.screen_waits(detection.waiting, now);
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(
             self.published,
@@ -553,6 +578,32 @@ impl Detector {
         }
         self.title_writes_at_change = None;
         title(&pane.title())
+    }
+
+    /// What the screen says the agent waits on (`read`), unless it has said so past the limit.
+    /// The limit starts over once the screen stops saying it, as a new turn makes it.
+    fn screen_waits(&mut self, read: Option<String>, now: Instant) -> Option<String> {
+        if read.is_none() {
+            (self.waiting_since, self.waited_out) = (None, false);
+            return None;
+        }
+        if self.waited_out {
+            return None;
+        }
+        self.waiting_since.get_or_insert(now);
+        read
+    }
+
+    /// Stops publishing a wait the screen has shown for longer than the limit, returning what
+    /// that concludes. Weighed on every tick, since an idle screen that goes on saying the same
+    /// thing is not read again.
+    fn wait_out(&mut self, now: Instant) -> Option<Publication> {
+        let since = self.waiting_since?;
+        if self.waiting.is_none() || now.saturating_duration_since(since) < self.wait_limit {
+            return None;
+        }
+        (self.waiting, self.waiting_since, self.waited_out) = (None, None, true);
+        self.conclude(self.presence.current.clone(), self.published.state)
     }
 
     /// Records what the rules concluded, returning it when it changed.

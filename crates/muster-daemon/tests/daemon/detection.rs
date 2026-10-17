@@ -60,7 +60,13 @@ impl Home {
     }
 
     fn daemon(&self) -> Daemon {
-        daemon_with(&[("MUSTER_HOME", self.0.to_str().unwrap())])
+        self.daemon_with(&[])
+    }
+
+    fn daemon_with(&self, environment: &[(&str, &str)]) -> Daemon {
+        let mut environment = environment.to_vec();
+        environment.push(("MUSTER_HOME", self.0.to_str().unwrap()));
+        daemon_with(&environment)
     }
 }
 
@@ -597,6 +603,29 @@ fn an_agent_whose_screen_says_it_waits_on_its_own_work_has_not_finished() {
     settle(&mut control, &mut input, "idle", proto::AgentState::Idle);
     assert_eq!(waiting_on(&mut control), None, "the screen no longer says it");
     assert!(finished_unseen(&mut control, "p1"), "and the turn ends as any other");
+}
+
+/// A wait the screen goes on showing runs out, as a dev server left running in the background
+/// would hold it for good: the agent then reads idle, and the turn the wait held back is
+/// finished after all.
+#[test]
+fn a_wait_its_screen_shows_too_long_runs_out_and_the_turn_finishes() {
+    let home = Home::new("screen-wait-out", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon_with(&[("MUSTER_DAEMON_SCREEN_WAIT_MS", "3000")]);
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    type_line(&mut input, "p1", "say probe-running");
+    type_line(&mut input, "p1", "rest");
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    assert_eq!(waiting_on(&mut control).as_deref(), Some("its background shells"));
+    assert!(!finished_unseen(&mut control, "p1"), "waiting is not done");
+
+    until_some("the screen's wait to run out", || waiting_on(&mut control).is_none().then_some(()));
+    assert!(finished_unseen(&mut control, "p1"), "the turn it held back is finished");
 }
 
 /// With hooks, the agent's own turn end settles a wait, not a working report. A sub-agent's

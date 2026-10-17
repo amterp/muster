@@ -230,7 +230,8 @@ facts the daemon holds, and one from the window's own connection to it, so the v
 `report --waiting`, or its screen says so, as Claude Code's done line does while background shells it started still
 run. It has not finished and nobody is holding it up,
 so it is neither idle nor done, and a caller waiting for `idle` is not answered by it. A wait the screen shows lasts
-until the screen stops showing it, and never replaces one the agent said.
+until the screen stops showing it, or 10 minutes at most, after which the turn it held back is finished; it never
+replaces one the agent said, which has no limit.
 
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its

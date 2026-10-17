@@ -283,7 +283,9 @@ not = [
 # is not counted, since it watches for something that may never happen. Read as the last thing
 # above the prompt box, its words matched across lines for a narrow pane, so the footer's
 # `· 1 shell` below the box, there at work too, says nothing. It names the wait of a screen
-# another rule reads idle and decides no state (corpus/claude-code-2.1.302/).
+# another rule reads idle and decides no state (corpus/claude-code-2.1.302/). The line stays for
+# as long as a shell lives, so a dev server would read waiting for good: a wait read off the
+# screen lasts 10 minutes at most, and the pane then reads idle, its turn finished.
 [[rules]]
 id = "background_shells_waiting"
 state = "idle"

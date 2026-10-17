@@ -114,7 +114,9 @@ kimi, kiro, maki, pi, qodercli.
   the agent had said so with `report --waiting` (detection engine 16). Such a rule never decides
   the state itself. Claude Code's reads the end of the line it prints as a turn ends, `· 2 shells
   still running`, since a background shell that ends starts its next turn; a monitor alone does
-  not count. Needs no adapter.
+  not count. A wait read off the screen lasts 10 minutes at most, since that line stays for as
+  long as a shell lives, and the agent then reads idle, its turn finished. A wait the agent said
+  itself has no limit. Needs no adapter.
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither

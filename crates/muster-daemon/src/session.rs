@@ -2207,8 +2207,11 @@ impl Session {
                     settle_wait(record, &mut pane.turns, "detected turn end");
                 }
                 // Before a finish is weighed: a turn that ends waiting on its own work has not
-                // finished.
-                wait_on_screen(record, &mut pane.turns, on_screen);
+                // finished. One that ends with the agent still idle, run out or scrolled away,
+                // leaves the turn it held back finished after all.
+                let screen_wait_ended = wait_on_screen(record, &mut pane.turns, on_screen)
+                    && state == proto::AgentState::Idle
+                    && record.agent == agent;
                 // Every adapter reports by the end of a turn, so one that has not by now is not
                 // installed, or not running.
                 if turn == Turn::Ended
@@ -2222,11 +2225,12 @@ impl Session {
                     turn_ended(&name, agent.as_deref(), waiting);
                 }
                 if !waiting {
-                    record.finished_unseen = finished_unseen(
-                        (record.agent.as_deref(), record.agent_state()),
-                        (agent.as_deref(), state),
-                        record.finished_unseen,
-                    );
+                    record.finished_unseen = screen_wait_ended
+                        || finished_unseen(
+                            (record.agent.as_deref(), record.agent_state()),
+                            (agent.as_deref(), state),
+                            record.finished_unseen,
+                        );
                 }
                 record.agent_compacts =
                     agent_compacts(self.detecting.manifests().as_deref(), agent.as_deref());
@@ -3853,21 +3857,21 @@ fn settle_wait(record: &mut proto::Pane, turns: &mut Turns, by: &str) -> bool {
 /// Takes what the agent's screen says it waits on while idle (`on_screen`), from a rule such as
 /// Claude Code's done line counting background shells still running: the wait the agent would
 /// have said itself, ended when the screen stops saying it. A wait the agent said is its own,
-/// and the screen does not replace it.
-fn wait_on_screen(record: &mut proto::Pane, turns: &mut Turns, on_screen: Option<String>) {
+/// and the screen does not replace it. Says whether a wait the screen showed has ended.
+fn wait_on_screen(record: &mut proto::Pane, turns: &mut Turns, on_screen: Option<String>) -> bool {
     let said = record.facts.as_ref().and_then(|facts| facts.waiting.as_ref());
     if said.is_some() && !turns.wait_on_screen {
-        return;
+        return false;
     }
     if said == on_screen.as_ref() {
-        return;
+        return false;
     }
     turns.wait_on_screen = on_screen.is_some();
     let facts = record.facts.get_or_insert_with(proto::AgentFacts::default);
     if let Some(on) = on_screen {
         log::debug("daemon.detect.waiting", fields! { "pane" => record.pane, "on" => on });
         facts.waiting = Some(on);
-        return;
+        return false;
     }
     facts.waiting = None;
     if *facts == proto::AgentFacts::default() {
@@ -3877,6 +3881,7 @@ fn wait_on_screen(record: &mut proto::Pane, turns: &mut Turns, on_screen: Option
         "daemon.report.waiting_cleared",
         fields! { "pane" => record.pane, "by" => "screen" },
     );
+    true
 }
 
 /// The first of `panes` that none of `tabs` holds.
@@ -3999,15 +4004,16 @@ mod tests {
         assert_eq!(waits(&record), shells());
         assert!(!settle_wait(&mut record, &mut turns, "reported turn end"), "the screen's to end");
         assert_eq!(waits(&record), shells());
-        wait_on_screen(&mut record, &mut turns, None);
+        assert!(wait_on_screen(&mut record, &mut turns, None), "the screen's wait ended");
         assert_eq!(record.facts, None, "nothing else was said, so nothing is left");
+        assert!(!wait_on_screen(&mut record, &mut turns, None), "and ends once");
 
         let said = Some("the full gate".to_string());
         record.facts = Some(proto::AgentFacts { waiting: said.clone(), ..Default::default() });
         turns.wait_on_screen = false;
         wait_on_screen(&mut record, &mut turns, shells());
         assert_eq!(waits(&record), said, "the agent's own word stands");
-        wait_on_screen(&mut record, &mut turns, None);
+        assert!(!wait_on_screen(&mut record, &mut turns, None));
         assert_eq!(waits(&record), said, "and the screen does not end it");
     }
 
