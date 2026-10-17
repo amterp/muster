@@ -85,8 +85,14 @@ fn a_changed_environment_reaches_the_resumed_agent_alone() {
 
     let env = written_again(&daemon, "fake-agent-env", &before);
     assert!(env.lines().any(|line| line == "HTTPS_PROXY=http://user:secret@proxy:3128"), "{env}");
-    let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
-    assert!(log.contains("daemon.pane.restarting"), "{log}");
+    // Read once, straight after the answer, the log has been seen empty on a loaded machine.
+    let path = daemon.root().join("daemon.log");
+    until(
+        "the restart in the daemon's log",
+        || written(&path).contains("daemon.pane.restarting"),
+        (),
+    );
+    let log = written(&path);
     assert!(log.contains("HTTPS_PROXY") && !log.contains("secret"), "{log}");
 }
 
