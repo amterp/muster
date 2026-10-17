@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "next",
   "created_at_millis": 1792197590847,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-15, 0.16.0: restarting a dozen agents by hand (a_2dmIEdCn6) meant reading each one's session id and flags out of `/proc` and the harness's own files. `muster window --json` gives a pane's agent model, context and cost, but not the session id its adapter reported or the command line it runs. The daemon already holds both: the adapter's hooks report the session, and the resume path reads the flags off the running process (a_2YXWVPfDI). Putting them on the pane's record, as something like `session` and `command`, would let an agent or a script resume, restart or hand over a session without digging. The 2026-10-16 recovery of two stuck Codex panes on a_2dmIEdCn6 needed the same id.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b15",
+  "position": "a3z",
   "title": "muster window --json does not give an agent's session id or the command it was started with",
   "type": "enhancement",
-  "updated_at_millis": 1792197590847,
+  "updated_at_millis": 1792200747997,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792197590847}
+    {"field":"column","value":"backlog-lo","at":1792197590847},
+    {"field":"column","value":"next","at":1792200747997}
   ]
 }

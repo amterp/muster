@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,6 +18,12 @@
       "body": "Slot 3 of the 2026-09-02 parallel round did the two arrangement gaps this card lists that had no card of their own. Both are on `main3`.\n\n## No Close Tab\n\n`muster tab close [--tab \u003cREF\u003e]`, a Close Tab menu item, and a `close_tab` action unbound by default. One request rather than a close per pane, so it cannot be interrupted half way and leave a tab holding one pane and no reason.\n\nIt keeps the region requirement `pane close` has: it refuses a tab no region is showing. Splitting a pane in a background tab stopped needing one in the same round (`a_2A9TxffR8`), and the argument for loosening this is the same - both are facts about the tree - but the risk is not: a split nobody is looking at costs a shell, and this costs whatever was running in every pane of the tab.\n\nNo chord. `cmd+w` stays on `close_pane`, where the damage is one pane and the muscle memory is everybody's.\n\n## No way back to a window you closed\n\n`muster window reopen`, and Reopen Closed Window in the menu. Every window now keeps its own arrangement under `~/.muster/state/windows/` and claims it with its pid while it runs, so a launch takes the most recently written arrangement nobody is holding: with no window running that is the window Muster comes back to, and with one running it is the window that was just closed.\n\nReopening is therefore the same launch as New Window minus `--fresh`, rather than a mechanism of its own.\n\nTwo limits, stated in `muster docs limits` rather than left to be found:\n\n- Only the *last* one comes back. Records are kept for twenty windows and nothing lists them or names them, because a window has no name of its own - the registry that mints pane and tab names is the core's, and which file to hand the core is asked before it is running. A script that wants a particular arrangement can point a launch at it with `MUSTER_STATE`.\n- The other half of the row in this card's table - \"clicking Muster activates whichever is frontmost\" - is not something to change. A Dock click opening extra windows would be wrong. The menu item and the CLI verb are the answer to \"I want that window back\".\n\n## Also from this slot, against this card's measure\n\nThree more rows in the table stopped needing something arcane:\n\n- **Move a pane into a tab of its own** - `muster pane move --new-tab [--name]`, a menu item and an action (`a_2IXGSgZi7`). Was three commands and a throwaway shell.\n- **See what every window is showing** - `muster window` answers for all of them instead of refusing (`a_2IZE3PiGe`).\n- **A second window that is its own workspace** - `muster window new` now is one, with no `MUSTER_HOME`, hand-written config or launcher script (`a_2IZ5TL6DQ`).\n\n## Not this slot's\n\nThe diagnostics half and the quit lifecycle went to slot 1. Attaching and detaching a machine while running is still a config edit and a relaunch, and is untouched here - `a_2I6h18OU6` has what is known about it.",
       "created_at_millis": 1788328490438,
       "id": "c_2IoYa3Lm6"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done as far as it listed: Close Tab, Reopen Closed Window, muster window across windows, pane move --new-tab, Problems with a way out, and a [[daemon]] block attached on save. Detaching a machine live is a_2bYcwFBAu.",
+      "created_at_millis": 1792200744303,
+      "id": "c_2j1Jaohy4"
     }
   ],
   "created_at_millis": 1788298822292,
@@ -27,11 +33,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "a5",
+  "position": "Ywv",
   "title": "🧭 Everything should be reachable from inside Muster, without shell tricks",
   "type": "chore",
-  "updated_at_millis": 1788328490438,
+  "updated_at_millis": 1792200744399,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1788298822292}
+    {"field":"column","value":"backlog-hi","at":1788298822292},
+    {"field":"column","value":"done","at":1792200744399}
   ]
 }

@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "resume-spellings-for",
   "alias_explicit": false,
-  "column": "next",
+  "column": "backlog-hi",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -15,18 +15,28 @@
       "body": "From tooling feedback, 2026-10-15, devenv: after a daemon restart, the Claude Code panes came back resumed and a Codex reviewer pane came back at a bare shell, as this card says it would. `muster msg post --to reviewer` then exited 6, \"no agent in its pane\". Typing `codex resume --last`, through the wrapper that had launched it, with `pane send` brought the session back with its context.",
       "created_at_millis": 1792197594760,
       "id": "c_2izzeuhlm"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Blocked until 2026-11-02 for the Codex recordings, which need model turns on the OpenAI account. The OpenCode half can be recorded on the free model ./dev --opencode uses.",
+      "created_at_millis": 1792200746854,
+      "id": "c_2j1JevHE2"
     }
   ],
   "created_at_millis": 1791123069063,
   "creator": "Alexander Terp",
   "description": "Since 2026-10-04 a Claude Code pane resumes after a daemon restart with its flags ([session] resume, detection engine 12). Codex (codex resume is a subcommand; where flags go is unrecorded) and OpenCode have no resume spelling, so their panes come back as shells. Record each resuming with flags, then add the manifest tables.",
   "id": "a_2bj8KsdWI",
-  "position": "Zw",
+  "labels": [
+    "blocked"
+  ],
+  "position": "!!!!!!V",
   "title": "Resume spellings for Codex and OpenCode",
   "type": "feature",
-  "updated_at_millis": 1792197594760,
+  "updated_at_millis": 1792200746941,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791123069063},
-    {"field":"column","value":"next","at":1791131314464}
+    {"field":"column","value":"next","at":1791131314464},
+    {"field":"column","value":"backlog-hi","at":1792200746941}
   ]
 }

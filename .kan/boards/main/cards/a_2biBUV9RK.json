@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "codex-and-opencode",
   "alias_explicit": false,
-  "column": "next",
+  "column": "backlog-hi",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -15,18 +15,28 @@
       "body": "From tooling feedback, 2026-10-16 (0.16.0, Codex on the devenv, version not noted): a hand recording of Codex's `/compact`. `muster pane compact --pane p2bjgf98za \u003cfocus\u003e` refused: \"codex gives Muster no way to compact it from its prompt, so pane ... is left as it is\". Typing `/compact` with `muster pane send --enter` at an idle, empty prompt worked at once: Codex printed \"Context compacted\" and its footer read \"Context 6% used\". Nobody tried giving it a focus. Afterwards `muster window` still showed the pane at 71%, because Codex's context comes from its hooks reading the transcript and no hook ran. Adding `[session] compact` for Codex therefore also wants a fresh context reading after it, from the transcript or the footer. The same send with `--confirm` reported the line not taken, which is a_2hIftWa0n.",
       "created_at_millis": 1792197594936,
       "id": "c_2izzfBQjB"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Blocked until 2026-11-02 for the Codex recordings, which need model turns on the OpenAI account. The OpenCode half can be recorded on the free model ./dev --opencode uses.",
+      "created_at_millis": 1792200747049,
+      "id": "c_2j1JfEDZN"
     }
   ],
   "created_at_millis": 1791120807068,
   "creator": "Alexander Terp",
   "description": "Both harnesses have a /compact. Codex 0.154 needs an OpenAI login (not run, the account is near its monthly limit); OpenCode needs 1.18+ (not installed). Record each working as typed at an idle prompt, whether it takes a focus, then add [session] compact to codex.toml and opencode.toml (engine 11). Claude Code's is recorded in corpus/claude-code-2.1.289/compact.txt.",
   "id": "a_2biBUV9RK",
-  "position": "Zx",
+  "labels": [
+    "blocked"
+  ],
+  "position": "!!!!!!F",
   "title": "Codex and OpenCode compaction: record /compact as typed and add it to their manifests",
   "type": "feature",
-  "updated_at_millis": 1792197594936,
+  "updated_at_millis": 1792200747130,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791120807068},
-    {"field":"column","value":"next","at":1791131314388}
+    {"field":"column","value":"next","at":1791131314388},
+    {"field":"column","value":"backlog-hi","at":1792200747130}
   ]
 }

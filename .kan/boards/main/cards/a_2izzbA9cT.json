@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -21,11 +21,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b13",
+  "position": "a3zV",
   "title": "A self-compacted agent stops until somebody types, and cannot post itself a message to carry on",
   "type": "feature",
-  "updated_at_millis": 1792200272549,
+  "updated_at_millis": 1792200748090,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792197592516}
+    {"field":"column","value":"backlog-hi","at":1792197592516},
+    {"field":"column","value":"next","at":1792200748090}
   ]
 }

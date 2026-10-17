@@ -5,24 +5,31 @@
   "area": [
     "shell"
   ],
-  "column": "uncommitted",
+  "column": "backlog-hi",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Second ask, Chat Notes 2026-10-14 (voice): \"Viewing at human messages is still super awkward. It opens up like a new pane and there's just plain text, it's hard to parse. I think there's already an outstanding ticket for this but this needs to be properly implemented via some other approach.\" Going to a message notification today opens a pane running `muster msg log --follow` (docs/architecture.md, attention routing).",
       "created_at_millis": 1792200272634,
       "id": "c_2j17K3Fbd"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Committed 2026-10-16, after the second ask. First step: draft a MIP for the view (native AppKit over a core view-model, or a richer terminal view) and how membership shows on rows.",
+      "created_at_millis": 1792200747196,
+      "id": "c_2j1JfTCLL"
     }
   ],
   "created_at_millis": 1791417434804,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-07: \"GUI for following groups\". Clarified 2026-10-07: following a group today means a tab running `muster msg log --follow`, which is \"a very plain text file. It's really hard to parse ... not really easy to understand and follow. It's not really a GUI either for contributing back to the discussion in a way that others can see. Like you still have to talk to the agents directly. There's no way for me to kind of like talk in the group and have that be broadcast through muster.\" \"It's a pretty big feature ... might require some design input.\"\n\nAnd a related wish, same day: \"if you have agents that work together in a group, it would be nice in the UI to have some sort of way to see what groups are active and which panes are involved in which groups, like some sort of visualization.\"\n\nSo two parts: a group conversation view that reads well (authors, addressees, urgency, joins and leaves) with a place for the human to post into the group; and an overview of active groups and which panes are in each. Needs a MIP: native AppKit view over a core view-model versus a richer terminal view, and how membership shows on panes and agent-list rows.",
   "id": "a_2die8LU6o",
-  "position": "aS",
+  "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792200272634,
+  "updated_at_millis": 1792200747286,
   "history": [
-    {"field":"column","value":"uncommitted","at":1791417434804}
+    {"field":"column","value":"uncommitted","at":1791417434804},
+    {"field":"column","value":"backlog-hi","at":1792200747286}
   ]
 }
