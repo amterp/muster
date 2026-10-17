@@ -1,0 +1,39 @@
+How Claude Code 2.1.301 draws its tip box, the "Heads up" it sometimes leaves under a turn's done
+line, and where that box sits relative to the prompt.
+
+Captured 2026-10-17 at about 10:40 local time on macOS, from a Claude Code 2.1.301 pane sitting
+idle in Muster 0.16.0, by `muster pane read`, which returned the pane's 39 rows at 198 columns.
+Not recorded by `tools/detection-capture.py`: this is the pane's text as a read returned it, not
+the bytes Claude Code wrote. The session belonged to another project, so everything that would
+name it is replaced: the turn's output above the done line, the tip's one line of text, the
+session's name in the prompt box's top rule, and the statusline under the prompt box. Every row
+of the box and the frame around it keeps the width, glyphs and position it was drawn with. The
+screen is the "claude 2.1.301" cases in corpus/conformance/agent-detection-recorded.json and
+corpus/conformance/agent-prompt.json.
+
+The box is two rows at the left edge, between the done line and the prompt box's top rule: a
+first row `✦ Heads up · ` and one line about the turn's work, and a second
+`  1: Learn more   2: Knew this already   0: Dismiss`. A `[-]` is drawn at the right edge on the
+row above it, and Claude Code's own hint row under it. The prompt box under the box is drawn
+whole: its top rule, the caret, its bottom rule and the footer.
+
+The screen, scrubbed as above, from the turn's last rows to the bottom:
+
+⏺ The change is in, and the tests that cover it pass.
+
+  What changed:
+  - The new option is read where the old one was, and the old one still works.
+  - Two tests cover the new option, and one covers the old one still being read.
+
+  Nothing is committed yet.
+
+✻ Cooked for 40m 5s · done 2:12 pm
+                                                                                                                                                                                                  [-]
+✦ Heads up · The change also alters a default you did not mention, and nothing says yet whether that was meant.
+  1: Learn more   2: Knew this already   0: Dismiss
+                                                                                                                     new task? /clear to save 418.6k tokens · ✔ Update installed · Restart to update
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── capture ─
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  [12:00:00] /tmp/capture | Sonnet 5.5 high | default | ▓▓▓▓░░░░░░ 42%
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

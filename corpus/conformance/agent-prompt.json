@@ -566,6 +566,19 @@
       "expect": {
         "atPrompt": true
       }
+    },
+    {
+      "name": "claude 2.1.301: the tip box above the prompt leaves the prompt readable",
+      "why": "The tip box is drawn above the prompt box, not over it, so the prompt under it is the prompt and a ring is typed there. A post to a pane showing this box was rung at once (docs/observations/claude-code-2.1.301.md). Read back from a live pane, scrubbed (corpus/claude-code-2.1.301/tip-box.txt).",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "⏺ The change is in, and the tests that cover it pass.\n\n  What changed:\n  - The new option is read where the old one was, and the old one still works.\n  - Two tests cover the new option, and one covers the old one still being read.\n\n  Nothing is committed yet.\n\n✻ Cooked for 40m 5s · done 2:12 pm\n                                                                                                                                                                                                  [-]\n✦ Heads up · The change also alters a default you did not mention, and nothing says yet whether that was meant.\n  1: Learn more   2: Knew this already   0: Dismiss\n                                                                                                                     new task? /clear to save 418.6k tokens · ✔ Update installed · Restart to update\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── capture ─\n❯ \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  [12:00:00] /tmp/capture | Sonnet 5.5 high | default | ▓▓▓▓░░░░░░ 42%\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": true
+      }
     }
   ]
 }

@@ -24,8 +24,9 @@ draws none while the box shows, or the read cut them off, is not established; a 
 pane two minutes earlier, before the box showed, had both.
 
 A second box was seen the same evening, `✦ Heads up · ... 1: Learn more  2: Knew this already
-0: Dismiss`, above another pane's prompt. A message posted to that pane rang it at once, so it is
-not established that every such box holds wakes, and nothing here reads that one.
+0: Dismiss`, above another pane's prompt. A message posted to that pane rang it at once.
+`docs/observations/claude-code-2.1.301.md` records that box, which is drawn above the prompt box
+and does not hide the prompt.
 
 ## What this decides for Muster
 
