@@ -182,7 +182,8 @@ fn a_wait_in_progress_when_the_daemon_hands_over_is_answered_by_the_new_one() {
         muster_with(&socket, &["msg", "--as", "b", "wait", "--timeout", "60"], None)
     });
     logging.logged_until("msg.waiting", Duration::from_secs(20));
-    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     // Heard or not depends on whether the wait was asked again before the post: either way
     // the message is unread, and the wait returns with it.
     let posted = muster(&daemon, &["msg", "--as", "a", "post", "after", "the", "handover"]);
@@ -508,7 +509,8 @@ fn a_followed_log_prints_each_entry_as_it_lands_across_a_handover() {
 
     ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "g"]));
     until_line("--- g #4 | b joined ---");
-    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     let posted = muster(&daemon, &["msg", "--as", "b", "post", "after", "the", "handover"]);
     assert!(matches!(posted.status.code(), Some(0 | 6)), "{}", complained(&posted));
     until_line("after the handover");

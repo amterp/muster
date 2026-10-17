@@ -197,7 +197,8 @@ fn a_bridge_follows_its_pane_to_the_daemon_that_replaced_its_own() {
     let drawn = drawn(&mut child);
     drop(control);
 
-    assert_eq!(daemon.replace(None).outcome(), proto::Outcome::Done);
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     loop {
         match window.next() {
             Report::Attached => break,
