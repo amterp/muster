@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-held-wake-s-reason",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792209734715,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-16 after a held wake became visible to its sender (a_2hIfuUkdQ). Three gaps left, each minor: muster window does not show a held wake on the pane's row, for a person rather than an agent to see at a glance; a post to another machine's member carries no held reason, like until and activity (a peer Reached would need all three); and a wake whose wake command is running sits in no list, so msg who reads it as rung and not read for those seconds (Codex panes only).",
+  "id": "a_2j55TPFOK",
+  "position": "b1K",
+  "title": "A held wake's reason, beyond msg who and the post's answer",
+  "type": "enhancement",
+  "updated_at_millis": 1792209734715,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792209734715}
+  ]
+}

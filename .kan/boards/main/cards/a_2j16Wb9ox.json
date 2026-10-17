@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-16: the first of this card's costs is paid - a renamed pane's drawn word now stays reserved to it (bded1038) and shows on every agent row (a_2j16WrhNT). It still does not resolve as an address after a rename; that is the rest of this card.",
+      "created_at_millis": 1792210039372,
+      "id": "c_2j5DOrDsu"
+    }
+  ],
   "created_at_millis": 1792200242011,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-14: \"potentially remove uniqueness requirement on pane renames, leverage the muster generated names more instead\".\n\nToday the daemon refuses a rename to a name another open pane on that machine holds (`name_held` in `rename_pane`, `crates/muster-daemon/src/session.rs`), because `--pane` and `msg post --to` resolve a name to exactly one pane. The proposal: a given name becomes a label that may repeat, so two panes can both be `reviewer`, and the drawn word (`otter`), already unique per machine, is what commands resolve.\n\nWhat it would take:\n\n- The word has to stay reserved through a rename. Today a renamed pane keeps its word on its record, but another pane can be given that word as its name.\n- `--pane reviewer` matching two panes needs an answer. Refusing and naming both, as a clash does today, is the obvious one.\n- Messaging names agents by their pane names: group membership, `whom`, and how participants are printed (a_2dog2o3cN, a_2dnEiGhpm).\n- `name_sessions` names a Claude Code session after the given name, so two sessions would share a name.\n\nRelated: a_2j16WrhNT, showing the drawn word on every agent row.",
@@ -13,7 +21,7 @@
   "position": "aV",
   "title": "Should a pane's given name stop having to be unique, with its drawn word as the handle?",
   "type": "chore",
-  "updated_at_millis": 1792200272480,
+  "updated_at_millis": 1792210039372,
   "history": [
     {"field":"column","value":"uncommitted","at":1792200242011}
   ]

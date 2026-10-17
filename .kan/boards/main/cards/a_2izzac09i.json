@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "the-council-skill",
   "alias_explicit": false,
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1792197592181,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-15, 0.16.0, a directed council on the devenv. The director's brief told a member to \"Post to director AND builder\". The member's `muster msg post --group \u003cgroup\u003e --to director,builder` was refused: \"\u003cgroup\u003e's policy does not let you address builder; you may address director or @human\". The refusal was clear and the member asked the director to relay, but the builder was blocked waiting on that answer, so the relay cost it a round trip. `extras/skill/council/SKILL.md` says under Taking part that a member may address only the director or `@human`. Directing says to relay one member's answer to another, but not that a member's post to another member is refused, so a director writing a brief never reads it. A line in Directing would fix it, such as \"members can address only you, so ask for one post and relay it\". If members often need to answer two at once, the larger option is a policy that lets the director grant a one-off address: a member may address the names the director's message to it named.",
@@ -10,11 +10,13 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b18",
+  "position": "YwP",
   "title": "The council skill does not tell a director that members can address only it",
   "type": "docs",
-  "updated_at_millis": 1792197592181,
+  "updated_at_millis": 1792210528473,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792197592181}
+    {"field":"column","value":"backlog-lo","at":1792197592181},
+    {"field":"column","value":"in-progress","at":1792208577663},
+    {"field":"column","value":"done","at":1792210528473}
   ]
 }

@@ -5,13 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "Seen again 2026-10-16 in a full gate at load 28.6 (main at 18cb51b0): this time the window held only a fresh tab, left [\"t2c79gxnsa\"] against right [\"t-left\"], so under load it can lose the tab it was meant to keep, not just hold an extra one. Passed 3 of 3 alone straight after.",
       "created_at_millis": 1792204294974,
       "id": "c_2j2nxhOeY"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Third sighting 2026-10-16, gate at load 10.5: left [\"t2c7t8bxq3\"] against right [\"t-left\"], the same lost-tab shape as the second.",
+      "created_at_millis": 1792209710546,
+      "id": "c_2j54qUalP"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Fourth sighting 2026-10-16 (third in five full gates that night, at loads 10-28): same lost-tab shape. Passes 6 of 6 alone at load 2. Now the gate's most frequent false red; moved to next.",
+      "created_at_millis": 1792211139396,
+      "id": "c_2j5g15EB4"
     }
   ],
   "created_at_millis": 1791952873746,
@@ -21,11 +33,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b0x",
+  "position": "a3",
   "title": "🎲 a_tab_on_a_daemon_still_starting_stays_this_windows saw a second tab under load",
   "type": "bug",
-  "updated_at_millis": 1792204294974,
+  "updated_at_millis": 1792211139485,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791952873746}
+    {"field":"column","value":"backlog-hi","at":1791952873746},
+    {"field":"column","value":"next","at":1792211139485}
   ]
 }

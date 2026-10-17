@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "muster-never-tells-a",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "renderer"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792208553664,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-16 while fixing a surface's scale across displays (a_2ZMgETdtq). Ghostty calls ghostty_surface_set_display_id whenever its window changes screen, and libghostty uses it to drive redraws from that display's refresh. Muster never sends it, so with displays of different refresh rates its redraw timing may follow the wrong one. A fix has to send it when a surface is made, not only on a screen change. Not measured.",
+  "id": "a_2j4akUvWH",
+  "position": "b1J",
+  "title": "Muster never tells a surface which display it is on",
+  "type": "bug",
+  "updated_at_millis": 1792208553664,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792208553664}
+  ]
+}

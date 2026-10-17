@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -27,11 +27,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b0q",
+  "position": "YwR",
   "title": "Wakes go missing across several groups, and the sender cannot see one is held",
   "type": "bug",
-  "updated_at_millis": 1792203110715,
+  "updated_at_millis": 1792210528314,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946591261}
+    {"field":"column","value":"backlog-hi","at":1791946591261},
+    {"field":"column","value":"in-progress","at":1792208577473},
+    {"field":"column","value":"done","at":1792210528314}
   ]
 }

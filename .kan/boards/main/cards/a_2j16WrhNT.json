@@ -5,16 +5,18 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1792200242173,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-11: \"highlight agent name in sidebar, always keep the name visible thru renames, etc\". Clarified 2026-10-16: \"agent name\" means the word the daemon drew for the pane (`otter`).\n\nA row's first line is the name somebody gave the pane, or else its drawn word, so a rename takes the word off the row. The daemon still keeps the word on the pane's record after a rename (`rename_pane` in `crates/muster-daemon/src/session.rs`); nothing shows it. The ask: every agent row shows its pane's drawn word, styled to stand out, beside any given name. Row labels are decided in the core (`docs/architecture.md`, the roster), so the word belongs in the roster entry rather than being assembled in `Sidebar.swift`.\n\nRelated: a_2j16Wb9ox would make the drawn word the pane's unique handle, which is the stronger reason to keep it in view.",
   "id": "a_2j16WrhNT",
-  "position": "b16",
+  "position": "YwO",
   "title": "An agent row shows the word Muster drew for its pane, even after a rename",
   "type": "enhancement",
-  "updated_at_millis": 1792200242173,
+  "updated_at_millis": 1792211162594,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792200242173}
+    {"field":"column","value":"backlog-hi","at":1792200242173},
+    {"field":"column","value":"in-progress","at":1792208577379},
+    {"field":"column","value":"done","at":1792211162594}
   ]
 }

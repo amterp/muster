@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-bundle-built-from",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1791810415852,
   "creator": "Alexander Terp",
   "description": "Replacing a Homebrew install with \\`./dev --bundle\\` (to run unreleased main) looks like it works and quietly does not. Without \\`MUSTER_INSTALL=release\\`, the build names its daemon after the checkout's path (\\`dev-\u003chash\u003e.sock\\`, crates/muster-daemon-proto/build.rs), so the new app starts a fresh daemon beside \\`release.sock\\` rather than handing off from it. The window opens with one empty pane, every running agent stays on the old daemon out of view, and a second dev-named daemon is installed and started on each attached devenv too.\n\nMet on 2026-10-12 putting 0.15.0 (gate failed, so unreleased) on the laptop: it took a full rebuild with \\`MUSTER_INSTALL=release\\` and killing two stray daemons by hand.\n\nAGENTS.md sells \\`--bundle\\` as \"a thing you can double-click, keep in the Dock, or hand to somebody\", and only release.yml says the variable matters. Options: document it beside \\`--bundle\\`; have \\`--bundle\\` default to \\`release\\` (it is what a bundle is for, while the debug app stays per-checkout); or have the app warn on launch when it finds another install's daemon holding panes.",
   "id": "a_2gNXMhi6k",
-  "position": "b0k",
+  "position": "a3k",
   "title": "A bundle built from a checkout starts its own daemon instead of taking over the installed one",
   "type": "bug",
-  "updated_at_millis": 1791810415852,
+  "updated_at_millis": 1792211139654,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791810415852}
+    {"field":"column","value":"backlog-hi","at":1791810415852},
+    {"field":"column","value":"next","at":1792211139654}
   ]
 }
