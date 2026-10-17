@@ -582,7 +582,8 @@ than a mute does, which keeps panes asking without banners; a person who made a 
 else's to watch. Its state still paints, `done` included, because seen-ness is untouched. Made quiet, a pane takes
 down a banner it had; let ask again, it asks silently for the state it is in, as a pane met at launch does. A message
 its agent addresses to the human still notifies, since that banner is the group's and addressing the human was the
-agent's choice.
+agent's choice. A quiet helper is not left unheard: its daemon tells its maker, from `@muster`, when it blocks, stops
+reading its input, or goes idle without having reported to it (MIP-7, section 4).
 
 **A pane the window is focused on and showing raises nothing.** That is what the border is for, and it costs no new
 rule: seen-ness is already computed for exactly that pane, and a finish there is reported seen rather than announced.

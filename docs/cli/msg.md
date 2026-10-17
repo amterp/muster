@@ -329,6 +329,19 @@ it posts never counts as a stall itself. It posts only in a group kept on its ow
 in a group kept elsewhere is in the log alone. Members waiting on each other with everything read
 are not watched, since that is also what a finished group looks like.
 
+**A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An
+agent's helpers") becomes blocked, becomes stuck, or goes idle without having posted to its maker
+since it last went to work, and stays that way for 10 seconds, its daemon tells the maker, once
+each time, from `@muster`:
+
+    @muster: maple (p2w3r07bsd) is blocked at a dialog: it is at a dialog, waiting for somebody to answer it. `muster pane read --pane maple` shows it and `muster pane send --pane maple --key <key>` answers it, or bring it forward with `muster pane show --pane maple` and ask the person. Muster says this once each time it blocks.
+
+It goes in the group of exactly the two when there is one, else the one group both are in, and
+else a group made for them as a post between them would make it, so the maker's reply addressed to
+the helper lands beside it. A helper that posted to its maker, addressed to it or unaddressed in a
+group the maker is in, and then went idle is not reported, and neither is one waiting on its own
+work. A maker on another machine is not told yet.
+
 **`who` says the same at any moment**, without waiting the 2 minutes. Under each member, one line
 per group where messages wait on it unread: the oldest, who posted them, and why it has not read
 them, in the words a stall notice would use, or that it is at work and is rung once idle:

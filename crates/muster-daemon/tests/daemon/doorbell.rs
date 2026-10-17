@@ -1197,3 +1197,26 @@ fn a_group_held_up_on_an_agent_that_ignored_its_ring_is_told_why() {
     assert_eq!(read.len(), 1, "{read:?}");
     assert!(read[0].contains("it was rung, and has neither read it nor gone to work"), "{read:?}");
 }
+
+/// A helper that blocks tells the pane that made it, once, in a message from Muster in a group
+/// made for the two (MIP-7, section 4): a helper is quiet, and its maker is who can answer.
+#[test]
+fn a_helper_at_a_dialog_tells_its_maker_once() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let read = agent.read_in_its_pane();
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].starts_with("@muster: ") && read[0].contains(" (p2) is blocked at a dialog: "),
+        "{read:?}"
+    );
+
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
+}

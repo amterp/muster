@@ -427,8 +427,11 @@ helper. A hidden helper takes no side and no `--focus`, for the reason `--hidden
 unless `--pane` says otherwise. Outside every pane `--helper` is refused, since there is no pane
 for it to mean.
 
-A helper is not made quiet: when it blocks it notifies you as any pane does, because nothing yet
-tells its maker. Add `--quiet` only to a helper you will watch yourself.
+A helper is not made quiet: when it blocks it notifies you as any pane does. Its maker is told
+too: when a helper becomes blocked or stuck, or goes idle without having posted to its maker since
+it last went to work, and stays so for 10 seconds, its daemon tells the maker once, in a message
+from `@muster` that says why and what answers it (`muster docs msg`). A helper that posts its
+report and then goes idle is not reported, nor is one waiting on its own work.
 
 A helper is a pane started for its maker's own work. An agent you ask to start a peer, one that
 takes part of the work at its own level and answers to you, starts it with plain `muster pane

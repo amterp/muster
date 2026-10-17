@@ -47,6 +47,7 @@ use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
 use super::command;
 use super::compacts::{self, Compacting};
+use super::makers::{self, Makers};
 use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt, Unseen};
 use super::renames::{self, Typing};
@@ -669,6 +670,7 @@ fn run(shared: &Weak<Shared>) {
     let mut compacting = Compacting::new();
     let mut moving = Moving::new();
     let mut stalls = Stalls::new(Instant::now());
+    let mut makers = Makers::new();
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
@@ -678,6 +680,8 @@ fn run(shared: &Weak<Shared>) {
         // On its own clock rather than the doorbell's: a stall is a group nothing moves, which
         // is exactly when nothing would wake the doorbell to look.
         sleep = sleep.min(stalls::look(&shared, &mut stalls));
+        // On every wake rather than a clock of its own: every change in an agent wakes it.
+        sleep = sleep.min(makers::look(&shared, &mut makers));
     }
 }
 

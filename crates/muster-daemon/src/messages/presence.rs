@@ -81,6 +81,9 @@ pub(crate) struct Panes {
     restoring: bool,
     /// The pane each pane a zoom hides is behind, by the hidden pane.
     zoomed: HashMap<String, String>,
+    /// The pane each helper was made by, by the helper (MIP-7): the maker may be on another
+    /// machine.
+    makers: HashMap<String, String>,
 }
 
 impl Panes {
@@ -123,7 +126,8 @@ impl Panes {
             });
             let name = record.name().map(str::to_string);
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
-            (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME, name, title)
+            let young = !loaded || io.age() < AGENT_TO_COME;
+            (record.pane.clone(), seen, young, name, title, record.maker.clone())
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -132,7 +136,10 @@ impl Panes {
             ..Panes::default()
         };
         drop(session);
-        for (pane, seen, young, name, title) in read {
+        for (pane, seen, young, name, title, maker) in read {
+            if let Some(maker) = maker {
+                panes.makers.insert(pane.clone(), maker);
+            }
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
             }
@@ -159,6 +166,11 @@ impl Panes {
     /// Whether the pane is open, agent or not.
     pub(crate) fn exists(&self, pane: &str) -> bool {
         self.open.contains_key(pane)
+    }
+
+    /// Every helper open here, with the pane that made it.
+    pub(crate) fn makers(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.makers.iter()
     }
 
     /// The pane `pane`'s tab is zoomed on, when the zoom hides `pane`.

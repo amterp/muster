@@ -10,6 +10,7 @@ mod command;
 mod compacts;
 mod doorbell;
 mod inbox;
+mod makers;
 pub(crate) mod peer;
 mod presence;
 mod prompt;

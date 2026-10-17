@@ -366,34 +366,41 @@ fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: &s
 }
 
 /// `ms` as a person says it: seconds under two minutes, whole minutes from there.
-fn said_as_time(ms: u64) -> String {
+pub(super) fn said_as_time(ms: u64) -> String {
     let seconds = ms / 1000;
     if seconds >= 120 { format!("{} minutes", seconds / 60) } else { format!("{seconds}s") }
 }
 
 /// A participant or a pane as the CLI shows it: `otter (p29te12q4t)`, the id being what still
 /// reaches it once another pane goes by the name.
-fn shown(called: &BTreeMap<String, String>, id: &str) -> String {
+pub(super) fn shown(called: &BTreeMap<String, String>, id: &str) -> String {
     match called.get(id) {
         Some(name) if name != id => format!("{name} ({id})"),
         _ => id.to_string(),
     }
 }
 
+/// Why an agent at a dialog has not moved, as both this watch and a helper's notice to its maker
+/// (`super::makers`) say it.
+pub(super) const AT_A_DIALOG: &str = "it is at a dialog, waiting for somebody to answer it";
+
+/// Why an agent whose program stopped reading its input has not moved, as both this watch and a
+/// helper's notice to its maker say it.
+pub(super) fn stopped_reading(program: &str, bytes: u32) -> String {
+    format!(
+        "its program, {program}, has stopped reading its input and left {bytes} bytes unread, so \
+         nothing reaches it until somebody interrupts it, or ends it and resumes its session"
+    )
+}
+
 /// Why a member has not read what waits on it, as far as this daemon can see.
 fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
     if let Some((program, bytes)) = &member.stopped {
-        return format!(
-            "its program, {program}, has stopped reading its input and left {bytes} bytes unread, \
-             so nothing reaches it until somebody interrupts it, or ends it and resumes its \
-             session"
-        );
+        return stopped_reading(program, *bytes);
     }
     match member.activity {
         None => "no agent is in its pane any more".to_string(),
-        Some(Activity::Blocked) => {
-            "it is at a dialog, waiting for somebody to answer it".to_string()
-        }
+        Some(Activity::Blocked) => AT_A_DIALOG.to_string(),
         _ if member.doorbell != Ringable::Rings => {
             "its agent's prompt cannot be read, so it is never rung; it sees the message when it \
              next reads"

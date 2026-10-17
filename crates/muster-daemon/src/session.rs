@@ -3284,6 +3284,12 @@ impl Session {
         self.panes.iter().map(view).collect()
     }
 
+    /// Whether any pane here is somebody's helper (MIP-7), which a watch on helpers needs to
+    /// look at before reading every pane.
+    pub(crate) fn has_helpers(&self) -> bool {
+        self.panes.iter().any(|pane| pane.record.maker.is_some())
+    }
+
     /// Whether any pane's name is still to be typed into its agent's session: one wanted, for an
     /// agent whose manifest says how. A named pane whose agent's harness cannot be renamed keeps
     /// its name wanted, and must not keep the doorbell's thread looking.
