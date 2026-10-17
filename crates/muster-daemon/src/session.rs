@@ -34,7 +34,7 @@ use muster_daemon_proto as proto;
 use prost::Message;
 use proto::answer::Detail;
 
-use crate::restart::{self, Restarting};
+use crate::restart::{self, Restarting, Unrestartable};
 use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
@@ -2734,26 +2734,18 @@ impl Session {
             .clone()
             .or_else(|| pane.resume.as_ref().map(|resume| resume.session.clone()))
         else {
-            return Err(Reply::refused(format!(
-                "pane {name} has nothing to resume: its agent has reported no session, which                  takes its harness's adapter (`muster docs harnesses`)"
-            )));
+            return Err(Reply::refused(Unrestartable::NoSession.said(name, "its agent")));
         };
         let agent = pane.record.agent.clone().unwrap_or_else(|| "its agent".to_string());
         let Some(resume) = &pane.resume else {
-            return Err(Reply::refused(format!(
-                "Muster does not know how {agent} resumes a session, so pane {name} is left as                  it is; `muster docs harnesses` says which harnesses can be resumed"
-            )));
+            return Err(Reply::refused(Unrestartable::NoResume.said(name, &agent)));
         };
         let (Some(group), Some(shell)) = (pane.io.agent_group(), pane.io.shell()) else {
-            return Err(Reply::refused(format!(
-                "Muster cannot tell which processes in pane {name} are {agent}'s, so it ends                  none of them; ask again once its agent reads as anything but `unknown`"
-            )));
+            return Err(Reply::refused(Unrestartable::GroupUnknown.said(name, &agent)));
         };
         let group = group.cast_signed();
         if group == shell {
-            return Err(Reply::refused(format!(
-                "{agent} is pane {name}'s own process, so ending it would end the pane; close                  the pane and start the agent again in a new one"
-            )));
+            return Err(Reply::refused(Unrestartable::PanesOwn.said(name, &agent)));
         }
         if pane.io.discards().is_restarting() {
             return Err(Reply::refused(format!("pane {name}'s agent is already restarting")));

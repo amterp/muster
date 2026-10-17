@@ -118,6 +118,42 @@ pub(crate) trait Target {
     fn type_line(&self, line: &str) -> bool;
 }
 
+/// Why a pane's agent is not restarted, with nothing done to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unrestartable {
+    /// Its agent has reported no session.
+    NoSession,
+    /// Its harness has no resume Muster knows.
+    NoResume,
+    /// Detection has not found which process group is the agent's.
+    GroupUnknown,
+    /// The agent is the pane's own process.
+    PanesOwn,
+}
+
+impl Unrestartable {
+    pub(crate) fn said(self, pane: &str, agent: &str) -> String {
+        match self {
+            Unrestartable::NoSession => format!(
+                "pane {pane} has nothing to resume: its agent has reported no session, which \
+                 takes its harness's adapter (`muster docs harnesses`)"
+            ),
+            Unrestartable::NoResume => format!(
+                "Muster does not know how {agent} resumes a session, so pane {pane} is left as \
+                 it is; `muster docs harnesses` says which harnesses can be resumed"
+            ),
+            Unrestartable::GroupUnknown => format!(
+                "Muster cannot tell which processes in pane {pane} are {agent}'s, so it ends \
+                 none of them; ask again once its agent reads as anything but `unknown`"
+            ),
+            Unrestartable::PanesOwn => format!(
+                "{agent} is pane {pane}'s own process, so ending it would end the pane; close \
+                 the pane and start the agent again in a new one"
+            ),
+        }
+    }
+}
+
 /// A checked restart, to run with the session unlocked.
 pub(crate) struct Restarting {
     pub(crate) pane: String,
@@ -347,6 +383,22 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     use super::*;
+
+    /// What the Restart sheet and the CLI print is one line with single spaces: a string that
+    /// loses a line continuation keeps the next line's indent mid-sentence.
+    #[test]
+    fn every_refusal_is_one_line_with_single_spaces() {
+        let refusals = [
+            Unrestartable::NoSession,
+            Unrestartable::NoResume,
+            Unrestartable::GroupUnknown,
+            Unrestartable::PanesOwn,
+        ];
+        for refusal in refusals {
+            let said = refusal.said("p1w3r0ab2n", "claude");
+            assert!(!said.contains("  ") && !said.contains('\n'), "{refusal:?}: {said:?}");
+        }
+    }
 
     const FAST: Timing = Timing {
         grace: Duration::from_millis(100),
