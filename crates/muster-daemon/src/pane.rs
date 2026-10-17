@@ -162,6 +162,7 @@ pub(crate) struct PaneIo {
     begun: Begun,
     /// What the screen showed as the pane's agent last went to work.
     turn: Mutex<Option<TurnMark>>,
+    directories_said: AtomicU64,
 }
 
 /// What a pane's screen showed as its agent went to work, which a read of the turn starts after.
@@ -442,15 +443,45 @@ impl PaneIo {
         }
     }
 
-    /// Queues something for the program to read. False when the queue is full or the pane has
-    /// gone; the caller decides whether that is worth saying. Pointer input for a program that
-    /// has stopped reading is taken and dropped ([`Discards::went_stuck`]).
+    /// Queues something for the program to read. False when the queue is full, the pane has
+    /// gone, or it is refusing typed input while its agent restarts; the caller decides whether
+    /// that is worth saying. Pointer input for a program that has stopped reading is taken and
+    /// dropped ([`Discards::went_stuck`]).
     pub(crate) fn queue(&self, input: Input) -> bool {
-        let Admitted::Stamped(seq) = self.discards.admit(&input) else { return true };
-        match self.input.try_send(Stamped::new(seq, input)) {
+        match self.discards.admit(&input) {
+            Admitted::Stamped(seq) => self.send(Stamped::new(seq, input)),
+            Admitted::Dropped => true,
+            Admitted::Refused => false,
+        }
+    }
+
+    /// Queues the line a restart types, while the pane refuses everybody else's.
+    pub(crate) fn queue_restart_line(&self, input: Input) -> bool {
+        self.send(Stamped::new(self.discards.stamp(), input))
+    }
+
+    fn send(&self, stamped: Stamped) -> bool {
+        match self.input.try_send(stamped) {
             Ok(()) => true,
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
         }
+    }
+
+    pub(crate) fn discards(&self) -> &Discards {
+        &self.discards
+    }
+
+    /// Empties what the program has yet to read: the daemon's queue for it, the write under
+    /// way included, then the terminal's own.
+    pub(crate) fn flush_input(&self) -> io::Result<()> {
+        self.discards.discard_all();
+        pty::flush_input(self.master.as_fd())
+    }
+
+    /// How many times a program in the pane has said which directory it is in (OSC 7), which a
+    /// shell with Ghostty's integration does each time it draws its prompt.
+    pub(crate) fn directories_said(&self) -> u64 {
+        self.directories_said.load(Ordering::Acquire)
     }
 
     /// Waits for the pane's bridge to have room for more output, for at most `grace`, holding no
@@ -676,6 +707,7 @@ impl PaneIo {
                     reports.send(self.serial, Reported::Title(title));
                 }
                 Happened::Pwd(url) => {
+                    self.directories_said.fetch_add(1, Ordering::AcqRel);
                     if let Some(directory) = effects::local_directory(&url, &heard.host) {
                         heard.reports_directory = true;
                         heard.moved_to(directory, self.serial, reports);
@@ -888,6 +920,7 @@ impl Pane {
             typed: Mutex::default(),
             begun: Begun::new(process),
             turn: Mutex::new(None),
+            directories_said: AtomicU64::new(0),
         });
         let pane = record.pane.clone();
 
@@ -1226,6 +1259,10 @@ impl Reader {
     /// Looks at what the pane's program has left unread, when that is worth a look, and
     /// publishes it having stopped reading or read again.
     fn look_at_input(&mut self, now: Instant) {
+        // A restart empties the terminal's input, which is not the program reading.
+        if self.io.discards.is_restarting() {
+            return;
+        }
         let input_at = self.io.input_at();
         let change = if self.unread.due(input_at, now) {
             let look = unread::Look {
@@ -1432,6 +1469,7 @@ impl PaneIo {
             typed: Mutex::default(),
             begun: Begun::new(None),
             turn: Mutex::new(None),
+            directories_said: AtomicU64::new(0),
         })
     }
 

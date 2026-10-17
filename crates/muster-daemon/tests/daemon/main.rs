@@ -29,6 +29,7 @@ mod pane_names;
 mod panes;
 mod persistence;
 mod relay;
+mod restart;
 mod resume;
 mod session_names;
 mod ssh_terminfo;

@@ -77,6 +77,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Seen(_)) => "pane.seen",
             Some(pane_request::Request::Compact(_)) => "pane.compact",
             Some(pane_request::Request::Quiet(_)) => "pane.quiet",
+            Some(pane_request::Request::Restart(_)) => "pane.restart",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

@@ -321,23 +321,41 @@ pub(crate) struct Discards {
     next: AtomicU64,
     /// Pointer input below this was queued before the program stopped reading.
     pointer_before: AtomicU64,
+    /// All input below this was queued before a restart emptied the pane's input.
+    all_before: AtomicU64,
     /// The program has stopped reading, so pointer input is dropped as it arrives.
     stuck: AtomicBool,
     pointer_dropped: AtomicU64,
+    /// The pane's agent is being restarted, so typed input is refused as it arrives: it would
+    /// reach the shell ahead of the resume, or be typed into the resume's own line.
+    restarting: AtomicBool,
 }
 
 impl Discards {
     /// What the pane does with `input`: queues it under the next number, or not at all.
     pub(crate) fn admit(&self, input: &Input) -> Admitted {
+        if self.restarting.load(Ordering::Acquire) && input.is_typed() {
+            return Admitted::Refused;
+        }
         if self.stuck.load(Ordering::Acquire) && input.is_pointer() {
             self.pointer_dropped.fetch_add(1, Ordering::Relaxed);
             return Admitted::Dropped;
         }
-        Admitted::Stamped(self.next.fetch_add(1, Ordering::AcqRel))
+        Admitted::Stamped(self.stamp())
+    }
+
+    /// The next number, for an input queued whatever the pane is refusing.
+    pub(crate) fn stamp(&self) -> u64 {
+        self.next.fetch_add(1, Ordering::AcqRel)
+    }
+
+    fn is_flushed(&self, seq: u64) -> bool {
+        seq < self.all_before.load(Ordering::Acquire)
     }
 
     fn is_stale(&self, seq: u64, input: &Input) -> bool {
-        input.is_pointer() && seq < self.pointer_before.load(Ordering::Acquire)
+        self.is_flushed(seq)
+            || (input.is_pointer() && seq < self.pointer_before.load(Ordering::Acquire))
     }
 
     /// The pane's program has stopped reading: pointer input already queued, and any that
@@ -355,6 +373,19 @@ impl Discards {
         self.stuck.store(false, Ordering::Release);
         self.pointer_dropped.swap(0, Ordering::AcqRel)
     }
+
+    /// Everything queued so far is dropped, what the writer is part way through included.
+    pub(crate) fn discard_all(&self) {
+        self.all_before.store(self.next.load(Ordering::Acquire), Ordering::Release);
+    }
+
+    pub(crate) fn set_restarting(&self, restarting: bool) {
+        self.restarting.store(restarting, Ordering::Release);
+    }
+
+    pub(crate) fn is_restarting(&self) -> bool {
+        self.restarting.load(Ordering::Acquire)
+    }
 }
 
 /// What a pane does with an input it is given.
@@ -363,6 +394,8 @@ pub(crate) enum Admitted {
     Stamped(u64),
     /// Taken and dropped: pointer input for a program that has stopped reading.
     Dropped,
+    /// Not taken: typed input while the pane's agent is being restarted.
+    Refused,
 }
 
 /// What the writer keeps between inputs.
@@ -446,7 +479,7 @@ impl Writer {
                 if !pause.is_zero() {
                     std::thread::sleep(pause);
                 }
-                if !self.write_one(input, master, wake) {
+                if !self.write_one(seq, input, master, wake) {
                     return;
                 }
             }
@@ -454,7 +487,7 @@ impl Writer {
     }
 
     /// Encodes one input and writes it. False once the pane can take no more.
-    fn write_one(&mut self, input: Input, master: &OwnedFd, wake: &OwnedFd) -> bool {
+    fn write_one(&mut self, seq: u64, input: Input, master: &OwnedFd, wake: &OwnedFd) -> bool {
         let typed = input.is_typed();
         let someones = input.is_someones_text();
         let chore = matches!(input, Input::Chore { .. });
@@ -478,7 +511,10 @@ impl Writer {
             io.wrote_line();
         }
         wrote_input();
-        if let Err(error) = write_all(master, wake, &bytes, wrote_input) {
+        // Only a restart's flush abandons a write part way: it empties the terminal's input as
+        // well, so no half of an escape sequence is left for whatever reads next.
+        let flushed = || self.discards.is_flushed(seq);
+        if let Err(error) = write_all(master, wake, &bytes, wrote_input, flushed) {
             if error.kind() != io::ErrorKind::BrokenPipe {
                 log::warn(
                     "daemon.pane.write_failed",
@@ -752,15 +788,16 @@ pub(crate) fn decide(modes: InputModes, (x, y): (i32, i32)) -> Wheeled {
 }
 
 /// Writes all of `bytes` to the master, waiting while the program is not reading, and calls
-/// `took` each time the program takes some. Gives up with `BrokenPipe` once the pane lets go
+/// `took` each time the program takes some. Stops with the rest unwritten once `abandoned`. Gives up with `BrokenPipe` once the pane lets go
 /// (its wake pipe closes), so a program that never reads again cannot hold this thread.
 fn write_all(
     master: &OwnedFd,
     wake: &OwnedFd,
     mut bytes: &[u8],
     took: impl Fn(),
+    abandoned: impl Fn() -> bool,
 ) -> io::Result<()> {
-    while !bytes.is_empty() {
+    while !bytes.is_empty() && !abandoned() {
         // SAFETY: the slice is valid for reads of its length.
         let written =
             unsafe { libc::write(master.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) };

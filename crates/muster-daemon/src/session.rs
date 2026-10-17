@@ -33,6 +33,8 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use prost::Message;
 use proto::answer::Detail;
+
+use crate::restart::{self, Restarting};
 use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
@@ -512,6 +514,8 @@ pub(crate) enum Handled {
     Snapshot(Reply),
     /// A handoff to run with the session unlocked ([`crate::handoff::hand_over`]).
     Replace(Box<Replacement>),
+    /// A restart to run with the session unlocked, and answered when it is done.
+    Restart(Box<Restarting>),
 }
 
 /// A `replace` that has been checked: the daemon to hand every pane to.
@@ -1080,6 +1084,10 @@ impl Session {
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
                 P::Quiet(quiet) => self.quiet(&quiet),
+                P::Restart(restart) => match self.restart(&restart) {
+                    Ok(restarting) => return Handled::Restart(Box::new(restarting)),
+                    Err(refused) => refused,
+                },
                 P::Read(read) => match self.pane_index(&read.pane) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(index) => {
@@ -2511,6 +2519,73 @@ impl Session {
             let record = pane.record.clone();
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
+    }
+
+    /// Checks a restart of a pane's agent, and hands back what runs it.
+    fn restart(&self, restart: &pane_request::Restart) -> Result<Restarting, Reply> {
+        let Some(index) = self.pane_index(&restart.pane) else {
+            return Err(Reply::not_there(format!("no pane {} on this daemon", restart.pane)));
+        };
+        let pane = &self.panes[index];
+        let name = &restart.pane;
+        let Some(session) = pane
+            .session_id
+            .clone()
+            .or_else(|| pane.resume.as_ref().map(|resume| resume.session.clone()))
+        else {
+            return Err(Reply::refused(format!(
+                "pane {name} has nothing to resume: its agent has reported no session, which                  takes its harness's adapter (`muster docs harnesses`)"
+            )));
+        };
+        let agent = pane.record.agent.clone().unwrap_or_else(|| "its agent".to_string());
+        let Some(resume) = &pane.resume else {
+            return Err(Reply::refused(format!(
+                "Muster does not know how {agent} resumes a session, so pane {name} is left as                  it is; `muster docs harnesses` says which harnesses can be resumed"
+            )));
+        };
+        let (Some(group), Some(shell)) = (pane.io.agent_group(), pane.io.shell()) else {
+            return Err(Reply::refused(format!(
+                "Muster cannot tell which processes in pane {name} are {agent}'s, so it ends                  none of them; ask again once its agent reads as anything but `unknown`"
+            )));
+        };
+        let group = group.cast_signed();
+        if group == shell {
+            return Err(Reply::refused(format!(
+                "{agent} is pane {name}'s own process, so ending it would end the pane; close                  the pane and start the agent again in a new one"
+            )));
+        }
+        if pane.io.discards().is_restarting() {
+            return Err(Reply::refused(format!("pane {name}'s agent is already restarting")));
+        }
+        let mut variables: Vec<(&str, &str)> =
+            restart.env.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        variables.sort_unstable();
+        if let Some(fault) =
+            variables.iter().find_map(|&(name, value)| restart::variable_fault(name, value))
+        {
+            return Err(Reply::refused(fault));
+        }
+        let shell_path = self.settings.shell.as_ref().and_then(|shell| shell.command.as_deref());
+        let shell_path = pty::shell(shell_path, &self.inherited);
+        let command = spawn::command_line(&shell_path, &resume.command);
+        let line = spawn::with_variables(&shell_path, &variables, &command);
+        log::info(
+            "daemon.pane.restarting",
+            fields! {
+                "pane" => name,
+                "agent" => agent,
+                "session" => session,
+                "flags" => flag_names(resume.command.get(1..).unwrap_or_default()),
+                "env" => variables.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(","),
+            },
+        );
+        Ok(Restarting {
+            pane: name.clone(),
+            program: agent,
+            session,
+            line,
+            target: restart::Live { io: Arc::clone(&pane.io), group, shell },
+        })
     }
 
     /// Whether any line is still to be typed at an agent's prompt - a pane's name for its

@@ -25,6 +25,7 @@ mod process;
 mod pty;
 mod replace;
 mod report;
+mod restart;
 mod screen;
 mod server;
 mod session;

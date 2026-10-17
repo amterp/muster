@@ -22,7 +22,8 @@
 #
 # `deaf <seconds>` stops reading for that long, as a harness that has hung stops taking what is
 # typed: its empty prompt painted, and nothing echoed, as a frozen agent in raw mode shows; what is
-# sent meanwhile waits in the terminal, read once it reads again.
+# sent meanwhile waits in the terminal, read once it reads again. `stubborn` ignores SIGTERM from
+# then on, as a harness busy saving its session does, so only SIGKILL ends it.
 #
 # `hook <args>` runs `"$MUSTER_DAEMON" report <args>` through a shell it starts, as a harness
 # runs a hook: a child of the agent, in its process group. `nested <args>` starts a copy of this
@@ -36,6 +37,9 @@
 #
 # Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
+#
+# It writes the arguments it was started with to $HOME/fake-agent-args and its environment to
+# $HOME/fake-agent-env, so a test sees how it was started again after a restart.
 #
 # SIGUSR1 blocks it at once, without a line read, as an agent at work opens a dialog in the
 # middle of a turn while something typed sits unsent in its prompt, and SIGUSR2 puts it back to
@@ -116,6 +120,8 @@ restate() {
 }
 
 printf '%s\n' $$ > "$HOME/fake-agent-pid"
+printf '%s\n' "$*" > "$HOME/fake-agent-args"
+env > "$HOME/fake-agent-env"
 trap 'signalled=yes; restate blocked' USR1
 trap 'signalled=yes; restate working' USR2
 
@@ -177,6 +183,7 @@ while :; do
             stty -echo
             sleep "${line#deaf }"
             stty "$modes" ;;
+        stubborn) trap '' TERM ;;
         *animate*) animate ;;
         *still*)
             [ -n "$animator" ] && kill "$animator"

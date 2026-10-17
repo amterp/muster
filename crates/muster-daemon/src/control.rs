@@ -18,6 +18,7 @@ use muster_daemon_proto::{self as proto, pane_request, request::Service, session
 use prost::Message;
 
 use crate::attribution;
+use crate::restart::Restarting;
 use crate::session::{Handled, Probed, Replacement, Reply, Session, Shared, Stop};
 use crate::{handoff, messages};
 
@@ -172,6 +173,7 @@ impl Answered {
 }
 
 /// Serves requests on a connection that has already been welcomed, until it hangs up.
+#[expect(clippy::too_many_lines, reason = "one arm per way a request is answered")]
 pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) {
     let outbox = match Outbox::open(&stream) {
         Ok(outbox) => outbox,
@@ -263,6 +265,14 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             Handled::Manifests(loading) => {
                 let loaded = loading.load();
                 locked().manifests_loaded(*loading, loaded)
+            }
+            // Off this connection's thread as well as outside the lock: it waits seconds on a
+            // program to end, and the connection's next request should not wait with it. An
+            // answer carries its request's id, so this one may follow later requests' answers.
+            Handled::Restart(restarting) => {
+                let answered = Answered::after(request.id, name, received, lock);
+                answer_later(shared, &outbox, *restarting, answered);
+                continue;
             }
             // Outside the lock: it waits on another daemon, step by step.
             Handled::Replace(replacement) => {
@@ -391,6 +401,27 @@ fn hung_up(stream: &UnixStream) -> bool {
                 std::io::Error::last_os_error().raw_os_error(),
                 Some(libc::EAGAIN | libc::EINTR)
             ))
+}
+
+/// Runs a restart on a thread of its own, and answers it once it is done.
+fn answer_later(shared: &Arc<Shared>, outbox: &Outbox, restarting: Restarting, answered: Answered) {
+    let (shared, outbox) = (Arc::clone(shared), outbox.clone());
+    let name = format!("restart {}", restarting.pane);
+    let started = std::thread::Builder::new().name(name).spawn({
+        let outbox = outbox.clone();
+        let shared = Arc::clone(&shared);
+        move || {
+            let reply = restarting.run();
+            answer(&shared.lock(), &outbox, reply, answered);
+        }
+    });
+    if let Err(error) = started {
+        let reply = Reply::refused(format!(
+            "the daemon could not start a thread to restart the agent ({error}), so nothing was \
+             done"
+        ));
+        answer(&shared.lock(), &outbox, reply, answered);
+    }
 }
 
 /// Queues the answer to a request. Called with the session locked, after the request's events

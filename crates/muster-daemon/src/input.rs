@@ -54,6 +54,8 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         };
         if io.queue(input) {
             stalled.retain(|pane| *pane != event.pane);
+        } else if io.discards().is_restarting() {
+            log::debug("daemon.input.restarting", fields! { "pane" => event.pane });
         } else if !stalled.contains(&event.pane) {
             log::warn(
                 "daemon.input.dropped",

@@ -245,6 +245,8 @@ message PaneRequest {
     Compact compact = 11;
     // Since 1.5.
     Quiet quiet = 12;
+    // Since 1.6.
+    Restart restart = 13;
   }
 
   // Sets whether the pane is quiet: whether a view raises anything for the person about it.
@@ -280,6 +282,21 @@ message PaneRequest {
     // run, so an agent compacted mid-task carries on. One line. Absent or blank: none, and the
     // agent waits at its prompt as before. A compaction given up drops its prompt with it.
     optional string then = 3;
+  }
+
+  // Restarts the pane's agent where it runs, in the session it reported: empties what waits for
+  // it to read, in the daemon and in the terminal, ends its process group (SIGTERM, then SIGKILL
+  // after a grace), waits for the pane's shell to hold the terminal, and types the session's
+  // resume there, the command a daemon restart would run (`Pane.resume`). Typed input is refused
+  // meanwhile. Answered once the resume is typed, which takes seconds, and DONE carries
+  // `Restarted`. REFUSED, saying why, when the pane's agent has reported no session, its
+  // manifest names no resume, it is the pane's own process, `env` names a variable that cannot be
+  // set, or a restart is already under way; REFUSED too when it stopped short, saying where it
+  // left the pane and what resumes the session.
+  message Restart {
+    string pane = 1;
+    // Variables set for the resumed agent alone, typed ahead of its resume as `NAME=value`.
+    map<string, string> env = 2;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -999,7 +1016,19 @@ message Answer {
     LogFollowed followed = 12;
     MsgAnswer msg = 13;
     Grids grids = 14;
+    // Since 1.6.
+    Restarted restarted = 15;
   }
+}
+
+// What a restart did, on its DONE.
+message Restarted {
+  // The program that was ended: its process group's leader.
+  string program = 1;
+  // It was killed, having not ended when asked to.
+  bool killed = 2;
+  // The line typed at the pane's shell.
+  string typed = 3;
 }
 
 // Every pane's size, by the pane's name.

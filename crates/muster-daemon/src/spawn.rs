@@ -33,6 +33,11 @@ pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
 pub(crate) const DAEMON: &str = "MUSTER_DAEMON";
 pub(crate) const DAEMON_SOCKET: &str = "MUSTER_DAEMON_SOCKET";
 
+/// Whether `name` is one of the variables the daemon sets on every pane itself.
+pub(crate) fn is_reserved(name: &str) -> bool {
+    [PANE_NAME, PANE_CALLED, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name)
+}
+
 /// How a pane's programs reach the daemon that owns it.
 #[derive(Debug, Clone)]
 pub(crate) struct Reachable {
@@ -157,6 +162,19 @@ enum Language {
 pub(crate) fn command_line(shell: &str, argv: &[String]) -> String {
     let language = Language::of(shell);
     argv.iter().map(|word| language.quote(word)).collect::<Vec<_>>().join(" ")
+}
+
+/// `command` with `variables` set for it alone, as `NAME=value` words ahead of it, which sh,
+/// bash, zsh and fish (since 3.1) all read that way. Each name is a variable's name, which needs
+/// no quoting; each value is quoted for the shell at `shell`.
+pub(crate) fn with_variables(shell: &str, variables: &[(&str, &str)], command: &str) -> String {
+    let language = Language::of(shell);
+    variables
+        .iter()
+        .map(|(name, value)| format!("{name}={}", language.quote(value)))
+        .chain(std::iter::once(command.to_string()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 impl Language {
@@ -308,7 +326,7 @@ pub(crate) fn environment(
     let mut requested: Vec<_> = requested.iter().collect();
     requested.sort();
     for (name, value) in requested {
-        if ![PANE_NAME, PANE_CALLED, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name.as_str()) {
+        if !is_reserved(name) {
             put(&mut environment, name, value);
         }
     }

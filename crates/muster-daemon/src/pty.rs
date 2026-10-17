@@ -172,20 +172,7 @@ pub(crate) struct Queued {
 /// Opened and closed each time, never kept: the reader learns a pane has ended from the master
 /// reading EOF, which comes only once every descriptor of the slave is closed.
 pub(crate) fn queued(master: BorrowedFd<'_>) -> io::Result<Queued> {
-    let name = slave_name(master)?;
-    // SAFETY: `name` is a NUL-terminated path. O_NOCTTY keeps the terminal from becoming this
-    // process's controlling terminal; O_NONBLOCK keeps a slow open from holding the reader.
-    let fd = unsafe {
-        libc::open(
-            name.as_ptr(),
-            libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK | libc::O_CLOEXEC,
-        )
-    };
-    if fd == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: open succeeded, so this function owns the descriptor, and closes it on return.
-    let slave = unsafe { OwnedFd::from_raw_fd(fd) };
+    let slave = open_slave(master)?;
     let mut bytes: libc::c_int = 0;
     // SAFETY: FIONREAD writes one int, which outlives the call. `as _` as for TIOCSCTTY.
     #[allow(clippy::cast_lossless)]
@@ -204,6 +191,35 @@ pub(crate) fn queued(master: BorrowedFd<'_>) -> io::Result<Queued> {
         bytes: u32::try_from(bytes).unwrap_or(0),
         canonical: modes.c_lflag & libc::ICANON != 0,
     })
+}
+
+/// Throws away what the pane's program has not yet read. Only the slave can: flushing the
+/// master's input would throw away the program's output instead.
+pub(crate) fn flush_input(master: BorrowedFd<'_>) -> io::Result<()> {
+    let slave = open_slave(master)?;
+    // SAFETY: tcflush only changes the terminal's queue.
+    if unsafe { libc::tcflush(slave.as_raw_fd(), libc::TCIFLUSH) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// The terminal's slave side, opened for a moment ([`queued`] says why never for longer).
+fn open_slave(master: BorrowedFd<'_>) -> io::Result<OwnedFd> {
+    let name = slave_name(master)?;
+    // SAFETY: `name` is a NUL-terminated path. O_NOCTTY keeps the terminal from becoming this
+    // process's controlling terminal; O_NONBLOCK keeps a slow open from holding the reader.
+    let fd = unsafe {
+        libc::open(
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if fd == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: open succeeded, so the caller owns the descriptor.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 #[cfg(target_os = "linux")]
@@ -261,6 +277,14 @@ pub(crate) fn hang_up(group: i32) {
 pub(crate) fn group_exists(group: i32) -> bool {
     // SAFETY: killpg with signal 0 only asks whether the group has a process to signal.
     unsafe { libc::killpg(group, 0) == 0 }
+}
+
+/// Asks a process group to end, as `kill` does by default.
+pub(crate) fn terminate_group(group: i32) {
+    // SAFETY: killpg with a positive group id signals that group and nothing else.
+    unsafe {
+        libc::killpg(group, libc::SIGTERM);
+    }
 }
 
 /// Kills what is left of a process group.
@@ -326,4 +350,28 @@ pub(crate) fn shell(
     environment: &[(std::ffi::OsString, std::ffi::OsString)],
 ) -> String {
     configured.map_or_else(|| default_shell(environment), str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::os::fd::AsFd;
+
+    use super::*;
+
+    #[test]
+    fn a_flush_leaves_nothing_for_the_program_to_read() {
+        let (master, _slave) = open(Grid::FALLBACK).expect("a terminal");
+        std::fs::File::from(master.try_clone().expect("a copy"))
+            .write_all(b"typed\n")
+            .expect("written");
+        let waiting = || queued(master.as_fd()).expect("readable").bytes;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while waiting() == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(waiting(), 6);
+        flush_input(master.as_fd()).expect("flushed");
+        assert_eq!(waiting(), 0);
+    }
 }
