@@ -101,6 +101,10 @@ PROTO_STAMP = "Sources/MusterMac/Generated/.proto.sha256"
 // target/, so each checkout has its own and nothing commits them.
 GATE_RUST_LOG = "target/gate/rust-tests.log"
 GATE_LOAD = "target/gate/load.txt"
+// When each step of this run began, for the table every run ends with. A file rather than a
+// variable, so a red run's timing outlives it beside the suite's log.
+GATE_STEPS = "target/gate/steps.txt"
+RUN_STARTED = now().epoch.millis
 
 // Every command captured here names its targets `stdout`, `stderr` and `code`, and never
 // anything else - not even `_`.
@@ -121,6 +125,50 @@ GATE_LOAD = "target/gate/load.txt"
 
 fn announce(name):
     print(bold("\n▸ {name}"))
+    mark(name)
+
+// Notes that `name` began now. A part of a step is named "<step>: <part>" and is reported under
+// it. Nothing here can fail a run: a file that cannot be written costs only the timing.
+fn mark(name):
+    line = "{now().epoch.millis}\t{name}\n"
+    // Made again here because --clean deletes target/ part way through a run.
+    write_file(GATE_STEPS, line, append=true) catch:
+        quiet $`mkdir -p target/gate` catch:
+            pass
+        write_file(GATE_STEPS, line, append=true) catch:
+            pass
+
+// How long each step took, off the marks: a step lasts until the next one begins and the last
+// until now, and a part until the next mark of either kind. The total is from RUN_STARTED.
+// Nothing recorded each step's time before this, so a gate's ten minutes could only be divided
+// by subtraction.
+fn report_steps():
+    read = read_file(GATE_STEPS) catch:
+        return
+    marks = []
+    for line in read.content.split_lines():
+        fields = line.split("\t")
+        if len(fields) == 2:
+            marks += [[parse_int(fields[0]), fields[1]]]
+    if len(marks) == 0:
+        return
+    ended = now().epoch.millis
+    print(bold("\n▸ time"))
+    for step in marks with loop:
+        part = is_part(step[1])
+        end = ended
+        for later in marks[loop.idx + 1:]:
+            if part or not is_part(later[1]):
+                end = later[0]
+                break
+        seconds = (end - step[0]) / 1000.0
+        label = part ? "  {step[1].split(": ")[1]}" : step[1]
+        print(dim("{seconds:>7.1}s  {label}"))
+    total = (ended - RUN_STARTED) / 1000.0
+    print("{total:>7.1}s  total")
+
+fn is_part(name):
+    return matches(name, ": ", partial=true)
 
 // What the machine is doing, sampled once and said out loud at the top of every run.
 //
@@ -211,6 +259,7 @@ fn report_machine(cores, fast, load1, load5, load15):
 // and learns nothing either way (a_2LTQZhuFV). The load is the highest the run saw: sampled at
 // the start and every five seconds through the Rust suite.
 fn explain_red_suite(suite, fast, start_load):
+    report_steps()
     if suite == "Rust":
         stdout, stderr, code = quiet $`python3 tools/failed-tests.py {GATE_RUST_LOG}` catch:
             stdout = ""
@@ -1619,6 +1668,10 @@ if build or lint or perf or linux or latency:
 // a narrowed flag alike - opens with what the machine was doing while it happened.
 cores, fast_cores, load1, load5, load15 = machine()
 report_machine(cores, fast_cores, load1, load5, load15)
+quiet $`mkdir -p target/gate` catch:
+    pass
+write_file(GATE_STEPS, "") catch:
+    pass
 
 if doctor:
     announce("doctor")
@@ -1745,6 +1798,7 @@ if test:
     // signal here.
     // Both suites get the same treatment, because adding a second language doubles the
     // places a suite can quietly stop running.
+    mark("test: Rust discovery")
     stdout, stderr, code = $`cargo test --workspace -- --list` catch:
         print_err(red("Rust test discovery failed, so that suite never ran."))
         print_err("Until it does, nothing below has been verified. Compiler output:")
@@ -1775,11 +1829,13 @@ if test:
     // Through tee so it streams and is kept for explain_red_suite, with pipefail so the exit code
     // is cargo's rather than tee's. The sampler beside it is this command's own child, ended by
     // its pid on any way out, a gate killed with TERM included, so none outlives the run. --no-fail-fast so a red run names every failing test, not the first binary's.
+    mark("test: Rust suite")
     $`mkdir -p target/gate`
     $`( while :; do sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg; sleep 5; done ) > {GATE_LOAD} 2>/dev/null & sampler=$!; trap 'kill $sampler 2>/dev/null' EXIT; trap 'exit 143' HUP TERM; set -o pipefail; cargo test --workspace --no-fail-fast 2>&1 | tee {GATE_RUST_LOG}; ended=$?; exit $ended` catch:
         explain_red_suite("Rust", fast_cores, load1)
         exit(1)
 
+    mark("test: Swift")
     stdout, stderr, code = $`swift test list` catch:
         if matches(stderr, "no tests found", partial=true):
             fail_empty_suite("Swift", "Try: swift test list")
@@ -1945,4 +2001,5 @@ if latency:
         exit(1)
     print(stdout.trim())
 
+report_steps()
 print(green("\n✓ ok"))
