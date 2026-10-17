@@ -341,8 +341,6 @@ pub(crate) struct Orphaned {
     pub(crate) called: String,
     /// What each helper is called.
     pub(crate) helpers: Vec<String>,
-    /// What a command names the first helper by: its word, which holds no space, or its id.
-    pub(crate) first: String,
 }
 
 /// Work on a pane's terminal that a request caused, done once the session is unlocked.
@@ -2262,23 +2260,22 @@ impl Session {
     /// person again, and keeps the maker for the person to be told of (MIP-7, section 6): they
     /// go on running, and nobody is left to hear from them.
     fn orphaned(&mut self, maker: &proto::Pane) {
-        let (mut helpers, mut first) = (Vec::new(), None);
+        let mut helpers = Vec::new();
         for index in 0..self.panes.len() {
             let record = &mut self.panes[index].record;
             if record.maker.as_deref() != Some(maker.pane.as_str()) {
                 continue;
             }
             helpers.push(record.name().unwrap_or(&record.pane).to_string());
-            first.get_or_insert_with(|| {
-                record.word.clone().filter(|word| !word.is_empty()).unwrap_or(record.pane.clone())
-            });
             if record.quiet {
                 record.quiet = false;
                 let record = record.clone();
                 self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
             }
         }
-        let Some(first) = first else { return };
+        if helpers.is_empty() {
+            return;
+        }
         log::info(
             "daemon.maker.closed",
             fields! { "maker" => maker.pane, "helpers" => helpers.join(",") },
@@ -2287,7 +2284,6 @@ impl Session {
             maker: maker.pane.clone(),
             called: maker.name().unwrap_or(&maker.pane).to_string(),
             helpers,
-            first,
         });
     }
 

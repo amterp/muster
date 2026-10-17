@@ -25,9 +25,10 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
-    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent, SendToPane, ShowPane,
-    SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
+    HideHelpers, HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow,
+    ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent,
+    SendToPane, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes,
+    ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -632,21 +633,32 @@ enum Doing {
         env: Vec<(String, String)>,
     },
 
-    /// Take a pane out of every window, its agent still running, into the hidden list
+    /// Take a pane, or a pane's helpers, out of every window, its agent still running
     Hide {
         /// The pane to hide, or the one this is running in
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
+
+        /// Hide this pane's helpers instead, whose tab goes back whole; a helper moved into a
+        /// tab with anything else in it stays
+        #[arg(long, value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        helpers_of: Option<String>,
     },
 
-    /// Bring a hidden pane back, into a tab of its own in this window
+    /// Bring a hidden pane back, into a tab of its own in this window, or a pane's helpers together
+    #[command(group = ArgGroup::new("shown").required(true))]
     Show {
         /// The pane to bring back. `muster window` lists the hidden ones
         //
         // Required, and $MUSTER_PANE is not read: the pane this runs in is the one somebody is
         // looking at, so it is not the hidden one.
-        #[arg(long, value_name = "REF", value_parser = reference, required = true)]
-        pane: String,
+        #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+
+        /// Bring this pane's hidden helpers back instead, together in the tab they share, after
+        /// the window's others and arranged as they were
+        #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
+        helpers_of: Option<String>,
 
         /// Move the window's keyboard to it, bringing its tab on screen
         #[arg(long)]
@@ -1236,15 +1248,30 @@ fn pane(
                 ..SplitPane::default()
             }))
         }
-        Doing::Hide { pane } => send(request::Payload::HidePane(HidePane {
+        Doing::Hide { helpers_of: Some(maker), .. } => {
+            send(request::Payload::HideHelpers(HideHelpers {
+                pane_id: maker.clone(),
+                ..HideHelpers::default()
+            }))
+        }
+        Doing::Hide { pane, helpers_of: None } => send(request::Payload::HidePane(HidePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..HidePane::default()
         })),
-        Doing::Show { pane, focus } => send(request::Payload::ShowPane(ShowPane {
-            pane_id: pane.clone(),
-            take_focus: *focus,
-            ..ShowPane::default()
-        })),
+        Doing::Show { helpers_of: Some(maker), focus, .. } => {
+            send(request::Payload::ShowHelpers(ShowHelpers {
+                pane_id: maker.clone(),
+                take_focus: *focus,
+                ..ShowHelpers::default()
+            }))
+        }
+        Doing::Show { pane, focus, helpers_of: None } => {
+            send(request::Payload::ShowPane(ShowPane {
+                pane_id: pane.clone().unwrap_or_default(),
+                take_focus: *focus,
+                ..ShowPane::default()
+            }))
+        }
         Doing::Quiet { pane, off } => send(request::Payload::QuietPane(QuietPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             quiet: Some(!*off),

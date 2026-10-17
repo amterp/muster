@@ -320,6 +320,15 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("take_focus", show.take_focus.then_some(json!(true))),
             ])
         }),
+        request::Payload::ShowHelpers(show) => json!({
+            "show_helpers": fields([
+                ("pane_id", said(&show.pane_id)),
+                ("take_focus", show.take_focus.then_some(json!(true))),
+            ])
+        }),
+        request::Payload::HideHelpers(hide) => json!({
+            "hide_helpers": fields([("pane_id", said(&hide.pane_id))])
+        }),
         request::Payload::QuietPane(quiet) => json!({
             "quiet_pane": fields([
                 ("pane_id", said(&quiet.pane_id)),

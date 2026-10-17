@@ -8,9 +8,9 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HidePane, OpenWindow, QuietPane,
-    ReadWindow, Request, Response, RosterChanged, ShowPane, SplitPane, Startup, event, request,
-    response,
+    AttentionChanged, ClosePane, Event, FocusHistory, FocusPane, HideHelpers, HidePane, OpenWindow,
+    QuietPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged, ShowHelpers,
+    ShowPane, SplitPane, Startup, event, request, response,
 };
 use muster_daemon_proto::{Side, input_event};
 use muster_harness::requests::{beside, create, in_new_tab, make, snapshot, until_text};
@@ -300,6 +300,118 @@ fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
             assert!(failure.reason.contains("p9nobody"), "{}", failure.reason);
         }
         other => panic!("a helper of a pane nobody holds answered {other:?}"),
+    }
+}
+
+/// A maker's hidden helpers are listed under it, come forward together into one tab after the
+/// window's others, arranged as they were and named after the maker as it is called now, and go
+/// back together. A tab somebody renamed keeps its name, and one holding a pane that is not a
+/// helper stays on screen.
+#[test]
+fn a_makers_helpers_come_forward_together_and_go_back() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    let helper = |pane: &str, maker: &str| {
+        let made = answer(request::Payload::SplitPane(SplitPane {
+            pane_id: pane.to_string(),
+            side: "right".to_string(),
+            hidden: !maker.is_empty(),
+            maker: maker.to_string(),
+            ..SplitPane::default()
+        }));
+        match made.payload {
+            Some(response::Payload::Made(made)) => made.pane_id,
+            other => panic!("making a pane answered {other:?}"),
+        }
+    };
+    let (first, second) = (helper("p1", "p1"), helper("p1", "p1"));
+    until(
+        "both helpers to be listed under p1",
+        || {
+            hidden() == [first.clone(), second.clone()]
+                && roster().hidden[0].panes.iter().all(|pane| pane.under == "p1")
+        },
+        || format!("hidden: {:?}", roster().hidden),
+    );
+    assert_ok(&answer(request::Payload::RenamePane(RenamePane {
+        pane_id: "p1".to_string(),
+        name: "integrator".to_string(),
+        ..RenamePane::default()
+    })));
+    let show = || {
+        answer(request::Payload::ShowHelpers(ShowHelpers {
+            pane_id: "integrator".to_string(),
+            ..ShowHelpers::default()
+        }))
+    };
+    let hide = || {
+        answer(request::Payload::HideHelpers(HideHelpers {
+            pane_id: "p1".to_string(),
+            ..HideHelpers::default()
+        }))
+    };
+    let last_tab = || roster().tabs.last().cloned().unwrap_or_default();
+
+    assert_ok(&show());
+    until(
+        "the helpers to come forward as one tab after the window's others",
+        || {
+            hidden().is_empty()
+                && tabs() == 2
+                && rows_in_tab_of(&first) == [first.clone(), second.clone()]
+                && last_tab().label == "integrator's helpers"
+        },
+        || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
+    );
+    assert_eq!(rows()[..2], ["p1".to_string(), "p2".to_string()], "the window's own tab first");
+
+    assert_ok(&hide());
+    until(
+        "the helpers to go back together",
+        || tabs() == 1 && hidden() == [first.clone(), second.clone()],
+        || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
+    );
+    assert_ok(&hide());
+
+    // A tab somebody renamed keeps the name they gave it.
+    assert_ok(&show());
+    until("the helpers to come forward again", || tabs() == 2, || format!("{:?}", roster().tabs));
+    assert_ok(&answer(request::Payload::RenameTab(RenameTab {
+        tab_id: last_tab().tab_id,
+        name: "mine".to_string(),
+        ..RenameTab::default()
+    })));
+    until("the rename to land", || last_tab().label == "mine", || format!("{:?}", last_tab()));
+    assert_ok(&hide());
+    until("the helpers to go back", || tabs() == 1, || format!("{:?}", roster().tabs));
+    assert_ok(&show());
+    until("the helpers to come forward named as they were", || tabs() == 2, || String::new());
+    assert_eq!(last_tab().label, "mine");
+
+    // With a pane in it that is nobody's helper, the tab is somebody's own, and stays.
+    let own = helper(&first, "");
+    until(
+        "the pane to join the helpers' tab",
+        || rows_in_tab_of(&own).len() == 3,
+        || format!("{:?}", roster().tabs),
+    );
+    assert_ok(&hide());
+    assert_eq!(tabs(), 2, "a tab holding a pane that is not a helper was hidden");
+
+    let refused = answer(request::Payload::ShowHelpers(ShowHelpers {
+        pane_id: "p2".to_string(),
+        ..ShowHelpers::default()
+    }));
+    match refused.payload {
+        Some(response::Payload::Failure(failure)) => {
+            assert!(
+                failure.reason.starts_with("no machine this window follows holds a helper of p2"),
+                "{}",
+                failure.reason
+            );
+        }
+        other => panic!("showing the helpers of a pane with none answered {other:?}"),
     }
 }
 

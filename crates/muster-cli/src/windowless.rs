@@ -52,6 +52,8 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::RestartAgent(_)
                     | request::Payload::HidePane(_)
                     | request::Payload::ShowPane(_)
+                    | request::Payload::ShowHelpers(_)
+                    | request::Payload::HideHelpers(_)
                     | request::Payload::QuietPane(_)
                     | request::Payload::RenamePane(_)
                     | request::Payload::ClosePane(_)
@@ -121,6 +123,16 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::HidePane(hide)) => {
             let pane = named(&hide.pane_id, "hidden")?;
             respond(move_hiding(&socket, pane, true)?)
+        }
+        // With no window there is no keyboard to move, so `take_focus` asks for nothing here: the
+        // helpers are shown, and join the next window that opens.
+        Some(request::Payload::ShowHelpers(show)) => {
+            let maker = named(&show.pane_id, "shown")?;
+            respond(helpers_hidden(&socket, maker, false)?)
+        }
+        Some(request::Payload::HideHelpers(hide)) => {
+            let maker = named(&hide.pane_id, "hidden")?;
+            respond(helpers_hidden(&socket, maker, true)?)
         }
         // With no window there is no keyboard to move, so `take_focus` asks for nothing here: the
         // pane is shown, and joins the next window that opens.
@@ -530,6 +542,73 @@ fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trou
         if hidden { "hide a pane" } else { "show a hidden pane" },
     )?;
     Ok(changed(answer))
+}
+
+/// Shows a maker's hidden helpers together, or with `hidden` hides them again: a window's Show
+/// Helpers and Hide Helpers, against the daemon's own tabs (`muster_seam::session::show_helpers`
+/// says why whole tabs, and which).
+fn helpers_hidden(socket: &Path, maker: &str, hidden: bool) -> Result<Response, Trouble> {
+    let held = snapshot(socket)?;
+    let helper = |pane: &str| {
+        held.panes.iter().any(|held| held.pane == pane && held.maker.as_deref() == Some(maker))
+    };
+    let named = held
+        .panes
+        .iter()
+        .find(|held| held.pane == maker)
+        .and_then(daemon_proto::Pane::name)
+        .map(muster_core::making::helpers_tab);
+    let mut any = false;
+    let mut tabs = Vec::new();
+    for tab in &held.tabs {
+        let mut panes = Vec::new();
+        panes_of(tab.root.as_ref(), &mut panes);
+        if !panes.iter().any(|pane| helper(pane)) {
+            continue;
+        }
+        any = true;
+        let wanted = if hidden { panes.iter().all(|pane| helper(pane)) } else { true };
+        if tab.hidden != hidden && wanted {
+            tabs.push(tab);
+        }
+    }
+    if !any {
+        return Ok(failure(format!(
+            "this machine's daemon holds no helper of {maker}, so nothing was {}. `muster window` \
+             lists each helper under the pane that made it.",
+            if hidden { "hidden" } else { "shown" }
+        )));
+    }
+    for tab in tabs {
+        let current = tab.label.as_ref();
+        let label = named.as_ref().filter(|_| !hidden).and_then(|name| {
+            let renamed = current.is_some_and(|label| {
+                label.generation > muster_core::making::HELPERS_TAB_GENERATION
+                    || label.text.as_ref() == Some(name)
+            });
+            (!renamed).then(|| daemon_proto::Label {
+                text: Some(name.clone()),
+                generation: muster_core::making::HELPERS_TAB_GENERATION,
+            })
+        });
+        let answer = asked_of_one_since(
+            socket,
+            daemon_proto::request::Service::Tab(daemon_proto::TabRequest {
+                request: Some(daemon_proto::tab_request::Request::SetHidden(
+                    daemon_proto::tab_request::SetHidden { tab: tab.tab.clone(), hidden, label },
+                )),
+            }),
+            daemon_proto::version::HELPERS,
+            if hidden { "hide a pane's helpers" } else { "show a pane's helpers" },
+        )?;
+        if !matches!(
+            answer.outcome(),
+            daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo
+        ) {
+            return Ok(changed(answer));
+        }
+    }
+    Ok(ok())
 }
 
 /// Makes a pane quiet or lets it notify again: `quiet`, or the other of what it is now.

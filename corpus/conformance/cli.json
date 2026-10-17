@@ -2878,6 +2878,83 @@
       }
     },
     {
+      "name": "a pane's helpers are shown together, and take the keyboard only when asked",
+      "why": "An agent's helpers share one hidden tab, and somebody who wants to watch them wants all of them, arranged as their maker left them (MIP-7, section 5). The maker is named by id or name, and a maker that has closed by the id its helpers still carry.",
+      "given": {
+        "argv": [
+          "pane",
+          "show",
+          "--helpers-of",
+          "integrator",
+          "--focus"
+        ]
+      },
+      "expect": {
+        "request": {
+          "show_helpers": {
+            "pane_id": "integrator",
+            "take_focus": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane's helpers go back together",
+      "why": "Hiding them again is one request, as showing them was, rather than one per helper.",
+      "given": {
+        "argv": [
+          "pane",
+          "hide",
+          "--helpers-of",
+          "integrator"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "hide_helpers": {
+            "pane_id": "integrator"
+          }
+        }
+      }
+    },
+    {
+      "name": "showing a pane and its helpers at once is refused",
+      "why": "One verb brings back one pane or one maker's helpers; asked for both, it would have to pick which the person meant.",
+      "given": {
+        "argv": [
+          "pane",
+          "show",
+          "--pane",
+          "p1w3r07bsd",
+          "--helpers-of",
+          "integrator"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "hiding a pane and its helpers at once is refused",
+      "why": "As for showing: --pane names the pane to hide, and --helpers-of the maker whose helpers go.",
+      "given": {
+        "argv": [
+          "pane",
+          "hide",
+          "--pane",
+          "p1w3r07bsd",
+          "--helpers-of",
+          "integrator"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "quiet says what to make the pane, so a script need not know what it was",
       "why": "A toggle is what a menu item means, and a script run twice would undo itself with one. So the CLI always says which: quiet, or with --off not.",
       "given": {

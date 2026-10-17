@@ -96,6 +96,9 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::HidePane(hide) => pane(&hide.pane_id),
         // Held by no window while it is hidden, so it is shown in whichever window asked.
         Payload::ShowPane(show) => pane(&show.pane_id),
+        // The window holding the maker, whose helpers come forward beside it.
+        Payload::ShowHelpers(show) => pane(&show.pane_id),
+        Payload::HideHelpers(hide) => pane(&hide.pane_id),
         Payload::QuietPane(quiet) => pane(&quiet.pane_id),
         Payload::SendToPane(send) => pane(&send.pane_id),
         Payload::ReattachPane(reattach) => pane(&reattach.pane_id),
@@ -127,6 +130,8 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::RestartAgent(restart) => vec![&mut restart.pane_id],
         Payload::HidePane(hide) => vec![&mut hide.pane_id],
         Payload::ShowPane(show) => vec![&mut show.pane_id],
+        Payload::ShowHelpers(show) => vec![&mut show.pane_id],
+        Payload::HideHelpers(hide) => vec![&mut hide.pane_id],
         Payload::QuietPane(quiet) => vec![&mut quiet.pane_id],
         Payload::SendToPane(send) => vec![&mut send.pane_id],
         Payload::ReadPane(read) => vec![&mut read.pane_id],

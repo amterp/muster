@@ -297,16 +297,18 @@ fn helpers(
 }
 
 /// What the person is told of a maker that closed with its helpers still running.
+///
+/// The command names the maker by its id, which its helpers still carry: its name went with it.
 fn orphaned_body(orphaned: &Orphaned) -> String {
-    let (maker, first) = (&orphaned.called, &orphaned.first);
+    let (maker, id) = (&orphaned.called, &orphaned.maker);
     match orphaned.helpers.as_slice() {
         [only] => format!(
             "{maker} closed; its helper {only} is still running, and is no longer quiet. `muster \
-             pane show --pane {first}` brings it forward."
+             pane show --helpers-of {id}` brings it forward."
         ),
         helpers => format!(
             "{maker} closed; {count} of its helpers are still running, and are no longer quiet: \
-             {names}. `muster pane show --pane {first}` brings one forward.",
+             {names}. `muster pane show --helpers-of {id}` brings them forward.",
             count = helpers.len(),
             names = helpers.join(", "),
         ),
@@ -477,19 +479,18 @@ mod tests {
         assert!(makers.judge(&[reported], &called, 40_000).is_empty());
     }
 
-    /// The person is told every helper a closed maker left running, and how to bring one back.
+    /// The person is told every helper a closed maker left running, and how to bring them back.
     #[test]
     fn a_closed_maker_is_said_with_every_helper_it_left_running() {
         let orphaned = |helpers: &[&str]| Orphaned {
             maker: "p1".to_string(),
             called: "🤖 integrator".to_string(),
             helpers: helpers.iter().map(|helper| (*helper).to_string()).collect(),
-            first: "otter".to_string(),
         };
         assert_eq!(
             orphaned_body(&orphaned(&["🤖 1", "maple", "cobalt"])),
             "🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: \
-             🤖 1, maple, cobalt. `muster pane show --pane otter` brings one forward."
+             🤖 1, maple, cobalt. `muster pane show --helpers-of p1` brings them forward."
         );
         assert!(orphaned_body(&orphaned(&["🤖 1"])).starts_with(
             "🤖 integrator closed; its helper 🤖 1 is still running, and is no longer quiet."

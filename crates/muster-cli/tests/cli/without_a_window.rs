@@ -431,7 +431,7 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
 }
 
 /// A pane's helpers are made with no window as with one: hidden, in one tab named for their maker,
-/// and listed as its own.
+/// listed as its own, and shown and hidden together.
 fn helpers_are_made_by_the_daemon(here: &Here) {
     let mut control = here.daemon.connect();
     let first = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
@@ -458,6 +458,18 @@ fn helpers_are_made_by_the_daemon(here: &Here) {
         .map(|pane| &pane["maker"])
         .collect();
     assert_eq!(makers, [&json!("p1"), &json!("p1")], "{window}");
+
+    // Shown together and hidden again, the tab whole.
+    let helpers_tab = |control: &mut _| {
+        snapshot(control).tabs.into_iter().find(|tab| tab_shape_holds(tab, &first)).expect("held")
+    };
+    ok(&here.muster(&["pane", "show", "--helpers-of", "p1"]));
+    let shown = helpers_tab(&mut control);
+    assert!(!shown.hidden && tab_shape_holds(&shown, &second), "{shown:?}");
+    ok(&here.muster(&["pane", "hide", "--helpers-of", "p1"]));
+    assert!(helpers_tab(&mut control).hidden);
+    let refused = refused_with(&here.muster(&["pane", "show", "--helpers-of", "p2"]), 1);
+    assert!(refused.contains("no helper of p2"), "{refused}");
 
     let refused = refused_with(&here.muster(&["pane", "new", "--helper-of", "p9nobody"]), 1);
     assert!(refused.contains("no pane called p9nobody"), "{refused}");

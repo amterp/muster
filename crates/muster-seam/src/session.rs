@@ -33,6 +33,7 @@ use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Grid, Maker, MoveDestination, Outcome, Refusal, Side,
 };
+use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restart, Restored};
@@ -3429,6 +3430,134 @@ pub(crate) fn show_pane(
         move_pane_to_new_tab(window, daemon, pane, None)?;
     }
     if take_focus { focus(window, daemon, pane) } else { Ok(()) }
+}
+
+/// A tab on one machine that holds a helper of some maker (MIP-7).
+struct HelpersTab {
+    daemon: DaemonId,
+    tab: TabId,
+    hidden: bool,
+    /// Whether every pane in it is that maker's helper.
+    only_helpers: bool,
+    /// Its first pane, for the keyboard to land on.
+    first: Option<PaneId>,
+    label: Option<String>,
+    generation: u64,
+}
+
+/// Every tab holding a helper of `maker`, on every machine this window follows.
+fn helpers_tabs(maker: &PaneId) -> Vec<HelpersTab> {
+    let session = poison::lock(&SESSION, "session");
+    let mut found = Vec::new();
+    for (daemon, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        for tab in mirror.tabs() {
+            let panes: Vec<_> = mirror.panes().filter(|pane| pane.tab == tab.id).collect();
+            let helper =
+                |pane: &&muster_core::mirror::backend::Pane| pane.maker.as_ref() == Some(maker);
+            if !panes.iter().any(helper) {
+                continue;
+            }
+            found.push(HelpersTab {
+                daemon: daemon.clone(),
+                tab: tab.id.clone(),
+                hidden: tab.hidden,
+                only_helpers: panes.iter().all(helper),
+                first: tab.root.panes().first().map(|pane| (*pane).clone()),
+                label: tab.label.clone(),
+                generation: tab.generation,
+            });
+        }
+    }
+    found
+}
+
+/// Brings every hidden tab holding a helper of `maker` into this window, after its other tabs,
+/// with its panes arranged as they were (MIP-7, section 5), and puts the keyboard on the first
+/// helper when asked.
+///
+/// A helpers' tab only Muster has named is renamed after the maker as it is called now, so a tab
+/// made for `otter` comes forward as `🤖 integrator's helpers` once otter has been named; one a
+/// person renamed keeps their name. Whole tabs rather than one pane each, so that a helper hidden
+/// by hand comes forward in its own tab and the shared one keeps its shape.
+pub(crate) fn show_helpers(
+    window: WindowId,
+    maker: &PaneId,
+    take_focus: bool,
+) -> Result<(), Refusal> {
+    let tabs = helpers_tabs(maker);
+    if tabs.is_empty() {
+        return Err(Refusal::NotThere(format!(
+            "no machine this window follows holds a helper of {maker}, so nothing was shown. \
+             `muster window` lists each helper under the pane that made it."
+        )));
+    }
+    let named = self::maker(maker).map(|maker| making::helpers_tab(&maker.name));
+    for part in tabs.iter().filter(|part| part.hidden) {
+        {
+            let mut session = poison::lock(&SESSION, "session");
+            let me = session.windows[window].name.clone();
+            session.holding.give(&part.tab, &me);
+            for held in session.windows.values_mut() {
+                if held.name == me {
+                    held.composition.hold(part.tab.clone());
+                } else {
+                    held.composition.let_go(&part.tab);
+                }
+            }
+        }
+        let name = named.clone().filter(|name| {
+            part.generation <= making::HELPERS_TAB_GENERATION && part.label.as_ref() != Some(name)
+        });
+        let intent = BackendIntent::SetTabHidden { tab: part.tab.clone(), hidden: false, name };
+        submit(window, &part.daemon, &intent, Keyboard::StaysPut)?;
+    }
+    settle_what_the_window_shows(window);
+    let first = tabs.iter().find(|part| part.hidden).or(tabs.first());
+    match first.and_then(|part| Some((&part.daemon, part.first.as_ref()?))) {
+        Some((daemon, pane)) if take_focus => focus(window, daemon, pane),
+        _ => Ok(()),
+    }
+}
+
+/// Sends every tab that holds nothing but helpers of `maker` back out of every window, their
+/// agents still running, and leaves a helper somebody moved into a tab of their own where it is.
+///
+/// Every pane in the tab rather than any, because a tab holding something else is somebody's
+/// own arrangement, and hiding it would take that from them too. A maker with nothing on screen
+/// to hide is answered Ok.
+pub(crate) fn hide_helpers(window: WindowId, maker: &PaneId) -> Result<(), Refusal> {
+    let parts: Vec<HelpersTab> =
+        helpers_tabs(maker).into_iter().filter(|part| !part.hidden && part.only_helpers).collect();
+    let showing: Vec<WindowId> = {
+        let mut session = poison::lock(&SESSION, "session");
+        let showing: Vec<WindowId> = session
+            .windows
+            .opened()
+            .into_iter()
+            .filter(|shown| {
+                parts.iter().any(|part| session.windows[*shown].composition.holds(&part.tab))
+            })
+            .collect();
+        for shown in &showing {
+            session.windows[*shown].hiding = true;
+        }
+        showing
+    };
+    let mut hidden = Ok(());
+    for part in &parts {
+        let intent =
+            BackendIntent::SetTabHidden { tab: part.tab.clone(), hidden: true, name: None };
+        if let Err(refusal) = submit(window, &part.daemon, &intent, Keyboard::StaysPut) {
+            hidden = Err(refusal);
+            break;
+        }
+    }
+    for shown in showing {
+        settle_what_the_window_shows(shown);
+        poison::lock(&SESSION, "session").windows[shown].hiding = false;
+    }
+    hidden
 }
 
 /// Whether the pane is in a tab no window shows.

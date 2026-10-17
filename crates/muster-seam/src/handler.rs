@@ -344,6 +344,8 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::RestartAgent(restart) => restart_agent(window, restart),
         request::Payload::HidePane(hide) => hide_pane(window, &hide),
         request::Payload::ShowPane(show) => show_pane(window, &show),
+        request::Payload::ShowHelpers(show) => show_helpers(window, &show),
+        request::Payload::HideHelpers(hide) => hide_helpers(window, &hide),
         request::Payload::QuietPane(quiet) => quiet_pane(window, &quiet),
         request::Payload::RenameTab(rename) => rename_tab(window, &rename),
         request::Payload::CloseTab(close) => close_tab(window, &close),
@@ -535,6 +537,40 @@ fn hide_pane(window: WindowId, hide: &proto::HidePane) -> Response {
         return nothing_to_act_on(window, &target.daemon);
     };
     placed(session::hide_pane(window, &target.daemon, &pane).map(|()| Response::ok()), &target)
+}
+
+/// Brings a maker's hidden helpers into this window together.
+fn show_helpers(window: WindowId, show: &proto::ShowHelpers) -> Response {
+    let Some(maker) = maker_named(&show.pane_id) else {
+        return nobody_named("shown");
+    };
+    match session::show_helpers(window, &maker, show.take_focus) {
+        Ok(()) => Response::ok(),
+        // Found by the window, before any daemon was asked.
+        Err(Refusal::NotThere(detail)) => Response::failure(detail),
+        Err(refusal) => relayed(Err(refusal)),
+    }
+}
+
+/// Sends a maker's helpers on screen back out of every window.
+fn hide_helpers(window: WindowId, hide: &proto::HideHelpers) -> Response {
+    let Some(maker) = maker_named(&hide.pane_id) else {
+        return nobody_named("hidden");
+    };
+    relayed(session::hide_helpers(window, &maker).map(|()| Response::ok()))
+}
+
+/// The maker a helpers request names: by the id the window resolved its name to, or by the id
+/// it was given for a maker no machine holds any more, whose helpers still carry it.
+fn maker_named(pane_id: &str) -> Option<PaneId> {
+    (!pane_id.is_empty()).then(|| PaneId::new(pane_id))
+}
+
+fn nobody_named(done: &str) -> Response {
+    Response::failure(format!(
+        "a request about a pane's helpers named no pane, so none were {done}. Name the pane that \
+         made them; `muster window` lists each helper under it."
+    ))
 }
 
 /// Brings a hidden pane back into this window, in a tab of its own.

@@ -345,7 +345,7 @@ work. A maker on another machine is not told yet.
 When a maker's pane closes with helpers still open, the person is told once, by `@muster`, in the
 group they share with the maker, made for it when there is none:
 
-    @muster: 🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: 🤖 1, 🤖 2, 🤖 3. `muster pane show --pane otter` brings one forward.
+    @muster: 🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: 🤖 1, 🤖 2, 🤖 3. `muster pane show --helpers-of p1w3r07bsd` brings them forward.
 
 **`who` says the same at any moment**, without waiting the 2 minutes. Under each member, one line
 per group where messages wait on it unread: the oldest, who posted them, and why it has not read

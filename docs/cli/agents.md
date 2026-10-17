@@ -414,18 +414,34 @@ An agent that starts agents for its own work makes each one its helper:
 
 `--helper` makes the new pane a helper of the pane the command runs in, its maker, and the pane's
 daemon keeps that on its record for good, beside hidden and quiet. A helper is made hidden and
-quiet, in its maker's directory, and a maker's hidden helpers share one hidden tab: made with the first of them,
-each next one added as a column as wide as the rest, and named for the maker as it was called
-then, `🤖 integrator's helpers`. `muster window` lists each helper under its maker rather than
-under `hidden`, and `--json` gives every pane a `maker`, so an agent finds its own helpers with
+quiet, in its maker's directory, and a maker's hidden helpers share one hidden tab: made with the
+first of them, each next one added as a column as wide as the rest, and named for the maker as it
+was called then, `🤖 integrator's helpers`. `muster window` lists each helper under its maker
+rather than under `hidden`, and `--json` gives every pane a `maker`, so an agent finds its own
+helpers with
 
     muster window --json | jq -r '[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE) | .pane'
 
 `--shown` splits a helper beside its maker instead, as `pane new` does any pane, and it is still a
-helper. `--notify` lets it notify you as any pane does instead of making it quiet. A hidden helper takes no side and no `--focus`, for the reason `--hidden` takes none.
-`--helper-of <pane>` names another pane as the maker, by name or id, and splits from that pane
-unless `--pane` says otherwise. Outside every pane `--helper` is refused, since there is no pane
-for it to mean.
+helper. `--notify` lets it notify you as any pane does instead of making it quiet. A hidden helper
+takes no side and no `--focus`, for the reason `--hidden` takes none. `--helper-of <pane>` names
+another pane as the maker, by name or id, and splits from that pane unless `--pane` says otherwise.
+Outside every pane `--helper` is refused, since there is no pane for it to mean.
+
+A maker's helpers come forward together and go back together:
+
+    muster pane show --helpers-of integrator
+    muster pane hide --helpers-of integrator
+
+`--helpers-of` takes the maker by name or id. `pane show` brings every hidden tab holding one of
+its helpers into this window, after the others, with the helpers arranged as they were, and the
+keyboard goes to the first of them only with `--focus`. A helpers' tab that only Muster has named
+is named again then, for the maker as it is called now; a tab you renamed keeps your name. `pane
+hide` sends back every tab on screen that holds nothing but the maker's helpers, so a helper you
+moved into a tab beside other panes stays there, and `pane hide --pane` hides it alone. Showing
+helpers already on screen and hiding helpers already hidden change nothing and exit 0; a pane with
+no helpers is refused. A helper shown with `pane show --pane` comes into a tab of its own, as any
+hidden pane does, and stays a helper.
 
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
 stuck, or goes idle without having posted to its maker since it last went to work, and stays so
@@ -436,7 +452,8 @@ report and then goes idle is not reported, nor is one waiting on its own work.
 The relation is to the maker's pane, so an agent resumed in the same pane keeps its helpers. When
 the maker's pane closes, its helpers go on running, hidden, and stop being quiet, since nobody is
 left to hear from them, and you are told once, in a message from `@muster` naming each one and how
-to bring it forward. They stay their maker's helpers.
+to bring them forward: `pane show --helpers-of` with the closed maker's id. They stay their maker's
+helpers.
 
 A helper is a pane started for its maker's own work. An agent you ask to start a peer, one that
 takes part of the work at its own level and answers to you, starts it with plain `muster pane

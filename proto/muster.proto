@@ -95,6 +95,8 @@ message Request {
     UpgradeMuster upgrade_muster = 75;
     RestartAgent restart_agent = 76;
     SetHiddenCollapsed set_hidden_collapsed = 77;
+    ShowHelpers show_helpers = 78;
+    HideHelpers hide_helpers = 79;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -385,6 +387,31 @@ message ShowPane {
   // Whether this window's keyboard goes to it, which brings its tab on screen. What a click on
   // a hidden row means; a script says.
   bool take_focus = 3;
+}
+
+// Brings a pane's hidden helpers into this window together (MIP-7, section 5): every hidden tab
+// holding a helper of it comes back whole, after the window's other tabs, its panes arranged as
+// they were. A helpers' tab nobody but Muster has named is renamed after the pane as it is called
+// now. A pane whose helpers are all on screen is answered Ok; one with none anywhere is refused.
+message ShowHelpers {
+  string daemon_id = 1;
+
+  // The pane that made them, by id or name. Matched against each helper's `maker` on every
+  // machine, so a maker that has closed is named by its id.
+  string pane_id = 2;
+
+  // Whether this window's keyboard goes to the first of them, which brings its tab on screen.
+  bool take_focus = 3;
+}
+
+// Sends a pane's helpers back out of every window, their agents still running: every tab on
+// screen that holds nothing but its helpers is hidden whole. A helper moved into a tab with
+// anything else in it stays where it is. Answered Ok when nothing was on screen to hide.
+message HideHelpers {
+  string daemon_id = 1;
+
+  // The pane that made them, as for ShowHelpers.
+  string pane_id = 2;
 }
 
 // Makes a pane quiet - nothing about it is raised for the person, no banner and no ask, while

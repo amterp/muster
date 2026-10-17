@@ -1462,6 +1462,8 @@ public enum Core {
     case .restartAgent: return "restart_agent"
     case .hidePane: return "hide_pane"
     case .showPane: return "show_pane"
+    case .showHelpers: return "show_helpers"
+    case .hideHelpers: return "hide_helpers"
     case .quietPane: return "quiet_pane"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
