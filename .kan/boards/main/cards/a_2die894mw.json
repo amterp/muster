@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "uncommitted",
+  "column": "in-progress",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -30,17 +30,24 @@
       "body": "2026-10-17: amterp chose \"helper\" (question A), and the file is now docs/mip/0007-helpers.md. His account of the word: an agent another agent starts for its own work and stays coupled to, with Muster setting up the coupling (the maker hears when it needs it, a group for the two) and flags to opt out. An agent the person asks for as a peer, to fork off part of the work at its own level, is not a helper: plain `pane new`, no watching on the maker's behalf, though the two can share a group. Both are in the draft, with the idle case added to section 4. Question B (quiet by default) is still open.",
       "created_at_millis": 1792241568935,
       "id": "c_2jIRczZRW"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: question B settled as (a), hidden and quiet; MIP-7 is Accepted. Building it in stages from today.",
+      "created_at_millis": 1792241951758,
+      "id": "c_2jIbaRTUY"
     }
   ],
   "created_at_millis": 1791417434682,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-07, on the hidden/headless note: \"you could kind of imagine ... in the parallel work skill example, like the main integrator agent maybe like has some way to express with muster that these agents are sub agents or they belong to my group, and so therefore it has like the option to spawn them hidden, and there's some easy connected way to kind of see and like bring them forward, unhide them and see them.\" \"This might take some design thought.\"\n\nThe idea that ties three notes together: a pane can belong to the agent that made it. Its sub-agents could then be made hidden (a_2die7jO4X) and quiet (a_2die7W9ru) by default, listed together under it, and brought forward together. A council or a parallel-work round is the motivating case: the human talks to the integrator, and the workers are the integrator's business.\n\nNeeds a MIP before building: what records the relation (the pane that ran `pane new`? a msg group?), what it changes by default, how it shows in the agent list and `muster window`, and what happens when the parent goes away. Build a_2die7jO4X and a_2die7W9ru first; this composes them.",
   "id": "a_2die894mw",
-  "position": "aR",
+  "position": "a0",
   "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
   "type": "feature",
-  "updated_at_millis": 1792241568935,
+  "updated_at_millis": 1792241951758,
   "history": [
-    {"field":"column","value":"uncommitted","at":1791417434682}
+    {"field":"column","value":"uncommitted","at":1791417434682},
+    {"field":"column","value":"in-progress","at":1792241951701}
   ]
 }

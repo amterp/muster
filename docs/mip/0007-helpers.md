@@ -1,10 +1,10 @@
 ---
 mip: 7
 title: An agent's helpers - panes an agent makes as its own, kept out of the way
-status: Draft
+status: Accepted
 kind: Product
 created: 2026-10-07
-decided:
+decided: 2026-10-17
 supersedes:
 superseded-by:
 related: 3, 4
@@ -31,9 +31,9 @@ What the relation changes:
 - **A helper whose maker closes stops being quiet**, and the person hears once that it is still
   running.
 
-amterp chose the word on 2026-10-17 (question A). Whether a helper is quiet by default (question
-B) is still amterp's, and comes first. Everything else is recommended, with the options laid out
-where they were close. Nothing here is built yet.
+amterp settled both questions on 2026-10-17: the word is "helper", and a helper is hidden and
+quiet by default. Everything else is recommended, with the options laid out where they were
+close.
 
 ## Decisions for amterp
 
@@ -70,6 +70,8 @@ Recommendation: (a), because section 4 of the decision sends a quiet helper's on
 block or a stall, to its maker, which is the agent able to act on it. Without that section this
 would be (b), since a quiet helper at a permission prompt would otherwise wait on nobody. Easy to
 reverse: a default changes in one place.
+
+**Decided 2026-10-17: (a), hidden and quiet.**
 
 ## Context / Motivation
 
@@ -131,9 +133,9 @@ reach the person as any pane's do. The two can still work together in a group.
 
 ### 2. What it changes by default
 
-A helper is made hidden and quiet, unless question B goes to (b), and `--shown` and `--notify`
-opt out of each. `--shown` splits it beside its maker as `pane new` does today; it is still a
-helper and still listed under its maker.
+A helper is made hidden and quiet, and `--shown` and `--notify` opt out of each. `--shown`
+splits it beside its maker as `pane new` does today; it is still a helper and still listed under
+its maker.
 
 **Each maker's hidden helpers share one hidden tab**, made with the first of them and named for
 the maker: `🤖 integrator's helpers`. Today's rule already puts a pane made beside a hidden one
