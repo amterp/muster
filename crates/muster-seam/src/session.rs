@@ -1695,11 +1695,13 @@ impl Session {
     /// The program a pane's daemon says has stopped reading its input, if one has.
     fn not_reading(&self, pane: &PaneKey) -> Option<muster_core::painting::Reader> {
         let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
-        let unread = mirror.pane(&pane.pane)?.unread_input.as_ref()?;
+        let record = mirror.pane(&pane.pane)?;
+        let unread = record.unread_input.as_ref()?;
         Some(muster_core::painting::Reader {
             program: unread.program.clone(),
             pid: unread.pid,
             bytes: unread.bytes,
+            resumes: record.resume.is_some(),
         })
     }
 
@@ -2428,7 +2430,7 @@ pub(crate) fn submit(
     daemon: &DaemonId,
     intent: &BackendIntent,
     keyboard: Keyboard,
-) -> Result<Option<PaneId>, Refusal> {
+) -> Result<Outcome, Refusal> {
     submit_from(window, daemon, intent, keyboard, None)
 }
 
@@ -2450,7 +2452,7 @@ pub(crate) fn submit_from(
     intent: &BackendIntent,
     keyboard: Keyboard,
     split: Option<&Beside>,
-) -> Result<Option<PaneId>, Refusal> {
+) -> Result<Outcome, Refusal> {
     let (region, source, channel) = {
         let mut session = poison::lock(&SESSION, "session");
         // Which pane this request came from, for a pane it may be about to make. A split names
@@ -2477,6 +2479,7 @@ pub(crate) fn submit_from(
             | BackendIntent::JoinTab { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
+            | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::QuietPane { .. }
@@ -2548,8 +2551,8 @@ pub(crate) fn submit_from(
             "unanswered" => unanswered,
         },
     );
-    let Ok(Outcome { created, created_tab }) = &outcome else {
-        return outcome.map(|_| None);
+    let Ok(Outcome { created, created_tab, .. }) = &outcome else {
+        return outcome;
     };
 
     let mut session = poison::lock(&SESSION, "session");
@@ -2623,7 +2626,7 @@ pub(crate) fn submit_from(
     // saying it does not hold what was named is the one a caller may have to reword: asked
     // about a pane no machine holds, its answer is correct on its own terms and misleading
     // where it lands (`handler::placed`).
-    Ok(created.clone())
+    outcome
 }
 
 /// The tab a request makes under a name the window chose, when it makes one.

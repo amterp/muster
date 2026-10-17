@@ -286,6 +286,17 @@ pub enum BackendIntent {
         then: Option<String>,
     },
 
+    /// Restarts the agent in a pane, in the session it reported: the daemon ends it and types the
+    /// session's resume at the shell it leaves, the command a daemon restart would run.
+    ///
+    /// The daemon's to do, because it holds the terminal whose input has to be emptied first and
+    /// knows how the agent resumes.
+    RestartAgent {
+        pane: PaneId,
+        /// Set for the resumed agent alone.
+        env: BTreeMap<String, String>,
+    },
+
     /// Makes a pane quiet, or lets it ask for the person again.
     ///
     /// `None` is the other of what it is now, read from the mirror as zoom is, which is what a
@@ -356,6 +367,11 @@ impl BackendIntent {
                 counted(focus.as_ref()),
                 counted(then.as_ref())
             ),
+            // A variable's value can be a proxy's password.
+            BackendIntent::RestartAgent { pane, env } => format!(
+                "RestartAgent {{ pane: {pane}, env: {:?} }}",
+                env.keys().collect::<Vec<_>>()
+            ),
             other => format!("{other:?}"),
         }
     }
@@ -392,6 +408,19 @@ pub struct Outcome {
     /// somewhere no region is looking, and Muster decides what a region shows itself
     /// (`architecture.md`, cursors are written, not read).
     pub created_tab: Option<TabId>,
+    /// What a restart did, which nothing on screen says once the agent is back.
+    pub restarted: Option<Restarted>,
+}
+
+/// What a daemon did to restart a pane's agent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Restarted {
+    /// The program it ended.
+    pub program: String,
+    /// It was killed, having not ended when asked to.
+    pub killed: bool,
+    /// The line typed at the pane's shell to resume the session.
+    pub typed: String,
 }
 
 /// Why a backend did not come back saying a change was made.

@@ -72,12 +72,16 @@ impl Severity {
 /// remedy is something Muster would do on its own anyway, or something that touches only what
 /// this window already owns. Taking a pane from whatever else is drawing it is neither: that
 /// may be a window somebody is looking at, and it stays a sentence somebody acts on
-/// deliberately (kan a_2IQsToWVW).
+/// deliberately (kan a_2IQsToWVW). A remedy that ends something is safe the same way only
+/// because the window asks first, saying what it ends, and its title says it will ask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Remedy {
     /// Asks for a new bridge for the pane, as `muster pane reattach` does. The agent behind it
     /// is untouched.
     Reattach(PaneKey),
+    /// Restarts the pane's agent in its session, as `muster pane restart` does, once the window
+    /// has asked.
+    Restart(PaneKey),
 }
 
 impl Remedy {
@@ -85,6 +89,7 @@ impl Remedy {
     pub fn title(&self) -> &'static str {
         match self {
             Remedy::Reattach(_) => "Reattach",
+            Remedy::Restart(_) => "Restart…",
         }
     }
 }

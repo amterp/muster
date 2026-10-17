@@ -92,6 +92,9 @@ pub enum Action {
     /// No focus, unlike the CLI, because a chord cannot carry one and a sheet asking for one
     /// would stand in front of every compaction when most want none.
     CompactPane,
+    /// Restarts the agent in the pane the keyboard is on, resuming its session - the CLI's
+    /// `pane restart` with no environment. The window asks first, since it ends the agent.
+    RestartAgent,
     RenameTab,
     /// Closes the tab the keyboard is in, and every pane in it.
     ///
@@ -197,7 +200,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 62] = [
+    pub const ALL: [Action; 63] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -212,6 +215,7 @@ impl Action {
         Action::SplitUp,
         Action::RenamePane,
         Action::CompactPane,
+        Action::RestartAgent,
         Action::MovePaneToNewTab,
         Action::HidePane,
         Action::QuietPane,
@@ -276,6 +280,7 @@ impl Action {
             Action::SplitUp => "split_up",
             Action::RenamePane => "rename_pane",
             Action::CompactPane => "compact_pane",
+            Action::RestartAgent => "restart_agent",
             Action::RenameTab => "rename_tab",
             Action::CloseTab => "close_tab",
             Action::MovePaneToNewTab => "move_pane_to_new_tab",
@@ -366,8 +371,9 @@ impl Action {
             Action::SplitDown => Some(Chord::new(Key::KeyD, shifted)),
             // Unbound, each for its own reason. The two splits are Ghostty parity - it ships
             // `new_split:left` and `new_split:up` with no chord, so Muster invents none
-            // either. Pulling a pane into a tab of its own and compacting an agent are Muster's
-            // own, and a chord invented for either would be one nobody asked for. Ending the
+            // either. Pulling a pane into a tab of its own, compacting an agent and restarting
+            // one are Muster's own, and a chord invented for any would be one nobody asked for,
+            // a restart's least of all, since it ends the agent and asks first. Ending the
             // sessions is the odd one out and is unbound for safety rather than for parity:
             // every other action here is undone by doing it again, and that one ends processes
             // holding somebody's work. Upgrading is reached for once a release, and a chord
@@ -377,6 +383,7 @@ impl Action {
             | Action::SplitUp
             | Action::MovePaneToNewTab
             | Action::CompactPane
+            | Action::RestartAgent
             | Action::HidePane
             | Action::QuietPane
             | Action::CloseTab

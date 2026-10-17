@@ -44,13 +44,17 @@ public struct Roster: Equatable {
     /// Whether its daemon can compact its agent. What Compact Agent greys itself out on.
     public let compactable: Bool
 
+    /// What its daemon would run to resume its agent's session, for a person to read; empty
+    /// when it cannot be restarted. What Restart Agent greys itself out on.
+    public let resumesAs: String
+
     /// Whether nothing about it is raised for the person. What Quiet Pane is checked by.
     public let quiet: Bool
 
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
-      quiet: Bool = false
+      resumesAs: String = "", quiet: Bool = false
     ) {
       self.key = key
       self.place = place
@@ -61,6 +65,7 @@ public struct Roster: Equatable {
       self.givenName = givenName
       self.onScreen = onScreen
       self.compactable = compactable
+      self.resumesAs = resumesAs
       self.quiet = quiet
     }
   }

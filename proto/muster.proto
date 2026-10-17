@@ -93,6 +93,7 @@ message Request {
     ShowPane show_pane = 73;
     QuietPane quiet_pane = 74;
     UpgradeMuster upgrade_muster = 75;
+    RestartAgent restart_agent = 76;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -313,6 +314,38 @@ message CompactPane {
   // A prompt typed at the agent's next idle, empty prompt once the compaction has run, so it
   // carries on. One line. Empty: none.
   string then = 4;
+}
+
+// Restarts the agent in a pane, in the session it reported: its pane's daemon empties what waits
+// for it to read, ends it (gently, then by force), and types the session's resume at the shell
+// it leaves - the command a daemon restart would run (`PaneStateChanged.resume`). Works on any
+// agent pane with a reported session, stuck or not. Asks nothing: the window asks first itself.
+//
+// Answered with Restarted once the resume is typed, which takes seconds. Refused, saying why,
+// when the agent has reported no session, its harness has no resume, or the restart stopped
+// short.
+message RestartAgent {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+
+  // Variables set for the resumed agent alone, as `NAME=value` ahead of its resume.
+  map<string, string> env = 3;
+}
+
+// What a RestartAgent did.
+message Restarted {
+  string pane_id = 1;
+
+  // The program ended.
+  string program = 2;
+
+  // It was killed, having not ended when asked to.
+  bool killed = 3;
+
+  // The line typed at the pane's shell.
+  string typed = 4;
 }
 
 // Takes a pane out of every window, its agent still running, into the list of hidden panes.
@@ -1473,6 +1506,7 @@ message Response {
     Reopening reopening = 21;
     AppClaim app_claim = 22;
     LayoutMoved layout_moved = 23;
+    Restarted restarted = 24;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -2663,6 +2697,12 @@ message RosterPane {
   // manifests it holds. Carried here so a menu greys its Compact Agent item without asking the
   // core as it opens; false for a pane running no agent.
   bool compactable = 11;
+
+  // What its daemon would run to resume its agent's session (RestartAgent), words joined by
+  // spaces, for a person to read. Empty when its agent cannot be restarted: no agent, or one
+  // that reported no session its harness can resume. What a menu greys Restart Agent on, and what
+  // the window says before restarting one.
+  string resumes_as = 14;
 
   // Whether nothing about it is raised for the person (QuietPane), as its daemon says.
   bool quiet = 12;

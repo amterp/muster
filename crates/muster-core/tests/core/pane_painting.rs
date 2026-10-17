@@ -48,6 +48,7 @@ fn pane_painting_conformance() {
                         .and_then(Value::as_u64)
                         .and_then(|bytes| u32::try_from(bytes).ok())
                         .unwrap_or_default(),
+                    resumes: step.get("resumes").and_then(Value::as_bool).unwrap_or(false),
                 };
                 painting.stopped_reading(&pane_key(pane)?, Some(reader));
             } else if let Some(pane) = step.get("readingAgain").and_then(Value::as_str) {
@@ -126,7 +127,7 @@ fn pane_key(spelled: &str) -> Result<PaneKey, CaseError> {
 #[test]
 fn a_pane_whose_program_stopped_reading_names_the_program_and_not_the_bridge() {
     let pane = pane_key("local/p1w3r07bsd").expect("a pane key");
-    let reader = Reader { program: "codex".to_string(), pid: 4242, bytes: 2817 };
+    let reader = Reader { program: "codex".to_string(), pid: 4242, bytes: 2817, resumes: false };
     let told = muster_core::painting::not_reading(&pane, 10_000 * PER_MILLI, &reader);
 
     assert!(

@@ -92,6 +92,7 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         Payload::ResizePane(resize) => pane(&resize.pane_id),
         Payload::RenamePane(rename) => pane(&rename.pane_id),
         Payload::CompactPane(compact) => pane(&compact.pane_id),
+        Payload::RestartAgent(restart) => pane(&restart.pane_id),
         Payload::HidePane(hide) => pane(&hide.pane_id),
         // Held by no window while it is hidden, so it is shown in whichever window asked.
         Payload::ShowPane(show) => pane(&show.pane_id),
@@ -123,6 +124,7 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::ResizePane(resize) => vec![&mut resize.pane_id],
         Payload::RenamePane(rename) => vec![&mut rename.pane_id],
         Payload::CompactPane(compact) => vec![&mut compact.pane_id],
+        Payload::RestartAgent(restart) => vec![&mut restart.pane_id],
         Payload::HidePane(hide) => vec![&mut hide.pane_id],
         Payload::ShowPane(show) => vec![&mut show.pane_id],
         Payload::QuietPane(quiet) => vec![&mut quiet.pane_id],

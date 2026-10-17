@@ -105,6 +105,9 @@ public enum MenuActions {
     // No ellipsis: it asks nothing first. What to keep is the CLI's to say.
     "compact_pane": Described(
       title: "Compact Agent", selector: #selector(MusterWindow.compactAgent(_:)), group: .pane),
+    // An ellipsis: it asks first, since it ends the agent.
+    "restart_agent": Described(
+      title: "Restart Agent…", selector: #selector(MusterWindow.restartAgent(_:)), group: .pane),
     // No ellipsis: it asks nothing before doing it. The name a tab could be given belongs to
     // the CLI's `--name`, because a chord means "get this out of the split" and a sheet in the
     // way of that is a sheet nobody wanted.

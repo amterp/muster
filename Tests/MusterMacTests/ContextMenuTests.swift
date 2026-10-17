@@ -26,8 +26,8 @@ struct ContextMenuTests {
     #expect(
       titles(menu) == [
         "Copy", "Paste", "-", "Split Right", "Split Down", "Split Left", "Split Up", "-",
-        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "Hide Pane",
-        "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
+        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "Restart Agent…",
+        "Hide Pane", "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
   }
 
@@ -218,6 +218,37 @@ struct ContextMenuTests {
     }
   }
 
+  /// A restart ends the agent, so a pick asks the window, which asks the person, rather than
+  /// sending anything; and it is offered only where there is a session to resume.
+  @Test("Restart Agent asks the window about the pane that was right-clicked, and sends nothing")
+  func restartAsksTheWindowFirst() {
+    let recorder = recorder()
+    var asked: [PaneKey] = []
+    let menus: [(Bool) -> NSMenu] = [
+      {
+        ContextMenus.pane(
+          laptopPane, surface: nil, machines: [], canRestart: $0, rename: { _ in },
+          restart: { asked.append($0) })
+      },
+      {
+        ContextMenus.agentRow(
+          laptopPane, onScreen: false, canRestart: $0, rename: { _ in },
+          restart: { asked.append($0) })
+      },
+    ]
+    let mark = recorder.requests.count
+    for menu in menus {
+      #expect(item("Restart Agent…", in: menu(false))?.isEnabled == false)
+      #expect(item("Restart Agent…", in: menu(true))?.isEnabled == true)
+      choose("Restart Agent…", in: menu(true))
+    }
+    #expect(asked == [laptopPane, laptopPane])
+    let sent = recorder.sent(since: mark) {
+      if case .restartAgent = $0.payload { true } else { false }
+    }
+    #expect(sent.isEmpty, "a menu pick restarted an agent without asking")
+  }
+
   @Test("Compact Agent compacts the pane that was right-clicked, keeping nothing in particular")
   func compactNamesItsPane() {
     let recorder = recorder()
@@ -247,8 +278,8 @@ struct ContextMenuTests {
 
     #expect(
       titles(offScreen) == [
-        "Rename Pane…", "Compact Agent", "Move Pane to New Tab", "Hide Pane", "Quiet Pane", "-",
-        "Copy Pane ID", "-", "Close Pane",
+        "Rename Pane…", "Compact Agent", "Restart Agent…", "Move Pane to New Tab", "Hide Pane",
+        "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
     #expect(item("Close Pane", in: offScreen)?.isEnabled == false)
     #expect(item("Close Pane", in: shown)?.isEnabled == true)

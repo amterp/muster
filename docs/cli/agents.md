@@ -68,7 +68,7 @@ tell. Waiting changes nothing, so run it again once `muster window` shows that d
 
 A wait on a pane that is or goes `stuck` ends refused, with exit 1, saying which program stopped
 reading its input and how much it left unread: it gets nowhere until the program reads again, and
-nothing a wait does can make it. That is true of a wait started on a pane already stuck, so to
+nothing a wait does can make it. `muster pane restart`, below, ends it and resumes its session. That is true of a wait started on a pane already stuck, so to
 hear it read again, look at `muster window` rather than waiting. `--until stuck` waits for a pane
 to get stuck instead, and is answered by it.
 
@@ -239,6 +239,39 @@ row's right-click menu, and on the `compact_pane` action, which ships with no ch
 With `compact_at = 80` in the config file, Muster also compacts an agent once it reports its
 context 80% full, once each time it crosses that line. It is off unless the file says so
 (`docs/configuration.md`). `pane wait --context`, above, is the way to choose the moment yourself.
+
+## Restarting an agent
+
+    muster pane restart --pane p1w3r0ab2n
+    muster pane restart --pane p1w3r0ab2n --env HTTPS_PROXY=http://proxy:3128
+
+This ends the agent in the pane and brings its session back in the same pane, by running what a
+daemon restart would: the `resume` on its row of `muster window --json`, which is its harness's
+resume with the flags the agent was started with (`muster docs harnesses`). It is the way out for
+an agent that is `stuck`, and it works on any agent whose session can be resumed, so a dozen
+agents can pick up a changed proxy without losing their conversations. `--env` sets a variable
+for the resumed agent alone, and can be given more than once.
+
+The daemon first throws away what waits for the agent to read, in its own queue and in the
+terminal, since a stuck agent leaves kilobytes of it and its shell would run whatever is left as
+a command. It refuses anything typed into the pane until it is done. Then it asks the agent's
+processes to end, kills them if they have not after five seconds, waits for the pane's shell to
+draw its prompt, and types the resume there. It answers once the resume is typed, a few seconds
+later, saying what it typed:
+
+    p1w3r0ab2n  ended claude and typed: 'claude' '--model' 'opus' '--resume' 'b1c2d3'
+
+Then wait for the agent as for any you have just started, with `muster pane wait --until idle`.
+
+A pane whose agent has reported no session is refused with nothing ended, because there is
+nothing to resume; a harness's adapter is what reports the session. So is an agent whose harness
+has no resume. A restart that stops short says where it left the pane, and the command that
+resumes the session by hand.
+
+The window asks first, naming the pane and showing the command: Restart Agent… in the Pane menu,
+in a pane's and an agent row's right-click menu, on the `restart_agent` action, which ships with
+no chord, and as the Restart… button on the notice a stuck agent raises. The CLI does not ask,
+since an agent running it has already decided.
 
 ## Rearranging what you made
 

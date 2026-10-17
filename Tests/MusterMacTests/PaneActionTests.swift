@@ -89,6 +89,25 @@ struct PaneActionTests {
   }
 
   @MainActor
+  @Test("Restart Agent in the menu bar is offered only where the keyboard's pane can resume")
+  func theRestartItemFollowsTheKeyboardsPane() {
+    let restart = #selector(MusterWindow.restartAgent(_:))
+    let core = seam(RecordingDispatcher())
+    let pane = PaneKey(daemon: "laptop", pane: "p1w3r07bsd")
+
+    #expect(!MusterWindow.isAvailable(restart), "no pane has the keyboard")
+    #expect(
+      !MusterWindow.isAvailable(
+        restart, keyboard: Roster.Pane(key: pane, label: "claude", onScreen: true)))
+    #expect(
+      MusterWindow.isAvailable(
+        restart,
+        keyboard: Roster.Pane(
+          key: pane, label: "claude", onScreen: true, resumesAs: "claude --resume s-1")))
+    #expect(core.requests.isEmpty, "validating a menu item asked the core something")
+  }
+
+  @MainActor
   @Test("Compact Agent from the menu bar names no pane, so it means the keyboard's")
   func compactMeansHere() {
     let recorder = recorder()

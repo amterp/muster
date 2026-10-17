@@ -197,7 +197,27 @@ it when it went stuck. A wheel turn is stale within a second: replayed at a prog
 it scrolls whatever is drawn by then, and once the program exits, its shell reads the reports as
 typed text. Keys, pastes and `pane send` text still wait for the program, since a person may mean
 them. What already sits in the pane's terminal stays there too, pointer reports included, because
-nothing can pick those out of it.
+nothing can pick those out of it; `muster pane restart` throws all of it away before it ends the
+program.
+
+## A restart types its resume at the pane's shell, and keeps no environment past it
+
+`muster pane restart` types the resume into the shell the agent leaves, so it needs that shell to
+take a line. It waits for the shell to say it has drawn its prompt, which Ghostty's shell
+integration does in bash, zsh and fish, or for 300 ms of quiet from a shell without it, at most
+five seconds, then types anyway; a shell that is still starting reads the line once it is ready.
+An agent that is the pane's own process, rather than a program its shell started, is refused,
+since ending it would end the pane.
+
+`--env` reaches the resumed agent and nothing else. What a later daemon restart resumes with is
+the flags the agent runs with, never its environment, so after one the agent comes back without
+the change. To make it last, start the agent through a wrapper that sets it and names its own
+resume in `MUSTER_RESUME` (`docs/configuration.md`), or set it where the daemon starts.
+
+Anything typed into the pane while a restart is under way is thrown away, and so is what waited
+unread for the agent when it began. A Codex comes back without its flags, `--sandbox` and `-c`
+settings among them, since where `codex resume` takes them has not been recorded; its row's
+`resume` in `muster window --json` says so before you restart it.
 
 ## A message wakes an agent in a pane only at an empty prompt Muster can read
 

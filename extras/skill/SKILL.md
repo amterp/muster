@@ -29,8 +29,8 @@ only what goes wrong when you skip them.
 Every pane Muster makes has `muster` on its `PATH` and `$MUSTER_SOCKET` naming the window it is
 drawn in, on this machine and on an SSH devenv alike, so every verb works from either. With no
 window to talk to - a terminal outside Muster, or a pane whose window has since quit - `muster
-window`, `muster msg`, and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `hide`,
-`show`, `quiet` and `close` still answer, from the machine's own daemon, and every other verb says
+window`, `muster msg`, and `pane new`, `rename`, `read`, `send`, `wait`, `compact`, `restart`,
+`hide`, `show`, `quiet` and `close` still answer, from the machine's own daemon, and every other verb says
 it needs a window. `muster docs overview`, under "With no window", has the rest.
 
 **Do not retry on exit 4.** A window or daemon took the request and never answered, so what you
@@ -62,7 +62,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   `--until working` first. `waiting` is not `idle`: add it to hear of an agent waiting on its own
   build, and give `--timeout`. `--context 80` also ends the wait once the agent's context is that
   full. A wait on an agent that goes `stuck` exits 1: its program has stopped reading its input,
-  and only somebody interrupting or restarting it frees it.
+  and only somebody interrupting or restarting it frees it. `muster pane restart --pane X` ends
+  it and resumes its session with its flags, asking nobody, so be sure it is the one you mean.
 - **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
   since it last went to work, without the turn before or your brief. Do not guess `--rows`.
 - **Check that your own adapter reports** before relying on what it gives: your state, your

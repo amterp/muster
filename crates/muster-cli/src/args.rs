@@ -26,8 +26,8 @@ use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
     HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
-    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, SendToPane, ShowPane, SplitPane,
-    ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
+    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent, SendToPane, ShowPane,
+    SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -597,6 +597,20 @@ enum Doing {
         /// A prompt to type once the compaction has run, so the agent carries on
         #[arg(long, value_name = "PROMPT")]
         then: Option<String>,
+    },
+
+    /// Restart a pane's agent in the session it reported, with the flags it ran with
+    //
+    // Asks nothing, unlike the window: an agent drives this. The daemon empties what waits for
+    // the agent to read, ends it, and types the session's resume at its shell.
+    Restart {
+        /// The pane whose agent to restart, or the one this is running in
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+
+        /// A variable to set for the resumed agent, as NAME=value; give it more than once for more
+        #[arg(long, value_name = "NAME=VALUE", value_parser = variable)]
+        env: Vec<(String, String)>,
     },
 
     /// Take a pane out of every window, its agent still running, into the hidden list
@@ -1218,6 +1232,11 @@ fn pane(
         Doing::Compact { pane, focus, then } => {
             compact(pane.as_ref(), focus, then.as_deref(), environment)
         }
+        Doing::Restart { pane, env } => send(request::Payload::RestartAgent(RestartAgent {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            env: env.iter().cloned().collect(),
+            ..RestartAgent::default()
+        })),
         Doing::Send { pane, keys, enter, confirm, file, text } => {
             check_sent_keys(keys).map_err(Failure::Refused)?;
             // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
@@ -1622,6 +1641,15 @@ pub(crate) fn reference(typed: &str) -> Result<String, String> {
             .to_string());
     }
     Ok(typed.to_string())
+}
+
+/// `NAME=value`, for a variable a restarted agent is to start with. What makes a name is the
+/// daemon's to check, which says why it refuses one.
+fn variable(typed: &str) -> Result<(String, String), String> {
+    match typed.split_once('=') {
+        Some((name, value)) if !name.is_empty() => Ok((name.to_string(), value.to_string())),
+        _ => Err(format!("`{typed}` is not NAME=value, which is how a variable is given")),
+    }
 }
 
 /// Which pane and which machine a command that may name either is about.

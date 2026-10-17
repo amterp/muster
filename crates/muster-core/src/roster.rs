@@ -227,6 +227,10 @@ pub struct RosterPane {
     /// Whether its agent can be compacted, as its daemon says: what a menu offering to compact it
     /// greys itself out on.
     pub compactable: bool,
+    /// What its daemon would run to resume its agent's session, words joined by spaces, when it
+    /// knows: what a menu offering to restart the agent greys itself out on, and what the window
+    /// says before it restarts one.
+    pub resumes_as: Option<String>,
     /// Whether it raises nothing for the person, as its daemon says.
     pub quiet: bool,
 }
@@ -544,6 +548,7 @@ impl Roster {
                             name: pane_name(pane).map(str::to_string),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
+                            resumes_as: resumes_as(pane),
                             quiet: pane.quiet,
                             key,
                         }
@@ -707,6 +712,7 @@ fn hidden_tabs<'a>(
                     name: pane_name(pane).map(str::to_string),
                     on_screen: false,
                     compactable: pane.compactable,
+                    resumes_as: resumes_as(pane),
                     quiet: pane.quiet,
                 });
             }
@@ -727,6 +733,12 @@ fn tab_name(tab: &crate::mirror::backend::Tab) -> Option<&str> {
 /// Trims a backend's answer and reads blank as absent, so "has a name" is one question.
 fn given_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim).filter(|name| !name.is_empty()).map(str::to_string)
+}
+
+/// The command a pane's agent would be restarted with, for a person to read rather than to run:
+/// its words joined by spaces, unquoted.
+fn resumes_as(pane: &Pane) -> Option<String> {
+    pane.resume.as_ref().map(|resume| resume.command.join(" "))
 }
 
 /// One tab's panes, in the order they are laid out.

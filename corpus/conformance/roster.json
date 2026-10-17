@@ -3241,6 +3241,44 @@
           "local/w1:p3 place=0 tab=w1:t2 label=\"gamma\" off-screen"
         ]
       }
+    },
+    {
+      "name": "a pane can be restarted when its daemon knows how its agent resumes",
+      "why": "The agent row's menu offers Restart Agent and greys it out where there is nothing to resume: a pane running no agent, or an agent that reported no session its harness resumes. The daemon builds the resume from what the agent reported and the manifests it holds, so the row carries the daemon's word, and the command it would run is what the window says before it ends anything.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha",
+                "agent": "claude",
+                "session": "s-1",
+                "resume": { "command": ["claude", "--model", "opus", "--resume", "s-1"] }
+              },
+              { "id": "w1:p2", "cwd": "/src/beta", "agent": "claude" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha \u00b7 claude\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta \u00b7 claude\" off-screen"
+        ],
+        "restartable": ["local/w1:p1 claude --model opus --resume s-1"],
+        "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"]
+      }
     }
   ]
 }

@@ -108,6 +108,24 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             let state = styled(&agent.state, agent_style(&agent.state));
             format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
+        // What was typed, so whoever restarted an agent sees the command it came back with, and
+        // can type it again by hand if the agent does not come back.
+        Some(response::Payload::Restarted(restarted)) => Ok(if json {
+            json!({
+                "pane": restarted.pane_id,
+                "program": restarted.program,
+                "killed": restarted.killed,
+                "typed": restarted.typed,
+            })
+            .to_string()
+        } else {
+            let ended = if restarted.killed {
+                format!("killed {}, which had not ended when asked to,", restarted.program)
+            } else {
+                format!("ended {}", restarted.program)
+            };
+            format!("{}  {ended} and typed: {}", restarted.pane_id, restarted.typed)
+        }),
         Some(response::Payload::PaneClosed(closed)) => Ok(if json {
             json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })
                 .to_string()
@@ -179,6 +197,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Reopening(_) => "the windows to reopen",
         response::Payload::AppClaim(_) => "a claim on the app",
         response::Payload::LayoutMoved(_) => "word that the layout may have moved",
+        response::Payload::Restarted(_) => "an agent restarted",
     }
 }
 

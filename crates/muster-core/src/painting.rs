@@ -105,6 +105,8 @@ pub struct Reader {
     pub pid: i32,
     /// What it had left unread when its daemon called it stopped.
     pub bytes: u32,
+    /// Its daemon knows how to resume the session of the agent it is, so it can be restarted.
+    pub resumes: bool,
 }
 
 /// Every pane that owes output, and everything that decides whether owing it is worth saying.
@@ -289,9 +291,14 @@ impl Painting {
                 // New, or said before in the words of another cause.
                 .filter(|(pane, cause)| self.reported.get(*pane) != Some(*cause))
                 .map(|(pane, cause)| match cause {
-                    // Nothing to offer: the pane and its bridge are fine, and only something
-                    // done to the program frees it.
-                    Some(reader) => (key(pane), not_reading(pane, deadline, reader), None),
+                    // The pane and its bridge are fine, and only something done to the program
+                    // frees it: a restart, when its session can be resumed, which the window
+                    // asks about before it ends anything.
+                    Some(reader) => (
+                        key(pane),
+                        not_reading(pane, deadline, reader),
+                        reader.resumes.then(|| Remedy::Restart(pane.clone())),
+                    ),
                     // Always safe to offer: the pane is one this window is drawing, so the
                     // bridge a reattach replaces is this window's own, and the agent behind it is
                     // untouched.
@@ -413,17 +420,22 @@ pub fn stopped(pane: &PaneKey, deadline: u64) -> String {
 /// The one cause the window is told rather than left to guess, so the sentence says it and
 /// clears the bridge and the daemon, which [`stopped`] has to implicate. It offers no reattach:
 /// a new bridge would paint the same frozen screen. What frees the pane is done to its program,
-/// and only the person knows whether interrupting it costs them anything.
+/// and only the person knows whether interrupting it costs them anything, which is why a restart
+/// asks before it ends anything.
 pub fn not_reading(pane: &PaneKey, deadline: u64, reader: &Reader) -> String {
     let waited = describe(deadline);
-    let Reader { program, pid, bytes } = reader;
+    let Reader { program, pid, bytes, resumes } = reader;
     let bytes = if *bytes == 1 { "1 byte".to_string() } else { format!("{bytes} bytes") };
+    let way_out = if *resumes {
+        "Interrupting the program frees it, and Restart ends it and resumes its session"
+    } else {
+        "Interrupting the program, or ending it and resuming its session, frees it"
+    };
     format!(
         "Input reached the pane {pane} over {waited} ago and nothing has painted since, because \
          its program, {program} (pid {pid}), has stopped reading its input: it has left {bytes} \
          unread. The pane, its bridge and its daemon are fine, so a reattach would change \
-         nothing. Interrupting the program, or ending it and resuming its session, frees it; \
-         this goes the moment it reads again. Its daemon's log carries `daemon.pane.unread_input` \
-         from when it stopped."
+         nothing. {way_out}; this goes the moment it reads again. Its daemon's log carries \
+         `daemon.pane.unread_input` from when it stopped."
     )
 }

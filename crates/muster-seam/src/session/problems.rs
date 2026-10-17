@@ -18,8 +18,8 @@ use muster_core::problems::{Problem, Problems, Remedy, Severity};
 use super::{SESSION, WindowId, set_sidebar};
 use crate::ffi;
 use crate::proto::{
-    Event, Problem as ProblemMessage, ProblemsChanged, ReattachPane, Request, event, problem,
-    request,
+    Event, Problem as ProblemMessage, ProblemsChanged, ReattachPane, Request, RestartAgent, event,
+    problem, request,
 };
 
 /// What is wrong, which every window's roster lists.
@@ -214,6 +214,11 @@ fn remedy_message(remedy: &Remedy) -> problem::Remedy {
         Remedy::Reattach(pane) => request::Payload::ReattachPane(ReattachPane {
             daemon_id: pane.daemon.to_string(),
             pane_id: pane.pane.to_string(),
+        }),
+        Remedy::Restart(pane) => request::Payload::RestartAgent(RestartAgent {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+            env: std::collections::HashMap::new(),
         }),
     };
     problem::Remedy { title: remedy.title().to_string(), request: Some(Request::new(payload)) }

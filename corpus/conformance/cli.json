@@ -984,6 +984,40 @@
       }
     },
     {
+      "name": "an agent restarts another in its session, with what its environment should change",
+      "why": "Twelve agents had to pick up a changed proxy, each resuming its conversation, and an agent did it by hand. A restart names the pane and the variables, and asks nothing: the agent driving it has already decided.",
+      "given": {
+        "argv": ["pane", "restart", "--pane", "p1w3r07bsd", "--env", "HTTPS_PROXY=http://proxy:3128", "--env", "NO_PROXY="]
+      },
+      "expect": {
+        "request": {
+          "restart_agent": {
+            "pane_id": "p1w3r07bsd",
+            "env": { "HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": "" }
+          }
+        }
+      }
+    },
+    {
+      "name": "an agent restarts itself by naming nothing",
+      "why": "As for every pane command, an agent means the pane it is running in.",
+      "given": {
+        "argv": ["pane", "restart"],
+        "env": { "MUSTER_PANE": "p1w3r07bsd" }
+      },
+      "expect": {
+        "request": { "restart_agent": { "pane_id": "p1w3r07bsd" } }
+      }
+    },
+    {
+      "name": "a variable that is not NAME=value is refused before anything is sent",
+      "why": "A restart ends the agent, so one given a variable it cannot set is refused before the agent is touched rather than restarted without it.",
+      "given": {
+        "argv": ["pane", "restart", "--pane", "p1w3r07bsd", "--env", "HTTPS_PROXY"]
+      },
+      "expect": { "usage": "ValueValidation" }
+    },
+    {
       "name": "renaming a pane says what to call it",
       "why": "A person running fifteen agents wants to say which is which in their own words, and this is the surface a script sets those names from.",
       "given": {

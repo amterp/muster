@@ -248,6 +248,25 @@
       }
     },
     {
+      "name": "a stopped program whose session can be resumed is offered a restart",
+      "why": "Ending the program and resuming its session is the way out the sentence names, and when the pane's daemon knows how the agent resumes, the window can do it. A restart ends somebody's agent, so the window asks before it does, which is what makes it safe to offer as one click; a program whose session cannot be resumed is offered nothing, as before.",
+      "given": {
+        "deadline": 10000,
+        "steps": [
+          { "typed": "local/p1w3r07bsd" },
+          { "stoppedReading": "local/p1w3r07bsd", "program": "codex", "bytes": 2817, "resumes": true },
+          { "tick": 10000 },
+          { "painted": "local/p1w3r07bsd" }
+        ],
+        "remedies": true
+      },
+      "expect": {
+        "raised": ["pane:local/p1w3r07bsd:painting"],
+        "cleared": [{ "key": "pane:local/p1w3r07bsd:painting", "because": "painted" }],
+        "remedies": ["restart local/p1w3r07bsd"]
+      }
+    },
+    {
       "name": "a warning is said again when its cause becomes known, and again when it goes",
       "why": "The window's deadline and the daemon's can land either way round: a pane warned about as a bridge that wedged is then found to have a program that stopped reading, and that program may read again while the pane still has nothing new to paint. Each time the warning is said again in the words of what is now true, with the remedy that fits it, rather than left standing in the old words.",
       "given": {

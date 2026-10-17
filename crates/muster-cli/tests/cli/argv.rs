@@ -283,6 +283,12 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("focus", said(&compact.focus)),
             ])
         }),
+        request::Payload::RestartAgent(restart) => json!({
+            "restart_agent": fields([
+                ("pane_id", said(&restart.pane_id)),
+                ("env", (!restart.env.is_empty()).then(|| json!(restart.env))),
+            ])
+        }),
         request::Payload::SendToPane(send) => json!({
             "send_to_pane": fields([
                 ("pane_id", said(&send.pane_id)),

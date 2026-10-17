@@ -4,7 +4,7 @@
 //! Everything a request did arrives as events before its answer, applied by the follower on
 //! the connection's reader, so by the time a submit returns the mirror already shows it
 //! (MIP-3, section 9). What a submit returns is only what no event can say: which of the
-//! things that appeared this request made.
+//! things that appeared this request made, and what a restart did.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -13,7 +13,7 @@ use std::time::Duration;
 use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
+    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -30,6 +30,10 @@ use crate::follow::Connection;
 /// How long a daemon has to answer a request. It answers in milliseconds; this is for a
 /// machine so loaded, or a link so slow, that the answer is late rather than lost.
 const PATIENCE: Duration = Duration::from_secs(10);
+
+/// How long a restart has: the daemon answers once the agent has ended and its resume is typed,
+/// which takes up to 12 seconds for an agent that has to be killed and a shell slow to start.
+const RESTART_PATIENCE: Duration = Duration::from_secs(30);
 
 /// One daemon, as the core's backend.
 #[derive(Debug)]
@@ -55,19 +59,23 @@ impl DaemonBackend {
     }
 
     fn ask(&self, service: Service) -> Result<proto::Answer, Refusal> {
+        self.ask_within(service, PATIENCE)
+    }
+
+    fn ask_within(&self, service: Service, patience: Duration) -> Result<proto::Answer, Refusal> {
         let Some(control) = self.connection.control() else {
             return Err(Refusal::Declined(format!(
                 "{} is not connected, so nothing was sent; it is reconnecting on its own",
                 self.description
             )));
         };
-        let answer = control.ask(service).wait(PATIENCE).map_err(|why| match why {
+        let answer = control.ask(service).wait(patience).map_err(|why| match why {
             Unanswered::TimedOut => Refusal::Unanswered {
                 detail: format!(
                     "{} did not answer within {}s; the change may still happen, and arrives on \
                      its events if it does",
                     self.description,
-                    PATIENCE.as_secs()
+                    patience.as_secs()
                 ),
                 made: None,
             },
@@ -258,18 +266,18 @@ impl BackendChannel for DaemonBackend {
                     ratio,
                 });
                 let created = self.create(placement, cwd, run, name, quiet)?;
-                Ok(Outcome { created: Some(created), created_tab: None })
+                Ok(Outcome { created: Some(created), ..Outcome::default() })
             }
             BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden } => {
                 let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
-                Ok(Outcome { created: Some(created), created_tab: Some(tab) })
+                Ok(Outcome { created: Some(created), created_tab: Some(tab), ..Outcome::default() })
             }
             // The same placement `placement_in` asks for when a moved pane is this machine's
             // first in the tab, and unnamed for the same reason: the window names this part
             // after the rest when the daemon announces it.
             BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden } => {
                 let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
-                Ok(Outcome { created: Some(created), created_tab: None })
+                Ok(Outcome { created: Some(created), ..Outcome::default() })
             }
             BackendIntent::ClosePane { pane } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
@@ -309,7 +317,7 @@ impl BackendChannel for DaemonBackend {
                     pane: pane.to_string(),
                     placement: Some(proto::Placement { r#where: Some(placement) }),
                 }))?;
-                Ok(Outcome { created: None, created_tab })
+                Ok(Outcome { created_tab, ..Outcome::default() })
             }
             BackendIntent::CloseTab { tab } => {
                 self.tab_request(tab_request::Request::Close(tab_request::Close {
@@ -342,6 +350,26 @@ impl BackendChannel for DaemonBackend {
                 let compact = pane_request::Compact { pane: pane.to_string(), focus, then };
                 self.pane_request(pane_request::Request::Compact(compact))?;
                 done
+            }
+            BackendIntent::RestartAgent { pane, env } => {
+                self.speaks_since(muster_daemon_proto::version::RESTARTS, "restart an agent")?;
+                let restart = pane_request::Restart {
+                    pane: pane.to_string(),
+                    env: env.into_iter().collect(),
+                };
+                let service = Service::Pane(proto::PaneRequest {
+                    request: Some(pane_request::Request::Restart(restart)),
+                });
+                let answer = self.ask_within(service, RESTART_PATIENCE)?;
+                let restarted = match answer.detail {
+                    Some(answer::Detail::Restarted(restarted)) => Some(Restarted {
+                        program: restarted.program,
+                        killed: restarted.killed,
+                        typed: restarted.typed,
+                    }),
+                    _ => None,
+                };
+                Ok(Outcome { restarted, ..Outcome::default() })
             }
             BackendIntent::QuietPane { pane, quiet } => {
                 self.hides_and_quiets("make a pane quiet")?;

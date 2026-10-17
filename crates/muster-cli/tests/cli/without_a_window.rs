@@ -140,6 +140,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_line_the_agent_took_and_repainted_is_unanswered(&here);
     a_wait_on_an_agent_that_stops_reading_is_refused(&here);
     hiding_and_quiet_are_asked_of_the_daemon(&here);
+    an_agent_is_restarted_by_the_daemon(&here);
     panes_are_made_renamed_and_closed_by_the_daemon(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
@@ -299,6 +300,31 @@ fn a_compaction_queued_says_what_it_waits_for(here: &Here) {
         let p3 = listed["panes"].as_array()?.iter().find(|pane| pane["pane"] == json!("p3"))?;
         p3["compaction"].is_null().then_some(())
     });
+}
+
+/// With no window, `pane restart` asks the daemon, which says what it typed to resume the session,
+/// and a shell, which has no session, is refused.
+fn an_agent_is_restarted_by_the_daemon(here: &Here) {
+    let report = proto::pane_request::Report {
+        pane: "p2".to_string(),
+        agent: "claude".to_string(),
+        session_id: Some("s-9".to_string()),
+        ..Default::default()
+    };
+    expect(
+        &mut here.daemon.connect(),
+        pane(proto::pane_request::Request::Report(report)),
+        proto::Outcome::Done,
+    );
+    let said = ok(&here.muster(&["pane", "restart", "--pane", "p2", "--env", "FAKE=1"]));
+    assert!(
+        said.starts_with("p2  ended claude and typed: FAKE='1' ")
+            && said.ends_with("'--resume' 's-9'"),
+        "{said}"
+    );
+    here.daemon.until_agent("p2", proto::AgentState::Idle);
+    let refused = refused_with(&here.muster(&["pane", "restart", "--pane", "p1"]), 1);
+    assert!(refused.contains("nothing to resume"), "{refused}");
 }
 
 /// A pane is hidden, made quiet and shown again with no window, by the daemon holding it, which

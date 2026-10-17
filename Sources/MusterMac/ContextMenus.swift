@@ -47,7 +47,7 @@ public enum ContextMenuModel {
   /// machine the pane is already on, and most windows never attach a second.
   public static func pane(
     machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false,
-    quiet: Bool = false
+    canRestart: Bool = false, quiet: Bool = false
   ) -> [ContextEntry] {
     var entries: [ContextEntry] = [
       .item(.copy, enabled: hasSelection),
@@ -68,6 +68,7 @@ public enum ContextMenuModel {
       .item(.action("move_pane_to_new_tab")),
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
+      .item(.action("restart_agent"), enabled: canRestart),
       .item(.action("hide_pane")),
       .toggle(.action("quiet_pane"), on: quiet),
       .separator,
@@ -101,13 +102,16 @@ public enum ContextMenuModel {
   /// close a pane no region shows - the one destructive verb it keeps to what is on screen.
   ///
   /// Compact Agent is greyed out on both menus where the pane's daemon says nothing would be
-  /// typed: no agent, or one whose manifest gives no compact line.
+  /// typed: no agent, or one whose manifest gives no compact line. Restart Agent is greyed out
+  /// where there is no session to resume. It is offered off screen, unlike Close, because it
+  /// asks first and the pane is still there afterwards, running its agent again.
   public static func agentRow(
-    onScreen: Bool, canCompact: Bool = false, quiet: Bool = false
+    onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false, quiet: Bool = false
   ) -> [ContextEntry] {
     [
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
+      .item(.action("restart_agent"), enabled: canRestart),
       .item(.action("move_pane_to_new_tab")),
       .item(.action("hide_pane")),
       .toggle(.action("quiet_pane"), on: quiet),
@@ -257,6 +261,7 @@ public enum PaneRefusal {
   public static let hide = "The pane was not hidden"
   public static let show = "The pane was not shown"
   public static let quiet = "The pane’s notifications did not change"
+  public static let restart = "The agent was not restarted"
 }
 
 /// What a refused tab request did not do, as the heading over the core's reason.
@@ -274,13 +279,16 @@ public enum ContextMenus {
   /// only in a test that has none.
   public static func pane(
     _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
-    quiet: Bool = false, window: String = "", rename: @escaping @MainActor (PaneKey) -> Void,
+    canRestart: Bool = false, quiet: Bool = false, window: String = "",
+    rename: @escaping @MainActor (PaneKey) -> Void,
+    restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
     refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
-      canPaste: surface?.canPaste ?? false, canCompact: canCompact, quiet: quiet)
+      canPaste: surface?.canPaste ?? false, canCompact: canCompact, canRestart: canRestart,
+      quiet: quiet)
     return ContextMenu.build(entries, subject: subject(pane), window: window) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
@@ -288,22 +296,32 @@ public enum ContextMenus {
       case .splitOnto(let machine):
         Core.split(
           side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine)
+      case .action("restart_agent"): restart(pane)
       default:
         perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
       }
     }
   }
 
+  /// `restart` is called rather than the agent restarted outright, because a restart ends it
+  /// and the window asks first.
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, quiet: Bool = false,
-    pasteboard: NSPasteboard = .general, window: String = "",
-    rename: @escaping @MainActor (PaneKey) -> Void, refused: @escaping Refused = { _, _ in }
+    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false,
+    quiet: Bool = false, pasteboard: NSPasteboard = .general, window: String = "",
+    rename: @escaping @MainActor (PaneKey) -> Void,
+    restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
+    refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
-      ContextMenuModel.agentRow(onScreen: onScreen, canCompact: canCompact, quiet: quiet),
+      ContextMenuModel.agentRow(
+        onScreen: onScreen, canCompact: canCompact, canRestart: canRestart, quiet: quiet),
       subject: subject(pane), window: window
-    ) {
-      perform($0, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+    ) { choice in
+      if case .action("restart_agent") = choice {
+        restart(pane)
+      } else {
+        perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+      }
     }
   }
 

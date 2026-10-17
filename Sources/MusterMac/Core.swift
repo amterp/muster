@@ -545,6 +545,31 @@ public enum Core {
     send(request)
   }
 
+  /// Restarts the agent in a pane, in its session, and calls `then` on the main thread with the
+  /// core's refusal, or nil once the daemon has typed the resume.
+  ///
+  /// The one request the shell sends off the main thread. Its answer waits on a program ending
+  /// and a shell drawing its prompt, which takes seconds, and the window would stop drawing
+  /// meanwhile. The core answers it as it answers the CLI, whose requests already arrive on
+  /// threads of their own; the window is named in the request, since which window is speaking is
+  /// only known on the main thread.
+  public static func restartAgent(
+    daemonID: String, paneID: String, window: String,
+    then: @escaping @MainActor @Sendable (String?) -> Void
+  ) {
+    var restart = Muster_RestartAgent()
+    restart.daemonID = daemonID
+    restart.paneID = paneID
+    var request = Muster_Request()
+    request.restartAgent = restart
+    request.window = window
+    let (sent, dispatcher) = (request, self.dispatcher)
+    DispatchQueue.global(qos: .userInitiated).async {
+      let refused = refusal(send(sent, through: dispatcher))
+      DispatchQueue.main.async { then(refused) }
+    }
+  }
+
   /// Takes a pane out of every window into the hidden list, its agent still running. Naming no
   /// pane means the keyboard's.
   @discardableResult
@@ -1423,6 +1448,7 @@ public enum Core {
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
     case .compactPane: return "compact_pane"
+    case .restartAgent: return "restart_agent"
     case .hidePane: return "hide_pane"
     case .showPane: return "show_pane"
     case .quietPane: return "quiet_pane"

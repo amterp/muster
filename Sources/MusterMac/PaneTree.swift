@@ -133,6 +133,7 @@ extension Roster.Pane {
       givenName: pane.givenName,
       onScreen: pane.onScreen,
       compactable: pane.compactable,
+      resumesAs: pane.resumesAs,
       quiet: pane.quiet)
   }
 }

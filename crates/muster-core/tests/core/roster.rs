@@ -53,6 +53,13 @@ fn roster_conformance() {
                     .filter(|panes| !panes.is_empty())
                     .map(|panes| json!(panes)),
             ),
+            // Only when some pane's agent can be restarted, for the same reason.
+            (
+                "restartable",
+                Some(restartable(&roster))
+                    .filter(|panes| !panes.is_empty())
+                    .map(|panes| json!(panes)),
+            ),
             // The machines, which the tabs no longer group by. Only the ones with something to
             // say: a machine that is connected and holding panes says it through its panes.
             (
@@ -101,6 +108,15 @@ fn roster_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// The panes a menu would offer to restart, with what each would be restarted with.
+fn restartable(roster: &Roster) -> Vec<String> {
+    roster
+        .tabs()
+        .flat_map(|tab| tab.panes.iter())
+        .filter_map(|pane| Some(format!("{} {}", pane.key, pane.resumes_as.as_ref()?)))
+        .collect()
 }
 
 /// The panes a menu would offer to compact.

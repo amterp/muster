@@ -265,7 +265,12 @@ public final class MusterWindow: NSObject {
     }
     sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
     sidebar.onProblemRemedied = { [weak self] problem in
-      if self?.speaking({ Core.remedy(of: problem) }) == false { NSSound.beep() }
+      // A restart ends the agent, so it asks first, as the menus' Restart Agent does.
+      if case .restartAgent(let restart) = problem.remedy?.request.payload {
+        self?.confirmRestart(PaneKey(daemon: restart.daemonID, pane: restart.paneID))
+      } else if self?.speaking({ Core.remedy(of: problem) }) == false {
+        NSSound.beep()
+      }
     }
     surfaces.menu = { [weak self] pane in self?.menu(forPane: pane) }
     applyTitle()
@@ -805,6 +810,7 @@ extension MusterWindow: NSMenuItemValidation {
     switch action {
     case #selector(focusPaneAsking(_:)): Core.anythingAsking
     case #selector(compactAgent(_:)): keyboard?.compactable ?? false
+    case #selector(restartAgent(_:)): !(keyboard?.resumesAs.isEmpty ?? true)
     default: true
     }
   }
@@ -982,6 +988,12 @@ extension MusterWindow {
     Core.compactPane()
   }
 
+  /// Restarts the agent in the pane the keyboard is on, once asked. The window's own idea of
+  /// which pane that is, unlike compacting's, because the sheet has to name it.
+  @objc public func restartAgent(_ sender: Any?) {
+    confirmRestart(keyboardKey)
+  }
+
   /// Hides the pane the keyboard is on.
   @objc public func hidePane(_ sender: Any?) {
     if let why = Core.hidePane() { tell(PaneRefusal.hide, why) }
@@ -1104,8 +1116,11 @@ extension MusterWindow {
     ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
       machines: speaking { Core.machines() }.map(\.daemon),
-      canCompact: namedPane(pane)?.compactable ?? false, quiet: namedPane(pane)?.quiet ?? false,
-      window: name, rename: { [weak self] in self?.rename(pane: $0) },
+      canCompact: namedPane(pane)?.compactable ?? false,
+      canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true),
+      quiet: namedPane(pane)?.quiet ?? false, window: name,
+      rename: { [weak self] in self?.rename(pane: $0) },
+      restart: { [weak self] in self?.confirmRestart($0) },
       refused: { [weak self] in self?.tell($0, $1) })
   }
 
@@ -1122,8 +1137,9 @@ extension MusterWindow {
       guard let pane = row.pane else { return nil }
       return ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
-        quiet: row.quiet, window: name,
-        rename: { [weak self] in self?.rename(pane: $0) },
+        canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true), quiet: row.quiet,
+        window: name, rename: { [weak self] in self?.rename(pane: $0) },
+        restart: { [weak self] in self?.confirmRestart($0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
@@ -1152,6 +1168,32 @@ extension MusterWindow {
       then: { [weak self] in
         let deleted = self?.speaking { Core.deleteGroup(daemonID: daemon, group: group) }
         if deleted == false { NSSound.beep() }
+      })
+  }
+
+  /// Asks before restarting a pane's agent: it ends whatever the agent is doing, and what comes
+  /// back is its session resumed, not the agent as it was this moment. Says what it will run,
+  /// which is what the daemon decided from the flags the agent was started with.
+  func confirmRestart(_ pane: PaneKey?) {
+    guard let pane, let row = namedPane(pane), !row.resumesAs.isEmpty else {
+      tell(
+        PaneRefusal.restart,
+        "Muster knows no session to resume for that pane's agent: it has reported none, or its "
+          + "harness has no way to resume one (`muster docs harnesses`).")
+      return
+    }
+    ConfirmSheet.ask(
+      on: window, question: "Restart the agent in \(row.label)?",
+      body: "Ends the agent, interrupting whatever it is doing, and resumes its session in the "
+        + "same pane with the command below. What it was typed while it was not reading is "
+        + "thrown away.",
+      confirm: "Restart Agent", preview: row.resumesAs,
+      then: { [weak self] in
+        guard let self else { return }
+        Core.restartAgent(daemonID: pane.daemon, paneID: pane.pane, window: self.name) {
+          [weak self] refused in
+          if let refused { self?.tell(PaneRefusal.restart, refused) }
+        }
       })
   }
 

@@ -98,7 +98,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `close_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
-`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
+`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
@@ -167,6 +167,11 @@ Quiet Pane stops that pane raising anything for you, and is checked in the menu 
 `upgrade_muster` is the eleventh: it is reached for once a release, and a chord for it would be
 taken from something used every day. Upgrade muster in the app menu and `muster upgrade` are the
 same act (`muster docs overview`, "Upgrading").
+
+`restart_agent` is the twelfth. It ends the agent in the pane the keyboard is on and resumes its
+session, asking first, so a chord would only open a question; its menu item, Restart Agent…, is
+greyed out while that pane's agent has no session Muster can resume (`muster docs agents`,
+"Restarting an agent").
 
 **The mouse's back and forward buttons go back to the pane you were on, and forward again.**
 Every pane the keyboard lands on is recorded, however it got there, so a step back can change

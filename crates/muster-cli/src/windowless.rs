@@ -49,6 +49,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::SendToPane(_)
                     | request::Payload::WatchPanes(_)
                     | request::Payload::CompactPane(_)
+                    | request::Payload::RestartAgent(_)
                     | request::Payload::HidePane(_)
                     | request::Payload::ShowPane(_)
                     | request::Payload::QuietPane(_)
@@ -112,6 +113,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::CompactPane(compact)) => {
             let pane = named(&compact.pane_id, "compacted")?;
             respond(compact_pane(&socket, pane, &compact.focus, &compact.then)?)
+        }
+        Some(request::Payload::RestartAgent(restart)) => {
+            let pane = named(&restart.pane_id, "restarted")?;
+            respond(restart_agent(&socket, pane, restart)?)
         }
         Some(request::Payload::HidePane(hide)) => {
             let pane = named(&hide.pane_id, "hidden")?;
@@ -434,6 +439,38 @@ fn compact_pane(socket: &Path, pane: &str, focus: &str, then: &str) -> Result<Re
             note.map_or_else(|| changed(answer), Response::noted)
         }
         _ => changed(answer),
+    })
+}
+
+/// Restarts a pane's agent, and says what its daemon typed, as a window's answer does.
+fn restart_agent(
+    socket: &Path,
+    pane: &str,
+    restart: &muster_proto::RestartAgent,
+) -> Result<Response, Trouble> {
+    let answer = asked(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::Restart(
+            daemon_proto::pane_request::Restart {
+                pane: pane.to_string(),
+                env: restart.env.clone().into_iter().collect(),
+            },
+        )),
+    )?;
+    Ok(match (answer.outcome(), answer.detail) {
+        (daemon_proto::Outcome::NotThere, _) => not_held(socket, pane, "restarted"),
+        (daemon_proto::Outcome::Done, Some(daemon_proto::answer::Detail::Restarted(restarted))) => {
+            Response {
+                payload: Some(response::Payload::Restarted(muster_proto::Restarted {
+                    pane_id: pane.to_string(),
+                    program: restarted.program,
+                    killed: restarted.killed,
+                    typed: restarted.typed,
+                })),
+            }
+        }
+        (daemon_proto::Outcome::Done, _) => ok(),
+        _ => failure(answer.reason),
     })
 }
 

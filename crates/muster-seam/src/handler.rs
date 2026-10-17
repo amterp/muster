@@ -21,7 +21,7 @@ use muster_core::input::{
     check_sent_keys, composition_outcome,
 };
 use muster_core::intent::Refusal;
-use muster_core::intent::{BackendIntent, Branch, Side};
+use muster_core::intent::{BackendIntent, Branch, Outcome, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
@@ -337,6 +337,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
+        request::Payload::RestartAgent(restart) => restart_agent(window, restart),
         request::Payload::HidePane(hide) => hide_pane(window, &hide),
         request::Payload::ShowPane(show) => show_pane(window, &show),
         request::Payload::QuietPane(quiet) => quiet_pane(window, &quiet),
@@ -487,6 +488,35 @@ fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
     match agent.and_then(|agent| agent.state.queued_note(agent.facts.subagents)) {
         Some(note) => Response::noted(note),
         None => answer,
+    }
+}
+
+/// Restarts the agent in a pane, in its session, and says what its daemon did. The keyboard
+/// stays where it is, and nothing on screen moves: the pane is where it was, running its agent
+/// again.
+fn restart_agent(window: WindowId, restart: proto::RestartAgent) -> Response {
+    let target = match target(window, &restart.daemon_id, &restart.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let intent =
+        BackendIntent::RestartAgent { pane: pane.clone(), env: restart.env.into_iter().collect() };
+    let outcome = session::submit(window, &target.daemon, &intent, Keyboard::StaysPut);
+    placed(outcome.map(|outcome| restarted(&pane, outcome)), &target)
+}
+
+fn restarted(pane: &PaneId, outcome: Outcome) -> Response {
+    let Some(restarted) = outcome.restarted else { return Response::ok() };
+    Response {
+        payload: Some(response::Payload::Restarted(proto::Restarted {
+            pane_id: pane.to_string(),
+            program: restarted.program,
+            killed: restarted.killed,
+            typed: restarted.typed,
+        })),
     }
 }
 
@@ -1816,8 +1846,8 @@ fn submit(
     session::submit(window, daemon, intent, keyboard).map(made_or_ok)
 }
 
-fn made_or_ok(made: Option<PaneId>) -> Response {
-    match made {
+fn made_or_ok(outcome: Outcome) -> Response {
+    match outcome.created {
         Some(pane) => Response {
             payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
         },
