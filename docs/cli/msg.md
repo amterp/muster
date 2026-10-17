@@ -360,7 +360,9 @@ group they share with the maker, made for it when there is none:
 
 The notice comes from the helpers' daemon, which on a devenv is the laptop's human's, and arrives
 on the laptop from `@muster@devenv`. A devenv holds it until the laptop is linked, since a group
-made there before that would never reach the laptop.
+made there before that would never reach the laptop. It names only the helpers still open when it
+is sent, so closing a tab that holds a maker and its helpers tells nobody, and neither does a daemon
+that stops, whose panes all come back with it.
 
 **`who` says the same at any moment**, without waiting the 2 minutes. Under each member, one line
 per group where messages wait on it unread: the oldest, who posted them, and why it has not read
