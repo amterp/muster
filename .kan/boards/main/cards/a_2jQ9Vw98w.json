@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "the-stall-watch-tells",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792259938998,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-10-17 while fixing the same bug in MIP-7's maker watch (44134e74, which carries what each helper's maker was told across a handover as Handoff.Pane.maker_told). The stall watch (crates/muster-daemon/src/messages/stalls.rs) keeps its episodes in memory, so a member still holding a group up across a handover (a Muster upgrade) is announced again two minutes after the new daemon starts, though the notice says Muster says it once. The fix is likely the same shape: carry each told episode's first unread message in the handoff, and take it as told until the stall changes.",
+  "id": "a_2jQ9Vw98w",
+  "position": "b1N",
+  "title": "The stall watch tells a poster again after a daemon handover",
+  "type": "bug",
+  "updated_at_millis": 1792259938998,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792259938998}
+  ]
+}
