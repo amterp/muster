@@ -74,6 +74,9 @@ pub(crate) struct Panes {
     titles: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
     attended: bool,
+    /// Whether a restore is still bringing panes back: a pane not open yet may be one of them,
+    /// with its agent resuming in it.
+    restoring: bool,
 }
 
 impl Panes {
@@ -118,7 +121,11 @@ impl Panes {
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
             (record.pane.clone(), seen, !loaded || io.age() < AGENT_TO_COME, name, title)
         });
-        let mut panes = Panes { attended: session.attended(), ..Panes::default() };
+        let mut panes = Panes {
+            attended: session.attended(),
+            restoring: session.restoring(),
+            ..Panes::default()
+        };
         drop(session);
         for (pane, seen, young, name, title) in read {
             if let Some(seen) = seen {
@@ -214,6 +221,7 @@ impl Presence for Panes {
             (Some(seen), _) if seen.rings || seen.session.is_some() => Ringable::Rings,
             (Some(_), _) => Ringable::NoPrompt,
             (None, Some(true)) => Ringable::AgentToCome,
+            (None, None) if self.restoring => Ringable::AgentToCome,
             (None, _) => Ringable::NoAgent,
         }
     }

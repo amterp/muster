@@ -607,6 +607,11 @@ impl Messages {
             || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
     }
 
+    /// How many wakes wait to be rung.
+    pub(crate) fn waiting(&self) -> usize {
+        self.pending.len()
+    }
+
     /// Ends the waits a change answered and sorts its wakes: sent now, rung now, or left for the
     /// doorbell. Under the lock, so a wait's answer and the service's record of it cannot part.
     pub(crate) fn hold(

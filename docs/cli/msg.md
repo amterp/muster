@@ -480,8 +480,9 @@ from the other:
 In a directory beside the daemon's socket, `<install>.msg/`, readable by you only: a log per
 group, synced before a post is answered, and a file of participants and their places. Logs
 survive the daemon restarting, the machine going down, and a new daemon taking over from an old
-one. Message bodies never enter the daemon's own log, which records who posted how many bytes
-where.
+one. So does a wake still waiting to be rung: a restarted daemon holds it until its pane is back
+and the agent resumed there can take it. Message bodies never enter the daemon's own log, which
+records who posted how many bytes where.
 
 ## Not yet
 

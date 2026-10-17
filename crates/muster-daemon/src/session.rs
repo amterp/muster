@@ -223,7 +223,8 @@ impl Shared {
     }
 
     /// Starts the doorbell, once the panes this daemon begins with are in: its first look rings
-    /// the wakes it loaded, and drops those whose pane it cannot find.
+    /// the wakes it loaded, and drops those whose pane it cannot find and no restore under way
+    /// may bring back.
     pub(crate) fn start_doorbell(self: &Arc<Self>) {
         self.doorbell.start(Arc::downgrade(self));
     }
@@ -878,6 +879,9 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
             .unwrap_or_else(|| "a panic with no message".to_string())
     });
     {
+        // Taken apart from the session's lock, which is never held with it. Wakes for panes
+        // brought back waited for them, and wait now for their agents.
+        let wakes = shared.messages().waiting();
         let session = shared.lock();
         log::info(
             "daemon.state.restored",
@@ -886,6 +890,7 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
                 "saved_tabs" => names.len(),
                 "panes" => session.panes.len(),
                 "saved_panes" => saved.len(),
+                "wakes" => wakes,
                 "ms" => started.elapsed().as_millis(),
             },
         );
@@ -1177,6 +1182,11 @@ impl Session {
     /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
     pub(crate) fn attended(&self) -> bool {
         self.subscribers.iter().any(|subscriber| self.attending.contains(&subscriber.id))
+    }
+
+    /// Whether a restore is still bringing back the panes a previous run saved.
+    pub(crate) fn restoring(&self) -> bool {
+        self.restoring
     }
 
     /// Tells the windows what now waits for the human, as the message service decided it at

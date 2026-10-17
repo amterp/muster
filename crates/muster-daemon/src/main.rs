@@ -208,8 +208,8 @@ fn run(
     let persister = Arc::clone(&saved.persister);
     let shared = Shared::new(instance(), stopping.clone(), inherited, places, saved, socket);
     shared.point_link();
-    // The saved panes come back with new shells, and their agents do not: nothing restored is
-    // waited for.
+    // Before the restore, which brings the saved panes back on a thread of its own and is not
+    // waited for: until it ends, a wake for a pane not yet back is held for it.
     shared.start_doorbell();
     // Before serving, so it is the first record a client's connection can follow.
     let descriptors = descriptors.unwrap_or_else(|error| {

@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use crate::persistence::{stop, until_restored, until_saved};
 use crate::support::*;
 use muster_harness::Input;
 use proto::msg_answer::{self, Answer};
@@ -910,6 +911,30 @@ fn a_reported_session_id_is_handed_over_with_its_pane() {
     until_some("the wake command to run", || {
         agent.woken().iter().any(|woken| woken.starts_with("019a-s1|")).then_some(())
     });
+}
+
+/// A wake waiting on an agent at work outlives a daemon restart: the restarted daemon's first
+/// look comes before its restore has brought the pane back, and holds the wake for the pane
+/// rather than dropping it as closed, so the resumed agent is woken once it is idle.
+#[test]
+fn a_wake_waiting_across_a_restart_reaches_the_resumed_agent() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("s-1");
+    until_saved(&agent.daemon, "s-1");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred);
+
+    stop(&mut agent.daemon, &mut agent.control);
+    agent.daemon.restart();
+    agent.control = agent.daemon.connect();
+    until_restored(&mut agent.control, 1);
+    until_some("the resumed agent to be woken", || {
+        let woken = agent.woken().iter().any(|woken| woken.starts_with("s-1|"));
+        (woken || !agent.rung().is_empty()).then_some(())
+    });
+    let log = std::fs::read_to_string(agent.daemon.root().join("daemon.log")).unwrap_or_default();
+    assert!(!log.contains(r#""event":"msg.ring.dropped""#), "{log}");
 }
 
 /// A pane's record says its program has stopped reading, once it has.
