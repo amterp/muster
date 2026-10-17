@@ -961,8 +961,8 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
         check_body(body)?;
-        let to = self.party(to, None, presence)?;
-        let about = self.party(about, called, presence)?;
+        let to = self.party(to, None, presence);
+        let about = self.party(about, called, presence);
         let group = self.group_of_two(&to, &about, now_ms)?;
         self.post_as_muster(&group, vec![to], body, presence, now_ms)
     }
@@ -970,26 +970,21 @@ impl<S: Store> Messaging<S> {
     /// The participant Muster speaks to or of for `name`: the human, here or where it is homed;
     /// somebody on another machine, as they are written; or the one in the pane `name`, made as
     /// an addressed pane's is, or as it was when it closed.
-    fn party(
-        &mut self,
-        name: &str,
-        called: Option<&str>,
-        presence: &dyn Presence,
-    ) -> Result<String, Refusal> {
+    fn party(&mut self, name: &str, called: Option<&str>, presence: &dyn Presence) -> String {
         if split_machine(name).is_some() {
-            return Ok(name.to_string());
+            return name.to_string();
         }
         if name == HUMAN {
             if let Some(home) = self.human_elsewhere(presence) {
-                return Ok(home.human());
+                return home.human();
             }
             if !self.participants.contains_key(HUMAN) {
                 self.make_addressed(HUMAN, presence);
             }
-            return Ok(HUMAN.to_string());
+            return HUMAN.to_string();
         }
         if let Some(found) = self.by_pane(name) {
-            return Ok(found);
+            return found;
         }
         if !self.make_addressed(name, presence) {
             let mut participant = Participant::named(name);
@@ -997,7 +992,7 @@ impl<S: Store> Messaging<S> {
             participant.called = called.map(str::to_string);
             self.participants.insert(name.to_string(), participant);
         }
-        Ok(name.to_string())
+        name.to_string()
     }
 
     /// The group Muster tells `one` about `other` in ([`Self::tell_as_muster`]), made when
