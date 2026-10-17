@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-windowed-end-to",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792207602820,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-16 with a_2hL5I8kn2. pane send refuses text into an agent prompt that already holds some, and the windowless path is tested end to end against the fake agent. The windowed path shares the words (muster-core pane_text) but has only unit tests, because the seam's send tests use fixtures of their own rather than a fake agent with a readable prompt.",
+  "id": "a_2j4C0suY8",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b1I",
+  "title": "A windowed end-to-end test for pane send's refusal into a prompt holding text",
+  "type": "chore",
+  "updated_at_millis": 1792207602820,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792207602820}
+  ]
+}

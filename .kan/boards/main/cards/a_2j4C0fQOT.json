@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "read-why-an-urgent",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792207602687,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-16 after a_2hL5I8kn2. On 2026-10-14 an urgent ring typed into a busy Claude Code worker sat unsent for 14 minutes because every look at its prompt, while it ran cargo test, found no prompt to read. Why is not established: nothing logged the reason and the screen was not kept. Since 2026-10-16 the doorbell logs msg.ring.covered once per ring, with the reason. At the next sighting, read that line and the screen, and fix detection if a Claude Code working screen hides its prompt box.",
+  "id": "a_2j4C0fQOT",
+  "position": "b1H",
+  "title": "Read why an urgent ring found no prompt while a worker ran long cargo builds",
+  "type": "chore",
+  "updated_at_millis": 1792207602687,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792207602687}
+  ]
+}
