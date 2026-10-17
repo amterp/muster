@@ -17,6 +17,7 @@
 //! expectation of a reply is not something Muster can observe.
 
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -230,7 +231,7 @@ impl Stalls {
                             episode.stage = Stage::WokenAgain { at_ms: now_ms };
                         }
                         Unlock::Tell => {
-                            acts.push(tell(member, called, now_ms, why(member, called)));
+                            acts.push(tell(member, called, now_ms, &why(member, called)));
                             episode.stage = Stage::Told;
                             episode.told = true;
                         }
@@ -240,7 +241,7 @@ impl Stalls {
                 // Woken again and still held up: what is left is to tell whoever waits.
                 Stage::WokenAgain { at_ms } if now_ms.saturating_sub(at_ms) >= self.after_ms => {
                     if !waiting_on(member).is_empty() && !episode.told {
-                        acts.push(tell(member, called, now_ms, why(member, called)));
+                        acts.push(tell(member, called, now_ms, &why(member, called)));
                         episode.told = true;
                     }
                     episode.stage = Stage::Told;
@@ -286,7 +287,7 @@ impl Stalls {
                     "it has read as working for {worked} without a break, so it is rung only once \
                      it stops; an urgent post reaches it at work"
                 );
-                acts.push(tell(member, called, now_ms, why));
+                acts.push(tell(member, called, now_ms, &why));
             }
             episode.told = true;
         }
@@ -345,7 +346,7 @@ fn waiting_on(member: &Member) -> Vec<String> {
 }
 
 /// What whoever waits on `member` is told, `why` being why it has not read.
-fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: String) -> Act {
+fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: &str) -> Act {
     let held = &member.holding;
     let waited = said_as_time(now_ms.saturating_sub(held.first_at_ms));
     let shown = |id: &str| shown(called, id);
@@ -421,7 +422,7 @@ fn held(member: &Member, called: &BTreeMap<String, String>) -> String {
         (None, _) => "a wake for it is waiting to be rung".to_string(),
     };
     if let Some(zoomed) = &member.zoomed_on {
-        said.push_str(&format!("; its tab is zoomed on {}, which hides it", shown(called, zoomed)));
+        let _ = write!(said, "; its tab is zoomed on {}, which hides it", shown(called, zoomed));
     }
     said
 }
@@ -868,18 +869,18 @@ mod tests {
     #[test]
     fn a_member_working_without_a_break_is_told_of_once() {
         let mut stalls = stalls();
-        let working = Member { activity: Some(Activity::Working), ..worker() };
+        let working = [Member { activity: Some(Activity::Working), ..worker() }];
         let worked = 1000 + WORKED_AFTER * AFTER;
         for at in [1000, 1000 + AFTER, worked - 1] {
-            assert!(stalls.judge(&[working.clone()], &BTreeMap::new(), at).is_empty(), "at {at}");
+            assert!(stalls.judge(&working, &BTreeMap::new(), at).is_empty(), "at {at}");
         }
-        let acts = stalls.judge(&[working.clone()], &BTreeMap::new(), worked);
+        let acts = stalls.judge(&working, &BTreeMap::new(), worked);
         assert_eq!(kinds(&acts), ["stalled", "tell"]);
         let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
         assert!(body.contains("it has read as working for 30 minutes without a break"), "{body}");
         assert!(body.contains("an urgent post reaches it at work"), "{body}");
         assert!(
-            stalls.judge(&[working], &BTreeMap::new(), worked + AFTER).is_empty(),
+            stalls.judge(&working, &BTreeMap::new(), worked + AFTER).is_empty(),
             "said twice at work"
         );
 
@@ -901,14 +902,14 @@ mod tests {
     #[test]
     fn a_break_in_work_starts_the_long_clock_over() {
         let mut stalls = stalls();
-        let working = Member { activity: Some(Activity::Working), ..worker() };
+        let working = [Member { activity: Some(Activity::Working), ..worker() }];
         let worked = 1000 + WORKED_AFTER * AFTER;
-        stalls.judge(&[working.clone()], &BTreeMap::new(), 1000);
+        stalls.judge(&working, &BTreeMap::new(), 1000);
         stalls.judge(&[worker()], &BTreeMap::new(), 1000 + AFTER / 2);
-        stalls.judge(&[working.clone()], &BTreeMap::new(), 1000 + AFTER);
-        assert!(stalls.judge(&[working.clone()], &BTreeMap::new(), worked).is_empty());
+        stalls.judge(&working, &BTreeMap::new(), 1000 + AFTER);
+        assert!(stalls.judge(&working, &BTreeMap::new(), worked).is_empty());
         assert_eq!(
-            kinds(&stalls.judge(&[working], &BTreeMap::new(), worked + AFTER)),
+            kinds(&stalls.judge(&working, &BTreeMap::new(), worked + AFTER)),
             ["stalled", "tell"]
         );
     }

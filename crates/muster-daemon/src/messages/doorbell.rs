@@ -695,10 +695,7 @@ fn look(
         if messages.handing_over {
             return LOOK_AGAIN;
         }
-        messages.left.retain(|pane, _| panes.exists(pane));
-        // What held a pane's wake last look says nothing once no wake waits there.
-        let Messages { held, pending, .. } = &mut *messages;
-        held.retain(|pane, _| pending.iter().any(|wake| pane_of(wake) == pane));
+        forget_gone(&mut messages, &panes);
         went_idle(&mut messages, before, &panes, now, &mut next);
         for wake in std::mem::take(&mut messages.pending) {
             let Via::Pane(pane) = &wake.via else { continue };
@@ -776,6 +773,14 @@ fn look(
     }
     deliver(shared, commanding, ringing, pressing, &mut next);
     until(next, unfound)
+}
+
+/// Forgets the rings left in panes that have closed, and what held a pane's wake last look once
+/// no wake waits there.
+fn forget_gone(messages: &mut Messages, panes: &Panes) {
+    messages.left.retain(|pane, _| panes.exists(pane));
+    let Messages { held, pending, .. } = messages;
+    held.retain(|pane, _| pending.iter().any(|wake| pane_of(wake) == pane));
 }
 
 /// Types the panes' names wanted in their sessions and the compactions wanted of their agents.
