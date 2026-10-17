@@ -203,6 +203,45 @@ fn a_makers_helpers_share_one_hidden_tab() {
     assert_eq!(maker_of(&mut control, "h5").as_deref(), Some("p2c6txyt94"));
 }
 
+/// A hidden tab is brought back whole, its panes arranged as they were, and hidden again: what
+/// showing and hiding a maker's helpers asks of the daemon. A name sent with it is taken in the
+/// same change, unless the tab was renamed since.
+#[test]
+fn a_hidden_tab_is_shown_and_hidden_again_whole() {
+    let (_daemon, mut control) = two_panes();
+    make(&mut control, helper("h1", "a", among_helpers("t2", "a's helpers")));
+    make(&mut control, helper("h2", "a", among_helpers("t3", "a's helpers")));
+    let set = |hidden: bool, text: Option<&str>, generation: u64| {
+        tab(tab_request::Request::SetHidden(tab_request::SetHidden {
+            tab: "t2".to_string(),
+            hidden,
+            label: text.map(|text| proto::Label { text: Some(text.to_string()), generation }),
+        }))
+    };
+    let held = |control: &mut Control| {
+        let held = snapshot(control);
+        let tab = held.tabs.into_iter().find(|tab| tab.tab == "t2").expect("t2 is still held");
+        (tab.hidden, tab.label.and_then(|label| label.text))
+    };
+
+    let asked = expect(&mut control, set(false, Some("A's helpers"), 1), proto::Outcome::Done);
+    assert_eq!(names(&asked.events), ["tab_changed:t2"]);
+    assert_eq!(held(&mut control), (false, Some("A's helpers".to_string())));
+    assert_eq!(tab_shape(&mut control, "t2"), "[h1|h2 0.50]", "arranged as it was");
+    expect(&mut control, set(false, None, 0), proto::Outcome::AlreadySo);
+
+    expect(&mut control, set(true, None, 0), proto::Outcome::Done);
+    assert_eq!(held(&mut control), (true, Some("A's helpers".to_string())));
+
+    let rename = tab_request::Rename {
+        tab: "t2".to_string(),
+        label: Some(proto::Label { text: Some("mine".to_string()), generation: 3 }),
+    };
+    expect(&mut control, tab(tab_request::Request::Rename(rename)), proto::Outcome::Done);
+    expect(&mut control, set(false, Some("B's helpers"), 1), proto::Outcome::Done);
+    assert_eq!(held(&mut control), (false, Some("mine".to_string())), "a person's name stays");
+}
+
 /// Where a helper goes is decided as it is placed, after its shell has started, so helpers made
 /// at the same moment on different connections still end up in one tab.
 #[test]

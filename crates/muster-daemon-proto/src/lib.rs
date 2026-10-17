@@ -62,6 +62,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(tab_request::Request::Close(_)) => "tab.close",
             Some(tab_request::Request::Rename(_)) => "tab.rename",
             Some(tab_request::Request::SetSplitRatio(_)) => "tab.set_split_ratio",
+            Some(tab_request::Request::SetHidden(_)) => "tab.set_hidden",
             None => "tab",
         },
         Service::Pane(asked) => match &asked.request {

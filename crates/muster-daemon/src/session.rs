@@ -1129,6 +1129,7 @@ impl Session {
                 T::Close(close) => self.close_tab(&close.tab),
                 T::Rename(rename) => self.rename_tab(rename),
                 T::SetSplitRatio(set) => self.set_split_ratio(&set),
+                T::SetHidden(set) => self.set_tab_hidden(set),
             },
             Service::Pane(proto::PaneRequest { request: Some(request) }) => match request {
                 P::Create(create) => return self.create(create),
@@ -2444,6 +2445,26 @@ impl Session {
         for pane in tab.root.panes() {
             self.forget(pane, proto::CloseReason::Requested, None);
         }
+        Reply::done()
+    }
+
+    fn set_tab_hidden(&mut self, set: tab_request::SetHidden) -> Reply {
+        let Some(index) = self.tab_index(&set.tab) else {
+            return Reply::not_there(format!("no tab {} on this daemon", set.tab));
+        };
+        let tab = &mut self.tabs[index];
+        let label = set
+            .label
+            .filter(|label| label.generation >= tab.label.generation && *label != tab.label);
+        if tab.hidden == set.hidden && label.is_none() {
+            return Reply::already();
+        }
+        tab.hidden = set.hidden;
+        if let Some(label) = label {
+            tab.label = label;
+        }
+        let record = tab.record();
+        self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
         Reply::done()
     }
 

@@ -336,6 +336,16 @@ pub enum BackendIntent {
         /// 2). The daemon refuses a lower one.
         generation: u64,
     },
+
+    /// Hides a tab from every window, or brings it back, its panes arranged as they were: how a
+    /// maker's helpers come forward together and go back (MIP-7, section 5).
+    SetTabHidden {
+        tab: TabId,
+        hidden: bool,
+        /// A name the tab takes in the same change, at [`crate::making::HELPERS_TAB_GENERATION`]:
+        /// a helpers' tab coming forward called after its maker as it is now.
+        name: Option<String>,
+    },
 }
 
 impl BackendIntent {
@@ -356,6 +366,10 @@ impl BackendIntent {
             }
             BackendIntent::RenameTab { tab, name, generation } => format!(
                 "RenameTab {{ tab: {tab}, name: {}, generation: {generation} }}",
+                named(name.as_deref())
+            ),
+            BackendIntent::SetTabHidden { tab, hidden, name } => format!(
+                "SetTabHidden {{ tab: {tab}, hidden: {hidden}, name: {} }}",
                 named(name.as_deref())
             ),
             // A command line, for the reason above and one more: an environment set on the way

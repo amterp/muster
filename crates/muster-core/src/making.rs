@@ -12,6 +12,12 @@ pub fn helpers_tab(maker: &str) -> String {
     format!("{maker}'s helpers")
 }
 
+/// The generation Muster names a maker's helpers' tab at, both when it is made and when Show
+/// Helpers renames it after its maker. Renaming a tab puts it above every generation it has
+/// had, so a helpers' tab still at this one has only ever had the name Muster gave it, and
+/// Muster may give it the maker's current one.
+pub const HELPERS_TAB_GENERATION: u64 = 1;
+
 /// A daemon was asked to make `pane` and never said what came of it, for `detail`.
 ///
 /// Worded so that nobody reads it as a refusal, because the one thing a caller must not do with

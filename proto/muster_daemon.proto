@@ -206,6 +206,8 @@ message TabRequest {
     Close close = 1;
     Rename rename = 2;
     SetSplitRatio set_split_ratio = 3;
+    // Since 1.6.
+    SetHidden set_hidden = 4;
   }
 
   // Closes the tab and every pane in it.
@@ -226,6 +228,18 @@ message TabRequest {
     repeated Branch path = 2;
     // The first child's share, strictly between 0 and 1.
     float ratio = 3;
+  }
+
+  // Hides the tab from every view, or brings it back, with its panes arranged as they were
+  // (`Tab.hidden`): how a maker's helpers come forward together and go back (MIP-7, section 5).
+  // A tab already so answers `already`. Since 1.6.
+  message SetHidden {
+    string tab = 1;
+    bool hidden = 2;
+    // Present: the tab takes this name in the same change, so that it comes forward already
+    // called what it should be. A generation lower than the tab's is not taken, as `Rename`
+    // refuses it, and the tab is hidden or shown regardless.
+    Label label = 3;
   }
 }
 
@@ -1434,8 +1448,9 @@ message Tab {
   Node root = 3;
   optional string zoomed = 4;
   // No view shows the tab or its panes, which go on running; a view lists them apart, to be
-  // brought back. Set only when the tab is made (`Placement.NewTab.hidden`): bringing a pane
-  // back moves it into a tab that is not. Written to the state file. Since 1.5.
+  // brought back. Set when the tab is made (`Placement.NewTab.hidden`), and since 1.6 by
+  // `TabRequest.SetHidden`; bringing one pane back moves it into a tab that is not. Written to
+  // the state file. Since 1.5.
   bool hidden = 5;
 }
 

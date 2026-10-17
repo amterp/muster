@@ -696,7 +696,7 @@ fn in_a_tab(hidden: bool, maker: Option<&str>) -> daemon_proto::placement::Where
                 tab,
                 label: Some(daemon_proto::Label {
                     text: Some(muster_core::making::helpers_tab(maker)),
-                    generation: 1,
+                    generation: muster_core::making::HELPERS_TAB_GENERATION,
                 }),
             })
         }

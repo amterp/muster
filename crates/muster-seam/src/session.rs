@@ -2498,6 +2498,7 @@ pub(crate) fn submit_from(
             | BackendIntent::CompactPane { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
+            | BackendIntent::SetTabHidden { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::QuietPane { .. }
             | BackendIntent::MovePane { .. } => None,

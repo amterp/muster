@@ -284,7 +284,7 @@ impl BackendChannel for DaemonBackend {
                         tab: tab.to_string(),
                         label: Some(proto::Label {
                             text: Some(muster_core::making::helpers_tab(&maker.name)),
-                            generation: 1,
+                            generation: muster_core::making::HELPERS_TAB_GENERATION,
                         }),
                     }),
                     _ => new_tab(&tab, hidden),
@@ -405,6 +405,17 @@ impl BackendChannel for DaemonBackend {
                 self.tab_request(tab_request::Request::Rename(tab_request::Rename {
                     tab: tab.to_string(),
                     label: Some(proto::Label { text: name, generation }),
+                }))?;
+                done
+            }
+            BackendIntent::SetTabHidden { tab, hidden, name } => {
+                self.tab_request(tab_request::Request::SetHidden(tab_request::SetHidden {
+                    tab: tab.to_string(),
+                    hidden,
+                    label: name.map(|name| proto::Label {
+                        text: Some(name),
+                        generation: muster_core::making::HELPERS_TAB_GENERATION,
+                    }),
                 }))?;
                 done
             }
