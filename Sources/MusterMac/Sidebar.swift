@@ -51,10 +51,18 @@ public struct Roster: Equatable {
     /// Whether nothing about it is raised for the person. What Quiet Pane is checked by.
     public let quiet: Bool
 
+    /// The word its daemon drew (`otter`), named since or not; empty on a daemon from before
+    /// words. Drawn in a style of its own at the front of the row.
+    public let word: String
+
+    /// What the row draws after `word`: the given name, or the directory and harness. The core
+    /// takes the word out of `label` for it, so the word is drawn once.
+    public let besideWord: String
+
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
-      resumesAs: String = "", quiet: Bool = false
+      resumesAs: String = "", quiet: Bool = false, word: String = "", besideWord: String? = nil
     ) {
       self.key = key
       self.place = place
@@ -67,6 +75,8 @@ public struct Roster: Equatable {
       self.compactable = compactable
       self.resumesAs = resumesAs
       self.quiet = quiet
+      self.word = word
+      self.besideWord = besideWord ?? label
     }
   }
 
@@ -387,6 +397,11 @@ public enum SidebarModel {
     /// brings it back, since going to a hidden pane does.
     public var hidden = false
 
+    /// On a pane row, the word its daemon drew and what goes after it, as the core split them
+    /// (`Roster.Pane`). Empty `word` draws `label` alone.
+    public var word = ""
+    public var besideWord = ""
+
     public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
 
     /// Whether picking this row means something.
@@ -511,7 +526,7 @@ public enum SidebarModel {
             reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon),
             isSecondPress: tab.armed,
-            quiet: pane.quiet))
+            quiet: pane.quiet, word: pane.word, besideWord: pane.besideWord))
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -544,7 +559,7 @@ public enum SidebarModel {
             givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
             hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
-            hidden: true))
+            hidden: true, word: pane.word, besideWord: pane.besideWord))
       }
     }
     if !groups.isEmpty {
@@ -672,6 +687,10 @@ public enum SidebarModel {
   /// this is the look.
   public static func details(of row: Row) -> String {
     var lines = [row.label]
+    // A renamed pane's word is on its row but no longer what reaches it.
+    if !row.word.isEmpty, !row.givenName.isEmpty {
+      lines.append("\(row.word) is its drawn word; type \(row.givenName) to reach it")
+    }
     if let machine = row.machine { lines.append("on \(machine.daemon)") }
     guard let agent = row.agent else { return lines.joined(separator: "\n") }
     var state = agent.state
@@ -1458,12 +1477,13 @@ final class SidebarRowView: NSView {
       }
     case .pane(let first, let second):
       name.font = .systemFont(ofSize: 12, weight: .regular)
-      name.stringValue = row.label
       draw(tabPress: first, press: second, in: row)
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
       // rather than "gone", which is the difference between a row worth clicking and one that
       // looks broken.
-      name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
+      let color: NSColor = row.onScreen ? .labelColor : .secondaryLabelColor
+      name.textColor = color
+      name.attributedStringValue = Self.firstLine(for: row, color: color)
       paint(dot, SidebarModel.dotColor(state: row.state))
       layer?.addSublayer(dot)
       if !row.subtitle.isEmpty {
@@ -1508,6 +1528,29 @@ final class SidebarRowView: NSView {
     }
     resolveColors()
     needsLayout = true
+  }
+
+  /// A pane row's first line: the word its daemon drew, in a style of its own, then what the core
+  /// puts beside it - or the whole label for a pane with no word.
+  ///
+  /// Monospaced and in the accent colour, because the word is the pane's handle rather than a
+  /// description of it, and a renamed pane keeps it: it reads as the same kind of thing on every
+  /// row whatever follows it.
+  static func firstLine(for row: SidebarModel.Row, color: NSColor) -> NSAttributedString {
+    let plain: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 12, weight: .regular), .foregroundColor: color,
+    ]
+    guard !row.word.isEmpty else { return NSAttributedString(string: row.label, attributes: plain) }
+    let line = NSMutableAttributedString(
+      string: row.word,
+      attributes: [
+        .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold),
+        .foregroundColor: NSColor.controlAccentColor,
+      ])
+    if !row.besideWord.isEmpty {
+      line.append(NSAttributedString(string: "  \(row.besideWord)", attributes: plain))
+    }
+    return line
   }
 
   /// Replaces the trailing marks, unless they are the ones already drawn.

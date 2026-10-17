@@ -559,6 +559,34 @@ struct SidebarTests {
     #expect(SidebarModel.mostUrgent(["idle", "waiting", "unknown", "unreachable"]) == nil)
   }
 
+  /// The word is the pane's handle and stays in view through a rename, drawn ahead of the name in
+  /// a style of its own; an unnamed pane shows it once, not again inside its label.
+  @MainActor
+  @Test("every pane row leads with its drawn word, named or not, and draws it once")
+  func paneRowsLeadWithTheirWord() throws {
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let named = Roster.Pane(
+      key: key("w1:p1"), place: 1, label: "🤖 builder", givenName: "🤖 builder", onScreen: true,
+      word: "otter", besideWord: "🤖 builder")
+    let unnamed = Roster.Pane(
+      key: key("w1:p2"), place: 2, label: "maple · muster · claude", onScreen: true,
+      word: "maple", besideWord: "muster · claude")
+    let wordless = Roster.Pane(key: key("w1:p3"), place: 3, label: "muster", onScreen: true)
+    let rows = SidebarModel.rows(
+      roster: roster([tab("local", panes: [named, unnamed, wordless])]), agents: [:])
+
+    let lines = rows.map { SidebarRowView.firstLine(for: $0, color: .labelColor).string }
+    #expect(lines == ["otter  🤖 builder", "maple  muster · claude", "muster"])
+    let first = SidebarRowView.firstLine(for: rows[0], color: .labelColor)
+    let wordFont = try #require(first.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+    let nameFont = try #require(
+      first.attribute(.font, at: first.length - 1, effectiveRange: nil) as? NSFont)
+    #expect(wordFont.isFixedPitch && !nameFont.isFixedPitch, "the word is not set apart")
+
+    #expect(SidebarModel.details(of: rows[0]).contains("type 🤖 builder to reach it"))
+    #expect(!SidebarModel.details(of: rows[1]).contains("drawn word"))
+  }
+
   @Test("a quiet pane's row is marked, wherever it is listed")
   func quietPanesAreMarked() {
     let quiet = Roster.Pane(

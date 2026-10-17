@@ -134,7 +134,9 @@ extension Roster.Pane {
       onScreen: pane.onScreen,
       compactable: pane.compactable,
       resumesAs: pane.resumesAs,
-      quiet: pane.quiet)
+      quiet: pane.quiet,
+      word: pane.word,
+      besideWord: pane.besideWord)
   }
 }
 

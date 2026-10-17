@@ -2734,6 +2734,17 @@ message RosterPane {
   // before words. Unique on its machine, and not across machines, where `otter@devenv` says
   // which.
   string name = 13;
+
+  // The word its daemon drew (`otter`), named since or not; empty only on a daemon from before
+  // words. Apart from `label` so that a row can draw it in a style of its own and keep it in view
+  // through a rename. The daemon keeps a renamed pane's word reserved for it, so it stays one
+  // pane's on its machine, though only `name` is typed to reach the pane.
+  string word = 15;
+
+  // What a row drawing `word` on its own puts after it: the name somebody gave the pane, or else
+  // its directory and harness - `label` with the word taken out. The whole label for a pane with
+  // no word.
+  string beside_word = 16;
 }
 
 // Everything this window is showing, as one message.

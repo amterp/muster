@@ -1740,7 +1740,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"otter \u00b7 muster \u00b7 claude\" name=\"otter\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"otter \u00b7 muster \u00b7 claude\" name=\"otter\" word=\"otter\" beside-word=\"muster \u00b7 claude\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1748,8 +1748,56 @@
       }
     },
     {
-      "name": "a name somebody gave is what the pane goes by, and its word steps aside",
-      "why": "A pane has one name to type: the one a person gave it when there is one, and its word otherwise. Showing both would leave two addresses on a row and no way to tell which one works.",
+      "name": "a pane with a word and no directory has only its harness beside the word",
+      "why": "With no directory a pane's label falls back to its id, which says nothing a reader can use; a pane with a word is pointed at by the word instead. So a row drawing the word on its own puts the harness after it and nothing else, and the label is the word and the harness.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "",
+                "agent": "claude",
+                "word": "otter"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 1 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"otter · claude\" name=\"otter\" word=\"otter\" beside-word=\"claude\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
+      "name": "a name somebody gave is what the pane goes by, and its word stays beside it",
+      "why": "A pane has one name to type: the one a person gave it when there is one, and its word otherwise, so the label and the name are the given one. The word stays on the entry for the agent list to draw beside the name, because the daemon keeps a renamed pane's word reserved for it: it is still one pane's on its machine, so a row showing it cannot be mistaken for another pane's, though it is not what you type to reach this one.",
       "given": {
         "worlds": {
           "laptop": {
@@ -1789,7 +1837,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" word=\"otter\" beside-word=\"builder\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1852,7 +1900,7 @@
         ],
         "hidden": [
           "w1:t2 on=local place=0 label=\"\" off-screen",
-          "local/w1:p2 place=0 tab=w1:t2 label=\"maple \u00b7 beta\" name=\"maple\" off-screen"
+          "local/w1:p2 place=0 tab=w1:t2 label=\"maple \u00b7 beta\" name=\"maple\" word=\"maple\" beside-word=\"beta\" off-screen"
         ]
       }
     },

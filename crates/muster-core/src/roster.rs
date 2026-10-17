@@ -217,6 +217,16 @@ pub struct RosterPane {
     /// What to type to reach this pane: the name somebody gave it, or the word its daemon drew.
     /// Absent only for a pane nobody named on a daemon from before words.
     pub name: Option<String>,
+    /// The word its daemon drew (`otter`), whether or not somebody has named it since. Absent
+    /// only on a daemon from before words.
+    ///
+    /// Carried apart from `label` so that a row can draw it in a style of its own and keep it in
+    /// view through a rename: the daemon keeps a renamed pane's word reserved for it, so it is
+    /// still one pane's on its machine (`docs/cli/overview.md`).
+    pub word: Option<String>,
+    /// What a row drawing `word` on its own puts after it: [`pane_beside_word`]. The same as
+    /// `label` for a pane with no word.
+    pub beside_word: String,
     /// Whether a region is showing it right now.
     ///
     /// Here rather than left to the shell to work out by comparing against the view: the two
@@ -546,6 +556,8 @@ impl Roster {
                             label,
                             given_name: given_name(pane.name.as_deref()),
                             name: pane_name(pane).map(str::to_string),
+                            word: pane_word(pane).map(str::to_string),
+                            beside_word: pane_beside_word(pane),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
                             resumes_as: resumes_as(pane),
@@ -710,6 +722,8 @@ fn hidden_tabs<'a>(
                     label,
                     given_name: given_name(pane.name.as_deref()),
                     name: pane_name(pane).map(str::to_string),
+                    word: pane_word(pane).map(str::to_string),
+                    beside_word: pane_beside_word(pane),
                     on_screen: false,
                     compactable: pane.compactable,
                     resumes_as: resumes_as(pane),
@@ -787,16 +801,35 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 /// type to reach the pane, and keeps the directory and the harness after it, because a word
 /// says nothing about the work and those are what tell fifteen rows apart.
 pub fn pane_label(pane: &Pane) -> String {
-    if let Some(name) = pane.name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
-        return name.to_string();
+    let beside = pane_beside_word(pane);
+    match pane_word(pane).filter(|_| given_name(pane.name.as_deref()).is_none()) {
+        Some(word) if beside.is_empty() => word.to_string(),
+        Some(word) => format!("{word} · {beside}"),
+        None => beside,
     }
-    match pane.word.as_deref().filter(|word| !word.is_empty()) {
-        Some(word) if pane.cwd.trim_end_matches('/').is_empty() => {
-            format!("{word}{}", harness_suffix(pane))
-        }
-        Some(word) => format!("{word} · {}{}", pane_directory(pane), harness_suffix(pane)),
-        None => format!("{}{}", pane_directory(pane), harness_suffix(pane)),
+}
+
+/// What a row that draws a pane's word on its own puts after the word: the name somebody gave the
+/// pane, or else its directory and harness - the label with the word taken out, so the word is
+/// drawn once. A pane with no word gets its whole label.
+///
+/// The label is built from this, so the two cannot come to disagree about anything but the word.
+pub fn pane_beside_word(pane: &Pane) -> String {
+    if let Some(name) = given_name(pane.name.as_deref()) {
+        return name;
     }
+    let harness = pane.agent.as_deref().filter(|agent| !agent.is_empty());
+    // With no directory, a word is enough to point at the pane by, where the id it would fall
+    // back to says nothing a reader can use.
+    if pane_word(pane).is_some() && pane.cwd.trim_end_matches('/').is_empty() {
+        return harness.unwrap_or_default().to_string();
+    }
+    format!("{}{}", pane_directory(pane), harness_suffix(pane))
+}
+
+/// The word a pane's daemon drew, if it has one.
+fn pane_word(pane: &Pane) -> Option<&str> {
+    pane.word.as_deref().filter(|word| !word.is_empty())
 }
 
 /// What a pane is called, as something to type: the name somebody gave it, or failing that the
