@@ -29,7 +29,9 @@
 //! Return can send nothing but the ring. The first is what the daemon saw written, since the
 //! screen can lag it. A ring given up with its text still in the prompt is sent by the next ring
 //! that finds exactly that text there, so a prompt the doorbell filled never reads as somebody's
-//! draft for good.
+//! draft for good. One typed at work whose message its agent reads before the Return - by
+//! itself, with the turn still running - is erased instead: sent, it would wake the agent for
+//! nothing, and left, it would be sent with whatever is typed next.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock, Weak};
@@ -323,6 +325,16 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
         messages.held.extend(held);
     }
     came
+}
+
+/// A ring due its Return, or a Return pressed again, with the pane its agent was seen in.
+struct Pressing {
+    rung: Rung,
+    seen: Seen,
+    /// Typed at work and not yet returned, and its agent has since read what it was rung for,
+    /// or its group was paused: its text still sits in the prompt, to be taken back rather
+    /// than sent.
+    unneeded: bool,
 }
 
 /// Wakes to reach now, each with the pane its agent was seen in.
@@ -814,7 +826,7 @@ fn deliver(
     shared: &Arc<Shared>,
     commanding: Reaching,
     ringing: Reaching,
-    pressing: Vec<(Rung, Seen)>,
+    pressing: Vec<Pressing>,
     next: &mut Option<Instant>,
 ) {
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
@@ -888,7 +900,7 @@ fn went_idle(
 
 /// Keeps the rings not yet taken, and takes out those due their Return, or a Return pressed
 /// again. A ring whose agent went to work, or read, was taken; one pressed as often as it may be
-/// ends. An urgent ring may have been typed at work, so going to work says nothing about it: its
+/// ends. One read before its Return was pressed is still in the prompt, and is taken back. An urgent ring may have been typed at work, so going to work says nothing about it: its
 /// agent's prompt is looked at once it is due, and an empty one means it was taken. One whose
 /// Return is still to come is not taken by anything its agent does meanwhile, a dialog least of
 /// all: only its prompt holding it can say what the Return would send.
@@ -898,11 +910,11 @@ fn unanswered_rings(
     now: Instant,
     moving: &mut Moving,
     next: &mut Option<Instant>,
-) -> Vec<(Rung, Seen)> {
+) -> Vec<Pressing> {
     let mut pressing = Vec::new();
     for rung in std::mem::take(&mut messages.rung) {
-        let Via::Pane(pane) = &rung.wake.via else { continue };
-        let Some(seen) = panes.get(pane) else { continue };
+        let Via::Pane(pane) = rung.wake.via.clone() else { continue };
+        let Some(seen) = panes.get(&pane) else { continue };
         // What was typed waits in its terminal, unread, which is neither taken nor worth a
         // Return pressed again: the agent was rung for nothing until it reads.
         if seen.activity == Some(Activity::Stuck) {
@@ -910,8 +922,10 @@ fn unanswered_rings(
             continue;
         }
         let urgent = is_urgent(&rung.wake);
-        let taken = (rung.returned && waits_for(seen.activity, urgent).is_some())
-            || !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
+        // Read, or its group paused. One still waiting for its Return is in the prompt, unsent,
+        // whatever its agent read: forgotten there, the next thing anybody types is added to it.
+        let read = !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
+        let taken = rung.returned && (read || waits_for(seen.activity, urgent).is_some());
         if taken {
             continue;
         }
@@ -923,7 +937,7 @@ fn unanswered_rings(
         // A ring's own typing starts the quiet period; before its Return, anybody else's ends it
         // ([`press_again`]), so it is not waited out.
         let settled = if rung.returned {
-            may_ring(seen, now, urgent, moving_since(moving, pane, seen, now))
+            may_ring(seen, now, urgent, moving_since(moving, &pane, seen, now))
         } else {
             Now::Ring
         };
@@ -932,7 +946,7 @@ fn unanswered_rings(
         } else if let Now::At(quiet) = settled {
             quiet
         } else {
-            pressing.push((rung, seen.clone()));
+            pressing.push(Pressing { rung, seen: seen.clone(), unneeded: read });
             continue;
         };
         sooner(next, at);
@@ -947,10 +961,10 @@ fn unanswered_rings(
 /// ring; an empty one means the ring was sent, or cleared. A ring typed at work and not yet
 /// returned is kept instead while its prompt does not show: a dialog that opened over it may
 /// close again. Called with no lock held; true when any was pressed or kept.
-fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
+fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
     let mut pressed = Vec::new();
     let mut ending: Vec<(Rung, &'static str)> = Vec::new();
-    for (mut rung, seen) in pressing {
+    for Pressing { mut rung, seen, unneeded } in pressing {
         // Before the screen, which can lag what was typed: an agent slow to paint, or this
         // daemon's copy behind, shows the ring alone over words that a Return would send.
         if seen.io.someone_typed_at().is_some_and(|typed| typed > rung.typed) {
@@ -958,7 +972,12 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
             continue;
         }
         let text = messaging::wake_text(&notice_of(&rung.wake.notice));
-        match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&rung.wake)) {
+        let looked = prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&rung.wake));
+        if unneeded {
+            take_back(rung, &seen, &text, looked, &mut pressed, &mut ending);
+            continue;
+        }
+        match looked {
             AtPrompt::Holds(held) if prompt::is_only(&held, &text) => {
                 if !seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
                     ending.push((rung, "its pane would not take the Return"));
@@ -1006,11 +1025,7 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
                 }
             }
             AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
-            AtPrompt::Not(_) if !rung.returned => {
-                rung.covered = true;
-                rung.at = Instant::now();
-                pressed.push(rung);
-            }
+            AtPrompt::Not(unseen) if !rung.returned => pressed.push(covered(rung, unseen)),
             AtPrompt::Not(unseen) => ending.push((rung, unseen.why())),
         }
     }
@@ -1024,6 +1039,58 @@ fn press_again(shared: &Shared, pressing: Vec<(Rung, Seen)>) -> bool {
         ended(&mut messages, rung, why);
     }
     any
+}
+
+/// Takes back a ring nobody needs any more: Backspace once for each character it typed, only at
+/// a prompt holding that ring and nothing else, so nothing else is erased. A prompt already
+/// empty was sent or cleared, one holding more is left as it is, and one that cannot be read is
+/// looked at again.
+fn take_back(
+    rung: Rung,
+    seen: &Seen,
+    text: &str,
+    looked: AtPrompt,
+    pressed: &mut Vec<Rung>,
+    ending: &mut Vec<(Rung, &'static str)>,
+) {
+    match looked {
+        AtPrompt::Holds(held) if prompt::is_only(&held, text) => {
+            let chars = prompt::as_typed(text).chars().count();
+            if !seen.io.queue(Input::TakeBack { chars }) {
+                ending.push((rung, "its pane would not take the Backspaces that erase it"));
+                return;
+            }
+            log::info(
+                "msg.ring.taken_back",
+                fields! {
+                    "name" => rung.wake.name,
+                    "group" => rung.wake.notice.group,
+                    "chars" => chars,
+                },
+            );
+        }
+        AtPrompt::Empty { .. } => {}
+        AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
+        AtPrompt::Not(unseen) => pressed.push(covered(rung, unseen)),
+    }
+}
+
+/// Keeps a ring whose Return is still to come while something hides its prompt, saying once
+/// what does: nothing else would send the ring, and the screen is not kept.
+fn covered(mut rung: Rung, unseen: Unseen) -> Rung {
+    if !rung.covered {
+        log::info(
+            "msg.ring.covered",
+            fields! {
+                "name" => rung.wake.name,
+                "group" => rung.wake.notice.group,
+                "why" => unseen.why(),
+            },
+        );
+    }
+    rung.covered = true;
+    rung.at = Instant::now();
+    rung
 }
 
 /// Gives up a ring its agent never took, and forgets that the agent was woken for it, so the

@@ -126,10 +126,21 @@ impl Agent {
 
     /// What `name` has not read yet, each message as `author: body`, which reading marks read.
     fn read_as(&mut self, name: &str) -> Vec<String> {
-        let caller = msg_request::Caller {
+        self.reading(msg_request::Caller {
             as_name: Some(name.to_string()),
             ..msg_request::Caller::default()
-        };
+        })
+    }
+
+    /// What the agent in p1 has not read yet, read as it reads from its own pane.
+    fn read_in_its_pane(&mut self) -> Vec<String> {
+        self.reading(msg_request::Caller {
+            pane: Some("p1".to_string()),
+            ..msg_request::Caller::default()
+        })
+    }
+
+    fn reading(&mut self, caller: msg_request::Caller) -> Vec<String> {
         let service = Service::Msg(proto::MsgRequest {
             caller: Some(caller),
             request: Some(Asked::Read(msg_request::Read { group: None })),
@@ -705,6 +716,38 @@ fn an_urgent_ring_a_long_dialog_covered_is_sent_once_the_dialog_closes() {
     agent.daemon.unblock_agent_unasked();
     let rung = agent.until_rung(1);
     assert!(rung[0].contains("1 urgent"), "{rung:?}");
+}
+
+/// A ring typed at work whose message its agent reads by itself before the ring's Return - its
+/// prompt hidden meanwhile, here by a dialog - is taken back once the prompt shows again: sent,
+/// it would wake the agent for nothing, and left, whatever is typed next would be sent with it.
+#[test]
+fn an_urgent_ring_read_before_its_return_is_taken_back_from_the_prompt() {
+    let mut agent = Agent::in_a_pane();
+    let mut logging = following(&agent.daemon);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    std::thread::sleep(QUIET);
+
+    agent.post_urgently("p1", "now");
+    agent.until_shows(&format!("PROBE-PROMPT> [muster] {0}", agent.pair("p1")));
+    agent.daemon.block_agent_unasked();
+    agent.daemon.until_agent("p1", proto::AgentState::Blocked);
+    let covered = r#""event":"msg.ring.covered""#;
+    let logged = logging.logged_until(covered, Duration::from_secs(10));
+    assert!(logged.iter().any(|line| line.line.contains(covered)), "{logged:?}");
+    assert_eq!(agent.read_in_its_pane(), ["integrator: now"]);
+
+    agent.daemon.unblock_agent_unasked();
+    let taken_back = r#""event":"msg.ring.taken_back""#;
+    let logged = logging.logged_until(taken_back, Duration::from_secs(20));
+    assert!(logged.iter().any(|line| line.line.contains(taken_back)), "{logged:?}");
+    // The fake agent's prompt is its terminal's own line editing, whose echo of a wrapped line
+    // erased is not a screen worth reading: what it reads next says what the prompt held.
+    agent.type_in("next", true);
+    until_some("the agent to read what was typed next", || {
+        agent.heard().iter().any(|line| line.ends_with("next")).then_some(())
+    });
+    assert_eq!(agent.heard(), ["working", "next"], "the ring was sent, or left in the prompt");
 }
 
 /// A ring typed at work, then something typed into the pane before it was seen taken: the ring

@@ -216,12 +216,15 @@ its prompt box read as empty just before the ring. So a draft in the box, a dial
 a blocked agent is never rung; the post waits, and says what for.
 
 An agent at work can open a dialog at any moment, and a Return there answers it: Claude Code's
-permission dialog and Codex's approval prompt both take Return as "Yes". So a ring at work is
-typed without its Return. About a second later, a second look presses Return only if the prompt
-box holds the ring and nothing else; while a dialog covers the box, the Return waits until the
-box shows again, however long that takes. A dialog drawn in the instant between that second look
-and the Return is the one case left unguarded (MIP-4, section 6). The wake counts what is urgent
-and says to read now:
+permission dialog and Codex's approval prompt both take Return as "Yes". So a ring at work is typed
+without its Return. About a second later, a second look presses Return only if the prompt box holds
+the ring and nothing else; while a dialog covers the box, the Return waits until the box shows
+again, however long that takes. If the agent reads the group meanwhile, by itself, or the group is
+paused, the ring is erased from the box once it shows again rather than sent: sent, it would wake
+the agent for nothing, and left, whatever is typed next would be submitted with it. Only a box
+holding the ring and nothing else is erased. A dialog drawn in the instant between that second look
+and the Return is the one case left unguarded (MIP-4, section 6). The wake counts what is urgent and
+says to read now:
 
     [muster] review: 2 new (#41-42), 1 urgent, 1 to you, from director. Read it now, before you go on: muster msg read --group review
 

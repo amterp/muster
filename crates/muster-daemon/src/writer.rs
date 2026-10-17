@@ -78,6 +78,11 @@ pub(crate) enum Input {
         text: String,
         enter: bool,
     },
+    /// The doorbell taking back a ring of its own that nobody needs any more: Backspace pressed
+    /// once for each character it typed, at a prompt seen holding that ring and nothing else.
+    TakeBack {
+        chars: usize,
+    },
     /// A line the daemon types for itself rather than for anyone's work - a pane's name typed into
     /// its agent's session, or its Return pressed again: written as a ring is, and told apart so
     /// that the turn it starts in the agent is not taken for the agent's last answer.
@@ -123,6 +128,7 @@ impl Input {
                 | Input::Send { .. }
                 | Input::Press(_)
                 | Input::Ring { .. }
+                | Input::TakeBack { .. }
                 | Input::Chore { .. }
         )
     }
@@ -605,6 +611,10 @@ impl Writer {
                     bytes.extend(self.pressed(&mut encoding, &KeyEvent::press(Key::Enter)));
                 }
                 bytes
+            }
+            Input::TakeBack { chars } => {
+                let backspace = self.pressed(&mut encoding, &KeyEvent::press(Key::Backspace));
+                backspace.repeat(chars)
             }
             Input::Press(key) => {
                 // Somebody naming alt in a chord means the modifier, not option's compose layer.
