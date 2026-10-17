@@ -1220,3 +1220,31 @@ fn a_helper_at_a_dialog_tells_its_maker_once() {
     std::thread::sleep(Duration::from_secs(3));
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
 }
+
+/// A maker that closes leaves its helpers running: each stops being quiet, since nobody is left
+/// to hear from it, and the person is told once, by `@muster` (MIP-7, section 6).
+#[test]
+fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
+    let mut agent = Agent::in_a_pane();
+    let mut logging = following(&agent.daemon);
+    let quiet_helper = proto::pane_request::Create {
+        quiet: true,
+        ..helper("p2", "p1", among_helpers("t2", "p1's helpers"))
+    };
+    make(&mut agent.control, quiet_helper);
+    agent.daemon.run_agent("p2");
+
+    expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
+    logging.logged_until(r#""event":"msg.helper.orphans_told""#, Duration::from_secs(20));
+    let helper = snapshot(&mut agent.control).panes.into_iter().find(|pane| pane.pane == "p2");
+    assert!(helper.is_some_and(|helper| !helper.quiet && helper.maker.as_deref() == Some("p1")));
+
+    let read = agent.reading(msg_request::Caller::default());
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].starts_with("@muster: ")
+            && read[0].contains(" closed; its helper ")
+            && read[0].contains("is still running, and is no longer quiet"),
+        "{read:?}"
+    );
+}

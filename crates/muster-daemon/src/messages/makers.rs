@@ -9,6 +9,9 @@
 //!
 //! A need is told once it has held for [`SETTLE`]: a dialog the person answers at once, or a turn
 //! the maker's next message starts again straight away, wakes nobody.
+//!
+//! When a maker's pane closes, its helpers go on running and stop being quiet, which the session
+//! does as the pane closes, and the person is told here, once per maker (MIP-7, section 6).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -21,7 +24,7 @@ use muster_msg::{Activity, Presence};
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
 use super::{delivering, now_ms, told};
-use crate::session::Shared;
+use crate::session::{Orphaned, Shared};
 
 /// How long a helper's need must hold before its maker is told of it.
 pub(crate) const SETTLE: Duration = Duration::from_secs(10);
@@ -228,11 +231,18 @@ fn body(helper: &Helper, need: Need, called: &BTreeMap<String, String>, worked_m
 /// Looks at each helper here, and tells its maker what it needs. Called by the doorbell's thread
 /// with no lock held, on every wake; says how long until the next look is due.
 pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
-    if !shared.lock().has_helpers() {
+    let (orphans, helping) = {
+        let mut session = shared.lock();
+        (session.take_orphans(), session.has_helpers())
+    };
+    if orphans.is_empty() && !helping {
         makers.watches.clear();
         return NOTHING_DUE;
     }
     let panes = Panes::of(shared);
+    for orphaned in &orphans {
+        tell_person(shared, &panes, orphaned);
+    }
     let (helpers, called) = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -284,6 +294,49 @@ fn helpers(
         });
     }
     helpers
+}
+
+/// What the person is told of a maker that closed with its helpers still running.
+fn orphaned_body(orphaned: &Orphaned) -> String {
+    let (maker, first) = (&orphaned.called, &orphaned.first);
+    match orphaned.helpers.as_slice() {
+        [only] => format!(
+            "{maker} closed; its helper {only} is still running, and is no longer quiet. `muster \
+             pane show --pane {first}` brings it forward."
+        ),
+        helpers => format!(
+            "{maker} closed; {count} of its helpers are still running, and are no longer quiet: \
+             {names}. `muster pane show --pane {first}` brings one forward.",
+            count = helpers.len(),
+            names = helpers.join(", "),
+        ),
+    }
+}
+
+fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
+    let body = orphaned_body(orphaned);
+    let delivered = delivering(shared, panes, |service| {
+        let called = Some(orphaned.called.as_str());
+        service.tell_as_muster(muster_msg::HUMAN, &orphaned.maker, called, &body, panes, now_ms())
+    });
+    match delivered {
+        Ok(delivered) => {
+            told("msg.helper.orphans_told", Some(body.len()), &delivered);
+        }
+        Err(reply) => log::warn(
+            "msg.helper.orphans_untold",
+            fields! {
+                "maker" => orphaned.maker,
+                "helpers" => orphaned.helpers.join(","),
+                "reason" => reply.reason,
+                "impact" => "the person was not told that these helpers are still running with \
+                             nobody watching them; they are no longer quiet, so their next block \
+                             or finish notifies as any pane's does",
+                "check" => "the reason: the person homed on another machine, where Muster \
+                            cannot tell them from here, or a store that would not write",
+            },
+        ),
+    }
 }
 
 fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) {
@@ -422,6 +475,25 @@ mod tests {
         let reported = Helper { last_post_ms: Some(5_000), ..maple(Activity::Idle) };
         makers.judge(std::slice::from_ref(&reported), &called, 20_000);
         assert!(makers.judge(&[reported], &called, 40_000).is_empty());
+    }
+
+    /// The person is told every helper a closed maker left running, and how to bring one back.
+    #[test]
+    fn a_closed_maker_is_said_with_every_helper_it_left_running() {
+        let orphaned = |helpers: &[&str]| Orphaned {
+            maker: "p1".to_string(),
+            called: "🤖 integrator".to_string(),
+            helpers: helpers.iter().map(|helper| (*helper).to_string()).collect(),
+            first: "otter".to_string(),
+        };
+        assert_eq!(
+            orphaned_body(&orphaned(&["🤖 1", "maple", "cobalt"])),
+            "🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: \
+             🤖 1, maple, cobalt. `muster pane show --pane otter` brings one forward."
+        );
+        assert!(orphaned_body(&orphaned(&["🤖 1"])).starts_with(
+            "🤖 integrator closed; its helper 🤖 1 is still running, and is no longer quiet."
+        ));
     }
 
     /// The next look is due when the oldest untold need reaches the settle.

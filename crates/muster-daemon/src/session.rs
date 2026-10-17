@@ -174,6 +174,7 @@ impl Shared {
                     settings,
                     settled,
                     deferred: Vec::new(),
+                    orphans: Vec::new(),
                     detecting,
                     app_manifests: Vec::new(),
                     manifest_loads: 0,
@@ -233,7 +234,10 @@ impl Shared {
     }
 
     pub(crate) fn lock(&self) -> Locked<'_> {
-        Locked { session: Some(poison::lock(&self.session, "daemon.session")) }
+        Locked {
+            session: Some(poison::lock(&self.session, "daemon.session")),
+            doorbell: &self.doorbell,
+        }
     }
 
     pub(crate) fn messages(&self) -> MutexGuard<'_, Messages> {
@@ -296,6 +300,8 @@ impl Places {
 /// left deferred, once the lock is released.
 pub(crate) struct Locked<'a> {
     session: Option<MutexGuard<'a, Session>>,
+    /// Woken once the lock is let go when a maker closed with helpers to tell the person of.
+    doorbell: &'a Doorbell,
 }
 
 impl Deref for Locked<'_> {
@@ -316,11 +322,27 @@ impl Drop for Locked<'_> {
     fn drop(&mut self) {
         let Some(mut session) = self.session.take() else { return };
         let deferred = std::mem::take(&mut session.deferred);
+        let orphaned = !session.orphans.is_empty();
         drop(session);
         for work in deferred {
             work.run();
         }
+        if orphaned {
+            self.doorbell.nudge();
+        }
     }
+}
+
+/// A maker whose pane closed with helpers still open on this daemon.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Orphaned {
+    pub(crate) maker: String,
+    /// What the maker was called as it closed.
+    pub(crate) called: String,
+    /// What each helper is called.
+    pub(crate) helpers: Vec<String>,
+    /// What a command names the first helper by: its word, which holds no space, or its id.
+    pub(crate) first: String,
 }
 
 /// Work on a pane's terminal that a request caused, done once the session is unlocked.
@@ -352,6 +374,9 @@ pub(crate) struct Session {
     settled: Arc<Settled>,
     /// Work on panes' terminals to do once the lock is let go ([`Locked`]).
     deferred: Vec<Deferred>,
+    /// Makers that closed with helpers still open here, for the doorbell's thread to tell the
+    /// person of ([`Session::take_orphans`]).
+    orphans: Vec<Orphaned>,
     /// The manifests every pane's agent is detected by, which each pane's reader reads.
     detecting: Arc<Detecting>,
     /// The manifests the app last sent, by name, which every reload layers in.
@@ -2218,6 +2243,7 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
+        self.orphaned(&removed.record);
         removed.io.mark_closed();
         self.emit(Payload::PaneClosed(proto::PaneClosed {
             pane: pane.to_string(),
@@ -2229,6 +2255,44 @@ impl Session {
             _ => proto::DetachReason::Closed,
         };
         self.deferred.push(Deferred::HangUp(Box::new(removed), reason));
+    }
+
+    /// When `maker` was the maker of helpers still open here, lets each of them ask for the
+    /// person again, and keeps the maker for the person to be told of (MIP-7, section 6): they
+    /// go on running, and nobody is left to hear from them.
+    fn orphaned(&mut self, maker: &proto::Pane) {
+        let (mut helpers, mut first) = (Vec::new(), None);
+        for index in 0..self.panes.len() {
+            let record = &mut self.panes[index].record;
+            if record.maker.as_deref() != Some(maker.pane.as_str()) {
+                continue;
+            }
+            helpers.push(record.name().unwrap_or(&record.pane).to_string());
+            first.get_or_insert_with(|| {
+                record.word.clone().filter(|word| !word.is_empty()).unwrap_or(record.pane.clone())
+            });
+            if record.quiet {
+                record.quiet = false;
+                let record = record.clone();
+                self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+            }
+        }
+        let Some(first) = first else { return };
+        log::info(
+            "daemon.maker.closed",
+            fields! { "maker" => maker.pane, "helpers" => helpers.join(",") },
+        );
+        self.orphans.push(Orphaned {
+            maker: maker.pane.clone(),
+            called: maker.name().unwrap_or(&maker.pane).to_string(),
+            helpers,
+            first,
+        });
+    }
+
+    /// The makers that closed with helpers open here since this was last asked.
+    pub(crate) fn take_orphans(&mut self) -> Vec<Orphaned> {
+        std::mem::take(&mut self.orphans)
     }
 
     fn resize(&mut self, resize: &pane_request::Resize) -> Reply {
@@ -3284,10 +3348,10 @@ impl Session {
         self.panes.iter().map(view).collect()
     }
 
-    /// Whether any pane here is somebody's helper (MIP-7), which a watch on helpers needs to
-    /// look at before reading every pane.
+    /// Whether any pane here is somebody's helper, or a maker closed with helpers open (MIP-7),
+    /// which a watch on helpers needs to look at before reading every pane.
     pub(crate) fn has_helpers(&self) -> bool {
-        self.panes.iter().any(|pane| pane.record.maker.is_some())
+        !self.orphans.is_empty() || self.panes.iter().any(|pane| pane.record.maker.is_some())
     }
 
     /// Whether any pane's name is still to be typed into its agent's session: one wanted, for an
