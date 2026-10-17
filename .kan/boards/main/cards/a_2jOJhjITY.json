@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "gate-speed-the",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792255564069,
+  "creator": "Alexander Terp",
+  "description": "Owed from a_2jMYYi6l1 (the parallel test runner, 2026-10-17):\n\n- regex-automata and regex-syntax at opt-level 3 under [profile.dev.package]: a debug daemon's manifest load drops from about 100 ms to 30 ms, and the suite starts hundreds of daemons. Measure the Rust suite twice with the override and twice without; land it only if it beats the noise.\n- Build and discovery before and after, on fresh builds both times (discovery is mostly macOS scanning 44 new binaries on their first run).\n- The default job count (1.5 per core) on a small machine: CI's 3-core runner gets 4 jobs and nobody has timed it. CI's credits are out as of 2026-10-17, so this waits for them.\n- Flakes seen only at 24 jobs (load 17): lifecycle::a_spawned_daemon_answers_its_first_request_within_budget (26 ms against 25), seam windows::what_going_to_an_agent_asking_would_do_names_the_other_windows_agent (got \"\" for \"p1\"); and once beside another gate, fake_ssh::left_behind::a_master_whose_muster_is_gone_is_ended_and_a_running_ones_is_not.",
+  "id": "a_2jOJhjITY",
+  "position": "b1M",
+  "title": "Gate speed: the measurements a phone call interrupted",
+  "type": "chore",
+  "updated_at_millis": 1792255564069,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792255564069}
+  ]
+}

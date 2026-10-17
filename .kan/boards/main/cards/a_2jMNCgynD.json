@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: not the tip box - a live one (Claude Code 2.1.301) reads idle with an empty prompt under main's and 0.16.0's rules, now recorded (1401a635, docs/observations/claude-code-2.1.301.md). 0.16.0 gave one reason, 'its screen is not its prompt', for three causes main tells apart (a box over the prompt, a screen reading at work, no prompt box found). Candidates: the feedback-draft box (main reads it), a title still showing the busy spinner after the turn (osc_title_working outranks live_prompt_box), or a rule drawn below the prompt box (the box is found as the second rule from the bottom). Since cd3e07bd, msg.ring.waits and msg.ring.covered carry the deciding rule and a text-free shape of the last 12 rows, so the next hold under a build with it names its cause; close this from that record.",
+      "created_at_millis": 1792255563727,
+      "id": "c_2jOJhEBBu"
+    }
+  ],
   "created_at_millis": 1792250932025,
   "creator": "Alexander Terp",
   "description": "2026-10-17, laptop, Muster 0.16.0 with its built-in claude.toml (the Oct 13 override had been removed): the integrator pane MUSTER (Claude Code 2.1.3xx, Opus) had worker messages held five times in one morning. The daemon log shows `msg.ring.waits` with reason \"its screen is not its prompt\" from the post until the stall watch spoke 2-5 minutes later (`msg.group.stalled` at 14:26:23, 14:44:23, 15:14:24, 15:17:54, 15:18:24 UTC), each time while the pane was idle at its prompt; the wake arrived only when something else made the pane redraw. The round lost those minutes on every worker report.\n\nA capture of the same pane idle 30 s after a turn at 15:28 UTC read normally (state idle, prompt empty, done line '· 1 shell, 1 monitor still running', footer '⏵⏵ bypass permissions on · 1 shell, 1 monitor'), so the cause is something drawn only some of the time. Candidates, unconfirmed: Claude Code's feedback-draft box (main's `feedback_draft_box` rule reads it; 0.16.0 does not), and Claude Code's tip box ('✦ Heads up · ... 1: Learn more   2: Knew this already   0: Dismiss'), seen in worker panes the same morning and known to neither 0.16.0 nor main's manifest or corpus.\n\nNext step: capture the screen at the moment a ring waits on this reason (the daemon could log the rows it judged, behind the debug flag, or a watcher could read the pane on `msg.ring.waits`), then record it into the detection corpus and decide whether the tip box covers the prompt.",
@@ -13,7 +21,7 @@
   "position": "b12",
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1792250932025,
+  "updated_at_millis": 1792255563727,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025}
   ]

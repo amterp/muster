@@ -5,16 +5,25 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: landed (4a4361fa, dfeafd6f, b914ee91). The round's final full gate on the final runner: 317 s total, Rust suite 110.7 s (was 407.8 s); build 57.9 s and discovery 101.5 s there because every binary was fresh. Still owed, now a_ card below: the regex opt-level measurement, fresh-build before/after, and the job count on a small machine.",
+      "created_at_millis": 1792255563791,
+      "id": "c_2jOJhLhql"
+    }
+  ],
   "created_at_millis": 1792251368520,
   "creator": "Alexander Terp",
   "description": "Asked by the owner on 2026-10-17: was a 9-minute gate right for a project this size? The Rust suite was about 400 of the gate's 540 s, because `cargo test --workspace` runs one test binary at a time and the seam binary's 218 tests take turns behind one lock (one session per process).\n\nLanded: `./dev` prints a step table at the end of every run (kept in target/gate/steps.txt), and `tools/run-tests.py` runs the test binaries side by side, each seam and daemon test in a process of its own, longest first, 1.5 jobs per core. No new tool: nextest measured the same speed at equal concurrency and does not run doc tests.\n\n| Step | Before | After |\n|---|---|---|\n| build | 40.4 s | 9.4 s |\n| test: Rust discovery | 73.7 s | 9.2 s |\n| test: Rust suite | 407.8 s | 105.1 s |\n| test: Swift | 17.7 s | 11.7 s |\n| total | 543.5 s | 139.0 s |\n\n(Before ran on a fresh build, so only the suite row compares like with like.)\n\nOwed, stopped by the owner's call: three green full gates in a row on the final runner; regex-automata and regex-syntax at opt-level 3 in the dev profile, measured twice each way; build and discovery on fresh builds, before and after; the default job count on CI's 3-core runner. Flakes the parallelism exposed: a fake-agent race (fixed), and at 24 jobs only, a timing budget in lifecycle::, an assert in arranging:: (MIP-7, passed to its author) and one in seam windows::.",
   "id": "a_2jMYYi6l1",
-  "position": "a1",
+  "position": "YwI",
   "title": "The gate runs its Rust test binaries side by side",
   "type": "chore",
-  "updated_at_millis": 1792251368520,
+  "updated_at_millis": 1792255563924,
   "history": [
-    {"field":"column","value":"in-progress","at":1792251368520}
+    {"field":"column","value":"in-progress","at":1792251368520},
+    {"field":"column","value":"done","at":1792255563924}
   ]
 }

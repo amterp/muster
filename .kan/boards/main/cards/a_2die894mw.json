@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -54,18 +54,25 @@
       "body": "2026-10-17: stage 2 landed (5a7e157f..7094c268): helpers fold under their maker in the agent list (3 helpers · 1 blocked), Show Helpers / Hide Helpers on the maker's row and pane show/hide --helpers-of, a hidden tab can be shown and hidden whole (TabRequest.SetHidden), one nesting rule in the core for the list and muster window, and a lone @muster message's banner shows its words. Settled: Hide Helpers takes only tabs holding nothing but the maker's helpers; the helpers' tab is renamed after the maker when shown, unless a person renamed it. Banner click left as a_2jLn7Jakd. Stage 4 (across machines) is being built.",
       "created_at_millis": 1792250159998,
       "id": "c_2jM37XtUC"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: stage 4 landed (4aafe2c2..9bd35c05, then 76c1aae5 for a load-fragile assert): a helper tells a maker on another machine through a pair group kept on its own machine; the window tells a helper's daemon that its maker closed elsewhere, and a window opening catches what happened with none open; a devenv holds a closed-maker notice for the person until the laptop links; a quiet helper whose maker cannot be reached asks the person; a new helper joins its maker's helpers' tab on screen. Also fixed on the way: every replicated entry Muster wrote was refused by the peer (bad_name @muster), so stall notices never reached a group's other machine. All four stages are in; full gate green. Hand checks are in the round summary.",
+      "created_at_millis": 1792255563407,
+      "id": "c_2jOJgiMtC"
     }
   ],
   "created_at_millis": 1791417434682,
   "creator": "Alexander Terp",
   "description": "amterp, 2026-10-07, on the hidden/headless note: \"you could kind of imagine ... in the parallel work skill example, like the main integrator agent maybe like has some way to express with muster that these agents are sub agents or they belong to my group, and so therefore it has like the option to spawn them hidden, and there's some easy connected way to kind of see and like bring them forward, unhide them and see them.\" \"This might take some design thought.\"\n\nThe idea that ties three notes together: a pane can belong to the agent that made it. Its sub-agents could then be made hidden (a_2die7jO4X) and quiet (a_2die7W9ru) by default, listed together under it, and brought forward together. A council or a parallel-work round is the motivating case: the human talks to the integrator, and the workers are the integrator's business.\n\nNeeds a MIP before building: what records the relation (the pane that ran `pane new`? a msg group?), what it changes by default, how it shows in the agent list and `muster window`, and what happens when the parent goes away. Build a_2die7jO4X and a_2die7W9ru first; this composes them.",
   "id": "a_2die894mw",
-  "position": "a0",
+  "position": "YwK",
   "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
   "type": "feature",
-  "updated_at_millis": 1792250159998,
+  "updated_at_millis": 1792255563500,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434682},
-    {"field":"column","value":"in-progress","at":1792241951701}
+    {"field":"column","value":"in-progress","at":1792241951701},
+    {"field":"column","value":"done","at":1792255563500}
   ]
 }
