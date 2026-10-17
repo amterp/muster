@@ -883,6 +883,16 @@ public enum Core {
     return request
   }
 
+  /// Folds the agent list's Hidden caption, or opens it. The list folds when the core's
+  /// presentation says so, not before.
+  public static func setHiddenCollapsed(_ collapsed: Bool) {
+    var set = Muster_SetHiddenCollapsed()
+    set.collapsed = collapsed
+    var request = Muster_Request()
+    request.setHiddenCollapsed = set
+    send(request)
+  }
+
   static func setWindowFrame(rect: NSRect?, fullScreen: Bool) -> Muster_Request {
     var frame = Muster_WindowFrame()
     if let rect { frame.rect = self.rect(rect) }
@@ -1427,6 +1437,7 @@ public enum Core {
     case .readWindowFrame: return "read_window_frame"
     case .setWindowFrame: return "set_window_frame"
     case .setSidebarWidth: return "set_sidebar_width"
+    case .setHiddenCollapsed: return "set_hidden_collapsed"
     case .reportFontFamily: return "report_font_family"
     // The kind, never the text: what somebody types into their own terminal is theirs.
     case .sendToPane: return "send_to_pane"
@@ -1641,10 +1652,14 @@ public enum Core {
         from: changed.from)
     case .presentationChanged(let changed):
       let presentation = Presentation(
-        sidebar: changed.sidebar, sidebarWidth: CGFloat(changed.sidebarWidth))
+        sidebar: changed.sidebar, sidebarWidth: CGFloat(changed.sidebarWidth),
+        hiddenCollapsed: changed.hiddenCollapsed)
       info(
         "presentation.received",
-        ["sidebar": String(presentation.sidebar), "width": String(changed.sidebarWidth)])
+        [
+          "sidebar": String(presentation.sidebar), "width": String(changed.sidebarWidth),
+          "hidden_collapsed": String(changed.hiddenCollapsed),
+        ])
       window(for: event)?.apply(presentation: presentation)
     case .pasteHeld(let held):
       // The kind and the size, never the text: it is somebody's clipboard.

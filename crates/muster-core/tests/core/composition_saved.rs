@@ -222,6 +222,7 @@ fn what_is_written_is_what_comes_back() {
         Presentation::default()
             .with_sidebar(false)
             .with_sidebar_width(262.5)
+            .with_hidden_collapsed(true)
             .with_frame(Some(Frame { x: -120.5, y: 240.0, width: 1400.0, height: 902.5 }), true),
         &sizes,
     );
@@ -246,6 +247,20 @@ fn a_window_with_no_frame_says_so_rather_than_writing_a_corner() {
     let read = from_toml(&file).expect("what this wrote, it can read");
     assert_eq!(read.presentation.frame, None);
     assert!(!read.presentation.full_screen);
+}
+
+/// A file written before the Hidden caption could fold opens it, as every window did then.
+#[test]
+fn a_file_from_before_the_hidden_caption_folded_reads_as_open() {
+    let file = to_toml(&Saved {
+        presentation: Presentation::default().with_hidden_collapsed(true),
+        ..Saved::default()
+    });
+    let older = file.replace("hidden_collapsed = true\n", "");
+    assert_ne!(older, file, "the round trip stopped writing hidden_collapsed");
+
+    let read = from_toml(&older).expect("a key that arrived later is not an unreadable file");
+    assert!(!read.presentation.hidden_collapsed);
 }
 
 /// Half a rectangle is no rectangle.

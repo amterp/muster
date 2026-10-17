@@ -163,6 +163,23 @@ pub(crate) fn set_sidebar_width(window: WindowId, width: f64) {
     announce_presentation(&name, presentation);
 }
 
+/// Folds the roster's Hidden caption, or opens it, and says so.
+///
+/// Saved rather than published, as a width is: nothing the window shows of a session has moved,
+/// only how much of its list is drawn.
+pub(crate) fn set_hidden_collapsed(window: WindowId, collapsed: bool) {
+    let (name, presentation) = {
+        let mut session = poison::lock(&SESSION, "session");
+        let folded = &mut session.windows[window];
+        folded.presentation = folded.presentation.with_hidden_collapsed(collapsed);
+        let answer = (folded.name.clone(), folded.presentation);
+        save(&mut session, window);
+        answer
+    };
+    log::info("presentation.hidden", fields! { "collapsed" => collapsed });
+    announce_presentation(&name, presentation);
+}
+
 /// Tells the shell the human's groups on every daemon, if they changed since it was last told.
 ///
 /// Settled and sent under one lock of its own, as [`PUBLISHING`] does for a view: daemon threads
@@ -6008,6 +6025,7 @@ fn announce_presentation(window: &WindowName, presentation: Presentation) {
         &Event::new(event::Payload::PresentationChanged(PresentationChanged {
             sidebar: presentation.sidebar,
             sidebar_width: presentation.sidebar_width,
+            hidden_collapsed: presentation.hidden_collapsed,
         }))
         .for_window(window.as_str()),
     );

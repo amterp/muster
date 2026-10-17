@@ -367,10 +367,10 @@ of the notifications:
 `--hidden` makes the pane in a tab of its own that no window shows, on the machine of the pane it
 was split from. Nothing draws it, and its agent runs as any other does: `pane send`, `pane read`,
 `pane wait`, `pane compact` and `muster msg` reach it by name. `muster window` lists it after the
-window's own tabs, under `hidden`, and the agent list has it under a Hidden caption. A pane made
-beside a hidden one with `pane new` is in that hidden tab too, so a hidden agent's own helpers are
-hidden with it. `--hidden` takes no side and no `--focus`, since it is not a split and nothing
-shows it.
+window's own tabs, under `hidden`, and the agent list has it under a Hidden caption, which a click
+folds down to a count and the most urgent state among its panes. A pane made beside a hidden one
+with `pane new` is in that hidden tab too, so a hidden agent's own helpers are hidden with it.
+`--hidden` takes no side and no `--focus`, since it is not a split and nothing shows it.
 
 A pane already open is hidden and brought back by name:
 

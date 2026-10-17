@@ -239,6 +239,9 @@ public final class MusterWindow: NSObject {
       self?.speaking { Core.openTranscript(daemonID: daemon, group: group) }
     }
     sidebar.groups = Core.messageGroups
+    sidebar.onHiddenToggled = { [weak self] collapsed in
+      self?.speaking { Core.setHiddenCollapsed(collapsed) }
+    }
     sidebar.onPaneArranged = { [weak self] pane, onto in
       self?.speaking { Core.arrange(pane: pane, onto: onto) }
     }
@@ -502,6 +505,10 @@ public final class MusterWindow: NSObject {
   public func apply(presentation: Presentation) {
     split.sidebarShown = presentation.sidebar
     split.sidebarWidth = presentation.sidebarWidth
+    if sidebar.hiddenCollapsed != presentation.hiddenCollapsed {
+      sidebar.hiddenCollapsed = presentation.hiddenCollapsed
+      sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+    }
   }
 
   /// Says so when the renderer would not size a pane's text.

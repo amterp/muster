@@ -16,8 +16,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    Event, OpenWindow, PresentationChanged, ReloadConfig, Request, Response, Startup,
-    ToggleSidebar, event, request, response,
+    Event, OpenWindow, PresentationChanged, ReloadConfig, Request, Response, SetHiddenCollapsed,
+    Startup, ToggleSidebar, event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -145,6 +145,56 @@ fn putting_the_roster_away_is_remembered() {
         || latest().is_some_and(|p| p.sidebar),
         || format!("the core still says {:?}", latest()),
     );
+}
+
+/// Folding the Hidden caption is answered with the presentation that says so, and written down
+/// with the rest of `[window]`, so the next launch opens the list folded.
+#[test]
+fn folding_the_hidden_caption_is_remembered() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let state = daemon.muster_config().with_file_name("window.toml");
+
+    // Cleared, so the first wait below is for this session's answer rather than one an earlier
+    // test in this process left behind.
+    *PRESENTATION.lock().expect("a panicking test poisoned the presentation") = None;
+    muster::ffi::muster_set_event_callback(Some(note_presentation));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        state_path: state.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the core to say what the window shows of itself",
+        || latest().is_some(),
+        || "no PresentationChanged arrived at all".to_string(),
+    );
+    assert!(
+        !latest().expect("just waited for it").hidden_collapsed,
+        "a first launch opened with the Hidden caption folded"
+    );
+
+    let fold = |collapsed| {
+        assert_ok(&answer(request::Payload::SetHiddenCollapsed(SetHiddenCollapsed { collapsed })));
+        until(
+            "the core to answer with the caption as asked",
+            || latest().is_some_and(|p| p.hidden_collapsed == collapsed),
+            || format!("the core still says {:?}", latest()),
+        );
+    };
+    fold(true);
+    let written = std::fs::read_to_string(&state)
+        .unwrap_or_else(|e| panic!("the window wrote nothing to {}: {e}", state.display()));
+    let saved = muster_core::composition::saved::from_toml(&written)
+        .expect("the core can read back what it just wrote");
+    assert!(
+        saved.presentation.hidden_collapsed,
+        "reopening would unfold the caption, so the fold did not reach the file:\n{written}"
+    );
+
+    // And open again, which is the same request with the other answer.
+    fold(false);
 }
 
 static PRESENTATION: Mutex<Option<PresentationChanged>> = Mutex::new(None);

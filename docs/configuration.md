@@ -685,8 +685,8 @@ turns up late, and it goes with the pane if you close it.
 live under `<install>/windows/` - `release/windows/` for the app you installed - one file per
 window rather than one for the machine, and each is rewritten
 whenever that window settles: which tabs it was showing, in what order, at what widths; under
-`[window]`, whether the agent list was open and how wide, and how big the window itself was; and
-one `[[pane]]` row for each pane whose text somebody sized. Delete the
+`[window]`, whether the agent list was open, how wide, and whether its Hidden caption was folded,
+and how big the window itself was; and one `[[pane]]` row for each pane whose text somebody sized. Delete the
 directory and the next launch opens fresh. Nothing about a session is in any of them - what a tab
 holds is the daemon's answer, asked again on every launch.
 
@@ -694,6 +694,11 @@ holds is the daemon's answer, asked again on every launch.
 The width is the window's, written down with the rest of `[window]`, so it comes back on the next
 launch and a new window starts at 200. A window too small to give the list its width gives it half
 the window instead, and a window narrower than 400 points still puts the list away altogether.
+
+**Click the agent list's Hidden caption to fold it** over the hidden panes, and again to open it.
+Folded, it shows how many panes are under it and a dot in the most urgent state among them -
+blocked, then stuck, then done, then working - so a hidden agent waiting on you still shows. The
+fold is the window's, kept under `[window]` with the width.
 
 **A window opens at the size and position it was left, and full-screen if that is how you left
 it.** The rectangle is written down as the window settles rather than at quit, because quitting

@@ -502,7 +502,10 @@ struct SidebarTests {
 
     #expect(rows.map(\.label) == ["w1:p1", "Hidden", "w1:p9", "Messages", "review"])
     let caption = rows[1]
-    #expect(caption.kind == .hidden && caption.isHeader && !caption.isDestination)
+    #expect(caption.kind == .hidden(panes: 1, urgent: 0, collapsed: false))
+    #expect(caption.isHiddenCaption && caption.isHeader && !caption.isDestination)
+    #expect(caption.state.isEmpty, "an open caption's rows carry their own states")
+    #expect(SidebarModel.accessories(of: caption) == [.disclosure(collapsed: false)])
     let hidden = rows[2]
     #expect(hidden.hidden && hidden.isPane && hidden.isDestination)
     #expect(hidden.kind == .pane(tabPress: 0, press: 0), "no chord reaches a hidden pane")
@@ -515,7 +518,45 @@ struct SidebarTests {
     #expect(!SidebarModel.canArrange(PaneKey(daemon: "local", pane: "w1:p1"), onto: hidden))
 
     let none = SidebarModel.rows(roster: base, agents: [:])
-    #expect(!none.contains { $0.kind == .hidden }, "no caption over no hidden panes")
+    #expect(!none.contains { $0.isHiddenCaption }, "no caption over no hidden panes")
+  }
+
+  /// Folded, the caption stands in for its panes: it says how many there are and paints the
+  /// most urgent state among them, so a hidden agent that is blocked is not lost from the list.
+  @Test("a folded Hidden caption draws no panes, and says how many and the most urgent state")
+  func aFoldedHiddenCaptionSummarizesItsPanes() {
+    let ids = ["w1:p7", "w1:p8", "w1:p9"]
+    let hiddenTab = tab(
+      "local", "w1:t9", place: 0, panes: ids.map { pane("local", $0, place: 0, press: 0) })
+    let base = roster([tab("local", panes: [pane("local", "w1:p1")])])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering, hidden: [hiddenTab])
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let agents: [PaneKey: PaneAgent] = [
+      key("w1:p7"): "done", key("w1:p8"): "blocked", key("w1:p9"): "working",
+    ]
+
+    let rows = SidebarModel.rows(roster: roster, agents: agents, hiddenCollapsed: true)
+    #expect(rows.map(\.label) == ["w1:p1", "Hidden"], "a folded caption still drew its panes")
+    let caption = rows[1]
+    #expect(caption.kind == .hidden(panes: 3, urgent: 1, collapsed: true))
+    #expect(caption.state == "blocked", "a blocked hidden agent was lost behind the fold")
+    #expect(
+      SidebarModel.accessories(of: caption) == [.hiddenPanes(3), .disclosure(collapsed: true)])
+    #expect(SidebarModel.summary(of: caption) == "3 hidden panes · 1 blocked")
+
+    let open = SidebarModel.rows(roster: roster, agents: agents)
+    #expect(open.map(\.label) == ["w1:p1", "Hidden"] + ids)
+    #expect(SidebarModel.summary(of: open[1]) == nil)
+  }
+
+  @Test("a folded caption's dot is the most urgent state under it, and none for agents at rest")
+  func theMostUrgentStateRanksAsTheCoreDoes() {
+    #expect(SidebarModel.mostUrgent(["working", "done", "stuck", "blocked"]) == "blocked")
+    #expect(SidebarModel.mostUrgent(["working", "done", "stuck"]) == "stuck")
+    #expect(SidebarModel.mostUrgent(["working", "done"]) == "done")
+    #expect(SidebarModel.mostUrgent(["idle", "working"]) == "working")
+    #expect(SidebarModel.mostUrgent(["idle", "waiting", "unknown", "unreachable"]) == nil)
   }
 
   @Test("a quiet pane's row is marked, wherever it is listed")

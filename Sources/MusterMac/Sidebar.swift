@@ -239,9 +239,15 @@ public struct Presentation: Equatable {
   /// How wide the roster is when it is on screen, already held to the core's limits.
   public let sidebarWidth: CGFloat
 
-  public init(sidebar: Bool, sidebarWidth: CGFloat = SidebarModel.width) {
+  /// Whether the roster's Hidden caption is folded over the panes under it.
+  public let hiddenCollapsed: Bool
+
+  public init(
+    sidebar: Bool, sidebarWidth: CGFloat = SidebarModel.width, hiddenCollapsed: Bool = false
+  ) {
     self.sidebar = sidebar
     self.sidebarWidth = sidebarWidth
+    self.hiddenCollapsed = hiddenCollapsed
   }
 }
 
@@ -270,8 +276,9 @@ public enum SidebarModel {
     case pane(tabPress: Int, press: Int)
     /// A machine with something to say its panes cannot: unreachable, or holding nothing.
     case machine
-    /// The caption over the panes no window shows.
-    case hidden
+    /// The caption over the panes no window shows: how many there are, how many of those are in
+    /// the state the caption's dot takes from them, and whether it is folded over them.
+    case hidden(panes: Int, urgent: Int, collapsed: Bool)
     /// The caption over the groups the human is in.
     case messages
     /// A group the human is in, with how many messages there would wake them and how many of
@@ -380,7 +387,7 @@ public enum SidebarModel {
     /// brings it back, since going to a hidden pane does.
     public var hidden = false
 
-    public var isHeader: Bool { kind == .machine || kind == .messages || kind == .hidden }
+    public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
 
     /// Whether picking this row means something.
     ///
@@ -388,7 +395,7 @@ public enum SidebarModel {
     /// pane on it, which is the only way into a machine holding nothing (kan a_2HpkpfIfq) and
     /// what makes it safe to stop giving every machine a column of its own (kan a_2I6h18OU6).
     /// A group's opens its transcript.
-    public var isDestination: Bool { kind != .messages && kind != .hidden }
+    public var isDestination: Bool { kind != .messages && !isHiddenCaption }
 
     public var isMachine: Bool { kind == .machine }
 
@@ -404,6 +411,11 @@ public enum SidebarModel {
 
     public var isGroup: Bool {
       if case .group = kind { return true }
+      return false
+    }
+
+    public var isHiddenCaption: Bool {
+      if case .hidden = kind { return true }
       return false
     }
   }
@@ -453,9 +465,13 @@ public enum SidebarModel {
   /// **The human's groups come last, under a caption of their own**, and only when they are in
   /// any: a list of tabs is about this window, and the groups are about the person, so they sit
   /// apart rather than among the tabs (MIP-4, Decision 1b).
+  ///
+  /// **A folded Hidden caption draws none of its panes**, and says what it is folded over
+  /// instead: how many there are, and the dot of the most urgent state among them, so a hidden
+  /// agent that is blocked is still something the list shows.
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
-    groups: [MessageGroup] = []
+    groups: [MessageGroup] = [], hiddenCollapsed: Bool = false
   ) -> [Row] {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
@@ -507,13 +523,18 @@ public enum SidebarModel {
           hasKeyboard: false, reservedPresses: 0, machine: mark(machine.id), isSecondPress: false))
     }
     if !roster.hidden.isEmpty {
+      let states = roster.hiddenPanes.map { (agents[$0.key] ?? "unknown").state }
+      let urgent = hiddenCollapsed ? mostUrgent(states) : nil
       rows.append(
         Row(
-          kind: .hidden, daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
-          givenName: "", state: "", agent: nil, onScreen: false, hasKeyboard: false,
+          kind: .hidden(
+            panes: states.count, urgent: states.filter { $0 == urgent }.count,
+            collapsed: hiddenCollapsed),
+          daemon: "", tab: "", pane: nil, label: "Hidden", subtitle: "",
+          givenName: "", state: urgent ?? "", agent: nil, onScreen: false, hasKeyboard: false,
           reservedPresses: 0, machine: nil, isSecondPress: false))
     }
-    for tab in roster.hidden {
+    for tab in roster.hidden where !hiddenCollapsed {
       for pane in tab.panes {
         let agent = agents[pane.key] ?? "unknown"
         rows.append(
@@ -542,6 +563,26 @@ public enum SidebarModel {
           isSecondPress: false))
     }
     return rows
+  }
+
+  /// The state a folded caption's dot takes from the panes under it, or nil for none.
+  ///
+  /// The states that earn a pane a border (`PaneAppearance.isHighlighted`), most urgent first:
+  /// the three that ask for somebody in the order the core ranks them (`Alert`, in
+  /// `crates/muster-core/src/attention.rs`), then working. An idle or waiting agent asks nothing
+  /// of somebody looking at a folded list, so it draws no dot there.
+  public static func mostUrgent(_ states: [String]) -> String? {
+    ["blocked", "stuck", "done", "working"].first { states.contains($0) }
+  }
+
+  /// What hovering a Hidden caption says, and what VoiceOver reads for it: `3 hidden panes ·
+  /// 1 blocked` while folded, nil while its rows say it themselves.
+  public static func summary(of row: Row) -> String? {
+    guard case .hidden(let panes, let urgent, let collapsed) = row.kind, collapsed else {
+      return nil
+    }
+    let count = panes == 1 ? "1 hidden pane" : "\(panes) hidden panes"
+    return row.state.isEmpty ? count : "\(count) · \(urgent) \(row.state)"
   }
 
   /// A pane row's second line: what a waiting agent waits on, which says more than its title
@@ -573,6 +614,10 @@ public enum SidebarModel {
     case context(Float)
     /// Nothing about the pane is raised for the person.
     case quiet
+    /// How many panes a folded Hidden caption is over.
+    case hiddenPanes(Int)
+    /// Whether the Hidden caption is folded, as the chevron a click on it turns.
+    case disclosure(collapsed: Bool)
   }
 
   /// The marks a row carries, left to right. The ones that ask somebody to look come first,
@@ -581,6 +626,9 @@ public enum SidebarModel {
   public static func accessories(of row: Row) -> [Accessory] {
     if case .group(let unread, let toYou) = row.kind {
       return (toYou > 0 ? [.toYou(toYou)] : []) + (unread > 0 ? [.unread(unread)] : [])
+    }
+    if case .hidden(let panes, _, let collapsed) = row.kind {
+      return (collapsed ? [.hiddenPanes(panes)] : []) + [.disclosure(collapsed: collapsed)]
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
@@ -885,6 +933,13 @@ public final class SidebarView: NSView {
   /// The human's groups, drawn under the tabs on the next `apply(roster:agents:keyboard:)`.
   public var groups: [SidebarModel.MessageGroup] = []
 
+  /// Whether the Hidden caption is folded, as the core's presentation last said. Drawn on the
+  /// next `apply(roster:agents:keyboard:)`, like `groups`.
+  public var hiddenCollapsed = false
+
+  /// Called when somebody clicks the Hidden caption, with whether they are asking to fold it.
+  public var onHiddenToggled: ((Bool) -> Void)?
+
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
   /// The list is where you are already looking to decide which agent is which, so it is where
@@ -1077,7 +1132,8 @@ public final class SidebarView: NSView {
   /// somebody reading the list is the movement the two heights exist to avoid.
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(
-      roster: roster, agents: agents, keyboard: keyboard, groups: groups)
+      roster: roster, agents: agents, keyboard: keyboard, groups: groups,
+      hiddenCollapsed: hiddenCollapsed)
     let previous = rows
     rows = fresh
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
@@ -1112,7 +1168,9 @@ public final class SidebarView: NSView {
       onMachinePicked?(rows[clicked].daemon)
     case .group:
       onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
-    case .messages, .hidden:
+    case .hidden(_, _, let collapsed):
+      onHiddenToggled?(!collapsed)
+    case .messages:
       break
     }
   }
@@ -1363,6 +1421,12 @@ final class SidebarRowView: NSView {
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
+      // A folded Hidden caption is the only one carrying a state: the most urgent of the panes
+      // it is folded over.
+      if row.isHiddenCaption, !row.state.isEmpty {
+        paint(dot, SidebarModel.dotColor(state: row.state))
+        layer?.addSublayer(dot)
+      }
     case .group(let unread, _):
       // Bold while something waits, as a mailbox is: the badge says how much, the weight says
       // that the row is worth reading at all.
@@ -1427,6 +1491,13 @@ final class SidebarRowView: NSView {
       setAccessibilityElement(true)
       setAccessibilityRole(.staticText)
       setAccessibilityLabel(details)
+    } else if let summary = SidebarModel.summary(of: row) {
+      // A folded caption stands in for the rows it hides, so it says what they would have.
+      toolTip = nil
+      name.toolTip = summary
+      setAccessibilityElement(true)
+      setAccessibilityRole(.staticText)
+      setAccessibilityLabel(summary)
     } else {
       toolTip = nil
       // A machine row's subtitle is what its restart cost, which the heading has no line for.
@@ -1487,6 +1558,13 @@ final class SidebarRowView: NSView {
       return ContextRing(used: used)
     case .quiet:
       return symbol("bell.slash", tint: .tertiaryLabelColor, saying: "quiet")
+    case .hiddenPanes(let count):
+      return CountBadge(
+        count: count, saying: count == 1 ? "1 hidden pane" : "\(count) hidden panes")
+    case .disclosure(let collapsed):
+      return symbol(
+        collapsed ? "chevron.right" : "chevron.down", tint: .tertiaryLabelColor,
+        saying: collapsed ? "show hidden panes" : "fold hidden panes")
     }
   }
 

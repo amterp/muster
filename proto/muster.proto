@@ -94,6 +94,7 @@ message Request {
     QuietPane quiet_pane = 74;
     UpgradeMuster upgrade_muster = 75;
     RestartAgent restart_agent = 76;
+    SetHiddenCollapsed set_hidden_collapsed = 77;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -256,6 +257,16 @@ message SetWindowFrame {
 // by the shell the way SetWindowFrame is.
 message SetSidebarWidth {
   double width = 1;
+}
+
+// Folds the roster's Hidden caption over the panes under it, or opens it again.
+//
+// Answered with PresentationChanged, and the list folds when that arrives, as it moves for a
+// width. A set rather than a toggle like ToggleSidebar: what sends this is a click on a chevron
+// the shell drew from the last PresentationChanged, so it knows which way it is asking, and two
+// clicks in quick succession cannot cross each other on the way.
+message SetHiddenCollapsed {
+  bool collapsed = 1;
 }
 
 // Asks what this window is showing, and what it holds that it is not showing.
@@ -2467,6 +2478,10 @@ message PresentationChanged {
   // core allows. A window too narrow for it may still draw it narrower, or not at all; that is
   // the shell's layout, and nothing it decides is written back.
   double sidebar_width = 3;
+
+  // Whether the roster's Hidden caption is folded, drawing a count and the most urgent state
+  // among its panes in place of their rows.
+  bool hidden_collapsed = 4;
 
   // 2 was a font size for the whole window, from when `cmd+=` sized every pane at once. Text
   // is sized per pane now and travels on `ViewPane.font_size_offset`, where the shell is

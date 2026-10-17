@@ -246,6 +246,10 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             session::set_sidebar_width(window, set.width);
             Response::ok()
         }
+        request::Payload::SetHiddenCollapsed(set) => {
+            session::set_hidden_collapsed(window, set.collapsed);
+            Response::ok()
+        }
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar(window);
             Response::ok()

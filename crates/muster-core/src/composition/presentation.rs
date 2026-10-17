@@ -161,6 +161,12 @@ pub struct Presentation {
     /// on macOS full-screen is a space rather than a size, so what is remembered is both - where
     /// the window goes when it comes out, and that it should not be out.
     pub full_screen: bool,
+
+    /// Whether the roster's Hidden caption is folded over the panes under it.
+    ///
+    /// Per window for the reason the width is: which panes are hidden is every window's answer,
+    /// but whether one window's list has room to show them is that window's.
+    pub hidden_collapsed: bool,
 }
 
 impl Default for Presentation {
@@ -173,6 +179,7 @@ impl Default for Presentation {
             sidebar_width: Presentation::SIDEBAR_WIDTH,
             frame: None,
             full_screen: false,
+            hidden_collapsed: false,
         }
     }
 }
@@ -204,6 +211,11 @@ impl Presentation {
     #[must_use]
     pub fn with_sidebar(self, sidebar: bool) -> Presentation {
         Presentation { sidebar, ..self }
+    }
+
+    #[must_use]
+    pub fn with_hidden_collapsed(self, hidden_collapsed: bool) -> Presentation {
+        Presentation { hidden_collapsed, ..self }
     }
 
     /// Where the window is, and whether it is full-screen, as one answer.

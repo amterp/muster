@@ -318,6 +318,10 @@ pub fn to_toml(saved: &Saved) -> String {
     window.insert("full_screen".to_string(), toml::Value::Boolean(saved.presentation.full_screen));
     window
         .insert("sidebar_width".to_string(), toml::Value::Float(saved.presentation.sidebar_width));
+    window.insert(
+        "hidden_collapsed".to_string(),
+        toml::Value::Boolean(saved.presentation.hidden_collapsed),
+    );
     // The four numbers go flat beside the two above rather than into a table of their own. They
     // are the same kind of value - what the window looked like, not what session it was
     // showing - and a level of nesting for four scalars makes this file slower to read for
@@ -548,6 +552,12 @@ fn read_presentation(window: Option<&toml::Table>) -> Presentation {
                 .and_then(|window| window.get("full_screen"))
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(Presentation::default().full_screen),
+        )
+        .with_hidden_collapsed(
+            window
+                .and_then(|window| window.get("hidden_collapsed"))
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(Presentation::default().hidden_collapsed),
         )
 }
 
