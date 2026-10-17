@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-stall-notice-that",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792242551714,
+  "creator": "Alexander Terp",
+  "description": "2026-10-17, laptop, Muster 0.16.0: spool-integrator posted #40 to MUSTER+spool-integrator at 13:00:26Z, while MUSTER sat at a prompt its doorbell could not read. @muster told spool-integrator twice, as #41 and #42, that MUSTER had not read #40, and both ended \"Muster says this once\".\n\nThe daemon log shows why. `msg.group.stalled` for first=40 at 13:02:21, then `msg.group.moving` at 13:03:21 when MUSTER went to work on a turn from its person, then `turn_ended` at 13:04:33 with #40 still unread, and a second `msg.group.stalled` for the same first=40 at 13:06:22, held_ms 120045: a new episode, begun when the member was idle again. In `crates/muster-daemon/src/messages/stalls.rs`, an episode ends when the member is no longer holding the group up, and working counts, so a member that works a turn without reading starts the stall over.\n\nExpected: one notice per unread message, as the text promises, unless something the poster would want to hear has changed (the member read some and stalled on a later one, say). Either key the episode to the first unread message alone and keep it across turns, or change the text so it does not promise once.",
+  "id": "a_2jIrC46Oy",
+  "position": "b11",
+  "title": "A stall notice that says it is sent once is sent again after the member works a turn without reading",
+  "type": "bug",
+  "updated_at_millis": 1792242551714,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792242551714}
+  ]
+}
