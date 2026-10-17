@@ -391,7 +391,8 @@ fn a_post_to_agents_in_panes_says_when_each_is_rung() {
             "posted #7 to {pair}\n\
              woke: {p1} (p1, idle)\n\
              rung once idle: {p2} (p2, working)\n\
-             rung once its prompt is empty: {p3} (p3, idle)\n\
+             rung once its prompt is empty: {p3} (p3, idle, its prompt holds something typed \
+             and not sent)\n\
              rung once an agent is found: {p4} (p4)"
         )
     );

@@ -1026,6 +1026,10 @@ fn posted_text(
             .iter()
             .map(|reached| (reached.name.clone(), until_key(reached.until()).into()))
             .collect();
+        let held: serde_json::Map<String, serde_json::Value> = deferred
+            .iter()
+            .filter_map(|reached| Some((reached.name.clone(), reached.held.clone()?.into())))
+            .collect();
         let mut value = serde_json::json!({
             "group": posted.group,
             "seq": posted.seq,
@@ -1041,6 +1045,7 @@ fn posted_text(
             "unreachable": listed(&unreachable),
             "doing": doing,
             "until": until,
+            "held": held,
         });
         shown.add_to(&mut value);
         value.to_string()
@@ -1066,7 +1071,7 @@ fn posted_text(
             let later: Vec<String> = deferred
                 .iter()
                 .filter(|reached| reached.until() == until)
-                .map(|reached| with(reached, None))
+                .map(|reached| with(reached, reached.held.as_deref()))
                 .collect();
             if !later.is_empty() {
                 lines.push(format!("rung once {}: {}", until_text(until), later.join(", ")));
@@ -1438,6 +1443,7 @@ mod tests {
                 reach: msg_answer::Reach::Deferred.into(),
                 activity: msg_answer::Activity::Blocked.into(),
                 until: Until::Unblocked.into(),
+                held: None,
             }],
         };
         assert_eq!(
@@ -1463,6 +1469,7 @@ mod tests {
                 reach: msg_answer::Reach::Deferred.into(),
                 activity: msg_answer::Activity::Stuck.into(),
                 until: Until::Reading.into(),
+                held: None,
             }],
         };
         assert_eq!(
@@ -1474,6 +1481,32 @@ mod tests {
                 .unwrap();
         assert_eq!(json["doing"]["worker"], "stuck");
         assert_eq!(json["until"]["worker"], "reading");
+    }
+
+    /// A ring the doorbell held as the post was made says what held it, in the words the
+    /// doorbell recorded, so its author need not wait for the stall notice to learn it.
+    #[test]
+    fn a_post_held_at_its_agents_prompt_says_what_held_it() {
+        let box_over = "Claude Code's box for a bug report it drafted covers its prompt";
+        let posted = msg_answer::Posted {
+            group: "review".to_string(),
+            seq: 5,
+            reached: vec![msg_answer::Reached {
+                name: "lead".to_string(),
+                reach: msg_answer::Reach::Deferred.into(),
+                activity: msg_answer::Activity::Idle.into(),
+                until: Until::Prompt.into(),
+                held: Some(box_over.to_string()),
+            }],
+        };
+        assert_eq!(
+            posted_text(&posted, false, false, &Shown::default()).unwrap(),
+            format!("posted #5 to review\nrung once its prompt is empty: lead (idle, {box_over})")
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&posted_text(&posted, false, true, &Shown::default()).unwrap())
+                .unwrap();
+        assert_eq!(json["held"]["lead"], box_over);
     }
 
     /// The human is shown by the name the app set, beside the address an agent writes in `--to`,

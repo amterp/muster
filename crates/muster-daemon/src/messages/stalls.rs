@@ -408,17 +408,11 @@ fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
 /// What holds a wake for a member, by what the doorbell last found in its pane.
 fn held(member: &Member, called: &BTreeMap<String, String>) -> String {
     let mut said = match (&member.held, member.size) {
-        (Some(Held::Draft), _) => {
-            "a wake for it is held because its prompt holds something typed and not sent"
-                .to_string()
-        }
         (Some(Held::Unseen(Unseen::NoPrompt)), Some((cols, rows))) => format!(
             "a wake for it is held because its prompt is not on its screen, which is \
              {cols}x{rows} and may be too short to show it"
         ),
-        (Some(Held::Unseen(unseen)), _) => {
-            format!("a wake for it is held because {}", unseen.why())
-        }
+        (Some(held), _) => format!("a wake for it is held because {}", held.why()),
         (None, _) => "a wake for it is waiting to be rung".to_string(),
     };
     if let Some(zoomed) = &member.zoomed_on {

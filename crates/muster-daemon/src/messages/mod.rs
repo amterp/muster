@@ -576,7 +576,16 @@ pub(crate) struct Holding {
 #[derive(Debug, Default)]
 struct Rang {
     failed: Vec<String>,
-    deferred: Vec<(String, msg_answer::Until)>,
+    deferred: Vec<Deferral>,
+}
+
+/// A wake left for the doorbell, for whom and until what.
+#[derive(Debug)]
+struct Deferral {
+    name: String,
+    until: msg_answer::Until,
+    /// What its agent's prompt showed when the doorbell looked to ring it just now, in words.
+    held: Option<String>,
 }
 
 impl Messages {
@@ -683,7 +692,9 @@ impl Messages {
 
 /// Delivers what [`Messages::hold`] sorted, with the service's lock let go.
 fn ring(shared: &Shared, holding: Holding) -> Rang {
-    let Holding { sending, ringing, mut deferred, told } = holding;
+    let Holding { sending, ringing, deferred, told } = holding;
+    let mut deferred: Vec<Deferral> =
+        deferred.into_iter().map(|(name, until)| Deferral { name, until, held: None }).collect();
     tell_human(shared, told);
     let names: Vec<(String, String)> =
         ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
@@ -692,7 +703,11 @@ fn ring(shared: &Shared, holding: Holding) -> Rang {
     for ((name, group), came) in names.into_iter().zip(came) {
         match came {
             doorbell::Came::Rang => {}
-            doorbell::Came::Waits => deferred.push((name, msg_answer::Until::Prompt)),
+            doorbell::Came::Waits(held) => deferred.push(Deferral {
+                name,
+                until: msg_answer::Until::Prompt,
+                held: held.map(|held| held.why().into_owned()),
+            }),
             doorbell::Came::Refused => refused_rings.push((name, group)),
         }
     }
@@ -1237,9 +1252,8 @@ fn activities_of(
 /// size, never its body: the log records what happened, not what was said.
 fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg_answer::Posted {
     let Delivered { posted, rang, activities } = delivered;
-    let until = |name: &String| {
-        rang.deferred.iter().find(|(deferred, _)| deferred == name).map(|(_, until)| *until)
-    };
+    let deferral = |name: &String| rang.deferred.iter().find(|deferral| deferral.name == *name);
+    let until = |name: &String| deferral(name).map(|deferral| deferral.until);
     let told = |name: &String, reach: Reach| {
         if rang.failed.contains(name) {
             Reach::Gone
@@ -1257,6 +1271,7 @@ fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg
             reach: reach_of(told(name, *reach)).into(),
             activity: activity_of(activities.get(name).copied()).into(),
             until: until(name).unwrap_or(msg_answer::Until::Unspecified).into(),
+            held: deferral(name).and_then(|deferral| deferral.held.clone()),
         })
         .collect();
     let named = |wanted: Reach| {

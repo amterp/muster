@@ -835,6 +835,10 @@ message MsgAnswer {
     Activity activity = 3;
     // For a deferred wake, what the doorbell waits for.
     Until until = 4;
+    // Since 1.6. For a wake the doorbell looked to ring as it was posted and held, what the
+    // agent's prompt showed, in words: "its prompt holds something typed and not sent". Absent
+    // for a wake not looked at yet, such as one waiting for its agent to be idle.
+    optional string held = 5;
   }
 
   // What a deferred wake waits for before its pane is rung.

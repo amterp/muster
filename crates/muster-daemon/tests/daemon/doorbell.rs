@@ -394,14 +394,19 @@ fn an_agent_that_opens_on_a_dialog_is_not_rung_until_its_prompt_shows() {
 }
 
 /// A menu opened from the prompt keeps the state it opened over, idle, and a Return there
-/// picks an entry.
+/// picks an entry. The post says the menu is what holds its wake.
 #[test]
 fn an_agent_with_a_menu_open_is_not_rung() {
     let mut agent = Agent::in_a_pane();
     agent.type_in("menu", true);
     agent.until_shows("PROBE-MENU");
     std::thread::sleep(QUIET);
-    agent.post("p1", "a brief");
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].until(), msg_answer::Until::Prompt);
+    assert_eq!(
+        posted.reached[0].held.as_deref(),
+        Some("a menu opened from its prompt covers its prompt")
+    );
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung over its menu");
 
@@ -410,14 +415,18 @@ fn an_agent_with_a_menu_open_is_not_rung() {
 }
 
 /// Something half typed into the prompt is a person's draft, however long ago they paused, and
-/// a ring would be sent inside it. It waits until the prompt is empty.
+/// a ring would be sent inside it. It waits until the prompt is empty, and the post says so.
 #[test]
 fn a_prompt_with_something_half_typed_in_it_is_not_rung() {
     let mut agent = Agent::in_a_pane();
     agent.type_in("half typed", false);
     agent.until_shows("PROBE-PROMPT> half typed");
     std::thread::sleep(QUIET);
-    agent.post("p1", "a brief");
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(
+        posted.reached[0].held.as_deref(),
+        Some("its prompt holds something typed and not sent")
+    );
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung into a draft");
 

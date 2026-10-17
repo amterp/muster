@@ -108,6 +108,7 @@ pub(super) fn reached_to(reached: &[(String, Reach)]) -> Vec<msg_answer::Reached
             reach: reach_of(*reach).into(),
             activity: activity_of(None).into(),
             until: msg_answer::Until::Unspecified.into(),
+            held: None,
         })
         .collect()
 }

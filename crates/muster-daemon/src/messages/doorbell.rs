@@ -151,6 +151,14 @@ pub(crate) enum Held {
 }
 
 impl Held {
+    /// What held it, as a clause: "its prompt holds something typed and not sent".
+    pub(crate) fn why(&self) -> Cow<'static, str> {
+        match self {
+            Held::Draft => "its prompt holds something typed and not sent".into(),
+            Held::Unseen(unseen) => unseen.why(),
+        }
+    }
+
     /// A word for a log line.
     pub(crate) fn word(&self) -> &'static str {
         match self {
@@ -247,11 +255,12 @@ pub(crate) fn is_urgent(wake: &Wake) -> bool {
 }
 
 /// What came of ringing one pane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Came {
     Rang,
-    /// Its agent is not at an empty prompt; the wake waits with the others.
-    Waits,
+    /// Its agent is not at an empty prompt, for the reason its prompt gave when one did; the wake
+    /// waits with the others.
+    Waits(Option<Held>),
     /// The pane would not take what was typed.
     Refused,
 }
@@ -299,13 +308,13 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 waits(&wake, "its prompt is not empty");
                 held.push((pane_of(&wake).to_string(), Held::Draft));
                 waiting.push(wake);
-                came.push(Came::Waits);
+                came.push(Came::Waits(Some(Held::Draft)));
             }
             AtPrompt::Not(unseen) => {
                 waits(&wake, &unseen.why());
-                held.push((pane_of(&wake).to_string(), Held::Unseen(unseen)));
+                held.push((pane_of(&wake).to_string(), Held::Unseen(unseen.clone())));
                 waiting.push(wake);
-                came.push(Came::Waits);
+                came.push(Came::Waits(Some(Held::Unseen(unseen))));
             }
         }
     }
@@ -398,7 +407,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         // one look, and the second waits for the first's command to end.
         if shared.messages().commanding.contains(&pane) {
             waiting.push(wake);
-            came.push(Came::Waits);
+            came.push(Came::Waits(None));
             continue;
         }
         if let AtPrompt::Not(unseen) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
@@ -406,7 +415,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             waits(&wake, &unseen.why());
             held.push((pane.clone(), Held::Unseen(unseen)));
             waiting.push(wake);
-            came.push(Came::Waits);
+            came.push(Came::Waits(None));
             continue;
         }
         let text = messaging::wake_text(&notice_of(&wake.notice));
@@ -833,10 +842,11 @@ fn deliver(
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
     // announces a draft being cleared, so a prompt that held one is looked at again too.
-    for (what, after) in [(Came::Rang, SETTLE), (Came::Waits, LOOK_AGAIN)] {
-        if came.contains(&what) {
-            sooner(next, Instant::now() + after);
-        }
+    if came.contains(&Came::Rang) {
+        sooner(next, Instant::now() + SETTLE);
+    }
+    if came.iter().any(|came| matches!(came, Came::Waits(_))) {
+        sooner(next, Instant::now() + LOOK_AGAIN);
     }
     if press_again(shared, pressing) {
         sooner(next, Instant::now() + ANSWER);

@@ -270,7 +270,7 @@ reason.
     posted #42 to review
     woke: builder (idle), director (working, already woken)
     rung once idle: critic (blocked)
-    rung once its prompt is empty: lexer (idle)
+    rung once its prompt is empty: lexer (idle, its prompt holds something typed and not sent)
     rung once it is not blocked: scout (blocked)
     rung once an agent is found: p2w3r07bsd
     rung once it reads its input: worker (stuck)
@@ -279,11 +279,12 @@ reason.
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
 ring still to come says what it waits for: the agent to be idle, an urgent post's agent to be
 out of its dialog, a draft left in its prompt to be sent or cleared, a `stuck` agent's program to
-read its input again, or an agent to start in a pane opened under 30 seconds ago. A ring typed
-into an agent whose program then stops reading is not counted as having woken it: the ring ends,
-and the next post rings again. An urgent post's first line says so: `posted #42 to review,
-urgent`. A pane with no
-agent past that, or whose agent's prompt cannot be read, is not woken.
+read its input again, or an agent to start in a pane opened under 30 seconds ago. A ring the
+doorbell tried as the post was made, and held, says what held it: a draft, or what covers the
+agent's prompt, such as a menu. A ring typed into an agent whose program then stops reading is
+not counted as having woken it: the ring ends, and the next post rings again. An urgent post's
+first line says so: `posted #42 to review, urgent`. A pane with no agent past that, or whose
+agent's prompt cannot be read, is not woken.
 
 A post that woke nobody live - nobody woken, to be rung, already woken, held until a group is
 resumed or a machine can be reached, or the human - is still kept, and exits 6: whoever you meant
@@ -291,7 +292,8 @@ to tell is not there to hear it, and no answer is coming. With `--json` the same
 of names under `woke`, `deferred`, `already_woken`, `waiting`, `gone`, `no_agent`, `no_doorbell`,
 `paused` and `unreachable`, what each agent in a pane is doing under
 `doing`, what each deferred ring waits for under `until`: `idle`, `unblocked`, `prompt`,
-`reading` or `agent`, and whether the post was urgent under `urgent`.
+`reading` or `agent`, what held a ring under `held`, and whether the post was urgent under
+`urgent`.
 
 **A group held up on a member is said so, once.** When a message by somebody else has waited
 unread for 2 minutes on an agent in a pane that is not working, its daemon records the stall in
