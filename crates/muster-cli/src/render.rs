@@ -28,6 +28,26 @@ const NAME: Style = Style::new().bold();
 const QUIET: Style = Style::new().dimmed();
 const PLAIN: Style = Style::new();
 
+/// What was typed, so whoever restarted an agent sees the command it came back with, and can
+/// type it again by hand if the agent does not come back.
+fn restarted_answer(restarted: &muster_proto::Restarted, json: bool) -> String {
+    if json {
+        return json!({
+            "pane": restarted.pane_id,
+            "program": restarted.program,
+            "killed": restarted.killed,
+            "typed": restarted.typed,
+        })
+        .to_string();
+    }
+    let ended = if restarted.killed {
+        format!("killed {}, which had not ended when asked to,", restarted.program)
+    } else {
+        format!("ended {}", restarted.program)
+    };
+    format!("{}  {ended} and typed: {}", restarted.pane_id, restarted.typed)
+}
+
 /// Turns an answer into what should be printed, or into the reason there is nothing to print.
 pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
     match &response.payload {
@@ -108,24 +128,7 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             let state = styled(&agent.state, agent_style(&agent.state));
             format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
-        // What was typed, so whoever restarted an agent sees the command it came back with, and
-        // can type it again by hand if the agent does not come back.
-        Some(response::Payload::Restarted(restarted)) => Ok(if json {
-            json!({
-                "pane": restarted.pane_id,
-                "program": restarted.program,
-                "killed": restarted.killed,
-                "typed": restarted.typed,
-            })
-            .to_string()
-        } else {
-            let ended = if restarted.killed {
-                format!("killed {}, which had not ended when asked to,", restarted.program)
-            } else {
-                format!("ended {}", restarted.program)
-            };
-            format!("{}  {ended} and typed: {}", restarted.pane_id, restarted.typed)
-        }),
+        Some(response::Payload::Restarted(restarted)) => Ok(restarted_answer(restarted, json)),
         Some(response::Payload::PaneClosed(closed)) => Ok(if json {
             json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })
                 .to_string()
