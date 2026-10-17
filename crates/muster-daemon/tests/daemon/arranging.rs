@@ -242,6 +242,22 @@ fn a_hidden_tab_is_shown_and_hidden_again_whole() {
     assert_eq!(held(&mut control), (false, Some("mine".to_string())), "a person's name stays");
 }
 
+/// A helper made while its maker's helpers are on screen joins them there, rather than starting
+/// a hidden tab of its own.
+#[test]
+fn a_helper_made_while_its_makers_helpers_are_shown_joins_them() {
+    let (_daemon, mut control) = two_panes();
+    make(&mut control, helper("h1", "a", among_helpers("t2", "a's helpers")));
+    let show = tab_request::SetHidden { tab: "t2".to_string(), hidden: false, label: None };
+    expect(&mut control, tab(tab_request::Request::SetHidden(show)), proto::Outcome::Done);
+
+    make(&mut control, helper("h2", "a", among_helpers("t3", "a's helpers")));
+    let held = snapshot(&mut control);
+    assert!(held.tabs.iter().all(|tab| tab.tab != "t3"), "no tab of its own");
+    assert!(held.tabs.iter().any(|tab| tab.tab == "t2" && !tab.hidden), "still on screen");
+    assert_eq!(tab_shape(&mut control, "t2"), "[h1|h2 0.50]");
+}
+
 /// Where a helper goes is decided as it is placed, after its shell has started, so helpers made
 /// at the same moment on different connections still end up in one tab.
 #[test]

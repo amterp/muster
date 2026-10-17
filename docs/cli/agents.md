@@ -435,10 +435,11 @@ A maker's helpers come forward together and go back together:
 
 `--helpers-of` takes the maker by name or id. `pane show` brings every hidden tab holding one of
 its helpers into this window, after the others, with the helpers arranged as they were, and the
-keyboard goes to the first of them only with `--focus`. A helpers' tab that only Muster has named
-is named again then, for the maker as it is called now; a tab you renamed keeps your name. `pane
-hide` sends back every tab on screen that holds nothing but the maker's helpers, so a helper you
-moved into a tab beside other panes stays there, and `pane hide --pane` hides it alone. Showing
+keyboard goes to the first of them only with `--focus`; a helper made while they are on screen
+joins them there. A helpers' tab that only Muster has named is named again then, for the maker as
+it is called now; a tab you renamed keeps your name. `pane hide` sends back every tab on screen
+that holds nothing but the maker's helpers, so a helper you moved into a tab beside other panes
+stays there, and `pane hide --pane` hides it alone. Showing
 helpers already on screen and hiding helpers already hidden change nothing and exit 0; a pane with
 no helpers is refused. A helper shown with `pane show --pane` comes into a tab of its own, as any
 hidden pane does, and stays a helper.

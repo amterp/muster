@@ -1623,15 +1623,16 @@ impl Session {
         Ok(())
     }
 
-    /// The first hidden tab holding a helper of `maker`.
+    /// The first tab a new helper of `maker` joins: a hidden one holding a helper of it, or one
+    /// on screen holding nothing but its helpers, which Show Helpers brought forward.
     fn helpers_tab(&self, maker: &str) -> Option<usize> {
+        let helps = |pane: &str| {
+            self.pane_index(pane)
+                .is_some_and(|index| self.panes[index].record.maker.as_deref() == Some(maker))
+        };
         self.tabs.iter().position(|tab| {
-            tab.hidden
-                && tab.root.panes().into_iter().any(|pane| {
-                    self.pane_index(pane).is_some_and(|index| {
-                        self.panes[index].record.maker.as_deref() == Some(maker)
-                    })
-                })
+            let panes = tab.root.panes();
+            if tab.hidden { panes.into_iter().any(helps) } else { panes.into_iter().all(helps) }
         })
     }
 
