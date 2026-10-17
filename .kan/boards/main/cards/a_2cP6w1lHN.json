@@ -24,6 +24,12 @@
       "body": "Three more Codex instances, from GitHub issue #2 part 9 and its two comments (Muster 0.15.0):\n\n- Undated: in a two-member group, the wake for #5 arrived twice. The first read returned the message; the second wake arrived after the reply (#6), and the read returned \"nothing unread\".\n- 2026-10-13, macOS: a wake for #74 arrived again after the pane had read it, done the review and posted #78. `muster msg read --group \u003csame group\u003e` returned `nothing unread`.\n- 2026-10-13, macOS: a peer-group wake for #43 was read and reviewed, the findings posted as #45, the turn ended, and the identical wake for #43 arrived and started another turn. Both the group and the team group had nothing unread.\n\nIn every instance so far, the repeat arrived after the agent had answered and ended its turn.\n\nAnd one from Claude Code on 0.15.0 (tooling feedback, 2026-10-12), so the `codex queue` paths above cannot be the whole story. A harness-agnostic path to check: `doorbell.rs`'s module doc says a ring given up with its text still in the prompt is sent by the next ring that finds that text. That matches a stale wake line seen left unsubmitted in an idle worker's prompt the same day. The same day also had one notice naming two groups that had already been read.",
       "created_at_millis": 1791946607079,
       "id": "c_2hIgK3z1c"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Claude Code instance 2026-10-17, Mac mini, a helper pane in a private project, adapter reporting. At 12:51:39 I ran muster msg read --group <its group with its maker> and it printed #7, #8 and #9. About ten minutes later Muster typed '3 new (#7-9), 1 urgent, 3 to you ... still unread' into my prompt. It was not submitted until the sender pressed Return for me (submitted 13:01:57 per my transcript), and a read then printed nothing. muster window showed me idle the whole time. A Claude Code 'Heads up' banner was showing above the prompt, which may also be why the Return was lost (see the late-urgent-ring report on the feedback board, a_2iUefqPcQ there). So: the stale-wake recheck is still missing, and a typed wake can be left unsubmitted.",
+      "created_at_millis": 1792260196450,
+      "id": "c_2jQGDNlex"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -33,7 +39,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1791946607079,
+  "updated_at_millis": 1792260196450,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},

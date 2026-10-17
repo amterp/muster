@@ -12,6 +12,12 @@
       "body": "2026-10-17: not the tip box - a live one (Claude Code 2.1.301) reads idle with an empty prompt under main's and 0.16.0's rules, now recorded (1401a635, docs/observations/claude-code-2.1.301.md). 0.16.0 gave one reason, 'its screen is not its prompt', for three causes main tells apart (a box over the prompt, a screen reading at work, no prompt box found). Candidates: the feedback-draft box (main reads it), a title still showing the busy spinner after the turn (osc_title_working outranks live_prompt_box), or a rule drawn below the prompt box (the box is found as the second rule from the bottom). Since cd3e07bd, msg.ring.waits and msg.ring.covered carry the deciding rule and a text-free shape of the last 12 rows, so the next hold under a build with it names its cause; close this from that record.",
       "created_at_millis": 1792255563727,
       "id": "c_2jOJhEBBu"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17 13:03, a new lead (see a_2cP6w1lHN's newest comment): an idle Claude Code pane had a wake typed into its prompt that was never submitted, until its sender pressed Return for it ten minutes later, while Claude Code's 'Heads up' tip box showed above the prompt. The rules read the prompt under the box (1401a635), but whether the box takes the ring's Return is not established; the next sighting's msg.ring.* record (cd3e07bd) should say whether the ring was typed and its Return lost, or never rung.",
+      "created_at_millis": 1792260286753,
+      "id": "c_2jQIZ1wqp"
     }
   ],
   "created_at_millis": 1792250932025,
@@ -21,7 +27,7 @@
   "position": "b12",
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1792255563727,
+  "updated_at_millis": 1792260286753,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025}
   ]
