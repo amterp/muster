@@ -279,6 +279,12 @@ impl Manifests {
         self.entry(agent)?.manifest.prompt_at_work(input, typed)
     }
 
+    /// What the screen its rule `rule` decides shows over the agent's prompt, in words, when the
+    /// agent's manifest says ([`Manifest::shows`]).
+    pub fn shows(&self, agent: &Agent, rule: &str) -> Option<&str> {
+        self.entry(agent)?.manifest.shows(rule)
+    }
+
     /// Whether the agent's manifest can say its screen is it at its prompt.
     pub fn reads_prompt(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt())

@@ -79,4 +79,5 @@ state = "unknown"
 priority = 1100
 region = "whole_recent"
 skip_state_update = true
+shows = "a menu opened from its prompt"
 contains = ["probe-menu"]

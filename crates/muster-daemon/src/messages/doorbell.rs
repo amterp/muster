@@ -33,6 +33,7 @@
 //! itself, with the turn still running - is erased instead: sent, it would wake the agent for
 //! nothing, and left, it would be sent with whatever is typed next.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock, Weak};
 use std::thread::Thread;
@@ -142,7 +143,7 @@ impl Rung {
 
 /// What held the last wake the doorbell looked to ring in a pane, by what its prompt showed: what
 /// a stall notice says, in place of a guess.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Held {
     /// Its prompt holds something typed and not sent.
     Draft,
@@ -151,10 +152,10 @@ pub(crate) enum Held {
 
 impl Held {
     /// A word for a log line.
-    pub(crate) fn word(self) -> &'static str {
+    pub(crate) fn word(&self) -> &'static str {
         match self {
             Held::Draft => "draft",
-            Held::Unseen(Unseen::Covered) => "covered",
+            Held::Unseen(Unseen::Covered(_)) => "covered",
             Held::Unseen(Unseen::AtWork) => "at_work",
             Held::Unseen(Unseen::NoPrompt) => "no_prompt",
             Held::Unseen(Unseen::NotForeground) => "not_foreground",
@@ -301,7 +302,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 came.push(Came::Waits);
             }
             AtPrompt::Not(unseen) => {
-                waits(&wake, unseen.why());
+                waits(&wake, &unseen.why());
                 held.push((pane_of(&wake).to_string(), Held::Unseen(unseen)));
                 waiting.push(wake);
                 came.push(Came::Waits);
@@ -402,7 +403,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         }
         if let AtPrompt::Not(unseen) = prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
         {
-            waits(&wake, unseen.why());
+            waits(&wake, &unseen.why());
             held.push((pane.clone(), Held::Unseen(unseen)));
             waiting.push(wake);
             came.push(Came::Waits);
@@ -963,12 +964,12 @@ fn unanswered_rings(
 /// close again. Called with no lock held; true when any was pressed or kept.
 fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
     let mut pressed = Vec::new();
-    let mut ending: Vec<(Rung, &'static str)> = Vec::new();
+    let mut ending: Vec<(Rung, Cow<'static, str>)> = Vec::new();
     for Pressing { mut rung, seen, unneeded } in pressing {
         // Before the screen, which can lag what was typed: an agent slow to paint, or this
         // daemon's copy behind, shows the ring alone over words that a Return would send.
         if seen.io.someone_typed_at().is_some_and(|typed| typed > rung.typed) {
-            ending.push((rung, "something was typed into its pane after it was rung"));
+            ending.push((rung, "something was typed into its pane after it was rung".into()));
             continue;
         }
         let text = messaging::wake_text(&notice_of(&rung.wake.notice));
@@ -980,7 +981,7 @@ fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
         match looked {
             AtPrompt::Holds(held) if prompt::is_only(&held, &text) => {
                 if !seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
-                    ending.push((rung, "its pane would not take the Return"));
+                    ending.push((rung, "its pane would not take the Return".into()));
                     continue;
                 }
                 let event = if rung.returned {
@@ -1007,7 +1008,10 @@ fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
                 pressed.push(rung);
             }
             AtPrompt::Empty { .. } if !rung.returned => {
-                ending.push((rung, "its prompt stayed empty, and its Return was never pressed"));
+                ending.push((
+                    rung,
+                    "its prompt stayed empty, and its Return was never pressed".into(),
+                ));
             }
             // An empty prompt is a ring sent - unless what was typed still waits in the terminal,
             // which a program that has stopped reading shows as the empty prompt it painted
@@ -1017,15 +1021,15 @@ fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
                     continue;
                 }
                 if rung.unread >= PRESSES {
-                    ending.push((rung, "it waited unread in its pane's terminal"));
+                    ending.push((rung, "it waited unread in its pane's terminal".into()));
                 } else {
                     rung.unread += 1;
                     rung.at = Instant::now();
                     pressed.push(rung);
                 }
             }
-            AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
-            AtPrompt::Not(unseen) if !rung.returned => pressed.push(covered(rung, unseen)),
+            AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring".into())),
+            AtPrompt::Not(unseen) if !rung.returned => pressed.push(covered(rung, &unseen)),
             AtPrompt::Not(unseen) => ending.push((rung, unseen.why())),
         }
     }
@@ -1051,13 +1055,13 @@ fn take_back(
     text: &str,
     looked: AtPrompt,
     pressed: &mut Vec<Rung>,
-    ending: &mut Vec<(Rung, &'static str)>,
+    ending: &mut Vec<(Rung, Cow<'static, str>)>,
 ) {
     match looked {
         AtPrompt::Holds(held) if prompt::is_only(&held, text) => {
             let chars = prompt::as_typed(text).chars().count();
             if !seen.io.queue(Input::TakeBack { chars }) {
-                ending.push((rung, "its pane would not take the Backspaces that erase it"));
+                ending.push((rung, "its pane would not take the Backspaces that erase it".into()));
                 return;
             }
             log::info(
@@ -1070,14 +1074,14 @@ fn take_back(
             );
         }
         AtPrompt::Empty { .. } => {}
-        AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring")),
-        AtPrompt::Not(unseen) => pressed.push(covered(rung, unseen)),
+        AtPrompt::Holds(_) => ending.push((rung, "its prompt holds more than the ring".into())),
+        AtPrompt::Not(unseen) => pressed.push(covered(rung, &unseen)),
     }
 }
 
 /// Keeps a ring whose Return is still to come while something hides its prompt, saying once
 /// what does: nothing else would send the ring, and the screen is not kept.
-fn covered(mut rung: Rung, unseen: Unseen) -> Rung {
+fn covered(mut rung: Rung, unseen: &Unseen) -> Rung {
     if !rung.covered {
         log::info(
             "msg.ring.covered",

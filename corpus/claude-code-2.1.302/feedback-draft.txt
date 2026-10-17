@@ -1,0 +1,44 @@
+How Claude Code 2.1.302 draws the box its feedback tool leaves once it has drafted a bug report.
+
+Captured 2026-10-16 at about 21:05 local time on macOS, from a Claude Code 2.1.302 pane sitting
+idle in Muster 0.16.0, by `muster pane read --pane <its pane> --rows 60`, while the pane's title
+read "✳ MUSTER". Not recorded by `tools/detection-capture.py`: this is the pane's text as a read
+returned it, not the bytes Claude Code wrote, and the pane's size was not noted. The rendered
+screen is the "claude 2.1.302" case in corpus/conformance/agent-detection-recorded.json.
+
+After a turn in which the session drafted a bug report with Claude Code's feedback tool, a box
+stayed above the prompt, ending in "1 to review · 2 to send · 0 to dismiss", until somebody
+answered it. While it was drawn, Muster's doorbell held two wakes for the pane for 30 minutes,
+reading its screen as not its prompt.
+
+The read ends at the prompt's caret: no bottom rule and no footer under it. Whether Claude Code
+drew none while the box showed, or the read cut them off, is not established. A read of the same
+pane two minutes earlier, while it worked and before the box showed, had the bottom rule and two
+footer lines under the prompt.
+
+The screen, as the read returned it, the conversation above the box kept as it was:
+
+      the spool integrator knows. Slot 1 is planning the two compaction cards and
+      slot 2 is still building.
+
+      I found one more thing along the way. When I sat idle, the doorbell logged
+      "its screen is not its prompt" 536 times and held the spool integrator's
+      wakes. My footer shows a background shell and a monitor; the workers' footers
+      don't. I suspect those items stop Claude Code's prompt rule from matching. If
+      so, any integrator running a background watcher can't be woken by a message.
+      I'm capturing my idle screen now so a card can carry evidence instead of a
+      guess.
+
+    ✻ Crunched for 2m 23s · done 9:04 pm · 2 shells, 1 monitor still running
+
+    ╭──────────────────────────────────────────────────────────────────────────────╮
+    │ ✻ Bug report drafted: Spawned five parallel Opus subagents for a board tria… │
+    │ │ - What happened: During a kanban triage of 137 cards, the model launched   │
+    │ │ five background general-purpose subagents (inheriting Opus) to verify      │
+    │ │ cards against…                                                             │
+    │ 1 to review · 2 to send · 0 to dismiss                                       │
+    ╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+    ─────────────────────────────────────────────────────────────────────── MUSTER ─
+    ❯

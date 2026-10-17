@@ -207,6 +207,32 @@ fn manifest_validation_keeps_skip_rules_neutral() {
     );
 }
 
+/// `shows` says what hides the prompt, so it is taken only on a rule whose screen does, and
+/// only from a manifest that asks for the engine that reads it; and the rule that decides is
+/// what it is looked up by.
+#[test]
+fn a_rule_says_what_it_shows_over_the_prompt_only_where_it_covers_it() {
+    let with = |engine: u32, rule: &str| {
+        Manifest::parse(&format!("id = \"x\"\nmin_engine_version = {engine}\n\n{rule}\n"))
+    };
+    let menu = "[[rules]]\nid = \"menu\"\nstate = \"unknown\"\nskip_state_update = true\n\
+                contains = [\"menu\"]\nshows = \"a menu\"";
+    let manifest = with(15, menu).expect("a menu may say what it shows");
+    assert_eq!(manifest.shows("menu"), Some("a menu"));
+    assert_eq!(manifest.shows("another"), None);
+    assert!(with(14, menu).is_err(), "engine 14");
+
+    let dialog = "[[rules]]\nid = \"dialog\"\nstate = \"blocked\"\ncontains = [\"ask\"]\n\
+                  shows = \"a dialog\"";
+    assert!(with(15, dialog).is_ok());
+    let idle = "[[rules]]\nid = \"idle\"\nstate = \"idle\"\ncontains = [\"ready\"]\n\
+                shows = \"a prompt\"";
+    assert!(with(15, idle).is_err(), "a screen that does not hide the prompt");
+    let blank = "[[rules]]\nid = \"menu\"\nstate = \"unknown\"\nskip_state_update = true\n\
+                 contains = [\"menu\"]\nshows = \" \"";
+    assert!(with(15, blank).is_err(), "an empty shows");
+}
+
 #[test]
 fn manifest_validation_rejects_excessive_rule_count() {
     let rule = |index| format!("[[rules]]\nid = \"rule_{index}\"\ncontains = [\"ready\"]\n");

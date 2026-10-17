@@ -1,5 +1,5 @@
 id = "claude"
-version = "2026.10.16.1"
+version = "2026.10.16.2"
 min_engine_version = 15
 updated_at = "2026-10-16T00:00:00Z"
 aliases = ["claude-code"]
@@ -107,6 +107,7 @@ state = "unknown"
 priority = 1000
 region = "bottom_non_empty_lines(3)"
 skip_state_update = true
+shows = "its transcript viewer"
 contains = ["showing detailed transcript"]
 any = [
   { contains = ["ctrl+o", "to toggle"] },
@@ -125,6 +126,7 @@ state = "unknown"
 priority = 1160
 region = "after_last_horizontal_rule"
 skip_state_update = true
+shows = "a menu opened from its prompt"
 contains = ["esc to cancel"]
 # /hooks' own submenus too: an event's matchers ("PreToolUse - Matchers"), and a matcher's
 # hooks ("PreToolUse - Matcher: Bash").
@@ -227,7 +229,23 @@ state = "unknown"
 priority = 1160
 region = "bottom_non_empty_lines(20)"
 skip_state_update = true
+shows = "its /login menu"
 contains = ["select login method:", "esc to cancel"]
+
+# Once Claude Code's feedback tool drafts a bug report, 2.1.302 leaves a box above the prompt
+# until somebody answers it, and the box takes digits: "1 to review · 2 to send · 0 to dismiss".
+# A ring typed there could send a report nobody approved, and a ring's text holds digits, so it
+# is a screen to wait out, above every working rule. Read by the box's last row and its foot, at
+# the left edge where Claude Code draws it, so the same box quoted in a turn's output, indented,
+# leaves the session's state alone (corpus/claude-code-2.1.302/feedback-draft.txt).
+[[rules]]
+id = "feedback_draft_box"
+state = "unknown"
+priority = 1160
+region = "bottom_non_empty_lines(8)"
+skip_state_update = true
+shows = "Claude Code's box for a bug report it drafted (1 to review, 2 to send, 0 to dismiss)"
+regex = ['(?m)^│ ?1 to review · 2 to send · 0 to dismiss *│\n╰─+╯$']
 
 [[rules]]
 id = "login_method"
@@ -265,6 +283,7 @@ state = "unknown"
 priority = 900
 region = "whole_recent"
 skip_state_update = true
+shows = "its /model menu"
 contains = ["select model", "enter to set as default", "esc to cancel"]
 not = [
   { contains = ["do you want to proceed?"] },

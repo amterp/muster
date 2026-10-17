@@ -540,6 +540,32 @@
       "expect": {
         "atPrompt": false
       }
+    },
+    {
+      "name": "claude 2.1.302: the feedback tool's box over an idle prompt is not the prompt",
+      "why": "The box a drafted bug report leaves above the prompt takes digits - 2 sends the report - and a ring's text holds digits, so a prompt drawn under it is not one to type into. Authored in 2.1.299's idle layout, prompt box and footer whole, since the screen read back from a live pane ended at the caret (corpus/claude-code-2.1.302/feedback-draft.txt).",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.302\n▝▜██████▀  Opus 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n⏺ Drafted.\n\n✻ Worked for 2s · done 9:04 pm\n\n╭──────────────────────────────────────────────────────────────────────────────╮\n│ ✻ Bug report drafted: the doorbell rang into a box…                          │\n│ │ - What happened: a wake waited thirty minutes…                             │\n│ 1 to review · 2 to send · 0 to dismiss                                       │\n╰──────────────────────────────────────────────────────────────────────────────╯\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [21:05:12] /tmp/capture\n  ⏸ manual mode on · ← for agents",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": false
+      }
+    },
+    {
+      "name": "claude 2.1.302: the feedback tool's box quoted in a turn's output leaves the prompt readable",
+      "why": "The box is read at the left edge, where Claude Code draws it; quoted in a turn's output it is indented, and the prompt under it is the prompt.",
+      "given": {
+        "agent": "claude",
+        "progress": "",
+        "screen": "\n ▐▛███▛█   Claude Code v2.1.302\n▝▜██████▀  Opus 5.5 · Claude Max\n ▝▝   ▝▝   /tmp/capture\n\n⏺ The box it drew:\n\n  ╭──────────────────────────────────────────────────────────────────────────────╮\n  │ ✻ Bug report drafted: the doorbell rang into a box…                          │\n  │ │ - What happened: a wake waited thirty minutes…                             │\n  │ 1 to review · 2 to send · 0 to dismiss                                       │\n  ╰──────────────────────────────────────────────────────────────────────────────╯\n\n✻ Worked for 2s · done 9:04 pm\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  [21:05:12] /tmp/capture\n  ⏸ manual mode on · ← for agents",
+        "title": "✳ Claude Code"
+      },
+      "expect": {
+        "atPrompt": true
+      }
     }
   ]
 }

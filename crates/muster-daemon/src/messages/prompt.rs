@@ -6,6 +6,8 @@
 //! Read with no lock held but the pane's own, just before each write, so what is typed answers
 //! to the screen as it is, not as it was when a post came in.
 
+use std::borrow::Cow;
+
 use muster_detect::{Agent, Detection, Input, Prompt, State, System};
 use muster_vt::Grid;
 
@@ -24,13 +26,14 @@ pub(crate) enum AtPrompt {
 }
 
 /// Why the doorbell found no prompt to type into.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Unseen {
     NoManifests,
     Unreadable,
     NotForeground,
-    /// A menu, a viewer or a dialog is drawn over its prompt.
-    Covered,
+    /// A menu, a viewer or a dialog is drawn over its prompt: what, in words, when the rule
+    /// that read the screen says (its manifest's `shows`).
+    Covered(Option<String>),
     /// Its screen reads as its agent at work, whatever its state says: a screen the rules
     /// misread, or a turn begun since its state was published.
     AtWork,
@@ -39,22 +42,25 @@ pub(crate) enum Unseen {
 }
 
 impl Unseen {
-    pub(crate) fn why(self) -> &'static str {
+    pub(crate) fn why(&self) -> Cow<'static, str> {
         match self {
-            Unseen::NoManifests => "detection has not loaded its manifests",
-            Unseen::Unreadable => "its manifest cannot read its prompt",
-            Unseen::NotForeground => "its agent is no longer in the foreground",
-            Unseen::Covered => "a menu, a viewer or a dialog covers its prompt",
-            Unseen::AtWork => "its screen reads as its agent at work",
-            Unseen::NoPrompt => "its prompt is not on its screen",
+            Unseen::NoManifests => "detection has not loaded its manifests".into(),
+            Unseen::Unreadable => "its manifest cannot read its prompt".into(),
+            Unseen::NotForeground => "its agent is no longer in the foreground".into(),
+            Unseen::Covered(Some(shows)) => format!("{shows} covers its prompt").into(),
+            Unseen::Covered(None) => "a menu, a viewer or a dialog covers its prompt".into(),
+            Unseen::AtWork => "its screen reads as its agent at work".into(),
+            Unseen::NoPrompt => "its prompt is not on its screen".into(),
         }
     }
 
-    /// Why a screen whose prompt could not be read is not one, by what its rules make of it.
-    fn of(detection: &Detection) -> Unseen {
+    /// Why a screen whose prompt could not be read is not one, by what its rules make of it, and
+    /// what the rule that decided says the screen `shows`.
+    fn of(detection: &Detection, shows: Option<&str>) -> Unseen {
+        let covered = || Unseen::Covered(shows.map(str::to_string));
         match detection.state {
-            _ if detection.skip_state_update => Unseen::Covered,
-            State::Blocked => Unseen::Covered,
+            _ if detection.skip_state_update => covered(),
+            State::Blocked => covered(),
             State::Working => Unseen::AtWork,
             State::Idle | State::Unknown => Unseen::NoPrompt,
         }
@@ -95,7 +101,11 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
     match read {
         Some(Prompt::Empty) => AtPrompt::Empty { at_work },
         Some(Prompt::Holds(held)) => AtPrompt::Holds(held),
-        None => AtPrompt::Not(Unseen::of(&manifests.detect(Some(&agent), input))),
+        None => {
+            let detection = manifests.detect(Some(&agent), input);
+            let shows = detection.rule.as_deref().and_then(|rule| manifests.shows(&agent, rule));
+            AtPrompt::Not(Unseen::of(&detection, shows))
+        }
     }
 }
 
@@ -141,10 +151,35 @@ mod tests {
     fn a_screen_with_no_prompt_is_told_by_what_its_rules_read() {
         let read =
             |state, skip| Detection { state, visible: true, skip_state_update: skip, rule: None };
-        assert_eq!(Unseen::of(&read(State::Unknown, true)), Unseen::Covered, "a menu");
-        assert_eq!(Unseen::of(&read(State::Blocked, false)), Unseen::Covered, "a dialog");
-        assert_eq!(Unseen::of(&read(State::Working, false)), Unseen::AtWork);
-        assert_eq!(Unseen::of(&read(State::Idle, false)), Unseen::NoPrompt, "the idle fallback");
+        assert_eq!(Unseen::of(&read(State::Unknown, true), None), Unseen::Covered(None), "a menu");
+        assert_eq!(
+            Unseen::of(&read(State::Blocked, false), None),
+            Unseen::Covered(None),
+            "a dialog"
+        );
+        assert_eq!(Unseen::of(&read(State::Working, false), None), Unseen::AtWork);
+        assert_eq!(
+            Unseen::of(&read(State::Idle, false), None),
+            Unseen::NoPrompt,
+            "the idle fallback"
+        );
+    }
+
+    /// A rule that says what its screen shows names it, and one that does not is still a menu,
+    /// a viewer or a dialog.
+    #[test]
+    fn a_covered_prompt_is_named_by_what_its_rule_says_it_shows() {
+        let menu = Detection {
+            state: State::Unknown,
+            visible: false,
+            skip_state_update: true,
+            rule: None,
+        };
+        let boxed = Unseen::of(&menu, Some("Claude Code's box for a bug report it drafted"));
+        assert_eq!(boxed.why(), "Claude Code's box for a bug report it drafted covers its prompt");
+        assert_eq!(Unseen::of(&menu, None).why(), "a menu, a viewer or a dialog covers its prompt");
+        let working = Detection { state: State::Working, skip_state_update: false, ..menu };
+        assert_eq!(Unseen::of(&working, Some("a box")), Unseen::AtWork, "not hidden");
     }
 
     #[test]

@@ -1139,7 +1139,7 @@ fn a_group_held_up_on_a_wake_a_menu_holds_is_told_so() {
     logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(10));
     let read = agent.read_as("integrator");
     assert_eq!(read.len(), 1, "{read:?}");
-    assert!(read[0].contains("a menu, a viewer or a dialog covers its prompt"), "{read:?}");
+    assert!(read[0].contains("a menu opened from its prompt covers its prompt"), "{read:?}");
     assert!(read[0].contains("its tab is zoomed on "), "{read:?}");
     assert!(read[0].contains("(p2), which hides it"), "{read:?}");
 }

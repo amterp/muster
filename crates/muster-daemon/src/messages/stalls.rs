@@ -407,7 +407,7 @@ fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
 
 /// What holds a wake for a member, by what the doorbell last found in its pane.
 fn held(member: &Member, called: &BTreeMap<String, String>) -> String {
-    let mut said = match (member.held, member.size) {
+    let mut said = match (&member.held, member.size) {
         (Some(Held::Draft), _) => {
             "a wake for it is held because its prompt holds something typed and not sent"
                 .to_string()
@@ -461,7 +461,7 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
                     doorbell: panes.doorbell(&holding.pane),
                     stopped: seen.and_then(|seen| seen.stopped.clone()),
                     waking,
-                    held: messages.held.get(&holding.pane).copied(),
+                    held: messages.held.get(&holding.pane).cloned(),
                     size: seen.map(|seen| {
                         let grid = seen.io.grid();
                         (grid.cols, grid.rows)
@@ -552,7 +552,7 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                     "authors" => held.authors.join(","),
                     "woken" => held.woken,
                     "waking" => member.waking,
-                    "held" => member.held.map_or("", Held::word),
+                    "held" => member.held.as_ref().map_or("", Held::word),
                     "size" => size,
                     "zoomed_on" => member.zoomed_on.clone().unwrap_or_default(),
                     "rings" => member.doorbell == Ringable::Rings,
@@ -835,11 +835,20 @@ mod tests {
             said(Some(Held::Unseen(Unseen::NoPrompt)))
                 .contains("its prompt is not on its screen, which is 89x9 and may be too short"),
         );
-        assert!(said(Some(Held::Unseen(Unseen::Covered))).contains("a menu, a viewer or a dialog"));
+        assert!(
+            said(Some(Held::Unseen(Unseen::Covered(None))))
+                .contains("a menu, a viewer or a dialog")
+        );
+        let drafted = "Claude Code's box for a bug report it drafted (1 to review, 2 to send, 0 to \
+                       dismiss)";
+        assert!(
+            said(Some(Held::Unseen(Unseen::Covered(Some(drafted.to_string())))))
+                .contains(&format!("a wake for it is held because {drafted} covers its prompt")),
+        );
         assert!(said(Some(Held::Unseen(Unseen::AtWork))).contains("reads as its agent at work"));
         assert!(said(None).contains("a wake for it is waiting to be rung."));
         for held in [None, Some(Held::Draft), Some(Held::Unseen(Unseen::NoPrompt))] {
-            assert!(!said(held).contains("menu over it"), "{held:?}");
+            assert!(!said(held.clone()).contains("menu over it"), "{held:?}");
         }
     }
 

@@ -304,11 +304,12 @@ what waits is told why, in the group, by `@muster`:
     @muster: otter (p2w3r07bsd) has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it, or ends it and resumes its session. Muster says this once; `muster window` shows its pane.
 
 When what the agent's pane shows holds its wake, the message says what: something typed into its
-prompt and not sent, a menu, a viewer or a dialog over its prompt, a screen that reads as the agent
-at work, or no prompt on its screen at all, with the pane's size, since a pane too short to show
-its prompt holds its wakes for as long as it stays that short. It says too when the pane's tab is
-zoomed on another pane. A pane hidden by a zoom or behind another tab keeps the size it last had on
-screen, and nothing resizes it until it is shown again.
+prompt and not sent, a menu, a viewer or a dialog over its prompt, named where the agent's detection
+rules name it (Claude Code's box for a bug report it drafted, which only a person's 1, 2 or 0
+clears), a screen that reads as the agent at work, or no prompt on its screen at all, with the
+pane's size, since a pane too short to show its prompt holds its wakes for as long as it stays that
+short. It says too when the pane's tab is zoomed on another pane. A pane hidden by a zoom or behind
+another tab keeps the size it last had on screen, and nothing resizes it until it is shown again.
 
 An agent that is working is not held up, however long its turn. But once a message has waited 30
 minutes on one that has read as working at every look, whoever posted it is told that too, once,

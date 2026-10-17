@@ -32,7 +32,8 @@ use region::Region;
 /// `resume`, the command that starts a session again after a daemon restart, 13 `helpers`, the
 /// names the harness runs its own binary under for work that is not a session, and 14 a
 /// `[server]` table, the subcommand under which that binary serves sessions other than its own,
-/// and 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest.
+/// and 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest,
+/// and a rule's `shows`, what a screen hiding the prompt shows.
 pub const ENGINE_VERSION: u32 = 15;
 
 /// The engine version that introduced a rule's `prompt`.
@@ -69,6 +70,9 @@ const SERVER_ENGINE_VERSION: u32 = 14;
 /// The engine version that introduced `[session]` `resume_keeps`, and a `resume` without
 /// `{args}`, for a harness whose flags have not been recorded going along.
 const KEEPS_ENGINE_VERSION: u32 = 15;
+
+/// The engine version that introduced a rule's `shows`.
+const SHOWS_ENGINE_VERSION: u32 = 15;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -192,6 +196,8 @@ struct Rule {
     /// What an empty prompt holds when the harness draws a suggestion in it without making it
     /// faint, so it reads as typed.
     prompt_placeholder: Option<Regex>,
+    /// What a screen this rule decides shows over the agent's prompt, in words.
+    shows: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +268,12 @@ impl Manifest {
             skip_state_update: rule.skip_state_update,
             rule: Some(rule.id.clone()),
         }
+    }
+
+    /// What the screen the rule `rule` decides shows over the agent's prompt, in words, when the
+    /// rule says.
+    pub fn shows(&self, rule: &str) -> Option<&str> {
+        self.rules.iter().find(|each| each.id == rule)?.shows.as_deref()
     }
 
     /// Whether any rule can say the screen is the agent at its prompt: an agent whose manifest
@@ -580,6 +592,7 @@ struct RawRule {
     prompt_region: Option<String>,
     prompt_margin: Option<String>,
     prompt_placeholder: Option<String>,
+    shows: Option<String>,
 }
 
 impl RawRule {
@@ -690,12 +703,36 @@ fn validate(manifest: &RawManifest) -> Result<(), String> {
         }
         validate_gate(&rule.gate(), "rule", 0, &mut complexity)
             .map_err(|error| format!("rule {} has invalid matcher gates: {error}", rule.id))?;
+        if rule.shows.is_some() {
+            validate_shows(manifest, rule)?;
+        }
     }
     if let Some(session) = &manifest.session {
         validate_session(manifest, session)?;
     }
     validate_helpers(manifest)?;
     validate_server(manifest)
+}
+
+/// `shows` names what hides the prompt, so it belongs on a rule whose screen does: one to wait
+/// out, or one the agent is blocked at.
+fn validate_shows(manifest: &RawManifest, rule: &RawRule) -> Result<(), String> {
+    if !rule.skip_state_update && rule.state != Some(RawState::Blocked) {
+        return Err(format!(
+            "rule {} uses shows without skip_state_update or state = \"blocked\"",
+            rule.id
+        ));
+    }
+    if rule.shows.as_deref().is_some_and(|shows| shows.trim().is_empty()) {
+        return Err(format!("rule {} has an empty shows", rule.id));
+    }
+    if manifest.min_engine_version.unwrap_or(0) < SHOWS_ENGINE_VERSION {
+        return Err(format!(
+            "rule {} uses shows but min_engine_version is below {SHOWS_ENGINE_VERSION}",
+            rule.id
+        ));
+    }
+    Ok(())
 }
 
 /// A server is matched by the word after the one naming its agent, so the subcommand is one whole
@@ -1097,6 +1134,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                     },
                     skip_state_update: rule.skip_state_update,
                     gate,
+                    shows: rule.shows,
                     id: rule.id,
                 })
             })

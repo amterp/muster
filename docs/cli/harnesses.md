@@ -104,6 +104,11 @@ kimi, kiro, maki, pi, qodercli.
   14). Codex's names `app-server`, which by default runs every Codex session's commands and hooks
   with the environment of the session that started it, so Muster refuses every report that comes
   through it and says how to turn it off (`muster docs limits`).
+- **What hides its prompt, named**: a rule for a screen to wait out, or one the agent is blocked
+  at, may say in `shows` what that screen is, and a message held up behind it says so (detection
+  engine 15). Claude Code's names its menus, its transcript viewer and the box its feedback tool
+  leaves over the prompt once it has drafted a bug report, which takes digits and holds every
+  wake until a person answers it.
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither
