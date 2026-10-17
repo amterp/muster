@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1791952333473,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-13 on 0.15.0 during a parallel-work round. Two posts to a busy Claude Code worker (#13, then #14 with --urgent) never reached its running turn; an earlier urgent post (#9) to the same worker had been typed in mid-turn as documented. The worker found them only when its own `msg post` was refused for unread messages.\n\nThe urgent notice for #13-14 had been typed into the prompt box and left there unsubmitted until the turn ended. The integrator then ran `muster pane send --pane \u003cp\u003e \"/clear\" --confirm` and a Return, and Claude Code submitted the box as one prompt: \"... muster msg read --group muster-2+muster-integrator/clear\". So `/clear` ran as text, the context was not cleared, and `--confirm` passed because the text did appear.\n\nTwo things to look at: why an urgent notice typed mid-turn stayed unsubmitted (the worker's turn was long cargo test runs; the earlier urgent one went through), and whether `pane send` should refuse, or say so, when the prompt it types into is not empty. Card a_2hIfvZQJP (`--confirm` passed but text never reached a busy Claude pane) is nearby.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b0w",
+  "position": "a3V",
   "title": "An urgent notice typed into a busy Claude pane can sit unsent, and a later pane send is appended to it",
   "type": "bug",
-  "updated_at_millis": 1791952333473,
+  "updated_at_millis": 1792204368272,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791952333473}
+    {"field":"column","value":"backlog-hi","at":1791952333473},
+    {"field":"column","value":"next","at":1792204368272}
   ]
 }

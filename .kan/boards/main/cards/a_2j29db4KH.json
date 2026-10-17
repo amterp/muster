@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -22,11 +22,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b19",
+  "position": "a3l",
   "title": "A wake held behind Claude Code's feedback-draft box is blamed on a draft, and no rule knows the box",
   "type": "bug",
-  "updated_at_millis": 1792203146454,
+  "updated_at_millis": 1792204368362,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792202744954}
+    {"field":"column","value":"backlog-hi","at":1792202744954},
+    {"field":"column","value":"next","at":1792204368362}
   ]
 }

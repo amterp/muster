@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1792178711696,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-16 on two Codex 0.162.1 panes on the devenv (review p2c3tkry84, copy p2c3wp2bvy), both stuck. The daemon kept queuing wheel, motion and click reports for them after they stopped reading: draining their terminals took 109 KB and 245 KB of SGR mouse reports, refilling within two seconds of each drain until the daemon's queue (QUEUE_DEPTH, 1024 inputs, each wheel expanding to a report per row) emptied.\n\nTwo things go wrong. Mouse reports are stale within a second, so a program that recovers gets minutes of old scrolling and clicks replayed at it. And when the program ends instead, its shell reads the backlog as typed text: the review pane's prompt showed `;50M\u003c35;43;50M27u` as Codex exited, and a report that happens to end in a Return would run a command.\n\nWheel and motion reports could be dropped instead of queued while a pane reads stuck, and dropped from the queue when it goes stuck. Keys, pastes and pane send text are a separate decision, since a person may mean them. Whatever restarts a stuck agent (a_2dmIEdCn6) has to flush the terminal's input before the program exits.",
   "id": "a_2is4QBDSZ",
-  "position": "b0z",
+  "position": "Zy",
   "title": "🖱️ Mouse input keeps queuing for a program that has stopped reading, and lands on whatever reads next",
   "type": "bug",
-  "updated_at_millis": 1792178711696,
+  "updated_at_millis": 1792204367964,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792178711696}
+    {"field":"column","value":"backlog-hi","at":1792178711696},
+    {"field":"column","value":"in-progress","at":1792204367964}
   ]
 }
