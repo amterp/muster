@@ -138,6 +138,11 @@ impl Input {
         matches!(self, Input::Mouse(_) | Input::Wheel(_))
     }
 
+    /// Whether this presses or releases a mouse button, which the writer counts.
+    fn is_button(&self) -> bool {
+        matches!(self, Input::Mouse(event) if event.action != MouseAction::Motion)
+    }
+
     /// Whether this is text somebody other than the doorbell typed: what can sit in an agent's
     /// prompt beside a ring, where a Return would send it. The pointer puts no text there.
     fn is_someones_text(&self) -> bool {
@@ -309,11 +314,17 @@ pub(crate) fn queue() -> (SyncSender<Stamped>, Receiver<Stamped>) {
 pub(crate) struct Stamped {
     seq: u64,
     input: Input,
+    /// Dropped as it arrived, and queued only for the writer to count the buttons it presses.
+    counted_only: bool,
 }
 
 impl Stamped {
     pub(crate) fn new(seq: u64, input: Input) -> Stamped {
-        Stamped { seq, input }
+        Stamped { seq, input, counted_only: false }
+    }
+
+    pub(crate) fn counted_only(seq: u64, input: Input) -> Stamped {
+        Stamped { seq, input, counted_only: true }
     }
 }
 
@@ -345,6 +356,9 @@ impl Discards {
         }
         if self.stuck.load(Ordering::Acquire) && input.is_pointer() {
             self.pointer_dropped.fetch_add(1, Ordering::Relaxed);
+            if input.is_button() {
+                return Admitted::Counted(self.stamp());
+            }
             return Admitted::Dropped;
         }
         Admitted::Stamped(self.stamp())
@@ -400,6 +414,10 @@ pub(crate) enum Admitted {
     Stamped(u64),
     /// Taken and dropped: pointer input for a program that has stopped reading.
     Dropped,
+    /// Taken and dropped as [`Admitted::Dropped`] is, a button pressed or released, still to be
+    /// queued under this number for the writer to count: dropped uncounted, a release would
+    /// leave the button held, and a move past the pane's edge reported as a held button's drag.
+    Counted(u64),
     /// Not taken: typed input while the pane's agent is being restarted.
     Refused,
 }
@@ -458,8 +476,8 @@ impl Writer {
 
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
     pub(crate) fn write(mut self, queued: &Receiver<Stamped>, master: &OwnedFd, wake: &OwnedFd) {
-        for Stamped { seq, input } in queued {
-            if self.discards.is_stale(seq, &input) {
+        for Stamped { seq, input, counted_only } in queued {
+            if counted_only || self.discards.is_stale(seq, &input) {
                 // A press or release still counts, so motion after a dropped release is not
                 // encoded as a drag.
                 if let Input::Mouse(event) = &input {
@@ -925,10 +943,13 @@ mod tests {
         /// Queues `input` as its pane would, saying whether the pane took it.
         fn send(&self, input: Input) -> Admitted {
             let admitted = self.discards.admit(&input);
-            if let Admitted::Stamped(seq) = admitted {
-                let queue = self.queue.as_ref().expect("a queue");
-                queue.send(Stamped::new(seq, input)).expect("the writer is running");
-            }
+            let stamped = match admitted {
+                Admitted::Stamped(seq) => Stamped::new(seq, input),
+                Admitted::Counted(seq) => Stamped::counted_only(seq, input),
+                Admitted::Dropped | Admitted::Refused => return admitted,
+            };
+            let queue = self.queue.as_ref().expect("a queue");
+            queue.send(stamped).expect("the writer is running");
             admitted
         }
 
@@ -1073,6 +1094,46 @@ mod tests {
         assert_eq!(&written[blocking.len()..], b"kz", "the key went, and no arrow");
         assert_eq!(writing.discards.reading_again(), 1, "one turn was dropped as it arrived");
         assert!(matches!(writing.send(Input::Wheel(wheel(1.0, false))), Admitted::Stamped(_)));
+    }
+
+    fn mouse(action: muster_daemon_proto::MouseAction, x: f64) -> Event {
+        Event::Mouse(input_event::Mouse {
+            action: action.into(),
+            button: muster_daemon_proto::MouseButton::Left.into(),
+            mods: 0,
+            x,
+            y: 25.0,
+        })
+    }
+
+    /// A button released while the program has stopped reading is dropped, and still counted.
+    /// Left held, a drag carried past the pane's edge once the program reads again would be
+    /// reported to it, which only a held button's drag is.
+    #[test]
+    fn a_release_dropped_for_a_program_that_stopped_reading_still_lets_go_of_the_button() {
+        use muster_daemon_proto::MouseAction::{Motion, Press, Release};
+        let (inside, outside) = (15.0, 900.0);
+        let mut writing = Writing::new();
+        {
+            let mut terminal = Terminal::new(80, 24).expect("a terminal");
+            terminal.resize(80, 24, (10, 20)).expect("a size");
+            terminal.write(b"\x1b[?1002h\x1b[?1006h");
+            let encoding = writing.io.encoding();
+            let mut encoding = poison::lock(&encoding, "test");
+            encoding.refresh(&terminal);
+            encoding.resize(Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 });
+        }
+        assert!(!writing.written(mouse(Press, inside)).is_empty(), "the press was reported");
+        assert!(!writing.written(mouse(Motion, outside)).is_empty(), "a held drag is reported");
+
+        writing.discards.went_stuck();
+        let release = crate::input::input_of(mouse(Release, inside)).expect("a release");
+        let admitted = writing.send(release);
+        assert!(matches!(admitted, Admitted::Counted(_)), "{admitted:?}");
+        assert_eq!(writing.discards.reading_again(), 1);
+
+        let dragged = writing.written(mouse(Motion, outside));
+        assert!(dragged.is_empty(), "the button was left held: {dragged:?}");
     }
 
     /// What a clear sends the program after it. On the alternate screen that is the key that

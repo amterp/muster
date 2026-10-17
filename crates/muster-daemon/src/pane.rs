@@ -461,6 +461,10 @@ impl PaneIo {
     pub(crate) fn queue(&self, input: Input) -> bool {
         match self.discards.admit(&input) {
             Admitted::Stamped(seq) => self.send(Stamped::new(seq, input)),
+            Admitted::Counted(seq) => {
+                self.send(Stamped::counted_only(seq, input));
+                true
+            }
             Admitted::Dropped => true,
             Admitted::Refused => false,
         }
