@@ -137,9 +137,9 @@ impl Mirror {
                 }
             }
         }
-        for id in previous_panes.keys() {
+        for (id, before) in previous_panes.iter() {
             if !self.panes.contains_key(id) {
-                changes.push(Change::PaneRemoved(id.clone()));
+                changes.push(Change::PaneRemoved { pane: id.clone(), called: before.called() });
             }
         }
         changes.extend(self.judge_restart(new_run, &previous_panes, restored_from_file));
@@ -196,7 +196,7 @@ impl Mirror {
                 self.unplaced.remove(&id);
                 self.progress.remove(&id);
                 match self.panes.remove(&id) {
-                    Some(_) => vec![Change::PaneRemoved(id)],
+                    Some(before) => vec![Change::PaneRemoved { called: before.called(), pane: id }],
                     None => Vec::new(),
                 }
             }
@@ -455,6 +455,7 @@ impl Mirror {
 fn relabelled(before: &Pane, now: &Pane) -> bool {
     before.cwd != now.cwd
         || before.maker != now.maker
+        || before.maker_closed != now.maker_closed
         || before.agent != now.agent
         || before.compactable != now.compactable
         || before.quiet != now.quiet

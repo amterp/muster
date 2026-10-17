@@ -340,12 +340,18 @@ It goes in the group of exactly the two when there is one, else the one group bo
 else a group made for them as a post between them would make it, so the maker's reply addressed to
 the helper lands beside it. A helper that posted to its maker, addressed to it or unaddressed in a
 group the maker is in, and then went idle is not reported, and neither is one waiting on its own
-work. A maker on another machine is not told yet.
+work. A maker on another machine is told there, as a post `--to` its pane reaches it: the helper's
+daemon asks the maker's which agent is in that pane, and the notice goes in a group kept on the
+helper's machine. That needs the link between the two, so a window attached to both.
 
 When a maker's pane closes with helpers still open, the person is told once, by `@muster`, in the
 group they share with the maker, made for it when there is none:
 
     @muster: 🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: 🤖 1, 🤖 2, 🤖 3. `muster pane show --helpers-of p1w3r07bsd` brings them forward.
+
+The notice comes from the helpers' daemon, which on a devenv is the laptop's human's, and arrives
+on the laptop from `@muster@devenv`. A devenv holds it until the laptop is linked, since a group
+made there before that would never reach the laptop.
 
 **`who` says the same at any moment**, without waiting the 2 minutes. Under each member, one line
 per group where messages wait on it unread: the oldest, who posted them, and why it has not read

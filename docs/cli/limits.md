@@ -510,3 +510,16 @@ its helpers go back under `hidden` in `muster window`, which still says whose ea
 of …)`, and `maker` in `--json`), and under Hidden in the agent list. `muster pane show --helpers-of`
 with the closed maker's id, which the notice you were sent names, still brings them forward
 together.
+
+## A helper and its maker on different machines need a window attached to both
+
+A helper's daemon tells its maker on another machine over the link a window makes between the two
+machines' daemons. With no window open the maker is not told, and a quiet helper says nothing to
+anybody until a window opens; while that window cannot reach the maker's machine, the helper asks
+for you instead. A daemon is linked only to the laptop's, so a helper on one devenv cannot reach a
+maker on a second devenv at all; the window still tells it when that maker closes.
+
+A devenv holds the closed-maker notice for you in memory until the laptop is linked, so a devenv
+daemon restarted meanwhile loses it. Its helpers are no longer quiet by then, so their next block
+still reaches you. A machine taken out of the config is followed by no window after the next
+launch, so a helper whose maker was there is taken for one whose maker closed.

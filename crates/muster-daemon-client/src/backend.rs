@@ -419,6 +419,17 @@ impl BackendChannel for DaemonBackend {
                 }))?;
                 done
             }
+            BackendIntent::MakerClosed { maker, called } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::HELPERS,
+                    "free a closed maker's helpers",
+                )?;
+                self.pane_request(pane_request::Request::MakerClosed(pane_request::MakerClosed {
+                    maker: maker.to_string(),
+                    called,
+                }))?;
+                done
+            }
         }
     }
 

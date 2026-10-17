@@ -138,6 +138,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
             _ => muster_core::mirror::PendingCompaction::Nothing,
         },
         maker: optional(given, "maker").map(PaneId::new),
+        maker_closed: false,
     }
 }
 

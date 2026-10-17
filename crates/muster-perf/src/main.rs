@@ -551,6 +551,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         resume: None,
         compaction: muster_core::mirror::PendingCompaction::Nothing,
         maker: None,
+        maker_closed: false,
     }
 }
 

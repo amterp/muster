@@ -148,7 +148,7 @@ fn layouts(mirror: &Mirror) -> Value {
 fn describe(change: &Change) -> String {
     match change {
         Change::PaneAdded(pane) => format!("paneAdded:{pane}"),
-        Change::PaneRemoved(pane) => format!("paneRemoved:{pane}"),
+        Change::PaneRemoved { pane, .. } => format!("paneRemoved:{pane}"),
         Change::AgentStateChanged { pane, from, to } => {
             format!("agentStateChanged:{pane}:{}->{}", from.as_str(), to.as_str())
         }

@@ -80,7 +80,7 @@ fn read_change(given: &Value) -> Result<Change, CaseError> {
     };
     Ok(match text("change")?.as_str() {
         "paneAdded" => Change::PaneAdded(PaneId::new(text("pane")?)),
-        "paneRemoved" => Change::PaneRemoved(PaneId::new(text("pane")?)),
+        "paneRemoved" => Change::PaneRemoved { pane: PaneId::new(text("pane")?), called: None },
         "agentStateChanged" => Change::AgentStateChanged {
             pane: PaneId::new(text("pane")?),
             from: AgentState::from_backend(&text("from")?),

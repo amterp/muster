@@ -457,11 +457,18 @@ for 10 seconds, its daemon tells the maker once, in a message from `@muster` tha
 what answers it (`muster docs msg`), whether or not the helper is quiet. A helper that posts its
 report and then goes idle is not reported, nor is one waiting on its own work.
 
+A helper and its maker can be on different machines, made with `--daemon` or `--helper-of`. The
+maker is told on its own machine, which needs a window attached to both, since that is what links
+them. While the maker's machine is not answering, a quiet helper asks for you as if it were not
+quiet, since nobody else can act.
+
 The relation is to the maker's pane, so an agent resumed in the same pane keeps its helpers. When
 the maker's pane closes, its helpers go on running, hidden, and stop being quiet, since nobody is
 left to hear from them, and you are told once, in a message from `@muster` naming each one and how
 to bring them forward: `pane show --helpers-of` with the closed maker's id. They stay their maker's
-helpers.
+helpers. A maker on another machine closing is seen by the window, which tells the helpers'
+daemon; one that closed while no window was open is told of when one opens and finds the maker on
+no machine.
 
 A helper is a pane started for its maker's own work. An agent you ask to start a peer, one that
 takes part of the work at its own level and answers to you, starts it with plain `muster pane

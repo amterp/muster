@@ -346,6 +346,14 @@ pub enum BackendIntent {
         /// a helpers' tab coming forward called after its maker as it is now.
         name: Option<String>,
     },
+
+    /// Tells a daemon that a maker its helpers there name has closed on another machine, which
+    /// only a window sees: they stop being quiet, and the person is told (MIP-7, section 6).
+    MakerClosed {
+        maker: PaneId,
+        /// What the maker was called as it closed, for the person's notice.
+        called: Option<String>,
+    },
 }
 
 impl BackendIntent {
@@ -372,6 +380,9 @@ impl BackendIntent {
                 "SetTabHidden {{ tab: {tab}, hidden: {hidden}, name: {} }}",
                 named(name.as_deref())
             ),
+            BackendIntent::MakerClosed { maker, called } => {
+                format!("MakerClosed {{ maker: {maker}, called: {} }}", named(called.as_deref()))
+            }
             // A command line, for the reason above and one more: an environment set on the way
             // to a program is a normal thing to type, and a token is a normal thing to set.
             BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker } => {

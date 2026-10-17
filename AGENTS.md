@@ -18,7 +18,8 @@ and follows a session renamed there, trading two agents' places by dragging a ro
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
 attached machine, hiding a pane from every window with its agent running and bringing it back from a list, an agent's
 helpers made hidden and quiet into one tab of their own, listed under it in the agent list and by `muster window`,
-brought forward and put away together, and telling it when one is blocked, stuck or idle without reporting, a pane
+brought forward and put away together, and telling it when one is blocked, stuck or idle without reporting, on either
+machine, a pane
 made quiet so that nothing about it interrupts you, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
 you save it, a CLI that drives the window from inside a pane on either machine and presses keys at another agent's
 dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH

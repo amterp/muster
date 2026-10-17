@@ -80,7 +80,12 @@ pub struct Restored {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     PaneAdded(PaneId),
-    PaneRemoved(PaneId),
+    /// A pane its daemon no longer holds, with what it was called as it went: its name, or its
+    /// drawn word.
+    PaneRemoved {
+        pane: PaneId,
+        called: Option<String>,
+    },
     AgentStateChanged {
         pane: PaneId,
         from: AgentState,
@@ -160,7 +165,7 @@ impl Change {
     pub fn kind(&self) -> &'static str {
         match self {
             Change::PaneAdded(_) => "pane_added",
-            Change::PaneRemoved(_) => "pane_removed",
+            Change::PaneRemoved { .. } => "pane_removed",
             Change::AgentStateChanged { .. } => "agent_state",
             Change::FinishedUnseen { .. } => "finished_unseen",
             Change::PaneRelabelled(_) => "pane_relabelled",

@@ -1724,11 +1724,45 @@ impl Session {
     }
 
     /// Whether a pane's daemon holds it quiet: nothing about it asks for the person.
+    /// Whether the person is told nothing about a pane: its daemon says it is quiet, and, for a
+    /// helper, its maker can be reached to hear from it instead. A helper whose maker's machine
+    /// is not answering asks the person as if it were not quiet (MIP-7, section 4).
     fn quiet(&self, pane: &PaneKey) -> bool {
-        self.backends.get(&pane.daemon).is_some_and(|backend| {
+        let Some(backend) = self.backends.get(&pane.daemon) else { return false };
+        let (quiet, maker) = {
             let mirror = poison::lock(&backend.mirror, "mirror");
-            mirror.pane(&pane.pane).is_some_and(|record| record.quiet)
-        })
+            let Some(record) = mirror.pane(&pane.pane) else { return false };
+            (record.quiet, record.maker.clone().filter(|_| !record.maker_closed))
+        };
+        quiet && maker.is_none_or(|maker| !self.out_of_reach(&maker))
+    }
+
+    /// Whether a pane is on a machine that has stopped answering: one that holds it, or, when
+    /// none this window can see does, any machine at all, since it may be there.
+    fn out_of_reach(&self, pane: &PaneId) -> bool {
+        let holder = self
+            .backends
+            .iter()
+            .find(|(_, backend)| poison::lock(&backend.mirror, "mirror").pane(pane).is_some());
+        match holder {
+            Some((daemon, _)) => self.unreachable_since.contains_key(daemon),
+            None => !self.unreachable_since.is_empty(),
+        }
+    }
+
+    /// Every helper on any machine, whose quiet may turn on whether its maker can be reached.
+    fn helpers(&self) -> Vec<PaneKey> {
+        let mut helpers = Vec::new();
+        for (daemon, backend) in &self.backends {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            helpers.extend(
+                mirror
+                    .panes()
+                    .filter(|pane| pane.maker.is_some())
+                    .map(|pane| PaneKey::new(daemon, &pane.id)),
+            );
+        }
+        helpers
     }
 
     /// Whether a pane's daemon says its agent finished and nobody has seen it since.
@@ -2500,6 +2534,7 @@ pub(crate) fn submit_from(
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SetTabHidden { .. }
+            | BackendIntent::MakerClosed { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::QuietPane { .. }
             | BackendIntent::MovePane { .. } => None,
@@ -5222,6 +5257,12 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             publish("bootstrap");
             health(daemon, Health::Connected, "");
             catch_up_tab_names(daemon);
+            for change in &changes {
+                if let Change::PaneRemoved { pane, called } = change {
+                    tell_closed_maker(daemon, pane, called.as_deref());
+                }
+            }
+            tell_closed_makers();
             for change in changes {
                 report(daemon, &change);
             }
@@ -5241,6 +5282,9 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // which takes the tab's name now rather than at this machine's next reconnect.
             if matches!(change, Change::TabAdded(_)) {
                 catch_up_tab_names(daemon);
+            }
+            if let Change::PaneRemoved { pane, called } = &change {
+                tell_closed_maker(daemon, pane, called.as_deref());
             }
             report(daemon, &change);
         }
@@ -5456,7 +5500,7 @@ fn report(daemon: &DaemonId, change: &Change) {
             announce_state(&key);
         }
     }
-    if let Change::PaneRemoved(pane) = change {
+    if let Change::PaneRemoved { pane, .. } = change {
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
     }
 }
@@ -5529,7 +5573,7 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
             let state = session.agent_state(&key).unwrap_or(AgentState::Unknown);
             session.attention.quiet(&key, quiet, state, finished).map(|attend| (key, attend))
         }
-        Change::PaneRemoved(pane) => {
+        Change::PaneRemoved { pane, .. } => {
             let key = PaneKey::new(daemon, pane);
             let mut session = poison::lock(&SESSION, "session");
             session.state_since.remove(&key);
@@ -5665,6 +5709,79 @@ fn catch_up_tab_names(daemon: &DaemonId) {
                 },
             );
         }
+    }
+}
+
+/// Tells every other daemon holding helpers of `maker`, which `daemon` just closed, that it has
+/// closed: a helper's daemon cannot see a maker on another machine close, and a window attached
+/// to both can (MIP-7, section 6). `daemon` freed its own helpers as the maker closed.
+fn tell_closed_maker(daemon: &DaemonId, maker: &PaneId, called: Option<&str>) {
+    let holding: Vec<DaemonId> = {
+        let session = poison::lock(&SESSION, "session");
+        session
+            .backends
+            .iter()
+            .filter(|(other, _)| *other != daemon)
+            .filter(|(_, backend)| {
+                let mirror = poison::lock(&backend.mirror, "mirror");
+                mirror.panes().any(|pane| pane.maker.as_ref() == Some(maker) && !pane.maker_closed)
+            })
+            .map(|(other, _)| other.clone())
+            .collect()
+    };
+    for other in holding {
+        free_helpers(&other, maker, called);
+    }
+}
+
+/// Tells each daemon holding helpers whose maker no daemon holds that the maker has closed, as a
+/// window that saw it would have: one closed while no window was open, or while this one could
+/// not see its machine. Only once every daemon has answered, since until then the maker may be
+/// on one that has not; and its name went with it, so the notice names it by its id.
+fn tell_closed_makers() {
+    let orphaned: Vec<(DaemonId, PaneId)> = {
+        let session = poison::lock(&SESSION, "session");
+        let mut held = BTreeSet::new();
+        let mut helpers = Vec::new();
+        for (daemon, backend) in &session.backends {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            if mirror.health() != Health::Connected {
+                return;
+            }
+            for pane in mirror.panes() {
+                held.insert(pane.id.clone());
+                if let Some(maker) = pane.maker.as_ref().filter(|_| !pane.maker_closed) {
+                    helpers.push((daemon.clone(), maker.clone()));
+                }
+            }
+        }
+        let orphaned: BTreeSet<(DaemonId, PaneId)> =
+            helpers.into_iter().filter(|(_, maker)| !held.contains(maker)).collect();
+        orphaned.into_iter().collect()
+    };
+    for (daemon, maker) in orphaned {
+        free_helpers(&daemon, &maker, None);
+    }
+}
+
+fn free_helpers(daemon: &DaemonId, maker: &PaneId, called: Option<&str>) {
+    // It names helpers by their maker and moves no keyboard, so any window can send it.
+    let window = poison::lock(&SESSION, "session").front;
+    let intent =
+        BackendIntent::MakerClosed { maker: maker.clone(), called: called.map(str::to_string) };
+    if let Err(refusal) = submit(window, daemon, &intent, Keyboard::StaysPut) {
+        log::warn(
+            "helper.maker_closed_untold",
+            fields! {
+                "daemon" => daemon.to_string(),
+                "maker" => maker.to_string(),
+                "detail" => refusal.to_string(),
+                "impact" => "the maker's helpers on that machine stay quiet with nobody left to \
+                             hear from them, and the person is not told they are still running",
+                "check" => "whether that machine's daemon is older than protocol 1.6, which \
+                            cannot be told; the next window to open tries again",
+            },
+        );
     }
 }
 
@@ -6253,11 +6370,29 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
         for pane in &panes {
             announce_state(pane);
         }
+        for (pane, attend) in requiet_helpers() {
+            announce_attention(&pane, attend);
+        }
         announce_asking();
         if health != Health::Connected {
             starting_again::gone(daemon);
         }
     }
+}
+
+/// Tells attention again whether each helper is quiet, once a machine starts or stops answering:
+/// a helper asks the person while its maker cannot be reached.
+fn requiet_helpers() -> Vec<(PaneKey, Attend)> {
+    let mut session = poison::lock(&SESSION, "session");
+    let mut attended = Vec::new();
+    for key in session.helpers() {
+        let (quiet, finished) = (session.quiet(&key), session.finished_unseen(&key));
+        let state = session.agent_state(&key).unwrap_or(AgentState::Unknown);
+        if let Some(attend) = session.attention.quiet(&key, quiet, state, finished) {
+            attended.push((key, attend));
+        }
+    }
+    attended
 }
 
 /// Records whether the window can reach `daemon` now, and when that changed, returns every pane

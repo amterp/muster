@@ -176,6 +176,7 @@ pub fn pane(record: proto::Pane) -> Pane {
             .map(|resume| Resume { command: resume.command, uncarried: resume.uncarried }),
         compaction,
         maker: record.maker.filter(|maker| !maker.is_empty()).map(PaneId::new),
+        maker_closed: record.maker_closed,
     }
 }
 

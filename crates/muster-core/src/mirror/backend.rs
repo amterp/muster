@@ -122,6 +122,9 @@ pub struct Pane {
     /// The pane that made this one as its helper, which may be on another machine (MIP-7). The
     /// daemon's fact, set when the pane is made and never changed.
     pub maker: Option<PaneId>,
+    /// Its maker has closed, here or on another machine, so it is no longer quiet on its maker's
+    /// behalf (MIP-7, section 6). Set once by its daemon, never cleared.
+    pub maker_closed: bool,
 }
 
 /// The command that resumes a pane's agent session, as its daemon will run it.
@@ -180,6 +183,11 @@ impl PendingCompaction {
 }
 
 impl Pane {
+    /// What the pane is called: its name, or the word its daemon drew for it.
+    pub fn called(&self) -> Option<String> {
+        self.name.clone().or_else(|| self.word.clone())
+    }
+
     /// What the daemon says the pane's agent is doing: what detection read, or `stuck` once the
     /// agent's program has stopped reading its input, whatever detection read - its screen
     /// shows what it showed before it stopped. A pane running no agent is never stuck: what

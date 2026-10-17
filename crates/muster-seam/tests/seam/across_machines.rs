@@ -22,7 +22,9 @@ use muster::proto::{
     SendToPane, SplitPane, Startup, ViewNode, ZoomPane, event, request, response, view_node,
 };
 use muster_daemon_proto as daemon_proto;
-use muster_harness::requests::{create, in_new_tab, make, read_text};
+use muster_harness::requests::{
+    among_helpers, close_request, create, helper, in_new_tab, make, read_text,
+};
 use muster_harness::{Daemon, until};
 use prost::Message;
 
@@ -76,12 +78,19 @@ enum Devenv {
 }
 
 fn two_machines(devenv: Devenv) -> TwoMachines {
+    two_machines_after(devenv, |_, _| {})
+}
+
+/// [`two_machines`], with `prepare` given the laptop's daemon and the devenv's before the window
+/// opens onto them.
+fn two_machines_after(devenv: Devenv, prepare: impl FnOnce(&Daemon, &Daemon)) -> TwoMachines {
     let laptop = Daemon::start_built();
     let second = Daemon::start_built();
     a_tab_holding_one_named_pane(&laptop, LAPTOP_TAB, LAPTOP_PANE, ON_LAPTOP);
     if devenv == Devenv::HoldingAPane {
         a_tab_holding_one_named_pane(&second, DEVENV_TAB, DEVENV_PANE, ON_DEVENV);
     }
+    prepare(&laptop, &second);
 
     let config = laptop.muster_config_naming("laptop", &[("devenv", &second)]);
     watch();
@@ -214,6 +223,65 @@ fn a_tab_holding_one_named_pane(daemon: &Daemon, tab: &str, pane: &str, given: &
             label: Some(given.to_string()),
             ..create(pane, in_new_tab(tab))
         },
+    );
+}
+
+/// A quiet helper on `daemon`, `pane`, whose maker is `maker`.
+fn a_quiet_helper(daemon: &Daemon, pane: &str, maker: &str) {
+    let quiet = daemon_proto::pane_request::Create {
+        quiet: true,
+        ..helper(pane, maker, among_helpers("t2devenv00", "its maker's helpers"))
+    };
+    make(&mut daemon.connect(), quiet);
+}
+
+/// Whether `daemon` holds `pane` as a helper whose maker has closed, no longer quiet.
+fn freed(daemon: &Daemon, pane: &str) -> bool {
+    snapshot(daemon)
+        .panes
+        .into_iter()
+        .any(|held| held.pane == pane && held.maker_closed && !held.quiet)
+}
+
+/// A helper's daemon cannot see a maker on another machine close, and the window can: it tells
+/// the helper's daemon, which stops the helper being quiet (MIP-7, section 6).
+#[test]
+fn a_maker_closing_on_one_machine_frees_its_helper_on_the_other() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = two_machines_after(Devenv::HoldingAPane, |_, devenv| {
+        a_quiet_helper(devenv, "p2devenv00", LAPTOP_PANE);
+    });
+    until(
+        "the devenv to reach the list with its pane",
+        || pane_on("devenv").is_some(),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert!(!freed(&devenv, "p2devenv00"), "freed while its maker was open");
+
+    muster_harness::requests::expect(
+        &mut laptop.connect(),
+        close_request(LAPTOP_PANE),
+        daemon_proto::Outcome::Done,
+    );
+    until(
+        "the devenv to hear its helper's maker closed",
+        || freed(&devenv, "p2devenv00"),
+        || format!("the devenv holds {:?}", snapshot(&devenv).panes),
+    );
+}
+
+/// A maker that closed while no window was open is told of when one opens: a helper whose maker
+/// neither machine holds, once both have answered (MIP-7, section 6).
+#[test]
+fn a_window_opening_frees_a_helper_whose_maker_neither_machine_holds() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { devenv, .. } = two_machines_after(Devenv::HoldingAPane, |_, devenv| {
+        a_quiet_helper(devenv, "p2devenv00", "p9gone0000");
+    });
+    until(
+        "the devenv to be told its helper's maker has closed",
+        || freed(&devenv, "p2devenv00"),
+        || format!("the devenv holds {:?}", snapshot(&devenv).panes),
     );
 }
 
