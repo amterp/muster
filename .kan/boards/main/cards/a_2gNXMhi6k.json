@@ -27,6 +27,12 @@
       "body": "Done 2026-10-17 15:14: main at 7cd0443a, built as 0.16.1-dev with MUSTER_INSTALL=release, now /Applications/Muster.app (0.16.0 kept as Muster.app.0.16.0). The new daemon took the release daemon's 8 panes by handoff a second after launch; every agent kept running, including the session doing the swap, which ran the quit-move-ditto-open steps as one detached script from its own pane. Corrections to the steps above: main is checked out in the main worktree, so the build worktree needs `git worktree add --detach ../muster-build main`; copying deps/ghostty and deps/.built in with `cp -c` skips rebuilding libghostty (bundle took 6 min); the CLI inside the bundle is Contents/MacOS/muster-cli (Contents/MacOS/muster is the app). Next time: the handover ignores the -dev suffix, so the next main build must be 0.16.2-dev (or higher) to take this daemon over, while staying below the next release.",
       "created_at_millis": 1792268127218,
       "id": "c_2jTaWvCuC"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: the owner chose not to run the hand checks listed above. Main is the everyday Muster now, so issues get found and filed through use instead. Least covered by the suite, so likeliest to surface: the helpers' fold in the agent list and the closed-maker banner (Swift unit tests only, no rendered check).",
+      "created_at_millis": 1792268456973,
+      "id": "c_2jTj6nqp0"
     }
   ],
   "created_at_millis": 1791810415852,
@@ -36,7 +42,7 @@
   "position": "a3k",
   "title": "A bundle built from a checkout starts its own daemon instead of taking over the installed one",
   "type": "bug",
-  "updated_at_millis": 1792268127218,
+  "updated_at_millis": 1792268456973,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791810415852},
     {"field":"column","value":"next","at":1792211139654}
