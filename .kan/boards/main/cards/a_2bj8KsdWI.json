@@ -21,6 +21,12 @@
       "body": "Blocked until 2026-11-02 for the Codex recordings, which need model turns on the OpenAI account. The OpenCode half can be recorded on the free model ./dev --opencode uses.",
       "created_at_millis": 1792200746854,
       "id": "c_2j1JevHE2"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-16: Codex gets a resume spelling without flags (codex resume {session}) as part of restarting an agent in its pane (a_2dmIEdCn6), since two of three hand restarts were Codex and the bare form worked on 0.162.1. A Codex pane then comes back resumed in its default approval and sandbox mode, and uncarried says so. Carrying its flags is still this card's, blocked on recordings.",
+      "created_at_millis": 1792204005160,
+      "id": "c_2j2gQGW1h"
     }
   ],
   "created_at_millis": 1791123069063,
@@ -33,7 +39,7 @@
   "position": "!!!!!!V",
   "title": "Resume spellings for Codex and OpenCode",
   "type": "feature",
-  "updated_at_millis": 1792200746941,
+  "updated_at_millis": 1792204005160,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791123069063},
     {"field":"column","value":"next","at":1791131314464},

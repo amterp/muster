@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "muster-resume-for",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792203312238,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-16 while building MUSTER_RESUME (a_2hIfv4FTx). The variable applies only to agents whose manifest has a [session] resume, Claude Code today, because a named {args} needs the manifest's flag lists and the manifest gives a fallback. Codex already reports its session id, so a Codex started through a wrapper could name its own resume the same way, without {args}. Low until a Codex wrapper needs it.",
+  "id": "a_2j2OOZ5CY",
+  "position": "b1D",
+  "title": "MUSTER_RESUME for agents whose manifest names no resume",
+  "type": "enhancement",
+  "updated_at_millis": 1792203312238,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792203312238}
+  ]
+}
