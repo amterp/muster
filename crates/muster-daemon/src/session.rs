@@ -1745,6 +1745,15 @@ impl Session {
             && self.panes[index].session_id.as_deref() == Some(id)
         {
             self.panes[index].session_id = None;
+            self.session_described(index);
+        }
+    }
+
+    /// Publishes the pane's record when its session or how it resumes has moved on it.
+    fn session_described(&mut self, index: usize) {
+        if self.panes[index].describe_session() {
+            let record = self.panes[index].record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
     }
 
@@ -1778,6 +1787,7 @@ impl Session {
         if resume.is_some() || changed {
             self.resume_changed(index, resume);
         }
+        self.session_described(index);
         changed
     }
 
@@ -2008,6 +2018,7 @@ impl Session {
                     if pane.resume.take().is_some() {
                         self.persister.changed();
                     }
+                    (record.session_id, record.resume) = (None, None);
                     pane.compaction.cleared();
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
@@ -2738,6 +2749,8 @@ impl Session {
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 quiet: pane.saved.quiet,
+                session_id: resume.as_ref().map(|resume| resume.session.clone()),
+                resume: resume.as_ref().map(persist::Resume::record),
                 ..proto::Pane::default()
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
@@ -2987,6 +3000,7 @@ impl Session {
         .map_err(|error| format!("pane {name}: {error}"))?;
         pane.session_id = resuming.session_id.map(str::to_string);
         pane.resume = resuming.resume.cloned();
+        pane.describe_session();
         self.panes.push(pane);
         Ok(())
     }

@@ -1266,6 +1266,20 @@ message Pane {
   // machine. A drawn word is never typed into the agent's session, as a label is. Kept for the
   // pane's life and written to the state file; free for another pane once this one closes.
   optional string word = 17;
+  // Since 1.6. The id the pane's agent reported for its session (`PaneRequest.Report.session_id`).
+  // Absent while it has reported none, and cleared when detection sees the agent change or leave.
+  optional string session_id = 18;
+  // Since 1.6. What the daemon runs to start that session again when a restart brings the pane
+  // back. Absent while there is no session, or no way to resume it.
+  SessionResume resume = 19;
+}
+
+// The command that resumes a pane's agent session after a restart, run in the pane's directory.
+message SessionResume {
+  // The program and its arguments, one word each, with the session's id in them.
+  repeated string command = 1;
+  // Why the arguments the agent was started with did not all go along, when they did not.
+  optional string uncarried = 2;
 }
 
 // Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon

@@ -126,6 +126,11 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
             pid: 0,
         }),
         quiet: given.get("quiet").and_then(Value::as_bool).unwrap_or_default(),
+        session: optional(given, "session"),
+        resume: given.get("resume").map(|resume| muster_core::mirror::Resume {
+            command: collect(resume, "command", |word| word.as_str().unwrap_or_default().into()),
+            uncarried: optional(resume, "uncarried"),
+        }),
     }
 }
 

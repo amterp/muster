@@ -1835,6 +1835,10 @@ impl Session {
             rang: self.attention.has_rung(key),
             adapter: muster_core::harnesses::standing(pane.agent.as_deref(), pane.adapter),
             unread_input: pane.unread_input.clone().map(Box::new),
+            session: pane
+                .session
+                .clone()
+                .map(|id| Box::new(AgentSession { id, resume: pane.resume.clone() })),
         }
     }
 
@@ -4169,6 +4173,15 @@ pub(crate) struct PaneAgent {
     /// What the pane's program has left unread, while it has stopped reading. Boxed because it
     /// is rare, and this travels by value to every watch.
     pub unread_input: Option<Box<muster_core::mirror::UnreadInput>>,
+    /// The session the pane's agent reported, boxed for the same reason: most panes have none.
+    pub session: Option<Box<AgentSession>>,
+}
+
+/// The session a pane's agent runs, as it reported it, and how its daemon resumes it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AgentSession {
+    pub id: String,
+    pub resume: Option<muster_core::mirror::Resume>,
 }
 
 /// How much of one daemon's truth the window has, as the shell and a watch are told it.

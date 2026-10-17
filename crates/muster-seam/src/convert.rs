@@ -42,6 +42,13 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
             program: unread.program.clone(),
             pid: unread.pid,
         }),
+        session_id: agent.session.as_ref().map(|session| session.id.clone()).unwrap_or_default(),
+        resume: agent.session.as_ref().and_then(|session| session.resume.as_ref()).map(|resume| {
+            Box::new(proto::SessionResume {
+                command: resume.command.clone(),
+                uncarried: resume.uncarried.clone().unwrap_or_default(),
+            })
+        }),
     }
 }
 

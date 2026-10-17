@@ -2886,6 +2886,22 @@ message PaneStateChanged {
   // input unread for several seconds and read nothing since, as its daemon measured it. Absent
   // while it reads. Set for any pane, agent or not; only an agent's makes its state `stuck`.
   UnreadInput unread_input = 12;
+
+  // The id the pane's agent reported for its session, which its harness's own commands name it
+  // by: `claude --resume <id>`. Empty while it has reported none.
+  string session_id = 14;
+
+  // What the pane's daemon runs to start that session again when a restart brings the pane back.
+  // Absent while there is none, and from a daemon too old to say.
+  SessionResume resume = 15;
+}
+
+// The command that resumes a pane's agent session, run in the pane's directory.
+message SessionResume {
+  // The program and its arguments, one word each.
+  repeated string command = 1;
+  // Why the arguments the agent was started with did not all go along; empty when they did.
+  string uncarried = 2;
 }
 
 // What a pane's program has left unread, as it stood when its daemon called it stopped.

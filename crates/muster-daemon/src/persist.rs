@@ -103,6 +103,13 @@ pub(crate) struct Resume {
     pub(crate) uncarried: Option<String>,
 }
 
+impl Resume {
+    /// The resume as a pane's record carries it.
+    pub(crate) fn record(&self) -> proto::SessionResume {
+        proto::SessionResume { command: self.command.clone(), uncarried: self.uncarried.clone() }
+    }
+}
+
 /// The file beside a daemon's socket: `~/.muster/daemon/<install>.state.json`.
 pub(crate) fn path_for(socket: &Path) -> PathBuf {
     socket.with_extension("state.json")

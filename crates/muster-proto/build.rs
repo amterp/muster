@@ -33,5 +33,8 @@ fn main() {
     // supposed to cost that transition (`architecture.md`, fast is a feature). Appearance is
     // the largest variant by several times over and is sent when somebody saves a file.
     config.boxed("Event.payload.appearance_changed");
+    // A pane's state change is that common event, and most panes have no session to resume, so
+    // the resume is boxed rather than the state change: absent, it costs a pointer.
+    config.boxed("PaneStateChanged.resume");
     config.compile_fds(descriptors).expect("the schema generates");
 }

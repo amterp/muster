@@ -954,6 +954,20 @@ impl Pane {
         self.process
     }
 
+    /// Puts the agent's session and how it resumes on the record, as `session_id` and `resume`
+    /// stand; true when that changed the record, which the caller then publishes. The session is
+    /// the resume's when a wake has forgotten the id, since the agent still runs that session.
+    pub(crate) fn describe_session(&mut self) -> bool {
+        let resume = self.resume.as_ref();
+        let session_id =
+            self.session_id.clone().or_else(|| resume.map(|resume| resume.session.clone()));
+        let resume = resume.map(crate::persist::Resume::record);
+        let changed = self.record.session_id != session_id || self.record.resume != resume;
+        self.record.session_id = session_id;
+        self.record.resume = resume;
+        changed
+    }
+
     /// The directory the pane is working in now: its foreground job's, else its shell's.
     pub(crate) fn live_cwd(&self) -> Option<PathBuf> {
         live_cwd(self.io.master.as_fd(), self.process)

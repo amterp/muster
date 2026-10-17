@@ -112,6 +112,20 @@ pub struct Pane {
     /// Whether the person is told nothing about this pane: no banner, and no ask. Its state
     /// still shows. The daemon's fact, so every window agrees and it survives a restart.
     pub quiet: bool,
+    /// The id the pane's agent reported for its session, which its harness's own commands name
+    /// it by. None from a daemon too old to say.
+    pub session: Option<String>,
+    /// What the pane's daemon runs to start that session again after a restart.
+    pub resume: Option<Resume>,
+}
+
+/// The command that resumes a pane's agent session, as its daemon will run it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resume {
+    /// The program and its arguments, one word each.
+    pub command: Vec<String>,
+    /// Why the arguments the agent was started with did not all go along, when they did not.
+    pub uncarried: Option<String>,
 }
 
 /// Input a pane's program has left unread, as it stood when its daemon called it stopped.

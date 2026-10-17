@@ -469,6 +469,8 @@ fn described(before: &Pane, now: &Pane) -> bool {
         || before.unreadable != now.unreadable
         || before.adapter != now.adapter
         || before.unread_input != now.unread_input
+        || before.session != now.session
+        || before.resume != now.resume
 }
 
 /// Whether a tab's tree, its zoom or whether it is hidden has moved.

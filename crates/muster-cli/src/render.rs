@@ -1126,6 +1126,13 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
                 "pid": unread.pid,
             })
         }),
+        "session": agent.map(|agent| agent.session_id.as_str()).filter(|session| !session.is_empty()),
+        "resume": agent.and_then(|agent| agent.resume.as_ref()).map_or(Value::Null, |resume| {
+            json!({
+                "command": resume.command,
+                "uncarried": Some(&resume.uncarried).filter(|why| !why.is_empty()),
+            })
+        }),
     });
     if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
         row_fields.extend(said);
@@ -1686,6 +1693,62 @@ mod tests {
         assert!(row("p1").contains("stuck"), "{text}");
         assert!(row("p1").contains("(codex has not read 2817 bytes of input)"), "{text}");
         assert!(!row("p2").contains("has not read"), "{text}");
+    }
+
+    /// A pane's agent session and how it resumes are in `--json`, so a script can restart or
+    /// hand over a session without reading the harness's own files; null where there is none.
+    #[test]
+    fn window_json_gives_an_agents_session_and_its_resume() {
+        use muster_proto::{
+            PaneStateChanged, RosterChanged, RosterPane, RosterTab, SessionResume, Window,
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![
+                PaneStateChanged {
+                    pane_id: "p1".to_string(),
+                    state: "idle".to_string(),
+                    session_id: "s-1".to_string(),
+                    resume: Some(Box::new(SessionResume {
+                        command: ["claude", "--model", "opus", "--resume", "s-1"]
+                            .map(str::to_string)
+                            .to_vec(),
+                        uncarried: String::new(),
+                    })),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p2".to_string(),
+                    state: "idle".to_string(),
+                    ..PaneStateChanged::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["session"], "s-1", "{json}");
+        assert_eq!(
+            json["panes"][0]["resume"],
+            serde_json::json!({
+                "command": ["claude", "--model", "opus", "--resume", "s-1"],
+                "uncarried": null,
+            }),
+            "{json}"
+        );
+        assert!(json["panes"][1]["session"].is_null(), "{json}");
+        assert!(json["panes"][1]["resume"].is_null(), "{json}");
     }
 
     /// A hidden pane's row in `--json` says what its agent is doing in the same fields a row in

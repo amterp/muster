@@ -656,6 +656,13 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
             program: unread.program.clone(),
             pid: unread.pid,
         }),
+        session_id: pane.session_id.clone().unwrap_or_default(),
+        resume: pane.resume.as_ref().map(|resume| {
+            Box::new(muster_proto::SessionResume {
+                command: resume.command.clone(),
+                uncarried: resume.uncarried.clone().unwrap_or_default(),
+            })
+        }),
     }
 }
 

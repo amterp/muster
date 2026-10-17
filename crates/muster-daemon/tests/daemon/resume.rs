@@ -47,6 +47,9 @@ fn a_pane_comes_back_resuming_its_agents_session_with_its_flags() {
         command.ends_with("claude --model opus --effort high --resume s-1"),
         "resumed as {command:?}"
     );
+    let p1 = record(&snapshot(&mut control), "p1").clone();
+    assert_eq!(p1.session_id.as_deref(), Some("s-1"), "the restored record names its session");
+    assert!(p1.resume.is_some(), "the restored record says how it resumes: {p1:?}");
     daemon.until_agent("p1", proto::AgentState::Idle);
 
     // The log says which flags went along and never their values: a carried flag can hold a
@@ -123,4 +126,27 @@ fn a_pane_whose_directory_is_gone_comes_back_as_a_shell() {
     assert_eq!(record(&after, "p1").command, None, "p1 resumed from somewhere it never ran");
     let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
     assert!(log.contains("daemon.state.resume_skipped"), "{log}");
+}
+
+/// The pane's record says which session its agent runs and how the daemon would resume it, for
+/// a client to show, and says neither once the agent has left.
+#[test]
+fn a_panes_record_carries_its_session_and_resume_while_its_agent_runs() {
+    let (daemon, mut control) = reported("--model opus", "s-5");
+
+    let p1 = record(&snapshot(&mut control), "p1").clone();
+    assert_eq!(p1.session_id.as_deref(), Some("s-5"), "{p1:?}");
+    let resume = p1.resume.unwrap_or_else(|| panic!("no resume on p1's record"));
+    assert!(
+        resume.command.join(" ").ends_with("claude --model opus --resume s-5"),
+        "{:?}",
+        resume.command
+    );
+    assert_eq!(resume.uncarried, None);
+
+    daemon.type_into("p1", "quit");
+    until_some("p1's agent to leave and take its session with it", || {
+        let p1 = record(&snapshot(&mut control), "p1").clone();
+        (p1.agent.is_none() && p1.session_id.is_none() && p1.resume.is_none()).then_some(())
+    });
 }

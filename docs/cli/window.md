@@ -195,6 +195,13 @@ One entry per pane every followed daemon holds, on screen or not.
 - `unread_input` - the pane's program has stopped reading its input: `{"bytes", "since",
   "program", "pid"}`, what waits unread when it stopped, since when, and the program holding the
   terminal. `null` while it reads. Set on any pane; on an agent's, the state is `stuck`.
+- `session` - the id the agent's adapter reported for its session, which the harness's own
+  commands take (`claude --resume <id>`); `null` until it reports one, and once the agent leaves.
+- `resume` - what the pane's daemon runs, in the pane's directory, to start that session again
+  when a restart brings the pane back: `{"command", "uncarried"}`, the program and its arguments
+  as one word each, and why the arguments the agent was started with did not all go along, `null`
+  when they did. `null` while there is no session or no way to resume it. Both stay on an
+  `unreachable` pane, where they say what to resume once its machine is back.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
