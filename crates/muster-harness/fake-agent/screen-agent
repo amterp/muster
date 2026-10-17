@@ -123,9 +123,11 @@ restate() {
     printf '\0337\033[4;1HPROBE-STATE:%s\033[K\0338' "$(echo "$state" | tr '[:lower:]' '[:upper:]')"
 }
 
-printf '%s\n' $$ > "$HOME/fake-agent-pid"
-printf '%s\n' "$*" > "$HOME/fake-agent-args"
-env > "$HOME/fake-agent-env"
+# Each is written aside and renamed into place: a test waiting for a restarted agent's file to
+# change once read one truncated and not yet written, empty, on a loaded machine.
+printf '%s\n' $$ > "$HOME/fake-agent-pid.new" && mv "$HOME/fake-agent-pid.new" "$HOME/fake-agent-pid"
+printf '%s\n' "$*" > "$HOME/fake-agent-args.new" && mv "$HOME/fake-agent-args.new" "$HOME/fake-agent-args"
+env > "$HOME/fake-agent-env.new" && mv "$HOME/fake-agent-env.new" "$HOME/fake-agent-env"
 trap 'signalled=yes; restate blocked' USR1
 trap 'signalled=yes; restate working' USR2
 
