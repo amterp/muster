@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "under-x86-64",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792257675573,
+  "creator": "Alexander Terp",
+  "description": "2026-10-17, `./dev --linux` on the laptop (main at 76c1aae5): aarch64 ran natively and passed all 860 tests; x86_64 ran under emulation and failed one, `attribution::a_pane_with_no_agent_refuses_a_report_through_a_server` (crates/muster-daemon/tests/daemon/attribution.rs:110): left [\"served 0\"], right [\"served 1\"], i.e. the report through `\u003cfake agent\u003e serve \u0026` was taken where it should be refused. It fails 3 of 3 run alone under emulation, and still fails with the fake agent's shebang put back to #!/bin/sh, so it is neither load nor the dash change. The test is unchanged since 2026-10-07 (f17d3b67); nothing in that day's unpushed range touched attribution.rs.\n\nLikely the emulator again: `./dev` already skips `the_system_reports_a_real_process_group` under emulation (EMULATED_ARGV) because qemu replaces what /proc says about a process, and recognising the fake agent's server depends on identifying the process. Not confirmed. To settle: run it on a native x86_64 Linux (CI's linux job once credits return, or the devenv); if it passes there, add it to the emulated skips in `./dev` with the reason; if it fails, it is a real bug in server_of on x86_64.",
+  "id": "a_2jPCdMlpU",
+  "position": "b13",
+  "title": "Under x86_64 emulation, a pane with no agent takes a report through a server",
+  "type": "bug",
+  "updated_at_millis": 1792257675573,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792257675573}
+  ]
+}
