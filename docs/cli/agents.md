@@ -272,6 +272,8 @@ later, saying what it typed:
     p1w3r0ab2n  ended claude and typed: 'claude' '--model' 'opus' '--resume' 'b1c2d3'
 
 Then wait for the agent as for any you have just started, with `muster pane wait --until idle`.
+A message waiting for the agent, or posted to it while it restarts, waits for the resumed one and
+rings it once it is idle.
 
 A pane whose agent has reported no session is refused with nothing ended, because there is
 nothing to resume; a harness's adapter is what reports the session. So is an agent whose harness

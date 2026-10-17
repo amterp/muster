@@ -220,11 +220,26 @@ struct Begun {
     /// When the program last wrote output, in milliseconds after `at`, plus one; zero before it
     /// has written any. Stored per chunk, so atomic rather than behind a lock.
     drawn: AtomicU64,
+    /// When a restart last typed the agent's resume, encoded as `drawn` is.
+    resumed: AtomicU64,
 }
 
 impl Begun {
     fn new(shell: Option<i32>) -> Begun {
-        Begun { shell, at: Instant::now(), drawn: AtomicU64::new(0) }
+        Begun { shell, at: Instant::now(), drawn: AtomicU64::new(0), resumed: AtomicU64::new(0) }
+    }
+
+    fn mark(&self, mark: &AtomicU64, at: Instant) {
+        let since = u64::try_from(at.saturating_duration_since(self.at).as_millis())
+            .unwrap_or(u64::MAX - 1);
+        mark.store(since + 1, Ordering::Relaxed);
+    }
+
+    fn marked(&self, mark: &AtomicU64) -> Option<Instant> {
+        match mark.load(Ordering::Relaxed) {
+            0 => None,
+            since => Some(self.at + Duration::from_millis(since - 1)),
+        }
     }
 }
 
@@ -368,17 +383,12 @@ impl PaneIo {
     }
 
     fn drew(&self, at: Instant) {
-        let since = u64::try_from(at.saturating_duration_since(self.begun.at).as_millis())
-            .unwrap_or(u64::MAX - 1);
-        self.begun.drawn.store(since + 1, Ordering::Relaxed);
+        self.begun.mark(&self.begun.drawn, at);
     }
 
     /// When the program last wrote output.
     pub(crate) fn drawn_at(&self) -> Option<Instant> {
-        match self.begun.drawn.load(Ordering::Relaxed) {
-            0 => None,
-            since => Some(self.begun.at + Duration::from_millis(since - 1)),
-        }
+        self.begun.marked(&self.begun.drawn)
     }
 
     pub(crate) fn someone_typed_at(&self) -> Option<Instant> {
@@ -413,9 +423,10 @@ impl PaneIo {
         self.agent_group.store(group.unwrap_or(0), Ordering::Release);
     }
 
-    /// How long ago this daemon took the pane on.
-    pub(crate) fn age(&self) -> Duration {
-        self.begun.at.elapsed()
+    /// How long ago an agent was last started in the pane, as far as this daemon knows: when it
+    /// took the pane on, or when a restart typed the agent's resume there.
+    pub(crate) fn since_agent_started(&self) -> Duration {
+        self.begun.marked(&self.begun.resumed).unwrap_or(self.begun.at).elapsed()
     }
 
     pub(crate) fn grid(&self) -> Grid {
@@ -457,7 +468,11 @@ impl PaneIo {
 
     /// Queues the line a restart types, while the pane refuses everybody else's.
     pub(crate) fn queue_restart_line(&self, input: Input) -> bool {
-        self.send(Stamped::new(self.discards.stamp(), input))
+        let queued = self.send(Stamped::new(self.discards.stamp(), input));
+        if queued {
+            self.begun.mark(&self.begun.resumed, Instant::now());
+        }
+        queued
     }
 
     fn send(&self, stamped: Stamped) -> bool {

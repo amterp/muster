@@ -1053,6 +1053,60 @@ fn a_wake_waiting_across_a_restart_reaches_the_resumed_agent() {
     assert!(!log.contains(r#""event":"msg.ring.dropped""#), "{log}");
 }
 
+/// A wake waiting for an agent that is restarted in its pane rings the agent resumed there, as
+/// across a daemon's restart: between the one ending and the other being found, the pane has
+/// an agent to come rather than none.
+#[test]
+fn a_wake_waiting_across_a_pane_restart_reaches_the_resumed_agent() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_AGENT_TO_COME_MS", "2000")]);
+    // Past the time a new pane has an agent to come, so that what holds the wake is the restart.
+    std::thread::sleep(Duration::from_millis(2500));
+    agent.reports_session("s-1");
+    until_saved(&agent.daemon, "s-1");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred);
+
+    let restart = proto::pane_request::Restart { pane: "p1".to_string(), ..Default::default() };
+    let restart = pane(proto::pane_request::Request::Restart(restart));
+    expect(&mut agent.control, restart, proto::Outcome::Done);
+    until_some("the resumed agent to be woken", || {
+        let woken = agent.woken().iter().any(|woken| woken.starts_with("s-1|"));
+        (woken || !agent.rung().is_empty()).then_some(())
+    });
+    let log = std::fs::read_to_string(agent.daemon.root().join("daemon.log")).unwrap_or_default();
+    assert!(!log.contains(r#""event":"msg.ring.dropped""#), "{log}");
+}
+
+/// A post while its agent is still ending waits for the agent resuming in its place: the pane
+/// refuses what would be typed into it meanwhile, which is no reason to tell the poster that
+/// nobody heard.
+#[test]
+fn a_post_while_its_agent_restarts_waits_for_the_resumed_agent() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_RESTART_GRACE_MS", "2000")]);
+    agent.reports_session("s-1");
+    until_saved(&agent.daemon, "s-1");
+    agent.daemon.type_into("p1", "stubborn");
+    std::thread::sleep(Duration::from_millis(300));
+
+    let mut restarting = agent.daemon.connect();
+    let restart = proto::pane_request::Restart { pane: "p1".to_string(), ..Default::default() };
+    let restart = std::thread::spawn(move || {
+        let restart = pane(proto::pane_request::Request::Restart(restart));
+        expect(&mut restarting, restart, proto::Outcome::Done);
+    });
+    let log = agent.daemon.root().join("daemon.log");
+    until("the restart to begin", || written(&log).contains("daemon.pane.restarting"), ());
+    let posted = agent.post("p1", "a brief");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Deferred, "{posted:?}");
+
+    restart.join().expect("the restart answered");
+    until_some("the resumed agent to be woken", || {
+        let woken = agent.woken().iter().any(|woken| woken.starts_with("s-1|"));
+        (woken || !agent.rung().is_empty()).then_some(())
+    });
+}
+
 /// A pane's record says its program has stopped reading, once it has.
 fn until_stopped_reading(agent: &mut Agent) {
     until_some("p1's program to be published as having stopped reading", || {

@@ -284,12 +284,13 @@ reason.
 "woke" means the wake was handed over - rung, or sent to the session - not that it was read. A
 ring still to come says what it waits for: the agent to be idle, an urgent post's agent to be
 out of its dialog, a draft left in its prompt to be sent or cleared, a `stuck` agent's program to
-read its input again, or an agent to start in a pane opened under 30 seconds ago. A ring the
-doorbell tried as the post was made, and held, says what held it: a draft, or what covers the
-agent's prompt, such as a menu. A ring typed into an agent whose program then stops reading is
-not counted as having woken it: the ring ends, and the next post rings again. An urgent post's
-first line says so: `posted #42 to review, urgent`. A pane with no agent past that, or whose
-agent's prompt cannot be read, is not woken.
+read its input again, or an agent to start in a pane opened under 30 seconds ago, or in one whose
+agent `muster pane restart` is ending or resumed that long ago. A ring the doorbell tried as the
+post was made, and held, says what held it: a draft, or what covers the agent's prompt, such as
+a menu. A ring typed into an agent whose program then stops reading is not counted as having
+woken it: the ring ends, and the next post rings again. An urgent post's first line says so:
+`posted #42 to review, urgent`. A pane with no agent past that, or whose agent's prompt cannot be
+read, is not woken.
 
 A post that woke nobody live - nobody woken, to be rung, already woken, held until a group is
 resumed or a machine can be reached, or the human - is still kept, and exits 6: whoever you meant

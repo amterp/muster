@@ -59,10 +59,24 @@ impl Seen {
     }
 }
 
-/// How long after a pane is made an agent is still expected in it: `muster pane new --run
-/// claude` and then a post to it come before detection has found the agent (MIP-4, section 14).
-/// A pane that has had no agent for longer has none coming.
+/// How long after a pane is made, or its agent's resume typed by a restart, an agent is still
+/// expected in it: `muster pane new --run claude` and then a post to it come before detection
+/// has found the agent (MIP-4, section 14). A pane that has had no agent for longer has none
+/// coming.
 const AGENT_TO_COME: Duration = Duration::from_secs(30);
+
+/// A debug build's [`AGENT_TO_COME`] in milliseconds, when set, so a test need not wait for it.
+const AGENT_TO_COME_SAID: &str = "MUSTER_DAEMON_AGENT_TO_COME_MS";
+
+fn agent_to_come() -> Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var(AGENT_TO_COME_SAID)
+        && let Ok(millis) = said.trim().parse::<u64>()
+    {
+        return Duration::from_millis(millis);
+    }
+    AGENT_TO_COME
+}
 
 /// Every pane with an agent in it, by name, and the names of the rest, each with whether an
 /// agent may still be coming to it.
@@ -92,11 +106,15 @@ impl Panes {
         // agent is found yet and one may still come to any pane.
         let manifests = shared.detecting.manifests();
         let loaded = manifests.is_some();
+        let agent_to_come = agent_to_come();
         let session = shared.lock();
         let naming = session.names_sessions();
         let read = session.each_pane(|pane| {
             let (record, io) = (&pane.record, &pane.io);
-            let agent = record.agent.clone().filter(|_| loaded && !io.is_closed());
+            // An agent being restarted is one to come: the pane refuses what would be typed for
+            // it, and what waits for it is for the agent resuming in its place.
+            let restarting = io.discards().is_restarting();
+            let agent = record.agent.clone().filter(|_| loaded && !io.is_closed() && !restarting);
             let seen = agent.map(|agent| {
                 let found = Agent::new(&agent);
                 let rename = pane.session_name.wanted().filter(|_| naming).and_then(|name| {
@@ -126,7 +144,7 @@ impl Panes {
             });
             let name = record.name().map(str::to_string);
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
-            let young = !loaded || io.age() < AGENT_TO_COME;
+            let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
             (record.pane.clone(), seen, young, name, title, maker)
         });
