@@ -21,6 +21,7 @@ const KEY_Z: u32 = 45;
 const KEY_TAB: u32 = 64;
 const KEY_ESCAPE: u32 = 120;
 const MODS_SHIFT: u32 = 1;
+const MODS_CTRL: u32 = 1 << 1;
 
 const GRID: proto::Grid = proto::Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 };
 
@@ -295,6 +296,39 @@ fn a_shift_tab_with_no_text_keeps_its_shift_where_one_with_text_loses_it() {
     input.send("texted", shift_tab("\t"));
     received(&bare, b"\x1b[9;2u");
     received(&texted, b"\t");
+}
+
+/// Ctrl+Return as the window sends it, which is what Ghostty's app sends: Enter with ctrl held,
+/// nothing spent on text, and no text. Claude Code binds it to sending a queued line now, and in
+/// a pane it turns on kitty flags 5 and modifyOtherKeys 2 together; kitty wins, so it reads
+/// `CSI 13;5u`. Written out, because these bytes are what such a program is written against.
+///
+/// A program that asked for neither still gets xterm's modified-key form rather than a bare
+/// `\r`: libghostty's table for Enter has an entry for ctrl in every mode
+/// (`src/input/function_keys.zig` at the pin), so Ghostty sends the same.
+#[test]
+fn ctrl_return_is_ctrl_enter_in_each_keyboard_mode() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let claude = receiving(&mut control, &daemon, "claude", b"\x1b[<u\x1b[>5u\x1b[>4;2m");
+    let other_keys = receiving(&mut control, &daemon, "other-keys", b"\x1b[>4;2m");
+    let unasked = receiving(&mut control, &daemon, "unasked", b"");
+    let mut input = Input::connect(daemon.socket_path());
+    let ctrl_return = || {
+        Event::Key(input_event::Key {
+            action: proto::KeyAction::Press.into(),
+            key: muster_vt::key_code(Key::Enter),
+            mods: MODS_CTRL,
+            unshifted_codepoint: u32::from('\r'),
+            ..input_event::Key::default()
+        })
+    };
+    input.send("claude", ctrl_return());
+    input.send("other-keys", ctrl_return());
+    input.send("unasked", ctrl_return());
+    received(&claude, b"\x1b[13;5u");
+    received(&other_keys, b"\x1b[27;5;13~");
+    received(&unasked, b"\x1b[27;5;13~");
 }
 
 /// A send naming a key the daemon cannot read is not written at all, text and Return included:

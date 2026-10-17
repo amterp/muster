@@ -77,6 +77,19 @@ func controlCharacterKeysCarryNoText() throws {
   }
 }
 
+@Test("ctrl+return goes as Ghostty's app sends it: Enter with ctrl, nothing spent, no text")
+func ctrlReturnIsTheEventGhosttySends() throws {
+  // The daemon's typing suite pins what a program receives for exactly this event, in each
+  // keyboard mode; this pins that the window builds it.
+  let ctrlReturn = try #require(key("\r", keyCode: 0x24, flags: .control))
+  let translated = ctrlReturn.musterKeyEvent(action: "press", isComposing: false)
+  #expect(translated.key == "Enter")
+  #expect(translated.modifiers == ["control"])
+  #expect(translated.consumedModifiers.isEmpty)
+  #expect(translated.text == "")
+  #expect(translated.unshiftedCodepoint == 0x0d)
+}
+
 @Test("a function key is a key, not a glyph nobody has")
 func functionKeysCarryNoText() throws {
   // Arrows and function keys arrive as private-use codepoints. Sent as text they would
