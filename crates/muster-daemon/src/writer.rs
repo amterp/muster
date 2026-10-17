@@ -12,6 +12,7 @@
 
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
@@ -124,6 +125,11 @@ impl Input {
                 | Input::Ring { .. }
                 | Input::Chore { .. }
         )
+    }
+
+    /// Whether this is the pointer's: a click, a drag, a move or a wheel turn.
+    fn is_pointer(&self) -> bool {
+        matches!(self, Input::Mouse(_) | Input::Wheel(_))
     }
 
     /// Whether this is text somebody other than the doorbell typed: what can sit in an agent's
@@ -287,8 +293,76 @@ impl Encoding {
     }
 }
 
-pub(crate) fn queue() -> (SyncSender<Input>, Receiver<Input>) {
+pub(crate) fn queue() -> (SyncSender<Stamped>, Receiver<Stamped>) {
     mpsc::sync_channel(QUEUE_DEPTH)
+}
+
+/// An input as the queue holds it, numbered in the order the pane took it, so that what was
+/// queued before a mark in [`Discards`] can be told from what came after.
+#[derive(Debug)]
+pub(crate) struct Stamped {
+    seq: u64,
+    input: Input,
+}
+
+impl Stamped {
+    pub(crate) fn new(seq: u64, input: Input) -> Stamped {
+        Stamped { seq, input }
+    }
+}
+
+/// What a pane's writer is to leave unwritten, shared by the pane and its writer.
+///
+/// The queue cannot be emptied from outside the writer's thread, and that thread may be waiting
+/// on a program that does not read, so input is marked stale instead: what is numbered below a
+/// mark is dropped as the writer comes to it.
+#[derive(Debug, Default)]
+pub(crate) struct Discards {
+    next: AtomicU64,
+    /// Pointer input below this was queued before the program stopped reading.
+    pointer_before: AtomicU64,
+    /// The program has stopped reading, so pointer input is dropped as it arrives.
+    stuck: AtomicBool,
+    pointer_dropped: AtomicU64,
+}
+
+impl Discards {
+    /// What the pane does with `input`: queues it under the next number, or not at all.
+    pub(crate) fn admit(&self, input: &Input) -> Admitted {
+        if self.stuck.load(Ordering::Acquire) && input.is_pointer() {
+            self.pointer_dropped.fetch_add(1, Ordering::Relaxed);
+            return Admitted::Dropped;
+        }
+        Admitted::Stamped(self.next.fetch_add(1, Ordering::AcqRel))
+    }
+
+    fn is_stale(&self, seq: u64, input: &Input) -> bool {
+        input.is_pointer() && seq < self.pointer_before.load(Ordering::Acquire)
+    }
+
+    /// The pane's program has stopped reading: pointer input already queued, and any that
+    /// arrives until it reads again, is dropped. A wheel turn or a click is stale within a
+    /// second, and replayed later it scrolls or clicks whatever is drawn by then; once the
+    /// program has ended, its shell reads the reports as typed text.
+    pub(crate) fn went_stuck(&self) {
+        self.stuck.store(true, Ordering::Release);
+        self.pointer_before.store(self.next.load(Ordering::Acquire), Ordering::Release);
+    }
+
+    /// The program reads again, or another holds the terminal. How much pointer input was
+    /// dropped meanwhile.
+    pub(crate) fn reading_again(&self) -> u64 {
+        self.stuck.store(false, Ordering::Release);
+        self.pointer_dropped.swap(0, Ordering::AcqRel)
+    }
+}
+
+/// What a pane does with an input it is given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Admitted {
+    Stamped(u64),
+    /// Taken and dropped: pointer input for a program that has stopped reading.
+    Dropped,
 }
 
 /// What the writer keeps between inputs.
@@ -299,6 +373,7 @@ pub(crate) struct Writer {
     /// For a reset, which writes to the pane's terminal rather than its program. Weak, since
     /// the pane owns this writer's queue and must be able to go.
     io: Weak<PaneIo>,
+    discards: Arc<Discards>,
     reports: Reports,
     buttons_held: u8,
     scroll: Scroll,
@@ -326,6 +401,7 @@ impl Writer {
         serial: u64,
         encoding: Arc<Mutex<Encoding>>,
         io: Weak<PaneIo>,
+        discards: Arc<Discards>,
         reports: Reports,
     ) -> Writer {
         Writer {
@@ -333,6 +409,7 @@ impl Writer {
             serial,
             encoding,
             io,
+            discards,
             reports,
             buttons_held: 0,
             scroll: Scroll::default(),
@@ -341,8 +418,16 @@ impl Writer {
     }
 
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
-    pub(crate) fn write(mut self, queued: &Receiver<Input>, master: &OwnedFd, wake: &OwnedFd) {
-        for input in queued {
+    pub(crate) fn write(mut self, queued: &Receiver<Stamped>, master: &OwnedFd, wake: &OwnedFd) {
+        for Stamped { seq, input } in queued {
+            if self.discards.is_stale(seq, &input) {
+                // A press or release still counts, so motion after a dropped release is not
+                // encoded as a drag.
+                if let Input::Mouse(event) = &input {
+                    self.track_buttons(event);
+                }
+                continue;
+            }
             // Encoded after it is performed rather than before, since the program may have
             // changed its keyboard modes along with its screen.
             let input = match input {
@@ -744,7 +829,8 @@ mod tests {
     /// A writer for a pane with no program, writing to a pipe whose other end the test reads.
     struct Writing {
         io: Arc<PaneIo>,
-        queue: Option<SyncSender<Input>>,
+        discards: Arc<Discards>,
+        queue: Option<SyncSender<Stamped>>,
         written: PipeReader,
         wake: PipeWriter,
         thread: Option<std::thread::JoinHandle<()>>,
@@ -768,11 +854,19 @@ mod tests {
             let woken = OwnedFd::from(woken);
             let (queue, queued) = queue();
             let (reports, received) = Reports::with_depth(1);
-            let writer =
-                Writer::new("p1".to_string(), 1, io.encoding(), Arc::downgrade(&io), reports);
+            let discards = Arc::new(Discards::default());
+            let writer = Writer::new(
+                "p1".to_string(),
+                1,
+                io.encoding(),
+                Arc::downgrade(&io),
+                Arc::clone(&discards),
+                reports,
+            );
             let thread = std::thread::spawn(move || writer.write(&queued, &master, &woken));
             Writing {
                 io,
+                discards,
                 queue: Some(queue),
                 written,
                 wake,
@@ -781,8 +875,14 @@ mod tests {
             }
         }
 
-        fn send(&self, input: Input) {
-            self.queue.as_ref().expect("a queue").send(input).expect("the writer is running");
+        /// Queues `input` as its pane would, saying whether the pane took it.
+        fn send(&self, input: Input) -> Admitted {
+            let admitted = self.discards.admit(&input);
+            if let Admitted::Stamped(seq) = admitted {
+                let queue = self.queue.as_ref().expect("a queue");
+                queue.send(Stamped::new(seq, input)).expect("the writer is running");
+            }
+            admitted
         }
 
         /// Writes `event`, and returns what reached the pipe for it once the writer has finished
@@ -899,6 +999,33 @@ mod tests {
 
     fn wheel(dy: f64, precise: bool) -> Wheel {
         Wheel { dx: 0.0, dy, precise, modifiers: Modifiers::NONE, position: (0.0, 0.0) }
+    }
+
+    /// A program that stops reading leaves pointer input queued behind what it has not taken.
+    /// Once it is called stuck that input is stale, and so is what arrives until it reads again:
+    /// neither reaches it, and a key queued among them still does.
+    #[test]
+    fn pointer_input_for_a_program_that_stopped_reading_is_dropped_and_keys_are_not() {
+        let mut writing = Writing::new();
+        // A wheel turn a pager is sent as arrows, which need no mouse encoder to write.
+        {
+            let encoding = writing.io.encoding();
+            let mut encoding = poison::lock(&encoding, "test");
+            encoding.modes.alternate_screen = true;
+            encoding.modes.alternate_scroll = true;
+        }
+        let blocking = "a".repeat(1024 * 1024);
+        writing.send(Input::Paste { text: blocking.clone(), confirmed: true });
+        assert!(matches!(writing.send(Input::Wheel(wheel(1.0, false))), Admitted::Stamped(_)));
+        writing.send(crate::input::input_of(key("k")).expect("a key"));
+        writing.discards.went_stuck();
+        assert_eq!(writing.send(Input::Wheel(wheel(1.0, false))), Admitted::Dropped);
+
+        let written = writing.written(key("z"));
+        assert!(written.starts_with(blocking.as_bytes()), "the paste went first");
+        assert_eq!(&written[blocking.len()..], b"kz", "the key went, and no arrow");
+        assert_eq!(writing.discards.reading_again(), 1, "one turn was dropped as it arrived");
+        assert!(matches!(writing.send(Input::Wheel(wheel(1.0, false))), Admitted::Stamped(_)));
     }
 
     /// What a clear sends the program after it. On the alternate screen that is the key that

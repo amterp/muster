@@ -189,6 +189,16 @@ inside the text. A request carries at most 8 MiB, so a larger file is refused wi
 anything is sent; send a line pointing at the file instead. Only a hyphen standing alone reads
 stdin, which leaves one way to send a lone hyphen: `printf - | muster pane send -`.
 
+## A stuck pane drops pointer input, and keeps everything else
+
+While a pane reads `stuck`, the clicks, wheel turns and pointer moves sent to it are dropped
+rather than queued for its program, and so is pointer input already waiting in Muster's queue for
+it when it went stuck. A wheel turn is stale within a second: replayed at a program that recovers
+it scrolls whatever is drawn by then, and once the program exits, its shell reads the reports as
+typed text. Keys, pastes and `pane send` text still wait for the program, since a person may mean
+them. What already sits in the pane's terminal stays there too, pointer reports included, because
+nothing can pick those out of it.
+
 ## A message wakes an agent in a pane only at an empty prompt Muster can read
 
 `muster msg post` wakes an agent in a pane by typing one line and a Return into it, and the

@@ -373,7 +373,8 @@ left what was sent to it unread for 5 seconds and read nothing since. Its screen
 it showed before it stopped, so it would otherwise read as whatever it was doing then. It lasts
 until the program reads again; interrupting it, or ending it and resuming its session, frees it.
 `unread_input` says which program and what it left. A program that has not read anything yet, an
-agent still starting, is never called stuck.
+agent still starting, is never called stuck. While a pane is stuck, clicks and wheel turns over it
+are dropped rather than queued for its program (`muster docs limits`).
 
 `unreachable` is a pane on a machine the window cannot reach: a dropped VPN, or a devenv that
 rebooted and took its agents with it. What its daemon last said is a guess about the present, so

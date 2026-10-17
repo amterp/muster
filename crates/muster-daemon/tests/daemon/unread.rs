@@ -109,3 +109,40 @@ fn half_a_line_typed_is_not_input_left_unread() {
     send(&mut input, "p1", "two, half typed", false);
     never_stopped(&mut control, "p1", Duration::from_secs(4));
 }
+
+/// Pointer input for a program that has stopped reading never reaches it: neither what was
+/// queued behind input it had not taken when it was called stopped, nor what arrived after.
+/// What it reads once it reads again is what was typed, with no stale wheel turn in it.
+#[test]
+fn a_program_that_stops_reading_is_sent_none_of_the_pointer_input_meanwhile() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    // The alternate screen with alternate scroll turns a wheel turn into arrows, so the turn
+    // needs no mouse report to be seen.
+    running(
+        &mut control,
+        "p1",
+        "stty raw -echo; printf \"\\033[?1049h\\033[?1007h\"; printf ready; \
+         head -c 1 >/dev/null; printf took; sleep 8; cat >\"$HOME/heard\"",
+    );
+    send(&mut input, "p1", "x", false);
+    until_text(&mut control, "p1", "took");
+    std::thread::sleep(Duration::from_millis(1500));
+    // More than any terminal holds, so the wheel turn behind it waits in the daemon's queue.
+    let typed = "y".repeat(256 * 1024);
+    input.send("p1", Event::Paste(input_event::Paste { text: typed.clone(), confirmed: true }));
+    let wheel =
+        || Event::Wheel(input_event::Wheel { dy: 1.0, x: 15.0, y: 25.0, ..Default::default() });
+    input.send("p1", wheel());
+    until_some("p1 to be published stopped", || unread(&mut control, "p1"));
+    input.send("p1", wheel());
+    send(&mut input, "p1", "end", false);
+
+    let heard = daemon.root().join("home/heard");
+    let read = until_some("p1 to read what was typed", || {
+        std::fs::read(&heard).ok().filter(|read| read.ends_with(b"end"))
+    });
+    assert!(!read.contains(&0x1b), "a wheel turn reached the program");
+    assert_eq!(read.len(), typed.len() + b"end".len(), "only what was typed was read");
+}

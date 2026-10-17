@@ -37,7 +37,7 @@ use crate::session::Turn;
 use crate::session_name::SessionName;
 use crate::stream::{self, Bridge, Refusal, Written};
 use crate::unread::{self, Unread};
-use crate::writer::{self, Encoding, Input, OwnedKey, Writer};
+use crate::writer::{self, Admitted, Discards, Encoding, Input, OwnedKey, Stamped, Writer};
 
 /// Told when a pane's process has ended, with the pane's serial and, when this daemon saw the
 /// process end, how it ended.
@@ -131,7 +131,9 @@ pub(crate) struct PaneIo {
     grid: AtomicU64,
     /// The pane's modes as the writer encodes against them, refreshed under the pane's lock.
     encoding: Arc<Mutex<Encoding>>,
-    input: SyncSender<Input>,
+    input: SyncSender<Stamped>,
+    /// What the writer is to leave unwritten of what is queued, and what not to queue.
+    discards: Arc<Discards>,
     /// Set when the session forgets the pane, under the session's lock, before anything else of
     /// the pane is let go: after it, the pane's name may belong to another pane.
     closed: AtomicBool,
@@ -441,9 +443,11 @@ impl PaneIo {
     }
 
     /// Queues something for the program to read. False when the queue is full or the pane has
-    /// gone; the caller decides whether that is worth saying.
+    /// gone; the caller decides whether that is worth saying. Pointer input for a program that
+    /// has stopped reading is taken and dropped ([`Discards::went_stuck`]).
     pub(crate) fn queue(&self, input: Input) -> bool {
-        match self.input.try_send(input) {
+        let Admitted::Stamped(seq) = self.discards.admit(&input) else { return true };
+        match self.input.try_send(Stamped::new(seq, input)) {
             Ok(()) => true,
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => false,
         }
@@ -860,6 +864,10 @@ impl Pane {
         encoding.set_scroll_multiplier(screen.scroll_multiplier());
         let encoding = Arc::new(Mutex::new(encoding));
         let (input, queued) = writer::queue();
+        let discards = Arc::new(Discards::default());
+        if record.unread_input.is_some() {
+            discards.went_stuck();
+        }
         let io = Arc::new(PaneIo {
             serial,
             master: Arc::clone(&master),
@@ -867,6 +875,7 @@ impl Pane {
             grid: AtomicU64::new(grid.to_bits()),
             encoding: Arc::clone(&encoding),
             input,
+            discards: Arc::clone(&discards),
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
@@ -888,6 +897,7 @@ impl Pane {
             serial,
             encoding,
             Arc::downgrade(&io),
+            discards,
             watching.reports.clone(),
         );
         std::thread::Builder::new()
@@ -1228,7 +1238,14 @@ impl Reader {
             None
         };
         let published = change.map(|(change, group)| {
-            Reported::UnreadInput(said_unread(&self.pane, change, group, now))
+            let dropped = match change {
+                unread::Change::Stopped { .. } => {
+                    self.io.discards.went_stuck();
+                    0
+                }
+                unread::Change::Cleared { .. } => self.io.discards.reading_again(),
+            };
+            Reported::UnreadInput(said_unread(&self.pane, change, group, dropped, now))
         });
         publish_agent(&self.reports, self.io.serial, published, &mut self.unread_unsent);
     }
@@ -1252,6 +1269,7 @@ fn said_unread(
     pane: &str,
     change: unread::Change,
     group: Option<i32>,
+    pointer_dropped: u64,
     now: Instant,
 ) -> Option<proto::UnreadInput> {
     match change {
@@ -1287,6 +1305,7 @@ fn said_unread(
                     "pane" => pane,
                     "stopped_ms" => stopped_for.as_millis(),
                     "why" => why.as_str(),
+                    "pointer_dropped" => pointer_dropped,
                 },
             );
             None
@@ -1400,6 +1419,7 @@ impl PaneIo {
             grid: AtomicU64::new(grid.to_bits()),
             encoding: Arc::new(Mutex::new(encoding)),
             input,
+            discards: Arc::default(),
             closed: AtomicBool::new(false),
             reset_detection: AtomicBool::new(false),
             flow: Flow::default(),
