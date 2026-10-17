@@ -24,6 +24,12 @@
       "body": "2026-10-17, evidence for section 4 (a helper tells its maker) from two projects:\n\n- A private project, 2026-10-13: its orchestrator watched up to ten worker panes with background `muster pane wait --pane ... --until blocked,stuck,idle` and rebuilt the pane list by hand about a dozen times. Closing a finished worker's pane ended the wait for all of them, since a wait fails when any pane it names closes. One worker sat idle for 35 minutes after an API connection error before anyone noticed. The orchestrator kept its workers' pane ids in a scratchpad file to find them again after compacting.\n- muster's parallel-work round, 2026-10-16: the integrator hand-wrote a watcher polling `muster window --json`, and it misreported workers for an hour (tooling-feedback a_2j5RMfBLI).\n\nTwo gaps between section 4 and that evidence:\n\n- **Idle.** Section 4 covers blocked and stuck. The 35-minute case was a helper whose turn ended on an API error and that posted nothing. Proposed: a helper that goes idle without having posted to its maker since it last went to work tells the maker too. A helper that reports and then goes idle stays silent.\n- **Context.** Nothing to add: `compact_at` already compacts a helper once it is full enough.\n\n`select(.maker == env.MUSTER_PANE)` replaces the pane-id files. Questions A and B are still waiting on amterp.",
       "created_at_millis": 1792240723467,
       "id": "c_2jI5dKy1Q"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: amterp chose \"helper\" (question A), and the file is now docs/mip/0007-helpers.md. His account of the word: an agent another agent starts for its own work and stays coupled to, with Muster setting up the coupling (the maker hears when it needs it, a group for the two) and flags to opt out. An agent the person asks for as a peer, to fork off part of the work at its own level, is not a helper: plain `pane new`, no watching on the maker's behalf, though the two can share a group. Both are in the draft, with the idle case added to section 4. Question B (quiet by default) is still open.",
+      "created_at_millis": 1792241568935,
+      "id": "c_2jIRczZRW"
     }
   ],
   "created_at_millis": 1791417434682,
@@ -33,7 +39,7 @@
   "position": "aR",
   "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
   "type": "feature",
-  "updated_at_millis": 1792240723467,
+  "updated_at_millis": 1792241568935,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434682}
   ]

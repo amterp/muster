@@ -26,14 +26,14 @@ What the relation changes:
 - **Listed under the pane that made them**, in the agent list and in `muster window`, collapsed
   into one line until somebody opens it.
 - **Brought forward together**, into one tab, and put away together.
-- **A helper that blocks or gets stuck tells the agent that made it**, through `muster msg`.
-  Today a quiet pane in that state tells nobody.
+- **A helper that blocks, gets stuck, or goes idle without reporting tells the agent that made
+  it**, through `muster msg`. Today a quiet pane in that state tells nobody.
 - **A helper whose maker closes stops being quiet**, and the person hears once that it is still
   running.
 
-Two questions are amterp's and come first: the word, and whether a helper is quiet by default.
-Everything else is recommended, with the options laid out where they were close. Nothing here is
-built yet.
+amterp chose the word on 2026-10-17 (question A). Whether a helper is quiet by default (question
+B) is still amterp's, and comes first. Everything else is recommended, with the options laid out
+where they were close. Nothing here is built yet.
 
 ## Decisions for amterp
 
@@ -52,9 +52,14 @@ built yet.
 
 Recommendation: (b). Its other uses are a manifest key and a packaging term that no row or flag
 shows, where (a)'s other use is on the same rows these would be listed beside. The rest of this
-draft says "helper", and "maker" for the pane that made one; the file keeps the card's name, and
-is renamed if (a) is not taken. Hard to reverse: the flag, the menu items and the skill's wording
-all carry the word.
+draft says "helper", and "maker" for the pane that made one. Hard to reverse: the flag, the menu
+items and the skill's wording all carry the word.
+
+**Decided 2026-10-17: (b), "helper".** amterp's account of what the word covers: a helper is an
+agent that another agent starts for its own work and stays coupled to, and Muster sets up the
+coupling for it - the maker hears when the helper needs it, and a group for the two exists without
+anybody making one - with flags to opt out. An agent started as a peer is not a helper (section
+1).
 
 **Question B. Whether a helper is quiet by default.**
 
@@ -119,6 +124,11 @@ shell, and an agent opening a pane for a dev server, are not making helpers, and
 such pane under whatever made it would make the agent list worse for everyone who runs no
 helpers.
 
+Nor is an agent that the person asks for as a peer. Told to fork off part of its work, or to
+start another agent beside it, an agent starts one that works at its own level and answers to the
+person: it is made with plain `pane new`, nobody watches it on its maker's behalf, and its blocks
+reach the person as any pane's do. The two can still work together in a group.
+
 ### 2. What it changes by default
 
 A helper is made hidden and quiet, unless question B goes to (b), and `--shown` and `--notify`
@@ -159,9 +169,13 @@ A maker on a machine the window cannot reach reads `unreachable` on its own row 
 
 ### 4. A quiet helper that needs somebody tells its maker
 
-When a helper becomes `blocked` or `stuck`, its daemon tells the maker, once each time, in a
-message from `@muster` in the group the two share, made for the purpose if they have none:
-`maple is blocked at a dialog` or `maple has stopped reading its input`. MIP-4 section 16 already
+When a helper becomes `blocked` or `stuck`, or goes idle without having posted to its maker since
+it last went to work, its daemon tells the maker, once each time, in a message from `@muster` in
+the group the two share, made for the purpose if they have none: `maple is blocked at a dialog`,
+`maple has stopped reading its input`, or `maple went idle without posting to you`. The idle case
+is a helper whose turn ended on an API error, or one that gave up without saying so; on
+2026-10-13 one sat idle for 35 minutes before its maker noticed. A helper that posts its report
+and then goes idle is not reported. MIP-4 section 16 already
 has a daemon tell a group once, and say why, when the group is held up on a member; this does the
 same for a helper and sends it to the maker, the agent that can act on it. The maker can answer
 the dialog with `muster pane send --key`, or bring the helper forward and ask the person.
@@ -219,7 +233,8 @@ and tells the helper's daemon; with no window open, it is told when one next ope
 > person does not see or hear from them, and you are told, in a message from `@muster`, when one
 > is blocked or stuck. Name each one. When the person wants to watch them, say
 > `muster pane show --helpers-of $MUSTER_PANE`, or Show Helpers on your row. Close them when
-> their work is done.
+> their work is done. An agent the person asks you to start as a peer, to take part of the work
+> at its own level, is not a helper: make it with plain `muster pane new`.
 
 ## Rationale
 

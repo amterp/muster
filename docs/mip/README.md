@@ -26,4 +26,4 @@ corrections get a superseding MIP, and the History section records the transitio
 | [MIP-4](0004-agent-messaging.md) | Agents messaging each other, and groups convened around a policy | Architecture | Draft |
 | [MIP-5](0005-harnesses.md) | Harnesses - what Muster uses from an agent program, and an adapter for each | Architecture | Draft |
 | [MIP-6](0006-one-process.md) | Every window is a window of one Muster process | Architecture | Draft |
-| [MIP-7](0007-sub-agents.md) | An agent's helpers - panes an agent makes as its own, kept out of the way | Product | Draft |
+| [MIP-7](0007-helpers.md) | An agent's helpers - panes an agent makes as its own, kept out of the way | Product | Draft |
