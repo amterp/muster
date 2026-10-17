@@ -304,6 +304,11 @@ its prompt holds its wakes for as long as it stays that short. It says too when 
 zoomed on another pane. A pane hidden by a zoom or behind another tab keeps the size it last had on
 screen, and nothing resizes it until it is shown again.
 
+An agent that is working is not held up, however long its turn. But once a message has waited 30
+minutes on one that has read as working at every look, whoever posted it is told that too, once,
+since an agent whose screen is misread as working would otherwise never be rung, and an urgent
+post reaches it at work.
+
 That message wakes whoever it is for as any message does, so a director that ended its turn to
 wait hears why no answer is coming. `@muster` is never a member and cannot be addressed, and what
 it posts never counts as a stall itself. It posts only in a group kept on its own machine; a stall

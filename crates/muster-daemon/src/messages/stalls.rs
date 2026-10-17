@@ -1,5 +1,6 @@
 //! Groups held up on a member: a message waits on an agent in a pane here that is not working,
-//! and nothing has moved it for [`STALL_AFTER`].
+//! and nothing has moved it for [`STALL_AFTER`]; or on one that has read as working without a
+//! break for [`WORKED_AFTER`] times as long.
 //!
 //! The way a group of agents locks up is a message that never gets read: its member's ring never
 //! landed, or landed in a program that has stopped reading, or the member sits at a dialog, and
@@ -34,6 +35,13 @@ use crate::session::Shared;
 /// and an agent woken once more as it goes idle - so that what is left is what those could not
 /// move.
 pub(crate) const STALL_AFTER: Duration = Duration::from_mins(2);
+
+/// How many times [`STALL_AFTER`] a message may wait on a member reading as working without a
+/// break before whoever waits is told: 30 minutes, well past a long turn such as a full test run.
+/// A member's state reads working from its screen, and a screen the rules misread holds it there
+/// for good - a finished Claude Code turn whose last rows looked like its spinner held an
+/// integrator's messages for seven hours - while a turn that long is rare enough to say so.
+pub(crate) const WORKED_AFTER: u64 = 15;
 
 /// A debug build's [`STALL_AFTER`] in milliseconds, when set, so a test need not wait for it.
 const STALL_AFTER_SAID: &str = "MUSTER_DAEMON_STALL_MS";
@@ -112,6 +120,19 @@ struct Episode {
     /// the last time its agent was seen at work since, whichever is latest.
     since_ms: u64,
     stage: Stage,
+    /// Whoever waits has been told of it, which is said once whatever comes after.
+    told: bool,
+}
+
+impl Episode {
+    fn new(first: u64, since_ms: u64) -> Episode {
+        Episode { first, since_ms, stage: Stage::Watching, told: false }
+    }
+
+    /// Whether anything has been done about it, which its end is recorded for.
+    fn acted(&self) -> bool {
+        self.stage != Stage::Watching || self.told
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,9 +149,12 @@ pub(crate) struct Stalls {
     every: Duration,
     due: Instant,
     episodes: HashMap<(String, String), Episode>,
+    worked_after_ms: u64,
     /// When each member was last seen at work, or with its agent still to come, in the host's
     /// milliseconds.
     working: HashMap<String, u64>,
+    /// Since when each member seen at work has been at work at every look.
+    working_since: HashMap<String, u64>,
     /// When this daemon started, in the host's milliseconds. Nothing posted before it has been
     /// waiting on this daemon's watch, so no clock starts earlier: a daemon that restarted, or
     /// took over from another, would otherwise find every unread message stalled at its first
@@ -149,10 +173,12 @@ impl Stalls {
         let every = (after / 4).clamp(Duration::from_millis(250), Duration::from_secs(30));
         Stalls {
             after_ms,
+            worked_after_ms: after_ms.saturating_mul(WORKED_AFTER),
             every,
             due: now,
             episodes: HashMap::new(),
             working: HashMap::new(),
+            working_since: HashMap::new(),
             started_ms,
         }
     }
@@ -170,34 +196,31 @@ impl Stalls {
         let mut holding: Vec<(String, String)> = Vec::new();
         for member in members {
             let key = (member.holding.name.clone(), member.holding.group.clone());
-            if member.activity == Some(Activity::Working)
-                || member.doorbell == Ringable::AgentToCome
-            {
+            let at_work = member.activity == Some(Activity::Working);
+            if !at_work {
+                self.working_since.remove(&key.0);
+            }
+            if at_work || member.doorbell == Ringable::AgentToCome {
                 self.working.insert(key.0.clone(), now_ms);
+                if at_work && self.worked_too_long(member, called, now_ms, &mut acts) {
+                    holding.push(key);
+                }
                 continue;
             }
             holding.push(key.clone());
             let free_since = self.working.get(&key.0).copied().unwrap_or(self.started_ms);
             let since_ms = member.holding.first_at_ms.max(free_since);
-            let episode = self.episodes.entry(key.clone()).or_insert(Episode {
-                first: member.holding.first,
-                since_ms,
-                stage: Stage::Watching,
-            });
-            if episode.first != member.holding.first {
-                // It read some of what waited, and what is left is a stall of its own.
-                if episode.stage != Stage::Watching {
-                    acts.push(moving(&key, episode, now_ms));
-                }
-                *episode =
-                    Episode { first: member.holding.first, since_ms, stage: Stage::Watching };
-            }
+            let episode = episode(&mut self.episodes, &key, member, since_ms, now_ms, &mut acts);
             episode.since_ms = episode.since_ms.max(since_ms);
             let held_ms = now_ms.saturating_sub(episode.since_ms);
             if held_ms < self.after_ms {
                 continue;
             }
             match episode.stage {
+                // Told of while it worked: what is left is a wake that never landed.
+                Stage::Watching if episode.told && unlock(member) != Unlock::WakeAgain => {
+                    episode.stage = Stage::Told;
+                }
                 Stage::Watching => {
                     let unlock = unlock(member);
                     acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
@@ -207,16 +230,18 @@ impl Stalls {
                             episode.stage = Stage::WokenAgain { at_ms: now_ms };
                         }
                         Unlock::Tell => {
-                            acts.push(tell(member, called, now_ms));
+                            acts.push(tell(member, called, now_ms, why(member, called)));
                             episode.stage = Stage::Told;
+                            episode.told = true;
                         }
                         Unlock::Nothing => episode.stage = Stage::Told,
                     }
                 }
                 // Woken again and still held up: what is left is to tell whoever waits.
                 Stage::WokenAgain { at_ms } if now_ms.saturating_sub(at_ms) >= self.after_ms => {
-                    if !waiting_on(member).is_empty() {
-                        acts.push(tell(member, called, now_ms));
+                    if !waiting_on(member).is_empty() && !episode.told {
+                        acts.push(tell(member, called, now_ms, why(member, called)));
+                        episode.told = true;
                     }
                     episode.stage = Stage::Told;
                 }
@@ -227,7 +252,7 @@ impl Stalls {
             self.episodes.keys().filter(|key| !holding.contains(key)).cloned().collect();
         for key in moved {
             if let Some(episode) = self.episodes.remove(&key)
-                && episode.stage != Stage::Watching
+                && episode.acted()
             {
                 acts.push(moving(&key, &episode, now_ms));
             }
@@ -235,10 +260,64 @@ impl Stalls {
         acts
     }
 
+    /// Whether `member`, at work now, has been at work at every look for as long as a message
+    /// has waited on it past [`WORKED_AFTER`]: whoever waits is told so, once, through `acts`.
+    fn worked_too_long(
+        &mut self,
+        member: &Member,
+        called: &BTreeMap<String, String>,
+        now_ms: u64,
+        acts: &mut Vec<Act>,
+    ) -> bool {
+        let key = (member.holding.name.clone(), member.holding.group.clone());
+        let worked_since = *self.working_since.entry(key.0.clone()).or_insert(now_ms);
+        let since_ms = member.holding.first_at_ms.max(worked_since).max(self.started_ms);
+        if now_ms.saturating_sub(since_ms) < self.worked_after_ms {
+            return false;
+        }
+        let episode = episode(&mut self.episodes, &key, member, since_ms, now_ms, acts);
+        if !episode.told {
+            let unlock = if waiting_on(member).is_empty() { Unlock::Nothing } else { Unlock::Tell };
+            let held_ms = now_ms.saturating_sub(episode.since_ms);
+            acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+            if unlock == Unlock::Tell {
+                let worked = said_as_time(now_ms.saturating_sub(worked_since));
+                let why = format!(
+                    "it has read as working for {worked} without a break, so it is rung only once \
+                     it stops; an urgent post reaches it at work"
+                );
+                acts.push(tell(member, called, now_ms, why));
+            }
+            episode.told = true;
+        }
+        true
+    }
+
     /// How long until the next look is due.
     fn left(&self, now: Instant) -> Duration {
         self.due.saturating_duration_since(now)
     }
+}
+
+/// The episode of `member` holding its group up, begun now if none is, or begun again when it
+/// has read some of what waited, since what is left is a stall of its own.
+fn episode<'a>(
+    episodes: &'a mut HashMap<(String, String), Episode>,
+    key: &(String, String),
+    member: &Member,
+    since_ms: u64,
+    now_ms: u64,
+    acts: &mut Vec<Act>,
+) -> &'a mut Episode {
+    let first = member.holding.first;
+    let episode = episodes.entry(key.clone()).or_insert_with(|| Episode::new(first, since_ms));
+    if episode.first != first {
+        if episode.acted() {
+            acts.push(moving(key, episode, now_ms));
+        }
+        *episode = Episode::new(first, since_ms);
+    }
+    episode
 }
 
 /// How a stall is answered: its member woken once more when its last wake never landed and it
@@ -265,11 +344,10 @@ fn waiting_on(member: &Member) -> Vec<String> {
         .collect()
 }
 
-fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> Act {
+/// What whoever waits on `member` is told, `why` being why it has not read.
+fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: String) -> Act {
     let held = &member.holding;
-    let waited = now_ms.saturating_sub(held.first_at_ms) / 1000;
-    let waited =
-        if waited >= 120 { format!("{} minutes", waited / 60) } else { format!("{waited}s") };
+    let waited = said_as_time(now_ms.saturating_sub(held.first_at_ms));
     let shown = |id: &str| shown(called, id);
     // A member named after its pane has already said which pane it is.
     let pane =
@@ -280,9 +358,14 @@ fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> Act 
         name = shown(&held.name),
         first = held.first,
         authors = held.authors.iter().map(|author| shown(author)).collect::<Vec<_>>().join(", "),
-        why = why(member, called),
     );
     Act::Tell { group: held.group.clone(), to: waiting_on(member), body }
+}
+
+/// `ms` as a person says it: seconds under two minutes, whole minutes from there.
+fn said_as_time(ms: u64) -> String {
+    let seconds = ms / 1000;
+    if seconds >= 120 { format!("{} minutes", seconds / 60) } else { format!("{seconds}s") }
 }
 
 /// A participant or a pane as the CLI shows it: `otter (p29te12q4t)`, the id being what still
@@ -776,6 +859,57 @@ mod tests {
                            which hides it."
             ),
             "{body}"
+        );
+    }
+
+    /// A message waiting on a member that has read as working at every look is said once it has
+    /// waited fifteen times as long as a stall: a screen misread as working holds it there for
+    /// good, and nothing else would tell whoever waits.
+    #[test]
+    fn a_member_working_without_a_break_is_told_of_once() {
+        let mut stalls = stalls();
+        let working = Member { activity: Some(Activity::Working), ..worker() };
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        for at in [1000, 1000 + AFTER, worked - 1] {
+            assert!(stalls.judge(&[working.clone()], &BTreeMap::new(), at).is_empty(), "at {at}");
+        }
+        let acts = stalls.judge(&[working.clone()], &BTreeMap::new(), worked);
+        assert_eq!(kinds(&acts), ["stalled", "tell"]);
+        let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
+        assert!(body.contains("it has read as working for 30 minutes without a break"), "{body}");
+        assert!(body.contains("an urgent post reaches it at work"), "{body}");
+        assert!(
+            stalls.judge(&[working], &BTreeMap::new(), worked + AFTER).is_empty(),
+            "said twice at work"
+        );
+
+        // Free at last, it is not told of again for the same message, though a wake that never
+        // landed is still sent again.
+        assert!(stalls.judge(&[worker()], &BTreeMap::new(), worked + AFTER + 1).is_empty());
+        assert_eq!(
+            kinds(&stalls.judge(&[worker()], &BTreeMap::new(), worked + 2 * AFTER)),
+            ["stalled", "wake_again"]
+        );
+        let woken = Member { holding: Holding { woken: true, ..worker().holding }, ..worker() };
+        assert!(
+            stalls.judge(&[woken], &BTreeMap::new(), worked + 10 * AFTER).is_empty(),
+            "told again once free"
+        );
+    }
+
+    /// A look that finds the member not at work starts its run of work over.
+    #[test]
+    fn a_break_in_work_starts_the_long_clock_over() {
+        let mut stalls = stalls();
+        let working = Member { activity: Some(Activity::Working), ..worker() };
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        stalls.judge(&[working.clone()], &BTreeMap::new(), 1000);
+        stalls.judge(&[worker()], &BTreeMap::new(), 1000 + AFTER / 2);
+        stalls.judge(&[working.clone()], &BTreeMap::new(), 1000 + AFTER);
+        assert!(stalls.judge(&[working.clone()], &BTreeMap::new(), worked).is_empty());
+        assert_eq!(
+            kinds(&stalls.judge(&[working], &BTreeMap::new(), worked + AFTER)),
+            ["stalled", "tell"]
         );
     }
 }
