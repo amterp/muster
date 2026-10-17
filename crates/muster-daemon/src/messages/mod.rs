@@ -170,9 +170,15 @@ impl Messages {
     }
 
     /// `notice` as the windows are told it, saying whether the human is still in its group, and
-    /// what a lone message from Muster says.
+    /// what a lone message from Muster says: from this machine's or, as `@muster@devenv`, from
+    /// another's.
     fn for_human(&self, notice: &muster_msg::Notice) -> msg_answer::Notice {
-        let muster_alone = notice.count == 1 && notice.from == [muster_msg::MUSTER];
+        let muster = |author: &String| {
+            muster_msg::split_machine(author).map_or(author.as_str(), |(base, _)| base)
+                == muster_msg::MUSTER
+        };
+        let muster_alone =
+            notice.count == 1 && matches!(notice.from.as_slice(), [only] if muster(only));
         let said = muster_alone.then(|| self.service.said(&notice.group, notice.last)).flatten();
         msg_answer::Notice {
             member: self.service.human_is_in(&notice.group),

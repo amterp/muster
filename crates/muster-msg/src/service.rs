@@ -943,7 +943,9 @@ impl<S: Store> Messaging<S> {
     /// that the helper needs it, or the human told that a maker closed with helpers still
     /// running (MIP-7, sections 4 and 6). Each is a pane, or the human, made a participant as a
     /// post to it would make it; `about` may be a pane closed since, which never took part, and
-    /// is then shown as `called`.
+    /// is then shown as `called`. `to` may also be somebody on another machine, as this machine
+    /// writes them (`claude@lap`, what a `whom` call answers), and the human homed elsewhere is
+    /// the one there: the group is kept here either way, and its home tells that machine.
     ///
     /// It goes in the group of exactly the two when they have one, else the one group both are
     /// in, and else the group a post from one to the other would make: so a notice stays out of
@@ -965,16 +967,22 @@ impl<S: Store> Messaging<S> {
         self.post_as_muster(&group, vec![to], body, presence, now_ms)
     }
 
-    /// The participant Muster speaks to or of for `name`: the human, where it is homed, or the
-    /// one in the pane `name`, made as an addressed pane's is, or as it was when it closed.
+    /// The participant Muster speaks to or of for `name`: the human, here or where it is homed;
+    /// somebody on another machine, as they are written; or the one in the pane `name`, made as
+    /// an addressed pane's is, or as it was when it closed.
     fn party(
         &mut self,
         name: &str,
         called: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        if split_machine(name).is_some() {
+            return Ok(name.to_string());
+        }
         if name == HUMAN {
-            self.human_here(presence)?;
+            if let Some(home) = self.human_elsewhere(presence) {
+                return Ok(home.human());
+            }
             if !self.participants.contains_key(HUMAN) {
                 self.make_addressed(HUMAN, presence);
             }
@@ -1022,11 +1030,12 @@ impl<S: Store> Messaging<S> {
         }
     }
 
-    /// When an agent in `author_pane` last posted to one in `reader_pane`, in the host's
-    /// milliseconds: a message in a group holding both, addressed to the reader or to nobody in
-    /// particular, which reaches every member it rings. Read from the transcripts, so a host
-    /// that restarted still knows.
-    pub fn last_post(&self, author_pane: &str, reader_pane: &str) -> Option<u64> {
+    /// When an agent in `author_pane` last posted to `reader`, in the milliseconds of the
+    /// group's home: a message in a group holding both, addressed to the reader or to nobody in
+    /// particular, which reaches every member it rings. `reader` is a pane here, or somebody on
+    /// another machine as this machine writes them. Read from the transcripts, so a host that
+    /// restarted still knows.
+    pub fn last_post(&self, author_pane: &str, reader: &str) -> Option<u64> {
         let in_pane = |pane: &str| -> Vec<&str> {
             self.participants
                 .values()
@@ -1034,7 +1043,8 @@ impl<S: Store> Messaging<S> {
                 .map(|participant| participant.name.as_str())
                 .collect()
         };
-        let (authors, readers) = (in_pane(author_pane), in_pane(reader_pane));
+        let authors = in_pane(author_pane);
+        let readers = if split_machine(reader).is_some() { vec![reader] } else { in_pane(reader) };
         let holds =
             |group: &Group, names: &[&str]| names.iter().any(|n| group.members.contains(*n));
         self.groups

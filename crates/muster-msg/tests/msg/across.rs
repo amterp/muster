@@ -332,6 +332,19 @@ impl Wire {
         self.sessions.agents.borrow_mut().insert(pane.to_string());
     }
 
+    /// What Muster tells `to` about `about` on `side`, with its wakes kept and its entry sent
+    /// on, as a daemon does.
+    fn muster_tells(&mut self, side: Side, to: &str, about: &str, called: Option<&str>) -> Posted {
+        let now = self.tick();
+        let (service, sessions) = self.split(side);
+        let mut posted =
+            service.tell_as_muster(to, about, called, "a notice", sessions, now).unwrap();
+        self.wakes.extend(posted.wakes.iter().map(|wake| (side, wake.clone())));
+        let reached = self.tell(side, &posted.tell);
+        posted.reached.extend(reached);
+        posted
+    }
+
     fn read(&mut self, side: Side, caller: &Caller, group: Option<&str>) -> Vec<String> {
         let (service, sessions) = self.split(side);
         let read = service.read(caller, group, sessions).unwrap();
@@ -1982,4 +1995,42 @@ fn a_replica_that_missed_a_delete_forgets_the_group_when_the_link_returns() {
     assert_eq!(refused.code(), "no_such_group");
     assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
     assert!(!wire.devenv.participant("critic").unwrap().cursors.contains_key("review@lap"));
+}
+
+/// Muster tells a helper's maker on another machine that the helper needs it, as that machine
+/// answered for the maker's pane: the two get a group kept on the helper's machine, the maker's
+/// machine rings it, and the helper's report to it is found there afterwards (MIP-7, section 4).
+#[test]
+fn a_maker_on_another_machine_is_told_of_its_helper_there() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1lap");
+    wire.pane(Side::Devenv, "p2dev");
+    let found = wire.found(Side::Devenv, &["p1lap".to_string()]);
+    let maker = found.first().map(|found| found.there.clone()).expect("the laptop has the pane");
+    assert_eq!(maker, "p1lap@lap");
+
+    let posted = wire.muster_tells(Side::Devenv, &maker, "p2dev", None);
+    assert_eq!(posted.group, "p1lap+p2dev");
+    assert_eq!(woke(&posted), [("p1lap@lap", Reach::Woken)]);
+    let rung: Vec<_> = wire.wakes.iter().filter(|(side, _)| *side == Side::Laptop).collect();
+    assert_eq!(rung.len(), 1);
+    assert_eq!(rung[0].1.via, Via::Pane("p1lap".to_string()));
+
+    assert_eq!(wire.devenv.last_post("p2dev", &maker), None, "nothing posted yet");
+    wire.read(Side::Devenv, &in_pane("p2dev"), None);
+    let report = wire.post(Side::Devenv, &in_pane("p2dev"), None, &["p1lap"], "my report");
+    assert_eq!(report.unwrap().group, "p1lap+p2dev");
+    assert!(wire.devenv.last_post("p2dev", &maker).is_some(), "its report is found");
+}
+
+/// A far machine tells the person what Muster has to say as it tells any member on another
+/// machine: the person's home, the laptop, wakes the human (MIP-7, section 6).
+#[test]
+fn the_person_is_told_from_a_machine_where_it_is_not_homed() {
+    let mut wire = dialed();
+    let posted = wire.muster_tells(Side::Devenv, HUMAN, "p9dev", Some("integrator"));
+    assert_eq!(posted.group, "@human+integrator");
+    assert_eq!(woke(&posted), [("@human@lap", Reach::Waiting)]);
+    assert_eq!(told_the_human(&wire), [(Side::Laptop, "@human+integrator@devenv")]);
+    assert!(wire.devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
 }
