@@ -149,6 +149,29 @@ const CONFIRM_POLL: std::time::Duration = std::time::Duration::from_millis(25);
 /// already scrolled away.
 const CONFIRM_ROWS: u32 = 300;
 
+/// Whether a send is checked against what its pane's agent's prompt already holds: one that
+/// types text, unless asked to add to it. Keys and Return alone are how a dialog is answered and
+/// a prompt submitted, and so is a lone space with Return, which submits a Claude Code prompt
+/// where Return alone does not, so text that is only whitespace is not checked either.
+#[must_use]
+pub fn checks_prompt(text: &str, append: bool) -> bool {
+    !append && !text.trim().is_empty()
+}
+
+/// Refuses text sent into a prompt that already holds `held`, which would be submitted with
+/// it as one prompt by the next Return: a draft somebody was writing, or a wake left unsent.
+pub fn into_held_prompt(pane: &str, held: Option<&str>) -> Result<(), String> {
+    const SHOWN: usize = 120;
+    let Some(held) = held else { return Ok(()) };
+    let shown: String = held.chars().take(SHOWN).collect();
+    let cut = if held.chars().count() > SHOWN { "..." } else { "" };
+    Err(format!(
+        "nothing was sent: the prompt in pane {pane} already holds \"{shown}{cut}\", and what \
+         you sent would be added to it and submitted with it. Clear the prompt first, or send \
+         with --append to add to what it holds."
+    ))
+}
+
 /// What a pane shows just before something is sent to it, for [`confirm`] to compare against.
 ///
 /// Read only when a caller asked to confirm, and before the send rather than after it, since
@@ -315,7 +338,24 @@ fn squeezed(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneText, Unconfirmed, before_sending, confirm};
+    use super::{PaneText, Unconfirmed, before_sending, checks_prompt, confirm, into_held_prompt};
+
+    /// Text is checked against a prompt holding something; keys, Return and a lone space with
+    /// Return are not, and a send told to append is not.
+    #[test]
+    fn only_text_is_held_back_by_a_prompt_that_holds_something() {
+        assert!(checks_prompt("/clear", false));
+        assert!(!checks_prompt("/clear", true));
+        assert!(!checks_prompt("", false));
+        assert!(!checks_prompt(" ", false));
+        assert_eq!(into_held_prompt("p1", None), Ok(()));
+        let refused = into_held_prompt("p1", Some("[muster] review: 1 new (#4)")).unwrap_err();
+        assert!(refused.contains("already holds \"[muster] review: 1 new (#4)\""), "{refused}");
+        assert!(refused.contains("--append"), "{refused}");
+        let long = "x".repeat(500);
+        let refused = into_held_prompt("p1", Some(&long)).unwrap_err();
+        assert!(refused.contains(&format!("{}...\"", "x".repeat(120))), "{refused}");
+    }
 
     /// A send the pane draws late is confirmed once it does, and one it never draws is refused
     /// only after the whole pane has been read as well.

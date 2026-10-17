@@ -598,6 +598,8 @@ pub(crate) struct Reading {
     last: u32,
     /// What the pane's agent printed in its last turn asked for instead.
     turn: bool,
+    /// The pane's agent, and what reads its prompt, when what the prompt holds was asked for too.
+    prompt: Option<(String, Arc<Detecting>)>,
 }
 
 impl Reading {
@@ -623,6 +625,11 @@ impl Reading {
         } else {
             screen::page(self.first_row, self.rows, screen::PAGE_BYTES, rows)
         };
+        let prompt = self
+            .prompt
+            .as_ref()
+            .and_then(|(agent, detecting)| crate::messages::prompt_holds(&self.io, agent, detecting));
+        let text = proto::PaneText { prompt, ..text };
         Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
     }
 }
@@ -1097,6 +1104,11 @@ impl Session {
                             rows: read.rows,
                             last: read.last,
                             turn: read.turn,
+                            prompt: read
+                                .prompt
+                                .then(|| self.panes[index].record.agent.clone())
+                                .flatten()
+                                .map(|agent| (agent, Arc::clone(&self.detecting))),
                         }));
                     }
                 },

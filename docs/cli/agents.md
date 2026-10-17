@@ -115,6 +115,14 @@ lines are the last the window heard.
 when a person should read it before it runs. On its own, `muster pane send --pane p1w3r0ab2n
 --enter` presses Return and nothing else, which takes whatever a dialog has highlighted.
 
+Text is refused when the agent's prompt already holds something, a person's draft or a line left
+unsent, since the next Return would submit the two as one prompt: a `/clear` sent there runs as
+words at the end of the draft. The refusal quotes what the prompt holds and nothing is typed.
+Clear the prompt first, or send with `--append` to add to it. Keys, Return alone and a lone
+space with `--enter`, which submits a Claude Code prompt where Return alone does not, are never
+refused this way, and nor is a pane whose prompt the daemon cannot read: a dialog, a menu, a
+shell.
+
 A dialog or a menu - a folder-trust question, a plan to approve, an approval prompt - reads keys
 and ignores text, so a `2` or an arrow sent as text changes nothing there. `--key` presses one:
 

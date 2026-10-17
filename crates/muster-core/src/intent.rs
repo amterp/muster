@@ -507,6 +507,13 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
     /// size the last bridge to draw it asked for, or the size it was made at.
     fn grids(&self) -> Result<BTreeMap<PaneId, Grid>, Refusal>;
 
+    /// What the prompt of a pane's agent holds, read as its daemon reads it before typing there:
+    /// nothing for a prompt that is empty or cannot be read, and from a backend that cannot read
+    /// one. A read, for the reason [`Self::read`] is.
+    fn prompt(&self, _pane: &PaneId) -> Result<Option<String>, Refusal> {
+        Ok(None)
+    }
+
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;
 }

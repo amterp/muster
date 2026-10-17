@@ -376,6 +376,10 @@ message PaneRequest {
     // `last` are not read. Refused when no turn has started since this daemon began watching the
     // pane. A daemon that predates it answers without `PaneText.turn`.
     bool turn = 5;
+    // Since 1.6. Also reads the prompt of the pane's agent, as the doorbell reads it before
+    // typing, and answers what it holds in `PaneText.prompt`. A daemon that predates it, a pane
+    // with no agent, and a prompt that is empty or cannot be read all answer without it.
+    bool prompt = 6;
   }
 
   // Facts the agent in a pane states about itself, sent from inside the pane
@@ -1101,6 +1105,10 @@ message PaneText {
   // Since 1.3. The oldest row the pane still holds. Older daemons send 0, which was its number
   // then.
   uint64 oldest_row = 7;
+  // Since 1.6. For a read asking for it, what the prompt of the pane's agent holds: a draft, or
+  // anything else typed and not sent, its runs of whitespace one space each. Absent when the
+  // prompt is empty or could not be read.
+  optional string prompt = 8;
 }
 
 message Event {

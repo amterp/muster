@@ -1428,6 +1428,19 @@ fn waiting(
     }
 }
 
+/// What the prompt of the agent `agent` in a pane holds, read as the doorbell reads it before
+/// typing, at work too: nothing when the prompt is empty or cannot be read.
+pub(crate) fn prompt_holds(
+    io: &crate::pane::PaneIo,
+    agent: &str,
+    detecting: &crate::detect::Detecting,
+) -> Option<String> {
+    match prompt::look(io, agent, detecting, true) {
+        prompt::AtPrompt::Holds(held) => Some(held),
+        prompt::AtPrompt::Empty { .. } | prompt::AtPrompt::Not(_) => None,
+    }
+}
+
 pub(crate) fn kept_nothing(refusal: &Refusal) {
     log::error(
         "msg.store.failed",

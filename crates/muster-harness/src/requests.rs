@@ -166,6 +166,7 @@ pub fn read_request(name: &str, first_row: u64, rows: u32) -> Service {
         rows,
         last: 0,
         turn: false,
+        prompt: false,
     }))
 }
 

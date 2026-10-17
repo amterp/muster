@@ -1002,6 +1002,13 @@ message SendToPane {
   // libghostty can say them, and so this window and a CLI talking to a daemon directly hand the
   // daemon the same thing.
   repeated string keys = 6;
+
+  // Type the text even when the prompt of the pane's agent already holds something, adding to
+  // it. Without it, text sent into a prompt holding anything is refused, naming what it holds,
+  // since the next Return would submit the two as one prompt. Keys, Return and text that is only
+  // whitespace are never refused this way, nor a pane whose prompt cannot be read: a dialog, a
+  // menu, a shell.
+  bool append = 7;
 }
 
 // Keeps answering with what panes' agents are doing, instead of answering once.

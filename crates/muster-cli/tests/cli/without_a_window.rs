@@ -133,6 +133,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_wait_ends_when_the_agent_gets_there(&here);
     a_wait_on_context_ends_when_the_agent_says_it(&here);
     a_compaction_is_asked_of_the_daemon(&here);
+    a_send_into_a_prompt_holding_a_draft_is_refused(&here);
     a_watch_prints_each_change(&here);
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
@@ -538,6 +539,32 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--key", "ctrl+c"]));
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo cleared"]));
     until_text(&mut control, "p1", "cleared\n");
+}
+
+/// Text sent into an agent's prompt that already holds a draft is refused, naming the draft,
+/// since the next Return would submit both as one prompt. `--append` adds to it, and Return
+/// alone, or a lone space with it, still submits what the prompt holds.
+fn a_send_into_a_prompt_holding_a_draft_is_refused(here: &Here) {
+    ok(&here.muster(&["pane", "send", "--pane", "p3", "half typed"]));
+    let mut control = here.daemon.connect();
+    until_text(&mut control, "p3", "PROBE-PROMPT> half typed");
+    let refused = until_some("a send into the draft to be refused", || {
+        let ran = here.muster(&["pane", "send", "--pane", "p3", "--enter", "/clear"]);
+        (ran.status.code() == Some(1)).then(|| complained(&ran))
+    });
+    assert!(refused.contains("already holds \"half typed\""), "{refused}");
+    assert!(refused.contains("--append"), "{refused}");
+
+    ok(&here.muster(&["pane", "send", "--pane", "p3", "--append", " and more"]));
+    until_text(&mut control, "p3", "PROBE-PROMPT> half typed and more");
+    ok(&here.muster(&["pane", "send", "--pane", "p3", " ", "--enter"]));
+    let heard = here.daemon.root().join("home/fake-agent-heard");
+    until_some("the agent in p3 to read the draft it was sent with", || {
+        let heard = std::fs::read_to_string(&heard).ok()?;
+        heard.lines().any(|line| line == "half typed and more ").then_some(())
+    });
+    let heard = std::fs::read_to_string(&heard).unwrap();
+    assert!(!heard.contains("/clear"), "the refused send was typed: {heard}");
 }
 
 /// The agent in p2 takes `working` and repaints, so nothing of what it took shows, which exits 4

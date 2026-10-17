@@ -158,6 +158,7 @@ impl Daemon {
                 rows,
                 last,
                 turn: false,
+                prompt: false,
             })),
         }));
         match asked.answer.detail {

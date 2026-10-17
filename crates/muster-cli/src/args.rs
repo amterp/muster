@@ -675,6 +675,12 @@ enum Doing {
         #[arg(long)]
         confirm: bool,
 
+        /// Type the text even when the agent's prompt already holds something, adding to it.
+        /// Without it, text sent into a prompt holding anything is refused, since the next
+        /// Return would submit both as one prompt
+        #[arg(long)]
+        append: bool,
+
         /// Send what this file holds instead, less its trailing newlines
         //
         // Beside the positional rather than instead of it, because the two costs are different
@@ -1237,7 +1243,7 @@ fn pane(
             env: env.iter().cloned().collect(),
             ..RestartAgent::default()
         })),
-        Doing::Send { pane, keys, enter, confirm, file, text } => {
+        Doing::Send { pane, keys, enter, confirm, append, file, text } => {
             check_sent_keys(keys).map_err(Failure::Refused)?;
             // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
             // `muster pane send a - b` still means what it says.
@@ -1252,6 +1258,7 @@ fn pane(
                 enter: *enter,
                 confirm: *confirm,
                 keys: keys.clone(),
+                append: *append,
                 ..SendToPane::default()
             })));
             match from {

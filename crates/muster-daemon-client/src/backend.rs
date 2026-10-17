@@ -116,6 +116,7 @@ impl DaemonBackend {
             rows: 0,
             last,
             turn,
+            prompt: false,
         }))?;
         let Some(answer::Detail::Text(read)) = answer.detail else {
             return Err(Refusal::Declined(format!(
@@ -430,6 +431,23 @@ impl BackendChannel for DaemonBackend {
             .into_iter()
             .map(|(pane, grid)| (PaneId::new(pane), Grid { cols: grid.cols, rows: grid.rows }))
             .collect())
+    }
+
+    /// A daemon that predates reading a prompt reads the one row and says nothing of it.
+    fn prompt(&self, pane: &PaneId) -> Result<Option<String>, Refusal> {
+        let answer = self.pane_request(pane_request::Request::Read(pane_request::Read {
+            pane: pane.to_string(),
+            last: 1,
+            prompt: true,
+            ..pane_request::Read::default()
+        }))?;
+        let Some(answer::Detail::Text(read)) = answer.detail else {
+            return Err(Refusal::Declined(format!(
+                "{} answered a read with no text; this is likely a bug in the daemon",
+                self.description
+            )));
+        };
+        Ok(read.prompt)
     }
 
     fn description(&self) -> &str {

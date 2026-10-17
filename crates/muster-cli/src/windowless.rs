@@ -319,6 +319,25 @@ fn read_pane(socket: &Path, pane: &str, scope: Scope) -> Result<PaneText, String
     }
 }
 
+/// What the prompt of a pane's agent holds, as the daemon reads it, as the window asks it:
+/// nothing when it is empty, cannot be read, or the daemon cannot be asked, since this only ever
+/// holds a send back.
+fn prompt_of(socket: &Path, pane: &str) -> Option<String> {
+    let read = daemon_proto::pane_request::Read {
+        pane: pane.to_string(),
+        last: 1,
+        prompt: true,
+        ..daemon_proto::pane_request::Read::default()
+    };
+    let service = daemon_proto::request::Service::Pane(daemon_proto::PaneRequest {
+        request: Some(daemon_proto::pane_request::Request::Read(read)),
+    });
+    match asked(socket, service).ok()?.detail {
+        Some(daemon_proto::answer::Detail::Text(text)) => text.prompt,
+        _ => None,
+    }
+}
+
 /// One page of a pane's text from the daemon, as [`daemon_proto::pane_request::Read`] asks.
 fn read_page(
     socket: &Path,
@@ -337,6 +356,7 @@ fn read_page(
                     rows: 0,
                     last,
                     turn,
+                    prompt: false,
                 },
             )),
         }),
@@ -367,6 +387,11 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         Ok(snapshot) if snapshot.panes.iter().any(|held| held.pane == pane) => {}
         Ok(_) => return not_held(socket, pane, "sent"),
         Err(trouble) => return failure(trouble.detail().to_string()),
+    }
+    if pane_text::checks_prompt(&send.text, send.append)
+        && let Err(refusal) = pane_text::into_held_prompt(pane, prompt_of(socket, pane).as_deref())
+    {
+        return failure(refusal);
     }
     let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
     let before = if send.confirm { pane_text::before_sending(read) } else { String::new() };

@@ -132,6 +132,20 @@ impl Agent {
         })
     }
 
+    /// What the agent's prompt holds, by a read asking for it.
+    fn prompt_holds(&mut self) -> Option<String> {
+        let read = pane(proto::pane_request::Request::Read(proto::pane_request::Read {
+            pane: "p1".to_string(),
+            last: 1,
+            prompt: true,
+            ..Default::default()
+        }));
+        match expect(&mut self.control, read, proto::Outcome::Done).answer.detail {
+            Some(proto::answer::Detail::Text(text)) => text.prompt,
+            other => panic!("a read answered with {other:?}"),
+        }
+    }
+
     /// What the agent in p1 has not read yet, read as it reads from its own pane.
     fn read_in_its_pane(&mut self) -> Vec<String> {
         self.reading(msg_request::Caller {
@@ -411,6 +425,19 @@ fn a_prompt_with_something_half_typed_in_it_is_not_rung() {
     let rung = agent.until_rung(1);
     assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
     assert!(agent.heard().contains(&"half typed".to_string()), "{:?}", agent.heard());
+}
+
+/// A read asking for the prompt says what it holds, as the doorbell reads it, and nothing once
+/// it is empty: what `pane send` asks before typing text, so as not to add to a draft.
+#[test]
+fn a_read_says_what_the_agents_prompt_holds() {
+    let mut agent = Agent::in_a_pane();
+    assert_eq!(agent.prompt_holds(), None, "an empty prompt");
+
+    agent.type_in("half typed", false);
+    agent.until_shows("PROBE-PROMPT> half typed");
+    let held = until_some("the prompt to be read holding the draft", || agent.prompt_holds());
+    assert_eq!(held, "half typed");
 }
 
 /// Return is pressed again only over the ring's own text, unsent. Once somebody has typed after

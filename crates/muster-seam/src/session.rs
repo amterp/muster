@@ -5795,6 +5795,12 @@ pub(crate) fn read_pane(
         .map_err(|refusal| format!("the daemon {daemon} would not read pane {pane}: {refusal}"))
 }
 
+/// What the prompt of a pane's agent holds, as its daemon reads it: nothing when it is empty,
+/// cannot be read, or the daemon cannot be asked, since this only ever holds a send back.
+pub(crate) fn prompt_of(daemon: &DaemonId, pane: &PaneId) -> Option<String> {
+    channel(daemon).ok()?.prompt(pane).ok().flatten()
+}
+
 /// Every daemon Muster has started on this machine, checked, and marked where this window is
 /// using one.
 ///

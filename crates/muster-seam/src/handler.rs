@@ -2295,6 +2295,12 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
     let Some(pane) = target.pane.clone() else {
         return nothing_to_act_on(window, &target.daemon);
     };
+    if pane_text::checks_prompt(&send.text, send.append) {
+        let held = session::prompt_of(&target.daemon, &pane);
+        if let Err(refusal) = pane_text::into_held_prompt(pane.as_str(), held.as_deref()) {
+            return Response::failure(refusal);
+        }
+    }
     let before = if send.confirm {
         pane_text::before_sending(|rows| {
             session::read_pane(&target.daemon, &pane, Scope::Newest(rows)).map(|read| read.text)
