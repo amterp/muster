@@ -84,6 +84,7 @@ mod tests {
             from: vec!["director".to_string(), "critic".to_string()],
             again: false,
             member: false,
+            said: String::new(),
         };
         assert_eq!(
             wake_text(&notice),

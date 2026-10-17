@@ -96,6 +96,7 @@ fn human(notice: proto::msg_answer::Notice) -> HumanNotice {
         to_you: notice.to_you,
         from: notice.from,
         member: notice.member,
+        said: notice.said,
     }
 }
 

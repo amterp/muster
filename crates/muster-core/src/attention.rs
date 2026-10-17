@@ -111,6 +111,9 @@ pub struct HumanNotice {
     /// Whether the human is in the group: one they read to the end is still theirs, one they
     /// left is not.
     pub member: bool,
+    /// The words of the one message waiting, when it is Muster's own, for a banner to say:
+    /// empty otherwise.
+    pub said: String,
 }
 
 impl HumanNotice {

@@ -169,9 +169,16 @@ impl Messages {
         self.service.human_notices().iter().map(|notice| self.for_human(notice)).collect()
     }
 
-    /// `notice` as the windows are told it, saying whether the human is still in its group.
+    /// `notice` as the windows are told it, saying whether the human is still in its group, and
+    /// what a lone message from Muster says.
     fn for_human(&self, notice: &muster_msg::Notice) -> msg_answer::Notice {
-        msg_answer::Notice { member: self.service.human_is_in(&notice.group), ..notice_of(notice) }
+        let muster_alone = notice.count == 1 && notice.from == [muster_msg::MUSTER];
+        let said = muster_alone.then(|| self.service.said(&notice.group, notice.last)).flatten();
+        msg_answer::Notice {
+            member: self.service.human_is_in(&notice.group),
+            said: said.unwrap_or_default().to_string(),
+            ..notice_of(notice)
+        }
     }
 
     /// What the request just handled changed for the human, in the order the service decided
@@ -1762,8 +1769,9 @@ pub(crate) fn notice_of(notice: &muster_msg::Notice) -> msg_answer::Notice {
         urgent: notice.urgent,
         from: notice.from.clone(),
         again: notice.again,
-        // Only the windows read it, and `Messages::for_human` says it.
+        // Only the windows read these, and `Messages::for_human` says them.
         member: false,
+        said: String::new(),
     }
 }
 

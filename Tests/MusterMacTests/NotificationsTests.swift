@@ -84,6 +84,14 @@ struct MessageNotificationsTests {
         == "3 messages for you from director, critic")
   }
 
+  /// Muster's own message is the reason for its banner, so the banner says it; the daemon sends
+  /// the words for that alone.
+  @Test("a lone message from Muster says its words")
+  func aLoneMessageFromMusterSaysItsWords() {
+    let said = "🤖 integrator closed; its helper otter is still running, and is no longer quiet."
+    #expect(MessageNotification.body(count: 1, from: ["@muster"], said: said) == said)
+  }
+
   @Test("a group's banner is its own, never a pane's")
   func identifierIsTheGroups() {
     // One banner per group, replaced by each message, and a withdrawal has to find it.

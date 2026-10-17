@@ -2424,6 +2424,10 @@ message AttentionChanged {
   string group = 8;
   uint64 count = 9;
   repeated string from = 10;
+
+  // For `message`, the words of the one message waiting when it is Muster's own (`@muster`),
+  // for the banner to say in place of a count; empty for anyone else's.
+  string said = 11;
 }
 
 // What is wrong with this window, whole.

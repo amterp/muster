@@ -79,6 +79,7 @@ pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
         to_you: number("to_you"),
         from: collect(given, "from", |from| from.as_str().unwrap_or_default().to_string()),
         member: given.get("member").and_then(Value::as_bool).unwrap_or_default(),
+        said: String::new(),
     }
 }
 

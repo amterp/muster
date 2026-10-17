@@ -1233,9 +1233,20 @@ fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
     };
     make(&mut agent.control, quiet_helper);
     agent.daemon.run_agent("p2");
+    let mut window = agent.daemon.connect();
+    expect(&mut window, attending_request(), proto::Outcome::Done);
 
     expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
     logging.logged_until(r#""event":"msg.helper.orphans_told""#, Duration::from_secs(20));
+    // The windows are handed Muster's words, for the banner to say rather than a count.
+    let told = loop {
+        if let Some(proto::event::Event::HumanNotice(told)) = window.next_event().event
+            && told.count == 1
+        {
+            break told;
+        }
+    };
+    assert!(told.said.contains(" closed; its helper ") && told.said.contains("--helpers-of p1"));
     let helper = snapshot(&mut agent.control).panes.into_iter().find(|pane| pane.pane == "p2");
     assert!(helper.is_some_and(|helper| !helper.quiet && helper.maker.as_deref() == Some("p1")));
 

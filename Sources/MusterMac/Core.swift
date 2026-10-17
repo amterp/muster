@@ -1675,7 +1675,7 @@ public enum Core {
         daemon: changed.daemonID, pane: changed.paneID, state: changed.state,
         label: changed.label, subtitle: changed.subtitle, noteTitle: changed.noteTitle,
         noteBody: changed.noteBody, group: changed.group, count: changed.count,
-        from: changed.from)
+        from: changed.from, said: changed.said)
     case .presentationChanged(let changed):
       let presentation = Presentation(
         sidebar: changed.sidebar, sidebarWidth: CGFloat(changed.sidebarWidth),

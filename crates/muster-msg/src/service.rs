@@ -1013,6 +1013,15 @@ impl<S: Store> Messaging<S> {
         Ok(group)
     }
 
+    /// The body of the message at `seq` in `group`, when there is one.
+    pub fn said(&self, group: &str, seq: u64) -> Option<&str> {
+        let entry = self.groups.get(group)?.log.iter().rev().find(|entry| entry.seq == seq)?;
+        match &entry.what {
+            What::Message { body, .. } => Some(body.as_str()),
+            _ => None,
+        }
+    }
+
     /// When an agent in `author_pane` last posted to one in `reader_pane`, in the host's
     /// milliseconds: a message in a group holding both, addressed to the reader or to nobody in
     /// particular, which reaches every member it rings. Read from the transcripts, so a host

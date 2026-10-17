@@ -468,6 +468,7 @@ fn a_window_hears_each_message_for_the_human_once_and_no_chatter() {
     let posted = expect(&mut control, post_to(&named("a"), "@human", "need input"), DONE);
     assert_eq!(reached(&posted), [("@human".to_string(), msg_answer::Reach::Woken)]);
     let told = human_notice(&mut window);
+    assert_eq!(told.said, "", "an agent's words stay in the transcript");
     assert_eq!((told.group.as_str(), told.first, told.last, told.count), ("g", 5, 5, 1));
     assert_eq!(told.from, ["a"]);
 

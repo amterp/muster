@@ -1033,6 +1033,11 @@ message MsgAnswer {
     // count falls to 0 because the human read it is still theirs to list, and one they left or
     // that was deleted is not. A daemon that predates it leaves it false.
     bool member = 9;
+    // Since 1.6. On a notice to the windows, the message's own words when the one message
+    // waiting is Muster's (`@muster`), for a banner to say rather than a count: what Muster says
+    // is a sentence or two, written to be read on its own. Empty for anyone else's, whose
+    // messages are any length and are read in the transcript (MIP-4, section 5).
+    string said = 10;
   }
 }
 

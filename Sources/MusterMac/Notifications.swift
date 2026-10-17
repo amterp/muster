@@ -72,7 +72,12 @@ public enum MessageNotification {
 
   /// How many wait and from whom. Every one of them woke the human, whether addressed to them
   /// or rung to them by the group, so "for you" is true of each.
-  public static func body(count: UInt64, from: [String]) -> String {
+  ///
+  /// A lone message from Muster says its own words instead, `said`, which the daemon sends for
+  /// no other author: what Muster has to say, such as an agent closing with its helpers still
+  /// running, is the reason for the banner, and a count from `@muster` says nothing of it.
+  public static func body(count: UInt64, from: [String], said: String = "") -> String {
+    if !said.isEmpty { return said }
     let messages = count == 1 ? "1 message" : "\(count) messages"
     let authors = from.joined(separator: ", ")
     return authors.isEmpty ? "\(messages) for you" : "\(messages) for you from \(authors)"
@@ -175,7 +180,7 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   public func apply(
     daemon: String, pane: String, state: String, label: String, subtitle: String,
     noteTitle: String = "", noteBody: String = "", group: String = "", count: UInt64 = 0,
-    from: [String] = []
+    from: [String] = [], said: String = ""
   ) {
     guard let center else { return }
     let id =
@@ -201,7 +206,7 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
       ]
     } else {
       content.title = MessageNotification.title(group: group)
-      content.body = MessageNotification.body(count: count, from: from)
+      content.body = MessageNotification.body(count: count, from: from, said: said)
       content.userInfo = [
         PaneNotification.daemonKey: daemon, MessageNotification.groupKey: group,
       ]

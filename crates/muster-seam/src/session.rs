@@ -5818,6 +5818,7 @@ fn announce_message(group: &GroupKey, attend: Attend) {
         group: group.group.clone(),
         count: notice.count,
         from: notice.from,
+        said: notice.said,
         ..AttentionChanged::default()
     })));
 }

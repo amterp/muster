@@ -415,6 +415,34 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
     }
 }
 
+/// A maker closing with a helper still running tells the person once, and the banner the window
+/// is asked for carries Muster's words rather than a count from `@muster`.
+#[test]
+fn a_closed_makers_notice_carries_its_words_to_the_banner() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    let made = answer(request::Payload::SplitPane(SplitPane {
+        pane_id: "p2".to_string(),
+        side: "right".to_string(),
+        hidden: true,
+        maker: "p2".to_string(),
+        ..SplitPane::default()
+    }));
+    assert!(matches!(made.payload, Some(response::Payload::Made(_))), "{made:?}");
+    assert_ok(&answer(request::Payload::ClosePane(ClosePane {
+        pane_id: "p2".to_string(),
+        ..ClosePane::default()
+    })));
+    until(
+        "the window to be asked for a banner saying p2 closed",
+        || asked().iter().any(|asked| !asked.group.is_empty() && asked.said.contains("closed;")),
+        || format!("asked: {:?}", asked()),
+    );
+    let banner = asked().into_iter().find(|asked| !asked.group.is_empty()).expect("just seen");
+    assert!(banner.said.contains("--helpers-of p2"), "{banner:?}");
+}
+
 /// A quiet pane asks for nobody: a program's notification there raises nothing, where the same
 /// notification in a pane that is not quiet does.
 #[test]
