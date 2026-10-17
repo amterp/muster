@@ -231,7 +231,9 @@ one command:
 The prompt is one line of at most 512 bytes, as a focus is; a longer brief belongs in a file the
 prompt names. A later compaction replaces a prompt still waiting along with the compaction, and a
 compaction the daemon gives up typing, because something was typed into the pane after it or a
-dialog opened over it, takes its prompt with it.
+dialog opened over it, takes its prompt with it. A compaction still waiting, and its prompt, go when
+the agent leaves its pane, a restart included: neither is typed into the agent that comes next,
+even one resuming the same session.
 
 While a compaction or its prompt waits, `muster window` says so on the agent's row and what it
 waits for: `(compaction queued, waiting for its 1 sub-agent and its turn to end)`. `pane compact`
@@ -273,7 +275,7 @@ later, saying what it typed:
 
 Then wait for the agent as for any you have just started, with `muster pane wait --until idle`.
 A message waiting for the agent, or posted to it while it restarts, waits for the resumed one and
-rings it once it is idle.
+rings it once it is idle. A compaction queued for it does not: `pane compact` asks again.
 
 A pane whose agent has reported no session is refused with nothing ended, because there is
 nothing to resume; a harness's adapter is what reports the session. So is an agent whose harness

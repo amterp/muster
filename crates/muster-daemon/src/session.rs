@@ -39,7 +39,7 @@ use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
-use crate::compaction::Pending;
+use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
 use crate::data::Data;
@@ -2168,7 +2168,9 @@ impl Session {
                         self.persister.changed();
                     }
                     (record.session_id, record.resume) = (None, None);
-                    pane.compaction.cleared();
+                    let left = record.agent.as_deref().unwrap_or_default();
+                    let restarting = pane.io.discards().is_restarting();
+                    forget_compaction(&mut pane.compaction, &name, left, restarting);
                     record.set_pending_compaction(proto::PendingCompaction::None);
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
@@ -3748,6 +3750,27 @@ fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {
 
 fn is_waiting(facts: Option<&proto::AgentFacts>) -> bool {
     facts.is_some_and(|facts| facts.waiting.is_some())
+}
+
+/// Forgets what was to be typed for an agent that has left its pane, saying so when anything was.
+fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, restarting: bool) {
+    let pending = compaction.pending();
+    if pending != Pending::Nothing {
+        log::warn(
+            "daemon.compact.dropped",
+            fields! {
+                "pane" => pane,
+                "agent" => agent,
+                "follow_up" => pending == Pending::FollowUp,
+                "restarting" => restarting,
+                "impact" => "the compaction, or the prompt it was to be followed by, is not typed \
+                             into the agent that comes next, even one resuming the same session",
+                "check" => "whether the next agent still needs it; `muster pane compact` asks \
+                            again",
+            },
+        );
+    }
+    compaction.cleared();
 }
 
 /// At the end of an agent's turn, forgets what it was waiting on unless it said so again during

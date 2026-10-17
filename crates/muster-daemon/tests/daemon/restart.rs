@@ -157,3 +157,33 @@ fn an_agent_with_nothing_to_resume_or_a_variable_muster_sets_is_left_running() {
     assert_eq!(p1.session_id.as_deref(), Some("s-5"), "the agent was left running: {p1:?}");
     drop(daemon);
 }
+
+/// A compaction still waiting for the agent goes with it, and the log says so: it is not typed
+/// into the agent resuming in its place.
+#[test]
+fn a_compaction_waiting_for_a_restarted_agent_is_dropped_and_logged() {
+    let (daemon, mut control) = reported(&[], "--model opus", "s-6");
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    let compact = pane_request::Compact {
+        pane: "p1".to_string(),
+        focus: None,
+        then: Some("carry on".to_string()),
+    };
+    expect(&mut control, pane(pane_request::Request::Compact(compact)), proto::Outcome::Done);
+
+    expect(&mut control, restart("p1", &[]), proto::Outcome::Done);
+
+    let path = daemon.root().join("daemon.log");
+    until(
+        "the dropped compaction in the daemon's log",
+        || {
+            written(&path).lines().any(|line| {
+                line.contains(r#""event":"daemon.compact.dropped""#)
+                    && line.contains(r#""restarting":"true""#)
+            })
+        },
+        (),
+    );
+    let p1 = record(&snapshot(&mut control), "p1").clone();
+    assert_eq!(p1.pending_compaction(), proto::PendingCompaction::None, "{p1:?}");
+}
