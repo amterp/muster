@@ -29,6 +29,10 @@ pub const COMPACT_THEN: u32 = 6;
 /// and refuses it in its own words, which do not say why.
 pub const RESTARTS: u32 = 6;
 
+/// The first minor whose daemon records which pane made a pane its helper, and holds a maker's
+/// hidden helpers in one tab. An older one drops the maker without a word, so a client asks first.
+pub const HELPERS: u32 = 6;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

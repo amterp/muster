@@ -318,6 +318,9 @@ message PaneRequest {
     optional string label = 7;
     // Starts it quiet (`Pane.quiet`). Since 1.5.
     bool quiet = 8;
+    // Since 1.6. The pane this one is a helper of (`Pane.maker`), by its id. Need not be on this
+    // daemon: a pane id is unique across every machine. Not the pane itself.
+    optional string maker = 9;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
@@ -431,6 +434,8 @@ message Placement {
   oneof where {
     Beside beside = 1;
     NewTab new_tab = 2;
+    // Since 1.6.
+    Helpers helpers = 3;
   }
 
   message Beside {
@@ -447,6 +452,16 @@ message Placement {
     Label label = 2;
     // Makes the tab hidden (`Tab.hidden`). Since 1.5.
     bool hidden = 3;
+  }
+
+  // Among the other helpers of the pane's maker (`Create.maker`, which it needs): in the first
+  // hidden tab here that holds one, as a column after the rest, each column as wide as the
+  // others; or, when no hidden tab here holds one, in a new hidden tab called `tab`. Decided as
+  // the pane is placed rather than as it is asked for, so two helpers made at once share one tab.
+  // Only a create places a pane here. Since 1.6.
+  message Helpers {
+    string tab = 1;
+    Label label = 2;
   }
 }
 
@@ -1337,6 +1352,10 @@ message Pane {
   // be followed by, owed once it has run. Kept while the daemon runs, and never written to the
   // state file: a restored pane has no compaction queued.
   PendingCompaction pending_compaction = 20;
+  // Since 1.6. The pane that made this one as its helper (MIP-7), by its id, which may be on
+  // another machine: set when the pane is made (`Create.maker`), never changed, and written to the
+  // state file. Absent for a pane nobody made as a helper.
+  optional string maker = 21;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

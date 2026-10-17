@@ -161,6 +161,91 @@ fn a_pane_can_start_in_a_hidden_tab_and_quiet() {
     assert!(held.panes[0].quiet);
 }
 
+/// A maker's hidden helpers share one tab, named when the first of them makes it, and each one
+/// joins it as a column as wide as the rest. Another maker's helpers get a tab of their own.
+#[test]
+fn a_makers_helpers_share_one_hidden_tab() {
+    let (_daemon, mut control) = two_panes();
+    let asked = make(&mut control, helper("h1", "a", among_helpers("t2", "a's helpers")));
+    assert_eq!(names(&asked.events), ["pane_opened:h1", "tab_opened:t2"]);
+    make(&mut control, helper("h2", "a", among_helpers("t3", "a's helpers")));
+    make(&mut control, helper("h3", "a", among_helpers("t4", "a's helpers")));
+    assert_eq!(tab_shape(&mut control, "t2"), "[[h1|h2 0.50]|h3 0.67]");
+    make(&mut control, helper("g1", "b", among_helpers("t5", "b's helpers")));
+
+    let held = snapshot(&mut control);
+    let tabs: Vec<(&str, bool, Option<&str>)> = held
+        .tabs
+        .iter()
+        .map(|tab| {
+            let label = tab.label.as_ref().and_then(|label| label.text.as_deref());
+            (tab.tab.as_str(), tab.hidden, label)
+        })
+        .collect();
+    assert_eq!(
+        tabs,
+        [("t1", false, None), ("t2", true, Some("a's helpers")), ("t5", true, Some("b's helpers"))],
+        "one hidden tab per maker, and no tab for a name that went unused"
+    );
+    let maker = |pane: &str| {
+        held.panes.iter().find(|held| held.pane == pane).and_then(|held| held.maker.clone())
+    };
+    assert_eq!(maker("h2").as_deref(), Some("a"));
+    assert_eq!(maker("g1").as_deref(), Some("b"));
+    assert_eq!(maker("a"), None, "a pane nobody made as a helper has no maker");
+
+    // A helper split beside its maker is still a helper, and its tab is the maker's.
+    make(&mut control, helper("h4", "a", beside("a", Side::Down)));
+    assert_eq!(maker_of(&mut control, "h4").as_deref(), Some("a"));
+    assert_eq!(tab_shape(&mut control, "t1"), "[[a/h4 0.50]|b 0.50]");
+    // Helpers of helpers, and a maker on another machine, are recorded as asked.
+    make(&mut control, helper("h5", "p2c6txyt94", among_helpers("t6", "far's helpers")));
+    assert_eq!(maker_of(&mut control, "h5").as_deref(), Some("p2c6txyt94"));
+}
+
+/// Where a helper goes is decided as it is placed, after its shell has started, so helpers made
+/// at the same moment on different connections still end up in one tab.
+#[test]
+fn helpers_made_at_once_still_share_one_tab() {
+    let (daemon, mut control) = two_panes();
+    std::thread::scope(|scope| {
+        for (name, tab) in [("h1", "t2"), ("h2", "t3"), ("h3", "t4")] {
+            let daemon = &daemon;
+            scope.spawn(move || {
+                let mut control = daemon.connect();
+                make(&mut control, helper(name, "a", among_helpers(tab, "a's helpers")));
+            });
+        }
+    });
+    let hidden: Vec<String> = snapshot(&mut control)
+        .tabs
+        .into_iter()
+        .filter(|tab| tab.hidden)
+        .map(|tab| tab.tab)
+        .collect();
+    assert_eq!(hidden.len(), 1, "one tab of helpers: {hidden:?}");
+}
+
+fn maker_of(control: &mut Control, pane: &str) -> Option<String> {
+    snapshot(control).panes.into_iter().find(|held| held.pane == pane).and_then(|held| held.maker)
+}
+
+#[test]
+fn a_helper_needs_a_maker_other_than_itself_and_only_a_create_places_one() {
+    let (_daemon, mut control) = two_panes();
+    let refused = |control: &mut Control, create: pane_request::Create, why: &str| {
+        let asked = expect(control, create_request(create), proto::Outcome::Refused);
+        assert!(asked.answer.reason.contains(why), "{}", asked.answer.reason);
+    };
+    refused(&mut control, create("c", among_helpers("t2", "x")), "needs a maker");
+    refused(&mut control, helper("c", "c", among_helpers("t2", "x")), "its own helper");
+    refused(&mut control, helper("c", "a b", among_helpers("t2", "x")), "maker");
+    refused(&mut control, helper("c", "a", among_helpers("t1", "x")), "already on this daemon");
+    let asked = expect(&mut control, moved("b", among_helpers("t2", "x")), proto::Outcome::Refused);
+    assert!(asked.answer.reason.contains("only a pane being made"), "{}", asked.answer.reason);
+    assert_eq!(tab_shape(&mut control, "t1"), "[a|b 0.50]", "nothing moved");
+}
+
 fn quiet(name: &str, quiet: bool) -> proto::request::Service {
     pane(pane_request::Request::Quiet(pane_request::Quiet { pane: name.to_string(), quiet }))
 }

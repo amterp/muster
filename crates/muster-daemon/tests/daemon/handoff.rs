@@ -85,7 +85,10 @@ fn replaced(daemon: &mut Daemon) {
 fn every_pane_survives_a_handoff_with_its_process_screen_and_place() {
     let mut daemon = daemon();
     let (mut control, _input) = two_panes(&daemon);
-    let quiet = pane_request::Create { quiet: true, ..create("p3", in_new_hidden_tab("t2")) };
+    let quiet = pane_request::Create {
+        quiet: true,
+        ..helper("p3", "p1", among_helpers("t2", "p1's helpers"))
+    };
     make(&mut control, quiet);
     // Settled first: a shell's directory, as the kernel names it, can still be on its way.
     let before = until_some("the pane records to settle", || {

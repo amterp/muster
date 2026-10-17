@@ -185,6 +185,7 @@ impl DaemonBackend {
             command: run,
             label: name,
             quiet,
+            maker: None,
         }))
         .map_err(|refusal| match refusal {
             Refusal::Unanswered { detail, .. } => {

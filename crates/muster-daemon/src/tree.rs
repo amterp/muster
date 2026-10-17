@@ -113,6 +113,20 @@ impl Node {
         true
     }
 
+    /// Puts `new` after everything here, as a column as wide as the share each pane already in
+    /// the tree would have if they were columns too: a tree only ever grown this way stays even.
+    pub(crate) fn append_column(&mut self, new: &str) {
+        #[expect(clippy::cast_precision_loss, reason = "a tab holds a handful of panes")]
+        let held = self.panes().len() as f32;
+        let existing = Box::new(std::mem::replace(self, Node::Pane(String::new())));
+        *self = Node::Split {
+            axis: Axis::Columns,
+            ratio: held / (held + 1.0),
+            first: existing,
+            second: Box::new(Node::Pane(new.to_string())),
+        };
+    }
+
     /// This tree without `pane`, its sibling taking the parent split's place. `None` when the
     /// pane was the whole tree. Also says whether the pane was here at all.
     pub(crate) fn without(self, pane: &str) -> (Option<Node>, bool) {
@@ -316,6 +330,16 @@ mod tests {
         assert_shaped(&tree, &columns(0.5, pane("a"), rows(0.5, pane("b"), pane("c"))));
         assert_eq!(tree.panes(), ["a", "b", "c"]);
         assert!(!tree.insert("missing", "d", Side::Down, 0.5));
+    }
+
+    #[test]
+    fn columns_appended_one_by_one_stay_even() {
+        let mut tree = pane("a");
+        tree.append_column("b");
+        tree.append_column("c");
+        let thirds = columns(2.0 / 3.0, columns(0.5, pane("a"), pane("b")), pane("c"));
+        assert_shaped(&tree, &thirds);
+        assert_eq!(tree.panes(), ["a", "b", "c"]);
     }
 
     #[test]

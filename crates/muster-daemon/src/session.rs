@@ -1002,6 +1002,7 @@ pub(crate) struct Starting {
     word: String,
     command: Option<String>,
     quiet: bool,
+    maker: Option<String>,
     target: Target,
     grid: Grid,
     cwd: PathBuf,
@@ -1026,8 +1027,34 @@ impl Starting {
 /// Where a create or a move puts a pane, once checked against what is here.
 #[derive(Debug)]
 enum Target {
-    Beside { pane: String, side: tree::Side, ratio: f32 },
-    NewTab { name: String, label: proto::Label, hidden: bool },
+    Beside {
+        pane: String,
+        side: tree::Side,
+        ratio: f32,
+    },
+    NewTab {
+        name: String,
+        label: proto::Label,
+        hidden: bool,
+    },
+    /// Among `maker`'s helpers, which is decided as the pane is placed: two helpers started at
+    /// once would otherwise each find no tab of helpers and make one. `name` and `label` are for
+    /// the hidden tab made when no tab holds any of them yet.
+    Helpers {
+        maker: String,
+        name: String,
+        label: proto::Label,
+    },
+}
+
+impl Target {
+    /// The name of the tab this may make, reserved from when it is checked until it is placed.
+    fn new_tab(&self) -> Option<&str> {
+        match self {
+            Target::NewTab { name, .. } | Target::Helpers { name, .. } => Some(name),
+            Target::Beside { .. } => None,
+        }
+    }
 }
 
 impl Session {
@@ -1302,10 +1329,17 @@ impl Session {
         {
             return Err(name_joined(given, &who));
         }
-        let target = self.target(create.placement, &create.pane)?;
+        let maker = create.maker.filter(|maker| !maker.is_empty());
+        if let Some(maker) = &maker {
+            valid_name("maker", maker).map_err(Reply::refused)?;
+            if *maker == create.pane {
+                return Err(Reply::refused("a pane cannot be its own helper"));
+            }
+        }
+        let target = self.target(create.placement, &create.pane, maker.as_deref())?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
-            Target::NewTab { .. } => None,
+            Target::NewTab { .. } | Target::Helpers { .. } => None,
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
@@ -1322,8 +1356,8 @@ impl Session {
             self.launch(&create.pane, &name, create.command.as_deref(), &create.env);
 
         self.reserved.insert(create.pane.clone());
-        if let Target::NewTab { name, .. } = &target {
-            self.reserved.insert(name.clone());
+        if let Some(name) = target.new_tab() {
+            self.reserved.insert(name.to_string());
         }
         self.naming.insert(word.clone(), create.pane.clone());
         if let Some(given) = given {
@@ -1335,6 +1369,7 @@ impl Session {
             word,
             command: create.command,
             quiet: create.quiet,
+            maker,
             target,
             grid,
             cwd,
@@ -1394,7 +1429,7 @@ impl Session {
         started: std::io::Result<(OwnedFd, Child)>,
     ) -> Reply {
         self.reserved.remove(&starting.pane);
-        if let Target::NewTab { name, .. } = &starting.target {
+        if let Some(name) = starting.target.new_tab() {
             self.reserved.remove(name);
         }
         self.naming.retain(|_, pane| *pane != starting.pane);
@@ -1428,6 +1463,7 @@ impl Session {
             cwd: starting.cwd.display().to_string(),
             command: starting.command,
             quiet: starting.quiet,
+            maker: starting.maker,
             ..proto::Pane::default()
         };
         if let Err(reply) = self.open(record, starting.grid, master, child, program) {
@@ -1500,8 +1536,13 @@ impl Session {
     }
 
     /// Checks a placement against what is here. `moving` is the pane being placed, which a
-    /// placement may not name as its own neighbour.
-    fn target(&self, placement: Option<proto::Placement>, moving: &str) -> Result<Target, Reply> {
+    /// placement may not name as its own neighbour, and `maker` the pane it is a helper of.
+    fn target(
+        &self,
+        placement: Option<proto::Placement>,
+        moving: &str,
+        maker: Option<&str>,
+    ) -> Result<Target, Reply> {
         let Some(placement) = placement.and_then(|placement| placement.r#where) else {
             return Err(Reply::refused("the request does not say where the pane goes"));
         };
@@ -1523,20 +1564,51 @@ impl Session {
                 Ok(Target::Beside { pane: beside.pane, side, ratio })
             }
             proto::placement::Where::NewTab(new_tab) => {
-                valid_name("tab", &new_tab.tab).map_err(Reply::refused)?;
-                if self.tab_index(&new_tab.tab).is_some() || self.reserved.contains(&new_tab.tab) {
-                    return Err(Reply::refused(format!(
-                        "a tab {} is already on this daemon; place the pane beside one of its panes",
-                        new_tab.tab
-                    )));
-                }
+                self.free_tab(&new_tab.tab)?;
                 Ok(Target::NewTab {
                     name: new_tab.tab,
                     label: new_tab.label.unwrap_or_default(),
                     hidden: new_tab.hidden,
                 })
             }
+            proto::placement::Where::Helpers(helpers) => {
+                let Some(maker) = maker else {
+                    return Err(Reply::refused(
+                        "a pane placed among a maker's helpers needs a maker; say which pane it \
+                         is a helper of",
+                    ));
+                };
+                self.free_tab(&helpers.tab)?;
+                Ok(Target::Helpers {
+                    maker: maker.to_string(),
+                    name: helpers.tab,
+                    label: helpers.label.unwrap_or_default(),
+                })
+            }
         }
+    }
+
+    /// Refuses a name for a new tab that is not one, or is already here or being made.
+    fn free_tab(&self, tab: &str) -> Result<(), Reply> {
+        valid_name("tab", tab).map_err(Reply::refused)?;
+        if self.tab_index(tab).is_some() || self.reserved.contains(tab) {
+            return Err(Reply::refused(format!(
+                "a tab {tab} is already on this daemon; place the pane beside one of its panes"
+            )));
+        }
+        Ok(())
+    }
+
+    /// The first hidden tab holding a helper of `maker`.
+    fn helpers_tab(&self, maker: &str) -> Option<usize> {
+        self.tabs.iter().position(|tab| {
+            tab.hidden
+                && tab.root.panes().into_iter().any(|pane| {
+                    self.pane_index(pane).is_some_and(|index| {
+                        self.panes[index].record.maker.as_deref() == Some(maker)
+                    })
+                })
+        })
     }
 
     /// Puts a pane that is in no tab where `target` says, and announces the tab.
@@ -1555,6 +1627,14 @@ impl Session {
                 self.tabs.push(tab);
                 self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
             }
+            Target::Helpers { maker, name, label } => match self.helpers_tab(&maker) {
+                Some(index) => {
+                    self.tabs[index].root.append_column(pane);
+                    let record = self.tabs[index].record();
+                    self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+                }
+                None => self.place(pane, Target::NewTab { name, label, hidden: true }),
+            },
         }
     }
 
@@ -2207,7 +2287,16 @@ impl Session {
         let Some(source) = self.tab_of(&moved.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", moved.pane));
         };
-        let target = match self.target(moved.placement, &moved.pane) {
+        if matches!(
+            moved.placement.as_ref().and_then(|placement| placement.r#where.as_ref()),
+            Some(proto::placement::Where::Helpers(_))
+        ) {
+            return Reply::refused(
+                "only a pane being made is placed among a maker's helpers; move this one beside \
+                 one of them instead",
+            );
+        }
+        let target = match self.target(moved.placement, &moved.pane, None) {
             Ok(target) => target,
             Err(reply) => return reply,
         };
@@ -2764,6 +2853,7 @@ impl Session {
                     grid: pane.io.grid(),
                     resume: pane.resume.clone(),
                     quiet: pane.record.quiet,
+                    maker: pane.record.maker.clone(),
                 })
                 .collect(),
         }
@@ -2884,6 +2974,7 @@ impl Session {
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 quiet: pane.saved.quiet,
+                maker: pane.saved.maker,
                 session_id: resume.as_ref().map(|resume| resume.session.clone()),
                 resume: resume.as_ref().map(persist::Resume::record),
                 ..proto::Pane::default()

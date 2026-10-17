@@ -649,6 +649,7 @@ fn make_pane(
             command: said(&split.run),
             label: said(&split.name),
             quiet: split.quiet,
+            maker: None,
         },
     ));
     let answer = match (split.hidden, split.quiet) {

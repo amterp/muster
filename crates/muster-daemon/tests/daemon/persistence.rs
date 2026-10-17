@@ -84,6 +84,7 @@ fn set_the_other_settings(control: &mut Control) {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "one restart, checked against all it keeps")]
 fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() {
     let mut daemon = daemon();
     let mut control = daemon.connect();
@@ -118,7 +119,7 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
         pane_request::Create {
             cwd: Some(second.display().to_string()),
             quiet: true,
-            ..create("p3", in_new_hidden_tab("t2"))
+            ..helper("p3", "p1", among_helpers("t2", "🤖 A's helpers"))
         },
     );
     let zoom = pane_request::Zoom { pane: "p2".to_string(), zoomed: true };
@@ -170,6 +171,7 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     };
     assert_eq!(by_name(&after), by_name(&before), "tabs, trees, ratios, zoom, labels, hiding");
     assert!(record(&after, "p3").quiet && !record(&after, "p1").quiet, "which pane is quiet");
+    assert_eq!(record(&after, "p3").maker.as_deref(), Some("p1"), "whose helper p3 is");
     for name in ["p1", "p2", "p3"] {
         let (was, is) = (record(&before, name), record(&after, name));
         assert_eq!((&is.label, &is.word, &is.cwd), (&was.label, &was.word, &was.cwd), "{name}");

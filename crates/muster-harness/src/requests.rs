@@ -54,6 +54,21 @@ pub fn in_new_hidden_tab(tab: &str) -> proto::Placement {
     }
 }
 
+/// Among the maker's other helpers, or in a new hidden tab `tab` called `label` when it has none.
+pub fn among_helpers(tab: &str, label: &str) -> proto::Placement {
+    proto::Placement {
+        r#where: Some(placement::Where::Helpers(placement::Helpers {
+            tab: tab.to_string(),
+            label: Some(proto::Label { text: Some(label.to_string()), generation: 1 }),
+        })),
+    }
+}
+
+/// A create for a helper of `maker`.
+pub fn helper(name: &str, maker: &str, placement: proto::Placement) -> pane_request::Create {
+    pane_request::Create { maker: Some(maker.to_string()), ..create(name, placement) }
+}
+
 pub fn beside(pane: &str, side: proto::Side) -> proto::Placement {
     proto::Placement {
         r#where: Some(placement::Where::Beside(placement::Beside {
