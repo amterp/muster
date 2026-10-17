@@ -625,10 +625,9 @@ impl Reading {
         } else {
             screen::page(self.first_row, self.rows, screen::PAGE_BYTES, rows)
         };
-        let prompt = self
-            .prompt
-            .as_ref()
-            .and_then(|(agent, detecting)| crate::messages::prompt_holds(&self.io, agent, detecting));
+        let prompt = self.prompt.as_ref().and_then(|(agent, detecting)| {
+            crate::messages::prompt_holds(&self.io, agent, detecting)
+        });
         let text = proto::PaneText { prompt, ..text };
         Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
     }
