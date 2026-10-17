@@ -167,7 +167,13 @@ fn a_pane_can_start_in_a_hidden_tab_and_quiet() {
 fn a_makers_helpers_share_one_hidden_tab() {
     let (_daemon, mut control) = two_panes();
     let asked = make(&mut control, helper("h1", "a", among_helpers("t2", "a's helpers")));
-    assert_eq!(names(&asked.events), ["pane_opened:h1", "tab_opened:t2"]);
+    // Only what the request is about: the maker's own shell reports its title and directory
+    // when it reaches its first prompt, which on a loaded machine is while this is answered.
+    let about: Vec<String> = names(&asked.events)
+        .into_iter()
+        .filter(|name| name.ends_with(":h1") || name.ends_with(":t2"))
+        .collect();
+    assert_eq!(about, ["pane_opened:h1", "tab_opened:t2"]);
     make(&mut control, helper("h2", "a", among_helpers("t3", "a's helpers")));
     make(&mut control, helper("h3", "a", among_helpers("t4", "a's helpers")));
     assert_eq!(tab_shape(&mut control, "t2"), "[[h1|h2 0.50]|h3 0.67]");
