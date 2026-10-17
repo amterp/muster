@@ -485,7 +485,7 @@ fn restart_agent(
     pane: &str,
     restart: &muster_proto::RestartAgent,
 ) -> Result<Response, Trouble> {
-    let answer = asked(
+    let answer = asked_of_one_since(
         socket,
         pane_service(daemon_proto::pane_request::Request::Restart(
             daemon_proto::pane_request::Restart {
@@ -493,6 +493,8 @@ fn restart_agent(
                 env: restart.env.clone().into_iter().collect(),
             },
         )),
+        daemon_proto::version::RESTARTS,
+        "restart an agent",
     )?;
     Ok(match (answer.outcome(), answer.detail) {
         (daemon_proto::Outcome::NotThere, _) => not_held(socket, pane, "restarted"),
