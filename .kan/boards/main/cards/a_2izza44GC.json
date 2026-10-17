@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "two-directed",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792197591841,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-14, 0.16.0 on the devenv. The council skill (`extras/skill/council/SKILL.md`) has every directing agent take the name `director`, and `directed.toml` grants that name its powers, but a participant's name is unique on its machine. A second review session convening its own council while the first was still running was refused: \"director is the name of a session that is still running ...; join under another name\". It made the group anyway and stranded it (card a_2izzZYN6K). The member name it meant to use, `reviewer`, was held by another live council too. The workaround was a copy of the policy with `director-\u003cchange\u003e` in place of `director`, a second group, and telling the reviewer to join as `reviewer-\u003cchange\u003e`. One option is a policy role meaning the group's maker, so `directed.toml` needs no fixed name. Another is the skill naming each director per group (`director-\u003cgroup\u003e`), with `group new` filling that name into the preset. Either way the Convening section's \"The name `director` outlives each council\" changes with it. Related: a_2cW57qOIs (joining as director keeps a gone session's groups), a_2hIfss6pW.",
+  "id": "a_2izza44GC",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b17",
+  "title": "Two directed councils at once collide on the name director",
+  "type": "enhancement",
+  "updated_at_millis": 1792197594210,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792197591841}
+  ]
+}

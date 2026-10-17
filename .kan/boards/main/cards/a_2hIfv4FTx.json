@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Seen in real restarts now, from tooling feedback, 2026-10-16, 0.16.0 on the devenv. Where the restore of a wrapper-launched Claude Code did run, it ran a bare `claude --resume \u003cid\u003e`, and the pane's `resume` in `release.state.json` lists the wrapper's argv as `uncarried`. Two things went with that argv. One is the environment the wrapper sets: here `HTTPS_PROXY`, so 11 restored agents skipped the proxy the wrapper had pointed them at and sat at \"Waiting for API response\" until each was exited and relaunched through the wrapper by hand. The other is the model and effort the wrapper passed as `--model`/`--effort`, so every restored agent ran the settings default, and nothing Muster keeps records what they had been. A pane started with plain `claude --model ... --effort ...` keeps both in its `resume.command`. The `MUSTER_RESUME` option above would cover both losses. Short of that, carrying `--model` and `--effort` even when the rest of the wrapper argv can't be carried, or recording them next to `uncarried`, would let a person restore them.",
+      "created_at_millis": 1792197595318,
+      "id": "c_2izzfn6KC"
+    }
+  ],
   "created_at_millis": 1791946591621,
   "creator": "Alexander Terp",
   "description": "GitHub issue #2 part 2: auto-resume cannot relaunch a Claude Code that was started through a wrapper. Inferred from the documented resume command and a probe, not seen in a real restart.\n\n`resume_agents` relaunches a pane as `claude {args} --resume \u003cid\u003e`, with the flags read off the running `claude` process (card a_2YXWVPfDI, \"A resumed agent keeps the flags it was started with\"). A wrapper that starts Claude Code with `--settings \u003ctemp file\u003e` and deletes the file after launch leaves a flag that no longer works:\n\n```\n$ claude --settings \u003cthat path\u003e -p ...\nError: Settings file not found\n```\n\nSo after a reboot, a crash or a daemon restart, every pane started through such a wrapper would drop back to a shell. A resume that did run would also miss the environment variables the wrapper sets.\n\nOne option: let the agent process name its own resume command, the way `MUSTER_AGENT` names the agent. A wrapper would export something like `MUSTER_RESUME='mywrapper --resume {session}'`, and the daemon would read it off the agent process in preference to the manifest's `resume`. Overriding `claude.toml` in `~/.muster/agent-detection/` would also work, but it freezes every other Claude Code detection rule at a copy. The code is `crates/muster-detect/src/resume.rs` and `crates/muster-detect/manifests/claude.toml`. Document whatever lands in `docs/cli/` next to `MUSTER_AGENT`.\n\nReproduce before building: start Claude Code in a pane through a wrapper that deletes its `--settings` file, restart the daemon, and watch what the pane does.",
@@ -16,7 +24,7 @@
   "position": "b0s",
   "title": "Auto-resume cannot relaunch a Claude Code started through a wrapper",
   "type": "bug",
-  "updated_at_millis": 1791946591621,
+  "updated_at_millis": 1792197595318,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791946591621}
   ]

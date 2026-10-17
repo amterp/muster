@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "should-pane-reads",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1792197590519,
+  "creator": "Alexander Terp",
+  "description": "amterp, 2026-10-16, after two wakes were held because a pane was too short or hidden to show its prompt (card a_2izzXOqQF): keep each pane's terminal state in the daemon at a fixed, full size, independent of the window's layout, zoom or which tab is on screen. `pane read`, state detection and the doorbell's empty-prompt check would all read that terminal, and what the window actually shows would be a separate, rarer opt-in such as `pane read --as-shown`.\n\nOpen before committing: a program draws at its PTY's size. A terminal kept at one size while the pane shows another means either the pane shows part of it, or the program is resized and redraws, as tmux does with clients of different sizes. Which of those Muster wants, and what it does to scrollback and copy, decides the cost. The detection corpus is recorded at the sizes panes really had, so rules may need re-recording at the fixed size. a_2LMnyDJU0 (hidden panes park their client) is where visibility and cost were last decided.",
+  "id": "a_2izzXwq3v",
+  "position": "aU",
+  "title": "Should pane reads, state and the doorbell use a full-size terminal, whatever the window shows?",
+  "type": "chore",
+  "updated_at_millis": 1792197593905,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792197590519}
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-queued-compaction",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792197592853,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-14, 0.16.0, a council on the devenv. A director queued `muster pane compact --pane p2bjgft5mc \u003cfocus\u003e` for a Claude Code builder at 76% context. The compaction had not run 20 minutes later, and `muster window` showed the builder `working`, with no sign a compaction was queued or what held it. `muster pane read` showed why: the builder had ended its turn and sat at an empty prompt over \"Waiting for 1 background agent to finish\", from a sub-agent 22 minutes in. The `background_agents_working` rule reads that screen as working (a_2b8SLuYO4). Posts in the meantime answered \"woke: builder (working, already woken)\" and started no turn. The person noticed before the director did. Two changes would have saved the 20 minutes: show a queued compaction and what it waits on in `muster window` (e.g. `compact queued: waiting for 1 background agent`), and have `pane compact` say up front when the agent has background agents running. Whether a compaction or a ring should wait on background agents at all is worth settling at the same time.",
+  "id": "a_2izzbhXja",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b14",
+  "title": "A queued compaction waits unseen while Claude Code waits on background agents",
+  "type": "enhancement",
+  "updated_at_millis": 1792197592853,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792197592853}
+  ]
+}

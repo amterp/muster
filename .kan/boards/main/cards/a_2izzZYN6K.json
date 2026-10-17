@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "msg-group-new-makes",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792197591515,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-14, 0.16.0 on the devenv. An agent convening a directed council ran `muster msg join --name director`, which was refused because another session that was still running held `director`. Its next command, `muster msg group new \u003cgroup\u003e --policy \u003cskill\u003e/directed.toml`, succeeded and made it the first member under its pane id. Under `directed.toml` only `director` and `@human` may add, remove, leave or delete, so it could add nobody, and `muster msg leave --group \u003cgroup\u003e` answered \"policy does not let p2bjw90hsf leave it\". The group was stranded: only the session holding `director` or the person's own shell could still act on it. `group_new` in `crates/muster-msg/src/service.rs` checks the policy is well formed, but not that its maker holds a role in `membership`. Refusing that case, and naming the roles the policy wants, would have stopped it at the second command. Letting a group's maker always leave or delete it would also work. Card a_2izza44GC is why the join failed.",
+  "id": "a_2izzZYN6K",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b12",
+  "title": "msg group new makes a group its maker cannot run when the policy gives it no membership role",
+  "type": "bug",
+  "updated_at_millis": 1792197594049,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792197591515}
+  ]
+}

@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "More from tooling feedback. 2026-10-13, 0.15.0, on the laptop: a Claude Code builder ended its turn on a long `\"$MUSTER_DAEMON\" report --waiting \"...\"` Bash call, then sat at an empty prompt from 20:30 to 21:24 while every post to it, from its director and a reviewer, went undelivered. `muster window` showed `waiting` at first and later `working`, and the stall notice said the wake was held by \"something typed in its prompt, or a menu over it\". `muster msg post --urgent` got through at once. The director's pane hit the same that evening after its own `report --waiting`, and woke only from a timer it had set. A turn ending on a long Bash row is what a_2hKNOFr7i fixed in 0.16.0, so these may be gone; that card does not explain the `waiting` reading with the draft-or-menu notice. 2026-10-14, 0.16.0, devenv: after Claude Code's folder-trust dialog was answered with `pane send --key down --enter`, the pane showed an empty prompt but read `blocked` for about a minute, and a post answered `rung once idle: ... (blocked)`. It cleared by itself. The 2026-10-16 sightings with a confirmed cause (a pane too short, a zoomed tab) are card a_2izzXOqQF.",
+      "created_at_millis": 1792197594393,
+      "id": "c_2izzeJX58"
+    }
+  ],
   "created_at_millis": 1791946591261,
   "creator": "Alexander Terp",
   "description": "Wakes go missing for an agent that has unread messages in several groups, and the sender has no way to see that its wake is being held. From tooling feedback, three sightings:\n\n- 2026-10-07 (0.13 or 0.14): an integrator that was mid-turn got one wake at turn end, naming only a third group's #6. Two worker groups' \"plan ready\" posts, and two later posts, never rang it for over 20 minutes.\n- 2026-10-11: a post answered `rung once idle: \u003cintegrator\u003e (working)` and the wake never arrived.\n- 2026-10-12 (probably 0.15.0): an idle integrator was never woken for two \"done\" posts over about an hour, while a background Bash watcher polled `muster window --json` the whole time. Earlier wakes from the same groups had worked.\n\nExpected: every unread post rings once the receiver is idle; a wake names every group with unread messages, or says \"and N more\"; and a held wake is visible to the sender, in `msg who` or `muster window`.\n\nWhere to look: `crates/muster-daemon/src/messages/doorbell.rs` (`look`, the pending wakes, `went_idle`), and `prompt.rs`, since Claude Code's background-task line may stop its prompt reading as empty. One lead: `stalls.rs` re-rings only members that are not working, so a receiver stuck reading `working` (card a_2e0HhtDc8) escapes both the \"once idle\" ring and 0.15.0's stall watch.",
@@ -16,7 +24,7 @@
   "position": "b0q",
   "title": "Wakes go missing across several groups, and the sender cannot see one is held",
   "type": "bug",
-  "updated_at_millis": 1791946591261,
+  "updated_at_millis": 1792197594393,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791946591261}
   ]

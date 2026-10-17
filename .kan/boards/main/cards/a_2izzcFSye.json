@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "a-daemon-restart",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792197593196,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-15, 0.16.0 on the devenv. The devenv's container was evicted at 21:30:14Z while message #32 was deferred for p2bm0brq57, which was mid-turn. The window started a fresh daemon at 21:30:22.610, and its first event was `msg.ring.dropped name=p2bm0brq57 why=\"the pane closed\"`. 12 ms later `daemon.state.restored` brought that same pane id back and its Claude Code session resumed. The message stayed unread with nothing left to ring for it. The agent happened to read it on its own, so nothing was lost this time. The drop is the `_ =\u003e \"the pane closed\"` arm of the doorbell's look in `crates/muster-daemon/src/messages/doorbell.rs`, reached because the pane did not exist yet. Restoring saved state before settling pending rings would ring it once the resumed agent is idle. So would holding a ring for a pane id the restore will bring back, the way `Ringable::AgentToCome` holds one. The daemon's restart detail could also count the rings it carried over. Related: a_27QdHGMeC.",
+  "id": "a_2izzcFSye",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b15",
+  "title": "A daemon restart drops a pending ring as 'the pane closed' for a pane it is about to restore",
+  "type": "bug",
+  "updated_at_millis": 1792197593196,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792197593196}
+  ]
+}

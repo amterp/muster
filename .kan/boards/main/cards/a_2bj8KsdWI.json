@@ -9,6 +9,12 @@
       "body": "2026-10-07: the OpenAI account is at its usage limit until 2026-11-02 (hit during ./dev --codex), so Codex recordings that need model turns wait until then.",
       "created_at_millis": 1791420393558,
       "id": "c_2djt6ZInv"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "From tooling feedback, 2026-10-15, devenv: after a daemon restart, the Claude Code panes came back resumed and a Codex reviewer pane came back at a bare shell, as this card says it would. `muster msg post --to reviewer` then exited 6, \"no agent in its pane\". Typing `codex resume --last`, through the wrapper that had launched it, with `pane send` brought the session back with its context.",
+      "created_at_millis": 1792197594760,
+      "id": "c_2izzeuhlm"
     }
   ],
   "created_at_millis": 1791123069063,
@@ -18,7 +24,7 @@
   "position": "Zw",
   "title": "Resume spellings for Codex and OpenCode",
   "type": "feature",
-  "updated_at_millis": 1791420393558,
+  "updated_at_millis": 1792197594760,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791123069063},
     {"field":"column","value":"next","at":1791131314464}
