@@ -7,6 +7,11 @@
 //! or ends a session of its own - a first prompt, `--print`, another `--resume` - and the
 //! manifest names those flags, and the ones that take a value, because only the harness's own
 //! grammar tells a flag's value from a prompt.
+//!
+//! A wrapper can name the command itself, in a `MUSTER_RESUME` on the agent's environment, so
+//! that what the wrapper sets up - a settings file it deletes once the agent has read it, a
+//! proxy in the environment - is set up again: the arguments say what the wrapper passed, never
+//! what it did.
 
 /// Where a `[session]` resume's command takes the arguments carried, as zero or more words.
 pub(crate) const ARGUMENTS_PLACEHOLDER: &str = "{args}";
@@ -22,6 +27,46 @@ pub(crate) struct Spelling {
     pub(crate) drops: Vec<String>,
     /// Flags that take the word after them as their value, so that word is not a prompt.
     pub(crate) values: Vec<String>,
+    /// Flags carried with their value even when the rest cannot be, because the session is not
+    /// the same without them: the model it ran on, and how hard it thought.
+    pub(crate) keeps: Vec<String>,
+}
+
+/// Whether a command's `{args}` has to be there, as a manifest's does, or may be left out, as a
+/// wrapper's may, since a wrapper passes its agent the arguments it always does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Arguments {
+    Required,
+    Optional,
+}
+
+/// What is wrong with `command` as a resume, if anything: it has to name a program and take the
+/// session's id as one whole word, and `{args}` at most once.
+pub(crate) fn command_fault(command: &[String], arguments: Arguments) -> Option<String> {
+    if command.first().is_none_or(|program| program.trim().is_empty() || program.starts_with('{')) {
+        return Some("names no program".to_string());
+    }
+    let count = |placeholder| command.iter().filter(|word| *word == placeholder).count();
+    if count(SESSION_PLACEHOLDER) != 1 {
+        return Some(format!("needs exactly one argument that is exactly {SESSION_PLACEHOLDER}"));
+    }
+    match (arguments, count(ARGUMENTS_PLACEHOLDER)) {
+        (Arguments::Required, 1) | (Arguments::Optional, 0 | 1) => {}
+        (Arguments::Required, _) => {
+            return Some(format!(
+                "needs exactly one argument that is exactly {ARGUMENTS_PLACEHOLDER}"
+            ));
+        }
+        (Arguments::Optional, _) => {
+            return Some(format!(
+                "takes at most one argument that is exactly {ARGUMENTS_PLACEHOLDER}"
+            ));
+        }
+    }
+    command
+        .iter()
+        .any(|word| word.chars().any(char::is_control))
+        .then(|| "holds a control character".to_string())
 }
 
 /// The command that resumes a session, and whether the arguments it was started with went
@@ -29,17 +74,31 @@ pub(crate) struct Spelling {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resume {
     pub command: Vec<String>,
-    /// Why none of the arguments went along, when they did not: a word in them could be a
-    /// prompt or a flag's value, and replaying a prompt would send it again.
+    /// Why the arguments did not go along, when they did not: a word in them could be a prompt
+    /// or a flag's value, and replaying a prompt would send it again. Only the flags the
+    /// manifest keeps went, then.
     pub uncarried: Option<String>,
+    /// Why the command a `MUSTER_RESUME` named was not used, when one was named and was not;
+    /// the manifest's is, instead.
+    pub ignored: Option<String>,
 }
 
 impl Spelling {
+    /// The spelling a wrapper named in `MUSTER_RESUME`, words split on whitespace, reading the
+    /// arguments it carries by the manifest's flags; or what is wrong with it.
+    pub(crate) fn named(named: &str, manifest: &Spelling) -> Result<Spelling, String> {
+        let command: Vec<String> = named.split_whitespace().map(str::to_string).collect();
+        if let Some(fault) = command_fault(&command, Arguments::Optional) {
+            return Err(format!("MUSTER_RESUME {fault}"));
+        }
+        Ok(Spelling { command, ..manifest.clone() })
+    }
+
     /// The command resuming `session`, carrying what of `arguments` can be carried.
     pub(crate) fn resume(&self, session: &str, arguments: &[String]) -> Resume {
         let (carried, uncarried) = match self.carried(arguments) {
             Ok(carried) => (carried, None),
-            Err(why) => (Vec::new(), Some(why)),
+            Err(why) => (self.kept(arguments), Some(why)),
         };
         let mut command = Vec::with_capacity(self.command.len() + carried.len());
         for word in &self.command {
@@ -49,7 +108,25 @@ impl Spelling {
                 _ => command.push(word.clone()),
             }
         }
-        Resume { command, uncarried }
+        Resume { command, uncarried, ignored: None }
+    }
+
+    /// The flags in `keeps` and their values, read out of arguments that cannot be read whole:
+    /// `--model opus` or `--model=opus`, wherever they stand.
+    fn kept(&self, arguments: &[String]) -> Vec<String> {
+        let mut kept = Vec::new();
+        for (at, word) in arguments.iter().enumerate() {
+            if self.keeps.iter().any(|keep| {
+                word.strip_prefix(keep.as_str()).is_some_and(|rest| rest.starts_with('='))
+            }) {
+                kept.push(word.clone());
+            } else if self.keeps.contains(word)
+                && let Some(value) = arguments.get(at + 1).filter(|value| !value.starts_with('-'))
+            {
+                kept.extend([word.clone(), value.clone()]);
+            }
+        }
+        kept
     }
 
     /// The arguments less what starts a session of its own, or why they cannot be told apart.
@@ -105,6 +182,7 @@ mod tests {
             command: words(&["claude", "{args}", "--resume", "{session}"]),
             drops: words(&["-p", "--print", "-c", "--continue", "-r", "--resume", "--session-id"]),
             values: words(&["--model", "--effort", "--permission-mode", "-r", "--resume", "-n"]),
+            keeps: words(&["--model", "--effort"]),
         }
     }
 
@@ -155,13 +233,42 @@ mod tests {
         assert_eq!(command(&["--resume=old", "--model=opus"]), "claude --model=opus --resume s-1");
     }
 
-    /// A word in the middle that is no known flag's value could be either, so nothing is
-    /// carried and the resume says why.
+    /// A word in the middle that is no known flag's value could be either, so only the flags
+    /// the manifest keeps are carried, and the resume says why the rest were not.
     #[test]
-    fn a_word_that_could_be_a_prompt_carries_nothing() {
-        let resume = resumed(&["--add-dir", "a", "b", "--model", "opus"]);
-        assert_eq!(resume.command.join(" "), "claude --resume s-1");
+    fn a_word_that_could_be_a_prompt_carries_only_what_is_kept() {
+        let resume = resumed(&["--add-dir", "a", "b", "--model", "opus", "--effort=high"]);
+        assert_eq!(resume.command.join(" "), "claude --model opus --effort=high --resume s-1");
         assert!(resume.uncarried.is_some_and(|why| why.contains("`a`")));
+        let bare = resumed(&["--add-dir", "a", "b", "--model", "--verbose"]);
+        assert_eq!(bare.command.join(" "), "claude --resume s-1", "a kept flag with no value");
+    }
+
+    /// A wrapper's own command replaces the manifest's, and still carries the arguments where it
+    /// asks for them, by the manifest's flags.
+    #[test]
+    fn a_command_a_wrapper_names_is_the_one_resumed() {
+        let arguments: Vec<String> = ["--model", "opus", "first prompt"].map(String::from).to_vec();
+        let named = Spelling::named("ct -m 2 --resume {session}", &claude()).unwrap();
+        assert_eq!(named.resume("s-1", &arguments).command.join(" "), "ct -m 2 --resume s-1");
+        let carrying = Spelling::named("  ct  {args} -r {session} ", &claude()).unwrap();
+        assert_eq!(carrying.resume("s-1", &arguments).command.join(" "), "ct --model opus -r s-1");
+    }
+
+    /// A named command that could not resume the session is refused, saying why.
+    #[test]
+    fn a_command_a_wrapper_names_has_to_take_the_session() {
+        let refused = |named| Spelling::named(named, &claude()).unwrap_err();
+        assert_eq!(
+            refused("ct --resume"),
+            "MUSTER_RESUME needs exactly one argument that is exactly {session}"
+        );
+        assert_eq!(refused("   "), "MUSTER_RESUME names no program");
+        assert_eq!(refused("{session}"), "MUSTER_RESUME names no program");
+        assert_eq!(
+            refused("ct {args} {args} {session}"),
+            "MUSTER_RESUME takes at most one argument that is exactly {args}"
+        );
     }
 
     /// A flag that takes a value and has none before the next flag keeps going without one.

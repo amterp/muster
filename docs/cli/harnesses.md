@@ -86,7 +86,11 @@ kimi, kiro, maki, pi, qodercli.
   Codex and OpenCode spell none yet, so their panes come back as shells. A manifest says it in
   `[session]`: `resume`, the command with `{args}` where the flags go and `{session}` for the id,
   `resume_drops`, the flags never carried, and `resume_values`, the flags that take a value, which
-  is the only way a word after a flag is told from a first prompt (detection engine 12).
+  is the only way a word after a flag is told from a first prompt (detection engine 12). When a
+  word could be a prompt, only `resume_keeps` goes along, `--model` and `--effort` for Claude Code
+  (detection engine 15). A wrapper that starts its agent names its own resume in the agent's
+  environment, `MUSTER_RESUME='mywrapper --resume {session}'`, which is run instead, so whatever
+  the wrapper sets up is set up again (`docs/configuration.md`, `MUSTER_RESUME`).
 - **Its own helpers not taken for a nested agent**: a manifest's `helpers` lists the names a
   harness runs its own binary under for work that is not a session (detection engine 13). Codex's
   lists its Linux sandbox, which every command the model runs goes through, so the model's own

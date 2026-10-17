@@ -1796,7 +1796,9 @@ impl Session {
     fn resume_missed(&mut self, index: usize, agent: &str, session: &str) {
         // A harness whose manifest says no way to resume has nothing to have missed.
         let resumable = self.detecting.manifests().is_some_and(|manifests| {
-            manifests.session_resume(&muster_detect::Agent::new(agent), session, &[]).is_some()
+            manifests
+                .session_resume(&muster_detect::Agent::new(agent), session, &[], None)
+                .is_some()
         });
         let pane = &mut self.panes[index];
         if !resumable || pane.resume_missed.as_deref() == Some(session) {
@@ -1818,10 +1820,11 @@ impl Session {
     }
 
     /// The command that starts the session `session` of the pane's agent again after a restart:
-    /// its manifest's resume, with the arguments the agent process is running with now, read off
-    /// the pane's foreground job. Read now because a session is reported from inside the agent,
-    /// so it is running; after a restart there is nothing left to read. None when the manifest
-    /// does not say how, or the agent's process will not say what it was started with.
+    /// its manifest's resume, or the one a wrapper named in the agent's `MUSTER_RESUME`, with
+    /// the arguments the agent process is running with now, read off the pane's foreground job.
+    /// Read now because a session is reported from inside the agent, so it is running; after a
+    /// restart there is nothing left to read. None when the manifest does not say how, or the
+    /// agent's process will not say what it was started with.
     fn resume_of(&self, index: usize, agent: &str, session: &str) -> Option<persist::Resume> {
         use muster_detect::Processes as _;
         let manifests = self.detecting.manifests()?;
@@ -1833,7 +1836,25 @@ impl Session {
         if found != muster_detect::Agent::new(agent) {
             return None;
         }
-        let mut resume = manifests.session_resume(&found, session, &arguments)?;
+        let named = muster_detect::agent_process(&job, &manifests)
+            .and_then(|(_, process)| muster_detect::System.resume_hint(process.pid));
+        let mut resume = manifests.session_resume(&found, session, &arguments, named.as_deref())?;
+        if let Some(why) = &resume.ignored {
+            log::warn(
+                "session.resume.named_unusable",
+                fields! {
+                    "pane" => self.panes[index].record.pane,
+                    "agent" => agent,
+                    "why" => why,
+                    "impact" => "after a daemon restart this pane resumes its session through \
+                                 the agent's manifest rather than the command its wrapper \
+                                 named, so whatever the wrapper sets up is not set up again",
+                    "check" => "the MUSTER_RESUME the wrapper exports: one program and its \
+                                arguments, separated by spaces, with {session} as a word of \
+                                its own",
+                },
+            );
+        }
         // The agent's own executable where it was started from a path, so an agent an alias runs
         // from outside `PATH` is the one resumed, rather than whichever the name finds there.
         if let Some(program) = muster_detect::agent_program(&job, &manifests)

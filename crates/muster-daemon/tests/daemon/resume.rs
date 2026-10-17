@@ -63,18 +63,82 @@ fn a_pane_comes_back_resuming_its_agents_session_with_its_flags() {
     assert!(!resumed.contains("opus") && !resumed.contains("high"), "{resumed}");
 }
 
-/// A word that could be a prompt or a flag's value carries nothing, rather than risk sending a
-/// prompt twice: the session resumes with none of the arguments.
+/// A word that could be a prompt or a flag's value carries none of the rest, rather than risk
+/// sending a prompt twice - but the model and effort go along all the same, since without them
+/// the session comes back on the settings' defaults.
 #[test]
-fn arguments_that_cannot_be_told_from_a_prompt_are_not_carried() {
-    let (mut daemon, mut control) = reported("--add-dir a b --model opus", "s-2");
+fn arguments_that_cannot_be_told_from_a_prompt_carry_only_the_model_and_effort() {
+    let (mut daemon, mut control) = reported("--add-dir a b --model opus --effort high", "s-2");
+
+    let mut control = restarted(&mut daemon, &mut control);
+
+    let p1 = until_some("p1 to come back running its agent", || {
+        Some(record(&snapshot(&mut control), "p1").clone()).filter(|p1| p1.command.is_some())
+    });
+    let command = p1.command.unwrap_or_default();
+    assert!(
+        command.ends_with("claude --model opus --effort high --resume s-2"),
+        "resumed as {command:?}"
+    );
+    let uncarried = p1.resume.and_then(|resume| resume.uncarried);
+    assert!(uncarried.is_some_and(|why| why.contains("`a`")), "the record says why the rest went");
+}
+
+/// A Claude Code started through a wrapper comes back through the wrapper, which sets up again
+/// what it set up the first time: here a settings file it wrote for the agent and that is gone
+/// by the restart, as a wrapper deleting its temporary `--settings` leaves it.
+///
+/// macOS does not show the environment of its own binaries, and the fake agent runs under
+/// `/bin/sh`, so `MUSTER_RESUME` cannot be read off it there; a real agent is not one.
+#[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS hides the environment of /bin/sh, which the fake agent runs under"
+)]
+fn an_agent_started_through_a_wrapper_comes_back_through_it() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let wrapper = daemon.root().join("wrapper");
+    let settings = daemon.root().join("wrapper-settings.json");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nprintf '{{}}' > '{settings}'\nexport MUSTER_RESUME='{wrapper} --resume \
+             {{session}}'\nexec '{agent}' --settings '{settings}' \"$@\"\n",
+            settings = settings.display(),
+            wrapper = wrapper.display(),
+            agent = daemon.agent_path().display(),
+        ),
+    )
+    .expect("the test writes its wrapper");
+    std::fs::set_permissions(&wrapper, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("the wrapper is executable");
+    until_text(&mut control, "p1", "$");
+    daemon.type_into("p1", &wrapper.display().to_string());
+    until_text(&mut control, "p1", "PROBE-STATE:IDLE");
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    let report = pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        session_id: Some("s-7".to_string()),
+        ..Default::default()
+    };
+    expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
+    until_saved(&daemon, "s-7");
+    std::fs::remove_file(&settings).expect("the test removes the wrapper's settings");
 
     let mut control = restarted(&mut daemon, &mut control);
 
     let command = until_some("p1 to come back running its agent", || {
         record(&snapshot(&mut control), "p1").command.clone()
     });
-    assert!(command.ends_with("claude --resume s-2"), "resumed as {command:?}");
+    assert!(
+        command.ends_with(&format!("{} --resume s-7", wrapper.display())),
+        "resumed as {command:?}"
+    );
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    assert!(settings.exists(), "the wrapper ran again and wrote its settings again");
 }
 
 /// With `resume_agents` off a pane comes back as a shell, as every pane did before.

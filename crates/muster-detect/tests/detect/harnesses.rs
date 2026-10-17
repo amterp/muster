@@ -108,7 +108,7 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         names_pane: reports(&wiring, "session-name"),
         compacts: manifests.session_compact(agent, None).is_some(),
         // The manifest says how, and the adapter reports the session to resume.
-        resumes: manifests.session_resume(agent, "id", &[]).is_some()
+        resumes: manifests.session_resume(agent, "id", &[], None).is_some()
             && reports(&wiring, "session-id"),
     }
 }

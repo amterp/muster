@@ -511,11 +511,13 @@ its harness resumes one (`claude --resume <id>`), with the flags the agent was s
 `claude --model opus --effort high` comes back as `claude --model opus --effort high --resume
 <id>`. The flags are read off the agent's own process when its session is reported, so an agent
 started through a wrapper script comes back with what the wrapper passed it, though not through
-the wrapper. What would start a session of its own is left out - a first prompt, `-p`, another
-`--resume` - and when a word in the flags could be a prompt as easily as a flag's value, none of
-the flags go along and the session resumes bare, rather than send that prompt again. The daemon's
-log says, in `daemon.state.resumed`, every pane it resumed and the whole command it ran. When the
-agent exits, or its session cannot be resumed, the pane drops back to its shell.
+the wrapper unless the wrapper names its own resume with `MUSTER_RESUME`, below. What would start
+a session of its own is left out - a first prompt, `-p`, another `--resume` - and when a word in
+the flags could be a prompt as easily as a flag's value, only the model and effort go along,
+rather than send that prompt again. The daemon's log says, in `daemon.state.resumed`, every pane it
+resumed, its program and the names of the flags that went along, never their values, and
+`muster window --json` gives each pane's whole command as `resume`. When the agent exits, or its
+session cannot be resumed, the pane drops back to its shell.
 
 It is on because an agent's work is the point of the pane. Turn it off with `false` and such a pane
 comes back as a shell, as every pane did before: a resumed agent runs unattended with the flags it
@@ -586,6 +588,22 @@ the environment a wrapper script starts its agent with - `MUSTER_AGENT=claude` -
 reads it off that process and matches it against the manifests' names. macOS does not show the
 environment of its own binaries (`/bin/sh`, `/bin/sleep`), so the variable has to be on the agent
 process itself rather than on a system shell that runs it.
+
+**`MUSTER_RESUME` names the command that resumes a wrapper's agent.** A wrapper that sets up what
+its agent needs - a settings file it deletes once the agent has read it, a proxy in the
+environment - loses all of it when the agent is resumed after a restart with only the flags it
+passed, so it exports its own way back, with `{session}` where the session's id goes:
+
+    export MUSTER_RESUME="mywrapper --resume {session}"
+    exec claude --settings "$settings" "$@"
+
+The daemon reads it off the agent's process, as it reads `MUSTER_AGENT`, when the agent reports
+its session, and runs it in place of the manifest's resume. It is words separated by spaces, with
+no quoting, so a wrapper whose path holds a space is named through `PATH`; `{session}` is a word of
+its own, exactly once, and `{args}`, if it is there, takes the flags that would have gone along.
+One that breaks those rules is set aside for the manifest's resume, and the daemon's log says why
+in `session.resume.named_unusable`. It applies to an agent whose manifest says how to resume it,
+which is Claude Code so far.
 
 **Both work on a devenv too**, where the daemon reads that machine's own
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's

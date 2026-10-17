@@ -323,8 +323,9 @@ impl Manifests {
         agent: &Agent,
         session: &str,
         arguments: &[String],
+        named: Option<&str>,
     ) -> Option<crate::Resume> {
-        self.entry(agent)?.manifest.session_resume(session, arguments)
+        self.entry(agent)?.manifest.session_resume(session, arguments, named)
     }
 
     fn entry(&self, agent: &Agent) -> Option<&Entry> {

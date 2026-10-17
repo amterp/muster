@@ -31,8 +31,9 @@ use region::Region;
 /// `[session]` `compact`, the line that compacts the session's context, 12 a `[session]`
 /// `resume`, the command that starts a session again after a daemon restart, 13 `helpers`, the
 /// names the harness runs its own binary under for work that is not a session, and 14 a
-/// `[server]` table, the subcommand under which that binary serves sessions other than its own.
-pub const ENGINE_VERSION: u32 = 14;
+/// `[server]` table, the subcommand under which that binary serves sessions other than its own,
+/// and 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest.
+pub const ENGINE_VERSION: u32 = 15;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -64,6 +65,9 @@ const HELPERS_ENGINE_VERSION: u32 = 13;
 
 /// The engine version that introduced the `[server]` table.
 const SERVER_ENGINE_VERSION: u32 = 14;
+
+/// The engine version that introduced `[session]` `resume_keeps`.
+const KEEPS_ENGINE_VERSION: u32 = 15;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -296,9 +300,23 @@ impl Manifest {
 
     /// The command, as arguments, that starts the session with id `session` again after the
     /// pane it ran in was lost to a daemon restart, carrying what of `arguments` - the ones the
-    /// agent was running with - can be carried. None when the manifest does not say how.
-    pub fn session_resume(&self, session: &str, arguments: &[String]) -> Option<resume::Resume> {
-        self.resume.as_ref().map(|spelling| spelling.resume(session, arguments))
+    /// agent was running with - can be carried. `named` is the agent's `MUSTER_RESUME`, which is
+    /// the command when it is one, and the manifest's is when it is not. None when the manifest
+    /// does not say how: only its flags tell which arguments a named command could carry.
+    pub fn session_resume(
+        &self,
+        session: &str,
+        arguments: &[String],
+        named: Option<&str>,
+    ) -> Option<resume::Resume> {
+        let manifest = self.resume.as_ref()?;
+        Some(match named.map(|named| resume::Spelling::named(named, manifest)) {
+            Some(Ok(spelling)) => spelling.resume(session, arguments),
+            Some(Err(why)) => {
+                resume::Resume { ignored: Some(why), ..manifest.resume(session, arguments) }
+            }
+            None => manifest.resume(session, arguments),
+        })
     }
 
     /// The command, as arguments, that hands the session with id `session` the message
@@ -521,6 +539,8 @@ struct RawSession {
     resume_drops: Vec<String>,
     #[serde(default)]
     resume_values: Vec<String>,
+    #[serde(default)]
+    resume_keeps: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -749,9 +769,13 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
 /// the session's id fills one whole argument, and the arguments carried fill one place, so both
 /// are somewhere exactly once. The flag lists mean nothing without the command.
 fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), String> {
+    let flags =
+        || session.resume_drops.iter().chain(&session.resume_values).chain(&session.resume_keeps);
     let Some(resume) = &session.resume else {
-        if !session.resume_drops.is_empty() || !session.resume_values.is_empty() {
-            return Err("[session] resume_drops and resume_values need a resume".to_string());
+        if flags().next().is_some() {
+            return Err(
+                "[session] resume_drops, resume_values and resume_keeps need a resume".to_string()
+            );
         }
         return Ok(());
     };
@@ -760,28 +784,23 @@ fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), S
             "[session] resume needs min_engine_version {RESUME_ENGINE_VERSION} or later"
         ));
     }
-    if resume.first().is_none_or(|program| program.trim().is_empty() || program.starts_with('{')) {
-        return Err("[session] resume names no program".to_string());
-    }
-    for placeholder in [resume::SESSION_PLACEHOLDER, resume::ARGUMENTS_PLACEHOLDER] {
-        if resume.iter().filter(|argument| *argument == placeholder).count() != 1 {
-            return Err(format!(
-                "[session] resume needs exactly one argument that is exactly {placeholder}"
-            ));
-        }
-    }
-    let words = resume.iter().chain(&session.resume_drops).chain(&session.resume_values);
-    if words.clone().any(|word| word.chars().any(char::is_control)) {
-        return Err("[session] resume holds a control character".to_string());
-    }
-    if let Some(flag) = session
-        .resume_drops
-        .iter()
-        .chain(&session.resume_values)
-        .find(|flag| !flag.starts_with('-'))
+    if !session.resume_keeps.is_empty()
+        && manifest.min_engine_version.unwrap_or(0) < KEEPS_ENGINE_VERSION
     {
         return Err(format!(
-            "[session] resume_drops and resume_values hold flags, and {flag} is not one"
+            "[session] resume_keeps needs min_engine_version {KEEPS_ENGINE_VERSION} or later"
+        ));
+    }
+    if let Some(fault) = resume::command_fault(resume, resume::Arguments::Required) {
+        return Err(format!("[session] resume {fault}"));
+    }
+    if flags().any(|word| word.chars().any(char::is_control)) {
+        return Err("[session] resume holds a control character".to_string());
+    }
+    if let Some(flag) = flags().find(|flag| !flag.starts_with('-')) {
+        return Err(format!(
+            "[session] resume_drops, resume_values and resume_keeps hold flags, and {flag} is not \
+             one"
         ));
     }
     Ok(())
@@ -1093,6 +1112,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                 command: session.resume.clone()?,
                 drops: session.resume_drops.clone(),
                 values: session.resume_values.clone(),
+                keeps: session.resume_keeps.clone(),
             })
         }),
         wake: raw.session.and_then(|session| session.wake),

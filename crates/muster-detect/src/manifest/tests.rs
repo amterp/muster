@@ -529,9 +529,23 @@ fn a_session_resume_fills_its_command_and_is_validated() {
     let manifest = Manifest::parse(&with(12, spelled)).unwrap();
     let arguments: Vec<String> =
         ["--model", "opus", "-p", "hello"].iter().map(ToString::to_string).collect();
-    let resume = manifest.session_resume("s-1", &arguments).unwrap();
+    let resume = manifest.session_resume("s-1", &arguments, None).unwrap();
     assert_eq!(resume.command, ["claude", "--model", "opus", "--resume", "s-1"]);
     assert_eq!(resume.uncarried, None);
+
+    // A wrapper's MUSTER_RESUME is the command when it can be, and set aside, saying why, when
+    // it cannot.
+    let named = manifest.session_resume("s-1", &arguments, Some("ct --resume {session}"));
+    assert_eq!(named.unwrap().command, ["ct", "--resume", "s-1"]);
+    let ignored = manifest.session_resume("s-1", &arguments, Some("ct --resume")).unwrap();
+    assert_eq!(ignored.command, resume.command, "the manifest's, when the named one is broken");
+    assert!(ignored.ignored.is_some_and(|why| why.contains("{session}")));
+
+    let keeps = format!("{spelled}\nresume_keeps = ['--model']");
+    assert!(Manifest::parse(&with(14, &keeps)).is_err(), "resume_keeps below engine 15");
+    assert!(Manifest::parse(&with(15, &keeps)).is_ok());
+    let kept = format!("{spelled}\nresume_keeps = ['model']");
+    assert!(Manifest::parse(&with(15, &kept)).is_err(), "resume_keeps holds flags");
 
     assert!(Manifest::parse(&with(11, spelled)).is_err(), "below engine 12");
     for bad in [
@@ -544,7 +558,9 @@ fn a_session_resume_fills_its_command_and_is_validated() {
         assert!(Manifest::parse(&with(12, bad)).is_err(), "accepted {bad}");
     }
     let without = Manifest::parse(&with(12, "rename = '/rename {name}'")).unwrap();
-    assert_eq!(without.session_resume("s-1", &[]), None);
+    assert_eq!(without.session_resume("s-1", &[], None), None);
+    let named = without.session_resume("s-1", &[], Some("ct --resume {session}"));
+    assert_eq!(named, None, "a named command needs the manifest's flags to carry by");
 }
 
 #[test]

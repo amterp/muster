@@ -66,6 +66,14 @@ pub trait Processes {
     /// ever read from a process that is not one - which no agent is.
     fn agent_hint(&self, pid: u32) -> Option<String>;
 
+    /// The `MUSTER_RESUME` a process was started with, if it was: the command that resumes the
+    /// agent's session, as a wrapper that started it names it. Read from the environment as
+    /// [`Processes::agent_hint`] is. A source that cannot say answers none.
+    fn resume_hint(&self, pid: u32) -> Option<String> {
+        let _ = pid;
+        None
+    }
+
     /// One process with its parent and group, or none when it has gone or will not be read. A
     /// source that cannot say answers none, which a caller reads as not knowing.
     fn placed(&self, pid: u32) -> Option<Placed> {
@@ -95,9 +103,16 @@ impl Processes for System {
 
     fn agent_hint(&self, pid: u32) -> Option<String> {
         #[cfg(target_os = "macos")]
-        return macos::agent_hint(pid);
+        return macos::variable(pid, AGENT_HINT);
         #[cfg(target_os = "linux")]
-        return linux::agent_hint(pid);
+        return linux::variable(pid, AGENT_HINT);
+    }
+
+    fn resume_hint(&self, pid: u32) -> Option<String> {
+        #[cfg(target_os = "macos")]
+        return macos::variable(pid, RESUME_HINT);
+        #[cfg(target_os = "linux")]
+        return linux::variable(pid, RESUME_HINT);
     }
 
     fn placed(&self, pid: u32) -> Option<Placed> {
@@ -109,12 +124,13 @@ impl Processes for System {
 }
 
 const AGENT_HINT: &[u8] = b"MUSTER_AGENT=";
+const RESUME_HINT: &[u8] = b"MUSTER_RESUME=";
 
-/// The first `MUSTER_AGENT` in a NUL-separated environment block. The first decides, as the
-/// C library's `getenv` would: a later duplicate is not the process's value.
-fn agent_hint_in(environ: &[u8]) -> Option<String> {
+/// The first value `assigning` (`NAME=`) gives in a NUL-separated environment block. The first
+/// decides, as the C library's `getenv` would: a later duplicate is not the process's value.
+fn variable_in(environ: &[u8], assigning: &[u8]) -> Option<String> {
     let value =
-        environ.split(|&byte| byte == 0).find_map(|record| record.strip_prefix(AGENT_HINT))?;
+        environ.split(|&byte| byte == 0).find_map(|record| record.strip_prefix(assigning))?;
     std::str::from_utf8(value).ok().map(str::to_string)
 }
 
@@ -125,9 +141,9 @@ mod tests {
     #[test]
     fn the_first_agent_hint_decides() {
         let environ = b"HOME=/x\0MUSTER_AGENT=claude\0MUSTER_AGENT=codex\0";
-        assert_eq!(agent_hint_in(environ).as_deref(), Some("claude"));
-        assert_eq!(agent_hint_in(b"HERDR_AGENT=claude\0"), None);
-        assert_eq!(agent_hint_in(b"MUSTER_AGENT=\xff\0"), None);
+        assert_eq!(variable_in(environ, AGENT_HINT).as_deref(), Some("claude"));
+        assert_eq!(variable_in(b"HERDR_AGENT=claude\0", AGENT_HINT), None);
+        assert_eq!(variable_in(b"MUSTER_AGENT=\xff\0", AGENT_HINT), None);
     }
 
     const CHILD: &str = "MUSTER_DETECT_TEST_CHILD";
@@ -210,16 +226,19 @@ mod tests {
             .args(["--exact", "process::tests::stand_in_agent", "--test-threads=1"])
             .env(CHILD, "30")
             .env("MUSTER_AGENT", "claude")
+            .env("MUSTER_RESUME", "mywrapper --resume {session}")
             .process_group(0)
             .stdout(std::process::Stdio::null())
             .spawn()
             .unwrap();
         let pid = child.id();
         let hint = until(|| System.agent_hint(pid));
+        let resume = System.resume_hint(pid);
         let _ = child.kill();
         let _ = child.wait();
 
         assert_eq!(hint.as_deref(), Some("claude"));
+        assert_eq!(resume.as_deref(), Some("mywrapper --resume {session}"));
         assert_eq!(System.agent_hint(std::process::id()), None, "this process has no hint");
     }
 }

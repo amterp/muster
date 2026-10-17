@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::{Job, Placed, Process, agent_hint_in};
+use super::{Job, Placed, Process, variable_in};
 
 /// `PROC_PGRP_ONLY` from `<sys/proc_info.h>`, which the libc crate does not carry.
 const PROC_PGRP_ONLY: u32 = 2;
@@ -21,8 +21,8 @@ pub(super) fn leader(group: u32) -> Option<Job> {
     Some(Job { group, processes: vec![member(group, group)?] })
 }
 
-pub(super) fn agent_hint(pid: u32) -> Option<String> {
-    agent_hint_in(procargs2_env(&kern_procargs2(pid)?)?)
+pub(super) fn variable(pid: u32, assigning: &[u8]) -> Option<String> {
+    variable_in(procargs2_env(&kern_procargs2(pid)?)?, assigning)
 }
 
 pub(super) fn placed(pid: u32) -> Option<Placed> {
@@ -213,6 +213,7 @@ fn procargs2_env(buffer: &[u8]) -> Option<&[u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::process::AGENT_HINT;
 
     fn procargs2(exec_path: &str, argv: &[&str], env: &[&str]) -> Vec<u8> {
         let mut buffer = i32::try_from(argv.len()).unwrap().to_ne_bytes().to_vec();
@@ -234,13 +235,14 @@ mod tests {
     #[test]
     fn procargs2_env_reads_agent_hint_after_argv() {
         let buffer = procargs2("/usr/bin/node", &["node"], &["HOME=/x", "MUSTER_AGENT=codex"]);
-        assert_eq!(agent_hint_in(procargs2_env(&buffer).unwrap()).as_deref(), Some("codex"));
+        let environ = procargs2_env(&buffer).unwrap();
+        assert_eq!(variable_in(environ, AGENT_HINT).as_deref(), Some("codex"));
     }
 
     #[test]
     fn procargs2_env_does_not_treat_argv_as_environment() {
         let buffer = procargs2("/usr/bin/env", &["env", "MUSTER_AGENT=claude", "sh"], &["HOME=/x"]);
-        assert_eq!(agent_hint_in(procargs2_env(&buffer).unwrap()), None);
+        assert_eq!(variable_in(procargs2_env(&buffer).unwrap(), AGENT_HINT), None);
     }
 
     #[test]

@@ -183,26 +183,31 @@ fn named_agent(process: &Process, name: &str, manifests: &Manifests) -> Option<A
 ///
 /// None when no process is an agent, or the kernel would not give the agent's arguments.
 pub fn agent_arguments(job: &Job, manifests: &Manifests) -> Option<(Agent, Vec<String>)> {
+    let (agent, process) = agent_process(job, manifests)?;
+    let arguments = arguments_after_agent(process, &agent, manifests)?.to_vec();
+    Some((agent, arguments))
+}
+
+/// The agent in a job and the process that is it: the leader when it is the agent, else the
+/// first member that is. None when no process is an agent.
+pub fn agent_process<'job>(
+    job: &'job Job,
+    manifests: &Manifests,
+) -> Option<(Agent, &'job Process)> {
     let (agent, _) = identify_in_job(job, manifests)?;
     let process = job
         .leader()
         .into_iter()
         .chain(&job.processes)
         .find(|process| identify_process(process, manifests).as_ref() == Some(&agent))?;
-    let arguments = arguments_after_agent(process, &agent, manifests)?.to_vec();
-    Some((agent, arguments))
+    Some((agent, process))
 }
 
 /// The path the job's agent was started from, when its first word is one and names the agent
 /// itself: `~/.claude/local/claude`, which an alias runs and `PATH` does not hold. None for an
 /// agent started by its bare name, or through a runtime or a wrapper script.
 pub fn agent_program(job: &Job, manifests: &Manifests) -> Option<String> {
-    let (agent, _) = identify_in_job(job, manifests)?;
-    let process = job
-        .leader()
-        .into_iter()
-        .chain(&job.processes)
-        .find(|process| identify_process(process, manifests).as_ref() == Some(&agent))?;
+    let (agent, process) = agent_process(job, manifests)?;
     let first = process.argv.as_deref()?.first()?;
     let names_it = agent_name_from_path_token(first, manifests)
         .and_then(|name| manifests.agent_named(&name))

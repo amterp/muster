@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.10.13.4"
-min_engine_version = 12
-updated_at = "2026-10-13T00:00:00Z"
+version = "2026.10.16.1"
+min_engine_version = 15
+updated_at = "2026-10-16T00:00:00Z"
 aliases = ["claude-code"]
 
 # Typed at an empty prompt with a Return, as a person names a session: what `/resume` lists and
@@ -32,6 +32,9 @@ resume_values = [
   "--resume", "--session-id", "--setting-sources", "--settings", "--system-prompt",
   "--system-prompt-snapshot", "--teleport", "--tools", "-w", "--worktree",
 ]
+# Carried even when a word in the arguments could be a prompt and the rest are not: a session
+# resumed on the settings default instead of its own model and effort is not the same session.
+resume_keeps = ["--model", "--effort"]
 
 [[rules]]
 id = "osc_title_working"

@@ -23,7 +23,8 @@ use std::sync::Arc;
 
 pub use detector::{Carried, CarriedReport, Detector, Drift, Pane, Publication, Tick};
 pub use identify::{
-    Probe, agent_arguments, agent_program, identify_in_job, identify_process, probe, server_of,
+    Probe, agent_arguments, agent_process, agent_program, identify_in_job, identify_process, probe,
+    server_of,
 };
 pub use manifest::{Detection, ENGINE_VERSION, Input, Manifest, Prompt, Server, Version};
 pub use manifests::{Manifests, Source, Warning};

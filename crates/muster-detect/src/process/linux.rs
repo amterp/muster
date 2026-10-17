@@ -12,7 +12,7 @@
 use std::collections::{HashSet, VecDeque};
 
 #[cfg(target_os = "linux")]
-use super::{Job, Placed, Process, agent_hint_in};
+use super::{Job, Placed, Process, variable_in};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Member {
@@ -47,8 +47,8 @@ pub(super) fn leader(group: u32) -> Option<Job> {
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn agent_hint(pid: u32) -> Option<String> {
-    agent_hint_in(&std::fs::read(format!("/proc/{pid}/environ")).ok()?)
+pub(super) fn variable(pid: u32, assigning: &[u8]) -> Option<String> {
+    variable_in(&std::fs::read(format!("/proc/{pid}/environ")).ok()?, assigning)
 }
 
 #[cfg(target_os = "linux")]
