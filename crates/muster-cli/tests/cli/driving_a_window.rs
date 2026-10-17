@@ -157,32 +157,41 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
 }
 
 /// An agent starting agents for its own work: helpers made from inside its pane go into one
-/// hidden tab, and every row in `--json` says whose they are.
+/// hidden tab, quiet unless `--notify`, and every row in `--json` says whose they are.
 fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &[(&str, String)]) {
-    let helpers: Vec<String> = (0..2)
-        .map(|_| {
-            let made = run(&["pane", "new", "--helper"], environment);
-            assert_eq!(made.code, 0, "`muster pane new --helper` failed: {}", made.errors);
+    let helpers: Vec<String> = [&["--helper"][..], &["--helper", "--notify"]]
+        .iter()
+        .map(|flags| {
+            let made = run(&[&["pane", "new"][..], flags].concat(), environment);
+            assert_eq!(made.code, 0, "`muster pane new {flags:?}` failed: {}", made.errors);
             made.out.trim().to_string()
         })
         .collect();
-    // The panes of the hidden tab holding the first helper, each with whose helper it is.
-    let shared_tab = |window: &Value| -> Option<Vec<(String, Value)>> {
+    // The panes of the hidden tab holding the first helper, each with whose helper it is and
+    // whether it is quiet.
+    let shared_tab = |window: &Value| -> Option<Vec<(String, Value, Value)>> {
         let tabs = window["hidden"].as_array()?;
         let panes = tabs
             .iter()
             .filter_map(|tab| tab["panes"].as_array())
             .find(|panes| panes.iter().any(|pane| pane["pane"] == json!(helpers[0])))?;
         let named = |pane: &Value| pane["pane"].as_str().unwrap_or_default().to_string();
-        Some(panes.iter().map(|pane| (named(pane), pane["maker"].clone())).collect())
+        Some(
+            panes
+                .iter()
+                .map(|pane| (named(pane), pane["maker"].clone(), pane["quiet"].clone()))
+                .collect(),
+        )
     };
     let (window, shared) = until_some("both helpers to be listed hidden, in one tab", || {
         let window = json_from(&run(&["window", "--json"], environment));
         let shared = shared_tab(&window).filter(|shared| shared.len() == 2)?;
         Some((window, shared))
     });
-    for (pane, made_by) in &shared {
+    for (pane, made_by, quiet) in &shared {
         assert_eq!(made_by, &json!(maker), "{pane} is listed as somebody else's helper: {window}");
+        let notifies = *pane == helpers[1];
+        assert_eq!(quiet, &json!(!notifies), "{pane} quiet unless --notify: {window}");
     }
     let row = window["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!(maker));
     assert_eq!(row.map(|row| &row["maker"]), Some(&Value::Null), "the agent is nobody's helper");
@@ -194,7 +203,7 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
     let maker_row = rows.iter().position(|row| row.contains(maker)).expect("the agent is listed");
     assert!(rows[maker_row].contains("2 helpers"), "{readable}");
     for row in &rows[maker_row + 1..maker_row + 3] {
-        assert!(row.contains("(hidden)"), "a helper is not listed under its maker:\n{readable}");
+        assert!(row.contains("(hidden"), "a helper is not listed under its maker:\n{readable}");
     }
     assert!(!rows.contains(&"hidden"), "the helpers are listed under `hidden` too:\n{readable}");
 

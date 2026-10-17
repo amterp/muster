@@ -2941,8 +2941,8 @@
       }
     },
     {
-      "name": "a helper is made hidden, as the helper of the pane this runs in",
-      "why": "An agent starting agents for its own work says so with --helper, and the pane it runs in is the maker (MIP-7). Hidden by default, since the person talks to the maker and its helpers are its business, and split from the maker so it starts in the maker's directory.",
+      "name": "a helper is made hidden and quiet, as the helper of the pane this runs in",
+      "why": "An agent starting agents for its own work says so with --helper, and the pane it runs in is the maker (MIP-7). Hidden and quiet by default, since the person talks to the maker, its helpers are its business, and the maker is told when one needs somebody; split from the maker so it starts in the maker's directory.",
       "given": {
         "argv": [
           "pane",
@@ -2961,6 +2961,7 @@
             "pane_id": "p1w3r07bsd",
             "side": "right",
             "run": "claude",
+            "quiet": true,
             "hidden": true,
             "maker": "p1w3r07bsd"
           }
@@ -2986,6 +2987,7 @@
           "split_pane": {
             "pane_id": "maple",
             "side": "right",
+            "quiet": true,
             "hidden": true,
             "maker": "maple"
           }
@@ -2994,7 +2996,7 @@
     },
     {
       "name": "a shown helper is an ordinary split that still has a maker",
-      "why": "--shown opts out of hiding and nothing else: the pane is split where asked, and is still its maker's helper.",
+      "why": "--shown opts out of hiding and nothing else: the pane is split where asked, is still its maker's helper, and is still quiet.",
       "given": {
         "argv": [
           "pane",
@@ -3012,9 +3014,68 @@
           "split_pane": {
             "pane_id": "p1w3r07bsd",
             "side": "down",
+            "quiet": true,
             "maker": "p1w3r07bsd"
           }
         }
+      }
+    },
+    {
+      "name": "a helper that notifies is not quiet",
+      "why": "--notify opts a helper out of quiet and nothing else: it is still hidden, still its maker's helper, and its blocks reach the person as any pane's do.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--notify"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "pane_id": "p1w3r07bsd",
+            "side": "right",
+            "hidden": true,
+            "maker": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "notify means a helper that notifies",
+      "why": "--notify opts a helper out of quiet; a pane that is nobody's helper already notifies, and accepting it would suggest it did something.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--notify"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a helper is quiet or notifies, not both",
+      "why": "--quiet and --notify are two answers to one question.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--notify",
+          "--quiet"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
       }
     },
     {

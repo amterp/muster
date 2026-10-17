@@ -435,16 +435,17 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
 fn helpers_are_made_by_the_daemon(here: &Here) {
     let mut control = here.daemon.connect();
     let first = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
-    let second = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
+    let second = ok(&here.muster(&["pane", "new", "--helper-of", "p1", "--notify"]));
     let held = snapshot(&mut control);
     let maker = held.panes.iter().find(|pane| pane.pane == "p1").expect("p1 is held");
     let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &first)).expect("made in a tab");
     assert!(tab.hidden && tab_shape_holds(tab, &second), "one hidden tab for both: {tab:?}");
     let label = tab.label.as_ref().and_then(|label| label.text.clone());
     assert_eq!(label, Some(format!("{}'s helpers", maker.name().unwrap())), "{tab:?}");
-    for helper in [&first, &second] {
+    for (helper, quiet) in [(&first, true), (&second, false)] {
         let record = held.panes.iter().find(|pane| &pane.pane == helper).expect("held");
         assert_eq!(record.maker.as_deref(), Some("p1"), "{record:?}");
+        assert_eq!(record.quiet, quiet, "quiet unless --notify: {record:?}");
     }
 
     let window: Value = serde_json::from_str(&ok(&here.muster(&["window", "--json"]))).unwrap();

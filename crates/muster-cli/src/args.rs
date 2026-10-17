@@ -569,7 +569,8 @@ enum Doing {
         hidden: bool,
 
         /// Make it a helper of the pane this runs in: an agent you start for your own work,
-        /// listed under you, and hidden in a tab your helpers share unless --shown
+        /// listed under you, hidden in a tab your helpers share unless --shown, and quiet unless
+        /// --notify, since you are told when it needs somebody
         #[arg(long, group = "helping")]
         helper: bool,
 
@@ -581,6 +582,10 @@ enum Doing {
         /// Split a helper beside the pane it came from, as any pane, instead of hiding it
         #[arg(long, requires = "helping", conflicts_with = "hidden")]
         shown: bool,
+
+        /// Let a helper notify the person as any pane does, instead of making it quiet
+        #[arg(long, requires = "helping", conflicts_with = "quiet")]
+        notify: bool,
     },
 
     /// Call a pane something. An empty name takes the name away again
@@ -1195,6 +1200,7 @@ fn pane(
             helper,
             helper_of,
             shown,
+            notify,
         } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
@@ -1210,6 +1216,7 @@ fn pane(
                 return Err(Failure::Refused(HIDDEN_HELPER_PLACED.to_string()));
             }
             let hidden = *hidden || (maker.is_some() && !*shown);
+            let quiet = *quiet || (maker.is_some() && !*notify);
             // A helper starts from its maker, beside it when shown and in its directory when not.
             let pane = pane.as_ref().or(helper_of.as_ref());
             let (pane_id, daemon_id, new_pane_daemon_id) =
@@ -1223,7 +1230,7 @@ fn pane(
                 run: run.clone().unwrap_or_default(),
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
-                quiet: *quiet,
+                quiet,
                 hidden,
                 maker: maker.unwrap_or_default(),
                 ..SplitPane::default()

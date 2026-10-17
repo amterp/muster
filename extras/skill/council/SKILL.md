@@ -101,5 +101,9 @@ the group, and needs no brief: `muster msg join --name director-review`, then th
 lines above. If that join is refused, `group new` is refused too, since you would hold no name
 the policy lets add members.
 
+A director that starts its own members, rather than convening agents the person started, makes
+each with `muster pane new --helper`, so that it is told when one is blocked or stops without
+answering, and the person is not.
+
 `muster msg pause review` holds every wake while you catch up; `muster msg resume review` wakes
 each member once for what it missed.

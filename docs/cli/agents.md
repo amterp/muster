@@ -413,8 +413,8 @@ An agent that starts agents for its own work makes each one its helper:
     W=$(muster pane new --helper --run claude --name '🤖 worker')
 
 `--helper` makes the new pane a helper of the pane the command runs in, its maker, and the pane's
-daemon keeps that on its record for good, beside hidden and quiet. A helper is made hidden, in its
-maker's directory, and a maker's hidden helpers share one hidden tab: made with the first of them,
+daemon keeps that on its record for good, beside hidden and quiet. A helper is made hidden and
+quiet, in its maker's directory, and a maker's hidden helpers share one hidden tab: made with the first of them,
 each next one added as a column as wide as the rest, and named for the maker as it was called
 then, `🤖 integrator's helpers`. `muster window` lists each helper under its maker rather than
 under `hidden`, and `--json` gives every pane a `maker`, so an agent finds its own helpers with
@@ -422,15 +422,15 @@ under `hidden`, and `--json` gives every pane a `maker`, so an agent finds its o
     muster window --json | jq -r '[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE) | .pane'
 
 `--shown` splits a helper beside its maker instead, as `pane new` does any pane, and it is still a
-helper. A hidden helper takes no side and no `--focus`, for the reason `--hidden` takes none.
+helper. `--notify` lets it notify you as any pane does instead of making it quiet. A hidden helper takes no side and no `--focus`, for the reason `--hidden` takes none.
 `--helper-of <pane>` names another pane as the maker, by name or id, and splits from that pane
 unless `--pane` says otherwise. Outside every pane `--helper` is refused, since there is no pane
 for it to mean.
 
-A helper is not made quiet: when it blocks it notifies you as any pane does. Its maker is told
-too: when a helper becomes blocked or stuck, or goes idle without having posted to its maker since
-it last went to work, and stays so for 10 seconds, its daemon tells the maker once, in a message
-from `@muster` that says why and what answers it (`muster docs msg`). A helper that posts its
+A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
+stuck, or goes idle without having posted to its maker since it last went to work, and stays so
+for 10 seconds, its daemon tells the maker once, in a message from `@muster` that says why and
+what answers it (`muster docs msg`), whether or not the helper is quiet. A helper that posts its
 report and then goes idle is not reported, nor is one waiting on its own work.
 
 The relation is to the maker's pane, so an agent resumed in the same pane keeps its helpers. When

@@ -48,8 +48,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   plugin files in `extras/<harness>/`, its recordings and observations, and its live tier (MIP-5). Data and files,
   not daemon code; not the backend's **adapter** above.
 - **helper** - a pane an agent started for its own work with `pane new --helper`, recorded on the pane as its
-  **maker**'s (MIP-7). Made hidden, into the hidden tab its maker's helpers share, and listed under its maker. An
-  agent started as a peer is not one.
+  **maker**'s (MIP-7). Made hidden and quiet, into the hidden tab its maker's helpers share, and listed under its
+  maker, which its daemon tells when it blocks, gets stuck or goes idle without reporting. An agent started as a peer
+  is not one.
 - **hidden** - a pane no window shows, in a tab its daemon holds as hidden. Listed apart, and brought back into a
   tab of its own. Not the same as **off screen**.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
