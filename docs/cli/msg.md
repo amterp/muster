@@ -310,6 +310,10 @@ what waits is told why, in the group, by `@muster`:
 
     @muster: otter (p2w3r07bsd) has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it, or ends it and resumes its session. Muster says this once; `muster window` shows its pane.
 
+Once means once per message. An agent that works a turn and is free again with #4 still unread is
+held up on the same message: the stall is recorded again, and nobody is told again. One that reads
+#4 and stops on a later message is a new stall, told of in turn.
+
 When what the agent's pane shows holds its wake, the message says what: something typed into its
 prompt and not sent, a menu, a viewer or a dialog over its prompt, named where the agent's detection
 rules name it (Claude Code's box for a bug report it drafted, which only a person's 1, 2 or 0

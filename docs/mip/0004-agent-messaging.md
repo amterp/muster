@@ -966,6 +966,11 @@ once per stall:
 - otherwise, or if that wake does not move it within another 2 minutes, tells whoever posted what
   waits why it has not answered, in a message in the group from `@muster`.
 
+A stall is one unread message. A member that goes to work restarts the 2 minutes but not the
+stall: free again with the same message unread, it is recorded again and may be woken once more,
+and whoever waits is not told twice. Reading that message, and stopping on a later one, is a new
+stall.
+
 `@muster` is reserved like `@human`: it is an author and never a participant, is never addressed,
 is held to no policy and no guard, and its messages never count toward a stall, so none of this
 rings anybody in a loop. It posts only where the group is kept; a replica's stall is recorded, and
@@ -1240,3 +1245,5 @@ bind.
 - 2026-10-07 Protocol 1.5: an agent whose program has stopped reading is `stuck`, not rung until
   it reads, and a ring it never read ends; a group held up on a member is recorded, the member
   woken once more or the posters told why by `@muster`, once (section 16).
+- 2026-10-17 A stall is one unread message: a member that works a turn without reading it is not
+  told of twice (section 16).

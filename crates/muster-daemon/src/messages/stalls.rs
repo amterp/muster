@@ -10,7 +10,8 @@
 //! free it: wakes the member again, when its last wake never landed, or tells whoever is waiting
 //! on it why it has not answered, in a message from Muster (`@muster`) that wakes them as any
 //! message does. Once each per stall, and never about Muster's own messages, so nothing here
-//! rings anybody in a loop.
+//! rings anybody in a loop. A stall is one unread message: a member that works a turn and still
+//! has not read it is held up on the same one, and whoever waits is not told of it twice.
 //!
 //! What it does not watch: members waiting on each other with nothing unread. A group whose
 //! members are all idle with everything read is also what a finished group looks like, and an
@@ -101,6 +102,9 @@ pub(crate) enum Unlock {
     Tell,
     /// Nobody to tell: every message waiting is from somebody no longer reachable here.
     Nothing,
+    /// Whoever waits was told of this message already, before a turn the member worked without
+    /// reading it.
+    ToldAlready,
 }
 
 impl Unlock {
@@ -109,6 +113,7 @@ impl Unlock {
             Unlock::WakeAgain => "wake_again",
             Unlock::Tell => "tell",
             Unlock::Nothing => "nothing",
+            Unlock::ToldAlready => "told_already",
         }
     }
 }
@@ -117,7 +122,8 @@ impl Unlock {
 #[derive(Debug)]
 struct Episode {
     /// The oldest message it has not read, which names the episode: reading past it ends this
-    /// one, and anything older still unread begins another.
+    /// one, and anything older still unread begins another. Working a turn without reading it
+    /// does neither.
     first: u64,
     /// When the member was last free to read it: the message's posting, this daemon's start, or
     /// the last time its agent was seen at work since, whichever is latest.
@@ -125,16 +131,13 @@ struct Episode {
     stage: Stage,
     /// Whoever waits has been told of it, which is said once whatever comes after.
     told: bool,
+    /// A stall of it is in the log with no move recorded since, which its end is recorded for.
+    recorded: bool,
 }
 
 impl Episode {
     fn new(first: u64, since_ms: u64) -> Episode {
-        Episode { first, since_ms, stage: Stage::Watching, told: false }
-    }
-
-    /// Whether anything has been done about it, which its end is recorded for.
-    fn acted(&self) -> bool {
-        self.stage != Stage::Watching || self.told
+        Episode { first, since_ms, stage: Stage::Watching, told: false, recorded: false }
     }
 }
 
@@ -205,7 +208,9 @@ impl Stalls {
             }
             if at_work || member.doorbell == Ringable::AgentToCome {
                 self.working.insert(key.0.clone(), now_ms);
-                if at_work && self.worked_too_long(member, called, now_ms, &mut acts) {
+                let kept = self.keep_across_work(&key, member, now_ms, &mut acts);
+                let worked = at_work && self.worked_too_long(member, called, now_ms, &mut acts);
+                if kept || worked {
                     holding.push(key);
                 }
                 continue;
@@ -220,13 +225,18 @@ impl Stalls {
                 continue;
             }
             match episode.stage {
-                // Told of while it worked: what is left is a wake that never landed.
+                // Told of already, at work or before a turn it worked without reading: what is
+                // left is a wake that never landed.
                 Stage::Watching if episode.told && unlock(member) != Unlock::WakeAgain => {
+                    let unlock = Unlock::ToldAlready;
+                    acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+                    episode.recorded = true;
                     episode.stage = Stage::Told;
                 }
                 Stage::Watching => {
                     let unlock = unlock(member);
                     acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+                    episode.recorded = true;
                     match unlock {
                         Unlock::WakeAgain => {
                             acts.push(Act::WakeAgain { name: key.0.clone(), group: key.1.clone() });
@@ -237,7 +247,7 @@ impl Stalls {
                             episode.stage = Stage::Told;
                             episode.told = true;
                         }
-                        Unlock::Nothing => episode.stage = Stage::Told,
+                        Unlock::Nothing | Unlock::ToldAlready => episode.stage = Stage::Told,
                     }
                 }
                 // Woken again and still held up: what is left is to tell whoever waits.
@@ -255,12 +265,41 @@ impl Stalls {
             self.episodes.keys().filter(|key| !holding.contains(key)).cloned().collect();
         for key in moved {
             if let Some(episode) = self.episodes.remove(&key)
-                && episode.acted()
+                && episode.recorded
             {
                 acts.push(moving(&key, &episode, now_ms));
             }
         }
         acts
+    }
+
+    /// Keeps the episode of `member`, at work now, across its turn: a member that works and
+    /// still has not read what waited on it is the same stall, and whoever waits is not told of
+    /// it again. One that has read it meanwhile has ended the stall. Says whether one is kept.
+    fn keep_across_work(
+        &mut self,
+        key: &(String, String),
+        member: &Member,
+        now_ms: u64,
+        acts: &mut Vec<Act>,
+    ) -> bool {
+        let Some(episode) = self.episodes.get_mut(key) else { return false };
+        if episode.first != member.holding.first {
+            if episode.recorded {
+                acts.push(moving(key, episode, now_ms));
+            }
+            self.episodes.remove(key);
+            return false;
+        }
+        // Gone to work from a stall said while it was free: that much has moved.
+        if episode.stage != Stage::Watching {
+            if episode.recorded {
+                acts.push(moving(key, episode, now_ms));
+                episode.recorded = false;
+            }
+            episode.stage = Stage::Watching;
+        }
+        true
     }
 
     /// Whether `member`, at work now, has been at work at every look for as long as a message
@@ -283,6 +322,7 @@ impl Stalls {
             let unlock = if waiting_on(member).is_empty() { Unlock::Nothing } else { Unlock::Tell };
             let held_ms = now_ms.saturating_sub(episode.since_ms);
             acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+            episode.recorded = true;
             if unlock == Unlock::Tell {
                 let worked = said_as_time(now_ms.saturating_sub(worked_since));
                 let why = format!(
@@ -315,7 +355,7 @@ fn episode<'a>(
     let first = member.holding.first;
     let episode = episodes.entry(key.clone()).or_insert_with(|| Episode::new(first, since_ms));
     if episode.first != first {
-        if episode.acted() {
+        if episode.recorded {
             acts.push(moving(key, episode, now_ms));
         }
         *episode = Episode::new(first, since_ms);
@@ -814,6 +854,50 @@ mod tests {
             kinds(&stalls.judge(&[later], &BTreeMap::new(), 1000 + 2 * AFTER)),
             ["stalled", "wake_again"]
         );
+    }
+
+    /// A member told of that works a turn and is free again with the same message unread is the
+    /// same stall: it is recorded again, and whoever waits is not told twice.
+    #[test]
+    fn a_member_that_works_a_turn_without_reading_is_not_told_of_twice() {
+        let mut stalls = stalls();
+        let none = BTreeMap::new();
+        let held = [Member { waking: true, ..worker() }];
+        assert_eq!(kinds(&stalls.judge(&held, &none, 1000 + AFTER)), ["stalled", "tell"]);
+
+        let working = [Member { activity: Some(Activity::Working), ..held[0].clone() }];
+        let at_work = 1000 + 2 * AFTER;
+        assert_eq!(kinds(&stalls.judge(&working, &none, at_work)), ["moving"]);
+        assert!(stalls.judge(&working, &none, at_work + 1).is_empty(), "moved twice");
+
+        assert!(stalls.judge(&held, &none, at_work + AFTER - 1).is_empty());
+        let acts = stalls.judge(&held, &none, at_work + 1 + AFTER);
+        assert_eq!(kinds(&acts), ["stalled"], "told twice");
+        assert!(matches!(acts[0], Act::Stalled { unlock: Unlock::ToldAlready, .. }), "{acts:?}");
+        assert!(stalls.judge(&held, &none, at_work + 10 * AFTER).is_empty());
+
+        assert_eq!(kinds(&stalls.judge(&[], &none, at_work + 11 * AFTER)), ["moving"]);
+    }
+
+    /// A member that reads what it was told of while at work has ended that stall, and what is
+    /// left unread is a stall of its own, told of in turn.
+    #[test]
+    fn reading_at_work_ends_the_stall() {
+        let mut stalls = stalls();
+        let none = BTreeMap::new();
+        let held = Member { waking: true, ..worker() };
+        let working = Member { activity: Some(Activity::Working), ..held.clone() };
+        stalls.judge(std::slice::from_ref(&held), &none, 1000 + AFTER);
+        stalls.judge(std::slice::from_ref(&working), &none, 1000 + 2 * AFTER);
+
+        let later = Holding { first: 7, first_at_ms: 1000 + 2 * AFTER, ..held.holding.clone() };
+        let read = Member { holding: later.clone(), ..working };
+        assert!(stalls.judge(&[read], &none, 1000 + 3 * AFTER).is_empty());
+        let free = Member { holding: later, ..held };
+        let acts = stalls.judge(&[free], &none, 1000 + 4 * AFTER);
+        assert_eq!(kinds(&acts), ["stalled", "tell"]);
+        let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
+        assert!(body.contains("has not read #7"), "{body}");
     }
 
     /// A daemon that has just started, after a restart or taking over from another, holds no
