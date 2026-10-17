@@ -243,6 +243,8 @@ pub struct RosterPane {
     pub resumes_as: Option<String>,
     /// Whether it raises nothing for the person, as its daemon says.
     pub quiet: bool,
+    /// The pane that made it as its helper, as its daemon says (MIP-7).
+    pub maker: Option<PaneId>,
 }
 
 /// What the next press names.
@@ -562,6 +564,7 @@ impl Roster {
                             compactable: pane.compactable,
                             resumes_as: resumes_as(pane),
                             quiet: pane.quiet,
+                            maker: pane.maker.clone(),
                             key,
                         }
                     })
@@ -728,6 +731,7 @@ fn hidden_tabs<'a>(
                     compactable: pane.compactable,
                     resumes_as: resumes_as(pane),
                     quiet: pane.quiet,
+                    maker: pane.maker.clone(),
                 });
             }
         }

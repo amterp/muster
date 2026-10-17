@@ -3291,6 +3291,74 @@
       }
     },
     {
+      "name": "a helper's row names the pane that made it, wherever the helper is held",
+      "why": "A helper is a pane another pane's agent made for its own work (MIP-7). Its daemon keeps which pane that was, and every row carries it, so whatever lists helpers under their maker reads it off the row rather than guessing from tabs or names. A helper beside its maker and a hidden one carry it alike, and a pane nobody made carries none.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
+              },
+              {
+                "id": "w1:t2",
+                "label": "alpha's helpers",
+                "root": "w1:p3",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha"
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/alpha",
+                "maker": "w1:p1"
+              },
+              {
+                "id": "w1:p3",
+                "cwd": "/src/alpha",
+                "maker": "w1:p1"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "showing": [
+          "local/w1:p1"
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 3 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" on-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"alpha\" off-screen maker=w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" on-screen"
+        ],
+        "hidden": [
+          "w1:t2 on=local place=0 label=\"alpha's helpers\" given-name=\"alpha's helpers\" off-screen",
+          "local/w1:p3 place=0 tab=w1:t2 label=\"alpha\" off-screen maker=w1:p1"
+        ]
+      }
+    },
+    {
       "name": "a pane can be restarted when its daemon knows how its agent resumes",
       "why": "The agent row's menu offers Restart Agent and greys it out where there is nothing to resume: a pane running no agent, or an agent that reported no session its harness resumes. The daemon builds the resume from what the agent reported and the manifests it holds, so the row carries the daemon's word, and the command it would run is what the window says before it ends anything.",
       "given": {

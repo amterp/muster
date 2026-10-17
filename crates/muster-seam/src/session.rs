@@ -31,7 +31,7 @@ use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Side,
+    BackendChannel, BackendIntent, Grid, Maker, MoveDestination, Outcome, Refusal, Side,
 };
 use muster_core::message_groups::{self, MessageGroup};
 use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
@@ -4021,6 +4021,17 @@ pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
 /// way to know and no reason to.
 pub(crate) fn daemon_holding(pane: &PaneId) -> Option<DaemonId> {
     locate(pane).map(|(daemon, ..)| daemon)
+}
+
+/// A pane as the maker of a new one, named as the agent list names it, or none when no machine
+/// holds it. A pane from a daemon before words, which nobody named, goes by its id.
+pub(crate) fn maker(pane: &PaneId) -> Option<Maker> {
+    let session = poison::lock(&SESSION, "session");
+    let (daemon, _) = session.locate(pane)?;
+    let mirror = poison::lock(&session.backends.get(&daemon)?.mirror, "mirror");
+    let held = mirror.pane(pane)?;
+    let name = muster_core::roster::pane_name(held).unwrap_or(pane.as_str()).to_string();
+    Some(Maker { pane: pane.clone(), name })
 }
 
 /// The tab a pane is in, on whichever machine holds it.

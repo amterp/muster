@@ -108,6 +108,15 @@ pub enum Branch {
     Second,
 }
 
+/// The pane a new pane is made as a helper of (MIP-7), and what that pane is called: the hidden
+/// tab a maker's helpers share is named for it, and a maker on another machine is named by nothing
+/// that machine's daemon holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Maker {
+    pub pane: PaneId,
+    pub name: String,
+}
+
 /// One requested change.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendIntent {
@@ -141,6 +150,8 @@ pub enum BackendIntent {
         /// Whether to make it quiet (`crate::mirror::Pane::quiet`). With the pane rather than
         /// after it for the reason `name` is: a pane quieted a moment late has already asked.
         quiet: bool,
+        /// Whose helper it is, if anybody's. Never changed once the pane is made.
+        maker: Option<Maker>,
     },
     ClosePane {
         pane: PaneId,
@@ -169,6 +180,9 @@ pub enum BackendIntent {
         /// A tab no window shows, so the window that asked does not take it: a pane made hidden
         /// from the start, which is an agent nobody is looking at.
         hidden: bool,
+        /// Whose helper it is, as on [`BackendIntent::SplitPane`]. A hidden helper goes into the
+        /// hidden tab its maker's helpers share rather than into `tab`, unless none holds one yet.
+        maker: Option<Maker>,
     },
     /// Makes a pane on this machine as a new part of a Muster tab another machine already holds
     /// part of, which is what splitting a laptop pane onto a devenv means when the devenv has no
@@ -192,6 +206,8 @@ pub enum BackendIntent {
         /// Whether the tab being joined is hidden. Every part of a tab says the same, so a pane
         /// split from a hidden one onto another machine is hidden there too.
         hidden: bool,
+        /// Whose helper it is, as on [`BackendIntent::SplitPane`].
+        maker: Option<Maker>,
     },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
@@ -344,23 +360,28 @@ impl BackendIntent {
             ),
             // A command line, for the reason above and one more: an environment set on the way
             // to a program is a normal thing to type, and a token is a normal thing to set.
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet } => format!(
-                "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
-                 run: {}, name: {}, quiet: {quiet} }}",
-                counted(run.as_ref()),
-                named(name.as_deref())
-            ),
-            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden } => format!(
+            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker } => {
+                format!(
+                    "SplitPane {{ pane: {pane}, side: {side:?}, ratio: {ratio:?}, cwd: {cwd:?}, \
+                 run: {}, name: {}, quiet: {quiet}, maker: {} }}",
+                    counted(run.as_ref()),
+                    named(name.as_deref()),
+                    made_by(maker.as_ref())
+                )
+            }
+            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden, maker } => format!(
                 "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
-                 hidden: {hidden} }}",
+                 hidden: {hidden}, maker: {} }}",
                 counted(run.as_ref()),
-                named(name.as_deref())
+                named(name.as_deref()),
+                made_by(maker.as_ref())
             ),
-            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden } => format!(
+            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => format!(
                 "JoinTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
-                 hidden: {hidden} }}",
+                 hidden: {hidden}, maker: {} }}",
                 counted(run.as_ref()),
-                named(name.as_deref())
+                named(name.as_deref()),
+                made_by(maker.as_ref())
             ),
             BackendIntent::CompactPane { pane, focus, then } => format!(
                 "CompactPane {{ pane: {pane}, focus: {}, then: {} }}",
@@ -391,6 +412,11 @@ fn named(name: Option<&str>) -> &'static str {
         Some(_) => "<given>",
         None => "<cleared>",
     }
+}
+
+/// Whose helper a new pane is, by the maker's id alone: its name is something somebody typed.
+fn made_by(maker: Option<&Maker>) -> String {
+    maker.map_or_else(|| "<none>".to_string(), |maker| maker.pane.to_string())
 }
 
 /// What a daemon said about a change it just made.

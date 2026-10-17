@@ -581,9 +581,10 @@ fn close_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
 
 /// Makes a pane as a window's `pane new` does, by the rules that need nothing but this daemon:
 /// beside the pane named, or with `--hidden` in a hidden tab of its own that starts where that
-/// pane is. With no pane named there is no keyboard's pane to split, so it gets a tab of its own,
-/// as a window showing nothing gives one; a tab no window holds joins the next that opens. The
-/// keyboard `--focus` asks for is a window's, so with none it asks nothing.
+/// pane is, or for a hidden helper in the tab its maker's helpers share. With no pane named there
+/// is no keyboard's pane to split, so it gets a tab of its own, as a window showing nothing gives
+/// one; a tab no window holds joins the next that opens. The keyboard `--focus` asks for is a
+/// window's, so with none it asks nothing.
 ///
 /// The pane is told the caller's `$MUSTER_SOCKET`, as a window tells the panes it makes its own,
 /// so that it drives the window once one is back.
@@ -611,6 +612,15 @@ fn make_pane(
     }
     let beside = said(&split.pane_id);
     let mut cwd = said(&split.cwd);
+    // The maker's id, and its name for the tab its hidden helpers share. One this daemon does not
+    // hold is refused as a pane to split from is: with no window, nothing can say it exists.
+    let maker = match said(&split.maker) {
+        Some(maker) => match snapshot(socket)?.panes.iter().find(|held| held.pane == maker) {
+            Some(held) => Some((maker.clone(), held.name().unwrap_or(&maker).to_string())),
+            None => return Ok(not_held(socket, &maker, "made")),
+        },
+        None => None,
+    };
     let placement = match &beside {
         Some(pane) if !split.hidden => {
             daemon_proto::placement::Where::Beside(daemon_proto::placement::Beside {
@@ -627,11 +637,7 @@ fn make_pane(
                 };
                 cwd = cwd.or_else(|| said(&held.cwd));
             }
-            daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
-                tab: Minter::new(Mint::Drawn).tab().to_string(),
-                label: Some(daemon_proto::Label::default()),
-                hidden: split.hidden,
-            })
+            in_a_tab(split.hidden, maker.as_ref().map(|(_, name)| name.as_str()))
         }
     };
     let made = Minter::new(Mint::Drawn).pane().to_string();
@@ -649,10 +655,13 @@ fn make_pane(
             command: said(&split.run),
             label: said(&split.name),
             quiet: split.quiet,
-            maker: None,
+            maker: maker.map(|(pane, _)| pane),
         },
     ));
     let answer = match (split.hidden, split.quiet) {
+        _ if !split.maker.is_empty() => {
+            asked_of_one_since(socket, create, daemon_proto::version::HELPERS, "make a helper")
+        }
         (true, _) => asked_of_one_that_hides(socket, create, "make a hidden pane"),
         (false, true) => asked_of_one_that_hides(socket, create, "make a quiet pane"),
         (false, false) => asked(socket, create),
@@ -675,6 +684,28 @@ fn make_pane(
         }
         _ => failure(answer.reason),
     })
+}
+
+/// A new tab of its own, hidden or not, or for a hidden helper the tab its maker's helpers share,
+/// named for the maker by `maker`, when there is one.
+fn in_a_tab(hidden: bool, maker: Option<&str>) -> daemon_proto::placement::Where {
+    let tab = Minter::new(Mint::Drawn).tab().to_string();
+    match maker {
+        Some(maker) if hidden => {
+            daemon_proto::placement::Where::Helpers(daemon_proto::placement::Helpers {
+                tab,
+                label: Some(daemon_proto::Label {
+                    text: Some(muster_core::making::helpers_tab(maker)),
+                    generation: 1,
+                }),
+            })
+        }
+        _ => daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
+            tab,
+            label: Some(daemon_proto::Label::default()),
+            hidden,
+        }),
+    }
 }
 
 /// A daemon's answer to a change, as the window's own answer.
@@ -810,6 +841,7 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                             .unwrap_or_default(),
                         subtitle: record.map_or_else(String::new, |record| record.title.clone()),
                         quiet: record.is_some_and(|record| record.quiet),
+                        maker: record.and_then(|record| record.maker.clone()).unwrap_or_default(),
                         pane_id: pane,
                         ..muster_proto::RosterPane::default()
                     }

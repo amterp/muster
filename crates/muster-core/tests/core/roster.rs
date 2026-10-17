@@ -282,7 +282,7 @@ fn described(key: &str, value: Option<&str>) -> String {
 /// without counting rows back up to the heading it belongs to.
 fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
     format!(
-        "{} place={} tab={} label={:?}{}{}{}{}{} {}{}",
+        "{} place={} tab={} label={:?}{}{}{}{}{} {}{}{}",
         pane.key,
         pane.place,
         tab.id,
@@ -294,7 +294,8 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
         // Only beside a word, since without one it is the label again.
         described("beside-word", pane.word.as_ref().map(|_| pane.beside_word.as_str())),
         if pane.on_screen { "on-screen" } else { "off-screen" },
-        if pane.quiet { " quiet" } else { "" }
+        if pane.quiet { " quiet" } else { "" },
+        pane.maker.as_ref().map(|maker| format!(" maker={maker}")).unwrap_or_default()
     )
 }
 

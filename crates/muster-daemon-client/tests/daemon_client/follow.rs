@@ -7,7 +7,7 @@ use std::time::Duration;
 use muster_core::config::{ClipboardWrite, Cursor, CursorStyle, Shell, ShellMode};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
-use muster_core::intent::{BackendChannel, BackendIntent, Side};
+use muster_core::intent::{BackendChannel, BackendIntent, Maker, Side};
 use muster_core::mirror::Mirror;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -90,6 +90,7 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
             name: Some("first".into()),
             quiet: false,
             hidden: false,
+            maker: None,
         })
         .unwrap();
     let (pane, tab) = (made.created.unwrap(), TabId::new("t1"));
@@ -110,6 +111,7 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
             run: None,
             name: None,
             quiet: false,
+            maker: None,
         })
         .unwrap()
         .created
@@ -117,6 +119,38 @@ fn a_request_has_taken_effect_in_the_mirror_by_the_time_it_returns() {
     let mirror = followed.mirror.lock().unwrap();
     let tree = mirror.tree(&tab).unwrap().to_string();
     assert_eq!(tree, format!("columns({split}, {pane}@0.5)"), "the new pane is on the left");
+}
+
+/// A hidden helper goes into the hidden tab its maker's helpers share, named for the maker when
+/// the first of them makes it, and the mirror says whose helper each one is.
+#[test]
+fn a_makers_hidden_helpers_land_in_one_tab_named_for_it() {
+    let daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let tab = |name: &str, maker: Option<Maker>| BackendIntent::CreateTab {
+        tab: TabId::new(name),
+        cwd: None,
+        run: None,
+        name: None,
+        quiet: false,
+        hidden: maker.is_some(),
+        maker,
+    };
+    let maker = followed.backend.submit(&tab("t1", None)).unwrap().created.unwrap();
+    let helper = |name: &str| {
+        tab(name, Some(Maker { pane: maker.clone(), name: "🤖 integrator".to_string() }))
+    };
+    let first = followed.backend.submit(&helper("t2")).unwrap().created.unwrap();
+    let second = followed.backend.submit(&helper("t3")).unwrap().created.unwrap();
+
+    let mirror = followed.mirror.lock().unwrap();
+    let (first, second) = (mirror.pane(&first).unwrap(), mirror.pane(&second).unwrap());
+    assert_eq!(first.tab, second.tab, "one tab for both");
+    assert_eq!((&first.maker, &second.maker), (&Some(maker.clone()), &Some(maker)));
+    let shared = mirror.tab(&first.tab).unwrap();
+    assert!(shared.hidden);
+    assert_eq!(shared.label.as_deref(), Some("🤖 integrator's helpers"));
+    assert!(mirror.tab(&TabId::new("t3")).is_none(), "no tab under the name nobody needed");
 }
 
 /// A zoom is a toggle to the window and a state to the daemon, read from the mirror.
@@ -131,6 +165,7 @@ fn zooming_twice_puts_the_tab_back() {
         name: None,
         quiet: false,
         hidden: false,
+        maker: None,
     });
     let pane = made.unwrap().created.unwrap();
     let zoomed = |followed: &Followed, pane: &PaneId| {
@@ -168,6 +203,7 @@ fn a_read_longer_than_one_answer_ends_at_the_newest_row() {
         name: None,
         quiet: false,
         hidden: false,
+        maker: None,
     });
     let pane = made.unwrap().created.unwrap();
 
@@ -205,6 +241,7 @@ fn a_daemon_that_comes_back_is_followed_again() {
             name: None,
             quiet: false,
             hidden: false,
+            maker: None,
         })
         .unwrap();
 
@@ -226,6 +263,7 @@ fn a_daemon_that_comes_back_is_followed_again() {
         name: None,
         quiet: false,
         hidden: false,
+        maker: None,
     });
     assert!(made.is_ok(), "requests work again: {made:?}");
     drop(followed.follower);
@@ -374,6 +412,7 @@ fn the_census_asks_each_daemon_what_it_holds() {
             name: None,
             quiet: false,
             hidden: false,
+            maker: None,
         })
         .unwrap();
     let records = daemon.root().join("records");
@@ -443,6 +482,7 @@ fn a_reaction_to_a_notice_can_ask_the_same_daemon() {
                 name: None,
                 quiet: false,
                 hidden: false,
+                maker: None,
             });
             let _ = answered.send(made.map(|outcome| outcome.created_tab));
         }),
@@ -484,6 +524,7 @@ fn a_paste_too_large_to_send_leaves_typing_working() {
         name: None,
         quiet: false,
         hidden: false,
+        maker: None,
     });
     let pane = made.unwrap().created.unwrap();
     let mut control = daemon.connect();

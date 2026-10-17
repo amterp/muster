@@ -13,7 +13,7 @@ use std::time::Duration;
 use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Grid, MoveDestination, Outcome, Refusal, Restarted, Side,
+    BackendChannel, BackendIntent, Grid, Maker, MoveDestination, Outcome, Refusal, Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -160,20 +160,17 @@ impl DaemonBackend {
         self.minter.lock().unwrap_or_else(PoisonError::into_inner).pane()
     }
 
-    fn create(
-        &self,
-        placement: placement::Where,
-        cwd: Option<String>,
-        run: Option<String>,
-        name: Option<String>,
-        quiet: bool,
-    ) -> Result<PaneId, Refusal> {
+    fn create(&self, placement: placement::Where, making: Making) -> Result<PaneId, Refusal> {
+        let Making { cwd, run, name, quiet, maker } = making;
         let hidden = matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden);
         if hidden {
             self.hides_and_quiets("make a hidden pane")?;
         }
         if quiet {
             self.hides_and_quiets("make a quiet pane")?;
+        }
+        if maker.is_some() {
+            self.speaks_since(muster_daemon_proto::version::HELPERS, "make a helper")?;
         }
         let pane = self.mint_pane();
         self.pane_request(pane_request::Request::Create(pane_request::Create {
@@ -185,7 +182,7 @@ impl DaemonBackend {
             command: run,
             label: name,
             quiet,
-            maker: None,
+            maker: maker.map(|maker| maker.pane.to_string()),
         }))
         .map_err(|refusal| match refusal {
             Refusal::Unanswered { detail, .. } => {
@@ -239,6 +236,15 @@ impl DaemonBackend {
     }
 }
 
+/// What a create asks of the pane itself, beyond where it goes.
+struct Making {
+    cwd: Option<String>,
+    run: Option<String>,
+    name: Option<String>,
+    quiet: bool,
+    maker: Option<Maker>,
+}
+
 /// A tab here, or this machine's part of a Muster tab, unnamed.
 fn new_tab(tab: &TabId, hidden: bool) -> placement::Where {
     placement::Where::NewTab(placement::NewTab {
@@ -261,24 +267,37 @@ impl BackendChannel for DaemonBackend {
     fn submit(&self, intent: &BackendIntent) -> Result<Outcome, Refusal> {
         let done = Ok(Outcome::default());
         match intent.clone() {
-            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet } => {
+            BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker } => {
                 let placement = placement::Where::Beside(placement::Beside {
                     pane: pane.to_string(),
                     side: convert::side(side).into(),
                     ratio,
                 });
-                let created = self.create(placement, cwd, run, name, quiet)?;
+                let created = self.create(placement, Making { cwd, run, name, quiet, maker })?;
                 Ok(Outcome { created: Some(created), ..Outcome::default() })
             }
-            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden } => {
-                let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
+            // A hidden helper goes among its maker's other helpers, in the tab they share, and
+            // `tab` is made only when there is none yet.
+            BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden, maker } => {
+                let placement = match &maker {
+                    Some(maker) if hidden => placement::Where::Helpers(placement::Helpers {
+                        tab: tab.to_string(),
+                        label: Some(proto::Label {
+                            text: Some(muster_core::making::helpers_tab(&maker.name)),
+                            generation: 1,
+                        }),
+                    }),
+                    _ => new_tab(&tab, hidden),
+                };
+                let created = self.create(placement, Making { cwd, run, name, quiet, maker })?;
                 Ok(Outcome { created: Some(created), created_tab: Some(tab), ..Outcome::default() })
             }
             // The same placement `placement_in` asks for when a moved pane is this machine's
             // first in the tab, and unnamed for the same reason: the window names this part
             // after the rest when the daemon announces it.
-            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden } => {
-                let created = self.create(new_tab(&tab, hidden), cwd, run, name, quiet)?;
+            BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => {
+                let created =
+                    self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })?;
                 Ok(Outcome { created: Some(created), ..Outcome::default() })
             }
             BackendIntent::ClosePane { pane } => {

@@ -118,7 +118,7 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::WatchPanes(watch) => watch.pane_ids.iter_mut().collect(),
         Payload::FocusPane(focus) => vec![&mut focus.pane_id],
         Payload::ClosePane(close) => vec![&mut close.pane_id],
-        Payload::SplitPane(split) => vec![&mut split.pane_id],
+        Payload::SplitPane(split) => vec![&mut split.pane_id, &mut split.maker],
         Payload::CreateTab(create) => vec![&mut create.pane_id],
         Payload::ZoomPane(zoom) => vec![&mut zoom.pane_id],
         Payload::ResizePane(resize) => vec![&mut resize.pane_id],

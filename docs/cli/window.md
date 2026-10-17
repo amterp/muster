@@ -45,7 +45,7 @@ with `muster pane hide` or made with `pane new --hidden` (`muster docs agents`, 
 No window holds their tabs, so they have no places and no keyboard, and every window lists the
 same ones. In `--json` they are `hidden[]`, in the shape `other_windows[].tabs[]` takes, and not in
 `panes[]`. Every pane there says what its agent is doing in the fields a pane in `panes[]` does -
-`state`, `since`, `facts`, `unread_input` and the rest - and carries `quiet`.
+`state`, `since`, `facts`, `unread_input` and the rest - and carries `quiet` and `maker`.
 
 `--json` answers the same thing as one flat list of panes, which is what filtering wants:
 
@@ -87,8 +87,8 @@ reopen window-2` does. `muster tab move --window` takes a window's name, open or
 
 Under `--json`, `name` is this window's own name, and `other_windows[]` carries `window` (its
 name), `pid` (null once it has closed; every open window shares the app's) and its `tabs[]`, each
-with `tab`, `daemons`, `label`, `given_name` and `panes[]` of `pane`, `daemon`, `label` and
-`state`.
+with `tab`, `daemons`, `label`, `given_name` and `panes[]` of `pane`, `daemon`, `label`, `maker`
+and `state`.
 
 ## Which window answers
 
@@ -169,6 +169,10 @@ One entry per pane every followed daemon holds, on screen or not.
 - `label` - what to call it to somebody who did not open it: the name somebody gave it, or
   failing that its word, then its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
+- `maker` - the id of the pane that made it as its helper (`muster docs agents`, "An agent's
+  helpers"), or `null` for a pane nobody made as one. The maker may be on another machine, or
+  closed. `[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE)` is a pane's
+  own helpers, wherever each is held.
 - `subtitle` - what its agent is working on, empty when there is nothing worth a second line.
 - `state` - `working`, `blocked`, `stuck`, `waiting`, `idle`, `done`, `unknown` or `unreachable`.
 - `last_state` - what the pane read before its machine stopped answering, while `state` is

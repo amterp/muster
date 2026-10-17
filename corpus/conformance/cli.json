@@ -2939,6 +2939,148 @@
       "expect": {
         "usage": "ArgumentConflict"
       }
+    },
+    {
+      "name": "a helper is made hidden, as the helper of the pane this runs in",
+      "why": "An agent starting agents for its own work says so with --helper, and the pane it runs in is the maker (MIP-7). Hidden by default, since the person talks to the maker and its helpers are its business, and split from the maker so it starts in the maker's directory.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--run",
+          "claude"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "pane_id": "p1w3r07bsd",
+            "side": "right",
+            "run": "claude",
+            "hidden": true,
+            "maker": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a helper of another pane starts from that pane",
+      "why": "--helper-of names the maker, by name or id, and the new pane grows from it rather than from the pane the command runs in, so a shown one lands beside its maker and a hidden one in its maker's directory. The window reads the name.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper-of",
+          "maple"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "pane_id": "maple",
+            "side": "right",
+            "hidden": true,
+            "maker": "maple"
+          }
+        }
+      }
+    },
+    {
+      "name": "a shown helper is an ordinary split that still has a maker",
+      "why": "--shown opts out of hiding and nothing else: the pane is split where asked, and is still its maker's helper.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--shown",
+          "--down"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "split_pane": {
+            "pane_id": "p1w3r07bsd",
+            "side": "down",
+            "maker": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a hidden helper takes no side",
+      "why": "A helper is hidden unless --shown, and a hidden pane is not a split, so a side would be ignored. Refused, saying how to get the split that was probably meant.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--down"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "refused": "a helper is made hidden, in a tab its maker's helpers share, so no side and no --focus can say where it goes or put the keyboard on it, and nothing was made. Add --shown to split it beside the pane it came from instead."
+      }
+    },
+    {
+      "name": "a helper of the pane this runs in needs one to run in",
+      "why": "Outside every pane there is no pane for --helper to mean, and making the pane nobody's helper would quietly drop what was asked.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper"
+        ]
+      },
+      "expect": {
+        "refused": "--helper makes a helper of the pane this runs in, and this is not running in a pane, so nothing was made. --helper-of names the pane it is to be a helper of."
+      }
+    },
+    {
+      "name": "shown means a helper shown",
+      "why": "--shown opts a helper out of hiding; on a pane that is nobody's helper there is nothing to opt out of, and accepting it would suggest it did something.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--shown"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "a helper has one maker",
+      "why": "--helper says the pane this runs in and --helper-of says another, so both at once is two answers to one question.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "--helper",
+          "--helper-of",
+          "maple"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
     }
   ]
 }

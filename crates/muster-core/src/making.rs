@@ -6,6 +6,12 @@ pub const HIDDEN_AND_FOCUSED: &str = "a pane cannot be made hidden and take the 
      window shows a hidden pane, so there would be nothing for the keyboard to be on. Nothing was \
      made. Make it hidden, or make it with the keyboard and hide it later.";
 
+/// The name of the hidden tab a maker's helpers share, made with the first of them (MIP-7): the
+/// maker's own name, as it was then.
+pub fn helpers_tab(maker: &str) -> String {
+    format!("{maker}'s helpers")
+}
+
 /// A daemon was asked to make `pane` and never said what came of it, for `detail`.
 ///
 /// Worded so that nobody reads it as a refusal, because the one thing a caller must not do with

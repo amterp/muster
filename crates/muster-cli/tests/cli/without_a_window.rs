@@ -143,6 +143,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     hiding_and_quiet_are_asked_of_the_daemon(&here);
     an_agent_is_restarted_by_the_daemon(&here);
     panes_are_made_renamed_and_closed_by_the_daemon(&here);
+    helpers_are_made_by_the_daemon(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
     assert!(refused.contains("--pane"), "with no window there is no keyboard's pane:\n{refused}");
@@ -427,6 +428,41 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
     let refused = refused_with(&here.muster(&["pane", "rename", "--pane", "p9nobody", "x"]), 1);
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
+}
+
+/// A pane's helpers are made with no window as with one: hidden, in one tab named for their maker,
+/// and listed as its own.
+fn helpers_are_made_by_the_daemon(here: &Here) {
+    let mut control = here.daemon.connect();
+    let first = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
+    let second = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
+    let held = snapshot(&mut control);
+    let maker = held.panes.iter().find(|pane| pane.pane == "p1").expect("p1 is held");
+    let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &first)).expect("made in a tab");
+    assert!(tab.hidden && tab_shape_holds(tab, &second), "one hidden tab for both: {tab:?}");
+    let label = tab.label.as_ref().and_then(|label| label.text.clone());
+    assert_eq!(label, Some(format!("{}'s helpers", maker.name().unwrap())), "{tab:?}");
+    for helper in [&first, &second] {
+        let record = held.panes.iter().find(|pane| &pane.pane == helper).expect("held");
+        assert_eq!(record.maker.as_deref(), Some("p1"), "{record:?}");
+    }
+
+    let window: Value = serde_json::from_str(&ok(&here.muster(&["window", "--json"]))).unwrap();
+    let makers: Vec<&Value> = window["hidden"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|tab| tab["panes"].as_array().into_iter().flatten())
+        .filter(|pane| pane["pane"] == json!(first) || pane["pane"] == json!(second))
+        .map(|pane| &pane["maker"])
+        .collect();
+    assert_eq!(makers, [&json!("p1"), &json!("p1")], "{window}");
+
+    let refused = refused_with(&here.muster(&["pane", "new", "--helper-of", "p9nobody"]), 1);
+    assert!(refused.contains("no pane called p9nobody"), "{refused}");
+    for pane in [&first, &second] {
+        ok(&here.muster(&["pane", "close", "--pane", pane]));
+    }
 }
 
 fn tab_shape_holds(tab: &proto::Tab, pane: &str) -> bool {

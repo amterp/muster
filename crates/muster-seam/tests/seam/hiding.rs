@@ -242,6 +242,67 @@ fn a_pane_made_hidden_is_taken_by_no_window_and_closes_by_name() {
     );
 }
 
+/// A pane's hidden helpers share one hidden tab, named for it by the name it goes by, and a helper
+/// shown beside it is split there as any pane is. Every row says whose helper it is, by its
+/// maker's id though the request named the maker by its word.
+#[test]
+fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    open_window(&daemon);
+    let word = snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "p1")
+        .and_then(|pane| pane.word)
+        .expect("p1 was drawn a word");
+    let helper = |hidden: bool| {
+        let made = answer(request::Payload::SplitPane(SplitPane {
+            pane_id: "p1".to_string(),
+            side: "down".to_string(),
+            hidden,
+            maker: word.clone(),
+            ..SplitPane::default()
+        }));
+        match made.payload {
+            Some(response::Payload::Made(made)) => made.pane_id,
+            other => panic!("making a helper answered {other:?}"),
+        }
+    };
+    let (first, second) = (helper(true), helper(true));
+    until(
+        "both helpers to be listed hidden, in one tab",
+        || roster().hidden.len() == 1 && hidden() == [first.clone(), second.clone()],
+        || format!("hidden: {:?}", roster().hidden),
+    );
+    let shared = &roster().hidden[0];
+    assert_eq!(shared.label, format!("{word}'s helpers"));
+    assert!(shared.panes.iter().all(|pane| pane.maker == "p1"), "{shared:?}");
+
+    let shown = helper(false);
+    until(
+        "the shown helper to be split beside its maker",
+        || rows() == ["p1", shown.as_str(), "p2"],
+        || format!("the window lists {:?}", rows()),
+    );
+    let makers: Vec<String> =
+        roster().tabs.iter().flat_map(|tab| &tab.panes).map(|pane| pane.maker.clone()).collect();
+    assert_eq!(makers, ["", "p1", ""], "only the helper has a maker");
+
+    let refused = answer(request::Payload::SplitPane(SplitPane {
+        pane_id: "p1".to_string(),
+        side: "right".to_string(),
+        maker: "p9nobody".to_string(),
+        ..SplitPane::default()
+    }));
+    match refused.payload {
+        Some(response::Payload::Failure(failure)) => {
+            assert!(failure.reason.contains("p9nobody"), "{}", failure.reason);
+        }
+        other => panic!("a helper of a pane nobody holds answered {other:?}"),
+    }
+}
+
 /// A quiet pane asks for nobody: a program's notification there raises nothing, where the same
 /// notification in a pane that is not quiet does.
 #[test]

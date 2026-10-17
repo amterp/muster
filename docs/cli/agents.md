@@ -404,6 +404,35 @@ The window has both too: Hide Pane and Quiet Pane in a pane's right-click menu, 
 and the Pane menu, on the `hide_pane` and `quiet_pane` actions, which ship with no chord. A hidden
 pane's row offers Show Pane.
 
+## An agent's helpers
+
+An agent that starts agents for its own work makes each one its helper:
+
+    W=$(muster pane new --helper --run claude --name '🤖 worker')
+
+`--helper` makes the new pane a helper of the pane the command runs in, its maker, and the pane's
+daemon keeps that on its record for good, beside hidden and quiet. A helper is made hidden, in its
+maker's directory, and a maker's hidden helpers share one hidden tab: made with the first of them,
+each next one added as a column as wide as the rest, and named for the maker as it was called
+then, `🤖 integrator's helpers`. `muster window` lists each helper under its maker rather than
+under `hidden`, and `--json` gives every pane a `maker`, so an agent finds its own helpers with
+
+    muster window --json | jq -r '[.panes[], .hidden[].panes[]] | .[] | select(.maker == env.MUSTER_PANE) | .pane'
+
+`--shown` splits a helper beside its maker instead, as `pane new` does any pane, and it is still a
+helper. A hidden helper takes no side and no `--focus`, for the reason `--hidden` takes none.
+`--helper-of <pane>` names another pane as the maker, by name or id, and splits from that pane
+unless `--pane` says otherwise. Outside every pane `--helper` is refused, since there is no pane
+for it to mean.
+
+A helper is not made quiet: when it blocks it notifies you as any pane does, because nothing yet
+tells its maker. Add `--quiet` only to a helper you will watch yourself.
+
+A helper is a pane started for its maker's own work. An agent you ask to start a peer, one that
+takes part of the work at its own level and answers to you, starts it with plain `muster pane
+new`. Muster never infers the relation, so a pane made from inside another pane is nobody's
+helper unless `--helper` said so.
+
 ## A pane that has gone dark
 
 A pane draws what a bridge feeds it, and a bridge dies with the connection carrying it. Muster

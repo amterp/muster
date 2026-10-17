@@ -199,12 +199,13 @@ exactly what they print through a window, since their answer means the same thin
 With no window there is no keyboard, so a pane is named with `--pane` or `$MUSTER_PANE`, and a
 pane's name is read among the panes of this machine, called by its host name.
 
-`pane new` with no window splits the pane named, in its tab, and a window that comes back shows
-the new pane there. `--hidden` puts it in a hidden tab of its own, starting in the named pane's
-directory. With no pane named at all, as from a plain terminal, it gets a tab of its own. It is
-told the `$MUSTER_SOCKET` of the command that made it, so it drives that window once the window is
-back. `--focus` moves nothing, since there is no keyboard, and a pane on another machine
-(`--daemon`) needs a window, which is what knows the machine by that name.
+`pane new` with no window splits the pane named, in its tab, and a window that comes back shows the
+new pane there. `--hidden` puts it in a hidden tab of its own, starting in the named pane's
+directory, and `--helper` or `--helper-of` makes a helper of a pane this daemon holds (`muster docs
+agents`, "An agent's helpers"). With no pane named at all, as from a plain terminal, it gets a tab
+of its own. It is told the `$MUSTER_SOCKET` of the command that made it, so it drives that window
+once the window is back. `--focus` moves nothing, since there is no keyboard, and a pane on another
+machine (`--daemon`) needs a window, which is what knows the machine by that name.
 
 Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
 docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Arranging,

@@ -47,12 +47,17 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **harness adapter** - everything that supplies a harness's capabilities: its detection manifest, its hooks and
   plugin files in `extras/<harness>/`, its recordings and observations, and its live tier (MIP-5). Data and files,
   not daemon code; not the backend's **adapter** above.
+- **helper** - a pane an agent started for its own work with `pane new --helper`, recorded on the pane as its
+  **maker**'s (MIP-7). Made hidden, into the hidden tab its maker's helpers share, and listed under its maker. An
+  agent started as a peer is not one.
 - **hidden** - a pane no window shows, in a tab its daemon holds as hidden. Listed apart, and brought back into a
   tab of its own. Not the same as **off screen**.
 - **hold** - which window a tab belongs to. Every tab is held by exactly one window, open or closed, and a window
   lists only the tabs it holds; the record is `~/.muster/state/<install>/holding/tabs.toml`, which the app keeps.
 - **intent** - a requested mutation sent to a daemon (split, close, resize, zoom, input, spawn). Muster never
   mutates; it requests.
+- **maker** - the pane a **helper** belongs to, by its id, kept by the helper's daemon for the helper's life. It may
+  be on another machine, or closed.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
 - **`@muster`** - Muster itself as the author of a message in a group, telling whoever posted what waits on a stalled

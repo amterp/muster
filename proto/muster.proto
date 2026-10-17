@@ -962,6 +962,12 @@ message SplitPane {
   // than a split - on the split pane's machine in its directory, or on `new_pane_daemon_id`'s
   // machine when that names another. Refused with `take_focus`, since nothing shows it.
   bool hidden = 11;
+
+  // The pane the new one is a helper of (MIP-7), by id or by name, or empty for a pane that is
+  // nobody's helper. Its daemon keeps it on the pane's record for good. Made hidden too, the
+  // helper goes into the hidden tab its maker's helpers share rather than a tab of its own, and
+  // the first of them names that tab for the maker. Refused when no machine holds the maker.
+  string maker = 12;
 }
 
 // Sends text to a pane, whether or not anything is showing it.
@@ -2745,6 +2751,10 @@ message RosterPane {
   // its directory and harness - `label` with the word taken out. The whole label for a pane with
   // no word.
   string beside_word = 16;
+
+  // The id of the pane that made this one as its helper (MIP-7), as its daemon says, or empty
+  // for a pane nobody made as a helper. The maker may be on another machine, or closed.
+  string maker = 17;
 }
 
 // Everything this window is showing, as one message.

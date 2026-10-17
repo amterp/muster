@@ -550,6 +550,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         session: None,
         resume: None,
         compaction: muster_core::mirror::PendingCompaction::Nothing,
+        maker: None,
     }
 }
 

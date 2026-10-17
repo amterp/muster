@@ -1132,8 +1132,14 @@ fn unplaced_tab_json(
             "daemon": pane.daemon_id,
             "label": pane.label,
             "quiet": pane.quiet,
+            "maker": maker_json(pane),
         }), states.get(pane.pane_id.as_str()).copied())).collect::<Vec<Value>>(),
     })
+}
+
+/// The id of the pane that made this one as its helper, or null for a pane nobody made as one.
+fn maker_json(pane: &muster_proto::RosterPane) -> Value {
+    if pane.maker.is_empty() { Value::Null } else { json!(pane.maker) }
 }
 
 /// A pane's row with what its agent is doing added, the same fields wherever the pane is listed:
@@ -1221,6 +1227,9 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "given_name": pane.given_name,
                 "subtitle": pane.subtitle,
                 "quiet": pane.quiet,
+                // The pane that made this one as its helper, so `select(.maker == $MUSTER_PANE)`
+                // finds an agent's helpers wherever each is held.
+                "maker": maker_json(pane),
                 "on_screen": pane.on_screen,
                 "keyboard": keyboard.as_deref() == Some(pane.pane_id.as_str()),
                 // Null rather than zeroes for a pane the window is not drawing, so this and
@@ -1884,6 +1893,32 @@ mod tests {
         assert_eq!(hidden["since"], 1_700_000_000.0, "{json}");
         assert_eq!(hidden["unread_input"]["program"], "codex", "{json}");
         assert!(hidden["facts"]["context_used"].as_f64().is_some_and(|used| used > 0.39), "{json}");
+    }
+
+    /// Every pane in `--json` says whose helper it is, wherever it is held, and null for a pane
+    /// nobody made as one.
+    #[test]
+    fn every_pane_says_whose_helper_it_is() {
+        use muster_proto::{RosterChanged, RosterPane, RosterTab, Window};
+        let pane = |id: &str, maker: &str| RosterPane {
+            pane_id: id.to_string(),
+            maker: maker.to_string(),
+            ..RosterPane::default()
+        };
+        let tab =
+            |id: &str, panes| RosterTab { tab_id: id.to_string(), panes, ..RosterTab::default() };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![tab("t1", vec![pane("p1", ""), pane("p2", "p1")])],
+                hidden: vec![tab("t2", vec![pane("p3", "p1")])],
+                ..RosterChanged::default()
+            }),
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert!(json["panes"][0]["maker"].is_null(), "{json}");
+        assert_eq!(json["panes"][1]["maker"], "p1", "{json}");
+        assert_eq!(json["hidden"][0]["panes"][0]["maker"], "p1", "{json}");
     }
 
     /// A pane whose daemon the window cannot reach says what it read before, and nothing that

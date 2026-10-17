@@ -21,7 +21,7 @@ use muster_core::input::{
     check_sent_keys, composition_outcome,
 };
 use muster_core::intent::Refusal;
-use muster_core::intent::{BackendIntent, Branch, Outcome, Side};
+use muster_core::intent::{BackendIntent, Branch, Maker, Outcome, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
@@ -1159,7 +1159,7 @@ fn create_tab(window: WindowId, create: &proto::CreateTab) -> Response {
     if create.hidden && create.take_focus {
         return Response::failure(muster_core::making::HIDDEN_AND_FOCUSED);
     }
-    let making = Making::of(&create.cwd, &create.run, &create.name, create.quiet);
+    let making = Making::of(&create.cwd, &create.run, &create.name, create.quiet, None);
     let keyboard = if create.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
 
     // A window showing nothing, answered before anything else because every rule below starts
@@ -1197,14 +1197,32 @@ struct Making {
     run: Option<String>,
     name: Option<String>,
     quiet: bool,
+    maker: Option<Maker>,
 }
 
 impl Making {
     /// From a request's fields, where empty means unsaid.
-    fn of(cwd: &str, run: &str, name: &str, quiet: bool) -> Making {
+    fn of(cwd: &str, run: &str, name: &str, quiet: bool, maker: Option<Maker>) -> Making {
         let said = |text: &str| (!text.is_empty()).then(|| text.to_string());
-        Making { cwd: said(cwd), run: said(run), name: said(name), quiet }
+        Making { cwd: said(cwd), run: said(run), name: said(name), quiet, maker }
     }
+}
+
+/// The pane a split names as the new pane's maker, if it names one. Refused when no machine this
+/// window follows holds it: a maker is written down for good, so a mistyped one is worth stopping
+/// for rather than recording.
+fn maker_of(split: &proto::SplitPane) -> Result<Option<Maker>, Box<Response>> {
+    if split.maker.is_empty() {
+        return Ok(None);
+    }
+    session::maker(&PaneId::new(&split.maker)).map(Some).ok_or_else(|| {
+        Box::new(Response::failure(format!(
+            "no machine this window follows holds a pane called {}, so there was nothing for the \
+             new pane to be a helper of, and nothing was made. `muster window` lists the panes \
+             there are.",
+            split.maker
+        )))
+    })
 }
 
 /// Asks one machine for a tab, starting where `from` is when nobody said where.
@@ -1226,7 +1244,7 @@ fn open_a_tab(
     making: Making,
     hidden: bool,
 ) -> Response {
-    let Making { cwd, run, name, quiet } = making;
+    let Making { cwd, run, name, quiet, maker } = making;
     let cwd = cwd.or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)));
     let keyboard = if hidden {
         Keyboard::StaysPut
@@ -1236,7 +1254,7 @@ fn open_a_tab(
         keyboard
     };
     let intent =
-        BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name, quiet, hidden };
+        BackendIntent::CreateTab { tab: session::mint_tab(), cwd, run, name, quiet, hidden, maker };
     relayed(submit(window, daemon, &intent, keyboard))
 }
 
@@ -1733,6 +1751,7 @@ fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response
             run: Some(command),
             name: Some(transcript::pane_name(group)),
             quiet: false,
+            maker: None,
         };
         let opened = open_a_tab(window, daemon, None, Keyboard::Follows, making, false);
         if let Some(response::Payload::Made(made)) = &opened.payload {
@@ -1778,7 +1797,7 @@ fn upgrade(window: WindowId) -> Response {
              [[daemon]] block that has no host.",
         );
     };
-    let making = Making { cwd: None, run: Some(command), name: None, quiet: false };
+    let making = Making { cwd: None, run: Some(command), name: None, quiet: false, maker: None };
     let response = open_a_tab(window, &daemon, None, Keyboard::Follows, making, false);
     if let Some(response::Payload::Made(made)) = &response.payload
         && let Some(tab) = session::tab_of(&daemon, &PaneId::new(&made.pane_id))
@@ -2182,7 +2201,11 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
     let keyboard = if split.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
     // Empty is the daemon's own rule rather than this process's directory, and for a split
     // that rule is "wherever the pane you split was".
-    let making = Making::of(&split.cwd, &split.run, &split.name, split.quiet);
+    let maker = match maker_of(split) {
+        Ok(maker) => maker,
+        Err(refusal) => return *refusal,
+    };
+    let making = Making::of(&split.cwd, &split.run, &split.name, split.quiet, maker);
 
     let target = match target(window, &split.daemon_id, &split.pane_id) {
         Ok(target) => target,
@@ -2208,10 +2231,10 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
     let Some(pane) = pane else {
         return open_a_tab(window, &daemon, None, keyboard, making, false);
     };
-    let Making { cwd, run, name, quiet } = making;
     if !onto.is_empty() && onto != daemon.as_str() {
-        return split_onto(window, &DaemonId::new(onto), &pane, side, keyboard, split);
+        return split_onto(window, &DaemonId::new(onto), &pane, side, keyboard, split, making);
     }
+    let Making { cwd, run, name, quiet, maker } = making;
     placed(
         submit(
             window,
@@ -2226,6 +2249,7 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
                 run,
                 name,
                 quiet,
+                maker,
             },
             keyboard,
         ),
@@ -2251,6 +2275,7 @@ fn split_onto(
     side: Side,
     keyboard: Keyboard,
     split: &proto::SplitPane,
+    making: Making,
 ) -> Response {
     if !session::is_following(onto) {
         return no_such_daemon(window, onto);
@@ -2262,8 +2287,7 @@ fn split_onto(
              name came from an older window - `muster window` lists the panes this one has."
         ));
     };
-    let Making { cwd, run, name, quiet } =
-        Making::of(&split.cwd, &split.run, &split.name, split.quiet);
+    let Making { cwd, run, name, quiet, maker } = making;
     let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
         BackendIntent::SplitPane {
             pane,
@@ -2273,11 +2297,12 @@ fn split_onto(
             run,
             name,
             quiet,
+            maker,
         }
     } else {
         // Every part of a tab is hidden or not alike, so a part made from a hidden pane is too.
         let hidden = session::tab_is_hidden(&tab);
-        BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden }
+        BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker }
     };
     let split = session::daemon_holding(beside)
         .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });

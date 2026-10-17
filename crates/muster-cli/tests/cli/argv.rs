@@ -259,6 +259,7 @@ fn described_split(split: &muster_proto::SplitPane) -> Value {
             ("take_focus", split.take_focus.then_some(json!(true))),
             ("quiet", split.quiet.then_some(json!(true))),
             ("hidden", split.hidden.then_some(json!(true))),
+            ("maker", said(&split.maker)),
         ])
     })
 }

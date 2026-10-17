@@ -450,10 +450,11 @@ impl Mirror {
     }
 }
 
-/// Whether what a list of panes says of a pane has moved: the things it names it by, and
-/// whether its agent can be compacted or it is quiet, which the list's menus offer on.
+/// Whether what a list of panes says of a pane has moved: the things it names it by, whose helper
+/// it is, and whether its agent can be compacted or it is quiet, which the list's menus offer on.
 fn relabelled(before: &Pane, now: &Pane) -> bool {
     before.cwd != now.cwd
+        || before.maker != now.maker
         || before.agent != now.agent
         || before.compactable != now.compactable
         || before.quiet != now.quiet

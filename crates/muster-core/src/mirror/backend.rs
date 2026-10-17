@@ -119,6 +119,9 @@ pub struct Pane {
     pub resume: Option<Resume>,
     /// What its daemon holds to type at the agent's next idle, empty prompt.
     pub compaction: PendingCompaction,
+    /// The pane that made this one as its helper, which may be on another machine (MIP-7). The
+    /// daemon's fact, set when the pane is made and never changed.
+    pub maker: Option<PaneId>,
 }
 
 /// The command that resumes a pane's agent session, as its daemon will run it.

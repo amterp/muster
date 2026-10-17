@@ -567,6 +567,20 @@ enum Doing {
         // window shows the pane, so there is nothing for the keyboard to be on.
         #[arg(long, conflicts_with_all = ["left", "right", "up", "down", "focus"])]
         hidden: bool,
+
+        /// Make it a helper of the pane this runs in: an agent you start for your own work,
+        /// listed under you, and hidden in a tab your helpers share unless --shown
+        #[arg(long, group = "helping")]
+        helper: bool,
+
+        /// Make it a helper of this pane rather than the one this runs in, splitting from it
+        /// unless --pane says otherwise
+        #[arg(long, value_name = "REF", value_parser = reference, group = "helping")]
+        helper_of: Option<String>,
+
+        /// Split a helper beside the pane it came from, as any pane, instead of hiding it
+        #[arg(long, requires = "helping", conflicts_with = "hidden")]
+        shown: bool,
     },
 
     /// Call a pane something. An empty name takes the name away again
@@ -1178,6 +1192,9 @@ fn pane(
             focus,
             quiet,
             hidden,
+            helper,
+            helper_of,
+            shown,
         } => {
             // The same four words the schema uses, and the same words a `muster window --json`
             // answer carries, rather than English ones like `below`: a caller that reads a side out
@@ -1185,9 +1202,18 @@ fn pane(
             // where ⌘D splits to, and a CLI whose default matched no chord would make the two
             // disagree about what "a split" means. clap holds the four in one group, so two at
             // once is refused before this is reached.
-            let side = chosen_side([*left, *right, *up, *down]).unwrap_or("right");
+            let sides = [*left, *right, *up, *down];
+            let side = chosen_side(sides).unwrap_or("right");
+            let maker = maker(*helper, helper_of.as_ref(), environment)?;
+            // A helper is hidden unless it is shown, and then refuses what `--hidden` refuses.
+            if maker.is_some() && !*shown && (*focus || sides.contains(&true)) {
+                return Err(Failure::Refused(HIDDEN_HELPER_PLACED.to_string()));
+            }
+            let hidden = *hidden || (maker.is_some() && !*shown);
+            // A helper starts from its maker, beside it when shown and in its directory when not.
+            let pane = pane.as_ref().or(helper_of.as_ref());
             let (pane_id, daemon_id, new_pane_daemon_id) =
-                split_target(pane.as_ref(), daemon.as_ref(), environment);
+                split_target(pane, daemon.as_ref(), environment);
             send(request::Payload::SplitPane(SplitPane {
                 pane_id,
                 daemon_id,
@@ -1198,7 +1224,8 @@ fn pane(
                 name: name.clone().unwrap_or_default(),
                 take_focus: *focus,
                 quiet: *quiet,
-                hidden: *hidden,
+                hidden,
+                maker: maker.unwrap_or_default(),
                 ..SplitPane::default()
             }))
         }
@@ -1695,6 +1722,33 @@ fn split_target(
     }
     let (pane_id, daemon_id) = pane_and_machine(pane, daemon, environment);
     (pane_id, daemon_id, String::new())
+}
+
+/// Why a helper made hidden takes no side and no `--focus`.
+const HIDDEN_HELPER_PLACED: &str = "a helper is made hidden, in a tab its maker's helpers share, \
+     so no side and no --focus can say where it goes or put the keyboard on it, and nothing was \
+     made. Add --shown to split it beside the pane it came from instead.";
+
+/// The pane a new pane is a helper of: the one named, or with `--helper` the one this runs in,
+/// which outside every pane there is none of.
+fn maker(
+    helper: bool,
+    helper_of: Option<&String>,
+    environment: &BTreeMap<String, String>,
+) -> Result<Option<String>, Failure> {
+    if let Some(maker) = helper_of {
+        return Ok(Some(maker.clone()));
+    }
+    if !helper {
+        return Ok(None);
+    }
+    running_in(environment).map(Some).ok_or_else(|| {
+        Failure::Refused(
+            "--helper makes a helper of the pane this runs in, and this is not running in a \
+             pane, so nothing was made. --helper-of names the pane it is to be a helper of."
+                .to_string(),
+        )
+    })
 }
 
 fn running_in(environment: &BTreeMap<String, String>) -> Option<String> {

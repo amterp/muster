@@ -492,7 +492,9 @@ codegen - a surface that cannot express an action is a missing message, visible 
   nothing the daemon restores or hands over changes. No window takes a hidden tab or opens a region onto one
   (`Composition::reconcile`); the roster lists hidden tabs apart, the same in every window, and showing a pane is a
   move into a new tab the asking window takes before it asks, as it takes any tab it makes. Every part of a tab is
-  made hidden or not alike, so a pane split from a hidden one onto another machine is hidden there too.
+  made hidden or not alike, so a pane split from a hidden one onto another machine is hidden there too. A helper's
+  maker is the same kind of fact, kept on the helper's record (MIP-7), and the daemon puts a maker's hidden helpers
+  in one hidden tab as each is placed.
 - **A pane is shown once a tree places it.** The daemon announces a pane as opened before the change to the tab that
   places it, so for a moment a pane belongs to no tab. The mirror holds it aside rather than showing it, and adds it
   when a tree names it (`mirror/state.rs`), because everything that draws or lists a pane does so by its tab.

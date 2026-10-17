@@ -569,6 +569,7 @@ pub(super) fn ask_for_a_tab(window: WindowId, daemon: &DaemonId) {
         name: None,
         quiet: false,
         hidden: false,
+        maker: None,
     };
     let asked = submit(window, daemon, &intent, Keyboard::Follows);
     if let Err(Refusal::Unanswered { detail, .. }) = &asked {
