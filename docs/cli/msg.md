@@ -324,6 +324,16 @@ it posts never counts as a stall itself. It posts only in a group kept on its ow
 in a group kept elsewhere is in the log alone. Members waiting on each other with everything read
 are not watched, since that is also what a finished group looks like.
 
+**`who` says the same at any moment**, without waiting the 2 minutes. Under each member, one line
+per group where messages wait on it unread: the oldest, who posted them, and why it has not read
+them, in the words a stall notice would use, or that it is at work and is rung once idle:
+
+    lexer  alive (idle)  review
+      has not read #16 in review, from director-review: a wake for it is held because its prompt holds something typed and not sent
+
+A member on another machine is said by its own daemon. With `--json`, each member's `unread` lists
+`group`, `first`, `first_at_ms`, `from` and `why`.
+
 ## Reading, and the guard
 
 `read` prints your unread messages, across your groups or in one with `--group`, and moves your
@@ -405,7 +415,7 @@ window has attached to shows `@human` alone.
 |---|---|
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
-| `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, and their groups |
+| `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
 | `post [--group G] [--to A,B] [--urgent] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |

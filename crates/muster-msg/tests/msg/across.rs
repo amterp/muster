@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use muster_msg::{
     Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Liveness, Member, Memory,
     Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled,
-    Tell, Via, Wake, What,
+    Tell, Unread, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -449,6 +449,51 @@ fn each_machine_names_the_other_from_where_it_stands() {
     assert_eq!(
         devenv,
         [("builder@lap".to_string(), Liveness::Alive), ("critic".to_string(), Liveness::Alive)]
+    );
+}
+
+/// What waits unread on a member, which its own machine's daemon says, reaches the other
+/// machine in that machine's names: the group a laptop calls `review` and the devenv
+/// `review@lap`, and the author it calls `builder`.
+#[test]
+fn a_members_unread_messages_are_said_in_the_askers_names() {
+    let mut wire = Wire::new();
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "review");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let mut members = laptop.who(Some("review"), sessions).unwrap();
+    let away = laptop.route_who(Some("review")).unwrap().remove(0);
+    let now = wire.tick();
+    let answered = {
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        devenv.answer(&Side::Devenv.peer(), away.call.clone(), sessions, now)
+    };
+    let Reply::Members(mut said) = answered.reply else { panic!("{:?}", answered.reply) };
+    let there = said.iter_mut().find(|member| member.name == "critic").unwrap();
+    there.unread = vec![Unread {
+        group: "review@lap".to_string(),
+        first: 3,
+        first_at_ms: 7,
+        authors: vec!["builder@lap".to_string()],
+        why: "it is at a dialog, waiting for somebody to answer it".to_string(),
+    }];
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let settled =
+        laptop.settle(&Side::Laptop.peer(), &away.call, Reply::Members(said), sessions, now);
+    let Ok(Settled::Members(heard)) = settled.result else { panic!("{:?}", settled.result) };
+    muster_msg::heard(&mut members, &away.machine, &heard);
+
+    let critic = members.iter().find(|member| member.name == "critic@devenv").unwrap();
+    assert_eq!(
+        critic.unread,
+        [Unread {
+            group: "review".to_string(),
+            first: 3,
+            first_at_ms: 7,
+            authors: vec!["builder".to_string()],
+            why: "it is at a dialog, waiting for somebody to answer it".to_string(),
+        }]
     );
 }
 
@@ -1282,6 +1327,7 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
         groups: Vec::new(),
         inbox: None,
         pane: None,
+        unread: Vec::new(),
     };
     assert_eq!(Reply::Members(vec![member("critic")]).check(), Ok(()));
     assert!(bad_name(&Reply::Members(vec![member("critic\n")]).check()));

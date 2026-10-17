@@ -54,7 +54,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **After posting, end your turn.** An answer wakes you. Exit 6 means nobody live heard the post
   and no answer is coming; a post that says `its prompt cannot be read` reached a harness the
   doorbell cannot ring. When you are woken, run the `muster msg read` the wake names before
-  posting to that group again.
+  posting to that group again. To see why an answer has not come, `muster msg who` says what
+  waits unread on each member and why: a draft or a menu in its prompt, a dialog, or work.
 - **Several agents working one question together is a council**, and the `council` skill, which
   ships beside this one, covers taking part in one, directing it, and convening it.
 - **Do not poll.** `muster pane wait --pane X --until idle,blocked` blocks until the agent gets

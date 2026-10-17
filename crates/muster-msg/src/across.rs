@@ -17,7 +17,7 @@ use crate::names::{
 use crate::service::{Draft, Group, check_body};
 use crate::{
     Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
-    Policy, Posted, Presence, Reach, Refusal, Removed, Store, Via, Wake, What,
+    Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake, What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -720,7 +720,23 @@ impl<S: Store> Messaging<S> {
             Reply::Members(members) => Ok(Settled::Members(
                 members
                     .into_iter()
-                    .map(|member| Member { name: peer.inward(&member.name), ..member })
+                    .map(|member| Member {
+                        name: peer.inward(&member.name),
+                        unread: member
+                            .unread
+                            .into_iter()
+                            .map(|unread| Unread {
+                                group: peer.inward(&unread.group),
+                                authors: unread
+                                    .authors
+                                    .iter()
+                                    .map(|author| peer.inward(author))
+                                    .collect(),
+                                ..unread
+                            })
+                            .collect(),
+                        ..member
+                    })
                     .collect(),
             )),
             Reply::Caught(caught) => match self.apply_into(peer, caught, presence, now_ms, applied)
@@ -1355,9 +1371,16 @@ impl<S: Store> Messaging<S> {
     /// This machine's own members of `group` - kept here, or replicated from `peer` - with
     /// what each is doing.
     fn members_here(&self, peer: &Peer, group: &str, presence: &dyn Presence) -> Vec<Member> {
-        let key = if self.kept_here(group) { group.to_string() } else { peer.inward(group) };
-        let Ok(members) = self.who(Some(&key), presence) else { return Vec::new() };
+        let Ok(members) = self.who(Some(&self.asked_of(peer, group)), presence) else {
+            return Vec::new();
+        };
         members.into_iter().filter(|member| split_machine(&member.name).is_none()).collect()
+    }
+
+    /// The group `peer` means by `group` when it asks this machine about it: one kept here, or
+    /// this machine's replica of one kept there.
+    pub fn asked_of(&self, peer: &Peer, group: &str) -> String {
+        if self.kept_here(group) { group.to_string() } else { peer.inward(group) }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1421,6 +1444,7 @@ pub fn heard(members: &mut [Member], machine: &str, heard: &[Member]) {
                 member.activity = said.activity;
                 member.pane.clone_from(&said.pane);
                 member.inbox.clone_from(&said.inbox);
+                member.unread.clone_from(&said.unread);
             }
             None => member.liveness = Liveness::Gone,
         }

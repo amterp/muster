@@ -66,6 +66,10 @@ pub(crate) struct Messages {
     commanded: Vec<doorbell::Commanded>,
     /// Panes whose wake command is running. Nothing else is typed or run there until it ends.
     commanding: HashSet<String>,
+    /// Wakes a doorbell look has taken from `pending` to ring or hand to a command, by
+    /// participant and group, while it does so without this lock: on their way, though nothing
+    /// else records them until each is rung or put back.
+    in_hand: HashSet<(String, String)>,
     /// Wakes whose command took too long, by participant and group, to be typed instead.
     type_instead: HashSet<(String, String)>,
     /// Panes whose wake command has taken too long once: a second time ends the route.
@@ -132,6 +136,7 @@ impl Messages {
             rung: Vec::new(),
             commanded: Vec::new(),
             commanding: HashSet::new(),
+            in_hand: HashSet::new(),
             type_instead: HashSet::new(),
             stalled: HashSet::new(),
             hook_grace: HashMap::new(),
@@ -233,10 +238,15 @@ impl Messages {
             return refused_as("", "handing_over", HANDING_OVER);
         }
         let result = match asked {
-            Asked::Who(who) => self.service.who(who.group.as_deref(), panes).map(|members| {
-                let members = members.into_iter().map(member_of).collect();
-                (String::new(), Answer::Members(msg_answer::Members { members }))
-            }),
+            Asked::Who(who) => {
+                self.service.who(who.group.as_deref(), panes).and_then(|mut members| {
+                    let group =
+                        who.group.as_deref().map(|group| self.service.locate(group)).transpose()?;
+                    self.unread(&mut members, group.as_deref(), panes);
+                    let members = members.into_iter().map(member_of).collect();
+                    Ok((String::new(), Answer::Members(msg_answer::Members { members })))
+                })
+            }
             Asked::Read(read) => {
                 let told = &mut self.told;
                 self.service.read(caller, read.group.as_deref(), panes).map(|read| {
@@ -616,8 +626,30 @@ impl Messages {
     /// taken, or handed to its session by command.
     fn wakes_for(&self, name: &str, group: &str) -> bool {
         self.pending.iter().any(|wake| wake.name == name && wake.notice.group == group)
+            || self.in_hand.contains(&(name.to_string(), group.to_string()))
             || self.rung.iter().any(|rung| rung.is_for(name, group))
             || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
+    }
+
+    /// Says, on each of `members` here, what waits on it unread and why, in `group` or in every
+    /// group: what the stall watch would say of it, said whenever somebody asks.
+    fn unread(&mut self, members: &mut [muster_msg::Member], group: Option<&str>, panes: &Panes) {
+        let waiting = stalls::members(self, panes);
+        let called = stalls::called(self, panes, &waiting);
+        for member in members {
+            member.unread = waiting
+                .iter()
+                .filter(|held| held.holding.name == member.name)
+                .filter(|held| group.is_none_or(|group| held.holding.group == group))
+                .map(|held| muster_msg::Unread {
+                    group: held.holding.group.clone(),
+                    first: held.holding.first,
+                    first_at_ms: held.holding.first_at_ms,
+                    authors: held.holding.authors.clone(),
+                    why: stalls::unread_why(held, &called),
+                })
+                .collect();
+        }
     }
 
     /// How many wakes wait to be rung.
@@ -967,11 +999,13 @@ fn end_wait(shared: &Shared, ticket: Option<u64>) {
 fn whoing(shared: &Arc<Shared>, who: &proto::msg_request::Who, panes: &Panes) -> Reply {
     let group = who.group.as_deref();
     let found = {
-        let messages = shared.messages();
-        messages
-            .service
-            .who(group, panes)
-            .and_then(|members| Ok((members, messages.service.route_who(group)?)))
+        let mut messages = shared.messages();
+        messages.service.who(group, panes).and_then(|mut members| {
+            let away = messages.service.route_who(group)?;
+            let key = group.map(|group| messages.service.locate(group)).transpose()?;
+            messages.unread(&mut members, key.as_deref(), panes);
+            Ok((members, away))
+        })
     };
     let (mut members, away) = match found {
         Ok(found) => found,
@@ -1746,6 +1780,17 @@ pub(super) fn member_of(member: muster_msg::Member) -> msg_answer::Member {
         inbox: member.inbox,
         activity: activity_of(member.activity).into(),
         pane: member.pane,
+        unread: member
+            .unread
+            .into_iter()
+            .map(|unread| msg_answer::Unread {
+                group: unread.group,
+                first: unread.first,
+                first_at_ms: unread.first_at_ms,
+                from: unread.authors,
+                why: unread.why,
+            })
+            .collect(),
     }
 }
 

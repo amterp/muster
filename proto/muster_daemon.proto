@@ -957,6 +957,21 @@ message MsgAnswer {
     optional string inbox = 4;
     Activity activity = 5;
     optional string pane = 6;
+    // Since 1.6. Each group where messages wait on it unread, and why it has not read them, as
+    // the daemon holding its pane sees it.
+    repeated Unread unread = 7;
+  }
+
+  message Unread {
+    string group = 1;
+    // The oldest of them, and when it was posted, in milliseconds since the Unix epoch.
+    uint64 first = 2;
+    uint64 first_at_ms = 3;
+    // Whoever posted them, oldest first.
+    repeated string from = 4;
+    // Why it has not read them, as a clause: "it is at a dialog, waiting for somebody to answer
+    // it". The words of the stall notice, said at once rather than after two minutes.
+    string why = 5;
   }
 
   enum Liveness {

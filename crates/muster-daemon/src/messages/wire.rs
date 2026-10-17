@@ -155,6 +155,17 @@ fn member_from(member: msg_answer::Member) -> Member {
         groups: member.groups.iter().map(|group| plain(group)).collect(),
         inbox: member.inbox.as_deref().map(plain),
         pane: member.pane.as_deref().map(plain),
+        unread: member
+            .unread
+            .into_iter()
+            .map(|unread| muster_msg::Unread {
+                group: plain(&unread.group),
+                first: unread.first,
+                first_at_ms: unread.first_at_ms,
+                authors: unread.from.iter().map(|author| plain(author)).collect(),
+                why: plain(&unread.why),
+            })
+            .collect(),
     }
 }
 

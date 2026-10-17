@@ -755,7 +755,13 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>)
             let machine = link.peer.calls_us.clone();
             return refused(&Refusal::Unreachable { group, machine });
         }
-        let answered = messages.service.answer(&link.peer, call.clone(), &panes, now_ms());
+        let mut answered = messages.service.answer(&link.peer, call.clone(), &panes, now_ms());
+        if let (Call::Who { group }, muster_msg::Reply::Members(members)) =
+            (&call, &mut answered.reply)
+        {
+            let key = messages.service.asked_of(&link.peer, group);
+            messages.unread(members, Some(&key), &panes);
+        }
         let holding = messages.hold(&answered.wakes, &answered.answered, &panes);
         (answered, holding)
     };

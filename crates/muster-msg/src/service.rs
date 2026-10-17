@@ -211,6 +211,24 @@ pub struct Member {
     pub groups: Vec<String>,
     pub inbox: Option<String>,
     pub pane: Option<String>,
+    /// Each group where messages wait on it unread, and why it has not read them, as its host
+    /// sees it; [`Messaging::who`] leaves this to the host.
+    pub unread: Vec<Unread>,
+}
+
+/// Messages waiting unread on a member in one group, and why, as the host that holds the
+/// member's pane says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unread {
+    pub group: String,
+    /// The oldest of them, and when it was posted, in the host's milliseconds.
+    pub first: u64,
+    pub first_at_ms: u64,
+    /// Whoever posted them, oldest first.
+    pub authors: Vec<String>,
+    /// Why the member has not read them, as a clause: "it is at a dialog, waiting for somebody
+    /// to answer it".
+    pub why: String,
 }
 
 /// A message as its author sends it: what `post` is asked.
@@ -1130,6 +1148,7 @@ impl<S: Store> Messaging<S> {
                         .map(|inbox| inbox.socket.clone()),
                     pane: participant.and_then(|participant| participant.pane.clone()),
                     activity: participant.and_then(|participant| presence.activity(participant)),
+                    unread: Vec::new(),
                     liveness,
                     name,
                 }
@@ -2068,7 +2087,7 @@ impl<S: Store> Messaging<S> {
     /// The group a name means: a group kept here by that name, or a replica by that exact
     /// name, or else the one replica of a group by that name on another machine, so `review`
     /// finds `review@devenv` when nothing here is called that (MIP-4, section 11).
-    pub(crate) fn locate(&self, name: &str) -> Result<String, Refusal> {
+    pub fn locate(&self, name: &str) -> Result<String, Refusal> {
         let name = self.own(name);
         if self.groups.contains_key(name) {
             return Ok(name.to_string());

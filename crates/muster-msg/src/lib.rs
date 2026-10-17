@@ -29,7 +29,7 @@ pub use refusal::{Action, Refusal};
 pub use service::{
     Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding, Inbox,
     Joined, Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read,
-    Removed, Ringable, Via, Waited, Wake,
+    Removed, Ringable, Unread, Via, Waited, Wake,
 };
 pub use store::{GroupRecord, Memory, Saved, Store};
 

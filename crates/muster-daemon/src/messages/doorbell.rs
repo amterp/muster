@@ -762,9 +762,16 @@ fn look(
             let dropped = match (panes.get(pane), panes.doorbell(pane)) {
                 (Some(seen), Ringable::Rings) => {
                     let since = moving_since(moving, pane, seen, now);
+                    let key = (wake.name.clone(), wake.notice.group.clone());
                     match reach(seen, now, is_urgent(&wake), since, messages.types(&wake)) {
-                        By::Command => commanding.push((wake, seen.clone())),
-                        By::Typing(Now::Ring) => ringing.push((wake, seen.clone())),
+                        By::Command => {
+                            messages.in_hand.insert(key);
+                            commanding.push((wake, seen.clone()));
+                        }
+                        By::Typing(Now::Ring) => {
+                            messages.in_hand.insert(key);
+                            ringing.push((wake, seen.clone()));
+                        }
                         By::Typing(Now::At(at)) => {
                             sooner(&mut next, at);
                             messages.pending.push(wake);
@@ -840,6 +847,7 @@ fn deliver(
     next: &mut Option<Instant>,
 ) {
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
+    shared.messages().in_hand.clear();
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
     // announces a draft being cleared, so a prompt that held one is looked at again too.
     if came.contains(&Came::Rang) {

@@ -405,7 +405,27 @@ fn a_post_to_agents_in_panes_says_when_each_is_rung() {
     {
         who.push(format!("{name:<width$}  {state:<15}  {pair}"));
     }
-    assert_eq!(ok(&muster(&daemon, &["msg", "--as", "lead", "who"])), who.join("\n"));
+    let said = ok(&muster(&daemon, &["msg", "--as", "lead", "who"]));
+    let members: Vec<&str> = said.lines().filter(|line| !line.starts_with(' ')).collect();
+    assert_eq!(members, who, "{said}");
+    // Under each member, why #7 waits on it. The idle agent's ring may or may not have been
+    // taken by now, so only the others' are fixed.
+    for (name, why) in [
+        (
+            &shown[1],
+            "it is at work, so it is rung once it is idle; an urgent post reaches it at work",
+        ),
+        (&shown[2], "a wake for it is held because its prompt holds something typed and not sent"),
+        (&shown[3], "no agent is in its pane any more"),
+    ] {
+        let row = format!("{name}  ");
+        let under = said
+            .split('\n')
+            .skip_while(|line| !line.starts_with(&row))
+            .nth(1)
+            .unwrap_or_else(|| panic!("nothing under {name}: {said}"));
+        assert_eq!(under, format!("  has not read #7 in {pair}, from lead: {why}"), "{said}");
+    }
 
     let json = ["msg", "--json", "--as", "other", "post", "--to", "p2,p3,p4", "another"];
     let posted: Value = serde_json::from_str(&ok(&muster(&daemon, &json))).unwrap();

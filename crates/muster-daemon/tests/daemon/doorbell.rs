@@ -178,6 +178,32 @@ impl Agent {
         messages
     }
 
+    /// What `who` says waits unread on each member, as `name: why`.
+    fn unread(&mut self) -> Vec<String> {
+        let service = Service::Msg(proto::MsgRequest {
+            caller: Some(msg_request::Caller {
+                as_name: Some("integrator".to_string()),
+                ..msg_request::Caller::default()
+            }),
+            request: Some(Asked::Who(msg_request::Who::default())),
+        });
+        let asked = expect(&mut self.control, service, proto::Outcome::Done);
+        let Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+            answer: Some(Answer::Members(members)),
+            ..
+        })) = &asked.answer.detail
+        else {
+            panic!("expected members, got {:?}", asked.answer.detail);
+        };
+        members
+            .members
+            .iter()
+            .flat_map(|member| {
+                member.unread.iter().map(|unread| format!("{}: {}", member.name, unread.why))
+            })
+            .collect()
+    }
+
     /// Pauses or resumes a group, as the integrator.
     fn pausing(&mut self, group: &str, paused: bool) {
         let group = group.to_string();
@@ -426,6 +452,10 @@ fn a_prompt_with_something_half_typed_in_it_is_not_rung() {
     assert_eq!(
         posted.reached[0].held.as_deref(),
         Some("its prompt holds something typed and not sent")
+    );
+    assert_eq!(
+        agent.unread(),
+        ["p1: a wake for it is held because its prompt holds something typed and not sent"]
     );
     std::thread::sleep(QUIET + Duration::from_secs(1));
     assert_eq!(agent.rings_heard(), Vec::<String>::new(), "rung into a draft");

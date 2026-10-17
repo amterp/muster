@@ -1275,6 +1275,13 @@ fn members_text(members: &msg_answer::Members, json: bool, shown: &Shown) -> Str
                     "activity": activity(member.activity()),
                     "pane": member.pane,
                     "groups": member.groups,
+                    "unread": member.unread.iter().map(|unread| serde_json::json!({
+                        "group": unread.group,
+                        "first": unread.first,
+                        "first_at_ms": unread.first_at_ms,
+                        "from": unread.from,
+                        "why": unread.why,
+                    })).collect::<Vec<_>>(),
                 })
             })
             .collect();
@@ -1308,7 +1315,20 @@ fn members_text(members: &msg_answer::Members, json: bool, shown: &Shown) -> Str
             } else {
                 member.groups.join(", ")
             };
-            format!("{name:<width$}  {state:<state_width$}  {groups}")
+            let mut lines = vec![format!("{name:<width$}  {state:<state_width$}  {groups}")];
+            // Under its member, since that is who it waits on; who posted it says who waits.
+            lines.extend(member.unread.iter().map(|unread| {
+                let from: Vec<String> =
+                    unread.from.iter().map(|author| shown.name(author)).collect();
+                format!(
+                    "  has not read #{} in {}, from {}: {}",
+                    unread.first,
+                    unread.group,
+                    from.join(", "),
+                    unread.why
+                )
+            }));
+            lines.join("\n")
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -1562,6 +1582,43 @@ mod tests {
             members_text(&members, false, &Shown { human: "Alex".to_string(), ..Shown::default() }),
             "Alex (@human)  human  review\nbuilder        gone   review"
         );
+    }
+
+    /// `who` says, under each member, what waits on it unread and why, so whoever posted it can
+    /// see a held wake without waiting for the stall notice.
+    #[test]
+    fn who_says_what_waits_on_each_member_and_why() {
+        let held = "a wake for it is held because its prompt holds something typed and not sent";
+        let members = msg_answer::Members {
+            members: vec![msg_answer::Member {
+                name: "lexer".to_string(),
+                liveness: msg_answer::Liveness::Alive.into(),
+                activity: msg_answer::Activity::Idle.into(),
+                groups: vec!["review".to_string()],
+                unread: vec![msg_answer::Unread {
+                    group: "review".to_string(),
+                    first: 16,
+                    first_at_ms: 1_700_000_000_000,
+                    from: vec!["director-review".to_string(), "@human".to_string()],
+                    why: held.to_string(),
+                }],
+                ..msg_answer::Member::default()
+            }],
+        };
+        let shown = Shown { human: "Alex".to_string(), ..Shown::default() };
+        assert_eq!(
+            members_text(&members, false, &shown),
+            format!(
+                "lexer  alive (idle)  review\n  has not read #16 in review, from director-review, \
+                 Alex (@human): {held}"
+            )
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&members_text(&members, true, &shown)).unwrap();
+        let unread = &json["members"][0]["unread"][0];
+        assert_eq!(unread["first"], 16);
+        assert_eq!(unread["first_at_ms"], 1_700_000_000_000_u64);
+        assert_eq!(unread["why"], held);
     }
 
     /// An agent known by its pane is shown by what the pane is called, beside the pane's id, which
