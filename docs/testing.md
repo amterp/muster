@@ -216,6 +216,13 @@ Muster's principles, adapted to that evidence:
   `HOME`, and `muster-daemon-client/tests/log_relay.rs` installs the process's log sink. A file without its `mod`
   line compiles to nothing and the gate stays green, so `tools/test-mods.py` fails the gate on one, here or in a
   crate's `src/`, where a `tests.rs` whose `#[cfg(test)] mod tests;` is missing goes as quietly.
+- **The gate runs the binaries side by side.** `cargo test` runs one test binary at a time, and the seam's tests
+  take turns for its one session, so the suite spent 400 s mostly waiting with cores idle. `./dev` runs the
+  binaries itself instead (`tools/run-tests.py`), one and a half jobs to a core: the seam's and the daemon's tests
+  each in a process of their own, every other binary whole, the longest known first. That took the suite to about
+  105 s with the tests unchanged, because they mostly wait - sixteen at once on a ten-core Mac kept two cores busy
+  on average. It is also more load than a binary at a time, so a test that reads a file the moment something else
+  writes it meets that race sooner here than under `cargo test`, as the fake agent's pid file did.
 - **A Swift test that points the seam somewhere holds it while it does.** `Core.dispatcher` is one mutable global
   for the process, so a test that swaps it is writing where every other test reads. These tests all run on the main
   actor and so are never truly concurrent - but a test that awaits gives the actor up, and another test's recorder

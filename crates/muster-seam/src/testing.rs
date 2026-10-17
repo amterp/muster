@@ -13,7 +13,9 @@
 //! run cannot say whether that broke too.
 //!
 //! This is the way out: a lock so the tests in a binary take their turns, and a reset so each
-//! turn starts where a fresh process would.
+//! turn starts where a fresh process would. The gate runs each of them in a process of its own
+//! besides (`tools/run-tests.py`), so there the lock is never contended; under `cargo test` it
+//! is what keeps them apart.
 //!
 //! Not behind a feature flag. A flag would have to be turned on by the test targets of this
 //! crate, which is every caller there will ever be, and the shipped dylib exports what

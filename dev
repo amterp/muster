@@ -1826,12 +1826,18 @@ if test:
     // Every daemon-backed test runs the muster-daemon the build above made, which the harness
     // finds beside the test binaries: the daemon under test is always this commit's.
     //
+    // The binaries run side by side rather than one after another as `cargo test` runs them,
+    // and the seam's and the daemon's tests each in a process of their own (tools/run-tests.py).
+    // The seam's tests share one session per process and so took turns, 190 s of one core; the
+    // daemon's binary is the longest, and split, its tests fill the cores the others leave. A
+    // red run still names every failing test, not the first binary's.
+    //
     // Through tee so it streams and is kept for explain_red_suite, with pipefail so the exit code
-    // is cargo's rather than tee's. The sampler beside it is this command's own child, ended by
-    // its pid on any way out, a gate killed with TERM included, so none outlives the run. --no-fail-fast so a red run names every failing test, not the first binary's.
+    // is the runner's rather than tee's. The sampler beside it is this command's own child, ended
+    // by its pid on any way out, a gate killed with TERM included, so none outlives the run.
     mark("test: Rust suite")
     $`mkdir -p target/gate`
-    $`( while :; do sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg; sleep 5; done ) > {GATE_LOAD} 2>/dev/null & sampler=$!; trap 'kill $sampler 2>/dev/null' EXIT; trap 'exit 143' HUP TERM; set -o pipefail; cargo test --workspace --no-fail-fast 2>&1 | tee {GATE_RUST_LOG}; ended=$?; exit $ended` catch:
+    $`( while :; do sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg; sleep 5; done ) > {GATE_LOAD} 2>/dev/null & sampler=$!; trap 'kill $sampler 2>/dev/null' EXIT; trap 'exit 143' HUP TERM; set -o pipefail; python3 tools/run-tests.py --split muster-seam:seam --split muster-daemon:daemon 2>&1 | tee {GATE_RUST_LOG}; ended=$?; exit $ended` catch:
         explain_red_suite("Rust", fast_cores, load1)
         exit(1)
 
