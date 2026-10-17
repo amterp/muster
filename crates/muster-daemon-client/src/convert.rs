@@ -10,8 +10,8 @@ use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
-    Adapter, AgentFacts, LayoutNode, Pane, PaneId, Progress, ProgressState, Resume, SplitAxis, Tab,
-    TabId, UnreadInput,
+    Adapter, AgentFacts, LayoutNode, Pane, PaneId, PendingCompaction, Progress, ProgressState,
+    Resume, SplitAxis, Tab, TabId, UnreadInput,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -127,6 +127,11 @@ pub fn pane(record: proto::Pane) -> Pane {
         proto::Adapter::Reporting => Adapter::Reporting,
         proto::Adapter::Silent => Adapter::Silent,
     };
+    let compaction = match record.pending_compaction() {
+        proto::PendingCompaction::None => PendingCompaction::Nothing,
+        proto::PendingCompaction::Queued => PendingCompaction::Queued,
+        proto::PendingCompaction::FollowUp => PendingCompaction::FollowUp,
+    };
     let facts = record.facts.unwrap_or_default();
     Pane {
         id: PaneId::new(record.pane),
@@ -168,6 +173,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         resume: record
             .resume
             .map(|resume| Resume { command: resume.command, uncarried: resume.uncarried }),
+        compaction,
     }
 }
 

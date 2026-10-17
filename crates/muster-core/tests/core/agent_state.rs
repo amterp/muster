@@ -109,3 +109,14 @@ fn a_wait_nothing_can_meet_is_refused() {
         "a state nothing can wait for was offered to somebody who mistyped one"
     );
 }
+
+/// What a compaction queued for an agent waits for, in the words `muster window` and `pane
+/// compact` both use, naming sub-agents only while they can hold a turn open.
+#[test]
+fn a_queued_line_waits_for_what_holds_the_agent_and_names_its_sub_agents() {
+    assert_eq!(AgentState::Working.line_waits_for(0), "its turn to end");
+    assert_eq!(AgentState::Working.line_waits_for(1), "its 1 sub-agent and its turn to end");
+    assert_eq!(AgentState::Working.line_waits_for(3), "its 3 sub-agents and its turn to end");
+    assert_eq!(AgentState::Idle.line_waits_for(2), "an empty prompt", "sub-agents at idle");
+    assert_eq!(AgentState::Blocked.line_waits_for(0), "an answer to its dialog");
+}

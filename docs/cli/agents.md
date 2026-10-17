@@ -212,6 +212,23 @@ compact itself: `muster pane compact` from inside its own pane, with no `--pane`
 turn ends. Exit 0 says the daemon will type it, not that it has. A second compaction asked for
 before the first is typed replaces it.
 
+A compaction stops the agent: nothing starts its next turn. `--then` gives it one, a prompt typed
+at its next idle, empty prompt once the compaction has run, so an agent compacts and carries on in
+one command:
+
+    muster pane compact keep the plan and the failing test --then "carry on with step 3 of the plan"
+
+The prompt is one line of at most 512 bytes, as a focus is; a longer brief belongs in a file the
+prompt names. A later compaction replaces a prompt still waiting along with the compaction, and a
+compaction the daemon gives up typing, because something was typed into the pane after it or a
+dialog opened over it, takes its prompt with it.
+
+While a compaction or its prompt waits, `muster window` says so on the agent's row and what it
+waits for: `(compaction queued, waiting for its 1 sub-agent and its turn to end)`. `pane compact`
+says the same when the agent is not at its prompt. A harness can hold its turn open until its
+sub-agents finish, as Claude Code does on "Waiting for 1 background agent to finish", and the
+compaction waits for that too.
+
 What follows the command is a focus, one line, for a harness that takes one. A harness that gives
 no way to compact it from its prompt, or takes no focus when given one, is refused with the reason
 (`muster docs harnesses` has which), and so is a pane running no agent.

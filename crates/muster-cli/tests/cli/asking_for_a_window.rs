@@ -168,7 +168,7 @@ impl App {
                     if unfollowed {
                         response::Payload::Failure(Failure { reason })
                     } else if opens.is_some() {
-                        response::Payload::Ok(Accepted {})
+                        response::Payload::Ok(Accepted::default())
                     } else {
                         response::Payload::Failure(Failure {
                             reason: "this app belongs to another install".to_string(),

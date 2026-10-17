@@ -339,6 +339,7 @@ fn claude_code_compacts_when_the_daemon_asks_through_both_paths() {
         let compact = proto::pane_request::Compact {
             pane: name.to_string(),
             focus: Some("keep the numbers".to_string()),
+            then: None,
         };
         let asked = asking.ask(pane(proto::pane_request::Request::Compact(compact)));
         assert_eq!(asked.outcome(), proto::Outcome::Done, "{name}: {}", asked.answer.reason);

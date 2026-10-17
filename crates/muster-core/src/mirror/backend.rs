@@ -117,6 +117,8 @@ pub struct Pane {
     pub session: Option<String>,
     /// What the pane's daemon runs to start that session again after a restart.
     pub resume: Option<Resume>,
+    /// What its daemon holds to type at the agent's next idle, empty prompt.
+    pub compaction: PendingCompaction,
 }
 
 /// The command that resumes a pane's agent session, as its daemon will run it.
@@ -150,6 +152,28 @@ pub enum Adapter {
     Reporting,
     /// It ended a turn having reported nothing.
     Silent,
+}
+
+/// What a pane's daemon holds to type at its agent's next idle, empty prompt.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PendingCompaction {
+    #[default]
+    Nothing,
+    /// A compaction.
+    Queued,
+    /// The prompt a compaction was asked to be followed by, once the compaction has run.
+    FollowUp,
+}
+
+impl PendingCompaction {
+    /// As `muster window` and the seam spell it, empty for nothing.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PendingCompaction::Nothing => "",
+            PendingCompaction::Queued => "queued",
+            PendingCompaction::FollowUp => "follow_up",
+        }
+    }
 }
 
 impl Pane {

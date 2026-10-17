@@ -826,7 +826,7 @@ impl Pane {
     /// holds the terminal. Otherwise the PTY closing is the only word there will be.
     #[expect(clippy::too_many_lines, reason = "most of it is the pane's struct, a field a line")]
     pub(crate) fn start(
-        record: proto::Pane,
+        mut record: proto::Pane,
         serial: u64,
         master: OwnedFd,
         screen: Screen,
@@ -934,6 +934,9 @@ impl Pane {
             reap(pid, pane, serial, Arc::clone(watching.ended)).map_err(failed)?;
         }
 
+        // A pane handed over comes with its record, and starts its compaction empty as every pane
+        // does, so the record says nothing is queued.
+        record.set_pending_compaction(proto::PendingCompaction::None);
         Ok(Pane {
             record,
             serial,

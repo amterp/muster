@@ -2514,6 +2514,77 @@
           "agentDescribed:p1"
         ]
       }
+    },
+    {
+      "name": "a compaction queued for an agent describes it until it is typed",
+      "why": "A compaction the daemon holds for an agent's next idle, empty prompt, and the prompt it was asked to carry on with once it has run, are on the pane's record so that `muster window` can say what is queued and what it waits for. Neither moves the agent's state: a compaction queued for an agent at work leaves it working. Each change describes the agent again, so a window's row and a watch hear it.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "working",
+              "cwd": "/src",
+              "agent": "claude"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "working",
+            "cwd": "/src",
+            "agent": "claude",
+            "compaction": "queued"
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "working",
+            "cwd": "/src",
+            "agent": "claude",
+            "compaction": "follow_up"
+          },
+          {
+            "kind": "paneChanged",
+            "id": "p1",
+            "agentState": "working",
+            "cwd": "/src",
+            "agent": "claude"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "working"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "changes": [
+          "agentDescribed:p1",
+          "agentDescribed:p1",
+          "agentDescribed:p1"
+        ]
+      }
     }
   ]
 }

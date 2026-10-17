@@ -276,6 +276,10 @@ message PaneRequest {
     // What the compaction should keep, typed after the command where the manifest says the
     // harness takes it. One line. Absent or blank: compacted without one.
     optional string focus = 2;
+    // Since 1.6. A prompt typed at the agent's next idle, empty prompt once the compaction has
+    // run, so an agent compacted mid-task carries on. One line. Absent or blank: none, and the
+    // agent waits at its prompt as before. A compaction given up drops its prompt with it.
+    optional string then = 3;
   }
 
   // Starts a pane. A pane of that name already here answers ALREADY_SO, so a create retried
@@ -1272,6 +1276,11 @@ message Pane {
   // Since 1.6. What the daemon runs to start that session again when a restart brings the pane
   // back. Absent while there is no session, or no way to resume it.
   SessionResume resume = 19;
+  // Since 1.6. A line the daemon holds to type at the agent's next idle, empty prompt: a
+  // compaction (`PaneRequest.Compact`, or `compact_at`), or the prompt a compaction was asked to
+  // be followed by, owed once it has run. Kept while the daemon runs, and never written to the
+  // state file: a restored pane has no compaction queued.
+  PendingCompaction pending_compaction = 20;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.
@@ -1280,6 +1289,14 @@ message SessionResume {
   repeated string command = 1;
   // Why the arguments the agent was started with did not all go along, when they did not.
   optional string uncarried = 2;
+}
+
+// What a pane's agent has queued to type at its prompt (`Pane.pending_compaction`).
+enum PendingCompaction {
+  PENDING_COMPACTION_NONE = 0;
+  PENDING_COMPACTION_QUEUED = 1;
+  // The compaction has run, and the prompt it was asked to be followed by waits to be typed.
+  PENDING_COMPACTION_FOLLOW_UP = 2;
 }
 
 // Input a pane's program has left unread (`Pane.unread_input`), as it stood when the daemon

@@ -269,6 +269,36 @@ fn a_compaction_is_asked_of_the_daemon(here: &Here) {
     });
     let refused = refused_with(&here.muster(&["pane", "compact", "--pane", "p1"]), 1);
     assert!(refused.contains("runs no agent"), "{refused}");
+    a_compaction_queued_says_what_it_waits_for(here);
+}
+
+/// A compaction asked of an agent at work says what it waits for, and `muster window` shows it
+/// queued until it is typed; the prompt it was asked to carry on with is typed after it.
+fn a_compaction_queued_says_what_it_waits_for(here: &Here) {
+    here.daemon.set_agent_state("p3", proto::AgentState::Working);
+    let asked = ok(&here.muster(&[
+        "pane", "compact", "--pane", "p3", "--then", "carry on", "keep", "the", "notes",
+    ]));
+    assert_eq!(asked, "queued, waiting for its turn to end");
+    let listed = ok(&here.muster(&["window"]));
+    assert!(listed.contains("(compaction queued, waiting for its turn to end)"), "{listed}");
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    let p3 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p3"));
+    assert_eq!(p3.map(|p3| &p3["compaction"]), Some(&json!("queued")), "{listed}");
+
+    here.daemon.set_agent_state("p3", proto::AgentState::Idle);
+    let heard = here.daemon.root().join("home/fake-agent-heard");
+    until_some("the agent in p3 to read the compaction and then its prompt", || {
+        let heard = std::fs::read_to_string(&heard).ok()?;
+        let lines: Vec<&str> = heard.lines().collect();
+        let compacted = lines.iter().position(|line| *line == "/compact keep the notes")?;
+        lines[compacted..].contains(&"carry on").then_some(())
+    });
+    until_some("p3 to have nothing queued", || {
+        let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).ok()?;
+        let p3 = listed["panes"].as_array()?.iter().find(|pane| pane["pane"] == json!("p3"))?;
+        p3["compaction"].is_null().then_some(())
+    });
 }
 
 /// A pane is hidden, made quiet and shown again with no window, by the daemon holding it, which

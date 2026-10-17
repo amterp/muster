@@ -74,8 +74,9 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   changes what that harness loads, so it is theirs to run, and a session takes it up when restarted.
 - **Compact a worker before it runs out of context**, rather than letting it hit the limit
   mid-task: `muster pane compact --pane X keep <what the summary must keep>`. It is typed once
-  the agent is idle, never mid-turn. To compact yourself, run `muster pane compact <focus>` with
-  no `--pane` and end your turn; the compaction runs once it has ended.
+  the agent is idle, never mid-turn. To compact yourself and carry on, run `muster pane compact
+  <focus> --then "<what to do next>"` with no `--pane` and end your turn: the compaction runs once
+  it has ended, and the prompt is typed once the compaction has run.
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
 - **Name every pane you make**, `--name builder`, so a person can tell your agents apart. A pane

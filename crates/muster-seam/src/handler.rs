@@ -463,13 +463,31 @@ fn rename_pane(window: WindowId, rename: &proto::RenamePane) -> Response {
     })
 }
 
-/// Compacts the context of the agent in a pane, once it is idle at an empty prompt. The keyboard
-/// stays where it is: compacting an agent is not looking at it.
+/// Compacts the context of the agent in a pane, once it is idle at an empty prompt, and then
+/// types the prompt it was asked to carry on with. The keyboard stays where it is: compacting an
+/// agent is not looking at it. Says what it waits for when the agent is not at its prompt.
 fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
-    let focus = Some(compact.focus.trim().to_string()).filter(|focus| !focus.is_empty());
-    act(window, &compact.daemon_id, &compact.pane_id, Keyboard::StaysPut, |pane| {
-        BackendIntent::CompactPane { pane, focus }
-    })
+    let said = |text: &str| Some(text.trim().to_string()).filter(|text| !text.is_empty());
+    let (focus, then) = (said(&compact.focus), said(&compact.then));
+    let target = match target(window, &compact.daemon_id, &compact.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let intent = BackendIntent::CompactPane { pane: pane.clone(), focus, then };
+    let answer = placed(submit(window, &target.daemon, &intent, Keyboard::StaysPut), &target);
+    if !matches!(answer.payload, Some(response::Payload::Ok(_))) {
+        return answer;
+    }
+    let key = PaneKey::new(&target.daemon, &pane);
+    let now = session::window(window, false);
+    let agent = now.agents.iter().find(|agent| agent.pane == key);
+    match agent.and_then(|agent| agent.state.queued_note(agent.facts.subagents)) {
+        Some(note) => Response::noted(note),
+        None => answer,
+    }
 }
 
 /// Takes a pane out of every window into the hidden list, its agent still running. The keyboard

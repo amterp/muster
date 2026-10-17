@@ -593,6 +593,10 @@ enum Doing {
         /// harness takes one
         #[arg(value_name = "FOCUS")]
         focus: Vec<String>,
+
+        /// A prompt to type once the compaction has run, so the agent carries on
+        #[arg(long, value_name = "PROMPT")]
+        then: Option<String>,
     },
 
     /// Take a pane out of every window, its agent still running, into the hidden list
@@ -1211,7 +1215,9 @@ fn pane(
                 ..RenamePane::default()
             }))
         }
-        Doing::Compact { pane, focus } => compact(pane.as_ref(), focus, environment),
+        Doing::Compact { pane, focus, then } => {
+            compact(pane.as_ref(), focus, then.as_deref(), environment)
+        }
         Doing::Send { pane, keys, enter, confirm, file, text } => {
             check_sent_keys(keys).map_err(Failure::Refused)?;
             // Only a hyphen standing alone reads stdin. One inside a sentence is text, so
@@ -1318,11 +1324,13 @@ fn pane(
 fn compact(
     pane: Option<&String>,
     focus: &[String],
+    then: Option<&str>,
     environment: &BTreeMap<String, String>,
 ) -> Asking {
     send(request::Payload::CompactPane(CompactPane {
         pane_id: pane_ref(pane, environment),
         focus: focus.join(" "),
+        then: then.unwrap_or_default().to_string(),
         ..CompactPane::default()
     }))
 }

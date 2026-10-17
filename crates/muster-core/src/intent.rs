@@ -282,6 +282,8 @@ pub enum BackendIntent {
         pane: PaneId,
         /// What the compaction should keep, where the agent's harness takes one.
         focus: Option<String>,
+        /// The prompt typed once the compaction has run, so the agent carries on.
+        then: Option<String>,
     },
 
     /// Makes a pane quiet, or lets it ask for the person again.
@@ -349,9 +351,11 @@ impl BackendIntent {
                 counted(run.as_ref()),
                 named(name.as_deref())
             ),
-            BackendIntent::CompactPane { pane, focus } => {
-                format!("CompactPane {{ pane: {pane}, focus: {} }}", counted(focus.as_ref()))
-            }
+            BackendIntent::CompactPane { pane, focus, then } => format!(
+                "CompactPane {{ pane: {pane}, focus: {}, then: {} }}",
+                counted(focus.as_ref()),
+                counted(then.as_ref())
+            ),
             other => format!("{other:?}"),
         }
     }

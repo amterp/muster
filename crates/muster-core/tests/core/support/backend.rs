@@ -131,6 +131,11 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
             command: collect(resume, "command", |word| word.as_str().unwrap_or_default().into()),
             uncarried: optional(resume, "uncarried"),
         }),
+        compaction: match given.get("compaction").and_then(Value::as_str) {
+            Some("queued") => muster_core::mirror::PendingCompaction::Queued,
+            Some("follow_up") => muster_core::mirror::PendingCompaction::FollowUp,
+            _ => muster_core::mirror::PendingCompaction::Nothing,
+        },
     }
 }
 

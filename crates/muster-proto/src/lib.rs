@@ -180,7 +180,12 @@ impl Response {
     /// Public because the endpoint's callers are in another crate now. It stays a constructor
     /// rather than something each caller spells out, so "success" has one spelling.
     pub fn ok() -> Response {
-        Response { payload: Some(response::Payload::Ok(Ok {})) }
+        Response { payload: Some(response::Payload::Ok(Ok::default())) }
+    }
+
+    /// A change made, with something its asker should know about it.
+    pub fn noted(note: impl Into<String>) -> Response {
+        Response { payload: Some(response::Payload::Ok(Ok { note: note.into() })) }
     }
 
     /// A refusal, written for whoever finds it in a log rather than for a caller that

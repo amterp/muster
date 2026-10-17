@@ -13,6 +13,7 @@ use muster_detect::Agent;
 use muster_msg::{Activity, Participant, Presence, Ringable};
 
 use super::inbox;
+use crate::compaction::Step;
 use crate::pane::PaneIo;
 use crate::session::Shared;
 
@@ -28,8 +29,9 @@ pub(crate) struct Seen {
     /// The pane's name, still to be given to its agent's session, and the line its manifest
     /// says to type for it.
     pub(crate) rename: Option<Rename>,
-    /// The line its manifest says compacts its agent, still to be typed.
-    pub(crate) compact: Option<String>,
+    /// The line its manifest says compacts its agent, or the prompt owed once that has run, still
+    /// to be typed.
+    pub(crate) compact: Option<Step>,
     /// The id its agent reported for its session, when its manifest names a command that wakes
     /// the session by it (`super::command`).
     pub(crate) session: Option<String>,
@@ -109,7 +111,7 @@ impl Panes {
                         .as_ref()
                         .is_some_and(|manifests| manifests.reads_prompt(&found)),
                     rename,
-                    compact: pane.compaction.wanted().map(str::to_string),
+                    compact: pane.compaction.wanted(),
                     session,
                     stopped: record
                         .unread_input

@@ -111,7 +111,7 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         }
         Some(request::Payload::CompactPane(compact)) => {
             let pane = named(&compact.pane_id, "compacted")?;
-            respond(compact_pane(&socket, pane, &compact.focus)?)
+            respond(compact_pane(&socket, pane, &compact.focus, &compact.then)?)
         }
         Some(request::Payload::HidePane(hide)) => {
             let pane = named(&hide.pane_id, "hidden")?;
@@ -182,7 +182,7 @@ fn failure(reason: String) -> Response {
 }
 
 fn ok() -> Response {
-    Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) }
+    Response { payload: Some(response::Payload::Ok(muster_proto::Ok::default())) }
 }
 
 /// The refusal for a pane this daemon does not hold, saying what was not `done` to it.
@@ -222,12 +222,22 @@ fn asked_of_one_that_hides(
     service: daemon_proto::request::Service,
     what: &str,
 ) -> Result<daemon_proto::Answer, Trouble> {
+    asked_of_one_since(socket, service, daemon_proto::version::HIDDEN_AND_QUIET, what)
+}
+
+/// [`asked`], of a daemon that speaks protocol minor `since` or later, refusing `what` for an
+/// older one, which would drop the field that asks for it without a word.
+fn asked_of_one_since(
+    socket: &Path,
+    service: daemon_proto::request::Service,
+    since: u32,
+    what: &str,
+) -> Result<daemon_proto::Answer, Trouble> {
     let (stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
-    let hides = daemon_proto::version::HIDDEN_AND_QUIET;
     if let Some(refused) = daemon_proto::version::too_old(
         daemon::OURS,
         welcome.protocol.as_ref(),
-        hides,
+        since,
         what,
         "changed",
     ) {
@@ -397,17 +407,32 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     }
 }
 
-/// Asks the daemon to compact the agent in a pane, as the window asks it.
-fn compact_pane(socket: &Path, pane: &str, focus: &str) -> Result<Response, Trouble> {
-    let focus = Some(focus.trim().to_string()).filter(|focus| !focus.is_empty());
-    let answer = asked(
-        socket,
-        pane_service(daemon_proto::pane_request::Request::Compact(
-            daemon_proto::pane_request::Compact { pane: pane.to_string(), focus },
-        )),
-    )?;
+/// Asks the daemon to compact the agent in a pane, and then to give it `then`, as the window asks
+/// it, saying what it waits for when the agent is not at its prompt.
+fn compact_pane(socket: &Path, pane: &str, focus: &str, then: &str) -> Result<Response, Trouble> {
+    let said = |text: &str| Some(text.trim().to_string()).filter(|text| !text.is_empty());
+    let (focus, then) = (said(focus), said(then));
+    let following = then.is_some();
+    let service = pane_service(daemon_proto::pane_request::Request::Compact(
+        daemon_proto::pane_request::Compact { pane: pane.to_string(), focus, then },
+    ));
+    let answer = if following {
+        let since = daemon_proto::version::COMPACT_THEN;
+        asked_of_one_since(socket, service, since, "follow a compaction with a prompt")?
+    } else {
+        asked(socket, service)?
+    };
     Ok(match answer.outcome() {
         daemon_proto::Outcome::NotThere => not_held(socket, pane, "compacted"),
+        daemon_proto::Outcome::Done => {
+            let held = snapshot(socket)?;
+            let record = held.panes.iter().find(|record| record.pane == pane);
+            let note = record.and_then(|record| {
+                let subagents = record.facts.as_ref().map_or(0, |facts| facts.subagents);
+                state_of(record).queued_note(subagents)
+            });
+            note.map_or_else(|| changed(answer), Response::noted)
+        }
         _ => changed(answer),
     })
 }
@@ -663,6 +688,12 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
                 uncarried: resume.uncarried.clone().unwrap_or_default(),
             })
         }),
+        compaction: match pane.pending_compaction() {
+            daemon_proto::PendingCompaction::None => "",
+            daemon_proto::PendingCompaction::Queued => "queued",
+            daemon_proto::PendingCompaction::FollowUp => "follow_up",
+        }
+        .to_string(),
     }
 }
 
@@ -1014,7 +1045,9 @@ impl Watching {
             for pane in arrived {
                 self.ready.push_back(self.said(pane));
             }
-            self.last(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+            self.last(Response {
+                payload: Some(response::Payload::Ok(muster_proto::Ok::default())),
+            });
             return;
         }
         if let Some(stranded) = watched.into_iter().find_map(|pane| self.stranded(pane)) {
@@ -1073,7 +1106,9 @@ impl Watching {
         // and leaves its state where it was.
         if self.arrived(pane) {
             self.ready.push_back(self.said(pane));
-            self.last(Response { payload: Some(response::Payload::Ok(muster_proto::Ok {})) });
+            self.last(Response {
+                payload: Some(response::Payload::Ok(muster_proto::Ok::default())),
+            });
         } else if let Some(stranded) = self.stranded(pane) {
             self.last(stranded);
         }

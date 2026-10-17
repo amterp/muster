@@ -11,7 +11,8 @@ pub mod restart;
 pub mod state;
 
 pub use backend::{
-    Adapter, AgentFacts, Health, Pane, PaneId, Resume, Snapshot, Tab, TabId, UnreadInput,
+    Adapter, AgentFacts, Health, Pane, PaneId, PendingCompaction, Resume, Snapshot, Tab, TabId,
+    UnreadInput,
 };
 pub use event::{BackendEvent, Change, Restored};
 pub use restart::Restart;

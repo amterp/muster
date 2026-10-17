@@ -28,11 +28,17 @@ impl Pane {
     }
 
     fn compact(&mut self, focus: Option<&str>) -> proto::Outcome {
+        self.compact_then(focus, None).outcome()
+    }
+
+    /// Asks for `p1`'s agent to be compacted, keeping `focus`, and then given `then`.
+    fn compact_then(&mut self, focus: Option<&str>, then: Option<&str>) -> Asked {
         let compact = proto::pane_request::Compact {
             pane: "p1".to_string(),
             focus: focus.map(str::to_string),
+            then: then.map(str::to_string),
         };
-        self.control.ask(pane(proto::pane_request::Request::Compact(compact))).outcome()
+        self.control.ask(pane(proto::pane_request::Request::Compact(compact)))
     }
 
     fn compact_at(&mut self, percent: Option<f32>) {
@@ -93,6 +99,30 @@ impl Pane {
             .collect()
     }
 
+    /// Every line the agent has read, in order.
+    fn heard(&self) -> Vec<String> {
+        std::fs::read_to_string(self.heard_file())
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn until_heard_line(&self, line: &str) {
+        until_some(&format!("the agent to read {line:?}"), || {
+            self.heard().iter().any(|heard| heard == line).then_some(())
+        });
+    }
+
+    /// Waits until `p1`'s record says what it has queued to type at its agent's prompt.
+    fn until_pending(&mut self, pending: proto::PendingCompaction) {
+        let control = &mut self.control;
+        until_some(&format!("p1's record to say {pending:?}"), || {
+            let record = snapshot(control).panes.into_iter().find(|record| record.pane == "p1")?;
+            (record.pending_compaction() == pending).then_some(())
+        });
+    }
+
     fn until_heard(&self, count: usize) {
         until_some(&format!("the agent to read {count} compactions"), || {
             (self.compactions_heard().len() >= count).then_some(())
@@ -125,7 +155,8 @@ fn a_compaction_is_refused_where_nothing_could_type_it() {
     let mut p1 = Pane::with_an_agent();
     assert_eq!(p1.compact(Some("keep\nthe notes")), proto::Outcome::Refused, "two lines");
     assert_eq!(p1.compact(Some(&"x".repeat(513))), proto::Outcome::Refused, "a brief");
-    let elsewhere = proto::pane_request::Compact { pane: "p9".to_string(), focus: None };
+    let elsewhere =
+        proto::pane_request::Compact { pane: "p9".to_string(), focus: None, then: None };
     let asked = p1.control.ask(pane(proto::pane_request::Request::Compact(elsewhere)));
     assert_eq!(asked.outcome(), proto::Outcome::NotThere);
     std::thread::sleep(WOULD_HAVE_TYPED);
@@ -229,4 +260,60 @@ fn an_override_that_changes_the_compact_line_is_said_again() {
     std::fs::write(&override_file, &with_compact).expect("the override is restored");
     p1.send_manifests();
     p1.until_record_compacts(true);
+}
+
+/// A compaction asked to be followed by a prompt has it typed as the agent's next prompt, once the
+/// compaction has run: not while the agent is still compacting, which reads as working. The record
+/// says which of the two is queued all the while.
+#[test]
+fn a_compaction_with_a_prompt_has_it_typed_once_the_compaction_has_run() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let asked = p1.compact_then(Some("keep the work notes"), Some("carry on with the plan"));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    p1.until_pending(proto::PendingCompaction::Queued);
+
+    p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    p1.until_heard_line("/compact keep the work notes");
+    p1.until_pending(proto::PendingCompaction::FollowUp);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert!(
+        !p1.heard().iter().any(|line| line == "carry on with the plan"),
+        "typed while the compaction ran: {:?}",
+        p1.heard()
+    );
+
+    p1.daemon.type_into("p1", "rest");
+    p1.until_heard_line("carry on with the plan");
+    p1.until_pending(proto::PendingCompaction::None);
+    let heard = p1.heard();
+    let at = |line: &str| heard.iter().position(|heard| heard == line);
+    assert!(at("/compact keep the work notes") < at("carry on with the plan"), "{heard:?}");
+}
+
+/// A later ask is what its asker means: one with no prompt takes back a prompt still owed.
+#[test]
+fn a_later_compaction_takes_back_a_prompt_still_owed() {
+    let mut p1 = Pane::with_an_agent();
+    let asked = p1.compact_then(Some("work through it"), Some("carry on"));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    p1.until_pending(proto::PendingCompaction::FollowUp);
+
+    assert_eq!(p1.compact(Some("again")), proto::Outcome::Done);
+    p1.until_pending(proto::PendingCompaction::Queued);
+    p1.daemon.type_into("p1", "rest");
+    p1.until_heard_line("/compact again");
+    p1.until_pending(proto::PendingCompaction::None);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert!(!p1.heard().iter().any(|line| line == "carry on"), "{:?}", p1.heard());
+}
+
+#[test]
+fn a_prompt_to_carry_on_with_is_refused_as_a_focus_is() {
+    let mut p1 = Pane::with_an_agent();
+    let refused = |p1: &mut Pane, then: &str| p1.compact_then(None, Some(then)).outcome();
+    assert_eq!(refused(&mut p1, "two\nlines"), proto::Outcome::Refused);
+    assert_eq!(refused(&mut p1, &"x".repeat(513)), proto::Outcome::Refused);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.compactions_heard(), Vec::<String>::new(), "a refused ask compacted");
 }

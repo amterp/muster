@@ -471,6 +471,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
         || before.unread_input != now.unread_input
         || before.session != now.session
         || before.resume != now.resume
+        || before.compaction != now.compaction
 }
 
 /// Whether a tab's tree, its zoom or whether it is hidden has moved.

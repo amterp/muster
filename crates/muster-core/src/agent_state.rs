@@ -80,6 +80,39 @@ impl AgentState {
         self == wanted || (self == AgentState::Done && wanted == AgentState::Idle)
     }
 
+    /// What a line queued for an agent in this state to take at its prompt - a compaction, or
+    /// the prompt owed once one has run - waits for, in words; `subagents` is how many sub-agents
+    /// the agent says it runs. Its daemon types such a line only at an idle, empty prompt.
+    ///
+    /// Sub-agents are named while it works, since a harness can hold its turn open until they
+    /// finish, as Claude Code's "Waiting for 1 background agent to finish" does, and nothing else
+    /// on the row says why a turn has run so long.
+    pub fn line_waits_for(self, subagents: u32) -> String {
+        match self {
+            AgentState::Working => match subagents {
+                0 => "its turn to end".to_string(),
+                1 => "its 1 sub-agent and its turn to end".to_string(),
+                count => format!("its {count} sub-agents and its turn to end"),
+            },
+            AgentState::Blocked => "an answer to its dialog".to_string(),
+            AgentState::Stuck => "it to read its input again".to_string(),
+            AgentState::Unreachable => "its machine to answer".to_string(),
+            AgentState::Unknown => "its agent to be read".to_string(),
+            AgentState::Waiting | AgentState::Idle | AgentState::Done => {
+                "an empty prompt".to_string()
+            }
+        }
+    }
+
+    /// What `pane compact` says of a compaction it queued for an agent in this state, which is
+    /// nothing for one at its prompt, since its daemon types it within seconds.
+    pub fn queued_note(self, subagents: u32) -> Option<String> {
+        match self {
+            AgentState::Waiting | AgentState::Idle | AgentState::Done => None,
+            state => Some(format!("queued, waiting for {}", state.line_waits_for(subagents))),
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             AgentState::Working => "working",

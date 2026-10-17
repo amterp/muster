@@ -24,8 +24,11 @@ program that has stopped reading its input, `(codex has not read 2817 bytes of i
 pane; how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
 stopped reading the agent, `(adapter not reporting)` when the agent's harness has an adapter that
 is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked
-at since, a program's own progress, `(40% done)` or `(progress failed)`, and `(quiet)` for a pane
-that raises nothing for you. A waiting agent's second line is what it waits on.
+at since, a program's own progress, `(40% done)` or `(progress failed)`, a compaction queued and
+what it waits for, `(compaction queued, waiting for its 1 sub-agent and its turn to end)`, or the
+prompt it was asked to carry on with, `(follow-up queued, waiting for an empty prompt)`, and
+`(quiet)` for a pane that raises nothing for you. A waiting agent's second line is what it waits
+on.
 The model and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
@@ -202,6 +205,10 @@ One entry per pane every followed daemon holds, on screen or not.
   as one word each, and why the arguments the agent was started with did not all go along, `null`
   when they did. `null` while there is no session or no way to resume it. Both stay on an
   `unreachable` pane, where they say what to resume once its machine is back.
+- `compaction` - what its daemon holds to type at the agent's next idle, empty prompt: `queued`,
+  a compaction (`muster pane compact`, or `compact_at`); `follow_up`, the prompt a compaction was
+  asked to carry on with, once it has run. `null` while neither waits. What it waits for follows
+  from `state` and `facts.subagents`.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a

@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 
 use anstyle::{AnsiColor, Style};
+use muster_core::AgentState;
 use muster_proto::{Response, Window, response};
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
@@ -42,6 +43,11 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         Some(response::Payload::Unanswered(unanswered)) => {
             Err(Trouble::Unanswered(unanswered.reason.clone()))
         }
+        Some(response::Payload::Ok(ok)) if !ok.note.is_empty() => Ok(if json {
+            json!({ "ok": true, "note": ok.note }).to_string()
+        } else {
+            ok.note.clone()
+        }),
         Some(response::Payload::Ok(_)) => {
             // Nothing to say. Silence is the answer to a request that did what it was asked, and
             // JSON gets an object anyway so that `--json` always produces one.
@@ -899,6 +905,16 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
     if agent.unreadable {
         notes.push("(cannot read the screen)".to_string());
     }
+    let queued = match agent.compaction.as_str() {
+        "queued" => Some("compaction"),
+        "follow_up" => Some("follow-up"),
+        _ => None,
+    };
+    if let Some(queued) = queued {
+        let subagents = agent.facts.as_ref().map_or(0, |facts| facts.subagents);
+        let waits = AgentState::from_backend(&agent.state).line_waits_for(subagents);
+        notes.push(format!("({queued} queued, waiting for {waits})"));
+    }
     // Only where there is an adapter to install: a harness without one is silent by nature.
     if agent.adapter == "silent" {
         notes.push("(adapter not reporting)".to_string());
@@ -1118,6 +1134,7 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
         }),
         "rang": agent.is_some_and(|agent| agent.rang),
         "adapter": agent.map(|agent| agent.adapter.as_str()).filter(|adapter| !adapter.is_empty()),
+        "compaction": agent.map(|agent| agent.compaction.as_str()).filter(|queued| !queued.is_empty()),
         "unread_input": agent.and_then(|agent| agent.unread_input.as_ref()).map_or(Value::Null, |unread| {
             json!({
                 "bytes": unread.bytes,
@@ -1749,6 +1766,64 @@ mod tests {
         );
         assert!(json["panes"][1]["session"].is_null(), "{json}");
         assert!(json["panes"][1]["resume"].is_null(), "{json}");
+    }
+
+    /// A compaction queued for an agent says on its row what it waits for, naming the sub-agents
+    /// that can hold a turn open, and `--json` says which line is queued.
+    #[test]
+    fn a_queued_compaction_says_what_it_waits_for() {
+        use muster_proto::{
+            AgentFacts, PaneStateChanged, RosterChanged, RosterPane, RosterTab, Window,
+        };
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2", "p3"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![
+                PaneStateChanged {
+                    pane_id: "p1".to_string(),
+                    state: "working".to_string(),
+                    facts: Some(AgentFacts { subagents: 1, ..AgentFacts::default() }),
+                    compaction: "queued".to_string(),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p2".to_string(),
+                    state: "idle".to_string(),
+                    compaction: "follow_up".to_string(),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p3".to_string(),
+                    state: "working".to_string(),
+                    ..PaneStateChanged::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["panes"][0]["compaction"], "queued", "{json}");
+        assert_eq!(json["panes"][1]["compaction"], "follow_up", "{json}");
+        assert!(json["panes"][2]["compaction"].is_null(), "{json}");
+        let text = window_text(&window, 0, Others::All, false);
+        let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
+        assert!(
+            row("p1")
+                .contains("(compaction queued, waiting for its 1 sub-agent and its turn to end)"),
+            "{text}"
+        );
+        assert!(row("p2").contains("(follow-up queued, waiting for an empty prompt)"), "{text}");
+        assert!(!row("p3").contains("queued"), "{text}");
     }
 
     /// A hidden pane's row in `--json` says what its agent is doing in the same fields a row in

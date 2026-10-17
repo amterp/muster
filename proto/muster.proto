@@ -309,6 +309,10 @@ message CompactPane {
   // What the compaction should keep, for a harness that takes it, as Claude Code's `/compact`
   // does. One line. Empty compacts without one.
   string focus = 3;
+
+  // A prompt typed at the agent's next idle, empty prompt once the compaction has run, so it
+  // carries on. One line. Empty: none.
+  string then = 4;
 }
 
 // Takes a pane out of every window, its agent still running, into the list of hidden panes.
@@ -1785,7 +1789,11 @@ message Binding {
   repeated string modifiers = 3;
 }
 
-message Ok {}
+message Ok {
+  // What whoever asked should know about a change that was made: a compaction queued for an
+  // agent that cannot take it yet says what it waits for. Empty for nearly every change.
+  string note = 1;
+}
 
 message Failure {
   // Written for whoever reads it in a log at 2am: what broke, what it costs, what to
@@ -2894,6 +2902,11 @@ message PaneStateChanged {
   // What the pane's daemon runs to start that session again when a restart brings the pane back.
   // Absent while there is none, and from a daemon too old to say.
   SessionResume resume = 15;
+
+  // A line its daemon holds to type at the agent's next idle, empty prompt: `queued`, a
+  // compaction; `follow_up`, the prompt a compaction was asked to be followed by, once the
+  // compaction has run. Empty while neither waits.
+  string compaction = 16;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.

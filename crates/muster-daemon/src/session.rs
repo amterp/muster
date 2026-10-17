@@ -37,6 +37,7 @@ use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
+use crate::compaction::Pending;
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
 use crate::data::Data;
@@ -1667,6 +1668,7 @@ impl Session {
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
         let identified = self.session_identified(index, &agent, session_id);
         let compacting = self.past_compact_at(index, cleared, context_used);
+        self.compaction_changed(index);
         let pane = &mut self.panes[index];
         if says_waiting {
             pane.turns.wait_declared = true;
@@ -2041,6 +2043,7 @@ impl Session {
                     }
                     (record.session_id, record.resume) = (None, None);
                     pane.compaction.cleared();
+                    record.set_pending_compaction(proto::PendingCompaction::None);
                 }
                 if replaced || (record.agent.is_none() && agent.is_some()) {
                     pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
@@ -2420,8 +2423,9 @@ impl Session {
         }
         self.settings.compact_at = percent;
         if percent.is_none() {
-            for pane in &mut self.panes {
-                pane.compaction.threshold_off();
+            for index in 0..self.panes.len() {
+                self.panes[index].compaction.threshold_off();
+                self.compaction_changed(index);
             }
         }
         self.settings_changed()
@@ -2454,22 +2458,22 @@ impl Session {
                 compact.pane
             ));
         };
-        let focus = compact.focus.as_deref().map(str::trim).filter(|focus| !focus.is_empty());
-        if let Some(focus) = focus {
-            if focus.chars().any(char::is_control) {
-                return Reply::refused(
-                    "a focus is typed at the agent's prompt as one line, so it cannot hold a \
-                     newline or any other control character",
-                );
-            }
-            if focus.len() > FOCUS_BYTES {
-                return Reply::refused(format!(
-                    "a focus is at most {FOCUS_BYTES} bytes, and this one is {}; a longer brief \
-                     belongs in a message (`muster msg post`)",
-                    focus.len()
-                ));
-            }
-        }
+        let focus = match typed_line(
+            compact.focus.as_deref(),
+            "a focus",
+            "a longer brief belongs in a message (`muster msg post`)",
+        ) {
+            Ok(focus) => focus,
+            Err(refused) => return refused,
+        };
+        let then = match typed_line(
+            compact.then.as_deref(),
+            "a prompt to carry on with",
+            "a longer brief belongs in a file the prompt names",
+        ) {
+            Ok(then) => then,
+            Err(refused) => return refused,
+        };
         let Some(manifests) = self.detecting.manifests() else {
             return Reply::refused(
                 "this daemon has not loaded its agents' manifests yet, so it cannot say how to \
@@ -2489,24 +2493,55 @@ impl Session {
         };
         log::info(
             "daemon.compact.asked",
-            fields! { "pane" => compact.pane, "agent" => agent, "focused" => focus.is_some() },
+            fields! {
+                "pane" => compact.pane,
+                "agent" => agent,
+                "focused" => focus.is_some(),
+                "then" => then.is_some(),
+            },
         );
-        self.panes[index].compaction.ask(line);
+        self.panes[index].compaction.ask(line, then.map(str::to_string));
+        self.compaction_changed(index);
         Reply::done()
+    }
+
+    /// Puts what pane `index` has queued to type at its agent's prompt on its record, and tells
+    /// the subscribers when that changed.
+    fn compaction_changed(&mut self, index: usize) {
+        let pane = &mut self.panes[index];
+        let pending = match pane.compaction.pending() {
+            Pending::Nothing => proto::PendingCompaction::None,
+            Pending::Compaction => proto::PendingCompaction::Queued,
+            Pending::FollowUp => proto::PendingCompaction::FollowUp,
+        };
+        if replaced(&mut pane.record.pending_compaction, i32::from(pending)) {
+            let record = pane.record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
     }
 
     /// Whether any line is still to be typed at an agent's prompt - a pane's name for its
     /// session, or a compaction - which keeps the doorbell's thread looking.
     pub(crate) fn wants_typing(&self) -> bool {
         self.wants_session_names()
-            || self.panes.iter().any(|pane| pane.compaction.wanted().is_some())
+            || self.panes.iter().any(|pane| pane.compaction.pending() != Pending::Nothing)
     }
 
-    /// A compaction was typed into the agent in `pane` and taken, or typing it was given up.
-    pub(crate) fn compaction_typed(&mut self, pane: &str, line: &str) {
+    /// A line of the compaction in `pane` was typed into its agent and taken.
+    pub(crate) fn compaction_taken(&mut self, pane: &str, line: &str) {
         if let Some(index) = self.pane_index(pane) {
-            self.panes[index].compaction.typed(line);
+            self.panes[index].compaction.taken(line);
+            self.compaction_changed(index);
         }
+    }
+
+    /// Typing a line of the compaction in `pane` was given up; says the prompt that went with it,
+    /// if a compaction given up had one.
+    pub(crate) fn compaction_given_up(&mut self, pane: &str, line: &str) -> Option<String> {
+        let index = self.pane_index(pane)?;
+        let dropped = self.panes[index].compaction.given_up(line);
+        self.compaction_changed(index);
+        dropped
     }
 
     /// Whether a pane's name is typed into its agent's session (`SetNameSessions`).
@@ -3311,6 +3346,31 @@ fn unreadable_warning(pane: &str, agent: Option<&str>) {
                         ~/.muster/agent-detection/, and whether the harness's hooks are installed",
         },
     );
+}
+
+/// `text` trimmed, or none when it is blank, when it can be typed at an agent's prompt as one
+/// line; refused otherwise, `what` naming it and `longer` saying where a longer one belongs.
+fn typed_line<'a>(
+    text: Option<&'a str>,
+    what: &str,
+    longer: &str,
+) -> Result<Option<&'a str>, Reply> {
+    let Some(text) = text.map(str::trim).filter(|text| !text.is_empty()) else {
+        return Ok(None);
+    };
+    if text.chars().any(char::is_control) {
+        return Err(Reply::refused(format!(
+            "{what} is typed at the agent's prompt as one line, so it cannot hold a newline or \
+             any other control character"
+        )));
+    }
+    if text.len() > FOCUS_BYTES {
+        return Err(Reply::refused(format!(
+            "{what} is at most {FOCUS_BYTES} bytes, and this one is {}; {longer}",
+            text.len()
+        )));
+    }
+    Ok(Some(text))
 }
 
 /// Sets `field` to `value`, saying whether that changed it.

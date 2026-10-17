@@ -1839,6 +1839,7 @@ impl Session {
                 .session
                 .clone()
                 .map(|id| Box::new(AgentSession { id, resume: pane.resume.clone() })),
+            compaction: pane.compaction,
         }
     }
 
@@ -4175,6 +4176,8 @@ pub(crate) struct PaneAgent {
     pub unread_input: Option<Box<muster_core::mirror::UnreadInput>>,
     /// The session the pane's agent reported, boxed for the same reason: most panes have none.
     pub session: Option<Box<AgentSession>>,
+    /// What its daemon holds to type at the agent's next idle, empty prompt.
+    pub compaction: muster_core::mirror::PendingCompaction,
 }
 
 /// The session a pane's agent runs, as it reported it, and how its daemon resumes it.

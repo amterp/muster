@@ -49,6 +49,7 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
                 uncarried: resume.uncarried.clone().unwrap_or_default(),
             })
         }),
+        compaction: agent.compaction.as_str().to_string(),
     }
 }
 

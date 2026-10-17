@@ -126,14 +126,19 @@ impl DaemonBackend {
     /// both fields without a word, so a pane meant to be hidden would show and one meant to be
     /// quiet would ask.
     fn hides_and_quiets(&self, what: &str) -> Result<(), Refusal> {
+        self.speaks_since(muster_daemon_proto::version::HIDDEN_AND_QUIET, what)
+    }
+
+    /// Refuses `what` unless the daemon speaks protocol minor `since` or later, the first that
+    /// does it: an older one drops the field that asks for it without a word.
+    fn speaks_since(&self, since: u32, what: &str) -> Result<(), Refusal> {
         // Not connected, nothing can be asked, and the request says so itself.
         let Some(control) = self.connection.control() else { return Ok(()) };
         let speaks = control.welcome().protocol.as_ref();
-        let hides = muster_daemon_proto::version::HIDDEN_AND_QUIET;
         match muster_daemon_proto::version::too_old(
             &self.description,
             speaks,
-            hides,
+            since,
             what,
             "changed",
         ) {
@@ -329,8 +334,12 @@ impl BackendChannel for DaemonBackend {
                 }))?;
                 done
             }
-            BackendIntent::CompactPane { pane, focus } => {
-                let compact = pane_request::Compact { pane: pane.to_string(), focus };
+            BackendIntent::CompactPane { pane, focus, then } => {
+                if then.is_some() {
+                    let since = muster_daemon_proto::version::COMPACT_THEN;
+                    self.speaks_since(since, "follow a compaction with a prompt")?;
+                }
+                let compact = pane_request::Compact { pane: pane.to_string(), focus, then };
                 self.pane_request(pane_request::Request::Compact(compact))?;
                 done
             }

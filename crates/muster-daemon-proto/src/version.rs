@@ -21,6 +21,10 @@ pub const KEYS_IN_A_SEND: u32 = 4;
 /// fields, making a hidden pane visible and a quiet one ask, so a client asks before sending any.
 pub const HIDDEN_AND_QUIET: u32 = 5;
 
+/// The first minor whose daemon types the prompt a compaction is asked to be followed by. An older
+/// one drops the field, compacting the agent and leaving it waiting, so a client asks first.
+pub const COMPACT_THEN: u32 = 6;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

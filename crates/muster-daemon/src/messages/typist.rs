@@ -45,6 +45,11 @@ pub(crate) trait Line {
     /// The line still to be typed into the pane's agent, if one is, and what it is for.
     fn wanted(seen: &Seen) -> Option<(Self::What, &str)>;
 
+    /// Which line of its kind `what` is, for a log line, where a kind has more than one.
+    fn which(_what: &Self::What) -> &'static str {
+        Self::NOUN
+    }
+
     /// Whether a line typed earlier still matters. One that no longer does is let go without a
     /// word: it was seen through some other way.
     fn still_wanted(seen: &Seen) -> bool;
@@ -107,7 +112,10 @@ pub(crate) fn look<L: Line>(
             L::given_up(shared, pane, &what, "its pane would not take what was typed");
             continue;
         }
-        log::info(L::TYPED, fields! { "pane" => pane, "agent" => seen.agent });
+        log::info(
+            L::TYPED,
+            fields! { "pane" => pane, "agent" => seen.agent, "line" => L::which(&what) },
+        );
         let at = Instant::now();
         let line = line.to_string();
         typing.insert(pane.clone(), Typed { what, line, at, presses: 0 });

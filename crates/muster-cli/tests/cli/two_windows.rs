@@ -424,7 +424,7 @@ fn holding(path: &str, pane: &str) -> Receiver<Request> {
                 (_, Some(Names::Pane(named))) if named != pane => {
                     response::Payload::Failure(Failure { reason: format!("no pane {named}") })
                 }
-                _ => response::Payload::Ok(Accepted {}),
+                _ => response::Payload::Ok(Accepted::default()),
             };
             if !matches!(asked.payload, Some(request::Payload::ReadWindow(_))) {
                 let _ = heard.send(asked);
