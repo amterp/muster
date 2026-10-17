@@ -97,6 +97,15 @@ public final class PaneSurfaces {
     for chrome in chromes { chrome.surface.apply(windowIsKey: key) }
   }
 
+  /// Tells every surface the scale of the screen the window is on now, parked ones included.
+  ///
+  /// For a window that changed screen. AppKit tells each view when its backing scale changes,
+  /// but Ghostty found that it does not always (ghostty-org/ghostty#2731), and a surface left at
+  /// the old scale runs its pane at half or twice the grid it has room for until a relaunch.
+  public func matchBackingScale() {
+    for chrome in chromes { chrome.surface.matchBackingScale() }
+  }
+
   /// Every pane this window is holding, on screen or parked. For a repaint that is about the
   /// colours rather than about any one pane - a config file saved changes no state, so nothing
   /// else would ever tell a parked pane its border moved.

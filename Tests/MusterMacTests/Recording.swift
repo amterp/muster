@@ -53,7 +53,12 @@ final class RecordingSurface: PaneSurface {
 
   init(selection: String? = nil) { selectedText = selection }
 
-  func setSize(width: UInt32, height: UInt32) {}
+  /// Every size it was given, in backing pixels, in order.
+  var sizes: [(width: UInt32, height: UInt32)] = []
+  func setSize(width: UInt32, height: UInt32) { sizes.append((width, height)) }
+  /// Every content scale it was told, in order.
+  var contentScales: [Double] = []
+  func setContentScale(_ scale: Double) { contentScales.append(scale) }
   /// Every focus it was given, in order.
   var focuses: [Bool] = []
   func setFocus(_ focused: Bool) { focuses.append(focused) }

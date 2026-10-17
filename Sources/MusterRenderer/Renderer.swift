@@ -464,6 +464,16 @@ public final class Surface {
     ghostty_surface_set_size(surface, width, height)
   }
 
+  /// How many backing pixels make a point on the screen this surface is drawn on now.
+  ///
+  /// The scale a surface was made with is the only one libghostty knows until it is told
+  /// another, and it measures its cells in it: a surface made on a 2x display and sized on a 1x
+  /// one draws a grid of half the columns and half the rows. One number for both axes, because
+  /// AppKit's `backingScaleFactor` is one. Telling it the scale it already has costs nothing.
+  public func setContentScale(_ scale: Double) {
+    ghostty_surface_set_content_scale(surface, scale, scale)
+  }
+
   public func setFocus(_ focused: Bool) {
     ghostty_surface_set_focus(surface, focused)
   }

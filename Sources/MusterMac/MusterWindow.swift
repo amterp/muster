@@ -889,6 +889,32 @@ extension MusterWindow: NSWindowDelegate {
     reportFrame()
   }
 
+  /// Said in the log because nothing else says it: a pane whose grid halved after a laptop woke
+  /// left a run log with no record of which display its window was on.
+  public func windowDidChangeBackingProperties(_ notification: Notification) {
+    let before = notification.userInfo?[NSWindow.oldScaleFactorUserInfoKey] as? CGFloat
+    Core.info(
+      "window.scale.changed",
+      [
+        "window": name, "from": before.map { String(describing: $0) } ?? "(unknown)",
+        "to": String(describing: window.backingScaleFactor),
+        "screen": window.screen?.localizedName ?? "(none)",
+      ])
+  }
+
+  /// Asks every pane to match the new screen's scale, which AppKit does not always report as a
+  /// backing change of its own. On the next turn, as Ghostty does it: the window's scale may
+  /// not have moved yet when this arrives.
+  public func windowDidChangeScreen(_ notification: Notification) {
+    Core.info(
+      "window.screen.changed",
+      [
+        "window": name, "screen": window.screen?.localizedName ?? "(none)",
+        "scale": String(describing: window.backingScaleFactor),
+      ])
+    DispatchQueue.main.async { [weak self] in self?.surfaces.matchBackingScale() }
+  }
+
   public func windowDidResize(_ notification: Notification) {
     reportFrame()
   }

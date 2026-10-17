@@ -14,6 +14,11 @@ import MusterRenderer
 @MainActor
 public protocol PaneSurface: AnyObject {
   func setSize(width: UInt32, height: UInt32)
+
+  /// Backing pixels per point on the screen the surface is drawn on now, which moves when its
+  /// window moves to a display of another scale.
+  func setContentScale(_ scale: Double)
+
   func setFocus(_ focused: Bool)
 
   /// Whether the window holding this surface can be seen. A surface that cannot stops drawing,

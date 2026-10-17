@@ -182,9 +182,45 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       self?.pointerHidden = !visible
     }
     attach(typeable: typeable)
-    surface.setSize(
-      width: UInt32(bounds.width * (window?.backingScaleFactor ?? 2)),
-      height: UInt32(bounds.height * (window?.backingScaleFactor ?? 2)))
+    // The whole match rather than a size alone: a surface made before its view was in a window
+    // took the main screen's scale, which need not be this window's.
+    matchBackingScale()
+  }
+
+  /// Backing pixels per point in this view's window, or 2 before it has one.
+  private var backingScale: CGFloat { window?.backingScaleFactor ?? 2 }
+
+  /// Tells the surface the scale of the screen its window is on now, and sizes it in that
+  /// screen's pixels.
+  ///
+  /// What Ghostty's own view does when its backing properties change (`SurfaceView_AppKit`,
+  /// `viewDidChangeBackingProperties`), in its order: the layer's scale first, so the compositor
+  /// does not scale what libghostty already drew at the right one, then the content scale, then
+  /// the size. Without the content scale a surface made on a 2x display and moved to a 1x one
+  /// counted 1x pixels in 2x cells, and its pane's program ran at half the grid it had room for.
+  ///
+  /// Internal rather than private, because a window that changes screen asks every pane it
+  /// holds, parked ones included - AppKit does not always report a scale change on its own.
+  func matchBackingScale() {
+    if let window {
+      CATransaction.begin()
+      // Otherwise Core Animation animates the layer from one scale to the other.
+      CATransaction.setDisableActions(true)
+      layer?.contentsScale = window.backingScaleFactor
+      CATransaction.commit()
+      surface?.setContentScale(Double(window.backingScaleFactor))
+    }
+    sizeSurface(to: bounds.size)
+  }
+
+  public override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    matchBackingScale()
+  }
+
+  private func sizeSurface(to size: NSSize) {
+    surface?.setSize(
+      width: UInt32(size.width * backingScale), height: UInt32(size.height * backingScale))
   }
 
   /// How big one cell is in points, which is what the core divides a `resize_step` by.
@@ -196,7 +232,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// business knowing about.
   public var cellPointSize: (width: Float, height: Float)? {
     guard let pixels = surface?.cellPixelSize else { return nil }
-    let scale = Float(window?.backingScaleFactor ?? 2)
+    let scale = Float(backingScale)
     guard scale > 0 else { return nil }
     return (Float(pixels.width) / scale, Float(pixels.height) / scale)
   }
@@ -259,8 +295,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
-    let scale = window?.backingScaleFactor ?? 2
-    surface?.setSize(width: UInt32(newSize.width * scale), height: UInt32(newSize.height * scale))
+    sizeSurface(to: newSize)
   }
 
   // No draw override. libghostty runs its own display link on its own renderer thread and
@@ -468,7 +503,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// cells, so a position over the padding is moved onto them here and one off the view is
   /// left for the encoder's own rules about the world outside a terminal.
   private func pixels(_ event: NSEvent) -> (x: Double, y: Double) {
-    let scale = window?.backingScaleFactor ?? 2
+    let scale = backingScale
     let at = flipped(event)
     let inset = surface?.padding ?? 0
     var x = Double((at.x - inset) * scale)
