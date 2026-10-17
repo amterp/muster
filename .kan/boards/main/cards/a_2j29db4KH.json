@@ -1,0 +1,31 @@
+{
+  "_v": 3,
+  "alias": "a-wake-held-behind",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Second sighting, same evening, a worker's Claude Code pane in plan mode: a box above the prompt reading '✦ Heads up · The main agent concluded ... 1: Learn more  2: Knew this already  0: Dismiss'. Same shape, digits answer it, so it holds wakes the same way. Both boxes are Claude Code's own; record each with its version.",
+      "created_at_millis": 1792203110771,
+      "id": "c_2j2J9hHPB"
+    }
+  ],
+  "created_at_millis": 1792202744954,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-16, Muster 0.16.0, the integrator's own Claude Code pane on the laptop. After a session drafted a bug report with Claude Code's feedback tool, the harness drew a box just above the prompt and left it there:\n\n    ╭──────────────────────────────────────────────────────╮\n    │ ✻ Bug report drafted: Spawned five parallel Opus ... │\n    │ │ - What happened: ...                               │\n    │ 1 to review · 2 to send · 0 to dismiss               │\n    ╰──────────────────────────────────────────────────────╯\n    ───────────────────────────────────── MUSTER ─\n    ❯\n\nFrom the moment its turn ended (01:35:41Z) the doorbell logged `msg.ring.waits why=\"its screen is not its prompt\"` on every look, 536 times over 30 minutes, while the pane read `done`. Two wakes from another integrator were held, and each stall notice said \"something typed in its prompt, or a menu over it\".\n\nHolding was right: the box takes digits, so a wake typed there could press \"2 to send\" and submit a bug report the person had not approved. What was wrong is the explanation, and that nothing tells the person, whose answer is the only way out.\n\nRuled out: the footer's \"2 shells, 1 monitor\" (background tasks). The first held look came before any were running.\n\nWhat would help: a rule in `claude.toml` that recognises the box as covering the prompt (the way a menu or viewer is, without changing the agent's state), so the doorbell's typed reason (since the stall-notice change on this branch, `Unseen::Covered`) names it. Recording the screen under corpus/claude-code-\u003cversion\u003e/ first, with the version noted. Whether a box like this should also notify the human is worth deciding with it, since the wake waits on them.",
+  "id": "a_2j29db4KH",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b19",
+  "title": "A wake held behind Claude Code's feedback-draft box is blamed on a draft, and no rule knows the box",
+  "type": "bug",
+  "updated_at_millis": 1792203110771,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792202744954}
+  ]
+}

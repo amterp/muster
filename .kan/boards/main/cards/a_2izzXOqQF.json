@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1792197590183,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-16, Muster 0.16.0, Claude Code helper panes on the devenv daemon. Twice in one afternoon a wake to an idle Claude Code pane was held because the doorbell could not see its prompt. Both times the stall notice said the wake was held by \"something typed in its prompt, or a menu over it\", which was not true. The agent directing those panes spent a round trip each time finding out why.\n\n- Five splits in one tab squeezed pane p2c3myvxze to 89x9. Claude Code's task list pushed its prompt box below the last visible row, so `muster pane read` ended at the prompt's top border. Esc changed nothing. Moving two other panes out with `muster pane move --new-tab` and equalizing gave it 20 rows, the prompt showed, and the held wake rang at once.\n- The person zoomed the tab on another pane. The Claude Code panes the zoom hid stopped being drawn at a usable size: `pane read` again ended at the prompt's top border, the pane read `done`, and its wakes were held. Moving the panes to a new tab and nudging them with `pane resize` did not help, because a pane in a tab that is not on screen was not redrawn. What got through was typing the read blind: `muster pane send --pane \u003cname\u003e 'muster msg read --group ...' --enter`.\n\nThe notice comes from `why()` in `crates/muster-daemon/src/messages/stalls.rs`, which maps `member.waking` to the draft-or-menu sentence whatever held the ring. If the doorbell told \"no prompt found on screen\" apart from \"a prompt with text in it\", the notice could say what happened: \"its prompt is not on screen; the pane is 89x9\", or \"its tab is zoomed on another pane\". Warning at `pane new` or a split when a pane holding an agent drops below the rows its harness needs to show a prompt would head off the first case. For the second, it is worth finding out what size a pane hidden by a zoom gets and whether its screen keeps updating, since the doorbell reads that screen.\n\namterp's broader idea is card a_2izzXwq3v. Related: `wakes-go-missing` (a_2hIfuUkdQ), a held wake its sender cannot see; a_2J1KZe2ws, a zoomed tab's hidden panes reported deaf.",
@@ -13,12 +13,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "a3V",
+  "position": "Ywf",
   "title": "A wake is held when a pane is too short or hidden to show its prompt, and the notice blames a draft or a menu",
   "type": "bug",
-  "updated_at_millis": 1792200747634,
+  "updated_at_millis": 1792203110492,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792197590183},
-    {"field":"column","value":"next","at":1792200747634}
+    {"field":"column","value":"next","at":1792200747634},
+    {"field":"column","value":"done","at":1792203110492}
   ]
 }
