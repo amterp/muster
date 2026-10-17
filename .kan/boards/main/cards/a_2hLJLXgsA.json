@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "in-progress",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -33,12 +33,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "a3",
+  "position": "Zz",
   "title": "🎲 a_tab_on_a_daemon_still_starting_stays_this_windows saw a second tab under load",
   "type": "bug",
-  "updated_at_millis": 1792211139485,
+  "updated_at_millis": 1792242025996,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791952873746},
-    {"field":"column","value":"next","at":1792211139485}
+    {"field":"column","value":"next","at":1792211139485},
+    {"field":"column","value":"in-progress","at":1792242025996}
   ]
 }
