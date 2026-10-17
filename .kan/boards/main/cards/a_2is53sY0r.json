@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "the-run-log-s-unread",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792178736271,
+  "creator": "Alexander Terp",
+  "description": "daemon.pane.unread_input writes the stuck program's pid as `pid` beside the line's own `pid` (the daemon's), so the line has a duplicate key and a JSON parser keeps whichever comes last: python's json read 921313 (Codex) and lost 1691 (the daemon). Rename the program's field, e.g. `program_pid`, and check the other daemon events that name a process for the same clash.",
+  "id": "a_2is53sY0r",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b14",
+  "title": "The run log's unread_input line carries two pid keys",
+  "type": "bug",
+  "updated_at_millis": 1792178736271,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792178736271}
+  ]
+}

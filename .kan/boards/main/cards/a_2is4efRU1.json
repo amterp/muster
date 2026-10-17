@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "codex-0-162-1-stops",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792178720651,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-16, the second sighting after GitHub issue #1 part 2 (2026-10-07, 2817 bytes unread). Two Codex 0.162.1 panes on the devenv, side by side in one tab, went stuck one second apart (19:16:14 and 19:16:15 UTC) after a trackpad scroll over each: the first 2.9 KB left in each terminal was about 220 identical `ESC[\u003c64;40;50M` (wheel up, one cell), and the copy pane's began mid-report, so Codex stopped reading partway through the burst. Each Codex sat at 0% CPU with every thread parked, scrolled back in its transcript (`Back to bottom`), and kept running turns: copy finished one at 19:16:29 while stuck. SIGWINCH and an emptied input queue did not get it reading again; only ending it and `codex resume \u003cid\u003e` did. The first burst is saved on the devenv at ~/inbox/stuck-review.bin and stuck-copy.bin.\n\nThe freeze is Codex's, but Muster triggers it. Next steps: reproduce with a recorded burst against a bare Codex in a PTY, record it under corpus/ and docs/observations/codex-0.162.1.md, and report it upstream. Then decide whether the daemon should coalesce wheel reports for a pane: one flick became hundreds of one-row reports at the same cell, where Ghostty's own scrollCallback sends the same, so coalescing would be a departure from Ghostty and needs its reason written down.",
+  "id": "a_2is4efRU1",
+  "position": "b10",
+  "tags": [
+    "codex"
+  ],
+  "title": "Codex 0.162.1 stops reading its input after a burst of wheel reports",
+  "type": "bug",
+  "updated_at_millis": 1792178720651,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792178720651}
+  ]
+}
