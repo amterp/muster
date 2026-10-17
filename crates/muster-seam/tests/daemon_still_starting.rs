@@ -17,6 +17,7 @@ use muster::proto::{
     Event, OpenWindow, ProblemsChanged, ReadWindow, Request, Response, Startup, event, request,
     response,
 };
+use muster::testing::Turn;
 use muster_core::composition::holding::{from_toml, to_toml};
 use muster_core::composition::{DaemonId, HeldWindow, Holders, WindowName};
 use muster_core::mirror::backend::TabId;
@@ -59,9 +60,9 @@ fn muster_s_own_daemon_arriving_late_still_fills_the_window() {
     // Past the second the window waits, then the real daemon with whatever it was started with.
     let late =
         script("late-daemon", &format!("sleep 2\nexec '{}' \"$@\"", built_daemon().display()));
-    let _turn = muster::testing::fresh_session();
+    let turn = muster::testing::fresh_session();
     // After the turn, so it is dropped first: the next test's turn starts with it stopped.
-    let _stopped = Stopped(muster_daemon_proto::install::socket_path(home));
+    let _stopped = Stopped(&turn, muster_daemon_proto::install::socket_path(home));
     open_with_no_daemon_configured(&late, "late");
     until(
         "a tab from the daemon that arrived late",
@@ -226,11 +227,16 @@ fn script(name: &str, body: &str) -> PathBuf {
 
 /// Stops the daemon at this socket when dropped, so a daemon Muster started for a test does not
 /// outlive it and answer the next one.
-struct Stopped(PathBuf);
+///
+/// The session goes first. A window still following its daemon starts it again the moment it
+/// stops answering, and that daemon served this home's socket after the test had ended: the next
+/// test to start a daemon here adopted it, tab and all.
+struct Stopped<'turn>(&'turn Turn, PathBuf);
 
-impl Drop for Stopped {
+impl Drop for Stopped<'_> {
     fn drop(&mut self) {
-        let _ = muster_daemon_client::launch::stop(&self.0, PATIENCE);
+        self.0.relaunch();
+        let _ = muster_daemon_client::launch::stop(&self.1, PATIENCE);
     }
 }
 

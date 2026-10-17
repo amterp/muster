@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use muster::proto::{OpenWindow, ReadWindow, Request, Response, Startup, request, response};
+use muster::testing::Turn;
 use muster_harness::{Control, DAEMON_DATA, PATIENCE, built_daemon, until};
 use prost::Message;
 
@@ -17,9 +18,9 @@ use prost::Message;
 fn a_daemon_muster_started_that_dies_is_started_again_with_its_panes() {
     let home = scratch_home();
     let socket = muster_daemon_proto::install::socket_path(home);
-    let _turn = muster::testing::fresh_session();
+    let turn = muster::testing::fresh_session();
     // After the turn, so it is dropped first: nothing is left running for the next test.
-    let _stopped = Stopped(socket.clone());
+    let _stopped = Stopped(&turn, socket.clone());
     // No bridge runs here, and a pane waiting for one would raise a problem of its own.
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     open_with_no_daemon_configured(home);
@@ -104,11 +105,15 @@ fn open_with_no_daemon_configured(home: &Path) {
 }
 
 /// Stops the daemon at this socket when dropped, whichever run of it is there.
-struct Stopped(PathBuf);
+///
+/// The session goes first, or the window would start the daemon again once it stopped, which is
+/// this test's subject, and leave that run behind on the machine.
+struct Stopped<'turn>(&'turn Turn, PathBuf);
 
-impl Drop for Stopped {
+impl Drop for Stopped<'_> {
     fn drop(&mut self) {
-        let _ = muster_daemon_client::launch::stop(&self.0, PATIENCE);
+        self.0.relaunch();
+        let _ = muster_daemon_client::launch::stop(&self.1, PATIENCE);
     }
 }
 
