@@ -233,6 +233,43 @@ fn a_dialog_is_answered_with_keys_and_a_paste_it_ignored_is_not_confirmed() {
     let _ = std::fs::remove_dir_all(&drawing);
 }
 
+/// A program that takes a line and redraws, as Codex does on `/quit` or `/compact`, is not
+/// called deaf: the pane changed and the text is gone, which says nothing either way, and a
+/// refusal would have the caller send it again into whatever runs there now.
+#[test]
+fn a_line_the_program_took_and_redrew_away_is_unanswered_rather_than_refused() {
+    let _turn = muster::testing::fresh_session();
+    let drawing = scratch("confirmed-send-taken");
+    let daemon = daemon_running(&redrawing_fixture(&drawing));
+
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    let pane = the_only_pane();
+    wait_until_reading(&pane);
+
+    let answered = answer(request::Payload::SendToPane(SendToPane {
+        pane_id: pane.clone(),
+        text: "/compact".to_string(),
+        enter: true,
+        confirm: true,
+        ..SendToPane::default()
+    }));
+    let Some(response::Payload::Unanswered(unanswered)) = answered.payload else {
+        panic!(
+            "a line the pane took answered {:?} rather than unanswered.\n  Impact: a caller told \
+             it was not taken sends it again, into whatever the program left running.",
+            answered.payload
+        );
+    };
+    assert!(unanswered.reason.contains(&pane), "{}", unanswered.reason);
+    assert!(read(&pane).contains("took 1 line"), "the pane shows {:?}", read(&pane));
+
+    let _ = std::fs::remove_dir_all(&drawing);
+}
+
 /// A daemon holding one pane, running `program` in place of an interactive shell.
 fn daemon_running(program: &Path) -> Daemon {
     let daemon = Daemon::start_built();
@@ -325,9 +362,8 @@ fn scratch(name: &str) -> PathBuf {
 
 /// A program that draws the first of what it is handed and silently drops the rest.
 ///
-/// Not a caricature: a harness that folds a long paste into `[Pasted text #2]` and a terminal
-/// that discards an over-long line both look exactly like this from outside, and both answered
-/// exit 0 before this flag existed.
+/// Not a caricature: a terminal that discards an over-long line echoes its start and looks
+/// exactly like this from outside, and answered exit 0 before this flag existed.
 ///
 /// It must not exit - the pane would drop back to its shell, and what the pane shows would
 /// stop being this program's - so it loops rather than returning.
@@ -437,6 +473,38 @@ while True:
         time.sleep({DRAWS_AFTER})
         after = "".join(f"output line {{n}}\r\n" for n in range({lines_after})).encode()
         os.write(1, text + b"\r\n" + after)
+"#
+        ),
+    )
+    .expect("the scratch directory should be writable");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("the fixture should be executable");
+    script
+}
+
+/// A program that takes each line it is handed and redraws its screen without it: an empty
+/// prompt and a count of what it took, as a harness does once a slash command has run.
+fn redrawing_fixture(drawing: &Path) -> PathBuf {
+    let script = drawing.join("takes-and-redraws.py");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/usr/bin/env python3
+import os, select, tty
+
+tty.setraw(0)
+taken = 0
+
+def draw():
+    os.write(1, b"\x1b[2J\x1b[H" + "{READING}\r\ntook {{}} line\r\n> ".format(taken).encode())
+
+draw()
+while True:
+    if not select.select([0], [], [], 0.2)[0]:
+        continue
+    if b"\r" in os.read(0, 65536):
+        taken += 1
+        draw()
 "#
         ),
     )

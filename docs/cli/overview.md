@@ -256,7 +256,9 @@ harmless.
 **4 is the one not to.** The request reached a window, or the daemon behind it, and only the
 answer went missing, so whatever was asked for may already have happened - a `pane send` retried on
 a 4 is how a pane receives the same instruction twice. `muster pane read` says what a pane has on
-it, and `pane send --confirm` asks the window itself rather than guessing out here.
+it, and `pane send --confirm` asks the window itself rather than guessing out here. A
+`--confirm` exits 4 as well when the pane changed without showing what was sent, which is how a
+program that took the line and redrew looks: read the pane before sending it again.
 
 `pane wait` exits 4 as well, when the daemon holding its pane stops answering: the window took the
 wait and cannot say whether the pane got there. A wait changes nothing, so this 4 is safe to retry,

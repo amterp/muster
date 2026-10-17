@@ -2277,10 +2277,11 @@ fn send_to_pane(window: WindowId, send: &proto::SendToPane) -> Response {
 ///
 /// **Refusal rather than a field on the answer**, because an exit code is the only part of this
 /// a script branches on without reading English, and a send that cannot be seen is exactly the
-/// case `--confirm` was asked for.
+/// case `--confirm` was asked for. A send that may have been taken all the same answers
+/// unanswered rather than refused, so the caller is told not to send it again.
 fn confirm_it_arrived(pane: &PaneId, send: &proto::SendToPane, before: &str) -> Response {
     let Some(daemon) = pane_holder(pane, &send.daemon_id) else {
-        return Response::failure(format!(
+        return Response::unanswered(format!(
             "what was sent went to pane {pane}, which then went away, so nothing could be read \
              back to confirm it. Whatever was sent may well have arrived; this is the \
              confirmation going missing, not the send."
@@ -2291,7 +2292,8 @@ fn confirm_it_arrived(pane: &PaneId, send: &proto::SendToPane, before: &str) -> 
     });
     match confirmed {
         Ok(()) => Response::ok(),
-        Err(refusal) => Response::failure(refusal),
+        Err(pane_text::Unconfirmed::Refused(refusal)) => Response::failure(refusal),
+        Err(pane_text::Unconfirmed::Unknown(reason)) => Response::unanswered(reason),
     }
 }
 

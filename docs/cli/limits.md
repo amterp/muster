@@ -169,9 +169,16 @@ agent at work changes its pane on its own. A send is taken before the pane can h
 the read is retried for up to a second rather than taken once: a pane that has already drawn the
 text answers immediately, and only a genuine miss waits the second out. What it proves is
 **arrival, not submission**: a pane draws the text whether it has been submitted or is sitting in
-an input box, so nothing readable from out here separates those. A harness that folds a long
-paste into a placeholder draws neither, which reads as unconfirmed - the honest answer, since a
-caller that cannot see its message has not confirmed anything.
+an input box, so nothing readable from out here separates those.
+
+**A send `--confirm` cannot see exits 1 or 4, by what the pane shows.** Exit 1 is a refusal the
+pane proves: nothing on it changed, as when a dialog ignores a paste, or only the start of the
+text arrived, as when a terminal in canonical mode discards a long line. Sending again, or as
+keys, is safe. Exit 4 is a pane that changed without showing the text. A program that takes a
+line and redraws looks like that - Codex exiting to its shell on `/quit`, a `/compact` leaving the
+prompt empty, a prompt submitted with `--enter` - and so do a harness that folds a long paste into
+a placeholder and a busy agent drawing over its input. The text may have been taken, so read the
+pane with `muster pane read` before sending it again. A pane that cannot be read back exits 4 too.
 
 Newlines are safe to send. Muster hands the text to the daemon on the verb it encodes against
 the pane's live modes, so a multi-line message reaches a harness fenced as one paste rather
@@ -227,8 +234,8 @@ What to do instead of making the request again: `muster window` shows whether it
 only exit 3, where the request was written to no window: none was there, or none answered when
 asked what it is showing.
 
-A daemon does not answer a send, so a `pane send` exits 4 only when the window itself did not
-answer: the window queues the text on its input connection to the pane's daemon and answers at
+A daemon does not answer a send, so without `--confirm` a `pane send` exits 4 only when the
+window itself did not answer: the window queues the text on its input connection to the pane's daemon and answers at
 once. Exit 0 says the text was queued for
 a daemon the window was connected to, which is not proof that it arrived - a connection that
 drops a moment later loses what was still queued on it. Exit 1 says nothing was queued, and the

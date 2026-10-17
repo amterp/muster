@@ -144,7 +144,9 @@ text and the keys rather than that the agent heard them. Where that matters, ask
 the text shows on the pane more times than it did before, or the pane changed and still shows
 it - so text the pane already showed does not confirm a send to a pane that did not change. A
 send of keys or Return alone has no text to find, and is confirmed once the pane changes at all. It costs a round trip and it proves arrival rather than submission;
-`muster docs limits` is what it does and does not catch.
+`muster docs limits` is what it does and does not catch. Exit 1 says the pane shows the text was
+not taken. Exit 4 says the pane changed without showing it, as it does after an agent takes a slash
+command, so read the pane before sending it again.
 
 Multi-line text is one send. It reaches the harness as a single paste rather than as a
 submission per line - though a harness may fold a long paste into a placeholder that waits for a

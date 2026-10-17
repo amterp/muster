@@ -106,6 +106,19 @@ fn looked_for(sent: &str) -> String {
     characters[from..].iter().collect()
 }
 
+/// How much of the start of a sent message is looked for, to tell a message cut short from one
+/// that was taken and drawn over.
+///
+/// Shorter than any program truncates to in practice - a terminal in canonical mode echoes the
+/// first 1024 bytes of a line it then drops - and long enough that a match is this send's text
+/// rather than the program's own. Text this short or shorter is its own start.
+const STARTED_BY: usize = 16;
+
+/// What of the start of a sent message is looked for, as [`looked_for`] takes its tail.
+fn start_of(sent: &str) -> String {
+    squeezed(sent).chars().take(STARTED_BY).collect()
+}
+
 /// How many times `wanted` can be seen on a pane, counting runs that do not overlap.
 fn times_on(pane: &str, wanted: &str) -> usize {
     squeezed(pane).matches(wanted).count()
@@ -168,9 +181,18 @@ pub fn before_sending(read: impl FnOnce(u32) -> Result<String, String>) -> Strin
 ///
 /// **It answers arrival and not submission.** A pane draws the text whether it has been
 /// submitted or is sitting in an input box waiting for a Return, and nothing in a pane's
-/// rendered rows separates those. A harness that folds a long paste into a placeholder draws
-/// neither, which reads here as not arrived - the honest answer, since a caller that cannot
-/// see its message on the pane has not confirmed anything.
+/// rendered rows separates those.
+///
+/// **A pane that changed without showing the text is not a refusal.** A program that takes a
+/// line and redraws - Codex quitting to the shell on `/quit`, a slash command leaving its prompt
+/// empty, a prompt submitted with its Return - shows none of what it took, and calling that "did
+/// not take it" sent callers to send it again, into whatever was running by then. A harness that
+/// folds a long paste into a placeholder, and a busy agent drawing over its input, look the same.
+/// So that is [`Unconfirmed::Unknown`], which the CLI exits 4 for, as it does for any request
+/// that may have happened. Refused is kept for what the pane does show: nothing changed at all,
+/// or the start of the text arrived and its end did not, which is a line cut short. Text that
+/// never shows is still never confirmed, so a busy pane that loses what it was sent is no easier
+/// to confirm than it was.
 ///
 /// Reading until [`CONFIRM_WITHIN`] runs out rather than once, because a send is accepted before
 /// the pane can have drawn it. A pane that has drawn it answers on the first read, so the cost
@@ -180,7 +202,7 @@ pub fn confirm(
     sent: &str,
     before: &str,
     mut read: impl FnMut(u32) -> Result<String, String>,
-) -> Result<(), String> {
+) -> Result<(), Unconfirmed> {
     let wanted = looked_for(sent);
     let shown_before = times_on(before, &wanted);
     let arrived = |after: &str| {
@@ -190,13 +212,23 @@ pub fn confirm(
         let shown = times_on(after, &wanted);
         shown > shown_before || (shown_before > 0 && shown > 0 && after != before)
     };
+    let start = start_of(sent);
+    let started_before = times_on(before, &start);
+    let mut changed = false;
+    // Only the last read decides whether the text was cut short: a harness can draw the start
+    // of a paste on its way in and then clear the whole of it on the Return.
+    let mut started = false;
     let deadline = std::time::Instant::now() + CONFIRM_WITHIN;
     // Whatever the last read said, so a pane that could not be read at all is reported as that
     // rather than as one that drew nothing - two different things to be told.
     let unreadable = loop {
         let outcome = match read(CONFIRM_ROWS) {
             Ok(text) if arrived(&text) => return Ok(()),
-            Ok(_) => None,
+            Ok(text) => {
+                changed |= text != before;
+                started = times_on(&text, &start) > started_before;
+                None
+            }
             Err(refusal) => Some(refusal),
         };
         if std::time::Instant::now() >= deadline {
@@ -204,40 +236,76 @@ pub fn confirm(
         }
         std::thread::sleep(CONFIRM_POLL);
     };
+    if let Some(refusal) = unreadable {
+        return Err(Unconfirmed::Unknown(format!(
+            "what was sent to pane {pane} could not be confirmed, because reading the pane back \
+             failed: {refusal}. Whatever was sent may well have arrived."
+        )));
+    }
     // A command whose output scrolled the message past the last rows ran, and refusing it
     // invites running it twice. So the whole pane is read once before saying so, which costs
     // the history only on the path that has already waited out the second. Only for text that
     // was nowhere in the rows before the send: older copies further up would be counted too.
-    if unreadable.is_none()
-        && !wanted.is_empty()
+    if !wanted.is_empty()
         && shown_before == 0
         && read(0).is_ok_and(|text| times_on(&text, &wanted) > 0)
     {
         return Ok(());
     }
-    Err(match unreadable {
-        None if wanted.is_empty() => format!(
+    Err(if wanted.is_empty() {
+        Unconfirmed::Refused(format!(
             "the keys were sent to pane {pane} and nothing on it changed, so whatever is running \
              there did not act on them. A program draws nothing for a key it ignores, and \
              nothing at all while it is not reading its input. `muster pane read --pane {pane}` \
              shows what it does draw."
-        ),
-        None => format!(
-            "the text was sent to pane {pane} and does not show on it any more than it did \
-             before, so whatever is running there did not take it. Three things do this. A \
-             dialog or menu redraws itself unchanged when it is pasted at, since it reads keys: \
-             `--key` presses them. A terminal in canonical mode - anything reading stdin without \
-             a line editor - never delivers a line over 1024 bytes, says nothing, and takes \
-             nothing sent after it until `--key ctrl+c` interrupts what is reading \
-             (`muster docs limits`). And a harness that folds a long paste into a \
-             placeholder draws neither the text nor an error, which reads here the same way. \
+        ))
+    } else if started {
+        Unconfirmed::Refused(format!(
+            "the text was sent to pane {pane} and only its start shows on it, so whatever is \
+             running there did not take the rest. A terminal in canonical mode - anything \
+             reading stdin without a line editor - does this to a line over 1024 bytes: it \
+             echoes the start, delivers none of it, says nothing, and takes nothing sent after \
+             it until `--key ctrl+c` interrupts what is reading (`muster docs limits`). \
              `muster pane read --pane {pane}` shows what it does draw."
-        ),
-        Some(refusal) => format!(
-            "what was sent to pane {pane} could not be confirmed, because reading the pane back \
-             failed: {refusal}. Whatever was sent may well have arrived."
-        ),
+        ))
+    } else if !changed {
+        Unconfirmed::Refused(format!(
+            "the text was sent to pane {pane} and nothing on it changed, so whatever is running \
+             there did not take it. Two things do this. A dialog or menu redraws itself \
+             unchanged when it is pasted at, since it reads keys: `--key` presses them. And a \
+             terminal in canonical mode - anything reading stdin without a line editor - that \
+             was sent a line over 1024 bytes takes nothing more until `--key ctrl+c` interrupts \
+             what is reading (`muster docs limits`). `muster pane read --pane {pane}` shows what \
+             it does draw."
+        ))
+    } else {
+        Unconfirmed::Unknown(format!(
+            "the text was sent to pane {pane}, and the pane changed without showing it, so \
+             whether it was taken cannot be told from the screen. A program that takes a line \
+             and redraws looks like this - a slash command, a quit, a prompt submitted with its \
+             Return - and so do a harness that folds a long paste into a placeholder and a busy \
+             agent drawing over its input. Do not send it again until `muster pane read --pane \
+             {pane}` shows which: sent twice, it may be taken twice."
+        ))
     })
+}
+
+/// Why [`confirm`] could not confirm a send, by what a caller should do next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unconfirmed {
+    /// The pane shows the send was not taken, so sending it again, or as keys, is safe.
+    Refused(String),
+    /// The send may have been taken: the pane changed without showing it, or could not be read
+    /// back. Sending it again may deliver it twice.
+    Unknown(String),
+}
+
+impl Unconfirmed {
+    pub fn reason(&self) -> &str {
+        match self {
+            Unconfirmed::Refused(reason) | Unconfirmed::Unknown(reason) => reason,
+        }
+    }
 }
 
 /// One string with every whitespace character taken out of it.
@@ -247,7 +315,7 @@ fn squeezed(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneText, before_sending, confirm};
+    use super::{PaneText, Unconfirmed, before_sending, confirm};
 
     /// A send the pane draws late is confirmed once it does, and one it never draws is refused
     /// only after the whole pane has been read as well.
@@ -266,10 +334,58 @@ mod tests {
             asked.push(rows);
             Ok("$ ".to_string())
         });
-        assert!(missed.is_err_and(|refusal| refusal.contains("does not show on it")));
+        assert!(refused(missed, "nothing on it changed"));
         assert_eq!(asked.last(), Some(&0), "the last read is of the whole pane");
+    }
+
+    fn refused(outcome: Result<(), Unconfirmed>, saying: &str) -> bool {
+        matches!(outcome, Err(Unconfirmed::Refused(reason)) if reason.contains(saying))
+    }
+
+    fn unknown(outcome: Result<(), Unconfirmed>, saying: &str) -> bool {
+        matches!(outcome, Err(Unconfirmed::Unknown(reason)) if reason.contains(saying))
+    }
+
+    /// Codex took `/quit` and exited to the shell, and took `/compact` and redrew its prompt
+    /// empty. Neither shows what it took, and neither may be called a refusal: the caller's next
+    /// step would be to send it again, into the shell.
+    #[test]
+    fn a_line_a_program_took_and_redrew_away_is_unknown_rather_than_refused() {
+        let codex = "\u{203a} Ask Codex to do anything\n  100% context left\n";
+        let quit = confirm("p1", "/quit", codex, |_| Ok("$ \n".to_string()));
+        assert!(unknown(quit, "cannot be told from the screen"));
+        let compacted = "\u{2022} Compacting context\n\u{203a} \n  0% context used\n";
+        let compact = confirm("p1", "/compact", codex, |_| Ok(compacted.to_string()));
+        assert!(unknown(compact, "Do not send it again"));
+    }
+
+    /// The opposite failure stays shut: a busy pane changes on every read, and its change is no
+    /// evidence that text it never showed arrived.
+    #[test]
+    fn a_busy_pane_that_never_shows_the_text_is_never_confirmed() {
+        let mut frame = 0;
+        let spinning = confirm("p1", "fix the build", "\u{2733} Working (1s)\n", |_| {
+            frame += 1;
+            Ok(format!("\u{2733} Working ({frame}s)\n"))
+        });
+        assert!(unknown(spinning, "cannot be told"));
+    }
+
+    /// A line of which only the start arrived was not taken, which is a refusal the caller can
+    /// act on: the terminal holds it until interrupted.
+    #[test]
+    fn a_line_cut_short_is_refused() {
+        let long = format!("{}end", "x".repeat(1100));
+        let echoed = format!("$ cat\n{}\n", "x".repeat(1023));
+        let cut = confirm("p1", &long, "$ cat\n", |_| Ok(echoed.clone()));
+        assert!(refused(cut, "only its start shows"));
+    }
+
+    /// A pane that could not be read back says nothing about the send, which may have landed.
+    #[test]
+    fn a_pane_that_cannot_be_read_back_is_unknown() {
         let unreadable = confirm("p1", "hello", "$ ", |_| Err("gone".to_string()));
-        assert!(unreadable.is_err_and(|refusal| refusal.contains("failed: gone")));
+        assert!(unknown(unreadable, "failed: gone"));
     }
 
     /// The case that made this compare: an approval prompt that ignored a pasted `p` was
@@ -278,7 +394,7 @@ mod tests {
     fn text_that_was_already_on_the_pane_confirms_only_once_it_shows_again() {
         let prompt = "2. Yes, and don't ask again (p)\n3. No (esc)\n";
         let ignored = confirm("p1", "p", prompt, |_| Ok(prompt.to_string()));
-        assert!(ignored.is_err_and(|refusal| refusal.contains("--key")));
+        assert!(refused(ignored, "--key"));
         let typed = format!("{prompt}> p\n");
         assert_eq!(confirm("p1", "p", prompt, |_| Ok(typed.clone())), Ok(()));
     }
@@ -317,7 +433,7 @@ mod tests {
         let moved = "  No, exit\n\u{276f} Yes, I trust this folder\n";
         assert_eq!(confirm("p1", "", dialog, |_| Ok(moved.to_string())), Ok(()));
         let unchanged = confirm("p1", "", dialog, |_| Ok(dialog.to_string()));
-        assert!(unchanged.is_err_and(|refusal| refusal.contains("nothing on it changed")));
+        assert!(refused(unchanged, "nothing on it changed"));
     }
 
     #[test]

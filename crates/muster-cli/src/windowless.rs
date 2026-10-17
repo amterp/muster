@@ -392,7 +392,8 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     }
     match pane_text::confirm(pane, &send.text, &before, read) {
         Ok(()) => ok(),
-        Err(refusal) => failure(refusal),
+        Err(pane_text::Unconfirmed::Refused(refusal)) => failure(refusal),
+        Err(pane_text::Unconfirmed::Unknown(reason)) => Response::unanswered(reason),
     }
 }
 

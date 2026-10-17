@@ -137,6 +137,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_wait_on_a_pane_that_closes_is_refused(&here);
     a_send_the_pane_never_shows_is_refused(&here);
     keys_are_pressed_without_a_window(&here);
+    a_line_the_agent_took_and_repainted_is_unanswered(&here);
     a_wait_on_an_agent_that_stops_reading_is_refused(&here);
     hiding_and_quiet_are_asked_of_the_daemon(&here);
     panes_are_made_renamed_and_closed_by_the_daemon(&here);
@@ -470,7 +471,7 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
     let ran = here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", &long]);
     let refused = refused_with(&ran, 1);
     assert!(
-        refused.contains("does not show on it") && refused.contains("canonical mode"),
+        refused.contains("only its start shows") && refused.contains("canonical mode"),
         "{refused}"
     );
 
@@ -483,12 +484,22 @@ fn a_send_the_pane_never_shows_is_refused(here: &Here) {
     until_text(&mut control, "p1", "cleared\n");
 }
 
+/// The agent in p2 takes `working` and repaints, so nothing of what it took shows, which exits 4
+/// as the window's answer does: it may have been taken, so sending it again is not safe.
+fn a_line_the_agent_took_and_repainted_is_unanswered(here: &Here) {
+    let ran = here.muster(&["pane", "send", "--pane", "p2", "--enter", "--confirm", "working"]);
+    let unknown = refused_with(&ran, 4);
+    assert!(unknown.contains("cannot be told from the screen"), "{unknown}");
+    here.daemon.until_agent("p2", proto::AgentState::Working);
+    here.daemon.set_agent_state("p2", proto::AgentState::Idle);
+}
+
 /// Keys go to the daemon as the window sends them, and a Return pressed alone is a send of its
 /// own. A key nobody knows is refused before anything is sent.
 ///
 /// At p1's shell, which keeps the line it ran on screen. The agent in p2 repaints over a line
 /// the moment it reads it, so the text would show only for the 50ms before the Return, and a
-/// confirmation that reads after that window refuses it.
+/// confirmation that reads after that cannot tell whether it was taken.
 fn keys_are_pressed_without_a_window(here: &Here) {
     ok(&here.muster(&[
         "pane",
