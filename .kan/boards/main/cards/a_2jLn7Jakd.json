@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "a-click-on-a-closed",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792249544851,
+  "creator": "Alexander Terp",
+  "description": "MIP-7 section 6 (docs/mip/0007-helpers.md) has a click on the notice that a helper's maker closed bring the helpers forward, as Show Helpers does. Stage 2 (2026-10-17) made the banner show the notice's own words, which end `muster pane show --helpers-of \u003cmaker id\u003e`, but a click still opens the transcript.\n\nWhy it was left: to know which maker a banner is about, the message has to carry the maker - a new field on a saved transcript entry (`What::Message` in crates/muster-msg/src/entry.rs), the same field on the wire that copies entries between machines, and again on the notice, the core's attention state and the banner's userInfo.",
+  "id": "a_2jLn7Jakd",
+  "position": "b1L",
+  "title": "A click on a closed-maker banner brings its helpers forward",
+  "type": "enhancement",
+  "updated_at_millis": 1792249544851,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792249544851}
+  ]
+}
