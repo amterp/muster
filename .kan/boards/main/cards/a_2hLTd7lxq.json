@@ -5,17 +5,26 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: no defect found; closing as an artifact of throttled stress runs. detection:: ran 23 times under taskpolicy -b at load 6-11; one run failed, in 56 s against the usual 24 s, with three tests failing together after waiting 20 s each. The daemons' own logs show the stall: a lone debug daemon loads its manifests in 96-132 ms, but every load over 7 s fell in the failing run's 22-second window, five of them at 14-21 s. Background QoS starved them of CPU. Every sighting so far was a throttled run, never a gate. Reopen on a sighting in an unthrottled gate.",
+      "created_at_millis": 1792248095781,
+      "id": "c_2jLBQAhVC"
+    }
+  ],
   "created_at_millis": 1791953269050,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-13 during throttled stress runs of the daemon suite (`taskpolicy -b`, load ~12): `detection::a_wait_ends_with_the_next_turn_after_a_handoff` failed once in 18 runs of the detection module, and in one earlier run it failed together with `a_finish_nobody_has_seen_is_still_unseen_after_a_handoff`, `a_working_agent_stays_working_across_a_handoff` and `a_finish_nobody_has_seen_is_kept_until_somebody_sees_it`. These tests drive the fake agent through reports and `daemon.replace`, never through USR1/USR2, so they are not the fake agent's lost byte (a_2cbKbB5Rs). Not investigated. Card a_2ccIWycOS (a handover refused under load in the CLI suite) may share a cause: a handoff step that does not survive a slow machine.",
   "id": "a_2hLTd7lxq",
-  "position": "Zx",
+  "position": "YwL",
   "title": "🎲 Handoff detection tests fail together under load",
   "type": "bug",
-  "updated_at_millis": 1792242026159,
+  "updated_at_millis": 1792248095872,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791953269050},
-    {"field":"column","value":"in-progress","at":1792242026159}
+    {"field":"column","value":"in-progress","at":1792242026159},
+    {"field":"column","value":"done","at":1792248095872}
   ]
 }

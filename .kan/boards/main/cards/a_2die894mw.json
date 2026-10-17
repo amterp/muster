@@ -42,6 +42,12 @@
       "body": "2026-10-17: stage 1 landed (02e7c218..2d475f11): maker on the pane record and in muster window --json, pane new --helper / --helper-of / --shown, one hidden tab per maker, muster window lists helpers under their maker. Full gate green. Open from it for stage 2: whether Hide Helpers takes back a helper moved into a visible tab, and whether the helpers' tab name follows a renamed maker (it keeps the name from the first helper). Stage 3 is next.",
       "created_at_millis": 1792244807407,
       "id": "c_2jJnsKcpL"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: stage 3 landed (ce23494e..1929d70b): a helper is quiet by default (--notify opts out); a helper that blocks, gets stuck, or goes idle without posting to its maker tells the maker once each time, after 10 s, from @muster; a closed maker's helpers stop being quiet and the person hears once; Claude Code waiting on background shells reads waiting (engine 16), so the idle notice skips it. Stage 2 (the agent list, Show/Hide Helpers) is being built; stage 4 (across machines) remains.",
+      "created_at_millis": 1792248095941,
+      "id": "c_2jLBQQRzh"
     }
   ],
   "created_at_millis": 1791417434682,
@@ -51,7 +57,7 @@
   "position": "a0",
   "title": "👪 An agent's sub-agents: made as its own, hidden and quiet, brought forward together",
   "type": "feature",
-  "updated_at_millis": 1792244807407,
+  "updated_at_millis": 1792248095941,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434682},
     {"field":"column","value":"in-progress","at":1792241951701}

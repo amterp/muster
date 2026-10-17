@@ -5,17 +5,26 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-17: the refusal's reason now prints (c8db68c0), in this assert and in two others that dropped it (the CLI's messaging tests, the bridge's link.rs). The CLI's messaging:: tests ran 25 times throttled at load 4-10 with no failure, so which refusal it was is still unknown; the next sighting in a gate will say.",
+      "created_at_millis": 1792248095629,
+      "id": "c_2jLBPu2jl"
+    }
+  ],
   "created_at_millis": 1791254541353,
   "creator": "Alexander Terp",
   "description": "2026-10-05, in ./release minor's gate for 0.14.0 at load 11.8, right after the version bump rebuilt every binary: crates/muster-cli/tests/cli/messaging.rs:466 asserted daemon.replace(None).outcome() == Done and got Refused. Passed 5/5 alone and in the gate an hour before, on unchanged daemon/handoff code. The assert drops the answer's reason, so which refusal it was (begin_replacing, or a STEP of 10 s timing out while macOS scanned the fresh binary) is unknown. First make the assert print the reason; then decide whether the handoff's step patience or the test is wrong.",
   "id": "a_2ccIWycOS",
-  "position": "Zy",
+  "position": "!!!!!!3",
   "title": "🎲 a_followed_log_prints_each_entry_as_it_lands_across_a_handover saw its handover refused",
   "type": "bug",
-  "updated_at_millis": 1792242026077,
+  "updated_at_millis": 1792248095716,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791254541353},
-    {"field":"column","value":"in-progress","at":1792242026077}
+    {"field":"column","value":"in-progress","at":1792242026077},
+    {"field":"column","value":"backlog-hi","at":1792248095716}
   ]
 }
