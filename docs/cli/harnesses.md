@@ -28,7 +28,7 @@ window`).
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | no | no | no |
-| Resumed after a restart | yes | no | no | no |
+| Resumed after a restart | yes | yes | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, pi, qodercli.
@@ -83,12 +83,15 @@ kimi, kiro, maki, pi, qodercli.
   restart or a reboot running that session again, with the flags the agent was started with,
   less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude
   Code's manifest spells it, `claude --resume <id>`, and its adapter's hooks report the session.
-  Codex and OpenCode spell none yet, so their panes come back as shells. A manifest says it in
-  `[session]`: `resume`, the command with `{args}` where the flags go and `{session}` for the id,
-  `resume_drops`, the flags never carried, and `resume_values`, the flags that take a value, which
-  is the only way a word after a flag is told from a first prompt (detection engine 12). When a
-  word could be a prompt, only `resume_keeps` goes along, `--model` and `--effort` for Claude Code
-  (detection engine 15). A wrapper that starts its agent names its own resume in the agent's
+  Codex's spells `codex resume <id>` and carries none of its flags, since where `codex resume`
+  takes them has not been recorded, so a Codex comes back without its `--sandbox` or `-c`
+  settings and its record's `uncarried` says so. OpenCode spells none yet, so its panes come back
+  as shells. A manifest says it in `[session]`: `resume`, the command with `{args}` where the
+  flags go and `{session}` for the id, `resume_drops`, the flags never carried, and
+  `resume_values`, the flags that take a value, which is the only way a word after a flag is told
+  from a first prompt (detection engine 12); from engine 15 a `resume` may leave `{args}` out and
+  carry nothing. When a word could be a prompt, only `resume_keeps` goes along, `--model` and
+  `--effort` for Claude Code (detection engine 15). A wrapper that starts its agent names its own resume in the agent's
   environment, `MUSTER_RESUME='mywrapper --resume {session}'`, which is run instead, so whatever
   the wrapper sets up is set up again (`docs/configuration.md`, `MUSTER_RESUME`).
 - **Its own helpers not taken for a nested agent**: a manifest's `helpers` lists the names a

@@ -66,7 +66,8 @@ const HELPERS_ENGINE_VERSION: u32 = 13;
 /// The engine version that introduced the `[server]` table.
 const SERVER_ENGINE_VERSION: u32 = 14;
 
-/// The engine version that introduced `[session]` `resume_keeps`.
+/// The engine version that introduced `[session]` `resume_keeps`, and a `resume` without
+/// `{args}`, for a harness whose flags have not been recorded going along.
 const KEEPS_ENGINE_VERSION: u32 = 15;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
@@ -791,7 +792,12 @@ fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), S
             "[session] resume_keeps needs min_engine_version {KEEPS_ENGINE_VERSION} or later"
         ));
     }
-    if let Some(fault) = resume::command_fault(resume, resume::Arguments::Required) {
+    let arguments = if manifest.min_engine_version.unwrap_or(0) < KEEPS_ENGINE_VERSION {
+        resume::Arguments::Required
+    } else {
+        resume::Arguments::Optional
+    };
+    if let Some(fault) = resume::command_fault(resume, arguments) {
         return Err(format!("[session] resume {fault}"));
     }
     if flags().any(|word| word.chars().any(char::is_control)) {

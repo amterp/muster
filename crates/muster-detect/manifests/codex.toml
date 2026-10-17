@@ -1,6 +1,6 @@
 id = "codex"
-version = "2026.10.07.2"
-min_engine_version = 14
+version = "2026.10.16.1"
+min_engine_version = 15
 updated_at = "2026-10-07T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
@@ -27,6 +27,10 @@ rename = "/rename {name}"
 # the pane, by the id its hooks report, and leaves a draft in the composer alone
 # (docs/observations/codex-0.154.0.md, section 9).
 wake = ["codex", "queue", "--thread", "{session}", "--message", "{message}"]
+# What a pane runs after a daemon restart, or a restart of the agent, to start its session again,
+# as two Codex 0.162.1 sessions on a devenv were brought back by hand on 2026-10-16. Without the
+# flags it ran with: where `codex resume` takes them has not been recorded.
+resume = ["codex", "resume", "{session}"]
 
 [[rules]]
 id = "osc_title_blocked"

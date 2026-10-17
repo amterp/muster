@@ -32,8 +32,9 @@ pub(crate) struct Spelling {
     pub(crate) keeps: Vec<String>,
 }
 
-/// Whether a command's `{args}` has to be there, as a manifest's does, or may be left out, as a
-/// wrapper's may, since a wrapper passes its agent the arguments it always does.
+/// Whether a command's `{args}` has to be there, as a manifest's before engine 15 does, or may be
+/// left out: by a wrapper, which passes its agent the arguments it always does, or by a manifest
+/// for a harness whose flags have not been recorded going along.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Arguments {
     Required,
@@ -96,7 +97,12 @@ impl Spelling {
 
     /// The command resuming `session`, carrying what of `arguments` can be carried.
     pub(crate) fn resume(&self, session: &str, arguments: &[String]) -> Resume {
+        let takes_arguments = self.command.iter().any(|word| word == ARGUMENTS_PLACEHOLDER);
         let (carried, uncarried) = match self.carried(arguments) {
+            _ if !takes_arguments => {
+                let why = "its resume takes none of the arguments it was started with";
+                (Vec::new(), (!arguments.is_empty()).then(|| why.to_string()))
+            }
             Ok(carried) => (carried, None),
             Err(why) => (self.kept(arguments), Some(why)),
         };
@@ -269,6 +275,22 @@ mod tests {
             refused("ct {args} {args} {session}"),
             "MUSTER_RESUME takes at most one argument that is exactly {args}"
         );
+    }
+
+    /// A resume with no `{args}` carries nothing, and says so when there was something to carry,
+    /// so the record shows the session came back without its flags.
+    #[test]
+    fn a_resume_without_arguments_says_it_carried_none() {
+        let codex = Spelling {
+            command: ["codex", "resume", "{session}"].map(String::from).to_vec(),
+            drops: Vec::new(),
+            values: Vec::new(),
+            keeps: Vec::new(),
+        };
+        let resumed = codex.resume("s-1", &["--approve-for-me".to_string()]);
+        assert_eq!(resumed.command.join(" "), "codex resume s-1");
+        assert!(resumed.uncarried.is_some_and(|why| why.contains("none of the arguments")));
+        assert_eq!(codex.resume("s-1", &[]).uncarried, None, "nothing to carry, nothing said");
     }
 
     /// A flag that takes a value and has none before the next flag keeps going without one.

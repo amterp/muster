@@ -547,6 +547,14 @@ fn a_session_resume_fills_its_command_and_is_validated() {
     let kept = format!("{spelled}\nresume_keeps = ['model']");
     assert!(Manifest::parse(&with(15, &kept)).is_err(), "resume_keeps holds flags");
 
+    // From engine 15 a resume may take no arguments at all.
+    let bare = "resume = ['codex', 'resume', '{session}']";
+    assert!(Manifest::parse(&with(14, bare)).is_err(), "a resume without {{args}} below 15");
+    let bare = Manifest::parse(&with(15, bare)).unwrap();
+    let resume = bare.session_resume("s-1", &arguments, None).unwrap();
+    assert_eq!(resume.command, ["codex", "resume", "s-1"]);
+    assert!(resume.uncarried.is_some(), "it says the arguments did not go along");
+
     assert!(Manifest::parse(&with(11, spelled)).is_err(), "below engine 12");
     for bad in [
         "resume = ['claude', '--resume', '{session}']",
