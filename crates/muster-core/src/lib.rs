@@ -17,6 +17,7 @@ pub mod equalize;
 pub mod focus_history;
 pub mod font;
 pub mod harnesses;
+pub mod helpers;
 pub mod input;
 pub mod intent;
 pub mod making;

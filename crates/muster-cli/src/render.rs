@@ -10,7 +10,7 @@
 //! output is a pipe or a file, or when `NO_COLOR` is set - so nothing here has to know which it is,
 //! and no agent reading a pipe ever sees an escape in the middle of a pane name.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use anstyle::{AnsiColor, Style};
 use muster_core::AgentState;
@@ -885,27 +885,19 @@ impl<'a> Helpers<'a> {
                 *helpers.counts.entry(&pane.maker).or_default() += 1;
             }
         }
-        // A hidden helper whose maker has a row goes under it. Walked down from every pane that
-        // keeps a row of its own, so each helper is listed once and none is lost to a loop of
-        // makers, which no daemon writes and nothing here relies on.
-        let has_row: BTreeSet<&str> = listed.iter().map(|pane| pane.pane_id.as_str()).collect();
-        let mut children: BTreeMap<&str, Vec<&muster_proto::RosterPane>> = BTreeMap::new();
-        for helper in hidden.iter().filter(|helper| has_row.contains(helper.maker.as_str())) {
-            children.entry(&helper.maker).or_default().push(helper);
-        }
-        let goes_under = |pane: &&muster_proto::RosterPane| {
-            children.values().flatten().any(|child| child.pane_id == pane.pane_id)
-        };
-        let mut waiting: Vec<(&muster_proto::RosterPane, usize)> =
-            listed.iter().copied().filter(|pane| !goes_under(pane)).map(|pane| (pane, 0)).collect();
-        while let Some((maker, depth)) = waiting.pop() {
-            for helper in children.get(maker.pane_id.as_str()).into_iter().flatten() {
-                if !helpers.moved.contains_key(helper.pane_id.as_str()) {
-                    helpers.moved.insert(&helper.pane_id, (helper, depth + 1));
-                    helpers.under.entry(&maker.pane_id).or_default().push(helper);
-                    waiting.push((helper, depth + 1));
-                }
-            }
+        let ids: Vec<&str> = listed.iter().map(|pane| pane.pane_id.as_str()).collect();
+        let makers: Vec<(&str, Option<&str>)> = hidden
+            .iter()
+            .map(|pane| {
+                (pane.pane_id.as_str(), Some(pane.maker.as_str()).filter(|m| !m.is_empty()))
+            })
+            .collect();
+        let by_id: BTreeMap<&str, &muster_proto::RosterPane> =
+            hidden.iter().map(|pane| (pane.pane_id.as_str(), *pane)).collect();
+        for nested in muster_core::helpers::nest(&ids, &makers) {
+            let helper = by_id[nested.helper];
+            helpers.moved.insert(&helper.pane_id, (helper, nested.depth));
+            helpers.under.entry(&helper.maker).or_default().push(helper);
         }
         helpers
     }

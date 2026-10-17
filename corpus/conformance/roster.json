@@ -3354,7 +3354,98 @@
         ],
         "hidden": [
           "w1:t2 on=local place=0 label=\"alpha's helpers\" given-name=\"alpha's helpers\" off-screen",
-          "local/w1:p3 place=0 tab=w1:t2 label=\"alpha\" off-screen maker=w1:p1"
+          "local/w1:p3 place=0 tab=w1:t2 label=\"alpha\" off-screen maker=w1:p1 under=w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a hidden helper is listed under a maker that has a row, and a shown one keeps its place",
+      "why": "The list shows a maker's hidden helpers beneath its row rather than under Hidden (MIP-7, section 3), and says which on each helper's row, so the agent list and `muster window` follow one rule. A helper of a hidden helper goes under that helper, a row further in. A helper in a tab somebody can see keeps its place and its number there, since a row moved under its maker would put the numbers out of order. A hidden helper whose maker has no row - closed, or in another window - stays under Hidden with nothing to go beneath.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": "w1:p2"
+                }
+              },
+              {
+                "id": "w1:t2",
+                "label": "alpha's helpers",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p3",
+                  "second": "w1:p4"
+                },
+                "hidden": true
+              },
+              {
+                "id": "w1:t3",
+                "root": "w1:p5",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha"
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/alpha",
+                "maker": "w1:p1"
+              },
+              {
+                "id": "w1:p3",
+                "cwd": "/src/alpha",
+                "maker": "w1:p1"
+              },
+              {
+                "id": "w1:p4",
+                "cwd": "/src/alpha",
+                "maker": "w1:p3"
+              },
+              {
+                "id": "w1:p5",
+                "cwd": "/src/beta",
+                "maker": "w1:p9"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "showing": [
+          "local/w1:p1"
+        ]
+      },
+      "expect": {
+        "machines": [
+          "local connected 5 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" on-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"alpha\" off-screen maker=w1:p1"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"Tab 1\" on-screen"
+        ],
+        "hidden": [
+          "w1:t2 on=local place=0 label=\"alpha's helpers\" given-name=\"alpha's helpers\" off-screen",
+          "local/w1:p3 place=0 tab=w1:t2 label=\"alpha\" off-screen maker=w1:p1 under=w1:p1",
+          "local/w1:p4 place=0 tab=w1:t2 label=\"alpha\" off-screen maker=w1:p3 under=w1:p3",
+          "w1:t3 on=local place=0 label=\"\" off-screen",
+          "local/w1:p5 place=0 tab=w1:t3 label=\"beta\" off-screen maker=w1:p9"
         ]
       }
     },

@@ -245,6 +245,9 @@ pub struct RosterPane {
     pub quiet: bool,
     /// The pane that made it as its helper, as its daemon says (MIP-7).
     pub maker: Option<PaneId>,
+    /// The row it is listed beneath rather than where its tab puts it: its maker's, for a hidden
+    /// helper whose maker has a row of its own ([`crate::helpers::nest`]).
+    pub under: Option<PaneId>,
 }
 
 /// What the next press names.
@@ -533,7 +536,7 @@ impl Roster {
         // tabs are numbered only so that one nobody has named still has something to be called.
         let mut tab_place = 0;
         let mut pane_place = 0;
-        let tabs = composition
+        let tabs: Vec<RosterTab> = composition
             .tabs()
             .map(|tab| {
                 tab_place += 1;
@@ -565,6 +568,7 @@ impl Roster {
                             resumes_as: resumes_as(pane),
                             quiet: pane.quiet,
                             maker: pane.maker.clone(),
+                            under: None,
                             key,
                         }
                     })
@@ -605,7 +609,8 @@ impl Roster {
             })
             .collect();
 
-        let hidden = hidden_tabs(composition, &mirror);
+        let mut hidden = hidden_tabs(composition, &mirror);
+        nest_helpers(&tabs, &mut hidden);
 
         Roster { tabs, machines, hidden }
     }
@@ -732,11 +737,40 @@ fn hidden_tabs<'a>(
                     resumes_as: resumes_as(pane),
                     quiet: pane.quiet,
                     maker: pane.maker.clone(),
+                    under: None,
                 });
             }
         }
     }
     hidden
+}
+
+/// Says which hidden helpers the list shows under their maker, on each helper's `under`.
+///
+/// Only hidden ones: a helper in one of the window's tabs keeps its place there, and the number a
+/// chord reaches it by, which a row moved under its maker would put out of order.
+fn nest_helpers(tabs: &[RosterTab], hidden: &mut [RosterTab]) {
+    let under: Vec<(PaneId, PaneId)> = {
+        let listed: Vec<&str> = tabs
+            .iter()
+            .chain(hidden.iter())
+            .flat_map(|tab| tab.panes.iter())
+            .map(|pane| pane.key.pane.as_str())
+            .collect();
+        let makers: Vec<(&str, Option<&str>)> = hidden
+            .iter()
+            .flat_map(|tab| tab.panes.iter())
+            .map(|pane| (pane.key.pane.as_str(), pane.maker.as_ref().map(PaneId::as_str)))
+            .collect();
+        crate::helpers::nest(&listed, &makers)
+            .into_iter()
+            .map(|nested| (PaneId::from(nested.helper), PaneId::from(nested.under)))
+            .collect()
+    };
+    for pane in hidden.iter_mut().flat_map(|tab| tab.panes.iter_mut()) {
+        pane.under =
+            under.iter().find(|(helper, _)| *helper == pane.key.pane).map(|(_, m)| m.clone());
+    }
 }
 
 /// What somebody named a tab, trimmed, and nothing for a tab nobody named.

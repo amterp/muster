@@ -2755,6 +2755,12 @@ message RosterPane {
   // The id of the pane that made this one as its helper (MIP-7), as its daemon says, or empty
   // for a pane nobody made as a helper. The maker may be on another machine, or closed.
   string maker = 17;
+
+  // The id of the row this pane is listed beneath rather than where its tab puts it, or empty
+  // for a pane listed in its tab. Set for a hidden helper whose maker has a row in this window's
+  // list: a pane in one of its tabs, or a hidden pane (MIP-7, section 3). A helper in a tab
+  // somebody can see keeps its place and its number there.
+  string under = 18;
 }
 
 // Everything this window is showing, as one message.
