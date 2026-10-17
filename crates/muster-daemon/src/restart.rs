@@ -108,6 +108,8 @@ pub(crate) trait Target {
     fn running(&self) -> bool;
     /// Whether the pane's shell holds its terminal.
     fn shell_holds(&self) -> bool;
+    /// Whether detection has seen the agent leave, so the pane's record no longer names it.
+    fn agent_left(&self) -> bool;
     /// How many times the pane has said which directory it is in, which a shell does at each
     /// prompt.
     fn directories_said(&self) -> u64;
@@ -167,6 +169,10 @@ impl Target for Live {
 
     fn shell_holds(&self) -> bool {
         self.io.foreground_group() == Some(self.shell)
+    }
+
+    fn agent_left(&self) -> bool {
+        self.io.agent_group() != u32::try_from(self.group).ok()
     }
 
     fn directories_said(&self) -> u64 {
@@ -236,9 +242,13 @@ fn restart_refusing(target: &impl Target, line: &str, timing: Timing) -> Result<
     if !until(timing.prompt_within, timing.look_every, || target.shell_holds()) {
         return Err(Failed::ShellAway);
     }
+    // Detection seeing the agent go is waited for too, so that once this answers, the pane's
+    // record names no agent until the resumed one starts, and a wait for it to be idle is not
+    // met by the one that was ended.
     let at_prompt = || {
-        target.directories_said() > prompts
-            || target.drawn_at().is_none_or(|drawn| drawn.elapsed() >= timing.quiet)
+        target.agent_left()
+            && (target.directories_said() > prompts
+                || target.drawn_at().is_none_or(|drawn| drawn.elapsed() >= timing.quiet))
     };
     until(deadline.saturating_duration_since(Instant::now()), timing.look_every, at_prompt);
     target.flush_input().map_err(|error| Failed::NotTyped(error.to_string()))?;
@@ -398,6 +408,10 @@ mod tests {
             !self.shell_never && !self.running()
         }
 
+        fn agent_left(&self) -> bool {
+            !self.running()
+        }
+
         fn directories_said(&self) -> u64 {
             u64::from(!self.running())
         }
@@ -470,6 +484,9 @@ mod tests {
             }
             fn shell_holds(&self) -> bool {
                 self.0.shell_holds()
+            }
+            fn agent_left(&self) -> bool {
+                self.0.agent_left()
             }
             fn directories_said(&self) -> u64 {
                 0
