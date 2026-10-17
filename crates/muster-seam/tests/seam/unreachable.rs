@@ -8,7 +8,7 @@
 use muster::proto::{
     OpenWindow, ReadAsking, ReadWindow, Request, Response, Startup, request, response,
 };
-use muster_harness::requests::{among_helpers, create, helper, in_new_tab, make};
+use muster_harness::requests::{among_helpers, create, helper, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, until};
 use prost::Message;
 
@@ -62,8 +62,9 @@ fn a_quiet_helper_asks_for_the_person_while_its_maker_cannot_be_reached() {
     let _turn = muster::testing::fresh_session();
     muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
     let laptop = Daemon::start_detecting();
-    let mut devenv = Daemon::start_built();
+    let mut devenv = Daemon::start_detecting();
     make(&mut devenv.connect(), create("p1devenv00", in_new_tab("t1devenv00")));
+    devenv.run_agent("p1devenv00");
     make(&mut laptop.connect(), create("p1", in_new_tab("t1")));
     let quiet = muster_daemon_proto::pane_request::Create {
         quiet: true,
@@ -91,9 +92,58 @@ fn a_quiet_helper_asks_for_the_person_while_its_maker_cannot_be_reached() {
         || format!("asking {:?}", read_asking()),
     );
 
+    // A restart ends the maker's agent, and a maker with no agent hears nothing either.
     devenv.restart();
     until(
+        "the devenv to bring the maker's pane back",
+        || snapshot(&mut devenv.connect()).panes.iter().any(|pane| pane.pane == "p1devenv00"),
+        || "no pane p1devenv00 yet".to_string(),
+    );
+    devenv.run_agent("p1devenv00");
+    until(
         "the helper to go quiet again once its maker answers",
+        || read_asking().is_empty(),
+        || format!("asking {:?}", read_asking()),
+    );
+}
+
+/// A quiet helper whose maker's agent has left its pane asks for the person, since nothing there
+/// hears it, and goes quiet again once an agent is back (MIP-7, section 4).
+#[test]
+fn a_quiet_helper_asks_for_the_person_while_its_maker_has_no_agent() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_detecting();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let quiet = muster_daemon_proto::pane_request::Create {
+        quiet: true,
+        ..helper("p2", "p1", among_helpers("t2", "p1's helpers"))
+    };
+    make(&mut daemon.connect(), quiet);
+    daemon.run_agent_at_a_dialog("p2");
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the window to see the helper blocked, and its maker's agent",
+        || pane("p2").is_some_and(|(state, _)| state == "blocked") && pane("p1").is_some(),
+        || format!("p2 reads {:?}, asking {:?}", pane("p2"), read_asking()),
+    );
+    assert!(read_asking().is_empty(), "a quiet helper asked: {:?}", read_asking());
+
+    daemon.type_into("p1", "quit");
+    until(
+        "the helper to ask for the person once its maker's agent has gone",
+        || read_asking().pane_id == "p2",
+        || format!("asking {:?}", read_asking()),
+    );
+
+    daemon.run_agent("p1");
+    until(
+        "the helper to go quiet again once an agent is back in its maker's pane",
         || read_asking().is_empty(),
         || format!("asking {:?}", read_asking()),
     );

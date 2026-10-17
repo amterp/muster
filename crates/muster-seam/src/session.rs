@@ -899,6 +899,10 @@ pub(crate) struct Session {
     /// until the daemon answers again (`fn health`).
     unreachable_since: BTreeMap<DaemonId, i64>,
 
+    /// The panes last seen with no agent in them, so that a maker's helpers are told again
+    /// whether they are quiet only when its agent comes or goes, not on every change to it.
+    seen_agentless: BTreeSet<PaneId>,
+
     /// The human's groups as the shell was last told them, so it is told only of a change.
     groups_sent: Vec<MessageGroup>,
 
@@ -1734,7 +1738,27 @@ impl Session {
             let Some(record) = mirror.pane(&pane.pane) else { return false };
             (record.quiet, record.maker.clone().filter(|_| !record.maker_closed))
         };
-        quiet && maker.is_none_or(|maker| !self.out_of_reach(&maker))
+        quiet && maker.is_none_or(|maker| !self.out_of_reach(&maker) && !self.agentless(&maker))
+    }
+
+    /// Whether a pane this window can see holds no agent, so nothing there hears what its
+    /// helpers need. A pane in no mirror may hold one.
+    fn agentless(&self, pane: &PaneId) -> bool {
+        self.backends.values().any(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror
+                .pane(pane)
+                .is_some_and(|record| record.agent.as_deref().is_none_or(str::is_empty))
+        })
+    }
+
+    /// Records whether `pane` holds an agent now, and says whether that changed.
+    fn agent_came_or_went(&mut self, pane: &PaneId) -> bool {
+        if self.agentless(pane) {
+            self.seen_agentless.insert(pane.clone())
+        } else {
+            self.seen_agentless.remove(pane)
+        }
     }
 
     /// Whether a pane is on a machine that has stopped answering: one that holds it, or, when
@@ -5482,6 +5506,7 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Some((pane, attend)) = attended {
         announce_attention(&pane, attend);
     }
+    requiet_if_an_agent_came_or_went(change);
     if let Change::HumanNoticed(group) = change {
         human_noticed(daemon, group);
         announce_groups();
@@ -6380,8 +6405,25 @@ fn health(daemon: &DaemonId, health: Health, detail: &str) {
     }
 }
 
-/// Tells attention again whether each helper is quiet, once a machine starts or stops answering:
-/// a helper asks the person while its maker cannot be reached.
+/// Tells each helper again whether it is quiet when the pane `change` is about gained or lost its
+/// agent, since a maker with no agent hears nothing.
+fn requiet_if_an_agent_came_or_went(change: &Change) {
+    let (Change::PaneAdded(pane) | Change::PaneRelabelled(pane) | Change::PaneRemoved { pane, .. }) =
+        change
+    else {
+        return;
+    };
+    if poison::lock(&SESSION, "session").agent_came_or_went(pane) {
+        for (pane, attend) in requiet_helpers() {
+            announce_attention(&pane, attend);
+        }
+        announce_asking();
+    }
+}
+
+/// Tells attention again whether each helper is quiet, once a machine starts or stops answering
+/// or an agent comes into or leaves a pane: a helper asks the person while its maker cannot be
+/// reached, or has no agent to hear it.
 fn requiet_helpers() -> Vec<(PaneKey, Attend)> {
     let mut session = poison::lock(&SESSION, "session");
     let mut attended = Vec::new();
