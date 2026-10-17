@@ -341,6 +341,21 @@ fn keep_told(shared: &Shared, makers: &mut Makers) {
     }
 }
 
+/// Whom this watch tells of what `pane` needs, when it is a helper whose maker it can reach: every
+/// participant that is the agent in its maker's pane here, or the one another machine said it is.
+pub(crate) fn tells(
+    service: &muster_msg::Messaging<super::store::Files>,
+    panes: &Panes,
+    makers: &Makers,
+    pane: &str,
+) -> Vec<String> {
+    let Some(maker) = panes.maker_of(pane) else { return Vec::new() };
+    if panes.exists(maker) {
+        return service.in_pane(maker).into_iter().map(str::to_string).collect();
+    }
+    makers.there.get(maker).cloned().into_iter().collect()
+}
+
 /// Asks the machines linked to this one which participant each maker not here is, for each
 /// maker not yet found and not asked about in the last [`ASK_AGAIN`]. With no lock held: each
 /// ask is a call over a link.

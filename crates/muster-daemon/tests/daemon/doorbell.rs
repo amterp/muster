@@ -1282,6 +1282,41 @@ fn a_helper_at_a_dialog_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
 }
 
+/// A helper that blocks before reading its maker's task holds their group up too, and the maker
+/// hears of it once: the maker watch tells it, and the stall watch leaves the maker to that.
+#[test]
+fn a_helper_blocked_on_its_makers_task_tells_the_maker_once() {
+    let mut agent = Agent::in_a_pane_with(&[
+        ("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000"),
+        ("MUSTER_DAEMON_STALL_MS", "4000"),
+    ]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    let task = Service::Msg(proto::MsgRequest {
+        caller: Some(msg_request::Caller {
+            pane: Some("p1".to_string()),
+            ..msg_request::Caller::default()
+        }),
+        request: Some(Asked::Post(msg_request::Post {
+            body: "a task".to_string(),
+            to: vec!["p2".to_string()],
+            ..Default::default()
+        })),
+    });
+    expect(&mut agent.control, task, proto::Outcome::Done);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+
+    let logged = logging.logged_until(r#""event":"msg.group.stalled""#, Duration::from_secs(30));
+    let stalled = logged.iter().find(|line| line.line.contains("msg.group.stalled"));
+    assert!(stalled.is_some_and(|line| line.line.contains(r#""unlock":"nothing""#)), "{logged:?}");
+    std::thread::sleep(Duration::from_secs(2));
+    let read = agent.read_in_its_pane();
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(read[0].contains(" (p2) is blocked at a dialog: "), "{read:?}");
+}
+
 /// A helper still blocked as a newer daemon takes its pane over has told its maker already, and
 /// the new daemon does not tell it again.
 #[test]

@@ -349,7 +349,9 @@ the helper lands beside it. A helper that posted to its maker, addressed to it o
 group the maker is in, and then went idle is not reported, and neither is one waiting on its own
 work. A maker on another machine is told there, as a post `--to` its pane reaches it: the helper's
 daemon asks the maker's which agent is in that pane, and the notice goes in a group kept on the
-helper's machine. That needs the link between the two, so a window attached to both.
+helper's machine. That needs the link between the two, so a window attached to both. A helper
+blocked or stuck on its maker's message holds their group up too, and the stall notice above leaves
+the maker out, since this one told it; anybody else waiting on the helper is still told.
 
 When a maker's pane closes with helpers still open, the person is told once, by `@muster`, in the
 group they share with the maker, made for it when there is none:

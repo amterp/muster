@@ -640,6 +640,15 @@ impl<S: Store> Messaging<S> {
         self.participants.get(name)
     }
 
+    /// Every participant that is, or was, the agent in `pane`.
+    pub fn in_pane(&self, pane: &str) -> Vec<&str> {
+        self.participants
+            .values()
+            .filter(|participant| participant.pane.as_deref() == Some(pane))
+            .map(|participant| participant.name.as_str())
+            .collect()
+    }
+
     pub fn join(
         &mut self,
         caller: &Caller,
@@ -1031,15 +1040,9 @@ impl<S: Store> Messaging<S> {
     /// another machine as this machine writes them. Read from the transcripts, so a host that
     /// restarted still knows.
     pub fn last_post(&self, author_pane: &str, reader: &str) -> Option<u64> {
-        let in_pane = |pane: &str| -> Vec<&str> {
-            self.participants
-                .values()
-                .filter(|participant| participant.pane.as_deref() == Some(pane))
-                .map(|participant| participant.name.as_str())
-                .collect()
-        };
-        let authors = in_pane(author_pane);
-        let readers = if split_machine(reader).is_some() { vec![reader] } else { in_pane(reader) };
+        let authors = self.in_pane(author_pane);
+        let readers =
+            if split_machine(reader).is_some() { vec![reader] } else { self.in_pane(reader) };
         let holds =
             |group: &Group, names: &[&str]| names.iter().any(|n| group.members.contains(*n));
         self.groups

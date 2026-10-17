@@ -27,6 +27,7 @@ use muster_core::fields;
 use muster_msg::{Activity, Holding, Presence, Ringable, Via};
 
 use super::doorbell::Held;
+use super::makers::{self, Makers};
 use super::presence::Panes;
 use super::prompt::Unseen;
 use super::{Messages, delivering, now_ms, ring, told};
@@ -80,6 +81,9 @@ pub(crate) struct Member {
     pub(crate) zoomed_on: Option<String>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
+    /// Whom the maker watch tells when it blocks or stops reading, when its pane is a helper's:
+    /// its maker (`super::makers`).
+    pub(crate) maker: Vec<String>,
 }
 
 /// What a look decided.
@@ -376,13 +380,17 @@ fn unlock(member: &Member) -> Unlock {
     }
 }
 
-/// Whoever posted what waits on the member, the member and Muster aside.
+/// Whoever posted what waits on the member, the member and Muster aside, and its maker while it
+/// is blocked or has stopped reading, which the maker watch tells that maker of already.
 fn waiting_on(member: &Member) -> Vec<String> {
+    let blocked = matches!(member.activity, Some(Activity::Blocked | Activity::Stuck));
+    let maker_told = blocked || member.stopped.is_some();
     member
         .holding
         .authors
         .iter()
         .filter(|author| **author != member.holding.name && *author != muster_msg::MUSTER)
+        .filter(|author| !(maker_told && member.maker.contains(author)))
         .cloned()
         .collect()
 }
@@ -509,7 +517,7 @@ fn moving(key: &(String, String), episode: &Episode, now_ms: u64) -> Act {
 
 /// Looks at what holds each group, when a look is due, and acts on it. Called by the doorbell's
 /// thread with no lock held; says how long until the next look.
-pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
+pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -> Duration {
     let now = Instant::now();
     if now < stalls.due {
         return stalls.left(now);
@@ -521,7 +529,10 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls) -> Duration {
         if messages.handing_over {
             return stalls.every;
         }
-        let members = members(&messages, &panes);
+        let mut members = members(&messages, &panes);
+        for member in &mut members {
+            member.maker = makers::tells(&messages.service, &panes, makers, &member.holding.pane);
+        }
         let others = described(&messages.service, &panes, &members);
         let called = called(&mut messages, &panes, &members);
         (members, others, called)
@@ -553,6 +564,7 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
                     (grid.cols, grid.rows)
                 }),
                 zoomed_on: panes.zoomed_on(&holding.pane).map(str::to_string),
+                maker: Vec::new(),
                 holding,
             }
         })
@@ -734,6 +746,7 @@ mod tests {
             size: Some((89, 9)),
             zoomed_on: None,
             stopped: None,
+            maker: Vec::new(),
         }
     }
 
@@ -825,6 +838,38 @@ mod tests {
         let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
         assert!(body.contains("codex, has stopped reading its input"), "{body}");
         assert!(body.contains("`muster pane restart --pane p2` ends it"), "{body}");
+    }
+
+    /// A helper blocked or stuck on its maker's message leaves that maker to the maker watch,
+    /// which has told it already, and tells anybody else waiting; idle, it tells the maker too.
+    #[test]
+    fn a_helper_blocked_on_its_makers_message_leaves_the_maker_to_the_maker_watch() {
+        let helper = |activity, authors: &[&str]| Member {
+            holding: Holding {
+                authors: authors.iter().map(|author| (*author).to_string()).collect(),
+                woken: true,
+                ..worker().holding
+            },
+            activity: Some(activity),
+            maker: vec!["director".to_string()],
+            ..worker()
+        };
+        let at = 1000 + AFTER;
+        for activity in [Activity::Blocked, Activity::Stuck] {
+            let acts = stalls().judge(&[helper(activity, &["director"])], &BTreeMap::new(), at);
+            assert_eq!(kinds(&acts), ["stalled"], "{activity:?}");
+            let Act::Stalled { unlock, .. } = acts[0] else { unreachable!() };
+            assert_eq!(unlock, Unlock::Nothing);
+        }
+
+        let both = helper(Activity::Blocked, &["director", "critic"]);
+        let acts = stalls().judge(&[both], &BTreeMap::new(), at);
+        let Some(Act::Tell { to, .. }) = acts.last() else { panic!("{acts:?}") };
+        assert_eq!(to, &["critic"]);
+
+        let acts = stalls().judge(&[helper(Activity::Idle, &["director"])], &BTreeMap::new(), at);
+        let Some(Act::Tell { to, .. }) = acts.last() else { panic!("{acts:?}") };
+        assert_eq!(to, &["director"]);
     }
 
     /// A member at work is not holding anything up, and the clock starts over from when it was

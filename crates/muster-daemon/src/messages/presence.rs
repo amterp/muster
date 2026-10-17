@@ -192,6 +192,11 @@ impl Panes {
         self.makers.iter()
     }
 
+    /// The pane that made `pane`, when it is a helper open here whose maker has not closed.
+    pub(crate) fn maker_of(&self, pane: &str) -> Option<&str> {
+        self.makers.get(pane).map(String::as_str)
+    }
+
     /// The pane `pane`'s tab is zoomed on, when the zoom hides `pane`.
     pub(crate) fn zoomed_on(&self, pane: &str) -> Option<&str> {
         self.zoomed.get(pane).map(String::as_str)
