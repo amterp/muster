@@ -1326,6 +1326,8 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
     };
     assert_eq!(caught("review", "critic").check(), Ok(()));
     assert_eq!(caught("review", "@human@lap").check(), Ok(()), "a human who posted from there");
+    assert_eq!(caught("review", "@muster").check(), Ok(()), "what Muster says in a group");
+    assert!(bad_name(&caught("review", "@muster@lap").check()), "Muster is every machine's own");
     assert!(bad_name(&caught("review@lap", "critic").check()));
     assert!(bad_name(&caught("x'; sh; '", "critic").check()));
     assert!(bad_name(&caught("review", "critic\u{1b}[2J").check()));

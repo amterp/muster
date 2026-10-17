@@ -16,8 +16,8 @@ use crate::names::{
 };
 use crate::service::{Draft, Group, check_body};
 use crate::{
-    Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, Member, Messaging,
-    Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake, What,
+    Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER, Member,
+    Messaging, Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake, What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -286,17 +286,19 @@ pub const CAUGHT_BYTES: usize = 8 << 20;
 impl Caught {
     /// Refuses entries whose names are not ones an honest home sends: its group bare, since a
     /// group written `review@<us>` would land on one kept here, and every name one a participant
-    /// could have, this machine's own included - the human posts from a shell there too.
+    /// could have, this machine's own included - the human posts from a shell there too. Muster
+    /// itself writes too, a group it made and what it says there, so it may write an entry.
     pub fn check(&self) -> Result<(), Refusal> {
+        let writer = |name: &str| if name == MUSTER { Ok(()) } else { check_addressee(name) };
         check_group(&self.group)?;
         self.policy.check()?;
         for entry in &self.entries {
             match &entry.what {
                 What::Message { author, to, .. } => {
-                    check_addressee(author)?;
+                    writer(author)?;
                     to.iter().try_for_each(|name| check_addressee(name))?;
                 }
-                What::Created { by } | What::Changed { by, .. } => check_addressee(by)?,
+                What::Created { by } | What::Changed { by, .. } => writer(by)?,
                 What::Joined { who } | What::Left { who } => check_addressee(who)?,
             }
         }
