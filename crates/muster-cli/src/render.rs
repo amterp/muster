@@ -468,6 +468,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
     let widths = Widths::across(window, &states, now_ms);
     let machines: Vec<&muster_proto::Machine> = window.daemons.iter().collect();
     let say_machine = machines.len() > 1;
+    let rows = Rows { widths: &widths, states: &states, now_ms, say_machine };
 
     let mut lines: Vec<String> = Vec::new();
     let drawing = Drawing::of(window, keyboard.as_deref(), say_machine);
@@ -479,15 +480,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
                     lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
                 }
             }
-            None => lines.extend(tab_lines(
-                &widths,
-                tab,
-                &states,
-                keyboard.as_deref(),
-                now_ms,
-                say_machine,
-                drawn,
-            )),
+            None => lines.extend(rows.tab(tab, keyboard.as_deref(), drawn)),
         }
     }
 
@@ -507,17 +500,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
                     lines.push(drawn_tab_line(&widths, tab, layout));
                     lines.extend(drawing.tab(layout, tab, &states, terminal_width()));
                 }
-                None => {
-                    lines.extend(tab_lines(
-                        &widths,
-                        tab,
-                        &states,
-                        None,
-                        now_ms,
-                        say_machine,
-                        drawn,
-                    ));
-                }
+                None => lines.extend(rows.tab(tab, None, drawn)),
             }
         }
     }
@@ -531,7 +514,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         }
         lines.push(styled("hidden", NAME));
         for tab in hidden {
-            lines.extend(tab_lines(&widths, tab, &states, None, now_ms, say_machine, false));
+            lines.extend(rows.tab(tab, None, false));
         }
     }
 
@@ -738,30 +721,83 @@ fn grids(window: &Window) -> BTreeMap<&str, &muster_proto::PaneGrid> {
     window.grids.iter().map(|grid| (grid.pane_id.as_str(), grid)).collect()
 }
 
-/// A tab's line, and a line for each pane in it.
-fn tab_lines(
-    widths: &Widths,
-    tab: &muster_proto::RosterTab,
-    states: &BTreeMap<&str, &muster_proto::PaneStateChanged>,
-    keyboard: Option<&str>,
+/// What every row of a window's listing is drawn against: the columns' widths, what each pane's
+/// agent is doing, the time the listing is as of, and whether rows say which machine they are on.
+struct Rows<'a> {
+    widths: &'a Widths,
+    states: &'a BTreeMap<&'a str, &'a muster_proto::PaneStateChanged>,
     now_ms: i64,
     say_machine: bool,
-    drawn: bool,
-) -> Vec<String> {
-    let mut lines = vec![tab_line(widths, tab)];
-    for pane in &tab.panes {
-        let agent = states.get(pane.pane_id.as_str()).copied();
-        lines.push(pane_line(
-            widths,
-            pane,
-            agent,
-            now_ms,
-            keyboard == Some(pane.pane_id.as_str()),
-            say_machine,
-            drawn,
-        ));
+}
+
+impl Rows<'_> {
+    /// A tab's row and its panes' rows, `keyboard` marking the pane the keyboard is on.
+    fn tab(
+        &self,
+        tab: &muster_proto::RosterTab,
+        keyboard: Option<&str>,
+        drawn: bool,
+    ) -> Vec<String> {
+        let mut lines = vec![tab_line(self.widths, tab)];
+        for pane in &tab.panes {
+            lines.push(self.pane(pane, keyboard == Some(pane.pane_id.as_str()), drawn));
+        }
+        lines
     }
-    lines
+
+    /// One pane's row: which one has the keyboard in the gutter, then place, name, state, how long
+    /// it has been in that state, and label.
+    ///
+    /// The keyboard is marked in the gutter rather than in a column of its own, the way any list
+    /// marks the item you are on - a column would put eight blank spaces on every other row. Being
+    /// off screen is a note after the label instead, because most panes are on screen and the
+    /// exception is the thing worth saying.
+    fn pane(&self, pane: &muster_proto::RosterPane, has_keyboard: bool, drawn: bool) -> String {
+        let (widths, now_ms, say_machine) = (self.widths, self.now_ms, self.say_machine);
+        let agent = self.states.get(pane.pane_id.as_str()).copied();
+        let state = agent.map_or("unknown", |agent| agent.state.as_str());
+        let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
+        let mut line = format!(
+            "  {}{}  {}  {}  {}  {}",
+            if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
+            pad(&place(pane.place), widths.place, QUIET, Align::Right),
+            pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
+            pad(state, widths.state, agent_style(state), Align::Left),
+            pad(&held, widths.held, QUIET, Align::Right),
+            pane.label,
+        );
+        let waiting =
+            agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
+        // What it waits on says more than its title while it waits, and the two would crowd a line.
+        // An unreachable pane shows neither: its title is the last one its daemon had, and would
+        // read as what the pane is doing now.
+        match waiting.filter(|waiting| state == "waiting" && !waiting.is_empty()) {
+            Some(waiting) => line.push_str(&styled(&format!(" · on {waiting}"), QUIET)),
+            None if !pane.subtitle.is_empty() && state != "unreachable" => {
+                line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
+            }
+            None => {}
+        }
+        if let Some(agent) = agent {
+            for said in agent_notes(agent) {
+                line.push_str(&styled(&format!("  {said}"), QUIET));
+            }
+        }
+        if pane.quiet {
+            line.push_str(&styled("  (quiet)", QUIET));
+        }
+        // Only a window draws panes, so with none there is nothing to be off screen from.
+        if drawn && !pane.on_screen {
+            line.push_str(&styled("  (off screen)", QUIET));
+        }
+        // Last on the row and only with more than one machine attached, because a tab may span two
+        // and the pane is the only thing that can say which. On one machine it is on every row and
+        // says nothing.
+        if say_machine {
+            line.push_str(&styled(&format!("  ({})", pane.daemon_id), QUIET));
+        }
+        line
+    }
 }
 
 /// A machine's heading, and beneath it what would end with the daemon behind it.
@@ -831,65 +867,6 @@ fn tab_line(widths: &Widths, tab: &muster_proto::RosterTab) -> String {
 /// number, so a person does not press a chord here for a number that means something there.
 fn place(place: u32) -> String {
     if place == 0 { " ".to_string() } else { place.to_string() }
-}
-
-/// One pane's row: which one has the keyboard in the gutter, then place, name, state, how long it
-/// has been in that state, and label.
-///
-/// The keyboard is marked in the gutter rather than in a column of its own, the way any list marks
-/// the item you are on - a column would put eight blank spaces on every other row. Being off screen
-/// is a note after the label instead, because most panes are on screen and the exception is the
-/// thing worth saying.
-fn pane_line(
-    widths: &Widths,
-    pane: &muster_proto::RosterPane,
-    agent: Option<&muster_proto::PaneStateChanged>,
-    now_ms: i64,
-    has_keyboard: bool,
-    say_machine: bool,
-    drawn: bool,
-) -> String {
-    let state = agent.map_or("unknown", |agent| agent.state.as_str());
-    let held = agent.map(|agent| held_for(agent.since_ms, now_ms)).unwrap_or_default();
-    let mut line = format!(
-        "  {}{}  {}  {}  {}  {}",
-        if has_keyboard { styled("▸", NAME) + " " } else { "  ".to_string() },
-        pad(&place(pane.place), widths.place, QUIET, Align::Right),
-        pad(&pane.pane_id, widths.name, PLAIN, Align::Left),
-        pad(state, widths.state, agent_style(state), Align::Left),
-        pad(&held, widths.held, QUIET, Align::Right),
-        pane.label,
-    );
-    let waiting = agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
-    // What it waits on says more than its title while it waits, and the two would crowd a line.
-    // An unreachable pane shows neither: its title is the last one its daemon had, and would read
-    // as what the pane is doing now.
-    match waiting.filter(|waiting| state == "waiting" && !waiting.is_empty()) {
-        Some(waiting) => line.push_str(&styled(&format!(" · on {waiting}"), QUIET)),
-        None if !pane.subtitle.is_empty() && state != "unreachable" => {
-            line.push_str(&styled(&format!(" · {}", pane.subtitle), QUIET));
-        }
-        None => {}
-    }
-    if let Some(agent) = agent {
-        for said in agent_notes(agent) {
-            line.push_str(&styled(&format!("  {said}"), QUIET));
-        }
-    }
-    if pane.quiet {
-        line.push_str(&styled("  (quiet)", QUIET));
-    }
-    // Only a window draws panes, so with none there is nothing to be off screen from.
-    if drawn && !pane.on_screen {
-        line.push_str(&styled("  (off screen)", QUIET));
-    }
-    // Last on the row and only with more than one machine attached, because a tab may span two
-    // and the pane is the only thing that can say which. On one machine it is on every row and
-    // says nothing.
-    if say_machine {
-        line.push_str(&styled(&format!("  ({})", pane.daemon_id), QUIET));
-    }
-    line
 }
 
 /// What else is worth a glance about a pane's agent, each a few words: a program that has
