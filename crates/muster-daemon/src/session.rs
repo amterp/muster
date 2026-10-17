@@ -2064,14 +2064,7 @@ impl Session {
                 }
                 let waiting = is_waiting(record.facts.as_ref());
                 if turn == Turn::Ended && record.agent == agent {
-                    log::debug(
-                        "daemon.agent.turn_ended",
-                        fields! {
-                            "pane" => name,
-                            "agent" => agent.as_deref().unwrap_or_default(),
-                            "waiting" => waiting,
-                        },
-                    );
+                    turn_ended(&name, agent.as_deref(), waiting);
                 }
                 if !waiting {
                     record.finished_unseen = finished_unseen(
@@ -3328,6 +3321,13 @@ fn agent_compacts(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
     manifests
         .zip(agent)
         .is_some_and(|(manifests, agent)| manifests.compacts(&muster_detect::Agent::new(agent)))
+}
+
+fn turn_ended(pane: &str, agent: Option<&str>, waiting: bool) {
+    log::debug(
+        "daemon.agent.turn_ended",
+        fields! { "pane" => pane, "agent" => agent.unwrap_or_default(), "waiting" => waiting },
+    );
 }
 
 /// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
