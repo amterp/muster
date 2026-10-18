@@ -582,7 +582,8 @@ public enum Core {
     return refusal(send(request))
   }
 
-  /// Brings a hidden pane back into this window, in a tab of its own, with the keyboard on it.
+  /// Brings a hidden pane back into this window with the hidden tab holding it, and puts the
+  /// keyboard on it.
   @discardableResult
   public static func showPane(daemonID: String, paneID: String) -> String? {
     var show = Muster_ShowPane()

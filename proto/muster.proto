@@ -373,11 +373,14 @@ message HidePane {
   string pane_id = 2;
 }
 
-// Brings a hidden pane back, into a tab of its own in this window, listed after its others.
+// Brings a hidden pane back into this window with the hidden tab that holds it, whole and as it
+// was arranged, so no pane moves between tabs.
 //
-// A new tab rather than the place it left, which may have been rearranged, closed, or taken by
-// another window since; `pane move` takes it anywhere from there. A pane that is not hidden is
-// answered Ok, focused when `take_focus` asks.
+// A pane hidden by hand is alone in its hidden tab, which comes back listed after the window's
+// others: a new place rather than the one it left, which may have been rearranged, closed, or
+// taken by another window since. A helper brings back the tab its maker's helpers share, placed
+// as ShowHelpers places it. A pane that is not hidden is answered Ok, focused when `take_focus`
+// asks.
 message ShowPane {
   string daemon_id = 1;
 
@@ -390,8 +393,9 @@ message ShowPane {
 }
 
 // Brings a pane's hidden helpers into this window together (MIP-7, section 5): every hidden tab
-// holding a helper of it comes back whole, after the window's other tabs, its panes arranged as
-// they were. A helpers' tab nobody but Muster has named is renamed after the pane as it is called
+// holding a helper of it comes back whole, just after the tab holding the pane when this window
+// holds that tab and after the window's other tabs when it does not, its panes arranged as they
+// were. A helpers' tab nobody but Muster has named is renamed after the pane as it is called
 // now. A pane whose helpers are all on screen is answered Ok; one with none anywhere is refused.
 message ShowHelpers {
   string daemon_id = 1;

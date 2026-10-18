@@ -204,6 +204,11 @@ Show brings the maker's helper tab into the asking window, after its other tabs,
 arranged as they were. Hide sends that tab back. A helper brought forward on its own, with
 `pane show`, comes into a tab of its own as today and stays a helper.
 
+*Amended 2026-10-18:* a helper brought forward on its own, by `pane show` or by going to it, now
+brings back the helpers' tab whole, so no helper leaves it. That tab, from Show as well, comes in
+just after the tab holding the maker when the asking window holds that tab, and after the
+window's other tabs otherwise.
+
 ### 6. When the maker goes away
 
 The relation is to the maker's pane, not to its agent. An agent that exits and is resumed in the
@@ -315,3 +320,7 @@ Each stage leaves helpers in a state somebody can use.
 
 ## History
 - 2026-10-07 Draft.
+- 2026-10-18 Section 5 amended: going to one hidden helper brings its helpers' tab back whole
+  rather than moving the helper into a tab of its own, and a helpers' tab comes in after its
+  maker's tab rather than at the end. Clicking a helper's row had moved panes and tabs nobody
+  asked to move.

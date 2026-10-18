@@ -122,7 +122,7 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         }
         Some(request::Payload::HidePane(hide)) => {
             let pane = named(&hide.pane_id, "hidden")?;
-            respond(move_hiding(&socket, pane, true)?)
+            respond(hide_pane(&socket, pane)?)
         }
         // With no window there is no keyboard to move, so `take_focus` asks for nothing here: the
         // helpers are shown, and join the next window that opens.
@@ -138,7 +138,7 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         // pane is shown, and joins the next window that opens.
         Some(request::Payload::ShowPane(show)) => {
             let pane = named(&show.pane_id, "shown")?;
-            respond(move_hiding(&socket, pane, false)?)
+            respond(show_pane(&socket, pane)?)
         }
         Some(request::Payload::QuietPane(quiet)) => {
             let pane = named(&quiet.pane_id, "made quiet")?;
@@ -518,18 +518,14 @@ fn restart_agent(
     })
 }
 
-/// Moves a pane into a new tab of its own, hidden or not, as a window's hide and show do. A pane
-/// already where it was asked to be is left there.
-fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trouble> {
+/// Moves a pane into a new hidden tab of its own, as a window's hide does. A hidden pane is left
+/// where it is.
+fn hide_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
     let held = snapshot(socket)?;
-    let Some(tab) = held.tabs.iter().find(|tab| {
-        let mut panes = Vec::new();
-        panes_of(tab.root.as_ref(), &mut panes);
-        panes.iter().any(|held| held == pane)
-    }) else {
-        return Ok(not_held(socket, pane, if hidden { "hidden" } else { "shown" }));
+    let Some(tab) = tab_holding(&held, pane) else {
+        return Ok(not_held(socket, pane, "hidden"));
     };
-    if tab.hidden == hidden {
+    if tab.hidden {
         return Ok(ok());
     }
     let tab = Minter::new(Mint::Drawn).tab().to_string();
@@ -537,7 +533,7 @@ fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trou
         r#where: Some(daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
             tab,
             label: Some(daemon_proto::Label::default()),
-            hidden,
+            hidden: true,
         })),
     };
     let answer = asked_of_one_that_hides(
@@ -546,9 +542,67 @@ fn move_hiding(socket: &Path, pane: &str, hidden: bool) -> Result<Response, Trou
             pane: pane.to_string(),
             placement: Some(placement),
         })),
-        if hidden { "hide a pane" } else { "show a hidden pane" },
+        "hide a pane",
     )?;
     Ok(changed(answer))
+}
+
+/// Shows the hidden tab holding a pane, whole, as a window's show does
+/// (`muster_seam::session::show_pane` says why the tab rather than the pane). A pane that is not
+/// hidden is left where it is.
+fn show_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
+    let held = snapshot(socket)?;
+    let Some(tab) = tab_holding(&held, pane) else {
+        return Ok(not_held(socket, pane, "shown"));
+    };
+    if !tab.hidden {
+        return Ok(ok());
+    }
+    let maker =
+        held.panes.iter().find(|held| held.pane == pane).and_then(|held| held.maker.as_deref());
+    let label = maker.and_then(|maker| helpers_label(&held, maker, tab));
+    let answer = asked_of_one_since(
+        socket,
+        daemon_proto::request::Service::Tab(daemon_proto::TabRequest {
+            request: Some(daemon_proto::tab_request::Request::SetHidden(
+                daemon_proto::tab_request::SetHidden { tab: tab.tab.clone(), hidden: false, label },
+            )),
+        }),
+        daemon_proto::version::HELPERS,
+        "show a hidden tab whole",
+    )?;
+    Ok(changed(answer))
+}
+
+fn tab_holding<'a>(held: &'a daemon_proto::Snapshot, pane: &str) -> Option<&'a daemon_proto::Tab> {
+    held.tabs.iter().find(|tab| {
+        let mut panes = Vec::new();
+        panes_of(tab.root.as_ref(), &mut panes);
+        panes.iter().any(|held| held == pane)
+    })
+}
+
+/// The name a maker's helpers' tab comes forward with: the maker's as it is called now, unless
+/// a person renamed the tab or it already has that name.
+fn helpers_label(
+    held: &daemon_proto::Snapshot,
+    maker: &str,
+    tab: &daemon_proto::Tab,
+) -> Option<daemon_proto::Label> {
+    let name = held
+        .panes
+        .iter()
+        .find(|held| held.pane == maker)
+        .and_then(daemon_proto::Pane::name)
+        .map(muster_core::making::helpers_tab)?;
+    let renamed = tab.label.as_ref().is_some_and(|label| {
+        label.generation > muster_core::making::HELPERS_TAB_GENERATION
+            || label.text.as_ref() == Some(&name)
+    });
+    (!renamed).then_some(daemon_proto::Label {
+        text: Some(name),
+        generation: muster_core::making::HELPERS_TAB_GENERATION,
+    })
 }
 
 /// Shows a maker's hidden helpers together, or with `hidden` hides them again: a window's Show
@@ -559,12 +613,6 @@ fn helpers_hidden(socket: &Path, maker: &str, hidden: bool) -> Result<Response, 
     let helper = |pane: &str| {
         held.panes.iter().any(|held| held.pane == pane && held.maker.as_deref() == Some(maker))
     };
-    let named = held
-        .panes
-        .iter()
-        .find(|held| held.pane == maker)
-        .and_then(daemon_proto::Pane::name)
-        .map(muster_core::making::helpers_tab);
     let mut any = false;
     let mut tabs = Vec::new();
     for tab in &held.tabs {
@@ -587,17 +635,7 @@ fn helpers_hidden(socket: &Path, maker: &str, hidden: bool) -> Result<Response, 
         )));
     }
     for tab in tabs {
-        let current = tab.label.as_ref();
-        let label = named.as_ref().filter(|_| !hidden).and_then(|name| {
-            let renamed = current.is_some_and(|label| {
-                label.generation > muster_core::making::HELPERS_TAB_GENERATION
-                    || label.text.as_ref() == Some(name)
-            });
-            (!renamed).then(|| daemon_proto::Label {
-                text: Some(name.clone()),
-                generation: muster_core::making::HELPERS_TAB_GENERATION,
-            })
-        });
+        let label = if hidden { None } else { helpers_label(&held, maker, tab) };
         let answer = asked_of_one_since(
             socket,
             daemon_proto::request::Service::Tab(daemon_proto::TabRequest {

@@ -409,6 +409,10 @@ impl BackendChannel for DaemonBackend {
                 done
             }
             BackendIntent::SetTabHidden { tab, hidden, name } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::HELPERS,
+                    if hidden { "hide a tab whole" } else { "show a hidden tab whole" },
+                )?;
                 self.tab_request(tab_request::Request::SetHidden(tab_request::SetHidden {
                     tab: tab.to_string(),
                     hidden,

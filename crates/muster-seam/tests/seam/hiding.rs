@@ -304,7 +304,7 @@ fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
 }
 
 /// A maker's hidden helpers are listed under it, come forward together into one tab after the
-/// window's others, arranged as they were and named after the maker as it is called now, and go
+/// maker's, arranged as they were and named after the maker as it is called now, and go
 /// back together. A tab somebody renamed keeps its name, and one holding a pane that is not a
 /// helper stays on screen.
 #[test]
@@ -413,6 +413,97 @@ fn a_makers_helpers_come_forward_together_and_go_back() {
         }
         other => panic!("showing the helpers of a pane with none answered {other:?}"),
     }
+}
+
+/// Going to one hidden helper - a click on its row, the chord, a banner - brings back the tab its
+/// maker's helpers share, whole and as arranged, just after the maker's tab rather than below
+/// every other tab, with the keyboard on the helper asked for. No helper leaves that tab. Showing
+/// one without the keyboard, and Show Helpers, put the tab in the same place.
+#[test]
+fn going_to_a_hidden_helper_brings_its_helpers_tab_back_whole_beside_its_maker() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = two_panes_side_by_side();
+    let mut control = daemon.connect();
+    make(&mut control, create("p3", in_new_tab("t2")));
+    open_window(&daemon);
+    until("both tabs to be listed", || tabs() == 2, || format!("{:?}", roster().tabs));
+    let helper = || {
+        let made = answer(request::Payload::SplitPane(SplitPane {
+            pane_id: "p1".to_string(),
+            side: "right".to_string(),
+            hidden: true,
+            maker: "p1".to_string(),
+            ..SplitPane::default()
+        }));
+        match made.payload {
+            Some(response::Payload::Made(made)) => made.pane_id,
+            other => panic!("making a helper answered {other:?}"),
+        }
+    };
+    let (_, second, third) = (helper(), helper(), helper());
+    until(
+        "the helpers to be hidden in one tab",
+        || roster().hidden.len() == 1 && hidden().len() == 3,
+        || format!("hidden: {:?}", roster().hidden),
+    );
+    let helpers = hidden();
+    let beside_the_maker = || {
+        let listed: Vec<Vec<String>> = roster()
+            .tabs
+            .iter()
+            .map(|tab| tab.panes.iter().map(|pane| pane.pane_id.clone()).collect())
+            .collect();
+        listed
+            == [vec!["p1".to_string(), "p2".to_string()], helpers.clone(), vec!["p3".to_string()]]
+    };
+
+    assert_ok(&answer(request::Payload::FocusPane(FocusPane {
+        pane_id: second.clone(),
+        ..FocusPane::default()
+    })));
+    until(
+        "the helpers' tab to come back whole after the maker's, with the keyboard on the helper",
+        || hidden().is_empty() && beside_the_maker() && keyboard().as_deref() == Some(&*second),
+        || {
+            format!(
+                "tabs: {:?}, hidden: {:?}, keyboard on {:?}",
+                roster().tabs,
+                hidden(),
+                keyboard()
+            )
+        },
+    );
+
+    let hide = || {
+        assert_ok(&answer(request::Payload::HideHelpers(HideHelpers {
+            pane_id: "p1".to_string(),
+            ..HideHelpers::default()
+        })));
+        until("the helpers to go back", || hidden() == helpers, || format!("{:?}", roster()));
+    };
+    hide();
+    let keyboard_was = keyboard();
+    assert_ok(&answer(request::Payload::ShowPane(ShowPane {
+        pane_id: third.clone(),
+        ..ShowPane::default()
+    })));
+    until(
+        "showing one helper to bring its tab back whole after the maker's",
+        || hidden().is_empty() && beside_the_maker(),
+        || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
+    );
+    assert_eq!(keyboard(), keyboard_was, "showing without the keyboard moved it");
+
+    hide();
+    assert_ok(&answer(request::Payload::ShowHelpers(ShowHelpers {
+        pane_id: "p1".to_string(),
+        ..ShowHelpers::default()
+    })));
+    until(
+        "Show Helpers to put the tab after the maker's too",
+        || hidden().is_empty() && beside_the_maker(),
+        || format!("tabs: {:?}, hidden: {:?}", roster().tabs, hidden()),
+    );
 }
 
 /// A maker closing with a helper still running tells the person once, and the banner the window

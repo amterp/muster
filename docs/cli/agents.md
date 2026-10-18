@@ -386,10 +386,11 @@ A pane already open is hidden and brought back by name:
     muster pane show --pane p1w3r0ab2n --focus
 
 `pane hide` with no `--pane` hides the pane it runs in. If that was the last pane of its tab the
-tab closes, and its name with it; the pane keeps its own. `pane show` brings the pane back into a
-tab of its own in this window, after the others, rather than where it was, which may have been
-rearranged or closed since; `pane move` takes it anywhere from there. The keyboard goes to it only
-with `--focus`. Going to a hidden pane any other way - its row, a notification, the chord to
+tab closes, and its name with it; the pane keeps its own. `pane show` brings back the hidden tab
+holding the pane, whole, into this window, so no pane moves between tabs. A pane you hid sits alone
+in its hidden tab, so it comes back in a tab of its own, after the others, rather than where it
+was, which may have been rearranged or closed since; `pane move` takes it anywhere from there. The
+keyboard goes to it only with `--focus`. Going to a hidden pane any other way - its row, a notification, the chord to
 whatever is asking, `muster focus` - brings it back first. Hiding a hidden pane changes nothing
 and exits 0, and so does showing one that is not hidden, which with `--focus` goes to it.
 
@@ -440,15 +441,17 @@ A maker's helpers come forward together and go back together:
     muster pane hide --helpers-of integrator
 
 `--helpers-of` takes the maker by name or id. `pane show` brings every hidden tab holding one of
-its helpers into this window, after the others, with the helpers arranged as they were, and the
+its helpers into this window, just after the tab holding the maker, or after the others when the
+maker's tab is not in this window, with the helpers arranged as they were, and the
 keyboard goes to the first of them only with `--focus`; a helper made while they are on screen
 joins them there. A helpers' tab that only Muster has named is named again then, for the maker as
 it is called now; a tab you renamed keeps your name. `pane hide` sends back every tab on screen
 that holds nothing but the maker's helpers, so a helper you moved into a tab beside other panes
 stays there, and `pane hide --pane` hides it alone. Showing
 helpers already on screen and hiding helpers already hidden change nothing and exit 0; a pane with
-no helpers is refused. A helper shown with `pane show --pane` comes into a tab of its own, as any
-hidden pane does, and stays a helper, and a helper made after it does not join that tab.
+no helpers is refused. Showing one helper with `pane show --pane`, or going to it from its row, a
+notification or the chord, brings back the tab it shares with the others in the same way, and the
+keyboard lands on the helper you asked for.
 
 The agent list lists a maker's hidden helpers under its row rather than under Hidden, folded into
 one line, `3 helpers · 1 blocked`, whose dot is the most urgent state among them; a click opens it,

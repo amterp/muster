@@ -493,8 +493,9 @@ codegen - a surface that cannot express an action is a missing message, visible 
 - **A hidden tab is its daemon's, and no window holds it.** Hiding a pane moves it into a tab of its own that its
   daemon holds as hidden (`muster docs agents`, "Out of sight"), so every pane is still in exactly one tab and
   nothing the daemon restores or hands over changes. No window takes a hidden tab or opens a region onto one
-  (`Composition::reconcile`); the roster lists hidden tabs apart, the same in every window, and showing a pane is a
-  move into a new tab the asking window takes before it asks, as it takes any tab it makes. Every part of a tab is
+  (`Composition::reconcile`); the roster lists hidden tabs apart, the same in every window. Showing a pane shows the
+  whole hidden tab holding it, which the asking window takes before it asks, so no pane moves between tabs; a
+  helpers' tab is held to open just after its maker's tab (`Composition::hold_after`). Every part of a tab is
   made hidden or not alike, so a pane split from a hidden one onto another machine is hidden there too. A helper's
   maker is the same kind of fact, kept on the helper's record (MIP-7), and the daemon puts a maker's hidden helpers
   in one hidden tab as each is placed.

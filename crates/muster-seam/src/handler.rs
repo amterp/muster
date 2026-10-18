@@ -573,7 +573,7 @@ fn nobody_named(done: &str) -> Response {
     ))
 }
 
-/// Brings a hidden pane back into this window, in a tab of its own.
+/// Brings a hidden pane back into this window, with the hidden tab holding it.
 fn show_pane(window: WindowId, show: &proto::ShowPane) -> Response {
     if show.pane_id.is_empty() {
         return Response::failure(

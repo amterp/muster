@@ -3039,7 +3039,7 @@ pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result
     // Going to a hidden pane brings it back first, into the window that asked: a banner about
     // it, the chord to whatever asks, and a click on its row all mean "show me this".
     if is_hidden(daemon, pane) {
-        return show_pane(asked, daemon, pane, true);
+        bring_back_tab_of(asked, daemon, pane)?;
     }
     let (tab, window) = {
         let session = poison::lock(&SESSION, "session");
@@ -3473,22 +3473,93 @@ pub(crate) fn hide_pane(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> R
     hidden
 }
 
-/// Brings a hidden pane back into this window, in a tab of its own after its others, and puts
-/// the keyboard on it when asked. A pane that is not hidden is only focused, when asked.
+/// Brings a hidden pane back into this window in the hidden tab that holds it, and puts the
+/// keyboard on it when asked. A pane that is not hidden is only focused, when asked.
 ///
-/// A new tab rather than the place it left: that tab may have been rearranged, closed, or taken
-/// by another window since, and a rule somebody can predict is worth more than one that is
-/// usually nicer. `pane move` takes it anywhere from there.
+/// The whole tab as it was arranged, and never the pane alone: a helper sits in the tab its
+/// maker's helpers share, and going to one is not asking to rearrange them. A pane somebody hid
+/// by hand is alone in its hidden tab, so it comes back in a tab of its own - a new place rather
+/// than the one it left, which may have been rearranged, closed, or taken by another window
+/// since. `pane move` takes it anywhere from there.
 pub(crate) fn show_pane(
     window: WindowId,
     daemon: &DaemonId,
     pane: &PaneId,
     take_focus: bool,
 ) -> Result<(), Refusal> {
-    if is_hidden(daemon, pane) {
-        move_pane_to_new_tab(window, daemon, pane, None)?;
+    if take_focus {
+        return focus(window, daemon, pane);
     }
-    if take_focus { focus(window, daemon, pane) } else { Ok(()) }
+    if is_hidden(daemon, pane) {
+        bring_back_tab_of(window, daemon, pane)?;
+    }
+    Ok(())
+}
+
+/// Brings the hidden tab holding a pane into this window, as its maker's helpers' tab when the
+/// pane is a helper ([`bring_back`]).
+fn bring_back_tab_of(window: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
+    let found = {
+        let session = poison::lock(&SESSION, "session");
+        session.backends.get(daemon).and_then(|backend| {
+            let mirror = poison::lock(&backend.mirror, "mirror");
+            mirror.pane(pane).map(|held| (held.tab.clone(), held.maker.clone()))
+        })
+    };
+    let Some((tab, maker)) = found else { return Ok(()) };
+    let after = maker.as_ref().and_then(tab_of_pane);
+    bring_back(window, &tab, maker.as_ref(), after.as_ref())?;
+    settle_what_the_window_shows(window);
+    Ok(())
+}
+
+/// Brings a hidden tab into this window whole, every machine's part of it, taking it from any
+/// other window that held it.
+///
+/// `helpers_of` says it is that maker's helpers' tab. One only Muster has named is renamed after
+/// the maker as it is called now, so a tab made for `otter` comes forward as `🤖 integrator's
+/// helpers` once otter has been named; one a person renamed keeps their name. `after` is the tab
+/// it opens just after, when this window holds that tab; otherwise it goes on the end.
+fn bring_back(
+    window: WindowId,
+    tab: &TabId,
+    helpers_of: Option<&PaneId>,
+    after: Option<&TabId>,
+) -> Result<(), Refusal> {
+    let named = helpers_of.and_then(maker).map(|maker| making::helpers_tab(&maker.name));
+    let parts: Vec<(DaemonId, Option<String>)> = {
+        let mut session = poison::lock(&SESSION, "session");
+        let parts = session
+            .backends
+            .iter()
+            .filter_map(|(daemon, backend)| {
+                let mirror = poison::lock(&backend.mirror, "mirror");
+                let part = mirror.tab(tab).filter(|part| part.hidden)?;
+                let name = named.clone().filter(|name| {
+                    part.generation <= making::HELPERS_TAB_GENERATION
+                        && part.label.as_ref() != Some(name)
+                });
+                Some((daemon.clone(), name))
+            })
+            .collect();
+        let me = session.windows[window].name.clone();
+        session.holding.give(tab, &me);
+        for held in session.windows.values_mut() {
+            if held.name != me {
+                held.composition.let_go(tab);
+            } else if let Some(after) = after {
+                held.composition.hold_after(tab.clone(), after.clone());
+            } else {
+                held.composition.hold(tab.clone());
+            }
+        }
+        parts
+    };
+    for (daemon, name) in parts {
+        let intent = BackendIntent::SetTabHidden { tab: tab.clone(), hidden: false, name };
+        submit(window, &daemon, &intent, Keyboard::StaysPut)?;
+    }
+    Ok(())
 }
 
 /// A tab on one machine that holds a helper of some maker (MIP-7).
@@ -3500,8 +3571,6 @@ struct HelpersTab {
     only_helpers: bool,
     /// Its first pane, for the keyboard to land on.
     first: Option<PaneId>,
-    label: Option<String>,
-    generation: u64,
 }
 
 /// Every tab holding a helper of `maker`, on every machine this window follows.
@@ -3523,22 +3592,19 @@ fn helpers_tabs(maker: &PaneId) -> Vec<HelpersTab> {
                 hidden: tab.hidden,
                 only_helpers: panes.iter().all(helper),
                 first: tab.root.panes().first().map(|pane| (*pane).clone()),
-                label: tab.label.clone(),
-                generation: tab.generation,
             });
         }
     }
     found
 }
 
-/// Brings every hidden tab holding a helper of `maker` into this window, after its other tabs,
-/// with its panes arranged as they were (MIP-7, section 5), and puts the keyboard on the first
-/// helper when asked.
+/// Brings every hidden tab holding a helper of `maker` into this window, just after the tab
+/// holding the maker, with its panes arranged as they were (MIP-7, section 5), and puts the
+/// keyboard on the first helper when asked.
 ///
-/// A helpers' tab only Muster has named is renamed after the maker as it is called now, so a tab
-/// made for `otter` comes forward as `🤖 integrator's helpers` once otter has been named; one a
-/// person renamed keeps their name. Whole tabs rather than one pane each, so that a helper hidden
-/// by hand comes forward in its own tab and the shared one keeps its shape.
+/// Whole tabs rather than one pane each, so that a helper hidden by hand comes forward in its own
+/// tab and the shared one keeps its shape. Each is renamed for the maker as [`bring_back`] says,
+/// and several come forward in the order they were found, each after the one before.
 pub(crate) fn show_helpers(
     window: WindowId,
     maker: &PaneId,
@@ -3551,25 +3617,15 @@ pub(crate) fn show_helpers(
              `muster window` lists each helper under the pane that made it."
         )));
     }
-    let named = self::maker(maker).map(|maker| making::helpers_tab(&maker.name));
+    let mut after = tab_of_pane(maker);
+    let mut brought: Vec<&TabId> = Vec::new();
     for part in tabs.iter().filter(|part| part.hidden) {
-        {
-            let mut session = poison::lock(&SESSION, "session");
-            let me = session.windows[window].name.clone();
-            session.holding.give(&part.tab, &me);
-            for held in session.windows.values_mut() {
-                if held.name == me {
-                    held.composition.hold(part.tab.clone());
-                } else {
-                    held.composition.let_go(&part.tab);
-                }
-            }
+        if brought.contains(&&part.tab) {
+            continue;
         }
-        let name = named.clone().filter(|name| {
-            part.generation <= making::HELPERS_TAB_GENERATION && part.label.as_ref() != Some(name)
-        });
-        let intent = BackendIntent::SetTabHidden { tab: part.tab.clone(), hidden: false, name };
-        submit(window, &part.daemon, &intent, Keyboard::StaysPut)?;
+        bring_back(window, &part.tab, Some(maker), after.as_ref())?;
+        after = Some(part.tab.clone());
+        brought.push(&part.tab);
     }
     settle_what_the_window_shows(window);
     let first = tabs.iter().find(|part| part.hidden).or(tabs.first());

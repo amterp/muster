@@ -488,6 +488,11 @@ fn helpers_are_made_by_the_daemon(here: &Here) {
     assert!(!shown.hidden && tab_shape_holds(&shown, &second), "{shown:?}");
     ok(&here.muster(&["pane", "hide", "--helpers-of", "p1"]));
     assert!(helpers_tab(&mut control).hidden);
+    // Showing one helper shows the tab they share, with the other still in it.
+    ok(&here.muster(&["pane", "show", "--pane", &first]));
+    let shown = helpers_tab(&mut control);
+    assert!(!shown.hidden && tab_shape_holds(&shown, &second), "{shown:?}");
+    ok(&here.muster(&["pane", "hide", "--helpers-of", "p1"]));
     let refused = refused_with(&here.muster(&["pane", "show", "--helpers-of", "p2"]), 1);
     assert!(refused.contains("no helper of p2"), "{refused}");
 

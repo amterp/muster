@@ -645,7 +645,7 @@ enum Doing {
         helpers_of: Option<String>,
     },
 
-    /// Bring a hidden pane back, into a tab of its own in this window, or a pane's helpers together
+    /// Bring a hidden pane back with the hidden tab holding it, or a pane's helpers together
     #[command(group = ArgGroup::new("shown").required(true))]
     Show {
         /// The pane to bring back. `muster window` lists the hidden ones
@@ -655,8 +655,8 @@ enum Doing {
         #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
-        /// Bring this pane's hidden helpers back instead, together in the tab they share, after
-        /// the window's others and arranged as they were
+        /// Bring this pane's hidden helpers back instead, together in the tab they share, just
+        /// after the tab holding this pane and arranged as they were
         #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
         helpers_of: Option<String>,
 
