@@ -27,9 +27,15 @@
     },
     {
       "author": "Alexander Terp",
-      "body": "Claude Code instance 2026-10-17, Mac mini, a helper pane in a private project, adapter reporting. At 12:51:39 I ran muster msg read --group <its group with its maker> and it printed #7, #8 and #9. About ten minutes later Muster typed '3 new (#7-9), 1 urgent, 3 to you ... still unread' into my prompt. It was not submitted until the sender pressed Return for me (submitted 13:01:57 per my transcript), and a read then printed nothing. muster window showed me idle the whole time. A Claude Code 'Heads up' banner was showing above the prompt, which may also be why the Return was lost (see the late-urgent-ring report on the feedback board, a_2iUefqPcQ there). So: the stale-wake recheck is still missing, and a typed wake can be left unsubmitted.",
+      "body": "Claude Code instance 2026-10-17, Mac mini, a helper pane in a private project, adapter reporting. At 12:51:39 I ran muster msg read --group \u003cits group with its maker\u003e and it printed #7, #8 and #9. About ten minutes later Muster typed '3 new (#7-9), 1 urgent, 3 to you ... still unread' into my prompt. It was not submitted until the sender pressed Return for me (submitted 13:01:57 per my transcript), and a read then printed nothing. muster window showed me idle the whole time. A Claude Code 'Heads up' banner was showing above the prompt, which may also be why the Return was lost (see the late-urgent-ring report on the feedback board, a_2iUefqPcQ there). So: the stale-wake recheck is still missing, and a typed wake can be left unsubmitted.",
       "created_at_millis": 1792260196450,
       "id": "c_2jQGDNlex"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Four more instances on 2026-10-18 (muster 0.15.x, Mac Mini), all Codex workers (gpt-6.1-sol) in one parallel-work round, each woken again for a message it had already read and acted on; muster msg read then returned 'nothing unread': approval #23 in group ordo-2+ordo-integrator, and #20, #25 and #30 in ordo-3+ordo-integrator. In each, the duplicate came after the worker's own post to the group (a plan, report or reply). No work was repeated, but each costs a Codex turn and a message asking the integrator to file it.",
+      "created_at_millis": 1792356213563,
+      "id": "c_2k4Y3gqV8"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -39,7 +45,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792260196450,
+  "updated_at_millis": 1792356213563,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
