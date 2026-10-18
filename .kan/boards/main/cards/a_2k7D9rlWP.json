@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "keys-for-a-name",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792362560030,
+  "creator": "Alexander Terp",
+  "description": "2026-10-18, in ./release minor's gate for 0.17.0: crates/muster-daemon/tests/daemon/typing.rs waited 20 s for the second p1's file to hold \"z\" and found it empty, with the machine's load at 22.2 on 6 performance cores (other agents' jobs and a browser beside the gate's 15). It passed 5/5 alone in under a second and 60/60 run 12 at a time, and the same tree's gate passed an hour earlier. Read as starvation for now. If it comes back at ordinary load, suspect the input path routing a key for a reused name to the closed pane, which is what the test is about.",
+  "id": "a_2k7D9rlWP",
+  "position": "b1S",
+  "title": "🎲 keys_for_a_name_reach_the_pane_that_has_it_now timed out at load 22",
+  "type": "bug",
+  "updated_at_millis": 1792362560030,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792362560030}
+  ]
+}

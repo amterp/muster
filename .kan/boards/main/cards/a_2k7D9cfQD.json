@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-bridge-that-stops",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792362559884,
+  "creator": "Alexander Terp",
+  "description": "2026-10-18, CI's x86_64 Linux job on the 0.17.0 release commit (2241a9a7, run 39170393612): crates/muster-daemon/tests/daemon/streams.rs:318 saw 62.5 ms between the last Output frame and Behind, where it asserts at least 80 ms. The arm64 job and the macOS gate passed on the same commit, and stream.rs is unchanged since 0.16.0. The daemon's GRACE is 100 ms, but the test timestamps an Output frame when its own thread reads it, not when the daemon sent it, so a reader descheduled for 20 ms or more on a shared runner shrinks the measured silence below the bound. Re-running the job in place got the release through. Worth timing the grace on the daemon's side (its log, or a field on Behind), or bounding something the reader's scheduling cannot shorten.",
+  "id": "a_2k7D9cfQD",
+  "position": "b17",
+  "title": "🎲 a_bridge_that_stops_acknowledging_is_behind_after_a_grace measures the grace on the reader's clock",
+  "type": "bug",
+  "updated_at_millis": 1792362559884,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792362559884}
+  ]
+}
