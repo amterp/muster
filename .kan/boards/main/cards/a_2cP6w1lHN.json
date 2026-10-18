@@ -36,6 +36,12 @@
       "body": "Four more instances on 2026-10-18 (muster 0.15.x, Mac Mini), all Codex workers (gpt-6.1-sol) in one parallel-work round, each woken again for a message it had already read and acted on; muster msg read then returned 'nothing unread': approval #23 in group ordo-2+ordo-integrator, and #20, #25 and #30 in ordo-3+ordo-integrator. In each, the duplicate came after the worker's own post to the group (a plan, report or reply). No work was repeated, but each costs a Codex turn and a message asking the integrator to file it.",
       "created_at_millis": 1792356213563,
       "id": "c_2k4Y3gqV8"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "One more, same round, ~17:40: Codex worker in pane p2cnhzb1m5 was woken again for #35 (ordo-3+ordo-integrator) after it had read and executed #35 and posted its report #37; muster msg read returned 'nothing unread'. Same pattern: the duplicate follows the worker's own post.",
+      "created_at_millis": 1792358933690,
+      "id": "c_2k5gozNj0"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -45,7 +51,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792356213563,
+  "updated_at_millis": 1792358933690,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
