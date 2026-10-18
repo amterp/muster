@@ -33,6 +33,12 @@
       "body": "2026-10-17: the owner chose not to run the hand checks listed above. Main is the everyday Muster now, so issues get found and filed through use instead. Least covered by the suite, so likeliest to surface: the helpers' fold in the agent list and the closed-maker banner (Swift unit tests only, no rendered check).",
       "created_at_millis": 1792268456973,
       "id": "c_2jTj6nqp0"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Done 2026-10-18 14:16: main at 1a97670d (callsigns) built as 0.16.2-dev with MUSTER_INSTALL=release, now /Applications/Muster.app; 0.16.1-dev kept as Muster.app.0.16.1-dev. The new daemon took all 8 panes by handoff about a second after launch and every agent kept running. Bundle took 6.3 min with deps/ghostty and deps/.built copied in by cp -c. Run tai reinstall from ~/src/tai-personal afterwards: its codex-settings post_install step uses a cwd-relative path. Next main build: 0.16.3-dev.",
+      "created_at_millis": 1792351110124,
+      "id": "c_2k2PIKETy"
     }
   ],
   "created_at_millis": 1791810415852,
@@ -42,7 +48,7 @@
   "position": "a3k",
   "title": "A bundle built from a checkout starts its own daemon instead of taking over the installed one",
   "type": "bug",
-  "updated_at_millis": 1792268456973,
+  "updated_at_millis": 1792351110124,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791810415852},
     {"field":"column","value":"next","at":1792211139654}
