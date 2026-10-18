@@ -42,6 +42,12 @@
       "body": "One more, same round, ~17:40: Codex worker in pane p2cnhzb1m5 was woken again for #35 (ordo-3+ordo-integrator) after it had read and executed #35 and posted its report #37; muster msg read returned 'nothing unread'. Same pattern: the duplicate follows the worker's own post.",
       "created_at_millis": 1792358933690,
       "id": "c_2k5gozNj0"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another, ~17:43: Codex worker p2cnhzb1m5 re-woken for #41 (ordo-3+ordo-integrator) after it had completed that work and posted #43; 'nothing unread'. New side effect: the duplicate turn ended idle without a post, so @muster then sent the integrator a 'went idle without posting to you' notice (#44), which sent the integrator to investigate a worker that had nothing wrong.",
+      "created_at_millis": 1792364191221,
+      "id": "c_2k7tascf5"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -51,7 +57,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792358933690,
+  "updated_at_millis": 1792364191221,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
