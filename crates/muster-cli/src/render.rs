@@ -77,9 +77,10 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             let callsign = Some(&made.callsign).filter(|callsign| !callsign.is_empty());
             json!({ "pane": made.pane_id, "callsign": callsign }).to_string()
         } else {
-            // The name alone, with nothing around it, because the next line of a script is
-            // `muster pane send --pane "$(muster pane new --down)"`.
-            made.pane_id.clone()
+            // The callsign alone, with nothing around it, because the next line of a script, or
+            // an agent's next message, is `muster pane send --pane "$(muster pane new --down)"`.
+            // The id from a daemon that draws none.
+            if made.callsign.is_empty() { made.pane_id.clone() } else { made.callsign.clone() }
         }),
         // The pane it went to, as `Made` prints one. Nothing when nothing was asking, which is no
         // failure: `[ -n "$(muster focus --asking)" ]` is how a script asks whether it went.

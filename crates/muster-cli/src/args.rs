@@ -137,8 +137,8 @@ puts a tab's name in a pane's environment, because nothing has to tell a tab whi
 there is no equivalent of $MUSTER_PANE: read the name out of `muster window`, where every pane \
 says which tab holds it.
 
-`pane new` prints the name of the pane it made, which is what makes the next line of a script \
-possible, and `tab new` prints the pane it put in the tab. Neither moves the keyboard: making a \
+`pane new` prints the callsign of the pane it made, which is what makes the next line of a script \
+possible, and `tab new` prints the pane it put in the tab, the same way; --json adds the id. Neither moves the keyboard: making a \
 pane is not the same act as looking at one, and an agent opening three panes should not drag \
 somebody's cursor through all three. Ask with --focus.
 

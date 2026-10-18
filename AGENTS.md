@@ -129,8 +129,8 @@ core and this is the other door into it.
 
     muster window
     muster pane new --down --run claude --name "🤖 A"
-    muster msg post --to p1w3r07bsd --file brief.md
-    muster pane wait --pane p1w3r07bsd --until idle,blocked
+    muster msg post --to otter --file brief.md
+    muster pane wait --pane otter --until idle,blocked
     muster tab focus t1w3r07bsd
     muster window --json
     muster window --layout

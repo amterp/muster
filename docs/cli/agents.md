@@ -12,10 +12,10 @@ The agent's session is called what the pane is called, too, where its harness al
 Code and Codex do, through `/rename` - and a session renamed in its harness renames the pane
 (`muster docs harnesses`).
 
-`pane new` prints the id of the pane it made - `p1w3r0ab2n` - once the window has heard of it,
-which is what makes the next line possible. `--json` adds the callsign its daemon drew it,
-`{"pane": "p1w3r0ab2n", "callsign": "otter"}`, which is what to tell another agent or the
-person to call it:
+`pane new` prints the callsign of the pane it made - `otter` - once the window has heard of it,
+which is what makes the next line possible, and what to tell another agent or the person to call
+it. `--json` adds its id, `{"pane": "p1w3r0ab2n", "callsign": "otter"}`, which a script that
+holds on to the pane after it closes should keep:
 
     B=$(muster pane new --down --run claude --name '🤖 B')
     muster msg post --to "$A" --file parser-brief.md

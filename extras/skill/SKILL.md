@@ -87,8 +87,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
 - **Name every pane you make**, `--name builder`, so a person can tell your agents apart. The
-  name shows beside its callsign. Names may repeat, so address a pane you made by its callsign,
-  which `muster pane new --json` prints beside its id.
+  name shows beside its callsign. Names may repeat, so address a pane you made by the callsign
+  `muster pane new` prints.
 - **Make the agents you run for your own work with `--helper`.** They are hidden and quiet: the
   person does not see or hear from them, and you are told, in a message from `@muster`, when one is
   blocked, stuck, or idle without having reported to you. Name each one. When the person wants to

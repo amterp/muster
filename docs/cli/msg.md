@@ -5,8 +5,8 @@ muster-daemon on this machine. It replaces typing into another agent's pane with
 send` for anything that is a message: a message of any length arrives whole, and nobody waits in
 a loop for it.
 
-    muster pane new --down --run claude      # prints p1w3r07bsd
-    muster msg post --to p1w3r07bsd --file brief.md
+    muster pane new --down --run claude      # prints otter
+    muster msg post --to otter --file brief.md
     muster msg join --name critic --group review
     muster msg post --group review "The parser change is in; rebase before touching lexer.rs."
     muster msg read
@@ -83,8 +83,8 @@ an unaddressed post from someone in several, is refused until it says which.
 message in it. An unaddressed post wakes every member but its author, unless the group's policy
 says otherwise.
 
-**`--to` takes a pane too**, by its callsign, `otter`, by a name somebody gave it, or by its id,
-such as the one `muster pane new` prints (`muster docs overview`). An agent in that pane need not
+**`--to` takes a pane too**, by its callsign, `otter`, such as the one `muster pane new` prints,
+by a name somebody gave it, or by its id (`muster docs overview`). An agent in that pane need not
 have joined anything, or even have started yet: it becomes a participant known by the pane's id
 and shown by its callsign, and whatever runs `muster msg` in that pane from then on is it. A group
 made for a pair is named by the panes' callsigns, `muster-integrator+otter`. Once the pane closes

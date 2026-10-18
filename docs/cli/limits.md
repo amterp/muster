@@ -464,8 +464,8 @@ a pane that changed during the gap is heard as one change, stamped with the mome
 back, and anything it did in between - a finish followed by new work - is not heard at all. If the
 window quits, a watch ends with exit 3.
 
-`pane new` and `tab new` print a pane's id once the window has heard of the pane, so the next
-command can name it. A wait on an id or name no pane has is refused at once.
+`pane new` and `tab new` print a pane's callsign once the window has heard of the pane, so the
+next command can name it. A wait on an id or name no pane has is refused at once.
 
 A wait on `--context` is met only by what an agent's adapter reports. A harness with no adapter
 never reports its context, and Muster cannot tell that apart from one that has not reported yet, so

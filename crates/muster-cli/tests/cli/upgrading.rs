@@ -24,7 +24,10 @@ fn an_upgrade_from_a_pane_runs_brew_in_a_tab_and_prints_it() {
     let (code, out, errors) = muster(&["upgrade"], &socket);
     assert_eq!(code, 0, "`muster upgrade` failed: {errors}");
     let pane = out.trim();
-    assert!(pane.starts_with('p'), "`muster upgrade` printed {out:?} rather than its pane");
+    assert!(
+        !pane.is_empty() && pane.bytes().all(|byte| byte.is_ascii_lowercase()),
+        "`muster upgrade` printed {out:?} rather than its pane's callsign"
+    );
     until(
         "the fake brew to run",
         || std::fs::read_to_string(&ran).is_ok_and(|text| !text.is_empty()),

@@ -58,13 +58,11 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     // it, and is told what it is called - naming no pane, because it is standing in one.
     let made = run(&["pane", "new", "--down", "--name", "🤖 A"], &inside(&first));
     assert_eq!(made.code, 0, "`muster pane new` failed: {}", made.errors);
-    let made_pane = made.out.trim().to_string();
-    assert!(
-        made_pane.starts_with('p') && made_pane != first,
-        "`muster pane new` printed {made_pane:?}, which is not the name of a new pane. A caller \
-         that cannot learn the name cannot address what it just made, and the name was minted \
-         inside that call."
-    );
+    let called = made.out.trim().to_string();
+    let made_pane = until_some("the window to list the new pane `pane new` named", || {
+        let window = json_from(&run(&["window", "--json"], &inside(&first)));
+        id_of(&window, &called).filter(|made| *made != first)
+    });
 
     let window =
         until_some("the window to list the pane under the name the split asked for", || {
@@ -168,15 +166,15 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
             made.out.trim().to_string()
         })
         .collect();
-    // The panes of the hidden tab holding the first helper, each with whose helper it is and
-    // whether it is quiet.
+    // The panes of the hidden tab holding the first helper, by callsign as `pane new` printed
+    // them, each with whose helper it is and whether it is quiet.
     let shared_tab = |window: &Value| -> Option<Vec<(String, Value, Value)>> {
         let tabs = window["hidden"].as_array()?;
         let panes = tabs
             .iter()
             .filter_map(|tab| tab["panes"].as_array())
-            .find(|panes| panes.iter().any(|pane| pane["pane"] == json!(helpers[0])))?;
-        let named = |pane: &Value| pane["pane"].as_str().unwrap_or_default().to_string();
+            .find(|panes| panes.iter().any(|pane| pane["callsign"] == json!(helpers[0])))?;
+        let named = |pane: &Value| pane["callsign"].as_str().unwrap_or_default().to_string();
         Some(
             panes
                 .iter()
@@ -840,20 +838,18 @@ fn a_tab_is_made_and_equipped(daemon: &Daemon, environment: &[(&str, String)]) -
         environment,
     );
     assert_eq!(made.code, 0, "`muster tab new` failed: {}", made.errors);
-    let pane = made.out.trim().to_string();
-    assert!(
-        pane.starts_with('p'),
-        "`muster tab new` printed {pane:?}, which is not the name of a pane. It prints the pane \
-         rather than the tab because the pane is what the next line of a script sends into."
-    );
+    // The pane rather than the tab, because the pane is what the next line of a script sends
+    // into, and by its callsign, as `pane new` names one.
+    let called = made.out.trim().to_string();
     until_file(&ran, "the command `tab new --run` carried to have run in the tab's pane");
 
-    let tab = until_some("the window to describe the tab that pane is in", || {
+    until_some("the window to describe the tab that pane is in", || {
         let window = json_from(&run(&["window", "--json"], environment));
-        let held = window["panes"].as_array()?.iter().find(|held| held["pane"] == json!(pane))?;
-        (held["given_name"] == json!("🤖 B")).then(|| held["tab"].as_str())?.map(str::to_string)
-    });
-    (pane, tab)
+        let held =
+            window["panes"].as_array()?.iter().find(|held| held["callsign"] == json!(called))?;
+        let tab = (held["given_name"] == json!("🤖 B")).then(|| held["tab"].as_str())??;
+        Some((held["pane"].as_str()?.to_string(), tab.to_string()))
+    })
 }
 
 /// A pane moves to another tab, and what was running in it goes on running.
@@ -1052,4 +1048,11 @@ fn callsign(window: &Value, id: &str) -> String {
     let pane = panes.into_iter().find(|pane| pane["pane"] == json!(id));
     pane.and_then(|pane| pane["callsign"].as_str().map(str::to_string))
         .unwrap_or_else(|| panic!("{id} has no callsign in {window}"))
+}
+
+/// The id `muster window --json` gives the pane called `callsign`, once it lists one.
+fn id_of(window: &Value, callsign: &str) -> Option<String> {
+    let panes = window["panes"].as_array()?;
+    let pane = panes.iter().find(|pane| pane["callsign"] == json!(callsign))?;
+    pane["pane"].as_str().map(str::to_string)
 }

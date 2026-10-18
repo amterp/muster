@@ -179,7 +179,15 @@ fn panes_are_reached_by_their_words(here: &Here) {
     assert!(row["label"].as_str().is_some_and(|label| label.starts_with(&p2)), "{listed}");
 }
 
-/// The word `pane`'s daemon drew it.
+/// The id of the pane `pane new` makes with `args`, which a request straight to the daemon needs:
+/// its plain output is the callsign.
+fn made_id(here: &Here, args: &[&str]) -> String {
+    let said = ok(&here.muster(&[&["--json", "pane", "new"][..], args].concat()));
+    let said: Value = serde_json::from_str(&said).unwrap();
+    said["pane"].as_str().unwrap_or_else(|| panic!("no pane: {said}")).to_string()
+}
+
+/// The callsign `pane`'s daemon drew it.
 fn callsign_of(here: &Here, pane: &str) -> String {
     let held = snapshot(&mut here.daemon.connect());
     let record = held.panes.into_iter().find(|record| record.pane == pane);
@@ -387,8 +395,7 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
     let mut control = here.daemon.connect();
     // The pane is told the window the caller was, so it drives that window once one is back.
     let told = format!("test \"$MUSTER_SOCKET\" = '{}' && echo window-told", here.window);
-    let made = ok(&here
-        .muster(&["pane", "new", "--pane", "p1", "--down", "--name", "worker", "--run", &told]));
+    let made = made_id(here, &["--pane", "p1", "--down", "--name", "worker", "--run", &told]);
     until_text(&mut control, &made, "window-told");
     let held = snapshot(&mut control);
     let record = held.panes.iter().find(|pane| pane.pane == made);
@@ -400,7 +407,7 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
         "a split of p1 lands in p1's tab: {tab:?}"
     );
 
-    let hidden = ok(&here.muster(&["pane", "new", "--pane", "p1", "--hidden"]));
+    let hidden = made_id(here, &["--pane", "p1", "--hidden"]);
     let held = snapshot(&mut control);
     let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &hidden)).expect("made in a tab");
     assert!(tab.hidden && !tab_shape_holds(tab, "p1"), "a hidden tab of its own: {tab:?}");
@@ -451,8 +458,8 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
 /// listed as its own, and shown and hidden together.
 fn helpers_are_made_by_the_daemon(here: &Here) {
     let mut control = here.daemon.connect();
-    let first = ok(&here.muster(&["pane", "new", "--helper-of", "p1"]));
-    let second = ok(&here.muster(&["pane", "new", "--helper-of", "p1", "--notify"]));
+    let first = made_id(here, &["--helper-of", "p1"]);
+    let second = made_id(here, &["--helper-of", "p1", "--notify"]);
     let held = snapshot(&mut control);
     let maker = held.panes.iter().find(|pane| pane.pane == "p1").expect("p1 is held");
     let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &first)).expect("made in a tab");
