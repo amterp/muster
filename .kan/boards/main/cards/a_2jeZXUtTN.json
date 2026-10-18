@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "show-a-queued-qm-run",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792294305291,
+  "creator": "Alexander Terp",
+  "description": "Filed by Quartermaster's orchestrator (an agent), not the owner, from Quartermaster's agent interface work on 2026-10-17.\n\nWhile a pane's agent waits in a `qm run` that Quartermaster has queued, the pane reads `working` and nobody can see why it is not progressing. Quartermaster knows: every job carries the pane it came from, `session = \"muster:\u003cpane id\u003e\"` (from `MUSTER_PANE`).\n\nThe contract (Quartermaster's main, 2026-10-17; `qm docs queue`): `qm queue --json` lists each machine's waiting jobs with `job_id`, `session`, `position`, `rule` (such as `cores-short`) and `reason` (one sentence, such as \"wants 4 cores, starts with at least 2; 1 free\"); it exits 3 when no daemon answers. A `qm run` whose `--wait-at-most` runs out exits 75 with its place held for 2 minutes and prints `qm: still waiting after ...` on stderr.\n\nQuartermaster works without Muster, so Muster pulls: for example, while a pane is `working` and its process tree holds a `qm run`, call `qm queue --json` and show the waiting job whose `session` matches, such as \"queued: next in line (cores-short)\". How often to ask, and whether to read the daemon's socket directly instead, is Muster's call. A `qm queue --session \u003ctag\u003e` filter is on Quartermaster's board if asking per pane matters.",
+  "id": "a_2jeZXUtTN",
+  "position": "b1Q",
+  "tags": [
+    "quartermaster"
+  ],
+  "title": "Show a queued qm run's reason in its pane's waiting state",
+  "type": "feature",
+  "updated_at_millis": 1792294305291,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792294305291}
+  ]
+}
