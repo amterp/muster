@@ -19,7 +19,7 @@
 //! manifests and reads the override directory without it, and `pane.read` formats its page
 //! without it.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::ffi::OsString;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
@@ -200,6 +200,7 @@ impl Shared {
                     host: effects::host_name(),
                     reserved: HashSet::new(),
                     naming: HashMap::new(),
+                    released: VecDeque::new(),
                     persister,
                     log,
                     stopping: false,
@@ -422,6 +423,9 @@ pub(crate) struct Session {
     /// Pane names a create or a restore has claimed while its process starts, and the pane each
     /// is for, so that no other pane can be called the same meanwhile.
     naming: HashMap<String, String>,
+    /// The words of the panes that closed most recently, oldest first, which a draw passes over
+    /// while it can.
+    released: VecDeque<String>,
     /// Writes down what a restart needs, whenever it changes.
     persister: Arc<Persister>,
     /// The daemon's own log, which a connection can follow. None when logging is off.
@@ -805,6 +809,10 @@ fn flag_names(arguments: &[String]) -> String {
         .join(" ")
 }
 
+/// How many closed panes' words a draw passes over, newest first. Under half the list, so a
+/// machine with a few dozen panes open still has most words to draw from.
+const RELEASED_WORDS: usize = 128;
+
 /// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
 const DIRECTORY_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
@@ -877,6 +885,7 @@ impl Lost {
 /// brought back is kept in a copy of the file, since the next write leaves it out.
 pub(crate) fn restore(shared: &Shared, state: persist::State) {
     let started = std::time::Instant::now();
+    shared.lock().released = state.released_words.into();
     let saved: HashMap<String, persist::Pane> =
         state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect();
     let names: Vec<(String, Vec<String>)> = state
@@ -1385,10 +1394,10 @@ impl Session {
             None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
         };
 
-        let word = self.draw_word(given.as_deref());
+        let word = self.draw_word(given.as_deref(), Some(&cwd));
         let name = given.clone().unwrap_or_else(|| word.clone());
-        let (argv, environment) =
-            self.launch(&create.pane, &name, create.command.as_deref(), &create.env);
+        let which = spawn::Which { pane: &create.pane, name: &name, callsign: &word };
+        let (argv, environment) = self.launch(which, create.command.as_deref(), &create.env);
 
         self.reserved.insert(create.pane.clone());
         if let Some(name) = target.new_tab() {
@@ -1417,13 +1426,12 @@ impl Session {
     /// first when there is one.
     fn launch(
         &self,
-        pane: &str,
-        name: &str,
+        which: spawn::Which<'_>,
         command: Option<&str>,
         requested: &HashMap<String, String>,
     ) -> Launched {
         let shell = self.settings.shell.clone().unwrap_or_default();
-        self.launch_with(&shell, spawn::Which { pane, name }, command, requested)
+        self.launch_with(&shell, which, command, requested)
     }
 
     /// As [`Session::launch`], under `shell` rather than the configured one.
@@ -2274,6 +2282,12 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
+        if let Some(word) = removed.record.word.clone() {
+            self.released.push_back(word);
+            if self.released.len() > RELEASED_WORDS {
+                self.released.pop_front();
+            }
+        }
         let maker = &removed.record;
         self.orphan(&maker.pane, maker.name().unwrap_or(&maker.pane));
         removed.io.mark_closed();
@@ -2466,7 +2480,7 @@ impl Session {
         let word = self.panes[index].record.word.clone();
         let redrawn = match (given, word) {
             (None, Some(word)) if self.called(&word, &rename.pane).is_some() => {
-                Some(self.draw_word(None))
+                Some(self.draw_word(None, None))
             }
             _ => None,
         };
@@ -3002,6 +3016,7 @@ impl Session {
                     maker_closed: pane.record.maker_closed,
                 })
                 .collect(),
+            released_words: self.released.iter().cloned().collect(),
         }
     }
 
@@ -3056,15 +3071,14 @@ impl Session {
             // The word it had, unless a client's pane took it first; a state file from before
             // words has none, and gets one now.
             let mut pane = pane.clone();
-            let word = pane
-                .word
-                .take()
-                .filter(|word| self.called(word, name).is_none())
-                .unwrap_or_else(|| self.draw_word(given_name(pane.label.as_deref())));
+            let word =
+                pane.word.take().filter(|word| self.called(word, name).is_none()).unwrap_or_else(
+                    || self.draw_word(given_name(pane.label.as_deref()), Some(&pane.cwd)),
+                );
             self.naming.insert(word.clone(), name.to_string());
             pane.word = Some(word.clone());
             let called = given_name(pane.label.as_deref()).unwrap_or(&word).to_string();
-            let which = spawn::Which { pane: name, name: &called };
+            let which = spawn::Which { pane: name, name: &called, callsign: &word };
             let shell = self.settings.shell.clone().unwrap_or_default();
             let resume = pane.resume.clone().filter(|_| self.resumes_agents());
             let command = resume.as_ref().map(|resume| {
@@ -3355,7 +3369,8 @@ impl Session {
         screen.replayed_from(resuming.oldest_row);
         // A daemon from before words hands its panes over with none.
         if record.word.is_none() {
-            record.word = Some(self.draw_word(given_name(record.label.as_deref())));
+            let besides = given_name(record.label.as_deref());
+            record.word = Some(self.draw_word(besides, Some(Path::new(&record.cwd))));
         }
         self.next_serial += 1;
         let watching = Watching {
@@ -3514,11 +3529,31 @@ impl Session {
 
     /// A word for a pane that no pane here is called, nor `besides`, the name it is being given,
     /// nor an agent here joined messaging by: a post to that word would mean both.
-    fn draw_word(&self, besides: Option<&str>) -> String {
+    ///
+    /// Passed over while another is free: a word found in the pane's directory or its name, or
+    /// in what any pane or tab here is called, runs in or shows, since `swan` would read as the
+    /// project in a project called swan; and a word a pane closed with recently, which a message
+    /// or a person may still use for that pane.
+    fn draw_word(&self, besides: Option<&str>, cwd: Option<&Path>) -> String {
         let joined = poison::lock(&self.joined, "daemon.messages.joined");
-        muster_core::words::draw(|word| {
-            besides == Some(word) || self.called(word, "").is_some() || joined.contains_key(word)
-        })
+        let mut around: Vec<String> = Vec::new();
+        around.extend(besides.map(str::to_string));
+        around.extend(cwd.map(|cwd| cwd.display().to_string()));
+        for pane in &self.panes {
+            let record = &pane.record;
+            around.extend([record.cwd.clone(), record.title.clone()]);
+            around.extend(record.label.clone());
+        }
+        around.extend(self.tabs.iter().filter_map(|tab| tab.label.text.clone()));
+        let around = around.join("\n").to_lowercase();
+        muster_core::words::draw(
+            |word| {
+                besides == Some(word)
+                    || self.called(word, "").is_some()
+                    || joined.contains_key(word)
+            },
+            |word| around.contains(word) || self.released.iter().any(|released| released == word),
+        )
     }
 
     /// The live agent that joined messaging by `name`, other than one in `naming`, described for

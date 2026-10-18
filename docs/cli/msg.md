@@ -83,8 +83,8 @@ an unaddressed post from someone in several, is refused until it says which.
 message in it. An unaddressed post wakes every member but its author, unless the group's policy
 says otherwise.
 
-**`--to` takes a pane too**, by its id, such as the one `muster pane new` prints, or by its name,
-`otter` (`muster docs overview`). An agent in that pane need not have joined anything, or even
+**`--to` takes a pane too**, by its callsign, `otter`, by a name somebody gave it, or by its id,
+such as the one `muster pane new` prints (`muster docs overview`). An agent in that pane need not have joined anything, or even
 have started yet: it becomes a participant known by the pane's id and shown by the pane's name,
 and whatever runs `muster msg` in that pane from then on is it. A group made for a pair is named
 by what its panes are called, `muster-integrator+otter`. Once the pane closes its name is free,
@@ -107,7 +107,7 @@ is called, then a name. A name that means more than one agent - a pane here and 
 linked machine, or a pane and a participant who joined by that name - is refused, naming each,
 and its id or `name@machine` says which. A participant whose session has gone, and whose pane has
 closed with it, does not count: it cannot join by that name again while a pane goes by it, so the
-pane is the only agent the name can reach. A daemon draws no pane a word somebody here joined by.
+pane is the only agent the name can reach. A daemon draws no pane a callsign somebody here joined by.
 `group add` takes a pane by its name as `--to` does.
 
 ## A group's policy

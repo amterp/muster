@@ -26,21 +26,27 @@ panes keep working - and the window keeps its tabs, so reopening it comes back t
 
 ## Pane names
 
-A pane has an id and a name, and every command takes either.
+Call a pane by its callsign. Every pane gets one from its daemon when it is made: a short word
+such as `otter`, `maple` or `cobalt`, which the agent list draws in blue at the start of the
+pane's row and `muster window` prints at the start of its line. Every command that takes a pane
+takes its callsign, and so does `msg post --to`. Renaming a pane does not change it.
+
+A callsign is unique among one machine's open panes, and no two begin with the same three
+letters, so three keystrokes say which one you mean. Two machines can each have an `otter`, and
+`otter@devenv` says which, by the machine name below; a callsign two panes share is refused,
+naming each one. A daemon draws a callsign no open pane there holds, and while others are free it
+passes over one that appears in the pane's directory or in what its other panes and tabs are
+called, so `swan` is not drawn inside a project called swan, and over the callsigns of the panes
+that closed most recently, so a callsign still in somebody's messages does not reach a new pane
+straight away.
+
+A pane can also be given a name, with `pane new --name` or `pane rename`, and commands take that
+too. The given name is unique on its machine as well, and cannot be another pane's callsign.
 
 The id looks like `p1w3r07bsd`. Muster mints it rather than borrowing the daemon's own, it is
-unique across every machine a window shows, and it is never reused - so an id is a complete
-address on its own, and the one a script should keep.
-
-The name is what you type. It is the name somebody gave the pane, with `pane new --name` or `pane
-rename`, or else a short word its daemon drew when it made the pane: `otter`, `maple`, `cobalt`,
-no two of which begin with the same three letters. A name is unique among one machine's open
-panes and free again once its pane closes. Two machines can each have an `otter`, and
-`otter@devenv` says which, by the machine name below; a name two panes share is refused, naming
-each one. A renamed pane keeps its word: the agent list shows it beside the new name, and no other
-pane on that machine is drawn it or named it, though the pane answers only to its new name until
-the name is taken away. `muster window` leads a pane's row with its name, and `--json` carries it
-as `name`.
+unique across every machine a window shows, and it is never reused, where a callsign is free
+again once its pane closes. A script that holds on to a pane should keep its id. `muster window
+--json` carries all three, as `pane`, `callsign` and `name`.
 
 Every command that acts on a pane takes `--pane`. Leaving it out means the pane the command is
 running in, read from `$MUSTER_PANE`, and failing that the pane the window's keyboard is on.
@@ -48,10 +54,11 @@ Giving it empty is not leaving it out: `--pane ""` is refused, as is an empty ta
 `msg post --to` name, because it is nearly always a shell variable that was never set, and the pane
 the keyboard is on is the worst place for that to land.
 
-Muster sets `$MUSTER_PANE`, the id, in every pane it creates, and `$MUSTER_PANE_NAME`, what the
-pane was called as it was made: a program's environment cannot follow a rename, so `muster
-window` says what a pane is called now. A pane created by something else has an id and a name
-and can be addressed by anybody, but has nothing in its environment - see `muster docs limits`.
+Muster sets three variables in every pane it creates: `$MUSTER_PANE`, the id, `$MUSTER_CALLSIGN`,
+the callsign, and `$MUSTER_PANE_NAME`, what the pane was called as it was made. A program's
+environment cannot follow a rename, so `muster window` says what a pane is called now. A pane
+created by something else has an id and a callsign and can be addressed by anybody, but has
+nothing in its environment - see `muster docs limits`.
 
 ## Tab names
 

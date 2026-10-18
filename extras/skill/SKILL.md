@@ -42,6 +42,11 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Read `muster window` before you act**, and check `daemons[].state` in the same answer:
   `stale` means the rest of it is an old picture. A pane you made may since have been closed,
   renamed or moved by the person at the keyboard.
+- **Call a pane by its callsign**, the short word that starts its line in `muster window` and
+  that the person sees in blue in the agent list (`otter`). When the person names a pane with
+  one unfamiliar word, it is almost always a callsign. `--pane` and `msg post --to` take it
+  whether or not the pane has been renamed, and yours is `$MUSTER_CALLSIGN`. Keep the pane's id
+  only for a script that must hold on to the pane after it closes.
 - **Ask the person with `muster msg post --to @human`.** It notifies them, and their answer
   wakes you; do not sit at your prompt hoping they notice. On a devenv this reaches the person
   on the laptop.
@@ -81,9 +86,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   it has ended, and the prompt is typed once the compaction has run.
 - **Do not take the keyboard.** `pane new` leaves focus where it is, which is right: the person is
   reading something. `--focus` and `muster focus` are for an agent that needs them.
-- **Name every pane you make**, `--name builder`, so a person can tell your agents apart. A pane
-  you do not name goes by a word Muster drew (`otter`), and `--pane` and `msg post --to` take
-  either name as they take the pane's id; keep the id for anything that must outlive the pane.
+- **Name every pane you make**, `--name builder`, so a person can tell your agents apart. The
+  name shows beside its callsign, and `--pane` and `msg post --to` take either.
 - **Make the agents you run for your own work with `--helper`.** They are hidden and quiet: the
   person does not see or hear from them, and you are told, in a message from `@muster`, when one is
   blocked, stuck, or idle without having reported to you. Name each one. When the person wants to

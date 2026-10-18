@@ -20,6 +20,10 @@ const PANE_NAME: &str = "MUSTER_PANE";
 /// can change a running process's environment, so `muster window` says what it is called now.
 const PANE_CALLED: &str = "MUSTER_PANE_NAME";
 
+/// The callsign its daemon drew the pane (`otter`), which reaches it whatever it is renamed, so
+/// an agent can tell others what to call it.
+const CALLSIGN: &str = "MUSTER_CALLSIGN";
+
 /// Where a pane's command travels to its shell (`argv` says why), which the command and
 /// everything it starts can also read.
 pub(crate) const PANE_COMMAND: &str = "MUSTER_PANE_COMMAND";
@@ -35,7 +39,7 @@ pub(crate) const DAEMON_SOCKET: &str = "MUSTER_DAEMON_SOCKET";
 
 /// Whether `name` is one of the variables the daemon sets on every pane itself.
 pub(crate) fn is_reserved(name: &str) -> bool {
-    [PANE_NAME, PANE_CALLED, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name)
+    [PANE_NAME, PANE_CALLED, CALLSIGN, PANE_COMMAND, DAEMON, DAEMON_SOCKET].contains(&name)
 }
 
 /// How a pane's programs reach the daemon that owns it.
@@ -53,9 +57,10 @@ pub(crate) struct Reachable {
 /// `MUSTER_SOCKET`; the daemon supplies the others. `MUSTER_LOG_FILE` names the log of the run
 /// that started the daemon, which the daemon outlives: a `muster` run in a pane would write
 /// into that run's file, so only a pane's create may name one.
-const NOT_INHERITED: [&str; 7] = [
+const NOT_INHERITED: [&str; 8] = [
     PANE_NAME,
     PANE_CALLED,
+    CALLSIGN,
     "MUSTER_SOCKET",
     PANE_COMMAND,
     DAEMON,
@@ -286,6 +291,7 @@ fn shell_features(cursor: Option<&proto::Cursor>, shell: &proto::Shell) -> Strin
 pub(crate) struct Which<'a> {
     pub(crate) pane: &'a str,
     pub(crate) name: &'a str,
+    pub(crate) callsign: &'a str,
 }
 
 /// The settings a pane's environment follows.
@@ -341,6 +347,7 @@ pub(crate) fn environment(
     put(&mut environment, "GHOSTTY_SHELL_FEATURES", shell_features(cursor, shell));
     put(&mut environment, PANE_NAME, which.pane);
     put(&mut environment, PANE_CALLED, which.name);
+    put(&mut environment, CALLSIGN, which.callsign);
     if let Some(command) = command {
         put(&mut environment, PANE_COMMAND, command);
     }
@@ -500,7 +507,7 @@ mod tests {
         let environment = environment(
             &inherited,
             &requested,
-            Which { pane: "p1", name: "otter" },
+            Which { pane: "p1", name: "builder", callsign: "otter" },
             None,
             &Data::unchecked(PathBuf::from(DATA)),
             &reachable(),
@@ -513,7 +520,8 @@ mod tests {
                 ("MUSTER_DAEMON", "/opt/muster/muster-daemon"),
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
-                ("MUSTER_PANE_NAME", "otter"),
+                ("MUSTER_PANE_NAME", "builder"),
+                ("MUSTER_CALLSIGN", "otter"),
                 ("MUSTER_SOCKET", "/window.sock"),
                 ("PATH", "/usr/bin"),
                 ("TERM", "xterm-ghostty"),
@@ -549,7 +557,7 @@ mod tests {
             environment(
                 &inherited,
                 &HashMap::new(),
-                Which { pane: "p1", name: "otter" },
+                Which { pane: "p1", name: "otter", callsign: "otter" },
                 None,
                 &data,
                 &reachable(),
@@ -590,7 +598,7 @@ mod tests {
         let environment = environment(
             &inherited,
             &requested,
-            Which { pane: "p1", name: "otter" },
+            Which { pane: "p1", name: "otter", callsign: "otter" },
             None,
             &Data::unchecked(PathBuf::from(DATA)),
             &reachable(),
@@ -605,6 +613,7 @@ mod tests {
                 ("MUSTER_DAEMON_SOCKET", "/run/daemon.sock"),
                 ("MUSTER_PANE", "p1"),
                 ("MUSTER_PANE_NAME", "otter"),
+                ("MUSTER_CALLSIGN", "otter"),
                 ("TERM", "xterm-ghostty"),
                 ("GHOSTTY_BIN_DIR", "/data/bin"),
                 ("TERMINFO_DIRS", "/data/terminfo:/opt/terminfo:"),

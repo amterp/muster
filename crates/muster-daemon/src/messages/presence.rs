@@ -86,6 +86,8 @@ pub(crate) struct Panes {
     open: HashMap<String, bool>,
     /// What each open pane is called, by its name.
     names: HashMap<String, String>,
+    /// The callsign each open pane was drawn, by its name, which it answers to after a rename.
+    callsigns: HashMap<String, String>,
     /// What each open pane with a title shows in its title bar, by its name.
     titles: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
@@ -143,10 +145,11 @@ impl Panes {
                 }
             });
             let name = record.name().map(str::to_string);
+            let callsign = record.word.clone().filter(|word| !word.is_empty());
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
             let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
-            (record.pane.clone(), seen, young, name, title, maker)
+            (record.pane.clone(), seen, young, name, callsign, title, maker)
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -155,7 +158,7 @@ impl Panes {
             ..Panes::default()
         };
         drop(session);
-        for (pane, seen, young, name, title, maker) in read {
+        for (pane, seen, young, name, callsign, title, maker) in read {
             if let Some(maker) = maker {
                 panes.makers.insert(pane.clone(), maker);
             }
@@ -164,6 +167,9 @@ impl Panes {
             }
             if let Some(name) = name {
                 panes.names.insert(pane.clone(), name);
+            }
+            if let Some(callsign) = callsign {
+                panes.callsigns.insert(pane.clone(), callsign);
             }
             if let Some(title) = title {
                 panes.titles.insert(pane.clone(), title);
@@ -249,13 +255,20 @@ impl Presence for Panes {
     }
 
     /// Only one pane, since the daemon gives no two live panes one name; a state file from before
-    /// it did can bring two back, and then the name means neither.
+    /// it did can bring two back, and then the name means neither. A callsign is asked after the
+    /// names, and the daemon gives no pane a name another pane's callsign holds.
     fn pane_named(&self, name: &str) -> Option<String> {
-        let mut called = self.names.iter().filter(|(_, called)| *called == name);
-        match (called.next(), called.next()) {
-            (Some((pane, _)), None) => Some(pane.clone()),
-            _ => None,
+        let only = |held: &HashMap<String, String>| {
+            let mut called = held.iter().filter(|(_, called)| *called == name);
+            match (called.next(), called.next()) {
+                (Some((pane, _)), None) => Some(pane.clone()),
+                _ => None,
+            }
+        };
+        if self.names.values().any(|called| called == name) {
+            return only(&self.names);
         }
+        only(&self.callsigns)
     }
 
     fn titles(&self) -> Vec<(String, String)> {

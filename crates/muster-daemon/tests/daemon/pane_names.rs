@@ -1,5 +1,5 @@
-//! What a pane is called: the name somebody gave it, or a word its daemon drew, which no other
-//! live pane on the daemon shares, so a name says which pane it is.
+//! What a pane is called: the callsign its daemon drew, which no other live pane on the daemon
+//! shares, and the name somebody gave it, if anybody did. Either says which pane it is.
 
 use muster_core::words::WORDS;
 
@@ -100,6 +100,59 @@ fn no_pane_is_drawn_a_word_a_renamed_pane_holds() {
     assert!(left.contains(&second.as_str()), "{second} is not one of the two left");
 }
 
+/// A pane made in a project whose path holds one of the two words left is drawn the other, so
+/// `swan` is not drawn inside a project called swan. Over a few daemons, since a draw that
+/// ignored the path would still pick the right word half the time.
+#[test]
+fn a_word_in_the_panes_directory_is_passed_over() {
+    let (taken, left) = WORDS.split_at(WORDS.len() - 2);
+    for _ in 0..4 {
+        let daemon = daemon();
+        let mut control = daemon.connect();
+        join_as(&mut control, taken);
+        let project = daemon.root().join(format!("my-{}-app", left[0]));
+        std::fs::create_dir_all(&project).unwrap();
+        let made = pane_request::Create {
+            cwd: Some(project.display().to_string()),
+            ..create("p1", in_new_tab("t1"))
+        };
+        make(&mut control, made);
+        assert_eq!(word_of(&mut control, "p1"), left[1], "drawn the word in its directory");
+    }
+}
+
+/// A word goes on being passed over a while after its pane closes, so a name somebody still
+/// uses for the closed pane does not reach a new one.
+#[test]
+fn a_closed_panes_word_is_passed_over() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (taken, _) = WORDS.split_at(WORDS.len() - 2);
+    join_as(&mut control, taken);
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let first = word_of(&mut control, "p1");
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    make(&mut control, create("p2", in_new_tab("t2")));
+    assert_ne!(word_of(&mut control, "p2"), first, "the closed pane's word was drawn again");
+}
+
+/// Only passed over: with no other word free, the word in the directory is drawn after all.
+#[test]
+fn a_passed_over_word_is_still_drawn_when_it_is_the_only_one() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (taken, left) = WORDS.split_at(WORDS.len() - 1);
+    join_as(&mut control, taken);
+    let project = daemon.root().join(left[0]);
+    std::fs::create_dir_all(&project).unwrap();
+    let made = pane_request::Create {
+        cwd: Some(project.display().to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, made);
+    assert_eq!(word_of(&mut control, "p1"), left[0]);
+}
+
 #[test]
 fn a_closed_panes_name_is_free_again() {
     let daemon = daemon();
@@ -121,7 +174,10 @@ fn a_pane_is_told_what_it_is_called() {
         let out = daemon.root().join(pane);
         let asked = pane_request::Create {
             label: label.map(str::to_string),
-            command: Some(format!("echo \"$MUSTER_PANE_NAME\" > {}", out.display())),
+            command: Some(format!(
+                "echo \"$MUSTER_PANE_NAME $MUSTER_CALLSIGN\" > {}",
+                out.display()
+            )),
             ..create(pane, in_new_tab(tab))
         };
         make(control, asked);
@@ -129,9 +185,11 @@ fn a_pane_is_told_what_it_is_called() {
             std::fs::read_to_string(&out).ok().filter(|text| text.ends_with('\n'))
         })
     };
-    assert_eq!(said(&mut control, "p1", "t1", Some("builder")), "builder\n");
+    let named = said(&mut control, "p1", "t1", Some("builder"));
+    assert_eq!(named, format!("builder {}\n", word_of(&mut control, "p1")));
     let drawn = said(&mut control, "p2", "t2", None);
-    assert_eq!(drawn.trim_end(), word_of(&mut control, "p2"));
+    let word = word_of(&mut control, "p2");
+    assert_eq!(drawn, format!("{word} {word}\n"));
 }
 
 /// A post to a word would mean both a pane drawn it and an agent that joined messaging by it, so

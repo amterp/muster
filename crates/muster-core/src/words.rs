@@ -13,7 +13,11 @@
 //! the subject of "is stuck" or "needs you". The tests below hold the list to all of it.
 //!
 //! The daemon draws, because it knows which words its live panes hold and is the one that has
-//! to name a pane no window asked for.
+//! to name a pane no window asked for. It also knows what would make a word a poor choice: one
+//! that appears in the pane's directory or in what its other panes are called, so that `swan`
+//! is not drawn inside a project called swan, and one a pane closed with moments ago, so that
+//! a name in a message still means the pane it meant. Those are preferences rather than rules,
+//! because a word is never something to go without.
 
 use flexid::{OsRandom, RandomSource};
 
@@ -54,28 +58,35 @@ pub const WORDS: &[&str] = &[
     "yarrow", "yodel", "yucca", "zebra", "zenith", "zephyr", "zinnia",
 ];
 
-/// A word `taken` says no live pane is called, chosen with the machine's entropy.
-pub fn draw(taken: impl Fn(&str) -> bool) -> String {
+/// A word `taken` says no live pane is called, chosen with the machine's entropy, and one
+/// `unwelcome` says nothing against while any such word is free.
+pub fn draw(taken: impl Fn(&str) -> bool, unwelcome: impl Fn(&str) -> bool) -> String {
     let mut roll = [0u8; 8];
     if OsRandom.fill_bytes(&mut roll).is_err() {
         // Never on a platform Muster runs on; a name is not something to go without over it.
         roll = monotonic_now().to_le_bytes();
     }
-    draw_from(taken, u64::from_le_bytes(roll))
+    draw_from(taken, unwelcome, u64::from_le_bytes(roll))
 }
 
-/// A word `taken` says no live pane is called, chosen by `roll`, so that a test can say which.
+/// [`draw`], chosen by `roll`, so that a test can say which.
 ///
 /// Uniform over the free words rather than the first free one after a random start, which would
 /// favour whichever word follows a run of taken ones. When every word is taken, as it is with
 /// as many panes open as there are words, the words come round again with a number: `otter-2`.
-pub fn draw_from(taken: impl Fn(&str) -> bool, roll: u64) -> String {
+pub fn draw_from(
+    taken: impl Fn(&str) -> bool,
+    unwelcome: impl Fn(&str) -> bool,
+    roll: u64,
+) -> String {
     for round in 1usize.. {
         let free: Vec<String> = WORDS
             .iter()
             .map(|word| if round == 1 { (*word).to_string() } else { format!("{word}-{round}") })
             .filter(|word| !taken(word))
             .collect();
+        let welcome: Vec<String> = free.iter().filter(|word| !unwelcome(word)).cloned().collect();
+        let free = if welcome.is_empty() { free } else { welcome };
         if !free.is_empty() {
             let at = usize::try_from(roll % free.len() as u64).unwrap_or_default();
             return free.into_iter().nth(at).unwrap_or_default();
@@ -125,7 +136,7 @@ mod tests {
     fn a_drawn_word_is_one_no_live_pane_holds() {
         let held = ["otter", "maple"];
         for roll in 0..WORDS.len() as u64 {
-            let word = draw_from(|word| held.contains(&word), roll);
+            let word = draw_from(|word| held.contains(&word), |_| false, roll);
             assert!(!held.contains(&word.as_str()));
             assert!(WORDS.contains(&word.as_str()));
         }
@@ -133,14 +144,28 @@ mod tests {
 
     #[test]
     fn once_every_word_is_held_they_come_round_again_numbered() {
-        let word = draw_from(|word| !word.ends_with("-2"), 0);
+        let word = draw_from(|word| !word.ends_with("-2"), |_| false, 0);
         assert_eq!(word, format!("{}-2", WORDS[0]));
-        let word = draw_from(|word| !word.ends_with("-3"), 7);
+        let word = draw_from(|word| !word.ends_with("-3"), |_| false, 7);
         assert_eq!(word, format!("{}-3", WORDS[7]));
     }
 
     #[test]
     fn the_machines_entropy_draws_a_word() {
-        assert!(WORDS.contains(&draw(|_| false).as_str()));
+        assert!(WORDS.contains(&draw(|_| false, |_| false).as_str()));
+    }
+
+    #[test]
+    fn an_unwelcome_word_is_drawn_only_once_no_other_is_free() {
+        let (otter, maple) = (WORDS[0], WORDS[1]);
+        for roll in 0..WORDS.len() as u64 {
+            let word = draw_from(|_| false, |word| word == otter, roll);
+            assert_ne!(word, otter, "drawn though others were free");
+        }
+        let only_two = |word: &str| word != otter && word != maple;
+        for roll in 0..4 {
+            assert_eq!(draw_from(only_two, |word| word == otter, roll), maple);
+        }
+        assert_eq!(draw_from(|word| word != otter, |_| true, 3), otter, "never left without one");
     }
 }

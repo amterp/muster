@@ -2,7 +2,7 @@
   "concept": "paneAddress.resolve",
   "source": "authored",
   "citation": "kan a_2ditnGlQz",
-  "why": "Every pane has a short name - the name somebody gave it, or a word its daemon drew - that is taken wherever its id is. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
+  "why": "Every pane has a callsign its daemon drew (`otter`), and may have a name somebody gave it; both are taken wherever its id is, and a renamed pane keeps answering to its callsign. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
   "cases": [
     {
       "name": "an id is the pane it names",
@@ -39,6 +39,29 @@
       "expect": { "address": "p1w3r07bsd" }
     },
     {
+      "name": "a renamed pane still answers to its callsign",
+      "why": "The callsign is what its row shows in blue and what agents were told to call it; renaming the pane must not strand either.",
+      "given": {
+        "typed": "prairie",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "Helper agents", "callsign": "prairie", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "maple", "callsign": "maple", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p1w3r07bsd" }
+    },
+    {
+      "name": "a renamed pane answers to its given name too",
+      "why": "Whoever named it may type what they named it.",
+      "given": {
+        "typed": "Helper agents",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "Helper agents", "callsign": "prairie", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p1w3r07bsd" }
+    },
+    {
       "name": "a name is matched exactly, not by its case or a prefix of it",
       "why": "A name that matched loosely would one day match the wrong pane. Completion is what saves typing, not guessing.",
       "given": {
@@ -69,6 +92,32 @@
         "panes": [
           { "pane": "p1w3r07bsd", "name": "otter", "machine": "local" },
           { "pane": "p2w3r07bsd", "name": "otter", "machine": "devenv" }
+        ]
+      },
+      "expect": {
+        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+      }
+    },
+    {
+      "name": "a callsign takes a machine like a name does",
+      "why": "Each daemon draws its own callsigns, so two machines can hold the same one whether or not either pane was renamed.",
+      "given": {
+        "typed": "otter@devenv",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "reviewer", "callsign": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "builder", "callsign": "otter", "machine": "devenv" }
+        ]
+      },
+      "expect": { "address": "p2w3r07bsd" }
+    },
+    {
+      "name": "a callsign two machines share is refused, naming each by callsign and machine",
+      "why": "The refusal offers what to type next, and for a renamed pane its callsign with the machine is the short address that works.",
+      "given": {
+        "typed": "otter",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "reviewer", "callsign": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "otter", "callsign": "otter", "machine": "devenv" }
         ]
       },
       "expect": {

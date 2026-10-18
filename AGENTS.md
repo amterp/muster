@@ -12,7 +12,7 @@ if your harness wants one.
 ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each of the
 first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot say them -
 `waiting` on its own build among them - an agent read as `stuck` once its program stops reading its input,
-a short name for every pane (`otter`) taken wherever its id is, messages included,
+a callsign for every pane (`otter`) taken wherever its id is, messages included and through a rename,
 renaming, which names the agent's session in its harness too
 and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
 handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any

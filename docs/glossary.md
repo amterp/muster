@@ -12,6 +12,10 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
+- **callsign** - the word a pane's daemon drew it when it made it (`otter`), and the name to call it by: drawn in blue
+  at the start of its row in the agent list, first on its line in `muster window`, taken wherever a pane id is, and
+  kept through a rename. Unique among one daemon's open panes; `otter@devenv` when two machines both have one. A
+  pane reads its own from `MUSTER_CALLSIGN`. The code calls it the pane's `word`.
 - **capability** - one thing Muster can use from a harness: its state read off its screen, its own report of it,
   a prompt the doorbell can read, hooks that fetch its messages (MIP-5, section 2). Muster checks a capability,
   never a harness's name.
@@ -71,9 +75,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   backend, unique across every attached machine, and never reused. What every message and log means by a pane. A pane
   reads its own from `MUSTER_PANE`. The code calls it the pane's name (`muster_core::names`), from before panes had
   the name below.
-- **pane name** - what a person types for a pane: the name somebody gave it, or else the **word** its daemon drew
-  (`otter`). Unique among one daemon's open panes and free again once the pane closes; `otter@devenv` when two
-  machines both have one. Taken wherever a pane id is.
+- **pane name** - the name somebody gave a pane, or else its **callsign**. Unique among one daemon's open panes and
+  taken wherever a pane id is.
 - **pane tree** - the split layout inside one tab; daemon truth.
 - **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
   the log of every group it has joined. Another machine's participant is `name@machine` there.

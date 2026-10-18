@@ -57,6 +57,10 @@ pub(crate) struct State {
     pub(crate) settings: proto::Settings,
     pub(crate) tabs: Vec<Tab>,
     pub(crate) panes: Vec<Pane>,
+    /// The words of the panes that closed most recently, oldest first, so a restarted daemon
+    /// goes on passing over them. Absent from a file written before it was kept.
+    #[serde(default)]
+    pub(crate) released_words: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -687,6 +691,7 @@ mod tests {
                 helpers_of: None,
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
+            released_words: vec!["otter".to_string()],
         }
     }
 
@@ -919,6 +924,7 @@ mod tests {
                 pane("p3", None),
                 pane("p4", Some("B")),
             ],
+            released_words: Vec::new(),
         }
     }
 

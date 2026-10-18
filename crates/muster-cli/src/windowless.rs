@@ -163,7 +163,7 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
     }
 }
 
-/// Puts each pane's id in place of a name typed for it (`otter`), among the panes this daemon
+/// Puts each pane's id in place of a name or callsign typed for it (`otter`), among the panes this daemon
 /// holds, the way a window does (`muster_core::pane_address`). The machine in `otter@<machine>`
 /// is this one's host name, which is what `muster window` says with no window.
 fn addressed(typed: &mut [&mut String], snapshot: &daemon_proto::Snapshot) -> Result<(), Trouble> {
@@ -171,7 +171,12 @@ fn addressed(typed: &mut [&mut String], snapshot: &daemon_proto::Snapshot) -> Re
     let candidates: Vec<Candidate<'_>> = snapshot
         .panes
         .iter()
-        .map(|pane| Candidate { pane: &pane.pane, name: pane.name(), machine: &machine })
+        .map(|pane| Candidate {
+            pane: &pane.pane,
+            name: pane.name(),
+            callsign: pane.word.as_deref().filter(|word| !word.is_empty()),
+            machine: &machine,
+        })
         .collect();
     for pane in typed.iter_mut() {
         match pane_address::resolve(pane, &candidates) {
@@ -913,6 +918,7 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                     muster_proto::RosterPane {
                         daemon_id: machine.clone(),
                         label: record.map_or_else(String::new, |record| label_of(record)),
+                        beside_word: record.map_or_else(String::new, |record| beside_word(record)),
                         given_name: record
                             .and_then(|record| record.label.clone())
                             .unwrap_or_default(),
@@ -1097,6 +1103,14 @@ fn label_of(pane: &daemon_proto::Pane) -> String {
             directory => format!("{word} · {directory}"),
         },
         (None, None) => directory_name(&pane.cwd),
+    }
+}
+
+/// What follows a pane's callsign on its row: the name somebody gave it, or its directory.
+fn beside_word(pane: &daemon_proto::Pane) -> String {
+    match pane.label.as_deref().map(str::trim).filter(|label| !label.is_empty()) {
+        Some(given) => given.to_string(),
+        None => directory_name(&pane.cwd),
     }
 }
 

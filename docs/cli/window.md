@@ -5,31 +5,32 @@ panes, and what the agent in each pane is doing. An agent has no eyes, so this i
 out what it did.
 
     tab 1  t1w3r07bsd  ~/src/muster  on screen
-      ▸ 1  p1w3r07bsd  unknown   2h  ~/src/muster
-        2  p1w3r0ab2n  working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents  1 helper
+      ▸ 1  prairie     unknown   2h  muster
+        2  maple       working  12m  🤖 A · reading AGENTS.md  64% context  2 sub-agents  1 helper
              otter     working   5m  🤖 A1 · running the tests  (hidden, quiet)
     tab 2  t1w3r0h4kp  the build
-        3  p1w3r0cd4x  blocked  40m  🤖 B  (off screen)
-        4  p1w3r0ef6y  waiting   8m  🤖 C · on the full gate  31% context  (off screen)
+        3  cobalt      blocked  40m  🤖 B  (off screen)
+        4  lantern     waiting   8m  🤖 C · on the full gate  31% context  (off screen)
 
     hidden
     tab    t1w3r0k5mq
-           p1w3r0gh8z  working   3m  🤖 worker  (quiet)
+           quokka      working   3m  🤖 worker  (quiet)
 
     local  connected
       this machine · started by Muster · 4 panes in ~/src/muster · #4a90d9
       /Users/you/.muster/daemon/release.sock
 
-After a pane's label come what its agent says about itself and anything else worth a glance: a
-program that has stopped reading its input, `(codex has not read 2817 bytes of input)`, on any
-pane; how full its context is, its sub-agents, `(cannot read the screen)` when Muster's rules have
-stopped reading the agent, `(adapter not reporting)` when the agent's harness has an adapter that
-is not installed or not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked
-at since, a program's own progress, `(40% done)` or `(progress failed)`, a compaction queued and
-what it waits for, `(compaction queued, waiting for its 1 sub-agent and its turn to end)`, or the
-prompt it was asked to carry on with, `(follow-up queued, waiting for an empty prompt)`, and
-`(quiet)` for a pane that raises nothing for you. A waiting agent's second line is what it waits
-on.
+Each pane's line starts with its callsign, the name to call it by (`muster docs overview`). Its
+label follows its state: the name somebody gave it, or else its directory and harness. After the
+label come what its agent says about itself and anything else worth a glance: a program that has
+stopped reading its input, `(codex has not read 2817 bytes of input)`, on any pane; how full its
+context is, its sub-agents, `(cannot read the screen)` when Muster's rules have stopped reading the
+agent, `(adapter not reporting)` when the agent's harness has an adapter that is not installed or
+not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked at since, a program's
+own progress, `(40% done)` or `(progress failed)`, a compaction queued and what it waits for,
+`(compaction queued, waiting for its 1 sub-agent and its turn to end)`, or the prompt it was asked
+to carry on with, `(follow-up queued, waiting for an empty prompt)`, and `(quiet)` for a pane that
+raises nothing for you. A waiting agent's second line is what it waits on.
 The model and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
@@ -49,7 +50,7 @@ same ones. In `--json` they are `hidden[]`, in the shape `other_windows[].tabs[]
 `state`, `since`, `facts`, `unread_input` and the rest - and carries `quiet` and `maker`.
 
 A helper an agent made with `pane new --helper` (`muster docs agents`, "An agent's helpers") is
-listed under its maker's row while it is hidden: a level in, by its word, `(hidden, quiet)` or
+listed under its maker's row while it is hidden: a level in, `(hidden, quiet)` or
 `(hidden)` after its label, and a level further for a helper of a helper. Its maker's row counts its helpers,
 `1 helper` above. Its hidden tab is listed under `hidden` only while something else is in it. A
 helper with a place in one of the window's tabs stays there, where its place and the keyboard
@@ -166,9 +167,11 @@ and asking again once it is answered closes it.
 One entry per pane every followed daemon holds, on screen or not.
 
 - `pane` - its id, which `--pane` takes and which is never reused, so the one to keep.
+- `callsign` - the word its daemon drew it (`otter`), which is what to call it: `--pane` and `msg
+  post --to` take it, renamed or not. Unique on its machine; `otter@daemon` says which when two
+  machines each have one. Null only on a daemon older than callsigns.
 - `name` - what it is called, which `--pane` and `msg post --to` take too: the name somebody gave
-  it, or the word its daemon drew (`otter`). Unique on its machine; `name@daemon` says which when
-  two machines each have one. Null only for a pane nobody named, on a daemon older than names.
+  it, or else its callsign. Null only for a pane nobody named, on a daemon older than callsigns.
 - `place` - where it sits in the window's whole pane order, counting from one across every
   daemon and every tab. What `muster focus --place` takes; ⌘1 to ⌘9 name tabs first instead.
 - `daemon` - which machine holds it.
@@ -176,7 +179,7 @@ One entry per pane every followed daemon holds, on screen or not.
   place, so that one read is enough to act on: this is how a pane finds its own tab, since
   nothing in its environment says which one holds it.
 - `label` - what to call it to somebody who did not open it: the name somebody gave it, or
-  failing that its word, then its directory and the harness detected in it.
+  failing that its callsign, then its directory and the harness detected in it.
 - `given_name` - the name somebody gave it, empty when nobody has.
 - `maker` - the id of the pane that made it as its helper (`muster docs agents`, "An agent's
   helpers"), or `null` for a pane nobody made as one. The maker may be on another machine, or

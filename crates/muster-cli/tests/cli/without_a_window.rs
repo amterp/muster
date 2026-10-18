@@ -108,10 +108,16 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
             && listed.contains(&here.daemon.socket_path().display().to_string()),
         "the listing has to say which daemon answered, so nobody reads it as a window's:\n{listed}"
     );
-    assert!(listed.contains("t1") && listed.contains("p1") && listed.contains("p2"), "{listed}");
     assert!(!listed.contains("(off screen)"), "with no window, nothing is off screen:\n{listed}");
+    let text = listed;
 
     let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    // Rows lead with each pane's callsign, which is what a reader types back.
+    assert!(text.contains("t1"), "{text}");
+    for pane in listed["panes"].as_array().expect("a list of panes") {
+        let callsign = pane["callsign"].as_str().expect("every pane is drawn a callsign");
+        assert!(text.contains(callsign), "{callsign} is not listed:\n{text}");
+    }
     assert_eq!(listed["answered_by"], json!("daemon"), "{listed}");
     let p2 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
     let p2 = p2.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
@@ -199,7 +205,8 @@ fn the_layout_is_the_daemons_trees(here: &Here) {
     }
     assert!((widths - 1.0).abs() < 1e-4, "the three frames share the tab's width: {laid}");
     let drawn = ok(&here.muster(&["window", "--layout"]));
-    assert!(drawn.contains('┬') && drawn.contains("p3"), "three panes side by side:\n{drawn}");
+    let p3 = word_of(here, "p3");
+    assert!(drawn.contains('┬') && drawn.contains(&p3), "three panes side by side:\n{drawn}");
 }
 
 /// A wait for a state the pane is already in ends at once; one for a state it reaches later ends
@@ -344,7 +351,8 @@ fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
     assert!(tab_of(&mut control, "p2").hidden, "p2's tab is not hidden");
     let listed = ok(&here.muster(&["window"]));
     let hidden_from = listed.lines().position(|line| line == "hidden");
-    let p2_at = listed.lines().position(|line| line.contains("p2"));
+    let p2 = word_of(here, "p2");
+    let p2_at = listed.lines().position(|line| line.contains(&p2));
     assert!(
         matches!((hidden_from, p2_at), (Some(heading), Some(row)) if row > heading),
         "p2 is not listed under `hidden`:\n{listed}"
@@ -362,7 +370,7 @@ fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
     assert!(
         ok(&here.muster(&["window"]))
             .lines()
-            .any(|line| line.contains("p2") && line.contains("(quiet)"))
+            .any(|line| line.contains(&p2) && line.contains("(quiet)"))
     );
     ok(&here.muster(&["pane", "quiet", "--pane", "p2", "--off"]));
     assert!(!quiet(&mut control), "p2 is still quiet");
@@ -413,6 +421,10 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
             .and_then(|pane| pane.label)
     };
     assert_eq!(label(&mut control).as_deref(), Some("lead"), "renamed, trimmed, by its name");
+    // Its callsign still reaches it, renamed as it is.
+    let callsign = word_of(here, &made);
+    ok(&here.muster(&["pane", "rename", "--pane", &callsign, "lead again"]));
+    assert_eq!(label(&mut control).as_deref(), Some("lead again"), "renamed by its callsign");
     ok(&here.muster(&["pane", "rename", "--pane", &made, ""]));
     assert_eq!(label(&mut control), None, "a blank name takes the name away");
 

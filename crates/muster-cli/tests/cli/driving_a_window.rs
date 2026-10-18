@@ -91,7 +91,8 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     // column widths are computed at all.
     let readable = run(&["window"], &inside(&first));
     assert_eq!(readable.code, 0, "`muster window` failed: {}", readable.errors);
-    for expected in [first.as_str(), made_pane.as_str(), tab.as_str(), "🤖 A", "local", "tab 1"] {
+    let (first_called, made_called) = (callsign(&window, &first), callsign(&window, &made_pane));
+    for expected in [&first_called, &made_called, &tab, "🤖 A", "local", "tab 1"] {
         assert!(
             readable.out.contains(expected),
             "`muster window` said nothing about {expected:?}, so somebody reading it cannot see \
@@ -112,8 +113,8 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
         readable.out
     );
     assert!(
-        has_keyboard[0].contains(&first),
-        "the keyboard is marked on the wrong row - it is on {first}, and the marked row is \
+        has_keyboard[0].contains(&first_called),
+        "the keyboard is marked on the wrong row - it is on {first_called}, and the marked row is \
          {:?}",
         has_keyboard[0]
     );
@@ -200,7 +201,9 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
     // `hidden`, which they leave.
     let readable = run(&["window"], environment).out;
     let rows: Vec<&str> = readable.lines().collect();
-    let maker_row = rows.iter().position(|row| row.contains(maker)).expect("the agent is listed");
+    let maker_called = callsign(&window, maker);
+    let maker_row =
+        rows.iter().position(|row| row.contains(&maker_called)).expect("the agent is listed");
     assert!(rows[maker_row].contains("2 helpers"), "{readable}");
     for row in &rows[maker_row + 1..maker_row + 3] {
         assert!(row.contains("(hidden"), "a helper is not listed under its maker:\n{readable}");
@@ -236,7 +239,9 @@ fn a_pane_is_hidden_quiet_and_brought_back(root: &Path, environment: &[(&str, St
         "a hidden pane is listed among the window's own: {window}"
     );
     let readable = run(&["window"], environment);
-    let row = readable.out.lines().find(|line| line.contains(&hidden)).unwrap_or_default();
+    let callsign = listed(&window).and_then(|pane| pane["callsign"].as_str().map(str::to_string));
+    let callsign = callsign.expect("a hidden pane has a callsign");
+    let row = readable.out.lines().find(|line| line.contains(&callsign)).unwrap_or_default();
     assert!(
         readable.out.lines().any(|line| line == "hidden") && row.contains("(quiet)"),
         "`muster window` does not list the pane under `hidden`, saying it is quiet:\n{}",
@@ -480,7 +485,8 @@ fn what_an_agent_says_and_a_bell_are_in_the_window(
     assert_eq!(described["adapter"], Value::Null, "no agent, so no adapter: {described}");
 
     let plain = run(&["window"], environment);
-    let line = plain.out.lines().find(|line| line.contains(pane)).unwrap_or_default();
+    let callsign = described["callsign"].as_str().expect("the pane has a callsign");
+    let line = plain.out.lines().find(|line| line.contains(callsign)).unwrap_or_default();
     assert!(line.contains("64% context") && line.contains("(bell)"), "{}", plain.out);
 }
 
@@ -698,7 +704,9 @@ fn the_layout_is_drawn_and_sized(first: &str, made: &str, environment: &[(&str, 
         run(&["window", "--layout"], &[environment, &[("COLUMNS", "72".to_string())]].concat());
     assert_eq!(drawn.code, 0, "`muster window --layout` failed: {}", drawn.errors);
     assert!(
-        drawn.out.contains(first) && drawn.out.contains(made) && drawn.out.contains('├'),
+        [&top, &below].iter().all(|pane| {
+            pane["callsign"].as_str().is_some_and(|callsign| drawn.out.contains(callsign))
+        }) && drawn.out.contains('├'),
         "the drawing names both panes and divides them:\n{}",
         drawn.out
     );
@@ -1032,4 +1040,12 @@ fn accepted(response: &Response) {
     if let Some(response::Payload::Failure(failure)) = &response.payload {
         panic!("the core refused: {}", failure.reason);
     }
+}
+
+/// The callsign `muster window --json` gives the pane with id `id`.
+fn callsign(window: &Value, id: &str) -> String {
+    let panes = window["panes"].as_array().cloned().unwrap_or_default();
+    let pane = panes.into_iter().find(|pane| pane["pane"] == json!(id));
+    pane.and_then(|pane| pane["callsign"].as_str().map(str::to_string))
+        .unwrap_or_else(|| panic!("{id} has no callsign in {window}"))
 }

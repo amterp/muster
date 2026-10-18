@@ -4180,18 +4180,24 @@ pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
         return Ok(());
     }
     let session = poison::lock(&SESSION, "session");
-    let mut held: Vec<(String, String, String)> = Vec::new();
+    let mut held: Vec<(String, String, Option<String>, String)> = Vec::new();
     for (daemon, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
         held.extend(mirror.panes().filter_map(|pane| {
             let name = muster_core::roster::pane_name(pane)?;
-            Some((pane.id.to_string(), name.to_string(), daemon.to_string()))
+            let callsign = pane.word.clone().filter(|word| !word.is_empty());
+            Some((pane.id.to_string(), name.to_string(), callsign, daemon.to_string()))
         }));
     }
     drop(session);
     let candidates: Vec<Candidate<'_>> = held
         .iter()
-        .map(|(pane, name, machine)| Candidate { pane, name: Some(name), machine })
+        .map(|(pane, name, callsign, machine)| Candidate {
+            pane,
+            name: Some(name),
+            callsign: callsign.as_deref(),
+            machine,
+        })
         .collect();
     for pane in typed.iter_mut() {
         match pane_address::resolve(pane, &candidates) {

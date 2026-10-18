@@ -296,6 +296,23 @@ fn a_blocked_agent_is_never_rung_and_is_rung_once_it_is_idle() {
     );
 }
 
+/// A renamed pane is posted to by its callsign, which its row still shows in blue and which an
+/// agent may have been told before the rename.
+#[test]
+fn a_renamed_pane_is_posted_to_by_its_callsign() {
+    let mut agent = Agent::in_a_pane();
+    let rename =
+        proto::pane_request::Rename { pane: "p1".to_string(), label: Some("builder".to_string()) };
+    let renamed = pane(proto::pane_request::Request::Rename(rename));
+    expect(&mut agent.control, renamed, proto::Outcome::Done);
+    let record = snapshot(&mut agent.control).panes.into_iter().find(|record| record.pane == "p1");
+    let callsign = record.and_then(|record| record.word).expect("p1 was drawn a callsign");
+
+    let posted = agent.post(&callsign, "a brief");
+    assert_eq!(posted.reached[0].name, "p1", "{posted:?}");
+    agent.until_rung(1);
+}
+
 /// Something typed into a pane may be a person's prompt half written; the ring waits until
 /// nothing has been typed for the quiet period.
 #[test]

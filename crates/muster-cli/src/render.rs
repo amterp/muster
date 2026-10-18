@@ -656,7 +656,7 @@ impl<'a> Drawing<'a> {
     }
 }
 
-/// What one pane's box says: its name, its label, what its agent is doing and how big it is, and
+/// What one pane's box says: its callsign, its label, what its agent is doing and how big it is, and
 /// which machine it is on when more than one is attached.
 fn pane_box(
     pane: &str,
@@ -670,10 +670,10 @@ fn pane_box(
     if keyboard {
         name.push(("▸ ".to_string(), NAME));
     }
-    name.push((pane.to_string(), NAME));
+    name.push((row.map_or(pane, callsign_or_id).to_string(), NAME));
     let mut lines = vec![name];
-    if let Some(row) = row.filter(|row| !row.label.is_empty()) {
-        lines.push(vec![(row.label.clone(), PLAIN)]);
+    if let Some(beside) = row.map(beside_callsign).filter(|beside| !beside.is_empty()) {
+        lines.push(vec![(beside.to_string(), PLAIN)]);
     }
     let state = agent.map_or("unknown", |agent| agent.state.as_str());
     let mut doing = vec![(state.to_string(), agent_style(state))];
@@ -768,8 +768,8 @@ impl Rows<'_> {
     /// off screen is a note after the label instead, because most panes are on screen and the
     /// exception is the thing worth saying.
     ///
-    /// A helper listed under its maker, `depth` levels in, is named by its word rather than its id,
-    /// as the shorter of two names that both reach it, indented a level for each generation.
+    /// A pane is named by its callsign, which reaches it whatever it has been renamed, and a
+    /// helper listed under its maker is indented a level for each generation.
     fn pane(
         &self,
         pane: &muster_proto::RosterPane,
@@ -788,7 +788,7 @@ impl Rows<'_> {
             pad(&Helpers::called(pane, depth), widths.name, PLAIN, Align::Left),
             pad(state, widths.state, agent_style(state), Align::Left),
             pad(&held, widths.held, QUIET, Align::Right),
-            pane.label,
+            beside_callsign(pane),
         );
         let waiting =
             agent.and_then(|agent| agent.facts.as_ref()).map(|facts| facts.waiting.as_str());
@@ -879,8 +879,7 @@ impl<'a> Helpers<'a> {
 
         let mut helpers = Helpers::default();
         for pane in every {
-            let name = if pane.name.is_empty() { &pane.pane_id } else { &pane.name };
-            helpers.names.insert(&pane.pane_id, name);
+            helpers.names.insert(&pane.pane_id, callsign_or_id(pane));
             if !pane.maker.is_empty() {
                 *helpers.counts.entry(&pane.maker).or_default() += 1;
             }
@@ -914,7 +913,7 @@ impl<'a> Helpers<'a> {
         self.counts.get(maker.pane_id.as_str()).copied().unwrap_or_default()
     }
 
-    /// A maker by its name when the answer lists it, and by its id when it does not.
+    /// A maker by its callsign when the answer lists it, and by its id when it does not.
     fn name_of<'b>(&'b self, maker: &'b str) -> &'b str {
         self.names.get(maker).copied().unwrap_or(maker)
     }
@@ -924,14 +923,21 @@ impl<'a> Helpers<'a> {
         self.moved.values().copied()
     }
 
-    /// What a row names a pane by: its id, or listed under its maker its word, indented.
+    /// What a row names a pane by: its callsign, indented a level for each generation of
+    /// helper.
     fn called(pane: &muster_proto::RosterPane, depth: usize) -> String {
-        if depth == 0 {
-            return pane.pane_id.clone();
-        }
-        let word = if pane.word.is_empty() { &pane.pane_id } else { &pane.word };
-        format!("{}{word}", "  ".repeat(depth))
+        format!("{}{}", "  ".repeat(depth), callsign_or_id(pane))
     }
+}
+
+/// The callsign a pane answers to, or its id from a daemon that draws none.
+fn callsign_or_id(pane: &muster_proto::RosterPane) -> &str {
+    if pane.word.is_empty() { &pane.pane_id } else { &pane.word }
+}
+
+/// What follows a pane's callsign: its label with the callsign taken out, so it is said once.
+fn beside_callsign(pane: &muster_proto::RosterPane) -> &str {
+    if pane.word.is_empty() { &pane.label } else { &pane.beside_word }
 }
 
 /// A machine's heading, and beneath it what would end with the daemon behind it.
@@ -1250,6 +1256,7 @@ fn unplaced_tab_json(
         "given_name": tab.given_name,
         "panes": tab.panes.iter().map(|pane| with_agent(json!({
             "pane": pane.pane_id,
+            "callsign": (!pane.word.is_empty()).then_some(&pane.word),
             "name": (!pane.name.is_empty()).then_some(&pane.name),
             "daemon": pane.daemon_id,
             "label": pane.label,
@@ -1339,8 +1346,11 @@ fn window_json(window: &Window, others: Others) -> Value {
         for pane in &tab.panes {
             panes.push(with_agent(json!({
                 "pane": pane.pane_id,
-                // What `--pane` and `--to` take besides the id; null only from a daemon before
-                // words, for a pane nobody named.
+                // What to call the pane: `--pane` and `--to` take it, renamed or not. Null only
+                // from a daemon that draws none.
+                "callsign": (!pane.word.is_empty()).then_some(&pane.word),
+                // The name somebody gave it, or else its callsign; taken by `--pane` and `--to`
+                // too.
                 "name": (!pane.name.is_empty()).then_some(&pane.name),
                 "place": pane.place,
                 "daemon": pane.daemon_id,
@@ -2052,6 +2062,7 @@ mod tests {
             word: word.to_string(),
             name: word.to_string(),
             label: format!("🤖 {word}"),
+            beside_word: format!("🤖 {word}"),
             maker: maker.to_string(),
             quiet,
             ..RosterPane::default()
@@ -2092,33 +2103,34 @@ mod tests {
         anstream::adapter::strip_str(text).to_string()
     }
 
-    /// A maker's hidden helpers are listed under its row, by their words, a level in for each
-    /// generation, and their tab leaves the hidden list once it has nothing else in it.
+    /// A maker's hidden helpers are listed under its row, by their callsigns as every pane is, a
+    /// level in for each generation, and their tab leaves the hidden list once it has nothing
+    /// else in it.
     #[test]
     fn hidden_helpers_are_listed_under_their_maker() {
         let text = unstyled(&window_text(&helpers_window(), 0, Others::All, false));
         let rows: Vec<&str> = text.lines().map(str::trim_end).collect();
-        let lead = rows.iter().position(|row| row.contains("p1 ")).expect("the maker is listed");
+        let lead = rows.iter().position(|row| row.contains("lead ")).expect("the maker is listed");
         let expected = [
-            "p1          idle    🤖 lead  3 helpers",
+            "lead        idle    🤖 lead  3 helpers",
             "  otter     idle    🤖 otter  1 helper  (hidden)",
             "    cobalt  idle    🤖 cobalt  (hidden)",
             "  maple     idle    🤖 maple  (hidden, quiet)",
-            "p2          idle    🤖 beside  (helper of lead)",
+            "beside      idle    🤖 beside  (helper of lead)",
         ];
         let listed: Vec<&str> = rows[lead..lead + 5].iter().map(|row| row.trim_start()).collect();
         let expected: Vec<&str> = expected.iter().map(|row| row.trim_start()).collect();
         assert_eq!(listed, expected, "\n{text}");
         // Each generation a level further in than its maker's name.
         let name_at = |row: usize, name: &str| rows[row].find(name);
-        let maker_at = name_at(lead, "p1");
+        let maker_at = name_at(lead, "lead");
         let levels = [(1, "otter", 2), (2, "cobalt", 4), (3, "maple", 2)];
         for (row, name, indent) in levels {
             assert_eq!(name_at(lead + row, name), maker_at.map(|at| at + indent), "\n{text}");
         }
         assert!(!text.contains("t2"), "the helpers' tab has nothing left to list:\n{text}");
         // A helper whose maker nothing lists stays hidden, and says whose it is.
-        let stray = rows.iter().position(|row| row.contains("p6")).expect("the stray is listed");
+        let stray = rows.iter().position(|row| row.contains("stray")).expect("the stray is listed");
         assert!(rows[..stray].contains(&"hidden"), "{text}");
         assert!(rows[stray].ends_with("(helper of p9gone)"), "{text}");
     }
@@ -2132,8 +2144,8 @@ mod tests {
             let row = text.lines().find(|row| row.contains(pane)).unwrap_or_default();
             row.find("idle")
         };
-        assert_eq!(column("p1 "), column("cobalt"), "{text}");
-        assert_eq!(column("p1 "), column("otter"), "{text}");
+        assert_eq!(column("lead "), column("cobalt"), "{text}");
+        assert_eq!(column("lead "), column("otter"), "{text}");
     }
 
     /// A pane whose daemon the window cannot reach says what it read before, and nothing that
