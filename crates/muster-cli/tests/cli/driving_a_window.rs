@@ -219,9 +219,12 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
 /// The headless agent: a pane made hidden and quiet, which no window shows and which is still
 /// typed into and read by name, then brought back, let notify again, and closed.
 fn a_pane_is_hidden_quiet_and_brought_back(root: &Path, environment: &[(&str, String)]) {
-    let made = run(&["pane", "new", "--hidden", "--quiet"], environment);
+    let made = run(&["--json", "pane", "new", "--hidden", "--quiet"], environment);
     assert_eq!(made.code, 0, "`muster pane new --hidden` failed: {}", made.errors);
-    let hidden = made.out.trim().to_string();
+    let said = json_from(&made);
+    let hidden = said["pane"].as_str().unwrap_or_else(|| panic!("no pane: {said}")).to_string();
+    let drawn =
+        said["callsign"].as_str().unwrap_or_else(|| panic!("no callsign: {said}")).to_string();
     let listed = |window: &Value| -> Option<Value> {
         window["hidden"]
             .as_array()?
@@ -241,6 +244,7 @@ fn a_pane_is_hidden_quiet_and_brought_back(root: &Path, environment: &[(&str, St
     let readable = run(&["window"], environment);
     let callsign = listed(&window).and_then(|pane| pane["callsign"].as_str().map(str::to_string));
     let callsign = callsign.expect("a hidden pane has a callsign");
+    assert_eq!(callsign, drawn, "`pane new` said another callsign than the window lists");
     let row = readable.out.lines().find(|line| line.contains(&callsign)).unwrap_or_default();
     assert!(
         readable.out.lines().any(|line| line == "hidden") && row.contains("(quiet)"),

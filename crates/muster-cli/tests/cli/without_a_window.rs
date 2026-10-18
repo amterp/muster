@@ -406,8 +406,13 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
     assert!(tab.hidden && !tab_shape_holds(tab, "p1"), "a hidden tab of its own: {tab:?}");
 
     // Outside every pane, with no pane named, there is no keyboard's pane to split.
-    let alone: Value = serde_json::from_str(&ok(&here.muster(&["--json", "pane", "new"]))).unwrap();
-    let alone = alone["pane"].as_str().unwrap_or_else(|| panic!("a pane: {alone}")).to_string();
+    let said: Value = serde_json::from_str(&ok(&here.muster(&["--json", "pane", "new"]))).unwrap();
+    let alone = said["pane"].as_str().unwrap_or_else(|| panic!("a pane: {said}")).to_string();
+    assert_eq!(
+        said["callsign"],
+        json!(callsign_of(here, &alone)),
+        "said with its callsign: {said}"
+    );
     let held = snapshot(&mut control);
     let tab = held.tabs.iter().find(|tab| tab_shape_holds(tab, &alone)).expect("made in a tab");
     assert!(tab.tab != "t1" && !tab.hidden, "a tab of its own, shown: {tab:?}");

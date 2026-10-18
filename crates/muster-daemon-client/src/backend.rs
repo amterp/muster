@@ -170,7 +170,8 @@ impl DaemonBackend {
         self.minter.lock().unwrap_or_else(PoisonError::into_inner).pane()
     }
 
-    fn create(&self, placement: placement::Where, making: Making) -> Result<PaneId, Refusal> {
+    /// Makes a pane, and says which and the callsign its daemon drew it.
+    fn create(&self, placement: placement::Where, making: Making) -> Result<Outcome, Refusal> {
         let Making { cwd, run, name, quiet, maker } = making;
         let hidden = matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden);
         if hidden {
@@ -183,29 +184,34 @@ impl DaemonBackend {
             self.speaks_since(muster_daemon_proto::version::HELPERS, "make a helper")?;
         }
         let pane = self.mint_pane();
-        self.pane_request(pane_request::Request::Create(pane_request::Create {
-            pane: pane.to_string(),
-            placement: Some(proto::Placement { r#where: Some(placement) }),
-            grid: None,
-            cwd,
-            env: self.environment.clone().into_iter().collect(),
-            command: run,
-            label: name,
-            quiet,
-            maker: maker.map(|maker| maker.pane.to_string()),
-            callsigns_elsewhere: self
-                .elsewhere
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone(),
-        }))
-        .map_err(|refusal| match refusal {
-            Refusal::Unanswered { detail, .. } => {
-                Refusal::Unanswered { detail, made: Some(pane.clone()) }
-            }
-            refusal => refusal,
-        })?;
-        Ok(pane)
+        let answer = self
+            .pane_request(pane_request::Request::Create(pane_request::Create {
+                pane: pane.to_string(),
+                placement: Some(proto::Placement { r#where: Some(placement) }),
+                grid: None,
+                cwd,
+                env: self.environment.clone().into_iter().collect(),
+                command: run,
+                label: name,
+                quiet,
+                maker: maker.map(|maker| maker.pane.to_string()),
+                callsigns_elsewhere: self
+                    .elsewhere
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone(),
+            }))
+            .map_err(|refusal| match refusal {
+                Refusal::Unanswered { detail, .. } => {
+                    Refusal::Unanswered { detail, made: Some(pane.clone()) }
+                }
+                refusal => refusal,
+            })?;
+        let callsign = match answer.detail {
+            Some(answer::Detail::Created(created)) => Some(created.callsign),
+            _ => None,
+        };
+        Ok(Outcome { created: Some(pane), callsign, ..Outcome::default() })
     }
 
     /// Where a pane moved into an existing tab lands: beside the tab's last pane, when this
@@ -288,8 +294,7 @@ impl BackendChannel for DaemonBackend {
                     side: convert::side(side).into(),
                     ratio,
                 });
-                let created = self.create(placement, Making { cwd, run, name, quiet, maker })?;
-                Ok(Outcome { created: Some(created), ..Outcome::default() })
+                self.create(placement, Making { cwd, run, name, quiet, maker })
             }
             // A hidden helper goes among its maker's other helpers, in the tab they share, and
             // `tab` is made only when there is none yet.
@@ -304,16 +309,14 @@ impl BackendChannel for DaemonBackend {
                     }),
                     _ => new_tab(&tab, hidden),
                 };
-                let created = self.create(placement, Making { cwd, run, name, quiet, maker })?;
-                Ok(Outcome { created: Some(created), created_tab: Some(tab), ..Outcome::default() })
+                let made = self.create(placement, Making { cwd, run, name, quiet, maker })?;
+                Ok(Outcome { created_tab: Some(tab), ..made })
             }
             // The same placement `placement_in` asks for when a moved pane is this machine's
             // first in the tab, and unnamed for the same reason: the window names this part
             // after the rest when the daemon announces it.
             BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => {
-                let created =
-                    self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })?;
-                Ok(Outcome { created: Some(created), ..Outcome::default() })
+                self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })
             }
             BackendIntent::ClosePane { pane } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {

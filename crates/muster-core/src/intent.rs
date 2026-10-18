@@ -453,6 +453,8 @@ fn made_by(maker: Option<&Maker>) -> String {
 pub struct Outcome {
     /// The pane a request made, when it made one.
     pub created: Option<PaneId>,
+    /// The callsign its daemon drew that pane, when it said.
+    pub callsign: Option<String>,
     /// The tab a request made, when it made one.
     ///
     /// Needed for the same reason and by a different part of the window: a new tab is

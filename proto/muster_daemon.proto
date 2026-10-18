@@ -1095,7 +1095,15 @@ message Answer {
     Grids grids = 14;
     // Since 1.6.
     Restarted restarted = 15;
+    // Since 1.6.
+    Created created = 16;
   }
+}
+
+// What a create made, on its DONE: the callsign drawn for the pane, which the asker can say at
+// once, before the pane's record reaches it on the events it follows.
+message Created {
+  string callsign = 1;
 }
 
 // What a restart did, on its DONE.

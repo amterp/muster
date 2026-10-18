@@ -1908,7 +1908,10 @@ fn submit(
 fn made_or_ok(outcome: Outcome) -> Response {
     match outcome.created {
         Some(pane) => Response {
-            payload: Some(response::Payload::Made(proto::Made { pane_id: pane.to_string() })),
+            payload: Some(response::Payload::Made(proto::Made {
+                pane_id: pane.to_string(),
+                callsign: outcome.callsign.unwrap_or_default(),
+            })),
         },
         None => Response::ok(),
     }

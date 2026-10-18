@@ -1483,6 +1483,7 @@ impl Session {
             return reply;
         }
 
+        let created = proto::Created { callsign: starting.callsign.clone() };
         let record = proto::Pane {
             pane: starting.pane.clone(),
             label: starting.label,
@@ -1497,7 +1498,7 @@ impl Session {
             return reply;
         }
         self.place(&starting.pane, starting.target);
-        Reply::done()
+        Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() }
     }
 
     /// Watches a pane whose process has started, and announces it. It is in no tab yet.

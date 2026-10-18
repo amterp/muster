@@ -802,9 +802,18 @@ fn make_pane(
         trouble => trouble,
     })?;
     Ok(match answer.outcome() {
-        daemon_proto::Outcome::Done => Response {
-            payload: Some(response::Payload::Made(muster_proto::Made { pane_id: made })),
-        },
+        daemon_proto::Outcome::Done => {
+            let callsign = match answer.detail {
+                Some(daemon_proto::answer::Detail::Created(created)) => created.callsign,
+                _ => String::new(),
+            };
+            Response {
+                payload: Some(response::Payload::Made(muster_proto::Made {
+                    pane_id: made,
+                    callsign,
+                })),
+            }
+        }
         daemon_proto::Outcome::NotThere => {
             not_held(socket, beside.as_deref().unwrap_or_default(), "made")
         }

@@ -1600,6 +1600,8 @@ message Reopening {
 // could not have got any other way.
 message Made {
   string pane_id = 1;
+  // The callsign its daemon drew it (`otter`), empty from a daemon too old to say.
+  string callsign = 2;
 }
 
 // What a pane has printed, as far back as the daemon went.
