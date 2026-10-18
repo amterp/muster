@@ -144,7 +144,12 @@ fn act(
         }
         // What the record of which window holds each tab says about this one. A case that
         // reconciles without holding anything is a window every tab is somebody else's in.
-        "hold" => composition.hold(TabId::new(text(step, "tab"))),
+        // With `after`, the tab's region opens beside that tab rather than on the end, as a
+        // maker's helpers do when they come forward.
+        "hold" => match step.get("after").and_then(Value::as_str) {
+            Some(after) => composition.hold_after(TabId::new(text(step, "tab")), TabId::new(after)),
+            None => composition.hold(TabId::new(text(step, "tab"))),
+        },
         "letGo" => composition.let_go(&TabId::new(text(step, "tab"))),
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
         // nothing upstream can say how a window divides between them.

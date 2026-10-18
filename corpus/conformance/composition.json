@@ -5272,6 +5272,694 @@
           "r0 tab=w1:t1 w1:p1"
         ]
       }
+    },
+    {
+      "name": "a tab held after another opens just after it, not on the end",
+      "why": "A maker's helpers come forward beside the tab holding the maker (MIP-7), where somebody looking for them looks, rather than below every unrelated tab. The window asks for the place when it takes the tab, and the place is used when the tab's region opens, which is a reconcile later. Nothing comes on screen by it: the window goes on showing the tab it showed.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "hidden": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "shown": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t3"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "hidden"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t4",
+            "after": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "shown"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r3 daemon=local tab=w1:t4 pane=w1:p4",
+          "r1 daemon=local tab=w1:t2 pane=w1:p2",
+          "r2 daemon=local tab=w1:t3 pane=w1:p3"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a tab held after one this window does not hold goes on the end",
+      "why": "The tab it was to follow may be in another window, hidden, or closed by the time it opens. There is nowhere beside it to go, so it goes where any tab opening goes.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "hidden": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "shown": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t3"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "hidden"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t4",
+            "after": "w1:t9"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "shown"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p2",
+          "r2 daemon=local tab=w1:t3 pane=w1:p3",
+          "r3 daemon=local tab=w1:t4 pane=w1:p4"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "tabs held one after another keep that order whichever opens first",
+      "why": "A maker with helpers on two machines, or with one hidden by hand beside the shared tab, brings several tabs forward, each asked to follow the one before. Their daemons answer in no order between them, so the second can open before the first: it goes where the first will, and the first then opens in front of it.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "hidden": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3",
+                "hidden": true
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "second": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3",
+                "hidden": true
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "shown": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "hidden"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t3",
+            "after": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t4",
+            "after": "w1:t3"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "second"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "shown"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r3 daemon=local tab=w1:t3 pane=w1:p3",
+          "r2 daemon=local tab=w1:t4 pane=w1:p4",
+          "r1 daemon=local tab=w1:t2 pane=w1:p2"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
+    },
+    {
+      "name": "a place asked for is used once",
+      "why": "The place belongs to the moment a tab comes forward, not to the tab. Hidden again and brought back by something that asked for no place, it goes on the end like any other tab opening, rather than following a tab it was once put beside.",
+      "given": {
+        "attached": [],
+        "worlds": {
+          "hidden": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4",
+                "hidden": true
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "shown": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": "w1:p1"
+              },
+              {
+                "id": "w1:t2",
+                "label": "t2",
+                "root": "w1:p2"
+              },
+              {
+                "id": "w1:t3",
+                "label": "t3",
+                "root": "w1:p3"
+              },
+              {
+                "id": "w1:t4",
+                "label": "t4",
+                "root": "w1:p4"
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w1:p4",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "w1:t1"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t2"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t3"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "local",
+            "socketPath": "/tmp/daemon-local.sock"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "hidden"
+          },
+          {
+            "do": "hold",
+            "tab": "w1:t4",
+            "after": "w1:t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "shown"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "hidden"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "local",
+            "world": "shown"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "local local=/tmp/daemon-local.sock"
+        ],
+        "focusedPane": "w1:p1",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=local tab=w1:t1 pane=w1:p1",
+          "r1 daemon=local tab=w1:t2 pane=w1:p2",
+          "r2 daemon=local tab=w1:t3 pane=w1:p3",
+          "r4 daemon=local tab=w1:t4 pane=w1:p4"
+        ],
+        "showing": [
+          "local/w1:p1"
+        ],
+        "showingTab": "w1:t1",
+        "view": [
+          "r0 tab=w1:t1 w1:p1"
+        ]
+      }
     }
   ]
 }

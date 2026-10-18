@@ -237,7 +237,8 @@ impl MusterTab {
 /// **A window holds an ordered list of Muster tabs and shows one of them** (MIP-2). Only its own:
 /// which window holds a tab is decided elsewhere, and this lists the ones it was told are its.
 /// Tabs arrive in the order the daemons describe them and a new one goes on the end, which is
-/// where every other tab strip puts one. `cmd+1` to `cmd+9` and `next_tab` walk that list, and a tab on the
+/// where every other tab strip puts one, unless it was held with a place beside another tab
+/// ([`Composition::hold_after`]). `cmd+1` to `cmd+9` and `next_tab` walk that list, and a tab on the
 /// list that no daemon still holds is not on it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Composition {
@@ -262,6 +263,8 @@ pub struct Composition {
     /// tab this window asked for: the answer naming it arrives before the event describing it,
     /// and the region opens at the reconcile that finally sees it.
     held: BTreeSet<TabId>,
+    /// Where a held tab's region is to open, by the tab it goes after, until it opens.
+    placed_after: BTreeMap<TabId, TabId>,
     /// Never reused, so that a region id names one region for the life of a composition.
     /// Reusing them would let a stale intent - a keystroke sent as a region closed - land
     /// in whatever took its place.
@@ -315,7 +318,8 @@ impl Composition {
     /// The one way a tab enters a window and the one way it grows a second machine. Opening a
     /// region onto a tab is an explicit act, so the window holds the tab from then on - which is
     /// why only a caller that already knows the tab is this window's should open one. A tab
-    /// nothing had heard of is appended to the list; a tab already there gains a region on
+    /// nothing had heard of goes on the end of the list, or after the tab it was held after; a
+    /// tab already there gains a region on
     /// the end for this machine, which is grouping. Both are idempotent: a daemon that
     /// already has a region in this tab gets the one it has.
     ///
@@ -345,14 +349,32 @@ impl Composition {
             pane: None,
             weight: 1.0,
         };
-        match self.tabs.iter_mut().find(|held| held.id == tab) {
-            Some(held) => {
-                held.regions.push(region);
-                held.settle_focus();
-            }
-            None => self.tabs.push(MusterTab { id: tab, regions: vec![region], focused: Some(id) }),
+        if let Some(held) = self.tabs.iter_mut().find(|held| held.id == tab) {
+            held.regions.push(region);
+            held.settle_focus();
+        } else {
+            let at = self.opening_at(&tab);
+            self.placed_after.remove(&tab);
+            self.tabs.insert(at, MusterTab { id: tab, regions: vec![region], focused: Some(id) });
         }
         Some(id)
+    }
+
+    /// Where a tab opening now goes in the list: after the tab it was held after, or on the end.
+    ///
+    /// A tab held after one that is itself still waiting to open goes where that one will, so
+    /// several tabs held one after another keep that order whichever of them opens first.
+    fn opening_at(&self, tab: &TabId) -> usize {
+        let mut after = self.placed_after.get(tab);
+        // Bounded by the hints there are, so that two tabs each held after the other end.
+        for _ in 0..=self.placed_after.len() {
+            let Some(anchor) = after else { break };
+            if let Some(at) = self.tabs.iter().position(|held| &held.id == anchor) {
+                return at + 1;
+            }
+            after = self.placed_after.get(anchor);
+        }
+        self.tabs.len()
     }
 
     /// Closes one machine's half of a tab, and the tab when that was the whole of it.
@@ -414,6 +436,19 @@ impl Composition {
         self.held.insert(tab);
     }
 
+    /// Says this window holds a tab whose region is to open just after `after`, rather than on
+    /// the end where a tab opening goes.
+    ///
+    /// For a tab that belongs beside another, as a maker's helpers belong beside the tab holding
+    /// it (MIP-7). The place is used once, when the tab's first region opens, and then
+    /// forgotten: a tab that closes and opens again later goes on the end like any other. When
+    /// `after` is not in the list by then, the tab goes on the end too. Nothing is brought on
+    /// screen, for the reason [`Composition::open_region`] gives.
+    pub fn hold_after(&mut self, tab: TabId, after: TabId) {
+        self.placed_after.insert(tab.clone(), after);
+        self.held.insert(tab);
+    }
+
     /// Says this window no longer holds a tab, and takes it out of the list.
     ///
     /// What happens when a tab moves to another window. Its panes keep running: they belong to a
@@ -421,6 +456,7 @@ impl Composition {
     /// lands on whatever took its place, as it does when a tab closes.
     pub fn let_go(&mut self, tab: &TabId) {
         self.held.remove(tab);
+        self.placed_after.remove(tab);
         let was_at = self.showing_at();
         self.tabs.retain(|held| &held.id != tab);
         self.settle_showing(was_at);
