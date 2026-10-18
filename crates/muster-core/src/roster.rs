@@ -214,19 +214,18 @@ pub struct RosterPane {
     /// rather than from `muster · claude`, which nobody typed. Absent means unnamed, which
     /// is what "has a name" is asked of without a sentinel.
     pub given_name: Option<String>,
-    /// What to type to reach this pane: the name somebody gave it, or the word its daemon drew.
-    /// Absent only for a pane nobody named on a daemon from before words.
+    /// What the pane is called: the name somebody gave it, or its callsign. Absent only for a
+    /// pane nobody named on a daemon from before callsigns.
     pub name: Option<String>,
-    /// The word its daemon drew (`otter`), whether or not somebody has named it since. Absent
-    /// only on a daemon from before words.
+    /// Its callsign (`otter`), whether or not somebody has named it since. Absent only on a
+    /// daemon from before callsigns.
     ///
     /// Carried apart from `label` so that a row can draw it in a style of its own and keep it in
-    /// view through a rename: the daemon keeps a renamed pane's word reserved for it, so it is
-    /// still one pane's on its machine (`docs/cli/overview.md`).
-    pub word: Option<String>,
-    /// What a row drawing `word` on its own puts after it: [`pane_beside_word`]. The same as
-    /// `label` for a pane with no word.
-    pub beside_word: String,
+    /// view through a rename, since it is what reaches the pane (`docs/cli/overview.md`).
+    pub callsign: Option<String>,
+    /// What a row drawing `callsign` on its own puts after it: [`pane_beside_callsign`]. The
+    /// same as `label` for a pane with no callsign.
+    pub beside_callsign: String,
     /// Whether a region is showing it right now.
     ///
     /// Here rather than left to the shell to work out by comparing against the view: the two
@@ -561,8 +560,8 @@ impl Roster {
                             label,
                             given_name: given_name(pane.name.as_deref()),
                             name: pane_name(pane).map(str::to_string),
-                            word: pane_word(pane).map(str::to_string),
-                            beside_word: pane_beside_word(pane),
+                            callsign: pane_callsign(pane).map(str::to_string),
+                            beside_callsign: pane_beside_callsign(pane),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
                             resumes_as: resumes_as(pane),
@@ -730,8 +729,8 @@ fn hidden_tabs<'a>(
                     label,
                     given_name: given_name(pane.name.as_deref()),
                     name: pane_name(pane).map(str::to_string),
-                    word: pane_word(pane).map(str::to_string),
-                    beside_word: pane_beside_word(pane),
+                    callsign: pane_callsign(pane).map(str::to_string),
+                    beside_callsign: pane_beside_callsign(pane),
                     on_screen: false,
                     compactable: pane.compactable,
                     resumes_as: resumes_as(pane),
@@ -835,50 +834,51 @@ fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
 /// Public because a notification names a pane too, and it has to be the same name. Building
 /// a whole roster to read one row would lock every attached daemon for a banner.
 ///
-/// **A pane going by the word its daemon drew leads with the word**, because it is what you
-/// type to reach the pane, and keeps the directory and the harness after it, because a word
-/// says nothing about the work and those are what tell fifteen rows apart.
+/// **A pane nobody named leads with its callsign**, because it is what you type to reach the
+/// pane, and keeps the directory and the harness after it, because a callsign says nothing
+/// about the work and those are what tell fifteen rows apart.
 pub fn pane_label(pane: &Pane) -> String {
-    let beside = pane_beside_word(pane);
-    match pane_word(pane).filter(|_| given_name(pane.name.as_deref()).is_none()) {
-        Some(word) if beside.is_empty() => word.to_string(),
-        Some(word) => format!("{word} · {beside}"),
+    let beside = pane_beside_callsign(pane);
+    match pane_callsign(pane).filter(|_| given_name(pane.name.as_deref()).is_none()) {
+        Some(callsign) if beside.is_empty() => callsign.to_string(),
+        Some(callsign) => format!("{callsign} · {beside}"),
         None => beside,
     }
 }
 
-/// What a row that draws a pane's word on its own puts after the word: the name somebody gave the
-/// pane, or else its directory and harness - the label with the word taken out, so the word is
-/// drawn once. A pane with no word gets its whole label.
+/// What a row that draws a pane's callsign on its own puts after it: the name somebody gave the
+/// pane, or else its directory and harness - the label with the callsign taken out, so the
+/// callsign is drawn once. A pane with no callsign gets its whole label.
 ///
-/// The label is built from this, so the two cannot come to disagree about anything but the word.
-pub fn pane_beside_word(pane: &Pane) -> String {
+/// The label is built from this, so the two cannot come to disagree about anything but the
+/// callsign.
+pub fn pane_beside_callsign(pane: &Pane) -> String {
     if let Some(name) = given_name(pane.name.as_deref()) {
         return name;
     }
     let harness = pane.agent.as_deref().filter(|agent| !agent.is_empty());
-    // With no directory, a word is enough to point at the pane by, where the id it would fall
+    // With no directory, a callsign is enough to point at the pane by, where the id it would fall
     // back to says nothing a reader can use.
-    if pane_word(pane).is_some() && pane.cwd.trim_end_matches('/').is_empty() {
+    if pane_callsign(pane).is_some() && pane.cwd.trim_end_matches('/').is_empty() {
         return harness.unwrap_or_default().to_string();
     }
     format!("{}{}", pane_directory(pane), harness_suffix(pane))
 }
 
-/// The word a pane's daemon drew, if it has one.
-fn pane_word(pane: &Pane) -> Option<&str> {
-    pane.word.as_deref().filter(|word| !word.is_empty())
+/// A pane's callsign, if it has one.
+fn pane_callsign(pane: &Pane) -> Option<&str> {
+    pane.callsign.as_deref().filter(|callsign| !callsign.is_empty())
 }
 
-/// What a pane is called, as something to type: the name somebody gave it, or failing that the
-/// word its daemon drew. The daemon's own reading of a record (`muster_daemon_proto::Pane::name`)
+/// What a pane is called: the name somebody gave it, or failing that its callsign. The daemon's
+/// own reading of a record (`muster_daemon_proto::Pane::name`)
 /// says the same, which it has to: a name is an address.
 pub fn pane_name(pane: &Pane) -> Option<&str> {
     pane.name
         .as_deref()
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .or_else(|| pane.word.as_deref().filter(|word| !word.is_empty()))
+        .or_else(|| pane.callsign.as_deref().filter(|word| !word.is_empty()))
 }
 
 fn pane_directory(pane: &Pane) -> &str {

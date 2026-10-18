@@ -108,13 +108,9 @@ pub(crate) struct Shared {
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
     pub(crate) socket: Socket,
-    /// The session's view of who joined messaging by what name, for a request to probe the
-    /// inboxes it would name a pane after before the session's lock is taken.
-    pub(crate) joined: crate::messages::Joined,
 }
 
 impl Shared {
-    #[expect(clippy::too_many_lines, reason = "most of it is the session's struct, a field a line")]
     pub(crate) fn new(
         instance: u64,
         stopping: Sender<Stop>,
@@ -166,7 +162,6 @@ impl Shared {
                 doorbell: Doorbell::default(),
                 peers: Peers::beside(&socket.path),
                 detecting: Arc::clone(&detecting),
-                joined: Arc::clone(&joined),
                 session: Mutex::new(Session {
                     instance,
                     seq: 0,
@@ -188,7 +183,6 @@ impl Shared {
                         .map(|notice| (notice.group.clone(), (0, notice)))
                         .collect(),
                     joined,
-                    probed: Probed::default(),
                     inherited,
                     home,
                     data,
@@ -399,9 +393,6 @@ pub(crate) struct Session {
     /// The agents that joined messaging by names of their own, which no pane is drawn, nor given
     /// while they are live, as messaging keeps them.
     joined: crate::messages::Joined,
-    /// What the request being handled found at the inboxes of the agents it would name a pane
-    /// after, set around [`Session::handle`] by the connection that took the lock.
-    pub(crate) probed: Probed,
     /// The daemon's own environment, which every pane's starts from.
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
@@ -811,7 +802,7 @@ fn flag_names(arguments: &[String]) -> String {
 
 /// How many closed panes' words a draw passes over, newest first. Under half the list, so a
 /// machine with a few dozen panes open still has most words to draw from.
-const RELEASED_WORDS: usize = 128;
+const RELEASED_CALLSIGNS: usize = 128;
 
 /// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
@@ -885,7 +876,7 @@ impl Lost {
 /// brought back is kept in a copy of the file, since the next write leaves it out.
 pub(crate) fn restore(shared: &Shared, state: persist::State) {
     let started = std::time::Instant::now();
-    shared.lock().released = state.released_words.into();
+    shared.lock().released = state.released_callsigns.into();
     let saved: HashMap<String, persist::Pane> =
         state.panes.into_iter().map(|pane| (pane.name.clone(), pane)).collect();
     let names: Vec<(String, Vec<String>)> = state
@@ -1041,7 +1032,7 @@ pub(crate) struct Starting {
     pane: String,
     label: Option<String>,
     /// The word drawn for it, and claimed in `naming` with the name it was given, if any.
-    word: String,
+    callsign: String,
     command: Option<String>,
     quiet: bool,
     maker: Option<String>,
@@ -1368,11 +1359,6 @@ impl Session {
         {
             return Err(taken);
         }
-        if let Some(given) = &given
-            && let Some(who) = self.joined_by(given, &create.pane)
-        {
-            return Err(name_joined(given, &who));
-        }
         let maker = create.maker.filter(|maker| !maker.is_empty());
         if let Some(maker) = &maker {
             valid_name("maker", maker).map_err(Reply::refused)?;
@@ -1394,23 +1380,20 @@ impl Session {
             None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
         };
 
-        let word = self.draw_word(given.as_deref(), Some(&cwd));
-        let name = given.clone().unwrap_or_else(|| word.clone());
-        let which = spawn::Which { pane: &create.pane, name: &name, callsign: &word };
+        let callsign = self.draw_callsign(given.as_deref(), Some(&cwd));
+        let name = given.clone().unwrap_or_else(|| callsign.clone());
+        let which = spawn::Which { pane: &create.pane, name: &name, callsign: &callsign };
         let (argv, environment) = self.launch(which, create.command.as_deref(), &create.env);
 
         self.reserved.insert(create.pane.clone());
         if let Some(name) = target.new_tab() {
             self.reserved.insert(name.to_string());
         }
-        self.naming.insert(word.clone(), create.pane.clone());
-        if let Some(given) = given {
-            self.naming.insert(given, create.pane.clone());
-        }
+        self.naming.insert(callsign.clone(), create.pane.clone());
         Ok(Starting {
             pane: create.pane,
             label: create.label,
-            word,
+            callsign,
             command: create.command,
             quiet: create.quiet,
             maker,
@@ -1502,7 +1485,7 @@ impl Session {
         let record = proto::Pane {
             pane: starting.pane.clone(),
             label: starting.label,
-            word: Some(starting.word),
+            callsign: Some(starting.callsign),
             cwd: starting.cwd.display().to_string(),
             command: starting.command,
             quiet: starting.quiet,
@@ -2066,21 +2049,8 @@ impl Session {
         };
         let changed = pane.session_name.wanted() != wanted.as_deref();
         let name = pane.record.pane.clone();
-        if let Some(holder) = given_name(Some(&taken)).and_then(|taken| self.called(taken, &name)) {
-            log::info(
-                "session.name.held",
-                fields! {
-                    "pane" => name,
-                    "agent" => agent,
-                    "holder" => holder,
-                    "impact" => "the pane keeps its name, since another pane here is called what \
-                                 its agent's session is",
-                },
-            );
-            return changed;
-        }
         if let Some(holder) =
-            given_name(Some(&taken)).and_then(|taken| self.joined_by(taken, &name))
+            given_name(Some(&taken)).and_then(|taken| self.callsign_holder(taken, &name))
         {
             log::info(
                 "session.name.held",
@@ -2088,9 +2058,8 @@ impl Session {
                     "pane" => name,
                     "agent" => agent,
                     "holder" => holder,
-                    "impact" => "the pane keeps its name, since an agent here joined messaging by \
-                                 what its agent's session is called, and a post to it would \
-                                 mean both",
+                    "impact" => "the pane keeps its name, since its agent's session is called \
+                                 what another pane here has as its callsign",
                 },
             );
             return changed;
@@ -2282,14 +2251,14 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
-        if let Some(word) = removed.record.word.clone() {
-            self.released.push_back(word);
-            if self.released.len() > RELEASED_WORDS {
+        if let Some(callsign) = removed.record.callsign.clone() {
+            self.released.push_back(callsign);
+            if self.released.len() > RELEASED_CALLSIGNS {
                 self.released.pop_front();
             }
         }
         let maker = &removed.record;
-        self.orphan(&maker.pane, maker.name().unwrap_or(&maker.pane));
+        self.orphan(&maker.pane, maker.callsign.as_deref().unwrap_or(&maker.pane));
         removed.io.mark_closed();
         self.emit(Payload::PaneClosed(proto::PaneClosed {
             pane: pane.to_string(),
@@ -2320,8 +2289,8 @@ impl Session {
             if record.maker.as_deref() != Some(maker) || record.maker_closed {
                 continue;
             }
-            let name = record.name().unwrap_or(&record.pane).to_string();
-            helpers.push((record.pane.clone(), name));
+            let callsign = record.callsign.as_deref().unwrap_or(&record.pane).to_string();
+            helpers.push((record.pane.clone(), callsign));
             record.maker_closed = true;
             record.quiet = false;
             let record = record.clone();
@@ -2471,24 +2440,8 @@ impl Session {
         {
             return taken;
         }
-        if let Some(given) = given
-            && let Some(who) = self.joined_by(given, &rename.pane)
-        {
-            return name_joined(given, &who);
-        }
-        // Back to its word, which another pane may have been named since.
-        let word = self.panes[index].record.word.clone();
-        let redrawn = match (given, word) {
-            (None, Some(word)) if self.called(&word, &rename.pane).is_some() => {
-                Some(self.draw_word(None, None))
-            }
-            _ => None,
-        };
         let record = &mut self.panes[index].record;
         record.label = rename.label;
-        if redrawn.is_some() {
-            record.word = redrawn;
-        }
         let record = record.clone();
         let pane = &mut self.panes[index];
         pane.session_name.named(&record.pane, record.label.as_deref());
@@ -3007,7 +2960,7 @@ impl Session {
                 .map(|pane| persist::Pane {
                     name: pane.record.pane.clone(),
                     label: pane.record.label.clone(),
-                    word: pane.record.word.clone(),
+                    callsign: pane.record.callsign.clone(),
                     cwd: PathBuf::from(&pane.record.cwd),
                     grid: pane.io.grid(),
                     resume: pane.resume.clone(),
@@ -3016,7 +2969,7 @@ impl Session {
                     maker_closed: pane.record.maker_closed,
                 })
                 .collect(),
-            released_words: self.released.iter().cloned().collect(),
+            released_callsigns: self.released.iter().cloned().collect(),
         }
     }
 
@@ -3068,17 +3021,20 @@ impl Session {
                 lost.panes.push(name.to_string());
                 continue;
             }
-            // The word it had, unless a client's pane took it first; a state file from before
-            // words has none, and gets one now.
+            // The callsign it had, unless a client's pane took it first; a state file from before
+            // callsigns has none, and gets one now.
             let mut pane = pane.clone();
-            let word =
-                pane.word.take().filter(|word| self.called(word, name).is_none()).unwrap_or_else(
-                    || self.draw_word(given_name(pane.label.as_deref()), Some(&pane.cwd)),
-                );
-            self.naming.insert(word.clone(), name.to_string());
-            pane.word = Some(word.clone());
-            let called = given_name(pane.label.as_deref()).unwrap_or(&word).to_string();
-            let which = spawn::Which { pane: name, name: &called, callsign: &word };
+            let callsign = pane
+                .callsign
+                .take()
+                .filter(|callsign| self.callsign_holder(callsign, name).is_none())
+                .unwrap_or_else(|| {
+                    self.draw_callsign(given_name(pane.label.as_deref()), Some(&pane.cwd))
+                });
+            self.naming.insert(callsign.clone(), name.to_string());
+            pane.callsign = Some(callsign.clone());
+            let called = given_name(pane.label.as_deref()).unwrap_or(&callsign).to_string();
+            let which = spawn::Which { pane: name, name: &called, callsign: &callsign };
             let shell = self.settings.shell.clone().unwrap_or_default();
             let resume = pane.resume.clone().filter(|_| self.resumes_agents());
             let command = resume.as_ref().map(|resume| {
@@ -3130,7 +3086,7 @@ impl Session {
             let record = proto::Pane {
                 pane: name.clone(),
                 label: pane.saved.label,
-                word: pane.saved.word,
+                callsign: pane.saved.callsign,
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
                 quiet: pane.saved.quiet,
@@ -3368,9 +3324,9 @@ impl Session {
         drop(screen.output(replay));
         screen.replayed_from(resuming.oldest_row);
         // A daemon from before words hands its panes over with none.
-        if record.word.is_none() {
+        if record.callsign.is_none() {
             let besides = given_name(record.label.as_deref());
-            record.word = Some(self.draw_word(besides, Some(Path::new(&record.cwd))));
+            record.callsign = Some(self.draw_callsign(besides, Some(Path::new(&record.cwd))));
         }
         self.next_serial += 1;
         let watching = Watching {
@@ -3490,51 +3446,33 @@ impl Session {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }
 
-    /// The pane other than `except` that `name` belongs to here: one called it, or one drawn it
-    /// as its word and named something else since.
-    ///
-    /// A renamed pane keeps its word, and the agent list shows it beside the given name, so the
-    /// word stays that pane's: drawn again for another pane, two rows would show it and a name
-    /// typed from one of them would reach the other.
-    fn called(&self, name: &str, except: &str) -> Option<&str> {
-        self.answers_to(name, except).or_else(|| self.drawn(name, except))
-    }
-
-    /// The pane other than `except` whose name is `name` here: one open, or one starting.
-    fn answers_to(&self, name: &str, except: &str) -> Option<&str> {
+    /// The pane other than `except` whose callsign is `callsign` here: one open, or one starting.
+    fn callsign_holder(&self, callsign: &str, except: &str) -> Option<&str> {
         self.panes
             .iter()
             .map(|pane| &pane.record)
-            .find(|record| record.pane != except && record.name() == Some(name))
+            .find(|record| record.pane != except && record.callsign.as_deref() == Some(callsign))
             .map(|record| record.pane.as_str())
-            .or_else(|| self.naming.get(name).filter(|pane| *pane != except).map(String::as_str))
+            .or_else(|| {
+                self.naming.get(callsign).filter(|pane| *pane != except).map(String::as_str)
+            })
     }
 
-    /// The pane other than `except` that was drawn `word`, whatever it is called now.
-    fn drawn(&self, word: &str, except: &str) -> Option<&str> {
-        self.panes
-            .iter()
-            .map(|pane| &pane.record)
-            .find(|record| record.pane != except && record.word.as_deref() == Some(word))
-            .map(|record| record.pane.as_str())
-    }
-
-    /// Why a pane cannot be given `name`, when another pane here holds it.
+    /// Why a pane cannot be given `name`: another pane here has it as its callsign, which an
+    /// address is matched to before any given name, so the name would never reach this pane.
+    /// Given names may repeat.
     fn name_taken(&self, name: &str, except: &str) -> Option<Reply> {
-        if let Some(holder) = self.answers_to(name, except) {
-            return Some(name_held(name, holder));
-        }
-        self.drawn(name, except).map(|holder| word_held(name, holder))
+        self.callsign_holder(name, except).map(|holder| callsign_held(name, holder))
     }
 
-    /// A word for a pane that no pane here is called, nor `besides`, the name it is being given,
-    /// nor an agent here joined messaging by: a post to that word would mean both.
+    /// A callsign no pane here holds or is named, nor `besides`, the name the pane is being given,
+    /// nor an agent here joined messaging by: a post to it would mean both.
     ///
     /// Passed over while another is free: a word found in the pane's directory or its name, or
     /// in what any pane or tab here is called, runs in or shows, since `swan` would read as the
-    /// project in a project called swan; and a word a pane closed with recently, which a message
-    /// or a person may still use for that pane.
-    fn draw_word(&self, besides: Option<&str>, cwd: Option<&Path>) -> String {
+    /// project in a project called swan; and the callsign of a pane closed recently, which a
+    /// message or a person may still use for that pane.
+    fn draw_callsign(&self, besides: Option<&str>, cwd: Option<&Path>) -> String {
         let joined = poison::lock(&self.joined, "daemon.messages.joined");
         let mut around: Vec<String> = Vec::new();
         around.extend(besides.map(str::to_string));
@@ -3546,31 +3484,15 @@ impl Session {
         }
         around.extend(self.tabs.iter().filter_map(|tab| tab.label.text.clone()));
         let around = around.join("\n").to_lowercase();
-        muster_core::words::draw(
+        muster_core::callsigns::draw(
             |word| {
                 besides == Some(word)
-                    || self.called(word, "").is_some()
+                    || self.callsign_holder(word, "").is_some()
+                    || self.panes.iter().any(|pane| pane.record.label.as_deref() == Some(word))
                     || joined.contains_key(word)
             },
             |word| around.contains(word) || self.released.iter().any(|released| released == word),
         )
-    }
-
-    /// The live agent that joined messaging by `name`, other than one in `naming`, described for
-    /// a refusal: a pane given that name would make a post to it mean two agents. Live as a post
-    /// judges it (`muster_msg`'s `pane_called`): its pane is open here, or, with no pane, it has
-    /// not left and its inbox answered when [`Probed`] asked, before this lock was taken.
-    fn joined_by(&self, name: &str, naming: &str) -> Option<String> {
-        let known = poison::lock(&self.joined, "daemon.messages.joined").get(name)?.clone();
-        match known.pane.as_deref() {
-            Some(pane) if pane == naming => None,
-            Some(pane) => self.pane_index(pane).map(|_| format!("{name} (pane {pane})")),
-            None if !known.gone && self.probed.answers(&known) => {
-                let at = known.inbox.as_ref().map_or("", |inbox| inbox.socket.as_str());
-                Some(format!("{name} (the session at {at})"))
-            }
-            None => None,
-        }
     }
 
     fn tab_index(&self, tab: &str) -> Option<usize> {
@@ -3594,67 +3516,11 @@ fn given_name(label: Option<&str>) -> Option<&str> {
     label.map(str::trim).filter(|label| !label.is_empty())
 }
 
-/// Whether the inboxes of agents a request would name a pane after answered, asked before the
-/// session's lock is taken: an inbox is asked by connecting, which waits up to a second on a
-/// session that has stopped reading, and every request here would wait with it.
-#[derive(Debug, Default)]
-pub(crate) struct Probed(Vec<(Option<muster_msg::Inbox>, bool)>);
-
-impl Probed {
-    /// Asks the inbox of the agent with no pane that joined by the name `service` would give a
-    /// pane - a new pane's, a rename's, or a session's its pane would follow - if there is one.
-    pub(crate) fn before(joined: &crate::messages::Joined, service: Option<&Service>) -> Probed {
-        let name = match service {
-            Some(Service::Pane(proto::PaneRequest { request: Some(request) })) => match request {
-                pane_request::Request::Create(create) => create.label.as_deref(),
-                pane_request::Request::Rename(rename) => rename.label.as_deref(),
-                pane_request::Request::Report(report) => report.session_name.as_deref(),
-                _ => None,
-            },
-            _ => None,
-        };
-        let Some(name) = given_name(name) else { return Probed::default() };
-        // Copied out, so the probe never holds up messaging's updates to the set.
-        let known = poison::lock(joined, "daemon.messages.joined").get(name).cloned();
-        let Some(known) = known.filter(|known| known.pane.is_none() && !known.gone) else {
-            return Probed::default();
-        };
-        let answered = crate::messages::inbox_answers(&known);
-        Probed(vec![(known.inbox, answered)])
-    }
-
-    /// Whether `participant`'s inbox answered. One that was not asked - it joined by the name
-    /// after the probe, or with another inbox - counts as answering: refusing a name that turns
-    /// out free costs a retry, and giving one that is not makes a post to it mean two agents.
-    fn answers(&self, participant: &muster_msg::Participant) -> bool {
-        self.0
-            .iter()
-            .find(|(inbox, _)| *inbox == participant.inbox)
-            .is_none_or(|(_, answered)| *answered)
-    }
-}
-
-/// A pane cannot be called what an agent here joined messaging by while that agent is live,
-/// because `--to` the name would then mean both.
-fn name_joined(name: &str, who: &str) -> Reply {
+/// A pane cannot be named another pane's callsign, which `--pane` and `--to` would reach first.
+fn callsign_held(callsign: &str, holder: &str) -> Reply {
     Reply::refused(format!(
-        "{name:?} is the name {who} joined messaging by, and a post to it would then mean two \
-         agents; choose another name, or have that agent join under another"
-    ))
-}
-
-/// A pane cannot be called what another pane here is, because a name says which pane it is.
-fn name_held(name: &str, holder: &str) -> Reply {
-    Reply::refused(format!(
-        "pane {holder} on this daemon is already called {name:?}, and two panes cannot share a \
-         name, since a name says which pane it is; choose another, or rename {holder} first"
-    ))
-}
-
-fn word_held(word: &str, holder: &str) -> Reply {
-    Reply::refused(format!(
-        "{word:?} is the word pane {holder} on this daemon was drawn, which it keeps after a \
-         rename and the agent list shows beside its name; choose another name"
+        "{callsign:?} is the callsign of pane {holder} on this daemon, so a pane named it could \
+         never be reached by that name; choose another"
     ))
 }
 
@@ -3974,36 +3840,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    /// An agent's inbox is asked before the session's lock is taken, and only the answer is read
-    /// under it: one that was not asked, because it joined after the probe, counts as live.
-    #[test]
-    fn a_name_is_probed_before_the_lock_and_an_agent_not_probed_counts_as_live() {
-        let joiner = |socket: &str| -> muster_msg::Participant {
-            serde_json::from_value(serde_json::json!({
-                "name": "critic",
-                "inbox": { "socket": socket, "inode": 1 },
-            }))
-            .unwrap()
-        };
-        let gone = joiner("/nonexistent/critic.sock");
-        let by_name: crate::messages::Joined =
-            Arc::new(Mutex::new(BTreeMap::from([("critic".to_string(), gone.clone())])));
-        let renaming = |label: &str| {
-            Service::Pane(proto::PaneRequest {
-                request: Some(pane_request::Request::Rename(pane_request::Rename {
-                    pane: "p1".to_string(),
-                    label: Some(label.to_string()),
-                })),
-            })
-        };
-
-        let probed = Probed::before(&by_name, Some(&renaming(" critic ")));
-        assert!(!probed.answers(&gone), "an inbox that is not there does not answer");
-        assert!(probed.answers(&joiner("/elsewhere/critic.sock")), "one not asked counts as live");
-        let unasked = Probed::before(&by_name, Some(&renaming("builder")));
-        assert!(unasked.answers(&gone), "a name nobody joined by asks no inbox");
     }
 
     #[test]

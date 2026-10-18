@@ -109,7 +109,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         compactable: given.get("compactable").and_then(Value::as_bool).unwrap_or_default(),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
-        word: optional(given, "word"),
+        callsign: optional(given, "callsign"),
         title: optional(given, "title"),
         command: optional(given, "command"),
         facts: given.get("facts").map(read_facts).unwrap_or_default(),

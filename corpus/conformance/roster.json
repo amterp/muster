@@ -1717,7 +1717,7 @@
                 "id": "w1:p1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
-                "word": "otter"
+                "callsign": "otter"
               }
             ]
           }
@@ -1740,7 +1740,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"otter \u00b7 muster \u00b7 claude\" name=\"otter\" word=\"otter\" beside-word=\"muster \u00b7 claude\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"otter \u00b7 muster \u00b7 claude\" name=\"otter\" callsign=\"otter\" beside-callsign=\"muster \u00b7 claude\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1765,7 +1765,7 @@
                 "id": "w1:p1",
                 "cwd": "",
                 "agent": "claude",
-                "word": "otter"
+                "callsign": "otter"
               }
             ]
           }
@@ -1788,7 +1788,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"otter · claude\" name=\"otter\" word=\"otter\" beside-word=\"claude\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"otter · claude\" name=\"otter\" callsign=\"otter\" beside-callsign=\"claude\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1813,7 +1813,7 @@
                 "id": "w1:p1",
                 "cwd": "/Users/a/src/muster",
                 "agent": "claude",
-                "word": "otter",
+                "callsign": "otter",
                 "name": "builder"
               }
             ]
@@ -1837,7 +1837,7 @@
           "local connected 1 panes"
         ],
         "panes": [
-          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" word=\"otter\" beside-word=\"builder\" off-screen"
+          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" callsign=\"otter\" beside-callsign=\"builder\" off-screen"
         ],
         "tabs": [
           "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
@@ -1870,7 +1870,7 @@
               {
                 "id": "w1:p2",
                 "cwd": "/src/beta",
-                "word": "maple"
+                "callsign": "maple"
               }
             ]
           }
@@ -1900,7 +1900,7 @@
         ],
         "hidden": [
           "w1:t2 on=local place=0 label=\"\" off-screen",
-          "local/w1:p2 place=0 tab=w1:t2 label=\"maple \u00b7 beta\" name=\"maple\" word=\"maple\" beside-word=\"beta\" off-screen"
+          "local/w1:p2 place=0 tab=w1:t2 label=\"maple \u00b7 beta\" name=\"maple\" callsign=\"maple\" beside-callsign=\"beta\" off-screen"
         ]
       }
     },

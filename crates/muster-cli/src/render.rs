@@ -932,12 +932,12 @@ impl<'a> Helpers<'a> {
 
 /// The callsign a pane answers to, or its id from a daemon that draws none.
 fn callsign_or_id(pane: &muster_proto::RosterPane) -> &str {
-    if pane.word.is_empty() { &pane.pane_id } else { &pane.word }
+    if pane.callsign.is_empty() { &pane.pane_id } else { &pane.callsign }
 }
 
 /// What follows a pane's callsign: its label with the callsign taken out, so it is said once.
 fn beside_callsign(pane: &muster_proto::RosterPane) -> &str {
-    if pane.word.is_empty() { &pane.label } else { &pane.beside_word }
+    if pane.callsign.is_empty() { &pane.label } else { &pane.beside_callsign }
 }
 
 /// A machine's heading, and beneath it what would end with the daemon behind it.
@@ -1256,7 +1256,7 @@ fn unplaced_tab_json(
         "given_name": tab.given_name,
         "panes": tab.panes.iter().map(|pane| with_agent(json!({
             "pane": pane.pane_id,
-            "callsign": (!pane.word.is_empty()).then_some(&pane.word),
+            "callsign": (!pane.callsign.is_empty()).then_some(&pane.callsign),
             "name": (!pane.name.is_empty()).then_some(&pane.name),
             "daemon": pane.daemon_id,
             "label": pane.label,
@@ -1348,7 +1348,7 @@ fn window_json(window: &Window, others: Others) -> Value {
                 "pane": pane.pane_id,
                 // What to call the pane: `--pane` and `--to` take it, renamed or not. Null only
                 // from a daemon that draws none.
-                "callsign": (!pane.word.is_empty()).then_some(&pane.word),
+                "callsign": (!pane.callsign.is_empty()).then_some(&pane.callsign),
                 // The name somebody gave it, or else its callsign; taken by `--pane` and `--to`
                 // too.
                 "name": (!pane.name.is_empty()).then_some(&pane.name),
@@ -2059,10 +2059,10 @@ mod tests {
         use muster_proto::{PaneStateChanged, RosterChanged, RosterPane, RosterTab, Window};
         let pane = |id: &str, word: &str, maker: &str, quiet: bool| RosterPane {
             pane_id: id.to_string(),
-            word: word.to_string(),
+            callsign: word.to_string(),
             name: word.to_string(),
             label: format!("🤖 {word}"),
-            beside_word: format!("🤖 {word}"),
+            beside_callsign: format!("🤖 {word}"),
             maker: maker.to_string(),
             quiet,
             ..RosterPane::default()

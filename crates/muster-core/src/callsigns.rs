@@ -24,7 +24,7 @@ use flexid::{OsRandom, RandomSource};
 use crate::diagnostics::monotonic_now;
 
 /// Every word a pane can be drawn.
-pub const WORDS: &[&str] = &[
+pub const CALLSIGNS: &[&str] = &[
     "acorn", "adder", "agate", "alder", "algae", "almond", "amber", "anchor", "anvil", "apple",
     "apricot", "arch", "aspen", "aster", "atlas", "aurora", "badger", "bagel", "bamboo", "banjo",
     "barley", "basil", "beaver", "bell", "berry", "birch", "bison", "blossom", "bobcat", "bonsai",
@@ -80,7 +80,7 @@ pub fn draw_from(
     roll: u64,
 ) -> String {
     for round in 1usize.. {
-        let free: Vec<String> = WORDS
+        let free: Vec<String> = CALLSIGNS
             .iter()
             .map(|word| if round == 1 { (*word).to_string() } else { format!("{word}-{round}") })
             .filter(|word| !taken(word))
@@ -103,8 +103,8 @@ mod tests {
 
     #[test]
     fn there_are_a_few_hundred_plain_short_words() {
-        assert!(WORDS.len() >= 250, "{} words", WORDS.len());
-        for word in WORDS {
+        assert!(CALLSIGNS.len() >= 250, "{} words", CALLSIGNS.len());
+        for word in CALLSIGNS {
             assert!((4..=7).contains(&word.len()), "{word} is not four to seven letters");
             assert!(word.bytes().all(|byte| byte.is_ascii_lowercase()), "{word} is not plain");
         }
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn no_two_words_share_their_first_three_letters() {
         let mut seen = BTreeMap::new();
-        for word in WORDS {
+        for word in CALLSIGNS {
             if let Some(other) = seen.insert(&word[..3], word) {
                 panic!("{other} and {word} both begin {}", &word[..3]);
             }
@@ -128,37 +128,37 @@ mod tests {
             "rust", "ruby",
         ];
         for word in NOT {
-            assert!(!WORDS.contains(word), "{word} is in the list");
+            assert!(!CALLSIGNS.contains(word), "{word} is in the list");
         }
     }
 
     #[test]
     fn a_drawn_word_is_one_no_live_pane_holds() {
         let held = ["otter", "maple"];
-        for roll in 0..WORDS.len() as u64 {
+        for roll in 0..CALLSIGNS.len() as u64 {
             let word = draw_from(|word| held.contains(&word), |_| false, roll);
             assert!(!held.contains(&word.as_str()));
-            assert!(WORDS.contains(&word.as_str()));
+            assert!(CALLSIGNS.contains(&word.as_str()));
         }
     }
 
     #[test]
     fn once_every_word_is_held_they_come_round_again_numbered() {
         let word = draw_from(|word| !word.ends_with("-2"), |_| false, 0);
-        assert_eq!(word, format!("{}-2", WORDS[0]));
+        assert_eq!(word, format!("{}-2", CALLSIGNS[0]));
         let word = draw_from(|word| !word.ends_with("-3"), |_| false, 7);
-        assert_eq!(word, format!("{}-3", WORDS[7]));
+        assert_eq!(word, format!("{}-3", CALLSIGNS[7]));
     }
 
     #[test]
     fn the_machines_entropy_draws_a_word() {
-        assert!(WORDS.contains(&draw(|_| false, |_| false).as_str()));
+        assert!(CALLSIGNS.contains(&draw(|_| false, |_| false).as_str()));
     }
 
     #[test]
     fn an_unwelcome_word_is_drawn_only_once_no_other_is_free() {
-        let (otter, maple) = (WORDS[0], WORDS[1]);
-        for roll in 0..WORDS.len() as u64 {
+        let (otter, maple) = (CALLSIGNS[0], CALLSIGNS[1]);
+        for roll in 0..CALLSIGNS.len() as u64 {
             let word = draw_from(|_| false, |word| word == otter, roll);
             assert_ne!(word, otter, "drawn though others were free");
         }

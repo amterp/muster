@@ -89,9 +89,9 @@ pub struct Pane {
     /// What a person called this pane, if anybody has. Durable identity: the daemon writes it
     /// down, so it comes back after a daemon restart.
     pub name: Option<String>,
-    /// The word its daemon drew for it (`otter`), which it goes by while nobody has named it.
-    /// No two live panes on one daemon go by one name. None from a daemon before words.
-    pub word: Option<String>,
+    /// Its callsign (`otter`), which reaches it whatever it is named. No two live panes on one
+    /// daemon share one. None from a daemon before callsigns.
+    pub callsign: Option<String>,
     /// What the program in the pane last called itself. Volatile status: a restart loses it,
     /// because the process that would set it again is new.
     pub title: Option<String>,
@@ -183,9 +183,10 @@ impl PendingCompaction {
 }
 
 impl Pane {
-    /// What the pane is called: its name, or the word its daemon drew for it.
+    /// What messaging calls the pane: its callsign, or for a daemon from before callsigns, its
+    /// name.
     pub fn called(&self) -> Option<String> {
-        self.name.clone().or_else(|| self.word.clone())
+        self.callsign.clone().or_else(|| self.name.clone())
     }
 
     /// What the daemon says the pane's agent is doing: what detection read, or `stuck` once the

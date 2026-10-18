@@ -174,7 +174,11 @@ fn a_restart_brings_back_every_tab_its_names_and_directories_and_nothing_else() 
     assert_eq!(record(&after, "p3").maker.as_deref(), Some("p1"), "whose helper p3 is");
     for name in ["p1", "p2", "p3"] {
         let (was, is) = (record(&before, name), record(&after, name));
-        assert_eq!((&is.label, &is.word, &is.cwd), (&was.label, &was.word, &was.cwd), "{name}");
+        assert_eq!(
+            (&is.label, &is.callsign, &is.cwd),
+            (&was.label, &was.callsign, &was.cwd),
+            "{name}"
+        );
         assert_eq!(is.command, None, "{name} is a shell, whatever it was started with");
         assert_eq!(is.facts, None, "what an agent said about itself is not kept");
         assert_eq!((is.agent.as_deref(), is.agent_state()), (None, proto::AgentState::Unknown));

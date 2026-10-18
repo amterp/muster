@@ -4241,7 +4241,7 @@ pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
         let mirror = poison::lock(&backend.mirror, "mirror");
         held.extend(mirror.panes().filter_map(|pane| {
             let name = muster_core::roster::pane_name(pane)?;
-            let callsign = pane.word.clone().filter(|word| !word.is_empty());
+            let callsign = pane.callsign.clone().filter(|word| !word.is_empty());
             Some((pane.id.to_string(), name.to_string(), callsign, daemon.to_string()))
         }));
     }

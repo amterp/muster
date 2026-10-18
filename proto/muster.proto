@@ -2770,22 +2770,19 @@ message RosterPane {
   // Whether nothing about it is raised for the person (QuietPane), as its daemon says.
   bool quiet = 12;
 
-  // What to type to reach this pane, wherever a pane id is taken: the name somebody gave it, or
-  // the word its daemon drew (`otter`). Empty only for a pane nobody named on a daemon from
-  // before words. Unique on its machine, and not across machines, where `otter@devenv` says
-  // which.
+  // What this pane is called: the name somebody gave it, or else its callsign. Taken wherever a
+  // pane id is. Empty only for a pane nobody named on a daemon from before callsigns.
   string name = 13;
 
-  // The word its daemon drew (`otter`), named since or not; empty only on a daemon from before
-  // words. Apart from `label` so that a row can draw it in a style of its own and keep it in view
-  // through a rename. The daemon keeps a renamed pane's word reserved for it, so it stays one
-  // pane's on its machine, though only `name` is typed to reach the pane.
-  string word = 15;
+  // Its callsign (`otter`), the word its daemon drew it, named since or not: the name to call it
+  // by, unique on its machine and taken wherever a pane id is. Apart from `label` so that a row
+  // can draw it in a style of its own. Empty only on a daemon from before callsigns.
+  string callsign = 15;
 
-  // What a row drawing `word` on its own puts after it: the name somebody gave the pane, or else
-  // its directory and harness - `label` with the word taken out. The whole label for a pane with
-  // no word.
-  string beside_word = 16;
+  // What a row drawing `callsign` on its own puts after it: the name somebody gave the pane, or
+  // else its directory and harness - `label` with the callsign taken out. The whole label for a
+  // pane with no callsign.
+  string beside_callsign = 16;
 
   // The id of the pane that made this one as its helper (MIP-7), as its daemon says, or empty
   // for a pane nobody made as a helper. The maker may be on another machine, or closed.

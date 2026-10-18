@@ -352,43 +352,34 @@ fn a_post_to_a_panes_title_is_refused_naming_the_pane() {
     );
 }
 
-/// The reverse of a join refused a name a pane goes by: a pane is not given the name a live agent
-/// joined by, so `--to` that name keeps meaning one agent. Once that agent's session has gone,
-/// the name is free.
+/// A pane may be given the name a live agent joined by, since a given name need not be unique.
+/// A post to that name then means both, so it is refused naming each, and the pane's callsign
+/// still reaches it.
 #[test]
-fn a_pane_is_not_named_what_a_live_agent_joined_by() {
+fn a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign() {
     let daemon = daemon();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     let heron = Inbox::bind(&daemon, "heron");
     join(&mut control, &heron.caller(), "heron", "g");
+    join(&mut control, &named("a"), "a", "g");
 
     let made = proto::pane_request::Create {
         label: Some("heron".to_string()),
         ..create("p2", beside("p1", proto::Side::Right))
     };
-    let refused = expect(
-        &mut control,
-        pane(proto::pane_request::Request::Create(made)),
-        proto::Outcome::Refused,
-    );
-    assert!(
-        refused.answer.reason.contains("joined messaging by"),
-        "a pane made with a joined agent's name should say so: {}",
-        refused.answer.reason
-    );
-    let renaming = || {
-        pane(proto::pane_request::Request::Rename(proto::pane_request::Rename {
-            pane: "p1".to_string(),
-            label: Some("heron".to_string()),
-        }))
-    };
-    expect(&mut control, renaming(), proto::Outcome::Refused);
+    expect(&mut control, pane(proto::pane_request::Request::Create(made)), proto::Outcome::Done);
 
-    let path = heron.path.clone();
-    drop(heron);
-    std::fs::remove_file(&path).unwrap();
-    expect(&mut control, renaming(), proto::Outcome::Done);
+    let refused =
+        expect(&mut control, post_to(&named("a"), "heron", "which?"), proto::Outcome::Refused);
+    assert_eq!(msg_answer(&refused).refusal, "which_participant", "{}", refused.answer.reason);
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == "p2")
+        .and_then(|record| record.callsign)
+        .expect("p2 was drawn a callsign");
+    expect(&mut control, post_to(&named("a"), &callsign, "for you"), proto::Outcome::Done);
 }
 
 #[test]

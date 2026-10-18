@@ -154,51 +154,28 @@ fn the_word_a_pane_was_drawn_is_never_typed_into_its_session() {
     assert_eq!(p1.label().as_deref(), Some("resumed"), "the session's name still names the pane");
 }
 
-/// Two panes here cannot share a name, and a session's name is no exception: the pane keeps the
-/// name it has rather than taking one another pane goes by.
+/// A session's name may be one another pane has, since given names may repeat, but not another
+/// pane's callsign: the pane keeps the name it has rather than one it could never be reached by.
 #[test]
-fn a_session_name_another_pane_has_does_not_rename_the_pane() {
+fn a_session_name_another_panes_callsign_does_not_rename_the_pane() {
     let mut p1 = Pane::named(None);
     let p2 = proto::pane_request::Create {
         label: Some("critic".to_string()),
         ..create("p2", beside("p1", proto::Side::Right))
     };
     make(&mut p1.control, p2);
+    let callsign = snapshot(&mut p1.control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == "p2")
+        .and_then(|record| record.callsign)
+        .expect("p2 was drawn a callsign");
     p1.daemon.run_agent("p1");
     p1.reports("");
-    p1.reports("critic");
+    p1.reports(&callsign);
     assert_eq!(p1.label(), None);
-}
-
-/// Nor does the pane take the name a live agent joined messaging by: `--to` that name would then
-/// mean both.
-#[test]
-fn a_session_name_a_live_agent_joined_by_does_not_rename_the_pane() {
-    use std::os::unix::fs::MetadataExt;
-
-    let mut p1 = Pane::named(None);
-    let socket = p1.daemon.root().join("critic.inbox.sock");
-    let _listening = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-    let inode = std::fs::metadata(&socket).unwrap().ino();
-    let caller = proto::msg_request::Caller {
-        inbox: Some(proto::msg_request::Inbox { socket: socket.display().to_string(), inode }),
-        ..Default::default()
-    };
-    let join = proto::msg_request::Request::Join(proto::msg_request::Join {
-        name: Some("critic".to_string()),
-        group: Some("g".to_string()),
-        pull: false,
-    });
-    let joining = proto::request::Service::Msg(proto::MsgRequest {
-        caller: Some(caller),
-        request: Some(join),
-    });
-    expect(&mut p1.control, joining, proto::Outcome::Done);
-
-    p1.daemon.run_agent("p1");
-    p1.reports("");
     p1.reports("critic");
-    assert_eq!(p1.label(), None);
+    assert_eq!(p1.label().as_deref(), Some("critic"), "another pane's given name is free to share");
 }
 
 #[test]

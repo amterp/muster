@@ -83,7 +83,7 @@ fn a_hidden_pane_is_shown_by_its_word() {
         .panes
         .into_iter()
         .find(|pane| pane.pane == "p2")
-        .and_then(|pane| pane.word)
+        .and_then(|pane| pane.callsign)
         .expect("p2 was drawn a word");
     assert_ok(&answer(request::Payload::HidePane(HidePane {
         pane_id: word.clone(),
@@ -254,7 +254,7 @@ fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
         .panes
         .into_iter()
         .find(|pane| pane.pane == "p1")
-        .and_then(|pane| pane.word)
+        .and_then(|pane| pane.callsign)
         .expect("p1 was drawn a word");
     let helper = |hidden: bool| {
         let made = answer(request::Payload::SplitPane(SplitPane {

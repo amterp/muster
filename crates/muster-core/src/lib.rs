@@ -8,6 +8,7 @@
 pub mod agent_state;
 pub mod attention;
 pub mod bridge_link;
+pub mod callsigns;
 pub mod composition;
 pub mod config;
 pub mod daemon_settings;
@@ -34,7 +35,6 @@ pub mod respawn;
 pub mod roster;
 pub mod transcript;
 pub mod typeable;
-pub mod words;
 
 pub use agent_state::{AgentState, Until};
 pub use attention::{Alert, Asker, Attend, Attention, GroupKey, Noticed, Notifications};

@@ -1530,7 +1530,7 @@
     },
     {
       "name": "a pane is addressed by its name as by its id",
-      "why": "Every pane goes by a short name - one somebody gave it, or a word its daemon drew - and a post may name it by that: the agent there is the pane's participant, as `--to` its id would make it. A group made for the pair is named by what the pane is called, which says who is in it where the id would not.",
+      "why": "Every pane has a callsign, and may have a name somebody gave it, and a post may name it by either: the agent there is the pane's participant, as `--to` its id would make it. A group made for the pair is named by what the pane is called, which says who is in it where the id would not.",
       "given": { "steps": [
         {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
         {"session": "i", "do": "join", "name": "integrator"},
@@ -1544,6 +1544,20 @@
         "integrator posted #4 to integrator+otter; woke p1 [integrator+otter #4-4 x1 to-you:1 from integrator] rung p1",
         "p1 read integrator+otter: #4 integrator->p1: brief",
         "called p1=otter"
+      ] }
+    },
+    {
+      "name": "a wake says an agent known by its pane by the pane's callsign",
+      "why": "The participant is the pane's id, which is never reused, but the person or agent woken reads the line and answers it, and the callsign is what they would type back.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "i", "do": "join", "name": "integrator"},
+        {"session": "s1", "do": "post", "pane": "p1", "to": ["integrator"], "body": "done"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "integrator registered",
+        "p1 posted #4 to integrator+otter; woke integrator [integrator+otter #4-4 x1 to-you:1 from otter]"
       ] }
     },
     {

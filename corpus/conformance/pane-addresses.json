@@ -2,7 +2,7 @@
   "concept": "paneAddress.resolve",
   "source": "authored",
   "citation": "kan a_2ditnGlQz",
-  "why": "Every pane has a callsign its daemon drew (`otter`), and may have a name somebody gave it; both are taken wherever its id is, and a renamed pane keeps answering to its callsign. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
+  "why": "Every pane has a callsign its daemon drew (`otter`), unique on its machine, and may have a name somebody gave it, which need not be unique; both are taken wherever its id is, the callsign first, and a renamed pane keeps answering to its callsign. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
   "cases": [
     {
       "name": "an id is the pane it names",
@@ -62,6 +62,18 @@
       "expect": { "address": "p1w3r07bsd" }
     },
     {
+      "name": "a callsign is asked before a name somebody gave another pane",
+      "why": "A callsign is unique on its machine and a given name is not, so the one that can only mean one pane wins.",
+      "given": {
+        "typed": "otter",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "otter", "callsign": "maple", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "builder", "callsign": "otter", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p2w3r07bsd" }
+    },
+    {
       "name": "a name is matched exactly, not by its case or a prefix of it",
       "why": "A name that matched loosely would one day match the wrong pane. Completion is what saves typing, not guessing.",
       "given": {
@@ -95,7 +107,7 @@
         ]
       },
       "expect": {
-        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its callsign, with the machine when two machines share it, or by its id; `muster window` lists them"
       }
     },
     {
@@ -121,7 +133,7 @@
         ]
       },
       "expect": {
-        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+        "refused": "2 panes are called \"otter\": otter@local (p1w3r07bsd), otter@devenv (p2w3r07bsd). Say which by its callsign, with the machine when two machines share it, or by its id; `muster window` lists them"
       }
     },
     {
@@ -159,17 +171,17 @@
       "expect": { "address": "as typed" }
     },
     {
-      "name": "two panes on one machine sharing a name are refused too",
-      "why": "A daemon refuses to give two live panes one name, but a state file written before it did can bring two back; they are listed with their ids, which is the only thing that tells them apart.",
+      "name": "two panes on one machine sharing a given name are refused, naming each by its callsign",
+      "why": "A given name is a label and may repeat. The machine cannot tell the two apart, and their callsigns can.",
       "given": {
         "typed": "builder",
         "panes": [
-          { "pane": "p1w3r07bsd", "name": "builder", "machine": "local" },
-          { "pane": "p2w3r07bsd", "name": "builder", "machine": "local" }
+          { "pane": "p1w3r07bsd", "name": "builder", "callsign": "otter", "machine": "local" },
+          { "pane": "p2w3r07bsd", "name": "builder", "callsign": "maple", "machine": "local" }
         ]
       },
       "expect": {
-        "refused": "2 panes are called \"builder\": builder@local (p1w3r07bsd), builder@local (p2w3r07bsd). Say which by its id, or as name@machine when they are on different machines; `muster window` lists them"
+        "refused": "2 panes are called \"builder\": otter@local (p1w3r07bsd), maple@local (p2w3r07bsd). Say which by its callsign, with the machine when two machines share it, or by its id; `muster window` lists them"
       }
     }
   ]

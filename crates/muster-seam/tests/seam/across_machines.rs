@@ -320,9 +320,9 @@ fn every_verb_that_names_a_pane_acts_on_that_panes_machine() {
     a_tab_is_made_on_the_named_machine(laptop, devenv, &on_laptop);
 }
 
-/// A pane is reached by its name wherever its id is, on whichever machine holds it. A name is
-/// unique on one machine and not across them, so two machines can share one, and a request by
-/// that name alone is refused - naming each pane as `name@machine` - until it says which.
+/// A pane is reached by its name wherever its id is, on whichever machine holds it. Two machines
+/// can share a name, and a request by that name alone is refused - naming each pane by its
+/// callsign and machine - until it says which.
 #[test]
 fn a_pane_is_reached_by_its_name_and_a_shared_name_by_its_machine() {
     let _turn = muster::testing::fresh_session();
@@ -355,9 +355,9 @@ fn a_pane_is_reached_by_its_name_and_a_shared_name_by_its_machine() {
         pane_id: "twin".to_string(),
     }));
     assert!(
-        refused.contains(&format!("twin@laptop ({on_laptop})"))
-            && refused.contains(&format!("twin@devenv ({on_devenv})")),
-        "the refusal names each: {refused}"
+        refused.contains(&format!("@laptop ({on_laptop})"))
+            && refused.contains(&format!("@devenv ({on_devenv})")),
+        "the refusal names each by its callsign and machine: {refused}"
     );
 
     assert_ok(&answer(request::Payload::FocusPane(FocusPane {

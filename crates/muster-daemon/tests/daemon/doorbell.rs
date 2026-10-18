@@ -106,7 +106,7 @@ impl Agent {
             .panes
             .into_iter()
             .find(|record| record.pane == pane)
-            .and_then(|record| record.word)
+            .and_then(|record| record.callsign)
             .unwrap_or_else(|| panic!("{pane} has no word"));
         let mut pair = ["integrator".to_string(), word];
         pair.sort();
@@ -306,7 +306,7 @@ fn a_renamed_pane_is_posted_to_by_its_callsign() {
     let renamed = pane(proto::pane_request::Request::Rename(rename));
     expect(&mut agent.control, renamed, proto::Outcome::Done);
     let record = snapshot(&mut agent.control).panes.into_iter().find(|record| record.pane == "p1");
-    let callsign = record.and_then(|record| record.word).expect("p1 was drawn a callsign");
+    let callsign = record.and_then(|record| record.callsign).expect("p1 was drawn a callsign");
 
     let posted = agent.post(&callsign, "a brief");
     assert_eq!(posted.reached[0].name, "p1", "{posted:?}");

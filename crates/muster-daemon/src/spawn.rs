@@ -15,8 +15,7 @@ use crate::shell_integration::{self, Integration};
 /// overrides: a pane must not be told it is some other pane.
 const PANE_NAME: &str = "MUSTER_PANE";
 
-/// What the pane was called as it was made: the name somebody gave it, or the word its daemon
-/// drew. An agent can say it, and `--pane` and `--to` take it. Not kept current, since nothing
+/// What the pane was called as it was made: the name somebody gave it, or its callsign. An agent can say it, and `--pane` and `--to` take it. Not kept current, since nothing
 /// can change a running process's environment, so `muster window` says what it is called now.
 const PANE_CALLED: &str = "MUSTER_PANE_NAME";
 

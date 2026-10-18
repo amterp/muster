@@ -42,8 +42,8 @@ Every verb works out who is asking, in this order:
   laptop's member, `@human@<laptop>` (below).
 
 `join --name NAME` takes a name. An agent in a pane that runs any other verb first is its pane:
-known by the pane's id, which is never reused, and shown by the pane's name beside it, `otter
-(p29te12q4t)`, so naming a pane with `pane new --name` names the agent in it here too. Any other
+known by the pane's id, which is never reused, and shown by the pane's callsign beside it, `otter
+(p29te12q4t)`, in what `muster msg` prints and in the line that wakes an agent. Any other
 session that runs another verb first is registered under the last part of its working directory
 - `muster-5` for a session in `~/src/muster-5` - with `-2`, `-3` added when a live session
 already has that name. Joining under the name of a
@@ -58,11 +58,11 @@ session may not become one that is still running, with `join --name` or with `--
 script, which has no session of its own to move, may act `--as` anyone. A session restarted in a
 pane takes back the name the session before it held there. The pane's agent is the new session
 now, so the old one keeps the name only while its own inbox still answers, as when one agent is
-started inside another in the same pane. Nor may a session take a new name that a pane other than
-its own goes by, since `--to` that name would then mean two agents. The same holds the other way:
-`pane new --name` and `pane rename` refuse a name an agent here joined by while it is live, and a
-session renamed to one in its harness leaves its pane's name as it was. A participant nothing can
-wake, such as one made by `join --name` from a plain shell, counts as gone.
+started inside another in the same pane. Nor may a session take a new name that is
+another pane's callsign, or the name somebody gave one other pane, since `--to` that name would then
+mean two agents. A pane may be named what an agent joined by, since given names need not be unique,
+and `--to` that name is then refused naming both. A participant nothing can wake, such as one made
+by `join --name` from a plain shell, counts as gone.
 
 Names are letters, digits, `.`, `_` and `-`. They are not authentication: anything running as
 you can post as anyone.
@@ -84,12 +84,12 @@ message in it. An unaddressed post wakes every member but its author, unless the
 says otherwise.
 
 **`--to` takes a pane too**, by its callsign, `otter`, by a name somebody gave it, or by its id,
-such as the one `muster pane new` prints (`muster docs overview`). An agent in that pane need not have joined anything, or even
-have started yet: it becomes a participant known by the pane's id and shown by the pane's name,
-and whatever runs `muster msg` in that pane from then on is it. A group made for a pair is named
-by what its panes are called, `muster-integrator+otter`. Once the pane closes its name is free,
-and the log goes on showing the participant by the name its pane last had, beside the id; the
-name then means whichever pane holds it now. When that agent joins under a name of its own, the
+such as the one `muster pane new` prints (`muster docs overview`). An agent in that pane need not
+have joined anything, or even have started yet: it becomes a participant known by the pane's id
+and shown by its callsign, and whatever runs `muster msg` in that pane from then on is it. A group
+made for a pair is named by the panes' callsigns, `muster-integrator+otter`. Once the pane closes
+its callsign is free, and the log goes on showing the participant by the callsign it had, beside
+the id; the callsign then means whichever pane holds it now. When that agent joins under a name of its own, the
 name takes the pane's place in every group the pane was in, whatever their policies say about
 joining, and the log shows the pane leaving and the name joining. From then on the pane means
 that participant. A name or pane that means nobody on this machine is looked for on the machines
@@ -102,8 +102,9 @@ pane's name and cannot be a participant's, but that a pane here shows as its tit
 naming that pane's id, so `--to "BUILD LEAD"` says which pane to post to. A leading status symbol,
 such as Claude Code's `✳`, is not part of what a title says.
 
-A name is read the way `muster pane send --pane` reads one: a pane's id first, whatever any pane
-is called, then a name. A name that means more than one agent - a pane here and a pane on a
+A name is read the way `muster pane send --pane` reads one: a pane's id first, then a callsign,
+then a name somebody gave a pane. A given name several panes here share is refused, naming each
+by its callsign. A name that means more than one agent - a pane here and a pane on a
 linked machine, or a pane and a participant who joined by that name - is refused, naming each,
 and its id or `name@machine` says which. A participant whose session has gone, and whose pane has
 closed with it, does not count: it cannot join by that name again while a pane goes by it, so the

@@ -135,8 +135,8 @@ extension Roster.Pane {
       compactable: pane.compactable,
       resumesAs: pane.resumesAs,
       quiet: pane.quiet,
-      word: pane.word,
-      besideWord: pane.besideWord,
+      callsign: pane.callsign,
+      besideCallsign: pane.besideCallsign,
       maker: pane.maker,
       under: pane.under)
   }

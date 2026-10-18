@@ -17,8 +17,7 @@ pub mod version;
 include!(concat!(env!("OUT_DIR"), "/muster.daemon.rs"));
 
 impl Pane {
-    /// What the pane is called: the name somebody gave it, or failing that the word its daemon
-    /// drew. Here so that every reader of a record derives it one way, since a name is an
+    /// What the pane is called: the name somebody gave it, or failing that its callsign. Here so that every reader of a record derives it one way, since a name is an
     /// address and two readers disagreeing would send a request to the wrong pane. None only
     /// from a daemon before 1.5 for a pane nobody named.
     pub fn name(&self) -> Option<&str> {
@@ -26,7 +25,7 @@ impl Pane {
             .as_deref()
             .map(str::trim)
             .filter(|label| !label.is_empty())
-            .or_else(|| self.word.as_deref().filter(|word| !word.is_empty()))
+            .or_else(|| self.callsign.as_deref().filter(|word| !word.is_empty()))
     }
 }
 

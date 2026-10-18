@@ -60,7 +60,7 @@ pub(crate) struct State {
     /// The words of the panes that closed most recently, oldest first, so a restarted daemon
     /// goes on passing over them. Absent from a file written before it was kept.
     #[serde(default)]
-    pub(crate) released_words: Vec<String>,
+    pub(crate) released_callsigns: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,10 +84,11 @@ pub(crate) struct Pane {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) label: Option<String>,
-    /// The word its daemon drew for it (`proto::Pane::word`), so it comes back called the same.
-    /// Absent from a file written before words, and one is drawn as the pane comes back.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) word: Option<String>,
+    /// Its callsign (`proto::Pane::callsign`), so it comes back called the same. Absent from a
+    /// file written before callsigns, and one is drawn as the pane comes back. Kept as `word`,
+    /// its name when the format was set.
+    #[serde(default, rename = "word", skip_serializing_if = "Option::is_none")]
+    pub(crate) callsign: Option<String>,
     pub(crate) cwd: PathBuf,
     /// The size it was last shown at, so its shell starts at that size.
     pub(crate) grid: Grid,
@@ -659,7 +660,7 @@ mod tests {
         Pane {
             name: name.to_string(),
             label: None,
-            word: Some(format!("word-{name}")),
+            callsign: Some(format!("word-{name}")),
             cwd: PathBuf::from("/tmp"),
             grid: Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 },
             resume: None,
@@ -691,7 +692,7 @@ mod tests {
                 helpers_of: None,
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
-            released_words: vec!["otter".to_string()],
+            released_callsigns: vec!["otter".to_string()],
         }
     }
 
@@ -860,7 +861,7 @@ mod tests {
         let pane = |name: &str, label: Option<&str>| Pane {
             name: name.to_string(),
             label: label.map(str::to_string),
-            word: None,
+            callsign: None,
             cwd: PathBuf::from("/tmp"),
             grid,
             resume: None,
@@ -924,7 +925,7 @@ mod tests {
                 pane("p3", None),
                 pane("p4", Some("B")),
             ],
-            released_words: Vec::new(),
+            released_callsigns: Vec::new(),
         }
     }
 

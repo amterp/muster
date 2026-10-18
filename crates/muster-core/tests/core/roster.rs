@@ -290,9 +290,9 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
         described("subtitle", pane.subtitle.as_deref()),
         described("given-name", pane.given_name.as_deref()),
         described("name", pane.name.as_deref()),
-        described("word", pane.word.as_deref()),
+        described("callsign", pane.callsign.as_deref()),
         // Only beside a word, since without one it is the label again.
-        described("beside-word", pane.word.as_ref().map(|_| pane.beside_word.as_str())),
+        described("beside-callsign", pane.callsign.as_ref().map(|_| pane.beside_callsign.as_str())),
         if pane.on_screen { "on-screen" } else { "off-screen" },
         if pane.quiet { " quiet" } else { "" },
         pane.maker.as_ref().map(|maker| format!(" maker={maker}")).unwrap_or_default(),

@@ -48,9 +48,9 @@ pub struct Participant {
     pub inbox: Option<Inbox>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<String>,
-    /// What its pane is called (`otter`), for a participant named after its pane: what it is
-    /// shown as, while the pane is open and after it closes, when another pane may go by the
-    /// name. Its name stays the pane's id, which is never reused.
+    /// Its pane's callsign (`otter`), for a participant named after its pane: what it is shown
+    /// as, while the pane is open and after it closes, when another pane may have the callsign.
+    /// Its name stays the pane's id, which is never reused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub called: Option<String>,
     /// A wake failed to reach it. It keeps its name and cursors until it joins again.
@@ -138,15 +138,21 @@ pub trait Presence {
         self.agent_in(pane)
     }
 
-    /// What the open pane `pane` is called: the name somebody gave it, or the word its daemon
-    /// drew (`otter`).
+    /// The callsign of the open pane `pane` (`otter`), which is what messaging shows it by.
     fn name_of(&self, _pane: &str) -> Option<String> {
         None
     }
 
-    /// The open pane called `name`, which a post may address by that name as by its id.
+    /// The open pane `name` means, which a post may address by it as by the pane's id: the one
+    /// with that callsign, or else the only one somebody gave that name.
     fn pane_named(&self, _name: &str) -> Option<String> {
         None
+    }
+
+    /// Every open pane somebody gave the name `name`, which may be several: a given name need
+    /// not be unique, and a post to one several panes share is refused naming each.
+    fn panes_named(&self, _name: &str) -> Vec<String> {
+        Vec::new()
     }
 
     /// Each open pane with a title, and the title: what its program last wrote to the terminal's
@@ -1756,7 +1762,17 @@ impl<S: Store> Messaging<S> {
         if typed == HUMAN || an_id {
             return Ok(None);
         }
-        let Some(pane) = presence.pane_named(typed) else { return Ok(None) };
+        let Some(pane) = presence.pane_named(typed) else {
+            let named = presence.panes_named(typed);
+            if named.len() > 1 {
+                let candidates = named
+                    .iter()
+                    .map(|pane| presence.name_of(pane).unwrap_or(pane.clone()))
+                    .collect();
+                return Err(Refusal::WhichParticipant { name: typed.to_string(), candidates });
+            }
+            return Ok(None);
+        };
         let holder = self.by_pane(&pane).unwrap_or_else(|| pane.clone());
         let mut candidates = vec![holder.clone()];
         let still_there = |known: &Participant| {
@@ -2629,8 +2645,12 @@ impl<S: Store> Messaging<S> {
             notice.count += 1;
             notice.to_you += u64::from(addressed);
             notice.urgent += u64::from(*urgent);
-            if !notice.from.contains(author) {
-                notice.from.push(author.clone());
+            // An agent known by its pane is said by the pane's callsign, which `--to` takes too.
+            let known = self.participants.get(author);
+            let called = known.filter(|known| known.pane.as_deref() == Some(author.as_str()));
+            let shown = called.and_then(|known| known.called.clone()).unwrap_or(author.clone());
+            if !notice.from.contains(&shown) {
+                notice.from.push(shown);
             }
         }
         notice

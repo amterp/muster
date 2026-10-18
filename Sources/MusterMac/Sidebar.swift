@@ -51,13 +51,13 @@ public struct Roster: Equatable {
     /// Whether nothing about it is raised for the person. What Quiet Pane is checked by.
     public let quiet: Bool
 
-    /// The word its daemon drew (`otter`), named since or not; empty on a daemon from before
-    /// words. Drawn in a style of its own at the front of the row.
-    public let word: String
+    /// Its callsign (`otter`), named since or not; empty on a daemon from before callsigns.
+    /// Drawn in a style of its own at the front of the row.
+    public let callsign: String
 
-    /// What the row draws after `word`: the given name, or the directory and harness. The core
-    /// takes the word out of `label` for it, so the word is drawn once.
-    public let besideWord: String
+    /// What the row draws after `callsign`: the given name, or the directory and harness. The
+    /// core takes the callsign out of `label` for it, so the callsign is drawn once.
+    public let besideCallsign: String
 
     /// The id of the pane that made it as its helper, empty for a pane nobody made (MIP-7).
     public let maker: String
@@ -69,7 +69,8 @@ public struct Roster: Equatable {
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
-      resumesAs: String = "", quiet: Bool = false, word: String = "", besideWord: String? = nil,
+      resumesAs: String = "", quiet: Bool = false, callsign: String = "",
+      besideCallsign: String? = nil,
       maker: String = "", under: String = ""
     ) {
       self.key = key
@@ -83,8 +84,8 @@ public struct Roster: Equatable {
       self.compactable = compactable
       self.resumesAs = resumesAs
       self.quiet = quiet
-      self.word = word
-      self.besideWord = besideWord ?? label
+      self.callsign = callsign
+      self.besideCallsign = besideCallsign ?? label
       self.maker = maker
       self.under = under
     }
@@ -423,10 +424,10 @@ public enum SidebarModel {
     /// brings it back, since going to a hidden pane does.
     public var hidden = false
 
-    /// On a pane row, the word its daemon drew and what goes after it, as the core split them
-    /// (`Roster.Pane`). Empty `word` draws `label` alone.
-    public var word = ""
-    public var besideWord = ""
+    /// On a pane row, its callsign and what goes after it, as the core split them
+    /// (`Roster.Pane`). An empty `callsign` draws `label` alone.
+    public var callsign = ""
+    public var besideCallsign = ""
 
     /// How many levels further in than a pane row this row sits: one for a helper listed under
     /// its maker, and one more under a helper of its own.
@@ -558,7 +559,7 @@ public enum SidebarModel {
           givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
           hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
           machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
-          hidden: true, word: pane.word, besideWord: pane.besideWord, depth: depth))
+          hidden: true, callsign: pane.callsign, besideCallsign: pane.besideCallsign, depth: depth))
       appendHelpers(of: pane, tab: tab, depth: depth)
     }
     func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
@@ -607,7 +608,7 @@ public enum SidebarModel {
             reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon),
             isSecondPress: tab.armed,
-            quiet: pane.quiet, word: pane.word, besideWord: pane.besideWord))
+            quiet: pane.quiet, callsign: pane.callsign, besideCallsign: pane.besideCallsign))
         appendHelpers(of: pane, tab: tab.id, depth: 0)
       }
     }
@@ -777,9 +778,9 @@ public enum SidebarModel {
   /// this is the look.
   public static func details(of row: Row) -> String {
     var lines = [row.label]
-    // A renamed pane's word is on its row but no longer what reaches it.
-    if !row.word.isEmpty, !row.givenName.isEmpty {
-      lines.append("\(row.word) is its drawn word; type \(row.givenName) to reach it")
+    // A renamed pane's label is its given name, so the callsign is said on its own.
+    if !row.callsign.isEmpty, !row.givenName.isEmpty {
+      lines.append("callsign \(row.callsign)")
     }
     if let machine = row.machine { lines.append("on \(machine.daemon)") }
     guard let agent = row.agent else { return lines.joined(separator: "\n") }
@@ -1644,25 +1645,27 @@ final class SidebarRowView: NSView {
     needsLayout = true
   }
 
-  /// A pane row's first line: the word its daemon drew, in a style of its own, then what the core
-  /// puts beside it - or the whole label for a pane with no word.
+  /// A pane row's first line: its callsign, in a style of its own, then what the core puts beside
+  /// it - or the whole label for a pane with no callsign.
   ///
-  /// Monospaced and in the accent colour, because the word is the pane's handle rather than a
+  /// Monospaced and in the accent colour, because the callsign is the pane's handle rather than a
   /// description of it, and a renamed pane keeps it: it reads as the same kind of thing on every
   /// row whatever follows it.
   static func firstLine(for row: SidebarModel.Row, color: NSColor) -> NSAttributedString {
     let plain: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 12, weight: .regular), .foregroundColor: color,
     ]
-    guard !row.word.isEmpty else { return NSAttributedString(string: row.label, attributes: plain) }
+    guard !row.callsign.isEmpty else {
+      return NSAttributedString(string: row.label, attributes: plain)
+    }
     let line = NSMutableAttributedString(
-      string: row.word,
+      string: row.callsign,
       attributes: [
         .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold),
         .foregroundColor: NSColor.controlAccentColor,
       ])
-    if !row.besideWord.isEmpty {
-      line.append(NSAttributedString(string: "  \(row.besideWord)", attributes: plain))
+    if !row.besideCallsign.isEmpty {
+      line.append(NSAttributedString(string: "  \(row.besideCallsign)", attributes: plain))
     }
     return line
   }

@@ -81,7 +81,7 @@ pub struct Restored {
 pub enum Change {
     PaneAdded(PaneId),
     /// A pane its daemon no longer holds, with what it was called as it went: its name, or its
-    /// drawn word.
+    /// callsign.
     PaneRemoved {
         pane: PaneId,
         called: Option<String>,

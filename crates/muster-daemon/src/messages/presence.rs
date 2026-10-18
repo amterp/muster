@@ -84,10 +84,10 @@ fn agent_to_come() -> Duration {
 pub(crate) struct Panes {
     agents: HashMap<String, Seen>,
     open: HashMap<String, bool>,
-    /// What each open pane is called, by its name.
-    names: HashMap<String, String>,
-    /// The callsign each open pane was drawn, by its name, which it answers to after a rename.
+    /// Each open pane's callsign, by the pane.
     callsigns: HashMap<String, String>,
+    /// The name somebody gave each open pane that has one, by the pane.
+    given: HashMap<String, String>,
     /// What each open pane with a title shows in its title bar, by its name.
     titles: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
@@ -144,12 +144,13 @@ impl Panes {
                     io: io.clone(),
                 }
             });
-            let name = record.name().map(str::to_string);
-            let callsign = record.word.clone().filter(|word| !word.is_empty());
+            let given = record.label.as_deref().map(str::trim).filter(|given| !given.is_empty());
+            let given = given.map(str::to_string);
+            let callsign = record.callsign.clone().filter(|callsign| !callsign.is_empty());
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
             let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
-            (record.pane.clone(), seen, young, name, callsign, title, maker)
+            (record.pane.clone(), seen, young, given, callsign, title, maker)
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -158,15 +159,15 @@ impl Panes {
             ..Panes::default()
         };
         drop(session);
-        for (pane, seen, young, name, callsign, title, maker) in read {
+        for (pane, seen, young, given, callsign, title, maker) in read {
             if let Some(maker) = maker {
                 panes.makers.insert(pane.clone(), maker);
             }
             if let Some(seen) = seen {
                 panes.agents.insert(pane.clone(), seen);
             }
-            if let Some(name) = name {
-                panes.names.insert(pane.clone(), name);
+            if let Some(given) = given {
+                panes.given.insert(pane.clone(), given);
             }
             if let Some(callsign) = callsign {
                 panes.callsigns.insert(pane.clone(), callsign);
@@ -251,12 +252,11 @@ impl Presence for Panes {
     }
 
     fn name_of(&self, pane: &str) -> Option<String> {
-        self.names.get(pane).cloned()
+        self.callsigns.get(pane).cloned()
     }
 
-    /// Only one pane, since the daemon gives no two live panes one name; a state file from before
-    /// it did can bring two back, and then the name means neither. A callsign is asked after the
-    /// names, and the daemon gives no pane a name another pane's callsign holds.
+    /// A callsign first, since the daemon gives no two live panes one; then a given name, only
+    /// when one pane has it.
     fn pane_named(&self, name: &str) -> Option<String> {
         let only = |held: &HashMap<String, String>| {
             let mut called = held.iter().filter(|(_, called)| *called == name);
@@ -265,10 +265,18 @@ impl Presence for Panes {
                 _ => None,
             }
         };
-        if self.names.values().any(|called| called == name) {
-            return only(&self.names);
-        }
-        only(&self.callsigns)
+        only(&self.callsigns).or_else(|| only(&self.given))
+    }
+
+    fn panes_named(&self, name: &str) -> Vec<String> {
+        let mut named: Vec<String> = self
+            .given
+            .iter()
+            .filter(|(_, given)| *given == name)
+            .map(|(pane, _)| pane.clone())
+            .collect();
+        named.sort();
+        named
     }
 
     fn titles(&self) -> Vec<(String, String)> {

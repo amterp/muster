@@ -183,7 +183,7 @@ fn panes_are_reached_by_their_words(here: &Here) {
 fn word_of(here: &Here, pane: &str) -> String {
     let held = snapshot(&mut here.daemon.connect());
     let record = held.panes.into_iter().find(|record| record.pane == pane);
-    record.and_then(|record| record.word).unwrap_or_else(|| panic!("{pane} has no word"))
+    record.and_then(|record| record.callsign).unwrap_or_else(|| panic!("{pane} has no word"))
 }
 
 /// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as
@@ -474,7 +474,7 @@ fn helpers_are_made_by_the_daemon(here: &Here) {
     let readable = ok(&here.muster(&["window"]));
     for helper in [&first, &second] {
         let record = held.panes.iter().find(|pane| &pane.pane == helper).expect("held");
-        let word = record.word.as_deref().expect("a helper has a word");
+        let word = record.callsign.as_deref().expect("a helper has a word");
         let row = readable.lines().find(|row| row.trim_start().starts_with(&format!("{word} ")));
         assert!(row.is_some_and(|row| row.starts_with("         ")), "{word}:\n{readable}");
     }

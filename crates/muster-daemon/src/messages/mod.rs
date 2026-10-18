@@ -98,20 +98,14 @@ pub(crate) struct Messages {
     /// Changes made by the request being handled, for the other machines with members in
     /// their groups to be sent once this lock is let go.
     telling: Vec<Tell>,
-    /// The participants who took names for themselves, which the session draws no pane's word
-    /// from and gives no pane while they are live. A lock of its own, taken last and alone, so
+    /// The participants who took names for themselves, which the session draws no callsign from.
+    /// A lock of its own, taken last and alone, so
     /// the session reads it without this one.
     joined: Joined,
 }
 
 /// The participants who took names for themselves, by name, as the session reads them.
 pub(crate) type Joined = Arc<Mutex<BTreeMap<String, Participant>>>;
-
-/// Whether a participant's session still answers at its inbox, as messaging judges one with no
-/// pane.
-pub(crate) fn inbox_answers(participant: &Participant) -> bool {
-    inbox::Sockets.alive(participant)
-}
 
 #[derive(Debug)]
 enum WaitEnded {

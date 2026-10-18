@@ -1,14 +1,14 @@
 //! What a pane is called: the callsign its daemon drew, which no other live pane on the daemon
 //! shares, and the name somebody gave it, if anybody did. Either says which pane it is.
 
-use muster_core::words::WORDS;
+use muster_core::callsigns::CALLSIGNS;
 
 use crate::support::*;
 use proto::pane_request;
 
 fn word_of(control: &mut Control, pane: &str) -> String {
     let record = snapshot(control).panes.into_iter().find(|record| record.pane == pane);
-    record.and_then(|record| record.word).unwrap_or_else(|| panic!("{pane} has no word"))
+    record.and_then(|record| record.callsign).unwrap_or_else(|| panic!("{pane} has no word"))
 }
 
 fn rename(control: &mut Control, which: &str, label: Option<&str>) -> Asked {
@@ -28,7 +28,7 @@ fn every_pane_is_drawn_a_word_no_other_pane_here_has() {
     let words: Vec<String> =
         ["p1", "p2", "p3", "p4", "p5"].iter().map(|pane| word_of(&mut control, pane)).collect();
     for word in &words {
-        assert!(WORDS.contains(&word.as_str()), "{word} is not one of the words");
+        assert!(CALLSIGNS.contains(&word.as_str()), "{word} is not one of the words");
     }
     let mut distinct = words.clone();
     distinct.sort();
@@ -36,27 +36,25 @@ fn every_pane_is_drawn_a_word_no_other_pane_here_has() {
     assert_eq!(distinct.len(), words.len(), "two panes share a word: {words:?}");
 }
 
+/// A given name is a label, and two panes may share one; what no pane may be named is another
+/// pane's callsign, which an address is matched to first.
 #[test]
-fn a_pane_cannot_be_made_or_renamed_to_a_name_another_pane_has() {
+fn panes_may_share_a_name_but_not_take_another_panes_callsign() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let named = pane_request::Create {
+    let named = |pane: &str, tab: &str| pane_request::Create {
         label: Some("builder".to_string()),
-        ..create("p1", in_new_tab("t1"))
+        ..create(pane, in_new_tab(tab))
     };
-    make(&mut control, named);
+    make(&mut control, named("p1", "t1"));
+    make(&mut control, named("p2", "t2"));
 
-    let again = pane_request::Create {
-        label: Some("builder".to_string()),
-        ..create("p2", in_new_tab("t2"))
-    };
-    let refused = control.ask(create_request(again));
-    assert_eq!(refused.outcome(), proto::Outcome::Refused);
-    assert!(refused.answer.reason.contains("p1"), "names who has it: {}", refused.answer.reason);
-
-    make(&mut control, create("p2", in_new_tab("t2")));
-    let refused = rename(&mut control, "p2", Some("builder"));
+    let otter = word_of(&mut control, "p1");
+    make(&mut control, create("p3", in_new_tab("t3")));
+    let refused = rename(&mut control, "p3", Some(&otter));
     assert_eq!(refused.outcome(), proto::Outcome::Refused, "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("p1"), "names who has it: {}", refused.answer.reason);
+    assert_eq!(rename(&mut control, "p3", Some("builder")).outcome(), proto::Outcome::Done);
 }
 
 /// A renamed pane keeps its word, and the agent list shows it beside the name, so the word stays
@@ -89,7 +87,7 @@ fn a_renamed_panes_word_stays_its_own() {
 fn no_pane_is_drawn_a_word_a_renamed_pane_holds() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let (taken, left) = WORDS.split_at(WORDS.len() - 2);
+    let (taken, left) = CALLSIGNS.split_at(CALLSIGNS.len() - 2);
     join_as(&mut control, taken);
     make(&mut control, create("p1", in_new_tab("t1")));
     let first = word_of(&mut control, "p1");
@@ -105,7 +103,7 @@ fn no_pane_is_drawn_a_word_a_renamed_pane_holds() {
 /// ignored the path would still pick the right word half the time.
 #[test]
 fn a_word_in_the_panes_directory_is_passed_over() {
-    let (taken, left) = WORDS.split_at(WORDS.len() - 2);
+    let (taken, left) = CALLSIGNS.split_at(CALLSIGNS.len() - 2);
     for _ in 0..4 {
         let daemon = daemon();
         let mut control = daemon.connect();
@@ -127,7 +125,7 @@ fn a_word_in_the_panes_directory_is_passed_over() {
 fn a_closed_panes_word_is_passed_over() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let (taken, _) = WORDS.split_at(WORDS.len() - 2);
+    let (taken, _) = CALLSIGNS.split_at(CALLSIGNS.len() - 2);
     join_as(&mut control, taken);
     make(&mut control, create("p1", in_new_tab("t1")));
     let first = word_of(&mut control, "p1");
@@ -141,7 +139,7 @@ fn a_closed_panes_word_is_passed_over() {
 fn a_passed_over_word_is_still_drawn_when_it_is_the_only_one() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let (taken, left) = WORDS.split_at(WORDS.len() - 1);
+    let (taken, left) = CALLSIGNS.split_at(CALLSIGNS.len() - 1);
     join_as(&mut control, taken);
     let project = daemon.root().join(left[0]);
     std::fs::create_dir_all(&project).unwrap();
@@ -198,7 +196,7 @@ fn a_pane_is_told_what_it_is_called() {
 fn no_pane_is_drawn_a_word_an_agent_joined_by() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let (taken, left) = WORDS.split_at(WORDS.len() - 1);
+    let (taken, left) = CALLSIGNS.split_at(CALLSIGNS.len() - 1);
     join_as(&mut control, taken);
     make(&mut control, create("p1", in_new_tab("t1")));
     assert_eq!(word_of(&mut control, "p1"), left[0]);

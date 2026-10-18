@@ -40,8 +40,10 @@ called, so `swan` is not drawn inside a project called swan, and over the callsi
 that closed most recently, so a callsign still in somebody's messages does not reach a new pane
 straight away.
 
-A pane can also be given a name, with `pane new --name` or `pane rename`, and commands take that
-too. The given name is unique on its machine as well, and cannot be another pane's callsign.
+A pane can also be given a name, with `pane new --name` or `pane rename`, so a person can tell
+agents apart. Commands take that too, after the callsigns. A given name need not be unique: one
+several panes share is refused, naming each by its callsign. What a pane cannot be named is
+another pane's callsign, which would always be matched first.
 
 The id looks like `p1w3r07bsd`. Muster mints it rather than borrowing the daemon's own, it is
 unique across every machine a window shows, and it is never reused, where a callsign is free

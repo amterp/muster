@@ -460,7 +460,7 @@ fn relabelled(before: &Pane, now: &Pane) -> bool {
         || before.compactable != now.compactable
         || before.quiet != now.quiet
         || before.name != now.name
-        || before.word != now.word
+        || before.callsign != now.callsign
         || before.title != now.title
 }
 

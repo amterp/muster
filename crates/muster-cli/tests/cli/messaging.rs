@@ -456,7 +456,7 @@ fn words(daemon: &Daemon) -> std::collections::BTreeMap<String, String> {
     snapshot(&mut daemon.connect())
         .panes
         .into_iter()
-        .filter_map(|pane| Some((pane.pane.clone(), pane.word?)))
+        .filter_map(|pane| Some((pane.pane.clone(), pane.callsign?)))
         .collect()
 }
 

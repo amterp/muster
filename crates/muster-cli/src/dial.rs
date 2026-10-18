@@ -583,7 +583,7 @@ pub(crate) fn panes_held(window: &muster_proto::Window) -> Vec<Candidate<'_>> {
         .map(|pane| Candidate {
             pane: &pane.pane_id,
             name: Some(pane.name.as_str()).filter(|name| !name.is_empty()),
-            callsign: Some(pane.word.as_str()).filter(|word| !word.is_empty()),
+            callsign: Some(pane.callsign.as_str()).filter(|word| !word.is_empty()),
             machine: &pane.daemon_id,
         })
         .collect()

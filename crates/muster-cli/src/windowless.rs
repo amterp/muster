@@ -174,7 +174,7 @@ fn addressed(typed: &mut [&mut String], snapshot: &daemon_proto::Snapshot) -> Re
         .map(|pane| Candidate {
             pane: &pane.pane,
             name: pane.name(),
-            callsign: pane.word.as_deref().filter(|word| !word.is_empty()),
+            callsign: pane.callsign.as_deref().filter(|word| !word.is_empty()),
             machine: &machine,
         })
         .collect();
@@ -956,7 +956,8 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                     muster_proto::RosterPane {
                         daemon_id: machine.clone(),
                         label: record.map_or_else(String::new, |record| label_of(record)),
-                        beside_word: record.map_or_else(String::new, |record| beside_word(record)),
+                        beside_callsign: record
+                            .map_or_else(String::new, |record| beside_callsign(record)),
                         given_name: record
                             .and_then(|record| record.label.clone())
                             .unwrap_or_default(),
@@ -964,7 +965,9 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
                             .and_then(|record| record.name())
                             .map(str::to_string)
                             .unwrap_or_default(),
-                        word: record.and_then(|record| record.word.clone()).unwrap_or_default(),
+                        callsign: record
+                            .and_then(|record| record.callsign.clone())
+                            .unwrap_or_default(),
                         subtitle: record.map_or_else(String::new, |record| record.title.clone()),
                         quiet: record.is_some_and(|record| record.quiet),
                         maker: record.and_then(|record| record.maker.clone()).unwrap_or_default(),
@@ -1134,7 +1137,7 @@ fn panes_of(node: Option<&daemon_proto::Node>, into: &mut Vec<String>) {
 /// detection names here.
 fn label_of(pane: &daemon_proto::Pane) -> String {
     let given = pane.label.as_deref().map(str::trim).filter(|label| !label.is_empty());
-    match (given, pane.word.as_deref().filter(|word| !word.is_empty())) {
+    match (given, pane.callsign.as_deref().filter(|word| !word.is_empty())) {
         (Some(given), _) => given.to_string(),
         (None, Some(word)) => match directory_name(&pane.cwd) {
             directory if directory.is_empty() => word.to_string(),
@@ -1145,7 +1148,7 @@ fn label_of(pane: &daemon_proto::Pane) -> String {
 }
 
 /// What follows a pane's callsign on its row: the name somebody gave it, or its directory.
-fn beside_word(pane: &daemon_proto::Pane) -> String {
+fn beside_callsign(pane: &daemon_proto::Pane) -> String {
     match pane.label.as_deref().map(str::trim).filter(|label| !label.is_empty()) {
         Some(given) => given.to_string(),
         None => directory_name(&pane.cwd),

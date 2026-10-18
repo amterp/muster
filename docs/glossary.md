@@ -75,8 +75,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   backend, unique across every attached machine, and never reused. What every message and log means by a pane. A pane
   reads its own from `MUSTER_PANE`. The code calls it the pane's name (`muster_core::names`), from before panes had
   the name below.
-- **pane name** - the name somebody gave a pane, or else its **callsign**. Unique among one daemon's open panes and
-  taken wherever a pane id is.
+- **pane name** - the name somebody gave a pane, or else its **callsign**. Taken wherever a pane id is, after
+  callsigns; a given name need not be unique, and one several panes share is refused naming each.
 - **pane tree** - the split layout inside one tab; daemon truth.
 - **participant** - an agent, or the human as `@human`, known by name to one daemon's messaging, with a place in
   the log of every group it has joined. Another machine's participant is `name@machine` there.
