@@ -107,7 +107,7 @@ impl Agent {
             .into_iter()
             .find(|record| record.pane == pane)
             .and_then(|record| record.callsign)
-            .unwrap_or_else(|| panic!("{pane} has no word"));
+            .unwrap_or_else(|| panic!("{pane} has no callsign"));
         let mut pair = ["integrator".to_string(), word];
         pair.sort();
         pair.join("+")

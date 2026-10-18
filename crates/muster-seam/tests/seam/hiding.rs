@@ -72,10 +72,10 @@ fn a_hidden_pane_leaves_the_window_and_comes_back_in_a_tab_of_its_own() {
     );
 }
 
-/// A hidden pane keeps the word its daemon drew, and is brought back by it: nothing shows its id
-/// while it is hidden except the list, and the word is the name that list leads with.
+/// A hidden pane keeps its callsign, and is brought back by it: nothing shows its id while it is
+/// hidden except the list, and the callsign is the name that list leads with.
 #[test]
-fn a_hidden_pane_is_shown_by_its_word() {
+fn a_hidden_pane_is_shown_by_its_callsign() {
     let _turn = muster::testing::fresh_session();
     let daemon = two_panes_side_by_side();
     open_window(&daemon);
@@ -84,7 +84,7 @@ fn a_hidden_pane_is_shown_by_its_word() {
         .into_iter()
         .find(|pane| pane.pane == "p2")
         .and_then(|pane| pane.callsign)
-        .expect("p2 was drawn a word");
+        .expect("p2 was drawn a callsign");
     assert_ok(&answer(request::Payload::HidePane(HidePane {
         pane_id: word.clone(),
         ..HidePane::default()
@@ -244,7 +244,7 @@ fn a_pane_made_hidden_is_taken_by_no_window_and_closes_by_name() {
 
 /// A pane's hidden helpers share one hidden tab, named for it by the name it goes by, and a helper
 /// shown beside it is split there as any pane is. Every row says whose helper it is, by its
-/// maker's id though the request named the maker by its word.
+/// maker's id though the request named the maker by its callsign.
 #[test]
 fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
     let _turn = muster::testing::fresh_session();
@@ -255,7 +255,7 @@ fn a_panes_helpers_share_a_hidden_tab_named_for_it() {
         .into_iter()
         .find(|pane| pane.pane == "p1")
         .and_then(|pane| pane.callsign)
-        .expect("p1 was drawn a word");
+        .expect("p1 was drawn a callsign");
     let helper = |hidden: bool| {
         let made = answer(request::Payload::SplitPane(SplitPane {
             pane_id: "p1".to_string(),

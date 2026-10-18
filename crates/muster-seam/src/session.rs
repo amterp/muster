@@ -4265,6 +4265,33 @@ pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Tells each followed daemon the callsigns every other one holds, for the next pane it makes to
+/// be drawn none of them: `otter` then means one pane wherever it is typed, and `otter@devenv`
+/// is needed only for panes made while their machines were not both followed.
+fn share_callsigns() {
+    let held: Vec<(Arc<dyn BackendChannel>, BTreeSet<String>)> = {
+        let session = poison::lock(&SESSION, "session");
+        session
+            .backends
+            .values()
+            .map(|backend| {
+                let mirror = poison::lock(&backend.mirror, "mirror");
+                let callsigns = mirror.panes().filter_map(|pane| pane.callsign.clone()).collect();
+                (Arc::clone(&backend.channel), callsigns)
+            })
+            .collect()
+    };
+    for (at, (channel, _)) in held.iter().enumerate() {
+        let elsewhere: BTreeSet<&String> = held
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != at)
+            .flat_map(|(_, (_, callsigns))| callsigns)
+            .collect();
+        channel.callsigns_elsewhere(elsewhere.into_iter().cloned().collect());
+    }
+}
+
 /// Which daemon holds the pane Muster calls this, if any followed one does.
 ///
 /// What lets a caller name a pane and nothing else. A name is unique across every attached
@@ -5349,6 +5376,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
                 }
             }
             tell_closed_makers();
+            share_callsigns();
             for change in changes {
                 report(daemon, &change);
             }
@@ -5371,6 +5399,9 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             }
             if let Change::PaneRemoved { pane, called } = &change {
                 tell_closed_maker(daemon, pane, called.as_deref());
+            }
+            if matches!(change, Change::PaneAdded(_) | Change::PaneRemoved { .. }) {
+                share_callsigns();
             }
             report(daemon, &change);
         }

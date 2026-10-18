@@ -780,6 +780,8 @@ fn make_pane(
             label: said(&split.name),
             quiet: split.quiet,
             maker: maker.map(|(pane, _)| pane),
+            // With no window, nothing here sees another machine's panes.
+            callsigns_elsewhere: Vec::new(),
         },
     ));
     let answer = match (split.hidden, split.quiet) {

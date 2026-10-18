@@ -1380,7 +1380,8 @@ impl Session {
             None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
         };
 
-        let callsign = self.draw_callsign(given.as_deref(), Some(&cwd));
+        let callsign =
+            self.draw_callsign(given.as_deref(), Some(&cwd), &create.callsigns_elsewhere);
         let name = given.clone().unwrap_or_else(|| callsign.clone());
         let which = spawn::Which { pane: &create.pane, name: &name, callsign: &callsign };
         let (argv, environment) = self.launch(which, create.command.as_deref(), &create.env);
@@ -3029,7 +3030,7 @@ impl Session {
                 .take()
                 .filter(|callsign| self.callsign_holder(callsign, name).is_none())
                 .unwrap_or_else(|| {
-                    self.draw_callsign(given_name(pane.label.as_deref()), Some(&pane.cwd))
+                    self.draw_callsign(given_name(pane.label.as_deref()), Some(&pane.cwd), &[])
                 });
             self.naming.insert(callsign.clone(), name.to_string());
             pane.callsign = Some(callsign.clone());
@@ -3326,7 +3327,7 @@ impl Session {
         // A daemon from before words hands its panes over with none.
         if record.callsign.is_none() {
             let besides = given_name(record.label.as_deref());
-            record.callsign = Some(self.draw_callsign(besides, Some(Path::new(&record.cwd))));
+            record.callsign = Some(self.draw_callsign(besides, Some(Path::new(&record.cwd)), &[]));
         }
         self.next_serial += 1;
         let watching = Watching {
@@ -3470,9 +3471,15 @@ impl Session {
     ///
     /// Passed over while another is free: a word found in the pane's directory or its name, or
     /// in what any pane or tab here is called, runs in or shows, since `swan` would read as the
-    /// project in a project called swan; and the callsign of a pane closed recently, which a
-    /// message or a person may still use for that pane.
-    fn draw_callsign(&self, besides: Option<&str>, cwd: Option<&Path>) -> String {
+    /// project in a project called swan; the callsign of a pane closed recently, which a message
+    /// or a person may still use for that pane; and one `elsewhere` says a pane on another of
+    /// the window's machines holds, which would make the callsign mean two panes.
+    fn draw_callsign(
+        &self,
+        besides: Option<&str>,
+        cwd: Option<&Path>,
+        elsewhere: &[String],
+    ) -> String {
         let joined = poison::lock(&self.joined, "daemon.messages.joined");
         let mut around: Vec<String> = Vec::new();
         around.extend(besides.map(str::to_string));
@@ -3491,7 +3498,11 @@ impl Session {
                     || self.panes.iter().any(|pane| pane.record.label.as_deref() == Some(word))
                     || joined.contains_key(word)
             },
-            |word| around.contains(word) || self.released.iter().any(|released| released == word),
+            |word| {
+                around.contains(word)
+                    || self.released.iter().any(|released| released == word)
+                    || elsewhere.iter().any(|held| held == word)
+            },
         )
     }
 

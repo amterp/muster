@@ -32,13 +32,18 @@ pane's row and `muster window` prints at the start of its line. Every command th
 takes its callsign, and so does `msg post --to`. Renaming a pane does not change it.
 
 A callsign is unique among one machine's open panes, and no two begin with the same three
-letters, so three keystrokes say which one you mean. Two machines can each have an `otter`, and
-`otter@devenv` says which, by the machine name below; a callsign two panes share is refused,
-naming each one. A daemon draws a callsign no open pane there holds, and while others are free it
-passes over one that appears in the pane's directory or in what its other panes and tabs are
-called, so `swan` is not drawn inside a project called swan, and over the callsigns of the panes
-that closed most recently, so a callsign still in somebody's messages does not reach a new pane
-straight away.
+letters, so three keystrokes say which one you mean. A daemon draws a callsign no open pane there
+holds, and while others are free it passes over:
+
+- one a pane on another machine the window shows holds, so a callsign means one pane across them;
+- one that appears in the pane's directory or in what its other panes and tabs are called, so
+  `swan` is not drawn inside a project called swan;
+- the callsign of a pane closed recently, so one still in somebody's messages does not reach a
+  new pane straight away.
+
+Panes made while their machines were not both attached to a window can still share a callsign,
+and `otter@devenv` then says which, by the machine name below; a callsign two panes share is
+refused, naming each one.
 
 A pane can also be given a name, with `pane new --name` or `pane rename`, so a person can tell
 agents apart. Commands take that too, after the callsigns. A given name need not be unique: one

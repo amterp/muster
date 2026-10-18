@@ -163,7 +163,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
 /// Every pane goes by a word its daemon drew until somebody names it, and with no window the CLI
 /// reads that word against the daemon's own panes wherever it takes a pane's id.
 fn panes_are_reached_by_their_words(here: &Here) {
-    let (p1, p2) = (word_of(here, "p1"), word_of(here, "p2"));
+    let (p1, p2) = (callsign_of(here, "p1"), callsign_of(here, "p2"));
 
     ok(&here.muster(&["pane", "send", "--pane", &p1, "--enter", "--confirm", "echo by-word"]));
     until_text(&mut here.daemon.connect(), "p1", "by-word\n");
@@ -180,10 +180,10 @@ fn panes_are_reached_by_their_words(here: &Here) {
 }
 
 /// The word `pane`'s daemon drew it.
-fn word_of(here: &Here, pane: &str) -> String {
+fn callsign_of(here: &Here, pane: &str) -> String {
     let held = snapshot(&mut here.daemon.connect());
     let record = held.panes.into_iter().find(|record| record.pane == pane);
-    record.and_then(|record| record.callsign).unwrap_or_else(|| panic!("{pane} has no word"))
+    record.and_then(|record| record.callsign).unwrap_or_else(|| panic!("{pane} has no callsign"))
 }
 
 /// With no window, `--layout` draws each tab from the daemon's own tree, places each pane in it as
@@ -205,7 +205,7 @@ fn the_layout_is_the_daemons_trees(here: &Here) {
     }
     assert!((widths - 1.0).abs() < 1e-4, "the three frames share the tab's width: {laid}");
     let drawn = ok(&here.muster(&["window", "--layout"]));
-    let p3 = word_of(here, "p3");
+    let p3 = callsign_of(here, "p3");
     assert!(drawn.contains('┬') && drawn.contains(&p3), "three panes side by side:\n{drawn}");
 }
 
@@ -245,7 +245,7 @@ fn a_wait_on_context_ends_when_the_agent_says_it(here: &Here) {
          that ended a turn without reporting is one whose adapter is missing:\n{complaint}"
     );
     assert!(complaint.contains("not at 80% context within 1s"), "{complaint}");
-    let by_word = word_of(here, "p2");
+    let by_word = callsign_of(here, "p2");
     let ran =
         here.muster(&["pane", "wait", "--pane", &by_word, "--context", "80", "--timeout", "1"]);
     let complaint = refused_with(&ran, 5);
@@ -351,7 +351,7 @@ fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
     assert!(tab_of(&mut control, "p2").hidden, "p2's tab is not hidden");
     let listed = ok(&here.muster(&["window"]));
     let hidden_from = listed.lines().position(|line| line == "hidden");
-    let p2 = word_of(here, "p2");
+    let p2 = callsign_of(here, "p2");
     let p2_at = listed.lines().position(|line| line.contains(&p2));
     assert!(
         matches!((hidden_from, p2_at), (Some(heading), Some(row)) if row > heading),
@@ -422,7 +422,7 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
     };
     assert_eq!(label(&mut control).as_deref(), Some("lead"), "renamed, trimmed, by its name");
     // Its callsign still reaches it, renamed as it is.
-    let callsign = word_of(here, &made);
+    let callsign = callsign_of(here, &made);
     ok(&here.muster(&["pane", "rename", "--pane", &callsign, "lead again"]));
     assert_eq!(label(&mut control).as_deref(), Some("lead again"), "renamed by its callsign");
     ok(&here.muster(&["pane", "rename", "--pane", &made, ""]));

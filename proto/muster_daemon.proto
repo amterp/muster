@@ -349,6 +349,10 @@ message PaneRequest {
     // Since 1.6. The pane this one is a helper of (`Pane.maker`), by its id. Need not be on this
     // daemon: a pane id is unique across every machine. Not the pane itself.
     optional string maker = 9;
+    // Since 1.6. The callsigns the asker's other machines hold, which the daemon draws this pane
+    // none of while another is free, so a callsign means one pane across every machine a window
+    // shows. A daemon knows only its own panes; the window sees them all.
+    repeated string callsigns_elsewhere = 10;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.

@@ -45,6 +45,9 @@ pub struct DaemonBackend {
     /// daemon could know for itself.
     environment: BTreeMap<String, String>,
     description: String,
+    /// The callsigns the window's other machines hold, as it last said, which every pane this
+    /// makes is drawn none of while it can be.
+    elsewhere: Mutex<Vec<String>>,
 }
 
 impl DaemonBackend {
@@ -55,7 +58,14 @@ impl DaemonBackend {
         environment: BTreeMap<String, String>,
         description: String,
     ) -> DaemonBackend {
-        DaemonBackend { connection, mirror, minter, environment, description }
+        DaemonBackend {
+            connection,
+            mirror,
+            minter,
+            environment,
+            description,
+            elsewhere: Mutex::new(Vec::new()),
+        }
     }
 
     fn ask(&self, service: Service) -> Result<proto::Answer, Refusal> {
@@ -183,6 +193,11 @@ impl DaemonBackend {
             label: name,
             quiet,
             maker: maker.map(|maker| maker.pane.to_string()),
+            callsigns_elsewhere: self
+                .elsewhere
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
         }))
         .map_err(|refusal| match refusal {
             Refusal::Unanswered { detail, .. } => {
@@ -435,6 +450,10 @@ impl BackendChannel for DaemonBackend {
                 done
             }
         }
+    }
+
+    fn callsigns_elsewhere(&self, held: Vec<String>) {
+        *self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner) = held;
     }
 
     fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal> {

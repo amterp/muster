@@ -565,6 +565,10 @@ pub trait BackendChannel: Send + Sync + std::fmt::Debug {
         Ok(None)
     }
 
+    /// Hears the callsigns every other machine this window follows holds, for the panes it asks
+    /// for after to be drawn none of them. A backend with no callsigns has nothing to do.
+    fn callsigns_elsewhere(&self, _held: Vec<String>) {}
+
     /// What this channel is talking to, for the log.
     fn description(&self) -> &str;
 }

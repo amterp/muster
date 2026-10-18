@@ -1441,3 +1441,61 @@ fn refusal(payload: request::Payload) -> String {
         other => panic!("expected a refusal, got {other:?}"),
     }
 }
+
+/// A pane made on one machine is drawn no callsign a pane on another holds while another is
+/// free, so a callsign means one pane across every machine the window shows. The devenv is left
+/// two callsigns, one of them the laptop pane's, so a draw that did not know the laptop's would
+/// take it half the time.
+#[test]
+fn a_pane_is_drawn_no_callsign_another_machine_holds() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+    let callsign_of = |daemon: &Daemon, pane: &str| {
+        muster_harness::requests::snapshot(&mut daemon.connect())
+            .panes
+            .into_iter()
+            .find(|record| record.pane == pane)
+            .and_then(|record| record.callsign)
+            .unwrap_or_else(|| panic!("{pane} was drawn no callsign"))
+    };
+    let on_laptop = callsign_of(&laptop, LAPTOP_PANE);
+    let on_devenv = callsign_of(&devenv, DEVENV_PANE);
+    let held = [on_laptop.as_str(), on_devenv.as_str()];
+    let left = muster_core::callsigns::CALLSIGNS
+        .iter()
+        .find(|callsign| !held.contains(callsign))
+        .expect("more than two callsigns");
+    let mut control = devenv.connect();
+    for taken in muster_core::callsigns::CALLSIGNS {
+        if *taken == on_laptop || taken == left || *taken == on_devenv {
+            continue;
+        }
+        let join = daemon_proto::msg_request::Request::Join(daemon_proto::msg_request::Join {
+            name: Some((*taken).to_string()),
+            group: Some("crew".to_string()),
+            pull: false,
+        });
+        let caller = daemon_proto::msg_request::Caller {
+            as_name: Some((*taken).to_string()),
+            ..Default::default()
+        };
+        muster_harness::requests::expect(
+            &mut control,
+            daemon_proto::request::Service::Msg(daemon_proto::MsgRequest {
+                caller: Some(caller),
+                request: Some(join),
+            }),
+            daemon_proto::Outcome::Done,
+        );
+    }
+
+    let before = panes_on("devenv");
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        pane_id: DEVENV_PANE.to_string(),
+        ..CreateTab::default()
+    })));
+    let made = muster_harness::until_some("the devenv to hold the pane just made", || {
+        panes_on("devenv").into_iter().find(|pane| !before.contains(pane))
+    });
+    assert_eq!(callsign_of(&devenv, &made), *left, "drawn the laptop pane's callsign");
+}
