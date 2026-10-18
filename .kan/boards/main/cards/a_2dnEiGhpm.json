@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1791428374034,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-07 with pane names. muster msg shows a local pane participant as 'otter (p29te12q4t)', but one on another machine still as its id with @machine, because the name is refreshed only from this daemon's own panes. Documented in limits. Fix: carry the far pane's name across the link the way called is carried for local ones.",
   "id": "a_2dnEiGhpm",
-  "position": "b0x",
+  "position": "YwG",
   "title": "msg shows a pane participant on another machine by its id, not its name",
   "type": "enhancement",
-  "updated_at_millis": 1791428374034,
+  "updated_at_millis": 1792347496035,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791428374034}
+    {"field":"column","value":"backlog-lo","at":1791428374034},
+    {"field":"column","value":"done","at":1792347496035}
   ]
 }

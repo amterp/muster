@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-new-tab-is-refused",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792343605989,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-18: eight new tabs in 15 seconds, from Cmd+T and the Tab menu, all did nothing. The focused pane's shell was in `/Users/amterp/src/finances`, which no longer existed. A new tab starts in the focused pane's directory, so each time the daemon was asked to start a shell there, and refused:\n\n```\ndaemon.pane.not_started  cwd=/Users/amterp/src/finances  error=\"No such file or directory (os error 2)\"\ncore.refused  request=create_tab  reason=\"the daemon did not make that change: could not start /bin/zsh in /Users/amterp/src/finances: No such file or directory (os error 2) ...\"\n```\n\nNew tab worked again once a pane in an existing directory had focus. The window never said why (a_2jzGT81IV), so it looked like new tab was broken.\n\nA directory nobody named shouldn't stop a tab from opening. Restoring a pane after a daemon restart already copes with this: it tries the saved directory and then home (`daemon.state.fallback` in `crates/muster-daemon/src/session.rs`). A new tab could do the same. A directory someone typed, as in `muster tab new --cwd /nope`, should probably still be refused.\n\nThe existence check has to run on the daemon's machine, because the focused pane may be on a devenv. Today the daemon cannot tell an inherited directory from a typed one: `open_a_tab` in `crates/muster-seam/src/handler.rs` fills an empty `cwd` with the focused pane's (`session::cwd_of`) before sending, so both arrive in the same field. One option is to name the pane to take the directory from instead, the way a split leaves `cwd` empty and the daemon reads the neighbour's `live_cwd`. Another is a flag telling the daemon it may fall back.\n\nNot checked: whether a split from such a pane fails the same way. A split sends no `cwd`, and on macOS the neighbour's live directory may still read as the deleted path.",
+  "id": "a_2jzG4pkNf",
+  "position": "b15",
+  "title": "🧭 A new tab is refused when the focused pane's directory no longer exists",
+  "type": "bug",
+  "updated_at_millis": 1792343626784,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792343605989}
+  ]
+}

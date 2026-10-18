@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-refused-new-tab",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792343621072,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-18 (a_2jzG4pkNf): the daemon refused eight new tabs in a row, and the window showed nothing for any of them. No error, no beep, nothing in the sidebar's problems list. The reason went only to stderr and the run log, from `send` in `Sources/MusterMac/Core.swift`, so the person concluded new tab was broken.\n\nThe daemon's reason said exactly what to fix: \"could not start /bin/zsh in /Users/amterp/src/finances: No such file or directory\". Shown in the window, it would have ended the confusion at the first attempt.\n\n`docs/architecture.md` already says a failure the person caused is reported to the person, through the problems list (`problems.rs`), which shows a refused config reload today (a_29JkEUiBJ). A refused action fits that list less well: it holds conditions that clear once fixed, and a refused new tab is one moment with nothing left to clear. Whether the list stretches to cover it or refused actions get something of their own is the decision this card needs. A beep is the least a Mac does when a command can't run.\n\nNew tab is unlikely to be the only action this happens to, since the refusal is logged by Core's shared `send` rather than by anything specific to new tab. Worth checking which other chords and menu items can be refused before fixing only this one.",
+  "id": "a_2jzGT81IV",
+  "position": "b16",
+  "title": "🔇 A refused new tab shows nothing in the window",
+  "type": "bug",
+  "updated_at_millis": 1792343621072,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792343621072}
+  ]
+}
