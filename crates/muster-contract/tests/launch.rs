@@ -512,9 +512,10 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     let scratch = Scratch::new("driving");
     scratch.write_config(SHELL_CONFIG);
     let answered = scratch.root.join("answered.txt");
-    // A file of its own, and written first. `answered` is read as soon as it is non-empty and
-    // its last line has to be `$MUSTER_PANE`, so a second command appending to it would be a
-    // race this check loses roughly one run in three - measured, by adding one.
+    // A file of its own, and written first. `answered` is read as soon as it is non-empty, so
+    // every line of it is written aside and renamed into place in one step: a second command
+    // appending to it was a race this check lost roughly one run in three - measured, by adding
+    // one.
     let census = scratch.root.join("census.txt");
 
     let mut app = Running::start(&built_app(), &scratch, &[], &[]);
@@ -537,8 +538,9 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     // carries the shell's own echo of the command, so reading one cannot tell an answer from the
     // question.
     let text = format!(
-        "muster daemons > {census} 2>&1; muster window > {answered} 2>&1; \
-         echo $MUSTER_PANE >> {answered}",
+        "muster daemons > {census} 2>&1; \
+         {{ muster window; echo \"$MUSTER_PANE $MUSTER_CALLSIGN\"; }} > {answered}.part 2>&1; \
+         mv {answered}.part {answered}",
         census = census.display(),
         answered = answered.display()
     );
@@ -555,7 +557,8 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
         "a pane ran `muster window` and did not get a window back, so nothing running in a pane \
          can drive the window it is in. It got:\n{said}"
     );
-    let named = said.trim().lines().last().unwrap_or_default();
+    let last = said.trim().lines().last().unwrap_or_default();
+    let (named, callsign) = last.split_once(' ').unwrap_or((last, ""));
     assert_eq!(
         named, pane.pane,
         "the pane read $MUSTER_PANE as {named:?} and the daemon calls it {:?}, so a program inside \
@@ -563,10 +566,17 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
          the keyboard happens to be on",
         pane.pane
     );
+    assert_eq!(
+        Some(callsign),
+        pane.callsign.as_deref(),
+        "the pane read $MUSTER_CALLSIGN as {callsign:?} and the daemon drew it {:?}, so an agent \
+         in it would tell others a name that reaches some other pane, or none",
+        pane.callsign
+    );
     assert!(
-        said.lines().rev().skip(1).any(|line| line.contains(named)),
-        "the window did not list {named}, which is the pane that asked - so a pane's own name is \
-         not one the window answers to. It said:\n{said}"
+        said.lines().rev().skip(1).any(|line| line.split_whitespace().any(|word| word == callsign)),
+        "the window did not list {callsign}, the callsign of the pane that asked - so a pane's own \
+         name is not one the window answers to. It said:\n{said}"
     );
 
     // And the other half of the same question, from the same pane: `muster window` says what this
