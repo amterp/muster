@@ -174,13 +174,17 @@ impl Wire {
         assert!(self.up, "a daemon never calls over a link that is down");
         let now = self.tick();
         let from = side.other().peer();
+        let said = self.callsigns(side, call.names());
         let answered = {
             let (home, sessions) = self.split(side.other());
+            home.heard_callsigns(&from, said);
             home.answer(&from, call.clone(), sessions, now)
         };
+        let said = self.callsigns(side.other(), answered.reply.names());
         self.wakes.extend(answered.wakes.into_iter().map(|wake| (side.other(), wake)));
         self.tell(side.other(), &answered.tell);
         let (asker, sessions) = self.split(side);
+        asker.heard_callsigns(&side.peer(), said);
         let settle = asker.settle(&side.peer(), call, answered.reply, sessions, now);
         let mut applied = settle.applied;
         self.wakes.extend(applied.wakes.drain(..).map(|wake| (side, wake)));
@@ -198,8 +202,10 @@ impl Wire {
         }
         for tell in tell {
             let caught = self.service(home).since(&tell.group, tell.after).unwrap();
+            let said = self.callsigns(home, caught.names());
             let now = self.tick();
             let (replica, sessions) = self.split(home.other());
+            replica.heard_callsigns(&home.other().peer(), said);
             let applied = match replica.apply(&home.other().peer(), caught, sessions, now) {
                 Ok(applied) => applied,
                 Err(head) => {
@@ -208,12 +214,26 @@ impl Wire {
                     applied
                 }
             };
+            let said =
+                self.callsigns(home.other(), applied.reached.iter().map(|(name, _)| name.as_str()));
+            self.service(home).heard_callsigns(&home.peer(), said);
             let peer = home.peer();
             reached.extend(applied.reached.into_iter().map(|(name, r)| (peer.inward(&name), r)));
             self.wakes.extend(applied.wakes.into_iter().map(|wake| (home.other(), wake)));
             self.ended.extend(applied.ended.into_iter().map(|ticket| (home.other(), ticket)));
         }
         reached
+    }
+
+    /// What `side` says the panes among `names` are called, which every frame it sends carries.
+    fn callsigns<'a>(
+        &mut self,
+        side: Side,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> BTreeMap<String, String> {
+        let names: Vec<String> = names.into_iter().map(str::to_string).collect();
+        let (service, sessions) = self.split(side);
+        service.callsigns_of(names.iter().map(String::as_str), sessions)
     }
 
     fn split(&mut self, side: Side) -> (&mut Messaging<Memory>, &Sessions) {
@@ -686,6 +706,74 @@ fn a_post_to_a_pane_on_another_machine_by_its_name_rings_it_there() {
         assert_eq!(woke(&posted), vec![("p2dev@devenv", Reach::Woken)], "{to}");
         wire.read(Side::Devenv, &in_pane("p2dev"), None);
     }
+}
+
+/// An agent known by its pane on another machine is shown by the pane's callsign with the
+/// machine, as one here is by its callsign: in the group made for the two, in the `from` of
+/// what wakes the other, and beside its id in every answer. The machine that has the pane says
+/// what it is called, in the frames that name it.
+#[test]
+fn a_pane_on_another_machine_is_shown_by_its_callsign() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1lap");
+    wire.pane(Side::Devenv, "p2dev");
+    let mut names = wire.sessions.names.borrow_mut();
+    names.insert("p1lap".to_string(), "heron".to_string());
+    names.insert("p2dev".to_string(), "otter".to_string());
+    drop(names);
+    let (heron, otter) = (in_pane("p1lap"), in_pane("p2dev"));
+
+    let posted = wire.post(Side::Laptop, &heron, None, &["otter@devenv"], "carry on").unwrap();
+    assert_eq!(
+        (posted.group.as_str(), woke(&posted)),
+        ("heron+otter", vec![("p2dev@devenv", Reach::Woken)])
+    );
+    let rung = wire.wakes.iter().find(|(side, _)| *side == Side::Devenv).expect("rung there");
+    assert_eq!(
+        (rung.1.notice.group.as_str(), &rung.1.notice.from[..]),
+        ("heron+otter@lap", &["heron@lap".to_string()][..])
+    );
+
+    wire.read(Side::Devenv, &otter, None);
+    wire.wakes.clear();
+    let answered = wire.post(Side::Devenv, &otter, None, &["p1lap@lap"], "done").unwrap();
+    assert_eq!(answered.group, "heron+otter@lap");
+    let rung = wire.wakes.iter().find(|(side, _)| *side == Side::Laptop).expect("rung here");
+    assert_eq!(rung.1.notice.from, ["otter@devenv"]);
+
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let called = laptop.called(sessions);
+    assert_eq!(called.get("p2dev@devenv").map(String::as_str), Some("otter@devenv"));
+    assert_eq!(called.get("p1lap").map(String::as_str), Some("heron"));
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    assert_eq!(devenv.called(sessions).get("p1lap@lap").map(String::as_str), Some("heron@lap"));
+}
+
+/// What a pane on another machine is called is kept with the participants, so a restart here
+/// still shows the authors of a log kept here by their callsigns before that machine says
+/// anything again.
+#[test]
+fn a_callsign_heard_from_another_machine_is_kept() {
+    let mut laptop = Messaging::new(Memory::default());
+    let devenv = Side::Laptop.peer();
+    laptop.heard_callsigns(&devenv, [("p2dev".to_string(), "otter".to_string())]);
+    // Only the machine with the pane says what it is called.
+    laptop.heard_callsigns(
+        &devenv,
+        [
+            ("p1lap@lap".to_string(), "heron@lap".to_string()),
+            ("p3".to_string(), "@human".to_string()),
+        ],
+    );
+    let saved = laptop.store().saved.clone().expect("saved");
+    assert_eq!(
+        saved.called_elsewhere,
+        BTreeMap::from([("p2dev@devenv".to_string(), "otter@devenv".to_string())])
+    );
+
+    let mut restored = Messaging::restore(Memory::default(), saved, BTreeMap::new());
+    let called = restored.called(&Sessions::default());
+    assert_eq!(called.get("p2dev@devenv").map(String::as_str), Some("otter@devenv"));
 }
 
 /// A name a pane goes by on each machine means neither, as it does to `muster pane send`: the

@@ -141,6 +141,23 @@ fn link(near: &Daemon, far: &Daemon, logging: &mut Control, times: usize) -> Con
     holding
 }
 
+/// The callsign the daemon `control` is connected to drew for `pane`.
+fn callsign(control: &mut Control, pane: &str) -> String {
+    snapshot(control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == pane)
+        .and_then(|record| record.callsign)
+        .unwrap_or_else(|| panic!("{pane} was drawn a callsign"))
+}
+
+/// The lines `daemon`'s fake agents were rung with.
+fn rung(daemon: &Daemon) -> Vec<String> {
+    let heard = std::fs::read_to_string(daemon.root().join("home/fake-agent-heard"));
+    let heard = heard.unwrap_or_default();
+    heard.lines().filter(|line| line.starts_with("[muster] ")).map(str::to_string).collect()
+}
+
 /// Hangs up the request holding the link, and waits for both daemons to say it is down.
 fn cut(holding: Control, near_log: &mut Control, far_log: &mut Control, times: usize) {
     drop(holding);
@@ -406,7 +423,7 @@ fn a_peer_acting_as_this_machines_own_is_refused() {
         peer_call::Call::Replicate(caught("x'; sh; '")),
     ];
     for (id, call) in (1..).zip(calls) {
-        let asked = proto::PeerCall { id, call: Some(call.clone()) };
+        let asked = proto::PeerCall { id, call: Some(call.clone()), ..Default::default() };
         proto::connection::send(&mut peer, &frame(Frame::Call(asked))).unwrap();
         let reply = loop {
             match proto::connection::receive::<proto::PeerFrame>(&mut peer).unwrap() {
@@ -499,12 +516,10 @@ fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
     let reached = reached(&posted);
     assert_eq!(reached.len(), 1, "{reached:?}");
     assert_eq!(reached[0].0, "p1@far");
-    let heard = far.root().join("home/fake-agent-heard");
-    let rung = until_some("the far agent to be rung", || {
-        let heard = std::fs::read_to_string(&heard).unwrap_or_default();
-        heard.lines().find(|line| line.starts_with("[muster] ")).map(str::to_string)
-    });
-    assert!(rung.contains("builder+p1@"), "{rung}");
+    let rung = until_some("the far agent to be rung", || rung(&far).into_iter().next());
+    let mut pair = ["builder".to_string(), callsign(&mut far_control, "p1")];
+    pair.sort();
+    assert!(rung.contains(&format!("{}@", pair.join("+"))), "{rung}");
 
     let refused = near_control.ask(post(&named("builder"), None, &["nobody"], "anyone?"));
     assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
@@ -537,6 +552,43 @@ fn a_name_panes_go_by_on_both_linked_machines_is_refused_naming_each() {
         proto::Outcome::Done,
     );
     assert_eq!(reached(&posted)[0].0, "p2@far");
+}
+
+/// An agent in a pane on the other machine is shown by its pane's callsign with the machine,
+/// as one here is by its callsign: in the group made for the two, beside its id in an answer,
+/// and in the `from` of what wakes the agent here, whichever machine keeps the group.
+#[test]
+fn a_pane_on_the_linked_machine_is_shown_by_its_callsign() {
+    let (near, far) = (Daemon::start_detecting(), Daemon::start_detecting());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut near_control, create("p1", in_new_tab("t1")));
+    near.run_agent("p1");
+    make(&mut far_control, create("p2", in_new_tab("t2")));
+    far.run_agent("p2");
+    let (heron, otter) = (callsign(&mut near_control, "p1"), callsign(&mut far_control, "p2"));
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+
+    let to = format!("{otter}@far");
+    let posted =
+        expect(&mut near_control, post(&in_pane("p1"), None, &[&to], "over"), proto::Outcome::Done);
+    let Some(Answer::Posted(answer)) = &msg_answer(&posted).answer else { panic!("{posted:?}") };
+    let mut pair = [heron.clone(), otter.clone()];
+    pair.sort();
+    assert_eq!(answer.group, pair.join("+"), "named by both callsigns");
+    assert_eq!(reached(&posted)[0].0, "p2@far", "still known by its id");
+    assert_eq!(msg_answer(&posted).called.get("p2@far"), Some(&to));
+    let there = until_some("the far agent to be rung", || rung(&far).into_iter().next());
+    assert!(there.contains(&format!(", from {heron}@")), "{there}");
+
+    let (read_there, _) = read(&mut far_control, &in_pane("p2"));
+    let group = read_there[0].split_whitespace().next().expect("a group").to_string();
+    expect(&mut far_control, post(&in_pane("p2"), Some(&group), &[], "back"), proto::Outcome::Done);
+    let here = until_some("the near agent to be rung", || rung(&near).into_iter().next());
+    assert!(here.contains(&format!(", from {otter}@far.")), "{here}");
+    let asked = Asked::Who(msg_request::Who { group: Some(answer.group.clone()) });
+    let members = expect(&mut near_control, msg(&in_pane("p1"), asked), proto::Outcome::Done);
+    assert_eq!(msg_answer(&members).called.get("p2@far"), Some(&to));
 }
 
 fn messages_of(asked: &muster_harness::Asked) -> Vec<String> {
@@ -572,7 +624,18 @@ fn the_persons_requests_on_the_dialed_machine_are_carried_to_the_near_one() {
     let posted =
         expect(&mut far_control, post(&person, None, &["p1"], "carry on"), proto::Outcome::Done);
     let Some(Answer::Posted(answer)) = &msg_answer(&posted).answer else { panic!("{posted:?}") };
-    assert_eq!(answer.group, "@human+p1", "made where the human's messages are kept");
+    let p1_callsign = callsign(&mut far_control, "p1");
+    assert_eq!(
+        answer.group,
+        format!("@human+{p1_callsign}"),
+        "made where the human's messages are kept"
+    );
+    let called = &msg_answer(&posted).called;
+    assert_eq!(
+        called.get("p1@far"),
+        Some(&format!("{p1_callsign}@far")),
+        "in the near machine's names"
+    );
     let heard = far.root().join("home/fake-agent-heard");
     until_some("the far agent to be rung", || {
         let heard = std::fs::read_to_string(&heard).unwrap_or_default();

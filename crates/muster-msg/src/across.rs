@@ -233,6 +233,20 @@ impl Call {
         }
     }
 
+    /// The participants the call names, as the asker writes them, for it to say what the panes
+    /// among them are called ([`Messaging::callsigns_of`]).
+    pub fn names(&self) -> BTreeSet<&str> {
+        let names: Vec<&String> = match self {
+            Call::Join { name, was, .. } => std::iter::once(name).chain(was).collect(),
+            Call::Leave { name, .. } => vec![name],
+            Call::Post { author, to, .. } => std::iter::once(author).chain(to).collect(),
+            Call::Find { .. } | Call::Since { .. } | Call::Who { .. } | Call::Whom { .. } => {
+                Vec::new()
+            }
+        };
+        names.into_iter().map(String::as_str).collect()
+    }
+
     /// The group the call is about, as its home names it; nothing for [`Call::Whom`].
     pub fn group(&self) -> &str {
         match self {
@@ -284,6 +298,26 @@ pub struct Caught {
 pub const CAUGHT_BYTES: usize = 8 << 20;
 
 impl Caught {
+    /// Every participant its entries name, as the home writes them.
+    pub fn names(&self) -> BTreeSet<&str> {
+        let mut names = BTreeSet::new();
+        for entry in &self.entries {
+            match &entry.what {
+                What::Message { author, to, .. } => {
+                    names.insert(author.as_str());
+                    names.extend(to.iter().map(String::as_str));
+                }
+                What::Created { by } | What::Changed { by, .. } => {
+                    names.insert(by.as_str());
+                }
+                What::Joined { who } | What::Left { who } => {
+                    names.insert(who.as_str());
+                }
+            }
+        }
+        names
+    }
+
     /// Refuses entries whose names are not ones an honest home sends: its group bare, since a
     /// group written `review@<us>` would land on one kept here, and every name one a participant
     /// could have, this machine's own included - the human posts from a shell there too. Muster
@@ -334,6 +368,30 @@ pub enum Reply {
 }
 
 impl Reply {
+    /// Every participant the reply names, as the machine answering writes them.
+    pub fn names(&self) -> BTreeSet<&str> {
+        match self {
+            Reply::Found(_) => BTreeSet::new(),
+            Reply::Joined { caught, .. } | Reply::Left { caught } | Reply::Caught(caught) => {
+                caught.names()
+            }
+            Reply::Posted { reached, caught, .. } => {
+                let mut names = caught.names();
+                names.extend(reached.iter().map(|(name, _)| name.as_str()));
+                names
+            }
+            Reply::Members(members) => members
+                .iter()
+                .flat_map(|member| {
+                    let authors = member.unread.iter().flat_map(|unread| &unread.authors);
+                    std::iter::once(&member.name).chain(authors).map(String::as_str)
+                })
+                .collect(),
+            Reply::Named(name) => name.iter().map(String::as_str).collect(),
+            Reply::Refused { caught, .. } => caught.as_ref().map(Caught::names).unwrap_or_default(),
+        }
+    }
+
     /// Refuses a reply whose names are not ones an honest home sends, as [`Caught::check`] does.
     pub fn check(&self) -> Result<(), Refusal> {
         match self {

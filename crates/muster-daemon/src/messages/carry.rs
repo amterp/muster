@@ -184,6 +184,10 @@ pub(super) fn named_here(peer: &Peer, mut reply: Reply) -> Reply {
     if !answer.caller.is_empty() {
         name(&mut answer.caller);
     }
+    answer.called = std::mem::take(&mut answer.called)
+        .into_iter()
+        .map(|(id, callsign)| (peer.inward(&id), peer.inward(&callsign)))
+        .collect();
     match &mut answer.answer {
         Some(Answer::Changed(changed)) => {
             name(&mut changed.group);

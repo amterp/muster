@@ -309,16 +309,11 @@ running in the pane's surface, which lives in the window and which nothing out h
 What `muster` has instead is `muster pane read`, the pane's history as the daemon holds it, and a
 caller can search that text itself.
 
-## A pane's callsign is not completed, and on another machine a message shows its id
+## A pane's callsign is not completed
 
 A pane's callsign or name (`muster docs overview`) is typed in full: the shell completion `muster
 completions` writes knows the commands and their flags, and nothing about the panes open now. No
 two callsigns begin alike, so that three letters will say which once completion does.
-
-`muster msg` shows an agent known by its pane as `otter (p1w3r07bsd)` only for a pane on its own
-machine. One on another machine is shown by its id and machine, `p2w3r07bsd@devenv`, since the
-machine that has the pane is the one that knows what it is called; `--to otter@devenv` still
-reaches it.
 
 `$MUSTER_PANE_NAME` is what a pane was called as it was made. A program's environment cannot
 follow a rename, so after one it is out of date; `muster window` says what the pane is called now.

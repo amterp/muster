@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{Entry, HumanHome, Participant, Policy};
@@ -20,6 +22,11 @@ pub struct Saved {
     /// Where the human is homed, once a daemon there has dialed this one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub human_home: Option<HumanHome>,
+    /// The callsign of each pane participant on another machine, as that machine said it, both
+    /// written as this machine writes them: `p2w3r07bsd@devenv` is `otter@devenv`. Kept because
+    /// a group's log is, and nothing else here can say what its authors there are called.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub called_elsewhere: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

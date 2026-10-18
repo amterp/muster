@@ -50,6 +50,19 @@ const INTRODUCING: Duration = Duration::from_secs(5);
 /// tunnel is being reopened, and the link should come back soon after it does.
 const REDIAL_AT_MOST: Duration = Duration::from_secs(5);
 
+/// What a frame says the sender's pane participants it names are called (`PeerCall.called`).
+type Callsigns = HashMap<String, String>;
+
+/// What this machine's pane participants among `names` are called, for a frame that names them.
+fn callsigns<'a>(shared: &Shared, names: impl IntoIterator<Item = &'a str>) -> Callsigns {
+    let names: Vec<&str> = names.into_iter().collect();
+    if names.is_empty() {
+        return Callsigns::new();
+    }
+    let panes = Panes::of(shared);
+    shared.messages().service.callsigns_of(names, &panes).into_iter().collect()
+}
+
 /// One connection to another machine's daemon.
 #[derive(Debug)]
 pub(crate) struct Link {
@@ -84,19 +97,26 @@ impl Link {
         connection::send(&mut *writer, &PeerFrame { frame: Some(frame) })
     }
 
-    fn call(&self, call: Called, patience: Duration) -> Result<Replied, Failed> {
+    /// Sends `call`, saying what the pane participants it names are called, and returns the
+    /// reply with what the other machine says those it names are called.
+    fn call(
+        &self,
+        call: Called,
+        called: Callsigns,
+        patience: Duration,
+    ) -> Result<(Replied, Callsigns), Failed> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (reply, replied) = mpsc::channel();
         poison::lock(&self.pending, "daemon.peer.pending").insert(id, reply);
-        let sent = self.send(Frame::Call(proto::PeerCall { id, call: Some(call) }));
+        let sent = self.send(Frame::Call(proto::PeerCall { id, called, call: Some(call) }));
         if let Err(error) = sent {
             poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
             return Err(Failed::Unsent(format!("the call could not be sent: {error}")));
         }
         match replied.recv_timeout(patience) {
-            Ok(reply) => {
-                reply.reply.ok_or_else(|| Failed::Unanswered("the reply was empty".to_string()))
-            }
+            Ok(proto::PeerReply { reply, called, .. }) => reply
+                .map(|reply| (reply, called))
+                .ok_or_else(|| Failed::Unanswered("the reply was empty".to_string())),
             Err(RecvTimeoutError::Timeout) => {
                 poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
                 Err(Failed::Unanswered(format!("no reply within {patience:?}")))
@@ -119,7 +139,8 @@ impl Link {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (reply, replied) = mpsc::channel();
         poison::lock(&self.pending, "daemon.peer.pending").insert(id, reply);
-        let sent = self.send(Frame::Call(proto::PeerCall { id, call: Some(call) }));
+        let call = proto::PeerCall { id, called: Callsigns::new(), call: Some(call) };
+        let sent = self.send(Frame::Call(call));
         if let Err(error) = sent {
             poison::lock(&self.pending, "daemon.peer.pending").remove(&id);
             return Err(Failed::Unsent(format!("the call could not be sent: {error}")));
@@ -517,11 +538,12 @@ fn read(shared: &Arc<Shared>, link: &Arc<Link>, mut stream: UnixStream) -> Strin
                 }
             }
             Some(Frame::Call(call)) => {
+                let id = call.id;
                 let (shared, link) = (Arc::clone(shared), Arc::clone(link));
                 let _ =
                     std::thread::Builder::new().name("peer-call".to_string()).spawn(move || {
-                        let reply = answer(&shared, &link, call.id, call.call);
-                        let reply = proto::PeerReply { id: call.id, reply: Some(reply) };
+                        let (reply, called) = answer(&shared, &link, call);
+                        let reply = proto::PeerReply { id, called, reply: Some(reply) };
                         let _ = link.send(Frame::Reply(reply));
                     });
             }
@@ -580,8 +602,11 @@ pub(crate) fn call_away(shared: &Shared, away: &Away) -> (Settle, Holding) {
 fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     let patience = if matches!(away.call, Call::Post { .. }) { POSTING } else { CALLING };
     let changes = matches!(away.call, Call::Join { .. } | Call::Leave { .. } | Call::Post { .. });
-    let replied = match link.call(wire::call_to(&away.call), patience) {
-        Ok(replied) => wire::reply_from(replied).and_then(|reply| named(reply, &away.machine)),
+    let called = callsigns(shared, away.call.names());
+    let replied = match link.call(wire::call_to(&away.call), called, patience) {
+        Ok((replied, said)) => wire::reply_from(replied)
+            .and_then(|reply| named(reply, &away.machine))
+            .map(|reply| (reply, said)),
         Err(Failed::Unanswered(error)) if changes => {
             log::warn(
                 "msg.peer.call_failed",
@@ -613,10 +638,11 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
             None
         }
     };
-    let Some(reply) = replied else { return (unreachable(away), Holding::default()) };
+    let Some((reply, said)) = replied else { return (unreachable(away), Holding::default()) };
     let panes = Panes::of(shared);
     let (settle, holding) = {
         let mut messages = shared.messages();
+        messages.service.heard_callsigns(&link.peer, said);
         let settle = messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms());
         messages.let_go(&settle.applied.ended);
         let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
@@ -695,13 +721,17 @@ pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<(String, Reach)> {
         let Ok(caught) = shared.messages().service.since(&tell.group, tell.after) else {
             continue;
         };
-        match link.call(Called::Replicate(wire::caught_to(&caught)), CALLING) {
-            Ok(Replied::Applied(applied)) => reached.extend(
-                wire::reached_from(applied.reached)
-                    .into_iter()
-                    .map(|(name, reach)| (link.peer.inward(&name), reach)),
-            ),
-            Ok(other) => log::warn(
+        let called = callsigns(shared, caught.names());
+        match link.call(Called::Replicate(wire::caught_to(&caught)), called, CALLING) {
+            Ok((Replied::Applied(applied), said)) => {
+                shared.messages().service.heard_callsigns(&link.peer, said);
+                reached.extend(
+                    wire::reached_from(applied.reached)
+                        .into_iter()
+                        .map(|(name, reach)| (link.peer.inward(&name), reach)),
+                );
+            }
+            Ok((other, _)) => log::warn(
                 "msg.peer.call_failed",
                 fields! {
                     "machine" => tell.machine,
@@ -735,15 +765,20 @@ pub(crate) fn tell(shared: &Shared, tells: &[Tell]) -> Vec<(String, Reach)> {
 // ---------------------------------------------------------------------------------------------
 // Answering a call
 
-fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>) -> Replied {
-    let refused = |refusal: &Refusal| Replied::Refused(wire::refusal_to(refusal));
+/// The reply to a call, with what this machine's pane participants it names are called.
+fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: proto::PeerCall) -> (Replied, Callsigns) {
+    let refused =
+        |refusal: &Refusal| (Replied::Refused(wire::refusal_to(refusal)), Callsigns::new());
+    let proto::PeerCall { id, called: said, call } = call;
     let Some(call) = call else {
         return refused(&Refusal::Store { error: "an empty call".to_string() });
     };
     match call {
-        Called::Replicate(caught) => return replicated(shared, link, caught),
-        Called::Forget(forget) => return forgotten(shared, link, &forget.group),
-        Called::Carried(request) => return carried(shared, link, id, request),
+        Called::Replicate(caught) => return replicated(shared, link, caught, said),
+        Called::Forget(forget) => {
+            return (forgotten(shared, link, &forget.group), Callsigns::new());
+        }
+        Called::Carried(request) => return (carried(shared, link, id, request), Callsigns::new()),
         _ => {}
     }
     let Some(call) = wire::call_from(call) else {
@@ -757,6 +792,7 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>)
             let machine = link.peer.calls_us.clone();
             return refused(&Refusal::Unreachable { group, machine });
         }
+        messages.service.heard_callsigns(&link.peer, said);
         let mut answered = messages.service.answer(&link.peer, call.clone(), &panes, now_ms());
         if let (Call::Who { group }, muster_msg::Reply::Members(members)) =
             (&call, &mut answered.reply)
@@ -787,7 +823,8 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, call: Option<Called>)
             );
         }
     }
-    wire::reply_to(reply)
+    let called = shared.messages().service.callsigns_of(reply.names(), &panes);
+    (wire::reply_to(reply), called.into_iter().collect())
 }
 
 /// A request the person made on the other machine, done here as the human. It ends when the
@@ -864,11 +901,16 @@ pub(crate) fn named_here(shared: &Shared, machine: &str, reply: Reply) -> Reply 
 
 /// A group's home sent new entries: take them into the replica, fetching first whatever came
 /// between, and wake this machine's members for them.
-fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> Replied {
+fn replicated(
+    shared: &Arc<Shared>,
+    link: &Arc<Link>,
+    caught: proto::Caught,
+    said: Callsigns,
+) -> (Replied, Callsigns) {
     let caught = wire::caught_from(caught);
     if let Err(refusal) = caught.check() {
         misnamed(&link.peer.name, &refusal);
-        return Replied::Refused(wire::refusal_to(&refusal));
+        return (Replied::Refused(wire::refusal_to(&refusal)), Callsigns::new());
     }
     let group = caught.group.clone();
     let panes = Panes::of(shared);
@@ -876,6 +918,8 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
     // its author's machine counts those as heard.
     let (reached, holding) = {
         let mut messages = shared.messages();
+        // First, so the wakes the entries make say who they are from by callsign.
+        messages.service.heard_callsigns(&link.peer, said);
         match messages.service.apply(&link.peer, caught, &panes, now_ms()) {
             Ok(applied) => {
                 messages.let_go(&applied.ended);
@@ -889,8 +933,10 @@ fn replicated(shared: &Arc<Shared>, link: &Arc<Link>, caught: proto::Caught) -> 
         }
     };
     super::ring(shared, holding);
+    let names = reached.iter().map(|(name, _)| name.as_str());
+    let called = shared.messages().service.callsigns_of(names, &panes).into_iter().collect();
     let reached = wire::reached_to(&reached);
-    Replied::Applied(proto::peer_reply::Reached { reached })
+    (Replied::Applied(proto::peer_reply::Reached { reached }), called)
 }
 
 /// Tells each machine named that `group` is deleted, so its replica goes. A machine that cannot
@@ -899,7 +945,7 @@ pub(crate) fn forget(shared: &Shared, machines: &[String], group: &str) {
     for machine in machines {
         let Some(link) = shared.peers.to(machine) else { continue };
         let call = Called::Forget(proto::peer_call::Forget { group: group.to_string() });
-        if let Err(error) = link.call(call, CALLING) {
+        if let Err(error) = link.call(call, Callsigns::new(), CALLING) {
             log::warn(
                 "msg.peer.call_failed",
                 fields! {

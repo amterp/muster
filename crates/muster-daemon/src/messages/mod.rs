@@ -399,10 +399,11 @@ pub(crate) fn handle(
 }
 
 /// The answer, saying what each participant named after its pane is called, for it to be shown
-/// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one.
+/// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one. An
+/// answer carried from another machine already says what that machine calls its names.
 fn naming_the_panes(shared: &Shared, mut reply: Reply, panes: &Panes) -> Reply {
     if let Some(Detail::Msg(answer)) = reply.detail.as_deref_mut() {
-        answer.called = shared.messages().service.called(panes).into_iter().collect();
+        answer.called.extend(shared.messages().service.called(panes));
     }
     reply
 }
@@ -430,7 +431,8 @@ pub(crate) fn carried(
     log::info("msg.carried", fields! { "machine" => peer.name, "verb" => carry::verb(&asked) });
     let panes = Panes::of(shared);
     let human = Caller { at_ms: now_ms(), ..Caller::default() };
-    respond(shared, &human, asked, hung_up, &panes)
+    let reply = respond(shared, &human, asked, hung_up, &panes);
+    naming_the_panes(shared, reply, &panes)
 }
 
 /// Answers `asked` on this machine, as `caller`.

@@ -811,8 +811,9 @@ message MsgAnswer {
   // when nothing did.
   string human_name = 3;
   // Since 1.5. What each participant named after its pane (`p29te12q4t`) is called (`otter`):
-  // the pane's name now, or the last this machine saw once the pane has closed. For an answer to
-  // show it by, beside the id, which stays the address.
+  // the pane's callsign, kept once the pane has closed. For an answer to show it by, beside the
+  // id, which stays the address. Since 1.6, one on another machine too, as that machine said it:
+  // `p2w3r07bsd@devenv` is `otter@devenv`.
   map<string, string> called = 4;
   oneof answer {
     Joined joined = 10;
@@ -1959,6 +1960,10 @@ message Handoff {
 // Each daemon writes its own members bare and another machine's as `name@machine`, in its own
 // name for that machine. Every name in a frame is written as its sender writes it; the receiver
 // turns it into its own. Groups are named as their home names them.
+//
+// A call and a reply also say what each pane participant of the sender's that they name is
+// called, since only the machine with the pane knows its callsign: `p2w3r07bsd` is `otter`,
+// which the receiver shows as `otter@devenv`.
 
 message PeerFrame {
   oneof frame {
@@ -1986,6 +1991,9 @@ message Introduce {
 
 message PeerCall {
   uint64 id = 1;
+  // Since 1.6. The callsign of each of the sender's pane participants the call names, by the
+  // pane's id, both bare.
+  map<string, string> called = 2;
   oneof call {
     Find find = 10;
     Join join = 11;
@@ -2062,6 +2070,8 @@ message PeerCall {
 
 message PeerReply {
   uint64 id = 1;
+  // Since 1.6. As `PeerCall.called`, for the participants the reply names.
+  map<string, string> called = 2;
   oneof reply {
     bool found = 10;
     Joined joined = 11;

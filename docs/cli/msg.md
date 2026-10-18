@@ -505,10 +505,12 @@ from the other:
   it, so `--to p2w3r07bsd` reaches the agent in it as `src@devenv` once it has joined as `src`. A post to someone who shares no
   group with you makes the group of the two of you on your machine, as on one machine: the
   laptop's `builder+critic` is `builder+critic@your-laptop` on the devenv. A pane named this way
-  becomes a participant on its own machine and is rung there. `group add` finds names the same
-  way. When the agent in such a pane joins under a name of its own, its machine asks each
-  group's home to put the name in the pane's place, which that home does whatever its policy
-  says about joining.
+  becomes a participant on its own machine and is rung there. The other machine shows it by its
+  callsign with the machine, `otter@devenv (p2w3r07bsd@devenv)`, as the machine with the pane
+  says it, and names a group made for it by the callsign, `builder+otter`. `group add` finds
+  names the same way. When the agent in such a pane joins under a name of its own, its machine
+  asks each group's home to put the name in the pane's place, which that home does whatever its
+  policy says about joining.
 - **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
   counts what you have not read there, so it holds across machines as it does on one. A post's
   answer says what each machine did for its own agents.
@@ -566,6 +568,9 @@ to be from a Muster that knows it; either being older refuses it, saying which, 
 urgently, which is `not_urgent`. A member on a machine whose daemon is older is rung for it as for
 an ordinary post. A `group set` from an older Muster, which knows nothing of `urgent`, leaves the
 group's list as it was.
+
+An agent in a pane on a machine whose daemon is older than this Muster is shown by its id and
+machine, `p2w3r07bsd@devenv`, since that daemon does not say what its panes are called.
 
 A member removed from a group kept on another machine loses what it had left to read there if
 its own daemon restarts first, since a copy of a group kept elsewhere is not written to disk.

@@ -530,6 +530,8 @@ pub struct Messaging<S: Store> {
     pub(crate) lately_reached: BTreeMap<String, crate::across::Lately>,
     /// What folding a pane into a name told no machine yet: see [`Self::take_folded`].
     pub(crate) folded: Folded,
+    /// What each pane participant on another machine is called: see [`Saved::called_elsewhere`].
+    pub(crate) called_elsewhere: BTreeMap<String, String>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -629,6 +631,7 @@ impl<S: Store> Messaging<S> {
             lately_reached: BTreeMap::new(),
             folded: Folded::default(),
             human_home: saved.human_home,
+            called_elsewhere: saved.called_elsewhere,
         };
         messaging.kept = messaging.snapshot();
         messaging
@@ -1889,7 +1892,8 @@ impl<S: Store> Messaging<S> {
 
     /// What each participant named after its pane is called, refreshed from the panes open now,
     /// for an answer to show it by: `otter` rather than `p29te12q4t`. A pane closed since keeps
-    /// the name it last had here, which another pane may go by by now.
+    /// the name it last had here, which another pane may go by by now. One on another machine
+    /// is called what that machine last said, with the machine: `otter@devenv`.
     pub fn called(&mut self, presence: &dyn Presence) -> BTreeMap<String, String> {
         let mut changed = false;
         for participant in self.participants.values_mut() {
@@ -1908,13 +1912,66 @@ impl<S: Store> Messaging<S> {
             // Only a name to show by: one not written down is refreshed at the next request.
             let _ = self.save();
         }
-        self.participants
-            .values()
-            .filter_map(|participant| {
-                let called = participant.called.as_ref()?;
-                (called != &participant.name).then(|| (participant.name.clone(), called.clone()))
+        let here = self.participants.values().filter_map(|participant| {
+            let called = participant.called.as_ref()?;
+            (called != &participant.name).then(|| (participant.name.clone(), called.clone()))
+        });
+        here.chain(self.called_elsewhere.clone()).collect()
+    }
+
+    /// The callsign a participant named after its pane is shown by: `otter` for one here, and
+    /// `otter@devenv` for one on another machine.
+    fn callsign_of(&self, name: &str) -> Option<&str> {
+        match self.participants.get(name) {
+            Some(known) if known.pane.as_deref() == Some(name) => known.called.as_deref(),
+            Some(_) => None,
+            None => self.called_elsewhere.get(name).map(String::as_str),
+        }
+    }
+
+    /// What each of `names` that is a pane participant here is called, for another machine to
+    /// show it by: [`Peer::inward`] there turns `p29te12q4t` and `otter` into its own names.
+    /// Asked of the open panes first, since an agent may not have taken part yet.
+    pub fn callsigns_of<'a>(
+        &self,
+        names: impl IntoIterator<Item = &'a str>,
+        presence: &dyn Presence,
+    ) -> BTreeMap<String, String> {
+        names
+            .into_iter()
+            .filter(|name| split_machine(name).is_none() && *name != HUMAN)
+            .filter_map(|name| {
+                let called = presence.name_of(name).or_else(|| {
+                    let known = self.participants.get(name)?;
+                    known.called.clone().filter(|_| known.pane.as_deref() == Some(name))
+                })?;
+                (called != name).then(|| (name.to_string(), called))
             })
             .collect()
+    }
+
+    /// Keeps what `peer` said its pane participants are called ([`Self::callsigns_of`] there).
+    /// Only the machine that has a pane says what it is called, so a name `peer` writes as
+    /// another machine's is passed over.
+    pub fn heard_callsigns(
+        &mut self,
+        peer: &Peer,
+        said: impl IntoIterator<Item = (String, String)>,
+    ) {
+        let own = |name: &str| check_participant(name).is_ok() && name != HUMAN;
+        let mut changed = false;
+        for (pane, callsign) in said {
+            if !own(&pane) || !own(&callsign) {
+                continue;
+            }
+            let callsign = peer.inward(&callsign);
+            let before = self.called_elsewhere.insert(peer.inward(&pane), callsign.clone());
+            changed |= before.as_ref() != Some(&callsign);
+        }
+        if changed {
+            // Only a name to show by: one not written down is heard again with the next frame.
+            let _ = self.save();
+        }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -2445,15 +2502,17 @@ impl<S: Store> Messaging<S> {
     /// `-2`, `-3`, ... that is free. A group by the name holding only some of them is theirs: one
     /// of them left it.
     fn pair_name(&self, everyone: &[&str]) -> Result<String, Refusal> {
-        // A participant named after its pane by what the pane is called, when that is a name a
-        // group's may hold: `muster-integrator+otter` rather than `+p29te12q4t`.
+        // A participant named after its pane by the pane's callsign, when that is a name a
+        // group's may hold: `muster-integrator+otter` rather than `+p29te12q4t`, wherever the
+        // pane is, since [`pair_group`] drops the machine.
         let shown: Vec<&str> = everyone
             .iter()
             .map(|name| {
-                self.participants
-                    .get(*name)
-                    .and_then(|participant| participant.called.as_deref())
-                    .filter(|called| check_participant(called).is_ok())
+                self.callsign_of(name)
+                    .filter(|called| {
+                        let own = split_machine(called).map_or(*called, |(base, _)| base);
+                        check_participant(own).is_ok()
+                    })
                     .unwrap_or(name)
             })
             .collect();
@@ -2646,9 +2705,7 @@ impl<S: Store> Messaging<S> {
             notice.to_you += u64::from(addressed);
             notice.urgent += u64::from(*urgent);
             // An agent known by its pane is said by the pane's callsign, which `--to` takes too.
-            let known = self.participants.get(author);
-            let called = known.filter(|known| known.pane.as_deref() == Some(author.as_str()));
-            let shown = called.and_then(|known| known.called.clone()).unwrap_or(author.clone());
+            let shown = self.callsign_of(author).map_or_else(|| author.clone(), str::to_string);
             if !notice.from.contains(&shown) {
                 notice.from.push(shown);
             }
@@ -3012,6 +3069,7 @@ impl<S: Store> Messaging<S> {
                 })
                 .collect(),
             human_home: self.human_home.clone(),
+            called_elsewhere: self.called_elsewhere.clone(),
         }
     }
 }
