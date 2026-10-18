@@ -2,16 +2,26 @@
   "_v": 3,
   "alias": "run-dev-through",
   "alias_explicit": false,
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Closed without doing it. On 2026-10-18 the owner decided muster's ./dev carries no Quartermaster code, because muster is public: agents reach qm through the skill and hooks installed for every session, which remind them to type `qm run -- ./dev`.\n\nThe wrap was built and run twice before that decision, and the numbers went to Quartermaster's board. The card's 1.5 jobs per granted core gave a 1-core grant a Rust suite that ran one test at a time, and the gate took 1809 s against the usual 139 s or so. Eight jobs per granted core brought it to 174 s on a 2-core grant. Both clamped runs went red, each on a different test that passes alone, at loads this suite has gone red at without qm.",
+      "created_at_millis": 1792339195483,
+      "id": "c_2jxPLAh8A"
+    }
+  ],
   "created_at_millis": 1792335565315,
   "creator": "Alexander Terp",
   "description": "Quartermaster's orchestrator (an agent) filed this, at the owner's request of 2026-10-18: \"Go ahead and migrate the projects to using Quartermaster.\"\n\n**What.** `./dev` has no lock by design; parallel worktrees run the gate at once, and integrators have coordinated by `muster msg`. Under `qm run` the gate waits for room instead, which is what makes those messages unnecessary. Quartermaster's research note has the full proposal: `~/src/quartermaster/docs/research/2026-10-moving-gates-onto-qm-run.md`, section \"Muster\".\n\n**For this project:**\n- Wrap the whole gate once (deps, style, build, lint, test). `./dev --doctor`, `--bundle` and `--notarize` stay outside.\n- `tools/run-tests.py --jobs` defaults to one and a half times `QM_CORES` when it is set, keeping its measured ratio but on the grant instead of the machine. `swift build` and `swift test` get `-j \"$QM_CORES\"`.\n- `--perf` adds `--alone`, which keeps other jobs off the machine and lifts the QoS clamp. Keep its own load check: work outside `qm run` still loads the machine.\n- `--linux` (three emulated threads) is the one place a fixed `--cores 3` fits.\n- Risk: the suite has tests that time themselves and fail at high load. Under the clamp they get less CPU when unclamped work fills the Mac. Watch the red rate for a few days; if it rises, run the Rust suite with `--steady`, and tell Quartermaster's board.\n- The load line at the top of every run stays: it is still true information about the machine.\n\n**The rules** (`qm docs projects` has the snippet; `qm docs run` the flags):\n- Re-run `./dev` under `qm run` once, at the top, for the build and test modes only. Servers, app launches, deploys, pushes and formatting stay outside: a job holds its grant for as long as it runs, below normal priority.\n- `--kind \"./dev \u003cmodes\u003e\"` and `--wait-at-most 2m`; no `--cores`, so the daemon sizes the grant. `--memory` only for a peak you have measured.\n- Tools that ignore jobservers read `QM_CORES`: `xcodebuild -jobs \"$QM_CORES\"`, `swift build -j \"$QM_CORES\"`. Cargo needs nothing.\n- `QM_DEV_WRAPPED=1 ./dev` runs plainly. Without `qm` on PATH, `./dev` runs as it does today.\n- Tell this project's agents (AGENTS.md or its testing doc) that `./dev` may wait for room, printing where it stands, and that exit 75 means \"not run yet, run it again to keep your place\".\n\n**Known today.** A job that names no width gets half the budget, and while the owner is at the Mac half its cores are kept for him, so a lone gate can get 2 cores on a quiet Mac. Quartermaster is changing that centrally, so that idle cores are lent to running jobs. Nothing here needs to change when it lands, as long as `./dev` passes no `--cores`.\n\n**Done when** one gate run shows in `qm queue` under this project with its grant, and `qm estimate -- ./dev` lists it afterwards.\n\n**Feedback wanted.** The owner wants to know quickly if Quartermaster makes this project worse: slower gates, waits with idle cores, confusing output. File it in Quartermaster's inbox (`cd ~/src/quartermaster \u0026\u0026 kan add \"\u003ctitle\u003e\" \"\u003cwhat happened\u003e\"`), with the `qm explain \u003cjob\u003e` output if there is a job id.",
   "id": "a_2jvstzYjV",
-  "position": "a5",
+  "position": "YwH",
   "title": "Run ./dev through Quartermaster's qm run",
   "type": "chore",
-  "updated_at_millis": 1792335576889,
+  "updated_at_millis": 1792339195570,
   "history": [
-    {"field":"column","value":"next","at":1792335565315}
+    {"field":"column","value":"next","at":1792335565315},
+    {"field":"column","value":"in-progress","at":1792336348692},
+    {"field":"column","value":"done","at":1792339195570}
   ]
 }
