@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "make-an-open-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792349314594,
+  "creator": "Alexander Terp",
+  "description": "An agent that started a pane without `--helper` cannot make it a helper later. Helper status is set at `pane new` and kept for good (`muster docs agents`, 'An agent's helpers'), so the only remedy is `pane hide` plus `pane quiet`, which leaves out what makes a helper worth having: the maker link (`maker` in `muster window --json`, `pane show --helpers-of`) and the @muster notices to the maker when the pane is blocked, stuck, or idle without having reported.\n\n**Seen:** 2026-10-18, an integrator running a parallel round spawned two worker panes as plain splits, because the parallel-work skill's spawn example has no `--helper`, then could not turn them into its helpers once the person asked why they were not.\n\n**Idea:** a verb that records an existing pane as a helper of a maker, such as `muster pane adopt --pane \u003cp\u003e [--helper-of \u003cmaker\u003e]` (the maker defaulting to the calling pane), with the same effect as having made it with `--helper`: hidden and quiet unless told otherwise, listed under its maker, and watched for the maker's notices. The reverse (release a helper into an ordinary pane) may want the same verb.\n\nThe skill-side fix, spawning workers with `--helper` in the first place, is on the owner's tooling-feedback board.",
+  "id": "a_2k1eaF6Sd",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b1R",
+  "title": "Make an open pane another pane's helper",
+  "type": "feature",
+  "updated_at_millis": 1792349314594,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792349314594}
+  ]
+}
