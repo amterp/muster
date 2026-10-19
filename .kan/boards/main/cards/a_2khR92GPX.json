@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "codex-s-plugin-is",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1792448895768,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-19 on 0.17.0. Both marketplaces in `extras/` are named `muster`, but Claude Code's lists a plugin `muster` and Codex's lists `muster-codex`, so Muster's plugin is `muster@muster` in Claude Code and `muster-codex@muster` in Codex. A launcher that mirrors Claude Code's `enabledPlugins` into Codex, enabling each key whose marketplace Codex has registered, fails on every Codex start with ``Error: plugin `muster` was not found in marketplace `muster` ``. Nothing breaks, since `muster harness install codex` has already enabled `muster-codex@muster`, but the error prints at every launch.\n\n7aa474be chose the plugin's name and gives no reason for the difference. If nothing depends on it, naming the Codex plugin `muster` as well would give each harness the same key for its own plugin; `muster harness install codex` would then need to move existing installs off `muster-codex@muster`. Other options: a second entry named `muster` in the Codex marketplace pointing at `./codex`, or leaving the names and expecting such launchers to skip a key whose plugin the target marketplace does not list.",
+  "id": "a_2khR92GPX",
+  "position": "aZ",
+  "title": "Codex's plugin is muster-codex where Claude Code's is muster: should they share a name?",
+  "type": "enhancement",
+  "updated_at_millis": 1792448902805,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792448895768}
+  ]
+}

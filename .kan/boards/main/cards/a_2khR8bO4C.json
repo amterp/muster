@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "an-ambiguous-to",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792448895501,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-19 on 0.17.0, devenv. A Codex member of a directed council group was added by pane id, then joined as `review`. The director's `muster msg post --group \u003cgroup\u003e --to review -` was refused: `review could be p2c3tkry84 or review; say which, by one of those`. `review` is what was typed, so one of the two suggestions repeats the failing input, and p2c3tkry84 is a pane outside the group. `--to \u003cthe member's pane id\u003e` worked.\n\nThe refusal could name each candidate by a ref that resolves to it alone, as `docs/cli/msg.md` says one does (a pane id, or `name@machine`), never the bare name (`Refusal::WhichParticipant` in `crates/muster-daemon/src/messages/mod.rs`). And with `--group` given, `--to` could prefer that group's members, so a pane outside the group with the same name does not make it ambiguous. Whether that rule is right is open, since the same `--to` would then mean different agents in different groups.\n\nHow a pane outside the group came to be called `review` while a participant held that name is not known. a_2hKgI2Qj7 (done) refuses that for `pane new --name` and `pane rename`; a_2hKMo9s9t (done) covers a pane and a participant of one name that are the same agent.",
+  "id": "a_2khR8bO4C",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b1S",
+  "title": "An ambiguous --to offers the typed name itself as one way to say which",
+  "type": "bug",
+  "updated_at_millis": 1792448895501,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792448895501}
+  ]
+}
