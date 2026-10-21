@@ -60,6 +60,12 @@
       "body": "Same round, 2026-10-20, a second Codex worker: approval #6 was read before building, then after it posted its report as #7 another wake for #6 arrived and muster msg read found nothing unread. Both instances follow the same shape: the stale wake fires right after the worker's own next post.",
       "created_at_millis": 1792544456370,
       "id": "c_2lLX77cZK"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Third instance in the same round, 2026-10-20 (Muster 0.16.2-dev, Codex pane, adapter reporting): wake for approval #6 arrived again after the worker posted its report #7; nothing unread. Three of three Codex workers hit it after their first report.",
+      "created_at_millis": 1792545122870,
+      "id": "c_2lLoS7aaf"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -69,7 +75,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792544456370,
+  "updated_at_millis": 1792545122870,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
