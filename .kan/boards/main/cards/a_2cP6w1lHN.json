@@ -78,6 +78,12 @@
       "body": "A worse variant, same round, 2026-10-20 (Muster 0.16.2-dev, Codex pane, adapter reporting, daemon connected): right after the integrator typed /new into the Codex pane and posted a new brief (#14), the wake arrived but muster msg read returned 'nothing unread'. The brief was only recoverable through muster msg log --since 13. So a new message was counted as read before the agent read it, and a worker that trusted msg read would have sat idle with its assignment unseen. Possibly tied to the /new reset.",
       "created_at_millis": 1792550383795,
       "id": "c_2lO1JTizG"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Correction to the previous comment: the worker reports the brief was not lost. It was a stale wake (msg read showed nothing unread because the message had already been read), the same symptom as the other instances. Read the previous comment's 'counted as read before the agent saw it' as unconfirmed.",
+      "created_at_millis": 1792550395510,
+      "id": "c_2lO1cNpiJ"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -87,7 +93,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792550383795,
+  "updated_at_millis": 1792550395511,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
