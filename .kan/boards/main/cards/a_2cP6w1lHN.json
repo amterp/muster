@@ -84,6 +84,12 @@
       "body": "Correction to the previous comment: the worker reports the brief was not lost. It was a stale wake (msg read showed nothing unread because the message had already been read), the same symptom as the other instances. Read the previous comment's 'counted as read before the agent saw it' as unconfirmed.",
       "created_at_millis": 1792550395510,
       "id": "c_2lO1cNpiJ"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "A new cost, same round: after a duplicate wake, a second thread inside one Codex worker re-read its assignment from the message log, saw its own in-progress edits, took them for another writer's, and sent an urgent 'another process is editing this tree' message before stopping. Nothing was lost, but a worker nearly abandoned its own work, and the integrator had to inspect processes to confirm a single writer.",
+      "created_at_millis": 1792554990555,
+      "id": "c_2lPx9jxbZ"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -93,7 +99,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792550395511,
+  "updated_at_millis": 1792554990555,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
