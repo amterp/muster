@@ -54,6 +54,12 @@
       "body": "Another instance, 2026-10-20, Mac: a Codex worker (gpt-6.1-sol) in a parallel-work round read approval #8 in its group with the integrator, built the assignment, and posted its completion as #9. Another wake then arrived for #8 ('1 new (#8), 1 to you, from denim'), and muster msg read returned 'nothing unread'. Cost: one wasted agent turn.",
       "created_at_millis": 1792543972866,
       "id": "c_2lLKXG0Nw"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Same round, 2026-10-20, a second Codex worker: approval #6 was read before building, then after it posted its report as #7 another wake for #6 arrived and muster msg read found nothing unread. Both instances follow the same shape: the stale wake fires right after the worker's own next post.",
+      "created_at_millis": 1792544456370,
+      "id": "c_2lLX77cZK"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -63,7 +69,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792543972866,
+  "updated_at_millis": 1792544456370,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
