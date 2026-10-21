@@ -48,6 +48,12 @@
       "body": "Another, ~17:43: Codex worker p2cnhzb1m5 re-woken for #41 (ordo-3+ordo-integrator) after it had completed that work and posted #43; 'nothing unread'. New side effect: the duplicate turn ended idle without a post, so @muster then sent the integrator a 'went idle without posting to you' notice (#44), which sent the integrator to investigate a worker that had nothing wrong.",
       "created_at_millis": 1792364191221,
       "id": "c_2k7tascf5"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another instance, 2026-10-20, Mac: a Codex worker (gpt-6.1-sol) in a parallel-work round read approval #8 in its group with the integrator, built the assignment, and posted its completion as #9. Another wake then arrived for #8 ('1 new (#8), 1 to you, from denim'), and muster msg read returned 'nothing unread'. Cost: one wasted agent turn.",
+      "created_at_millis": 1792543972866,
+      "id": "c_2lLKXG0Nw"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -57,7 +63,7 @@
   "position": "!!!!!0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792364191221,
+  "updated_at_millis": 1792543972866,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
