@@ -2467,7 +2467,7 @@ impl<S: Store> Messaging<S> {
         removed: Removed,
         (woken, rewoken): (bool, bool),
     ) {
-        if self.unread_between(name, group, removed.read, removed.at) == 0 {
+        if self.unread_by_others(name, group, removed.read, removed.at).next().is_none() {
             return;
         }
         let Some(participant) = self.participants.get_mut(name) else { return };
@@ -2645,24 +2645,28 @@ impl<S: Store> Messaging<S> {
     }
 
     fn unread_after(&self, name: &str, group: &str, cursor: u64) -> u64 {
-        let count = self.groups[group]
-            .log
-            .iter()
-            .filter(|entry| entry.seq > cursor)
-            .filter(|entry| entry.author().is_some_and(|author| author != name))
+        let count = self
+            .unread_by_others(name, group, cursor, u64::MAX)
             .filter(|entry| !is_muster_telling_another(entry, name))
             .count();
         count as u64
     }
 
-    fn unread_between(&self, name: &str, group: &str, after: u64, before: u64) -> u64 {
-        let count = self.groups[group]
+    /// Messages by anybody but `name` that lie strictly between `after` and `before`: what a
+    /// removed member keeps to read, Muster's word to another member included, since every
+    /// member may read every message.
+    fn unread_by_others(
+        &self,
+        name: &str,
+        group: &str,
+        after: u64,
+        before: u64,
+    ) -> impl Iterator<Item = &Entry> {
+        self.groups[group]
             .log
             .iter()
-            .filter(|entry| entry.seq > after && entry.seq < before)
-            .filter(|entry| entry.author().is_some_and(|author| author != name))
-            .count();
-        count as u64
+            .filter(move |entry| entry.seq > after && entry.seq < before)
+            .filter(move |entry| entry.author().is_some_and(|author| author != name))
     }
 
     /// Whom a message by `author` wakes: its addressees, or the ring set `policy` gives for its
