@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-restarted-machine",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792646583963,
+  "creator": "Alexander Terp",
+  "description": "Seen once, 2026-10-21 ~23:55, in a full ./dev on main (4b21a66a) on the Mac mini at load 17.1 with swap in use: across_machines::a_machine_restarted_under_a_tab_spanning_machines_needs_nothing_written_back found the restarted devenv's copy at (\"X\", 2), where it expects (\"[~A@laptop|X 0.50]\", 1) - a window wrote the devenv a tree without the laptop's pane A. It passed 5 of 5 alone. The investigation that followed found and fixed two other routes to a wrong prune in the same test, both dropping the devenv's X rather than the laptop's A (b0aaf6f6: a stopping daemon's closes, and a rejoining part not yet reconciled), and could not reproduce this one in about 160 runs, ten at a time. Dormant: nothing in the product writes a spanning tree before MIP-8 stage 3. Next time it fails, keep the run's daemon and window logs: they show which merge wrote X alone, and with which parts. Settle it before stage 3 makes spanning tabs real.",
+  "id": "a_2m2NuyXID",
+  "position": "b1L",
+  "title": "A restarted machine's copy of a spanning tab was written without the other machine's pane",
+  "type": "bug",
+  "updated_at_millis": 1792646583963,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792646583963}
+  ]
+}
