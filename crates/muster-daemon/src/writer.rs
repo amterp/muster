@@ -135,11 +135,13 @@ impl Input {
     }
 
     /// Who typed this, when it is typed.
-    fn typed_by(&self) -> TypedBy {
+    /// Who typed it, as a prompt; none for the pointer's, which prompts nobody.
+    fn typed_by(&self) -> Option<TypedBy> {
         match self {
-            Input::Chore { .. } => TypedBy::Chore,
-            Input::Ring { .. } | Input::TakeBack { .. } => TypedBy::Doorbell,
-            _ => TypedBy::Someone,
+            _ if self.is_pointer() => None,
+            Input::Chore { .. } => Some(TypedBy::Chore),
+            Input::Ring { .. } | Input::TakeBack { .. } => Some(TypedBy::Doorbell),
+            _ => Some(TypedBy::Someone),
         }
     }
 

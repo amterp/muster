@@ -197,10 +197,12 @@ pub(crate) struct TurnStart {
 struct Typed {
     /// Any typed input, for detection to tell its echo from the program's own output.
     input: Option<Instant>,
+    /// Typed input that could be a prompt: any but the pointer's.
+    prompted: Option<Instant>,
     /// Text somebody other than the doorbell typed. The doorbell presses Return again over its
     /// ring only while nobody has, since the screen may not show it yet.
     someones_text: Option<Instant>,
-    /// Who typed the last input.
+    /// Who typed the last input that could be a prompt.
     by: TypedBy,
     /// Who typed what started the agent's current turn, as it started; none for a turn nothing
     /// typed started, as a finished background task starts one in Claude Code.
@@ -379,11 +381,17 @@ impl PaneIo {
         poison::lock(&self.self_report, "daemon.pane.self_report").take()
     }
 
-    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool, by: TypedBy) {
+    /// Notes typed input written at `at`; `by` is who typed it, none for the pointer's, which is
+    /// echoed like any but prompts nobody, so a pointer moved over an agent after a ring leaves
+    /// the ring's turn the doorbell's.
+    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool, by: Option<TypedBy>) {
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.input = Some(at);
-        typed.by = by;
-        typed.commanded_until = None;
+        if let Some(by) = by {
+            typed.prompted = Some(at);
+            typed.by = by;
+            typed.commanded_until = None;
+        }
         if someones_text {
             typed.someones_text = Some(at);
         }
@@ -402,7 +410,8 @@ impl PaneIo {
         if typed.commanded_until.is_some_and(|until| now < until) {
             return Some(TypedBy::Doorbell);
         }
-        let recent = typed.input.is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
+        let recent =
+            typed.prompted.is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
         recent.then_some(typed.by)
     }
 
@@ -1584,6 +1593,39 @@ impl PaneIo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A pointer moved over an agent after a ring is echoed like typing but prompts nobody: the
+    /// turn the ring starts is still the doorbell's. Somebody's keys make it theirs.
+    #[test]
+    fn a_pointer_after_a_ring_leaves_the_turn_the_doorbells() {
+        let io = PaneIo::idle(1);
+        let rung = Instant::now();
+        io.wrote_input(rung, false, Some(TypedBy::Doorbell));
+        io.wrote_input(rung + Duration::from_secs(1), false, None);
+        let soon = rung + Duration::from_secs(2);
+        assert_eq!(io.typed_just_now(soon), Some(TypedBy::Doorbell));
+        assert_eq!(io.typed_just_now(rung + TYPED_TURN), None, "the pointer kept it open");
+        io.wrote_input(soon, true, Some(TypedBy::Someone));
+        assert_eq!(io.typed_just_now(soon), Some(TypedBy::Someone));
+    }
+
+    /// A wake handed over by command counts as the doorbell's for as long as the doorbell gives
+    /// it, past what a typed line gets, until a turn uses it or somebody types.
+    #[test]
+    fn a_wake_handed_over_by_command_starts_one_turn_of_the_doorbells() {
+        let io = PaneIo::idle(1);
+        let handed = Instant::now();
+        io.woke_by_command(handed + Duration::from_secs(20));
+        let late = handed + Duration::from_secs(15);
+        assert_eq!(io.typed_just_now(late), Some(TypedBy::Doorbell));
+        assert_eq!(io.turn_started(late), Some(TypedBy::Doorbell));
+        assert_eq!(io.typed_just_now(late), None, "one turn at most");
+
+        io.woke_by_command(late + Duration::from_secs(20));
+        io.wrote_input(late, true, Some(TypedBy::Someone));
+        assert_eq!(io.typed_just_now(late), Some(TypedBy::Someone));
+        assert_eq!(io.typed_just_now(handed + Duration::from_secs(80)), None, "it lapses");
+    }
 
     #[test]
     fn an_adopted_group_is_signaled_unless_its_pid_is_now_a_strangers() {
