@@ -1059,7 +1059,7 @@ extension MusterWindow {
     }
   }
 
-  /// Opens the find bar over the pane the keyboard is on, or refocuses the one already up.
+  /// Opens the find bar over the pane the keyboard is on, or closes the one already up over it.
   ///
   /// The bar follows the keyboard rather than staying where it was opened: a find is about a
   /// pane, and one hanging over a pane nobody is searching would count matches in another.
@@ -1077,9 +1077,7 @@ extension MusterWindow {
         ])
       return
     }
-    let bar = findBar ?? makeFindBar()
-    bar.show(over: chrome)
-    NotificationCenter.default.post(name: .musterFindFocus, object: bar.state)
+    (findBar ?? makeFindBar()).toggle(over: chrome)
   }
 
   @objc public func findNext(_ sender: Any?) {
@@ -1092,10 +1090,6 @@ extension MusterWindow {
 
   private func makeFindBar() -> FindBar {
     let bar = FindBar()
-    bar.onReturnToPane = { [weak self] in
-      guard let chrome = self?.keyboardChrome() else { return }
-      self?.window.makeFirstResponder(chrome.surface)
-    }
     bar.onRefused = { [weak self] refused in self?.reportUnsearched(refused) }
     findBar = bar
     return bar

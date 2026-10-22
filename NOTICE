@@ -13,9 +13,8 @@ Specifically:
   not reach a terminal as text.
 
   Sources/MusterMac/FindBar.swift ports the find bar from
-  macos/Sources/Ghostty/Surface View/SurfaceView.swift (SurfaceSearchOverlay) and
-  macos/Sources/Helpers/Backport.swift (BackportSelectionTextField) - the layout,
-  the corner-snapping drag, the button style, and what escape and return do.
+  macos/Sources/Ghostty/Surface View/SurfaceView.swift (SurfaceSearchOverlay) - the
+  layout, the corner-snapping drag, the button style, and what return does.
 
   Sources/MusterRenderer/SurfaceKeys.swift ports how a keystroke is handed to a
   surface from macos/Sources/Ghostty/NSEvent+Extension.swift and

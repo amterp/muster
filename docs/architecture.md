@@ -41,9 +41,9 @@ The macOS shell is AppKit, and SwiftUI appears in one file: the find bar, which 
 rebuilt. **Either toolkit is a fair choice for a given piece of the window** - this layer exists to feel like the
 platform, and both of them are the platform. A second toolkit in one window does cost integration work, and the find
 bar is the record of what it cost: its layer background is forced clear because a GPU surface sits
-underneath it, it carries a workaround for a SwiftUI crash on macOS 15, and it reaches its own text field through a
-`NotificationCenter` hop because `@FocusState` cannot be read from outside a view body. Weigh that bill when adding
-the next SwiftUI view. It is a cost, not a line nobody may cross.
+underneath it, and it puts the keyboard in its own text field through AppKit, by finding the field among the hosting
+view's subviews, because `@FocusState` did not reliably take the keyboard from a pane's surface. Weigh that bill when
+adding the next SwiftUI view. It is a cost, not a line nobody may cross.
 
 **Core** (headless, OS-free, Rust). The view-model and the only place decisions live: the mirror of each daemon's
 state, the action dispatcher, keymap policy, attention routing, configuration. The core never touches an OS API, a

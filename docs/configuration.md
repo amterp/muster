@@ -276,8 +276,9 @@ would throw away everything else in the file for a collision nobody in it made. 
 line gives the action a chord back.
 
 **`find` is Ghostty's search, over the pane's whole history.** `cmd+f` opens a bar over the
-pane with the keyboard, `cmd+g` and `cmd+shift+g` walk the matches, and landing on one scrolls
-the pane to it and marks it. It searches the screen that is showing, as Ghostty does: a pane
+pane with the keyboard and puts the keyboard in it, `return` and `shift+return` there or `cmd+g`
+and `cmd+shift+g` anywhere walk the matches, and landing on one scrolls the pane to it and marks
+it. `cmd+f` again, or `escape`, closes the bar and gives the pane the keyboard back. It searches the screen that is showing, as Ghostty does: a pane
 whose program has taken the whole terminal - an agent harness, an editor, anything on the
 alternate screen - is searched as that one screen, and its history is searchable again once
 the program gives the terminal back.

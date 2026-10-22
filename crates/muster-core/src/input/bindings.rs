@@ -149,7 +149,8 @@ pub enum Action {
     ResizeRight,
     ResizeUp,
     ResizeDown,
-    /// Opens the find bar over the pane with the keyboard.
+    /// Opens the find bar over the pane with the keyboard, or closes it if it is over that pane
+    /// already.
     ///
     /// Like [`Action::RenamePane`], what the chord means is "ask me". The search itself is
     /// Ghostty's, in the pane's surface: find is a view action, so the needle never reaches the
