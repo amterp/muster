@@ -134,7 +134,6 @@ impl Input {
         )
     }
 
-    /// Who typed this, when it is typed.
     /// Who typed it, as a prompt; none for the pointer's, which prompts nobody.
     fn typed_by(&self) -> Option<TypedBy> {
         match self {

@@ -2071,15 +2071,23 @@ impl Session {
             .collect()
     }
 
+    /// Whether `pane`'s agent still holds the wait it declared numbered `serial`.
+    pub(crate) fn holds_wait(&self, pane: &str, serial: u64) -> bool {
+        self.pane_index(pane).is_some_and(|index| {
+            let pane = &self.panes[index];
+            pane.holds_declared_wait() && pane.turns.wait_serial == serial
+        })
+    }
+
     /// Ends the wait `pane`'s agent declared, if it still holds the one numbered `serial`, and
     /// says whether it did. A wait that ran out leaves the turn it held back finished, as a wait
     /// the screen showed does.
     pub(crate) fn wait_over(&mut self, pane: &str, serial: u64, over: Over) -> bool {
-        let Some(index) = self.pane_index(pane) else { return false };
-        let pane = &mut self.panes[index];
-        if !pane.holds_declared_wait() || pane.turns.wait_serial != serial {
+        if !self.holds_wait(pane, serial) {
             return false;
         }
+        let Some(index) = self.pane_index(pane) else { return false };
+        let pane = &mut self.panes[index];
         pane.turns.wait_carried = false;
         forget_wait(&mut pane.record, over.as_str());
         if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
@@ -4148,7 +4156,12 @@ fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
 /// A turn starting with the agent holding a wait it declared: kept through it when Muster typed
 /// what started it. For an agent with no hooks, the turn's start is all that says a prompt came.
 fn carry_through_musters_turn(record: &proto::Pane, turns: &mut Turns, io: &PaneIo) {
-    if is_waiting(record.facts.as_ref())
+    let facts = record.facts.as_ref();
+    // A wait on a process ends with the process, whatever turns come, and carrying it would
+    // renumber it under the watch about to end it.
+    let on_process = facts.is_some_and(|facts| facts.waiting_until_exits.is_some());
+    if is_waiting(facts)
+        && !on_process
         && !turns.wait_on_screen
         && io.turn_typed_by().is_some_and(TypedBy::is_musters)
     {
@@ -4237,6 +4250,33 @@ mod tests {
     use muster_daemon_proto::connection;
 
     use super::*;
+
+    /// A turn Muster typed carries a plain declared wait, renumbering it, and leaves a wait on a
+    /// process alone: the waits watch about to end that one by its number would miss it.
+    #[test]
+    fn a_turn_muster_typed_carries_a_plain_wait_and_not_one_on_a_process() {
+        let io = PaneIo::idle(1);
+        let now = std::time::Instant::now();
+        io.wrote_input(now, false, Some(TypedBy::Doorbell));
+        io.turn_started(now);
+        let waiting = |until_exits| proto::Pane {
+            pane: "p1".to_string(),
+            facts: Some(proto::AgentFacts {
+                waiting: Some("the full gate".to_string()),
+                waiting_until_exits: until_exits,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut plain = Turns::default();
+        carry_through_musters_turn(&waiting(None), &mut plain, &io);
+        assert!(plain.wait_carried && plain.wait_serial == 1, "{plain:?}");
+
+        let mut on_process = Turns::default();
+        carry_through_musters_turn(&waiting(Some(4242)), &mut on_process, &io);
+        assert_eq!(on_process, Turns::default());
+    }
 
     /// A session with no panes, persisting to `file`, whose events reach the returned stream.
     fn session(file: &Path) -> (Arc<Shared>, UnixStream) {

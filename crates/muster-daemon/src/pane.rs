@@ -428,7 +428,7 @@ impl PaneIo {
 
     /// Notes that the agent's turn starts now, saying who typed what started it. A wake handed
     /// over by command starts one turn at most.
-    fn turn_started(&self, now: Instant) -> Option<TypedBy> {
+    pub(crate) fn turn_started(&self, now: Instant) -> Option<TypedBy> {
         let by = self.typed_just_now(now);
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.turn = by;

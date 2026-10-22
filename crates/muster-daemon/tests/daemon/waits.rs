@@ -181,6 +181,30 @@ fn a_wait_whose_wake_cannot_be_posted_stands_until_it_is() {
     assert!(rings[0].contains("from @muster"), "{rings:?}");
 }
 
+/// A wait whose agent can never be told is given up after the limit a wait nothing ends has:
+/// the pane reads idle again rather than waiting for good, which somebody notices.
+#[test]
+fn a_wait_whose_wake_is_refused_for_good_ends_after_the_limit() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut p1 = Pane::with_a_short_limit();
+    let mut job = job();
+    let asked = p1.declares("the full gate", Some(job.id()));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    let store = p1.daemon.socket_path().with_extension("msg");
+    std::fs::create_dir_all(&store).expect("the store's directory is made");
+    let unwritable = std::fs::Permissions::from_mode(0o555);
+    std::fs::set_permissions(&store, unwritable).expect("the store's mode is set");
+
+    job.kill().expect("the job is killed");
+    job.wait().expect("and reaped");
+    std::thread::sleep(Duration::from_secs(1));
+    assert!(p1.waiting_on().is_some(), "ended untold at once");
+    until_some("the wait to be given up", || p1.waiting_on().is_none().then_some(()));
+    let writable = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&store, writable).expect("the store's mode is set back");
+    assert_eq!(p1.rings_heard(), Vec::<String>::new());
+}
+
 /// Neither a turn ending nor a prompt's hook ends a wait on a process; the agent saying no wait
 /// itself does.
 #[test]
