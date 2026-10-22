@@ -33,7 +33,7 @@ fn restart(name: &str, env: &[(&str, &str)]) -> proto::request::Service {
     }))
 }
 
-fn restarted(asked: &Asked) -> proto::Restarted {
+pub(crate) fn restarted(asked: &Asked) -> proto::Restarted {
     match &asked.answer.detail {
         Some(proto::answer::Detail::Restarted(restarted)) => restarted.clone(),
         other => panic!("a restart answered with {other:?}"),

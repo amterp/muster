@@ -4,7 +4,8 @@
 //! a Claude Code update has broken either path. The same two panes, narrow and in plan mode,
 //! read blocked at the dialog asking to go ahead with a plan. Both panes compact when the daemon
 //! asks. A pane of its own checks that the pane's name and the session's follow each other, and
-//! another that a hooked session comes back resumed after a daemon restart.
+//! another that a hooked session comes back resumed after a restart in its pane and after a
+//! daemon restart.
 //!
 //! Out of the gate, because it reaches the network and spends a turn of a real model. It runs
 //! with `ANTHROPIC_API_KEY` if that is set, and otherwise with the login `claude` already has;
@@ -361,16 +362,33 @@ fn claude_code_compacts_when_the_daemon_asks_through_both_paths() {
     }
 }
 
-/// A session reported by its hooks comes back after a daemon restart as
-/// `claude <its flags> --resume <id>`, which says Claude Code's SessionStart still hands the
-/// hook its id and `--resume` still takes it (`claude.toml`'s `[session] resume`). `--model
-/// haiku`, from [`how_to_run`], is the flag that has to go along. The resumed pane shows the
-/// first turn's prompt, so it is that conversation and not a new one.
+/// The state file's saved session for the daemon's one pane, if it holds one.
+fn saved_session(daemon: &Daemon) -> Option<String> {
+    use crate::persistence::state_file;
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(state_file(daemon)).ok()?).ok()?;
+    let session = &state["panes"].as_array()?.first()?["resume"]["session"];
+    session.as_str().map(str::to_string)
+}
+
+/// A session reported by its hooks comes back in the same conversation twice: restarted in its
+/// pane, and then across a daemon restart.
+///
+/// The pane restart is `muster pane restart`'s: Claude Code ends on SIGTERM inside the grace
+/// rather than being killed, and the shell it leaves takes `claude <its flags> --resume <id>`.
+/// The daemon restart brings the pane back as that same command, which says Claude Code's
+/// SessionStart still hands the hook its id and `--resume` still takes it (`claude.toml`'s
+/// `[session] resume`). `--model haiku`, from [`how_to_run`], is the flag that has to go along.
+/// Each resumed pane shows the first turn's prompt, so it is that conversation and not a new one.
+/// One session takes both restarts because neither spends a turn, and the one turn it takes is
+/// what gives `--resume` a conversation to come back to.
 #[test]
 #[ignore = "reaches the network with the real Claude Code; run through ./dev --claude-code"]
-fn a_claude_code_session_comes_back_resumed_after_a_daemon_restart() {
-    use crate::persistence::{record, state_file, stop, until_restored, until_saved};
+fn a_claude_code_session_comes_back_resumed_after_a_pane_restart_and_a_daemon_restart() {
+    use crate::persistence::{record, stop, until_restored, until_saved};
+    use crate::restart::restarted;
 
+    let first_prompt = "write the numbers from 1 to 80";
     let Some((mut daemon, arguments)) = live_daemon() else { return };
     let project = daemon.root().join("project");
     let mut control = daemon.connect();
@@ -387,16 +405,50 @@ fn a_claude_code_session_comes_back_resumed_after_a_daemon_restart() {
     let mut input = Input::connect(daemon.socket_path());
     prompt(&mut control, &mut input, "hooked");
     until_settled(&mut control, ["hooked"]);
-
-    let saved_session = |daemon: &Daemon| -> Option<String> {
-        let state: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(state_file(daemon)).ok()?).ok()?;
-        let session = &state["panes"].as_array()?.first()?["resume"]["session"];
-        session.as_str().map(str::to_string)
-    };
     until_saved(&daemon, "\"resume\"");
     let session = saved_session(&daemon).expect("the state file holds the pane's resume");
     eprintln!("claude-code: the hooks reported session {session}");
+
+    // A pane's text is its history too, and Claude Code draws inline, so the first session's
+    // prompt is still there once it ends: the resumed one has to draw it again.
+    let shown = |control: &mut Control| {
+        read_text(control, "hooked", 0, 0).text.matches(first_prompt).count()
+    };
+    let shown_before = shown(&mut control);
+    let mut asking = daemon.connect();
+    let restart = proto::pane_request::Restart { pane: "hooked".to_string(), ..Default::default() };
+    let started = Instant::now();
+    let asked = asking.ask(pane(proto::pane_request::Request::Restart(restart)));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "the pane restart: {}", asked.answer.reason);
+    let restarted = restarted(&asked);
+    eprintln!("claude-code: restarted in its pane in {:?}: {restarted:?}", started.elapsed());
+    assert!(!restarted.killed, "Claude Code had to be killed: {restarted:?}");
+    assert_eq!(restarted.program, "claude");
+    assert!(restarted.typed.contains("'--model' 'haiku'"), "{restarted:?}");
+    assert!(restarted.typed.ends_with(&format!("'--resume' '{session}'")), "{restarted:?}");
+
+    until_ready(&mut control, &mut input, "hooked");
+    let deadline = Instant::now() + TURN;
+    loop {
+        let agent = record(&snapshot(&mut control), "hooked").agent.clone();
+        if agent.as_deref() == Some("claude") && shown(&mut control) > shown_before {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "after the pane restart the pane read as {agent:?} or showed no earlier \
+             conversation: {}",
+            read_text(&mut control, "hooked", 0, 0).text
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    // Whether Claude Code keeps the id on --resume decides which session the daemon restart
+    // resumes; noted rather than held, since either resumes the conversation.
+    let session = until_some("the resumed session to be reported and saved", || {
+        let reported = record(&snapshot(&mut control), "hooked").session_id.clone()?;
+        (saved_session(&daemon).as_ref() == Some(&reported)).then_some(reported)
+    });
+    eprintln!("claude-code: after the pane restart the session is {session}");
 
     stop(&mut daemon, &mut control);
     daemon.restart();
@@ -414,17 +466,16 @@ fn a_claude_code_session_comes_back_resumed_after_a_daemon_restart() {
     loop {
         let screen = read_text(&mut control, "hooked", 0, 0).text;
         let agent = record(&snapshot(&mut control), "hooked").agent.clone();
-        if agent.as_deref() == Some("claude") && screen.contains("write the numbers from 1 to 80") {
+        if agent.as_deref() == Some("claude") && screen.contains(first_prompt) {
             break;
         }
         assert!(
             Instant::now() < deadline,
-            "the resumed pane read as {agent:?} or showed no earlier conversation: {screen}"
+            "after the daemon restart the pane read as {agent:?} or showed no earlier \
+             conversation: {screen}"
         );
         std::thread::sleep(Duration::from_millis(500));
     }
-    // Whether Claude Code keeps the id on --resume decides which session a second restart
-    // resumes; noted rather than held, since either resumes the conversation.
     std::thread::sleep(Duration::from_secs(4));
     eprintln!("claude-code: after the resume the saved session is {:?}", saved_session(&daemon));
 }
