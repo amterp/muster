@@ -2,26 +2,33 @@
   "_v": 3,
   "alias": "the-swift-suite",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "2026-10-22 00:30: back. A full ./dev on main (ad9138ae, load about 2) crashed the Swift test process with the same uncaught 'already on an AppKit thread' from ViewBridge's NSRemoteView. Likely cause: the find bar's new tests (1d25a6a4, Tests/MusterMacTests/FindTests.swift) make the bar's NSTextField first responder in an offscreen window, seven times - the case 7e00653f removed from the select-all test, since it starts InputMethodKit. Sent back to be asked without the input method, as 7e00653f did.",
       "created_at_millis": 1792646941737,
       "id": "c_2m2XE59JP"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-22: fixed again in 63305b8a. The find bar's tests now ask for the keyboard through a seam that hands it to a plain view, so no NSTextField takes it in a real window; the one check that needs a real field (reopening selects the last needle) moved to SurfaceGUITests under ./dev --contract. Full Swift suite, niced: 7 of 20 runs crashed before, 0 of 60 after (40 of them beside 8 busy loops). Lesson for the next test: never make a real text field first responder in the default suite.",
+      "created_at_millis": 1792648273214,
+      "id": "c_2m35rdtYj"
     }
   ],
   "created_at_millis": 1790597571361,
   "creator": "Alexander Terp",
   "description": "About 3 runs in 16 of ./dev, on sources before and after 2026-09-28's rounds, the Swift test run crashes with an unexpected thread in ViewBridge. It is not tied to one change. Worth a symbolized crash log and a look at which test touches a view off the main thread.",
   "id": "a_2YAdjxmgM",
-  "position": "Zt",
+  "position": "Yw5",
   "title": "The Swift suite sometimes crashes in AppKit's ViewBridge",
   "type": "bug",
-  "updated_at_millis": 1792646941832,
+  "updated_at_millis": 1792648273311,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790597571361},
     {"field":"column","value":"done","at":1790620413482},
-    {"field":"column","value":"in-progress","at":1792646941832}
+    {"field":"column","value":"in-progress","at":1792646941832},
+    {"field":"column","value":"done","at":1792648273311}
   ]
 }
