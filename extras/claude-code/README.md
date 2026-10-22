@@ -55,9 +55,10 @@ a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --wait
 The line also says that waiting for a message or a person is just ending the turn, since an agent
 that reads `waiting` is not idle and a `muster pane wait --until idle` on it would not return; a
 message wakes it either way. Muster then holds off calling the pane done until a later turn ends without the agent declaring
-it again, or until you prompt it: `UserPromptSubmit` reports an empty wait. An agent that forgets
-reads as done, as before. One that waits on something that never wakes it reads as waiting until
-it is next prompted. A turn ends at each `Stop`, so a `Stop` hook of your own that makes the agent
+it again, or until you prompt it: `UserPromptSubmit` reports an empty wait. A prompt Muster gives
+it, a message's wake or a compaction, does not count, and a wait carried through one lasts 10
+minutes at most. An agent that forgets reads as done, as before. One that waits on something
+that never wakes it reads as waiting until it is next prompted. A turn ends at each `Stop`, so a `Stop` hook of your own that makes the agent
 keep going (one that runs the tests before it lets it stop, say) ends the wait at the second
 `Stop`, and the pane reads done while the agent waits.
 

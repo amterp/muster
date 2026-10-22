@@ -2077,11 +2077,7 @@ impl Session {
         }
         let waited = pane.record.facts.as_ref()?.waiting.clone()?;
         pane.turns.wait_carried = false;
-        let by = match over {
-            Over::Exited => "exit",
-            Over::RanOut => "limit",
-        };
-        forget_wait(&mut pane.record, by);
+        forget_wait(&mut pane.record, over.as_str());
         if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
             pane.record.finished_unseen = true;
         }
@@ -4096,8 +4092,7 @@ fn own_state(report: &mut pane_request::Report) -> Result<Option<muster_detect::
 /// wait would never end.
 fn gone_process(report: &pane_request::Report) -> Option<Reply> {
     let pid = report.waiting_until_exits?;
-    let exists = i32::try_from(pid).is_ok_and(pty::process_exists);
-    (!exists).then(|| {
+    (!crate::messages::process_exists(pid)).then(|| {
         Reply::refused(format!(
             "no process {pid}: it has already exited, or never ran, so a wait on it would never \
              end; no wait is declared"

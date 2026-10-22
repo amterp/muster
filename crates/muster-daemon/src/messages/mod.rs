@@ -24,7 +24,7 @@ mod wire;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use makers::Need;
 pub(crate) use peer::Peers;
-pub(crate) use waits::{Declared, Over};
+pub(crate) use waits::{Declared, Over, exists as process_exists};
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;

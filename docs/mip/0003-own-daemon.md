@@ -733,7 +733,8 @@ turn of the agent's ends without the agent saying it again, or until a person pr
 the finished work wakes the agent, that turn's end clears the wait, unless the agent declares it
 again because something is still running. The turn that declared it keeps it. A turn Muster
 typed, a wake for a message or a compaction, is neither the work waking the agent nor a person
-moving it on, so the wait outlasts it: on 2026-10-17 a helper rung for its maker's message a
+moving it on, so the wait outlasts it, and so does one a wake handed to Codex by `codex queue`
+starts, with nothing typed: on 2026-10-17 a helper rung for its maker's message a
 second after declaring a wait lost the wait to that turn, and its maker was told it had gone idle
 unreported.
 
@@ -741,13 +742,19 @@ Which turn end counts depends on who reports the agent's turns. An agent that re
 state ends its own turns: the plugin's `Stop` hook reports idle, and that report settles the wait.
 A working report is no turn: a background sub-agent's tool call can report working after the
 agent's turn has ended, and so ends no wait. The plugin's `UserPromptSubmit` hook reports the
-prompt with an empty wait, which clears it. For an agent with no hooks, detection's reading of a
+prompt with an empty wait, which clears it, unless Muster gave the prompt (above) or the wait is
+on a process. For an agent with no hooks, detection's reading of a
 turn's end (working or waiting on you, then idle) settles the wait instead. A pane whose
 declaration this daemon did not see, handed over or restored, keeps its wait through one more turn
 end, so the wait lasts a turn too long rather than too short.
 
-One wait still outlives its work: a wait on something that never wakes the agent, a CI run
-elsewhere, stands until somebody prompts it, and the pane is not called done meanwhile. Since
+One wait can still outlive its work: a wait on something that never wakes the agent, a CI run
+elsewhere. Where nothing is known to end it, it lasts 10 minutes at most, the screen's own limit
+on a wait it shows, and the pane then reads idle with its turn finished: a wait from a harness
+whose manifest does not say its own finished jobs wake it (`[session] wakes_when_jobs_end`, which
+only Claude Code's says), and one carried through a turn Muster started, since the work may have
+woken the agent inside that turn. A Claude Code wait the agent declared stands until a turn ends
+without it, and the pane is not called done meanwhile. Since
 2026-10-21 a wait on a process the agent started can say so, `report --waiting "<what>"
 --until-exits <pid>`, and the daemon ends it when the process exits and tells the agent in a
 message from `@muster`, which wakes it: Codex has nothing that starts a turn when its job ends,

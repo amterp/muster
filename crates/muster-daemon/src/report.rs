@@ -48,8 +48,9 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
     reported before, and applies first. --waiting says what the agent ended its turn to wait \
     on, work it started itself; it lasts until a later turn ends without saying it again, and \
-    an empty one clears it. Say it in each turn that ends to wait: work that never wakes the \
-    agent leaves the pane waiting until the next turn. --until-exits ends the wait when process \
+    an empty one clears it. Say it in each turn that ends to wait. A prompt Muster gives the \
+    agent, a message's wake or a compaction, does not end it, and a wait nothing is known to \
+    end lasts 10 minutes at most. --until-exits ends the wait when process \
     PID exits instead, and the daemon then tells the agent in a message, which wakes it: for a \
     harness nothing else wakes when its work ends. Turns do not end such a wait. --state is the \
     agent's own word on what it is doing, which outranks what detection reads off its screen while fresh; --agent names the agent, \

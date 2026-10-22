@@ -64,6 +64,21 @@ pub(crate) enum Over {
     RanOut,
 }
 
+impl Over {
+    /// As the run log says it.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Over::Exited => "exit",
+            Over::RanOut => "limit",
+        }
+    }
+}
+
+/// Whether process `pid`, as `report --until-exits` names it, is still there.
+pub(crate) fn exists(pid: u32) -> bool {
+    i32::try_from(pid).is_ok_and(pty::process_exists)
+}
+
 /// A wait ended, by what.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Ended {
@@ -144,8 +159,7 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
         waits.since.clear();
         return NOTHING_DUE;
     }
-    let exited = |pid: u32| !i32::try_from(pid).is_ok_and(pty::process_exists);
-    let (ended, next) = waits.judge(&held, Instant::now(), exited);
+    let (ended, next) = waits.judge(&held, Instant::now(), |pid| !exists(pid));
     for Ended { pane, serial, over } in ended {
         let Some(waited) = shared.lock().wait_over(&pane, serial, over) else { continue };
         let pid = held.iter().find(|wait| wait.pane == pane).and_then(|wait| wait.until_exits);
@@ -153,7 +167,7 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
             "daemon.wait.over",
             fields! {
                 "pane" => pane,
-                "by" => if over == Over::Exited { "exit" } else { "limit" },
+                "by" => over.as_str(),
                 "pid" => pid.map(|pid| pid.to_string()).unwrap_or_default(),
             },
         );

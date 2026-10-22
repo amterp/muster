@@ -331,3 +331,7 @@ Each stage leaves helpers in a state somebody can use.
   rather than moving the helper into a tab of its own, and a helpers' tab comes in after its
   maker's tab rather than at the end. Clicking a helper's row had moved panes and tabs nobody
   asked to move.
+- 2026-10-21 Section 4 amended: a compaction or a rename Muster typed at a helper is not the
+  helper going to work, and a maker at work is told of a need once it can hear it, if the need
+  still holds. Makers were told a helper went idle unreported after its compaction, and told of
+  plan dialogs they had answered two minutes before.
