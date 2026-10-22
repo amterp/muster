@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21 review: the handoff also drops typed.turn (who started the current turn), so a helper handed over mid-chore - a compaction or rename Muster typed - reads as at real work in the newer daemon, and its idle afterwards can raise a maker notice. And the pending blocked report that has not yet counted (04f7d15f) is not carried either, as that commit says. Carry all three with the pane's facts.",
+      "created_at_millis": 1792642640066,
+      "id": "c_2m0jJuFRS"
+    }
+  ],
   "created_at_millis": 1792636683273,
   "creator": "Alexander Terp",
   "description": "From the declared-wait changes (d590527b, 2026-10-21). A Claude Code wait carried through a turn Muster typed is limited to 10 minutes, because no later turn may come to end it. The handoff to a newer daemon does not carry the carried mark, so after an upgrade the wait is taken over as the agent's own and is unlimited again. Carry the mark in the handed-over facts.",
@@ -13,7 +21,7 @@
   "position": "b1Z",
   "title": "A handoff does not carry whether a declared wait was carried, so it becomes unlimited",
   "type": "bug",
-  "updated_at_millis": 1792636683273,
+  "updated_at_millis": 1792642640066,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792636683273}
   ]
