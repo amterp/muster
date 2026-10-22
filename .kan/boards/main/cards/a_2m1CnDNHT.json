@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "roster-build-and",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792643773037,
+  "creator": "Alexander Terp",
+  "description": "./dev --perf on 2026-10-21 (main at 60264451 plus a MIP-8 merge fix, load 3.7 against 6 performance cores, another project's ./dev running alongside) failed two budgets: roster.build 562 ns/pane against a baseline of 264, and input.route 416 ns/key against 231. view.build, which that run's change touched, was inside tolerance (290 against 232). The baseline dates from 2026-09-28, so the cause could be anything since, tonight's round included (the mirror's Tab now carries the daemon's full copy of its tree, and pane input records who typed it), or the load. Next: run ./dev --perf on a quiet machine at 7fec9578 (before tonight's round) and at the tip, compare the two, and bisect if the tip is worse. Log of the failing run: the slot-4 worker's scratchpad, perf.log, on the Mac mini.",
+  "id": "a_2m1CnDNHT",
+  "position": "b1J",
+  "title": "📊 roster.build and input.route measured about 2x over their perf baseline",
+  "type": "bug",
+  "updated_at_millis": 1792643773037,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792643773037}
+  ]
+}
