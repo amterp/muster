@@ -442,6 +442,9 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             messages.commanding.insert(pane.clone());
             messages.held.remove(&pane);
         }
+        // Before the command runs: a Codex joined to its app-server starts the turn before
+        // `codex queue` has exited.
+        seen.io.woke_by_command(Instant::now() + COMMAND_ANSWER);
         let ran = Ran { wake, pane, session, agent: seen.agent };
         let unsettled_pane = ran.pane.clone();
         let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };

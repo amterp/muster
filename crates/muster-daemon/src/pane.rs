@@ -205,6 +205,9 @@ struct Typed {
     /// Who typed what started the agent's current turn, as it started; none for a turn nothing
     /// typed started, as a finished background task starts one in Claude Code.
     turn: Option<TypedBy>,
+    /// Until when a wake the doorbell handed the harness by command, with nothing typed, may
+    /// still start the agent's turn: Codex takes one from `codex queue` up to ten seconds later.
+    commanded_until: Option<Instant>,
     /// How many writes of typed input have ended a line, which a terminal reading line by line
     /// passes on whole ([`crate::unread`]).
     lines: u64,
@@ -380,23 +383,36 @@ impl PaneIo {
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.input = Some(at);
         typed.by = by;
+        typed.commanded_until = None;
         if someones_text {
             typed.someones_text = Some(at);
         }
     }
 
-    /// Who typed what a turn starting now started with: the last thing typed, a moment ago.
-    /// None when nothing was.
+    /// Notes that the doorbell is handing the agent a wake by command, which may start its turn
+    /// until `until` with nothing typed. Anything typed after it replaces it.
+    pub(crate) fn woke_by_command(&self, until: Instant) {
+        poison::lock(&self.typed, "daemon.pane.typed").commanded_until = Some(until);
+    }
+
+    /// Who typed what a turn starting now started with: the last thing typed, a moment ago, or
+    /// the doorbell for a wake it handed over by command since. None when nothing was.
     pub(crate) fn typed_just_now(&self, now: Instant) -> Option<TypedBy> {
         let typed = poison::lock(&self.typed, "daemon.pane.typed");
+        if typed.commanded_until.is_some_and(|until| now < until) {
+            return Some(TypedBy::Doorbell);
+        }
         let recent = typed.input.is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
         recent.then_some(typed.by)
     }
 
-    /// Notes that the agent's turn starts now, saying who typed what started it.
+    /// Notes that the agent's turn starts now, saying who typed what started it. A wake handed
+    /// over by command starts one turn at most.
     fn turn_started(&self, now: Instant) -> Option<TypedBy> {
         let by = self.typed_just_now(now);
-        poison::lock(&self.typed, "daemon.pane.typed").turn = by;
+        let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        typed.turn = by;
+        typed.commanded_until = None;
         by
     }
 

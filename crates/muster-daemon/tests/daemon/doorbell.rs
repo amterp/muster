@@ -941,6 +941,38 @@ fn a_quiet_session_with_its_id_reported_is_woken_by_its_command_from_the_post() 
     assert_eq!(agent.rung(), Vec::<String>::new(), "the wake was typed as well");
 }
 
+/// A wait the agent declared outlasts the turn a wake handed over by command starts, as it does
+/// one typed: Codex's prompt hook says no wait for a queued turn too, and nothing was typed.
+#[test]
+fn a_declared_wait_outlasts_a_turn_its_wake_command_started() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("019a-s1");
+    let report = |state: Option<proto::AgentState>, waiting: &str| {
+        let mut report = proto::pane_request::Report {
+            pane: "p1".to_string(),
+            agent: "claude".to_string(),
+            waiting: Some(waiting.to_string()),
+            ..Default::default()
+        };
+        if let Some(state) = state {
+            report.set_state(state);
+        }
+        pane(proto::pane_request::Request::Report(report))
+    };
+    let waiting_on = |agent: &mut Agent| {
+        let records = snapshot(&mut agent.control).panes;
+        let record = records.into_iter().find(|record| record.pane == "p1");
+        record.and_then(|record| record.facts?.waiting)
+    };
+    expect(&mut agent.control, report(None, "the full gate"), proto::Outcome::Done);
+
+    agent.post("p1", "a brief");
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    expect(&mut agent.control, report(Some(proto::AgentState::Working), ""), proto::Outcome::Done);
+    expect(&mut agent.control, report(Some(proto::AgentState::Idle), ""), proto::Outcome::Done);
+    assert_eq!(waiting_on(&mut agent).as_deref(), Some("the full gate"));
+}
+
 /// The command is used only where a ring would reach the agent idle: a blocked agent is at a
 /// dialog, where Codex stores a queued message and never submits it.
 #[test]
