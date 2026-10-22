@@ -12,6 +12,12 @@
       "body": "2026-10-16: Muster's encoding is right (d6435d94 pins it): Ctrl+Return reaches the daemon as Ghostty's app builds it, and a program in Claude Code's mode (CSI \u003c u, CSI \u003e 5 u, CSI \u003e 4;2 m) receives ESC[13;5u, as from Ghostty. The one link no test covers is AppKit in a real key window: Ghostty's view catches Ctrl+Return in performKeyEquivalent ('prevent the default context menu equivalent'), and Muster's has no such override. By hand: in a Muster pane and in Ghostty, printf '\\e[\u003e5u\\e[\u003e4;2m'; cat -v, then Ctrl+Return - both should print ^[[13;5u. If Muster prints nothing, port Ghostty's performKeyEquivalent case. Meanwhile Claude Code's ctrl+x ctrl+s sends a queued line now.",
       "created_at_millis": 1792210039306,
       "id": "c_2j5DOk9Mv"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: fixed on main in 73a1352b by porting Ghostty's performKeyEquivalent case: the pane's view claims ctrl+return as a keystroke while it has the keyboard, after asking the main menu first so a [keymap] binding on ctrl+return still wins. 3 tests. Not yet tried in the real app. By hand on a build of main: printf '\\\\e[\u003e5u\\\\e[\u003e4;2m'; cat -v, then ctrl+return prints ^[[13;5u and no context menu opens; and in Claude Code, a line typed while it works is sent at once by ctrl+return. Move to done once seen.",
+      "created_at_millis": 1792633334601,
+      "id": "c_2lwpF6sWk"
     }
   ],
   "created_at_millis": 1792200264041,
@@ -21,7 +27,7 @@
   "position": "a3z",
   "title": "Ctrl+Return does not reach Claude Code in a pane",
   "type": "bug",
-  "updated_at_millis": 1792210039460,
+  "updated_at_millis": 1792633334601,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792200264041},
     {"field":"column","value":"in-progress","at":1792208577265},

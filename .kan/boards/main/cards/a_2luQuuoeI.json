@@ -6,6 +6,20 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21 ~20:31, 0.16.2-dev on the Mac: one more. @muster told the maker its helper daisy was blocked at a dialog; reading the pane straight after showed it mid-turn (Ruminating, 1m 45s), no dialog, muster window 'working'. The only dialog it had shown was its plan approval, answered by Return about two minutes earlier.",
+      "created_at_millis": 1792632623682,
+      "id": "c_2lwWkST8a"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Same round, ~20:33: stale notices for sparrow and vole too, each about two minutes after its plan dialog was answered, both panes working with no dialog. Three of the round's four approvals so far; the pattern is every Claude Code plan approval.",
+      "created_at_millis": 1792632641349,
+      "id": "c_2lwXCwdNp"
+    }
+  ],
   "created_at_millis": 1792627633007,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-17, 0.16.1-dev on the Mac, four sightings in one parallel round: every plan-approval dialog in it produced one. The maker answered each Claude Code helper's plan dialog, and @muster's \"\u003chelper\u003e is blocked at a dialog\" notice arrived afterwards, about a minute after the answer in the one sighting timed to the second, with the helper already `working` and editing files. The maker read the pane each time to learn the notice was stale.\n\nThe maker watch (`crates/muster-daemon/src/messages/makers.rs`) tells a need once it has held for `SETTLE` (10 s). Some of these dialogs were answered within seconds of appearing, so either the pane read blocked after the dialog closed, or the notice was posted well after the watch judged it.\n\nA worse variant, same evening: notices arrived for Codex helpers closed with `muster pane close` a minute or two earlier, naming the closed pane by a given name that a newer pane then held. Following the notice's own advice (`muster pane send --pane \u003cname\u003e --key ...`) would have pressed keys in the wrong agent's pane. 0.17.0 made given names repeatable (3f30373a); check which name the advice uses now (`panes.name_of` in `look`).\n\nFix candidates: before posting, check the pane is still open and still blocked, and drop the notice if not; say in the notice when the dialog appeared; name the pane in the advice by its callsign.",
@@ -13,7 +27,7 @@
   "position": "b1B",
   "title": "A helper's 'blocked at a dialog' notice arrives after the dialog was answered",
   "type": "bug",
-  "updated_at_millis": 1792627633007,
+  "updated_at_millis": 1792632641349,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627633007}
   ]
