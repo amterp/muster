@@ -1587,16 +1587,24 @@ fn a_pane_closing_on_one_machine_leaves_the_other_machines_copy() {
         ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 1),
     );
     expect(&mut machines.laptop.connect(), close_request(SPAN_B), daemon_proto::Outcome::Done);
+    // The window writes the two copies as two requests, so the laptop's can land after the
+    // devenv's: wait for both rather than reading the laptop's the moment the devenv's changes.
     until(
-        "the devenv's copy to lose B",
-        || spanning_copy(&machines.devenv).is_some_and(|(tree, _)| tree == "[~A@laptop|X 0.50]"),
-        || format!("the devenv holds {:?}", spanning_copy(&machines.devenv)),
-    );
-    let (laptop, devenv) = (spanning_copy(&machines.laptop), spanning_copy(&machines.devenv));
-    assert_eq!(
-        laptop.as_ref().map(|(_, generation)| *generation),
-        devenv.as_ref().map(|(_, generation)| *generation),
-        "both copies end at one generation"
+        "the devenv's copy to lose B, and both copies to end at one generation",
+        || {
+            let (laptop, devenv) =
+                (spanning_copy(&machines.laptop), spanning_copy(&machines.devenv));
+            devenv.as_ref().is_some_and(|(tree, _)| tree == "[~A@laptop|X 0.50]")
+                && laptop.as_ref().map(|(_, generation)| *generation)
+                    == devenv.as_ref().map(|(_, generation)| *generation)
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
     );
 }
 
