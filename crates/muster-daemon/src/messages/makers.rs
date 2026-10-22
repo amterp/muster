@@ -191,14 +191,16 @@ impl Makers {
             });
             match helper.activity {
                 Some(Activity::Working) if helper.chores_turn => {}
-                Some(Activity::Working | Activity::Waiting) => {
+                // At a dialog is in a turn too: a look the load delayed can see the dialog first,
+                // and the stretch must not begin after a report the helper posted from it.
+                Some(Activity::Working | Activity::Waiting | Activity::Blocked) => {
                     if !watch.at_work {
                         watch.worked_since_ms = Some(now_ms);
                     }
                     watch.at_work = true;
                 }
                 Some(Activity::Idle) => watch.at_work = false,
-                Some(Activity::Blocked | Activity::Stuck) | None => {}
+                Some(Activity::Stuck) | None => {}
             }
             let need = need(helper, watch.worked_since_ms);
             if watch.need.map(|(was, _)| was) != need {
@@ -462,8 +464,11 @@ fn helpers(
         let maker_at_work = panes.get(maker).is_some_and(|maker| {
             matches!(maker.activity, Some(Activity::Working | Activity::Blocked | Activity::Stuck))
         });
+        // Asked of whoever is in the maker's pane, which may have joined under a name of its own.
+        let hooked =
+            service.in_pane(maker).into_iter().any(|name| service.hooked(name, now_ms, panes));
         helpers.push(Helper {
-            maker_busy: maker_at_work && !service.hooked(&to, now_ms, panes),
+            maker_busy: maker_at_work && !hooked,
             pane: pane.clone(),
             maker: maker.clone(),
             last_post_ms: if idle { service.last_post(pane, &to) } else { None },
@@ -660,6 +665,22 @@ mod tests {
         assert!(makers.judge(&[busy(Activity::Blocked)], &called, 20_000).is_empty());
         assert!(makers.judge(&[busy(Activity::Working)], &called, 21_000).is_empty());
         assert!(makers.judge(&[maple(Activity::Working)], &called, 90_000).is_empty());
+    }
+
+    /// A helper first seen at a dialog, its going to work missed by a loaded thread, began its
+    /// stretch there: a report posted from the dialog counts, and its idle after is not told.
+    #[test]
+    fn a_stretch_seen_first_at_a_dialog_counts_a_report_posted_from_it() {
+        let mut makers = makers();
+        let called = called();
+        makers.judge(&[maple(Activity::Idle)], &called, 0);
+        makers.judge(&[maple(Activity::Blocked)], &called, 1_000);
+        let told = makers.judge(&[maple(Activity::Blocked)], &called, 11_000);
+        assert_eq!(needs(&told), [Need::Blocked]);
+        makers.judge(&[maple(Activity::Working)], &called, 13_000);
+        let reported = Helper { last_post_ms: Some(12_000), ..maple(Activity::Idle) };
+        assert!(makers.judge(std::slice::from_ref(&reported), &called, 14_000).is_empty());
+        assert!(makers.judge(&[reported], &called, 30_000).is_empty());
     }
 
     /// A helper whose program stopped reading is told of, with the stall watch's reason.
