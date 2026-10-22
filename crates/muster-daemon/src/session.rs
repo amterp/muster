@@ -47,7 +47,7 @@ use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
 use crate::messages::{Doorbell, Messages, Need, Peers};
-use crate::pane::{Ended, Pane, PaneIo, Process, Turns, Watching};
+use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
@@ -1941,6 +1941,10 @@ impl Session {
         }
         let cleared = report.clear;
         let context_used = report.context_used;
+        let kept = keeps_wait(&self.panes[index], own_state.is_some(), &report);
+        if kept {
+            report.waiting = None;
+        }
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let speaks_of_waiting = report.waiting.is_some();
         let record = &mut self.panes[index].record;
@@ -1978,13 +1982,7 @@ impl Session {
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
-        if says_waiting {
-            pane.turns.wait_declared = true;
-        }
-        // What the agent says it waits on is its own word, whatever its screen showed.
-        if speaks_of_waiting {
-            pane.turns.wait_on_screen = false;
-        }
+        heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept);
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
             if pane.record.agent.as_deref() == Some(agent.as_str()) {
@@ -2327,24 +2325,17 @@ impl Session {
                 // is first recognised: its statusline can report before the first probe lands,
                 // and that report is the new agent's.
                 let replaced = record.agent.is_some() && record.agent != agent;
-                if replaced {
-                    record.facts = None;
-                    record.set_adapter(proto::Adapter::Unsaid);
-                    pane.turns.reports_turns = false;
-                    pane.session_id = None;
-                    if pane.resume.take().is_some() {
-                        self.persister.changed();
-                    }
-                    (record.session_id, record.resume) = (None, None);
-                    let left = record.agent.as_deref().unwrap_or_default();
-                    let restarting = pane.io.discards().is_restarting();
-                    forget_compaction(&mut pane.compaction, &name, left, restarting);
-                    record.set_pending_compaction(proto::PendingCompaction::None);
+                if replaced && agent_left(pane, &name) {
+                    self.persister.changed();
                 }
+                let record = &mut pane.record;
                 if replaced || (record.agent.is_none() && agent.is_some()) {
                     pane.session_name.agent_changed(&name, replaced, record.label.as_deref());
                 }
                 let turn = Turn::between(record.agent_state(), state);
+                if turn == Turn::Started && record.agent == agent {
+                    carry_through_musters_turn(record, &mut pane.turns, &pane.io);
+                }
                 // An agent that reports its own state ends its own turns: a sub-agent's tool
                 // call can read as a turn here after the agent's turn has ended.
                 if turn == Turn::Ended && !pane.turns.reports_turns {
@@ -4022,6 +4013,68 @@ fn forget_compaction(compaction: &mut Compaction, pane: &str, agent: &str, resta
         );
     }
     compaction.cleared();
+}
+
+/// Forgets what the agent that has left `pane` said about itself, saying whether that took a
+/// resume the pane's restart would have run.
+fn agent_left(pane: &mut Pane, name: &str) -> bool {
+    let record = &mut pane.record;
+    record.facts = None;
+    record.set_adapter(proto::Adapter::Unsaid);
+    pane.turns.reports_turns = false;
+    pane.session_id = None;
+    let resumed = pane.resume.take().is_some();
+    (record.session_id, record.resume) = (None, None);
+    let left = record.agent.as_deref().unwrap_or_default();
+    let restarting = pane.io.discards().is_restarting();
+    forget_compaction(&mut pane.compaction, name, left, restarting);
+    record.set_pending_compaction(proto::PendingCompaction::None);
+    resumed
+}
+
+/// Whether a report leaves standing the wait the agent declared, although it says no wait: one
+/// with a state, from the adapter's prompt hook, for a prompt Muster typed - a wake or a
+/// compaction. That is nobody moving the agent on, and the turn it starts is not the agent's
+/// work waking it.
+fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> bool {
+    states
+        && report.waiting.as_deref() == Some("")
+        && pane.holds_declared_wait()
+        && pane.io.typed_just_now(std::time::Instant::now()).is_some_and(TypedBy::is_musters)
+}
+
+/// What a report said of the agent's wait, for when its turn ends: said, which keeps it as the
+/// agent's own; kept through a prompt Muster typed ([`keeps_wait`]); or spoken of at all, which
+/// makes it the agent's word rather than the screen's.
+fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
+    if said {
+        pane.turns.wait_declared = true;
+        pane.turns.wait_carried = false;
+    }
+    if kept {
+        carry_wait(&pane.record.pane, &mut pane.turns, "prompt");
+    }
+    if spoken {
+        pane.turns.wait_on_screen = false;
+    }
+}
+
+/// A turn starting with the agent holding a wait it declared: kept through it when Muster typed
+/// what started it. For an agent with no hooks, the turn's start is all that says a prompt came.
+fn carry_through_musters_turn(record: &proto::Pane, turns: &mut Turns, io: &PaneIo) {
+    if is_waiting(record.facts.as_ref())
+        && !turns.wait_on_screen
+        && io.turn_typed_by().is_some_and(TypedBy::is_musters)
+    {
+        carry_wait(&record.pane, turns, "turn");
+    }
+}
+
+/// Keeps the wait the agent declared through a turn Muster typed, past that turn's end.
+fn carry_wait(pane: &str, turns: &mut Turns, by: &str) {
+    turns.wait_declared = true;
+    turns.wait_carried = true;
+    log::debug("daemon.report.waiting_carried", fields! { "pane" => pane, "by" => by });
 }
 
 /// At the end of an agent's turn, forgets what it was waiting on unless it said so again during

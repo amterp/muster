@@ -56,8 +56,9 @@ at, and not by `waiting`: an agent that ended its turn to wait on a gate it star
 finished, so the wait goes on until it has. A Claude Code whose turn ended with background shells
 still running is waiting on them, since a shell that ends starts its next turn, but for 10 minutes
 at most: the line saying so stays for as long as a shell lives, so after that the pane reads idle,
-its turn finished, which is what a dev server left running comes to. Add `waiting` to the list to
-hear of a wait too.
+its turn finished, which is what a dev server left running comes to. A wait the agent declared
+outlasts a turn Muster typed, a wake for a message or a compaction, since that turn is not its
+work waking it. Add `waiting` to the list to hear of a wait too.
 `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 

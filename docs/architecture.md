@@ -231,7 +231,9 @@ facts the daemon holds, and one from the window's own connection to it, so the v
 run. It has not finished and nobody is holding it up,
 so it is neither idle nor done, and a caller waiting for `idle` is not answered by it. A wait the screen shows lasts
 until the screen stops showing it, or 10 minutes at most, after which the turn it held back is finished; it never
-replaces one the agent said, which has no limit.
+replaces one the agent said, which has no limit. A wait the agent said ends with its next turn that does not say it
+again, and a turn Muster typed, a wake for a message or a compaction, does not count: it is not the agent's work
+waking it.
 
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its

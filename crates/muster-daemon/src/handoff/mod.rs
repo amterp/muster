@@ -730,6 +730,7 @@ fn adopt_panes(
                     wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
                     reports_turns: pane.reports_turns,
                     wait_on_screen: false,
+                    wait_carried: false,
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,

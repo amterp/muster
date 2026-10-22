@@ -200,16 +200,39 @@ struct Typed {
     /// Text somebody other than the doorbell typed. The doorbell presses Return again over its
     /// ring only while nobody has, since the screen may not show it yet.
     someones_text: Option<Instant>,
-    /// Whether the last input was a chore of the daemon's own (`Input::Chore`).
-    chore: bool,
+    /// Who typed the last input.
+    by: TypedBy,
+    /// Who typed what started the agent's current turn, as it started; none for a turn nothing
+    /// typed started, as a finished background task starts one in Claude Code.
+    turn: Option<TypedBy>,
     /// How many writes of typed input have ended a line, which a terminal reading line by line
     /// passes on whole ([`crate::unread`]).
     lines: u64,
 }
 
-/// How soon after a chore of the daemon's own the agent going to work is taken for the chore's
-/// turn rather than one of its own: an agent takes a line it is typed in well under this.
-const CHORE_TURN: Duration = Duration::from_secs(10);
+/// Who typed a pane's input.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum TypedBy {
+    /// Somebody: a person, or a `pane send`.
+    #[default]
+    Someone,
+    /// The doorbell's thread, for somebody's work: a wake, the prompt a compaction is followed
+    /// by, its Return pressed again, or a ring taken back.
+    Doorbell,
+    /// A chore of the daemon's own (`Input::Chore`): a rename, a compaction.
+    Chore,
+}
+
+impl TypedBy {
+    /// Whether Muster typed it rather than somebody.
+    pub(crate) fn is_musters(self) -> bool {
+        self != TypedBy::Someone
+    }
+}
+
+/// How soon after something is typed the agent going to work is taken for that line's turn
+/// rather than one of its own: an agent takes a line it is typed in well under this.
+const TYPED_TURN: Duration = Duration::from_secs(10);
 
 /// The process a pane runs, usually a shell - an agent in its place in the foreground is still
 /// there, and the shell there instead means it has left - when this daemon took it on, and when
@@ -353,20 +376,33 @@ impl PaneIo {
         poison::lock(&self.self_report, "daemon.pane.self_report").take()
     }
 
-    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool, chore: bool) {
+    pub(crate) fn wrote_input(&self, at: Instant, someones_text: bool, by: TypedBy) {
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.input = Some(at);
-        typed.chore = chore;
+        typed.by = by;
         if someones_text {
             typed.someones_text = Some(at);
         }
     }
 
-    /// Whether a turn starting now is one a chore of the daemon's own started: the last thing
-    /// typed, a moment ago.
-    fn chores_turn(&self, now: Instant) -> bool {
+    /// Who typed what a turn starting now started with: the last thing typed, a moment ago.
+    /// None when nothing was.
+    pub(crate) fn typed_just_now(&self, now: Instant) -> Option<TypedBy> {
         let typed = poison::lock(&self.typed, "daemon.pane.typed");
-        typed.chore && typed.input.is_some_and(|at| now.saturating_duration_since(at) < CHORE_TURN)
+        let recent = typed.input.is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
+        recent.then_some(typed.by)
+    }
+
+    /// Notes that the agent's turn starts now, saying who typed what started it.
+    fn turn_started(&self, now: Instant) -> Option<TypedBy> {
+        let by = self.typed_just_now(now);
+        poison::lock(&self.typed, "daemon.pane.typed").turn = by;
+        by
+    }
+
+    /// Who typed what started the agent's current turn, or its last one.
+    pub(crate) fn turn_typed_by(&self) -> Option<TypedBy> {
+        poison::lock(&self.typed, "daemon.pane.typed").turn
     }
 
     /// Typed input holding a Return, or a newline, is about to be written.
@@ -815,6 +851,7 @@ pub(crate) struct Pane {
 /// with the pane, since a daemon that took a pane over cannot tell either from its screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[expect(clippy::struct_field_names, reason = "reports_turns is the handoff's own name for it")]
+#[expect(clippy::struct_excessive_bools, reason = "each is a separate fact about the turns")]
 pub(crate) struct Turns {
     /// Whether the agent said what it waits on since its last turn ended, which keeps the wait
     /// past the end of the turn it was said in.
@@ -827,13 +864,23 @@ pub(crate) struct Turns {
     /// says what still runs. Not handed over; a wait taken over is the agent's own, and lasts
     /// until a turn ends without it.
     pub(crate) wait_on_screen: bool,
+    /// Whether the wait the agent declared was kept through a turn Muster typed, a wake or a
+    /// compaction, rather than said again. The agent may have been handed what it waited on
+    /// inside that turn, as Claude Code hands it a finished background task, and then no later
+    /// turn comes to end the wait; so a carried wait runs out (`messages/waits.rs`).
+    pub(crate) wait_carried: bool,
 }
 
 impl Default for Turns {
     /// Taken as said for a pane nothing has told this daemon about, so a wait lasts a turn too
     /// long rather than too short.
     fn default() -> Turns {
-        Turns { wait_declared: true, reports_turns: false, wait_on_screen: false }
+        Turns {
+            wait_declared: true,
+            reports_turns: false,
+            wait_on_screen: false,
+            wait_carried: false,
+        }
     }
 }
 
@@ -1028,6 +1075,12 @@ impl Pane {
 
     pub(crate) fn process(&self) -> Option<i32> {
         self.process
+    }
+
+    /// Whether the agent holds a wait it declared, rather than one its screen shows.
+    pub(crate) fn holds_declared_wait(&self) -> bool {
+        let waiting = self.record.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
+        waiting && !self.turns.wait_on_screen
     }
 
     /// Puts the agent's session and how it resumes on the record, as `session_id` and `resume`
@@ -1277,7 +1330,7 @@ impl Reader {
             // A turn a chore started - a rename, say - is not the agent's answer to anything,
             // and the mark of the turn before it is kept.
             if Turn::between(self.published, *state) == Turn::Started
-                && !self.io.chores_turn(Instant::now())
+                && self.io.turn_started(Instant::now()) != Some(TypedBy::Chore)
             {
                 self.io.mark_turn();
             }

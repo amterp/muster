@@ -731,7 +731,11 @@ or was left behind. So before it ends such a turn the agent reports what it is w
 `finished_unseen` is not set, and declaring it clears one already set. It lasts until a later
 turn of the agent's ends without the agent saying it again, or until a person prompts it. When
 the finished work wakes the agent, that turn's end clears the wait, unless the agent declares it
-again because something is still running. The turn that declared it keeps it.
+again because something is still running. The turn that declared it keeps it. A turn Muster
+typed, a wake for a message or a compaction, is neither the work waking the agent nor a person
+moving it on, so the wait outlasts it: on 2026-10-17 a helper rung for its maker's message a
+second after declaring a wait lost the wait to that turn, and its maker was told it had gone idle
+unreported.
 
 Which turn end counts depends on who reports the agent's turns. An agent that reports its own
 state ends its own turns: the plugin's `Stop` hook reports idle, and that report settles the wait.

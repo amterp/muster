@@ -62,6 +62,42 @@ impl Pane {
         );
     }
 
+    /// Reports `state` as `claude`'s hooks do, with `waiting` as the prompt hook sends one.
+    fn hook_reports(&mut self, state: proto::AgentState, waiting: Option<&str>) {
+        let mut report = proto::pane_request::Report {
+            pane: "p1".to_string(),
+            agent: "claude".to_string(),
+            waiting: waiting.map(str::to_string),
+            ..Default::default()
+        };
+        report.set_state(state);
+        expect(
+            &mut self.control,
+            pane(proto::pane_request::Request::Report(report)),
+            proto::Outcome::Done,
+        );
+    }
+
+    /// Declares a wait, as the agent does before ending its turn to wait on its own work.
+    fn declares(&mut self, waiting: &str) {
+        let report = proto::pane_request::Report {
+            pane: "p1".to_string(),
+            waiting: Some(waiting.to_string()),
+            ..Default::default()
+        };
+        expect(
+            &mut self.control,
+            pane(proto::pane_request::Request::Report(report)),
+            proto::Outcome::Done,
+        );
+    }
+
+    fn waiting_on(&mut self) -> Option<String> {
+        let records = snapshot(&mut self.control).panes;
+        let record = records.into_iter().find(|record| record.pane == "p1")?;
+        record.facts.and_then(|facts| facts.waiting)
+    }
+
     /// Has the daemon load its manifests again, as an app connecting does.
     fn send_manifests(&mut self) {
         let send = session(proto::session_request::Request::SendManifests(
@@ -309,6 +345,52 @@ fn a_compaction_taken_while_the_agents_idle_report_still_stands_has_its_prompt_t
     p1.until_pending(proto::PendingCompaction::FollowUp);
     p1.daemon.type_into("p1", "rest");
     p1.until_heard_line("carry on with the plan");
+}
+
+/// A wait the agent declared outlasts a compaction typed while it waits: the adapter's prompt
+/// hook reports the compaction's turn with no wait, as it reports a person's prompt, and the turn
+/// ends without the agent saying the wait again. A person's prompt still ends it.
+#[test]
+fn a_declared_wait_outlasts_a_compaction_typed_while_it_waits() {
+    use proto::AgentState::{Idle, Working};
+    let mut p1 = Pane::with_an_agent();
+    p1.hook_reports(Working, None);
+    p1.declares("the full gate");
+    p1.hook_reports(Idle, None);
+    assert_eq!(p1.waiting_on().as_deref(), Some("the full gate"));
+
+    assert_eq!(p1.compact(Some("keep the work notes")), proto::Outcome::Done);
+    p1.until_heard_line("/compact keep the work notes");
+    p1.hook_reports(Working, Some(""));
+    p1.hook_reports(Idle, None);
+    assert_eq!(p1.waiting_on().as_deref(), Some("the full gate"), "the compaction ended it");
+
+    p1.daemon.type_into("p1", "rest");
+    p1.until_heard_line("rest");
+    p1.hook_reports(Working, Some(""));
+    assert_eq!(p1.waiting_on(), None, "a person's prompt");
+}
+
+/// The same with no hooks, where the turn's start read off the screen is all that says a prompt
+/// came; a turn somebody starts still ends the wait.
+#[test]
+fn a_declared_wait_outlasts_a_compaction_typed_into_an_agent_with_no_hooks() {
+    use proto::AgentState::{Idle, Working};
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", Working);
+    p1.declares("the full gate");
+    p1.daemon.set_agent_state("p1", Idle);
+
+    assert_eq!(p1.compact(Some("keep the work notes")), proto::Outcome::Done);
+    p1.until_heard_line("/compact keep the work notes");
+    p1.daemon.until_agent("p1", Working);
+    p1.daemon.type_into("p1", "rest");
+    p1.daemon.until_agent("p1", Idle);
+    assert_eq!(p1.waiting_on().as_deref(), Some("the full gate"), "the compaction ended it");
+
+    p1.daemon.set_agent_state("p1", Working);
+    p1.daemon.set_agent_state("p1", Idle);
+    assert_eq!(p1.waiting_on(), None, "a turn somebody started");
 }
 
 /// A later ask is what its asker means: one with no prompt takes back a prompt still owed.

@@ -26,7 +26,7 @@ use muster_vt::{
 };
 
 use crate::effects::{Reported, Reports};
-use crate::pane::PaneIo;
+use crate::pane::{PaneIo, TypedBy};
 use crate::pty::Grid;
 use crate::screen::Cleared;
 
@@ -131,6 +131,15 @@ impl Input {
                 | Input::TakeBack { .. }
                 | Input::Chore { .. }
         )
+    }
+
+    /// Who typed this, when it is typed.
+    fn typed_by(&self) -> TypedBy {
+        match self {
+            Input::Chore { .. } => TypedBy::Chore,
+            Input::Ring { .. } | Input::TakeBack { .. } => TypedBy::Doorbell,
+            _ => TypedBy::Someone,
+        }
     }
 
     /// Whether this is the pointer's: a click, a drag, a move or a wheel turn.
@@ -514,7 +523,7 @@ impl Writer {
     fn write_one(&mut self, seq: u64, input: Input, master: &OwnedFd, wake: &OwnedFd) -> bool {
         let typed = input.is_typed();
         let someones = input.is_someones_text();
-        let chore = matches!(input, Input::Chore { .. });
+        let by = input.typed_by();
         // The encoding is released before the write, which can wait on a program that is
         // not reading, so the reader's refresh never waits on it.
         let bytes = self.encode(input);
@@ -525,7 +534,7 @@ impl Writer {
         // is slow to take is echoed piece by piece while it goes on.
         let wrote_input = || {
             if typed && let Some(io) = self.io.upgrade() {
-                io.wrote_input(Instant::now(), someones, chore);
+                io.wrote_input(Instant::now(), someones, by);
             }
         };
         if typed
