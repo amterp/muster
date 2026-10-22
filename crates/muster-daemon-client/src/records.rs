@@ -10,7 +10,7 @@ use std::path::Path;
 
 use muster_core::daemons::Started;
 use muster_daemon_launch::records::read_directory;
-use muster_daemon_proto::{ConnectionKind, answer};
+use muster_daemon_proto::{ConnectionKind, Welcome, answer};
 
 pub use muster_daemon_launch::records::started;
 
@@ -25,6 +25,8 @@ pub struct Census {
     /// How many panes it holds and where, for a daemon that answered.
     pub panes: u32,
     pub directories: Vec<String>,
+    /// The daemon's own build, as it said when dialed; empty for one that did not answer.
+    pub version: String,
 }
 
 /// Whether the daemon a record names is still there.
@@ -76,20 +78,22 @@ pub fn census(directory: &str) -> Vec<Census> {
 
 /// One record, checked.
 fn look(record: Started) -> Census {
+    let mut version = String::new();
     let state = if !Path::new(&record.socket).exists() {
         State::Gone
     } else if is_herdr(&record.socket) {
         // Never sent muster-daemon's handshake, which herdr would not answer: a listener is
         // all there is to learn from it.
         if UnixStream::connect(&record.socket).is_ok() { State::Herdr } else { State::Silent }
-    } else if answers(&record.socket) {
+    } else if let Some(welcome) = welcome(&record.socket) {
+        version = welcome.daemon_version;
         State::Answering
     } else {
         State::Silent
     };
     let (panes, directories) =
         if state == State::Answering { held_by(&record.socket) } else { (0, Vec::new()) };
-    Census { socket: record.socket, started: record.started, state, panes, directories }
+    Census { socket: record.socket, started: record.started, state, panes, directories, version }
 }
 
 /// Whether `socket` is where a Muster from before muster-daemon had herdr listen, which was
@@ -98,9 +102,11 @@ fn is_herdr(socket: &str) -> bool {
     Path::new(socket).file_name().is_some_and(|name| name == "herdr.sock")
 }
 
-/// Whether a daemon answers on `socket`, by its handshake.
-fn answers(socket: &str) -> bool {
-    crate::dial(Path::new(socket), ConnectionKind::Control, "muster census").is_ok()
+/// What a daemon on `socket` says of itself in its handshake, if one answers.
+fn welcome(socket: &str) -> Option<Welcome> {
+    crate::dial(Path::new(socket), ConnectionKind::Control, "muster census")
+        .ok()
+        .map(|(_, welcome)| welcome)
 }
 
 /// What one answering daemon holds, asked of it rather than guessed from its path.

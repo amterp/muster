@@ -497,9 +497,9 @@ agent.
 
     muster daemons
 
-    answering · 3 pane(s) in ~/src/muster, ~/src/rad · this window
+    answering · 0.17.0 · 3 pane(s) in ~/src/muster, ~/src/rad · this window
       /Users/you/.muster/daemon/release.sock
-    answering · holding nothing
+    answering · 0.17.0 · holding nothing
       /Users/you/.muster/daemon/dev-3f9a0c41be27.sock
 
     End one with: kill $(lsof -t <socket>.lock)
@@ -520,6 +520,9 @@ that.
   keeps no `.lock` file.
 - `panes` and `directories` say what an answering daemon holds. This is the row that decides
   anything - a count of zero is a daemon you can end and lose nothing.
+- `version` is the build an answering daemon says it is, and empty for the rest. It is what
+  decides whether a Muster replacing this one takes its panes over: only a newer version does,
+  comparing the numbers and ignoring anything after a `-`.
 - `attached_here` says whether the Muster answering is using it; every window of an app follows
   the same daemons. An app can only speak for itself, so `false` means "not this Muster" rather
   than "nothing". With two installs listening, pass `--socket` to hear one's answer; `muster docs

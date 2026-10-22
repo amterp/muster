@@ -397,8 +397,8 @@ fn a_refused_seen_is_reported_back() {
     daemon.finish_replacing(replacing);
 }
 
-/// A daemon Muster started is in the census with what it holds, asked of it rather than read
-/// from the record.
+/// A daemon Muster started is in the census with what it holds and which build it is, asked of
+/// it rather than read from the record.
 #[test]
 fn the_census_asks_each_daemon_what_it_holds() {
     let daemon = Daemon::start_built();
@@ -423,6 +423,11 @@ fn the_census_asks_each_daemon_what_it_holds() {
     assert_eq!(census.len(), 1);
     assert_eq!(census[0].state, records::State::Answering);
     assert_eq!(census[0].panes, 1);
+    assert_eq!(
+        census[0].version,
+        env!("CARGO_PKG_VERSION"),
+        "the daemon built from this commit says its own version when dialed"
+    );
 }
 
 /// A herdr daemon a Muster from before muster-daemon started is named as one while it listens,

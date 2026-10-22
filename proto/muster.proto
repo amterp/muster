@@ -1681,6 +1681,13 @@ message KnownDaemon {
   // A window can only speak for itself. False does not mean nothing is using this daemon - it
   // means this window is not - so with more than one window open, read one answer per window.
   bool attached_here = 6;
+
+  // The daemon's own build, as it said when it was dialed. Empty for one that did not answer.
+  //
+  // What says whether a build replacing this one will be handed its panes, which happens only
+  // when the replacement's version is newer: the app that started a daemon is no guide once an
+  // older app has been put back in front of it.
+  string version = 7;
 }
 
 // Everything about a window at one moment: what it draws, what it holds, and how the agents in

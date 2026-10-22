@@ -1629,10 +1629,13 @@ fn daemons_text(daemons: &muster_proto::Daemons) -> String {
 
 /// One daemon as a headline: what state it is in, and what it holds if it would say.
 fn described(daemon: &muster_proto::KnownDaemon) -> String {
+    // Empty from a window older than this CLI, which had no version to give.
+    let version =
+        if daemon.version.is_empty() { String::new() } else { format!(" · {}", daemon.version) };
     match daemon.state.as_str() {
-        "answering" if daemon.panes == 0 => "answering · holding nothing".to_string(),
+        "answering" if daemon.panes == 0 => format!("answering{version} · holding nothing"),
         "answering" => format!(
-            "answering · {} pane(s){}",
+            "answering{version} · {} pane(s){}",
             daemon.panes,
             if daemon.directories.is_empty() {
                 String::new()
@@ -1668,6 +1671,7 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
                 "panes": daemon.panes,
                 "directories": daemon.directories,
                 "attached_here": daemon.attached_here,
+                "version": daemon.version,
             }))
             .collect::<Vec<Value>>(),
     })
@@ -1749,6 +1753,28 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("lsof -t /home/a/.muster/daemon/i1.sock)"), "{text}");
+    }
+
+    /// An answering daemon says which build it is, since that decides whether a newer Muster
+    /// takes its panes over; a window too old to say leaves the headline as it was.
+    #[test]
+    fn an_answering_daemon_says_its_version_when_the_window_knows_it() {
+        let daemon = |socket: &str, version: &str| muster_proto::KnownDaemon {
+            socket: socket.to_string(),
+            state: "answering".to_string(),
+            panes: 2,
+            version: version.to_string(),
+            ..muster_proto::KnownDaemon::default()
+        };
+        let text = daemons_text(&muster_proto::Daemons {
+            remembered: true,
+            daemons: vec![
+                daemon("/home/a/.muster/daemon/release.sock", "0.17.1-dev"),
+                daemon("/home/a/.muster/daemon/dev-0a1b2c3d4e5f.sock", ""),
+            ],
+        });
+        assert!(text.contains("answering · 0.17.1-dev · 2 pane(s)"), "{text}");
+        assert!(text.contains("answering · 2 pane(s)"), "{text}");
     }
 
     /// The line is there to be pasted, and a home directory can have a space in it.

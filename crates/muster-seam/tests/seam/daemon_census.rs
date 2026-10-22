@@ -71,6 +71,12 @@ fn a_daemon_this_window_is_using_is_marked_and_the_rest_are_not() {
         .expect("the second daemon is in the answer");
     assert_eq!(idle.state, "answering");
     assert_eq!(idle.panes, 0, "a daemon nothing has asked for a tab holds nothing");
+    assert_eq!(
+        idle.version,
+        env!("CARGO_PKG_VERSION"),
+        "an answering daemon says which build it is, which decides whether a newer Muster is \
+         handed its panes"
+    );
 
     let _ = std::fs::remove_dir_all(&directory);
 }

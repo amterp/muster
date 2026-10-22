@@ -451,6 +451,7 @@ fn read_daemons() -> Response {
                     panes: census.panes,
                     directories: census.directories,
                     attached_here,
+                    version: census.version,
                 })
                 .collect(),
             remembered,
