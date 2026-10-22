@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-cannot-use",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792627647245,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-21, on the Mac. An agent in a pane needed to screenshot another app's window. The person granted Screen Recording to Muster.app, and `screencapture -x` in the pane still failed with \"could not create image from display\". Pane shells descend from `Muster.app/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon`, whose parent is launchd, so macOS judges the request against MusterSessions.app. System Settings does not list that app, and its + file picker cannot select it, since it sits inside Muster.app's bundle. `osascript` fails the same way for Accessibility (\"not allowed assistive access\").\n\na_2izzcnNeP (an agent cannot screenshot its own window) met this from the other side, and cites docs/observations/macos-26.4.1.md sections 8 and 9 as saying pane requests are judged against Muster.app's grant. This sighting says otherwise for Screen Recording. Whether a grant to MusterSessions.app applies before the daemon restarts is not established either.\n\nMeasure which bundle each permission is charged to on the current macOS, then make the grant reachable: have the daemon request the permission itself, so MusterSessions.app appears in System Settings, or document in `muster docs limits` which bundle to grant and when the grant takes effect.",
+  "id": "a_2luRHsHJW",
+  "position": "b1E",
+  "title": "A pane cannot use the Screen Recording or Accessibility grant given to Muster.app",
+  "type": "bug",
+  "updated_at_millis": 1792627647245,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792627647245}
+  ]
+}

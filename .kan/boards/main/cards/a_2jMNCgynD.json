@@ -18,6 +18,12 @@
       "body": "2026-10-17 13:03, a new lead (see a_2cP6w1lHN's newest comment): an idle Claude Code pane had a wake typed into its prompt that was never submitted, until its sender pressed Return for it ten minutes later, while Claude Code's 'Heads up' tip box showed above the prompt. The rules read the prompt under the box (1401a635), but whether the box takes the ring's Return is not established; the next sighting's msg.ring.* record (cd3e07bd) should say whether the ring was typed and its Return lost, or never rung.",
       "created_at_millis": 1792260286753,
       "id": "c_2jQIZ1wqp"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Three more from tooling feedback, Claude Code panes on the Mac:\n- 2026-10-16, 0.16.0: an urgent post to a Claude Code worker at work printed `rung once its prompt is empty: \u003cpane\u003e (working)` rather than ringing the running turn, and the wake reached the worker about 13 minutes later. Claude Code's 'Heads up' tip box showed above its prompt throughout.\n- 2026-10-17 18:58 and 2026-10-18 13:45, 0.16.1-dev, after a_2hIfuUkdQ was done: a worker's post arrived while the integrator was mid-turn. The integrator's turn then ended, and the wake rang 15 and 3 minutes later, after the integrator had read the message by hand, so it also rang for a message already read.",
+      "created_at_millis": 1792627656290,
+      "id": "c_2luRWXgks"
     }
   ],
   "created_at_millis": 1792250932025,
@@ -27,7 +33,7 @@
   "position": "b12",
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1792260286753,
+  "updated_at_millis": 1792627656290,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025}
   ]

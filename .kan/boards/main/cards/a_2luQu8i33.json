@@ -1,0 +1,24 @@
+{
+  "_v": 3,
+  "alias": "a-notice-muster",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1792627632523,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-10-17 and 2026-10-18, 0.16.1-dev on the Mac, four sightings. @muster's notices to a maker about its helper (\"went idle without posting to you\", \"is blocked at a dialog\") are posted in the group the two share. The helper's next `muster msg post` to its maker is then refused with `2 unread messages in \u003cgroup\u003e; read them ... then post again`, because the guard in `Service::post` (`crates/muster-msg/src/service.rs`, `unread_after`) counts every message after the author's cursor, whoever it was addressed to.\n\nCosts seen: a time-critical post took an extra round trip. A Codex helper whose brief said \"post, then stop\" printed \"Muster rejected it ... I stopped as requested\" and ended its turn, so its report never arrived, and its maker learned of it only from the next idle notice. A peer pane, not a helper, hit the same with a \"blocked at a dialog\" notice about its own plan dialog.\n\nThe guard exists so a model does not post on stale context (MIP-4, section 4). A notice about you addressed to somebody else is not context you need before posting. Options: leave @muster's messages addressed to other members out of the count; or leave out every message not addressed to the author, which changes the guard for agents' posts too and wants a look at MIP-4 first.",
+  "id": "a_2luQu8i33",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "a3G",
+  "title": "A notice @muster addresses to one member refuses the other members' posts",
+  "type": "bug",
+  "updated_at_millis": 1792627699386,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792627632523},
+    {"field":"column","value":"next","at":1792627699386}
+  ]
+}
