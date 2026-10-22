@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,6 +18,12 @@
       "body": "Ctrl+Return may be broken by the same fix (a_2j1768I1p). Check both keys in one session.",
       "created_at_millis": 1792200272716,
       "id": "c_2j17KBEvW"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: the owner confirmed Shift+Tab cycles Claude Code's permission modes in a pane on 0.16.2-dev (main at 1a97670d). Ctrl+Return (a_2j1768I1p) is still to be tried.",
+      "created_at_millis": 1792629960650,
+      "id": "c_2lvPTFvEj"
     }
   ],
   "created_at_millis": 1791946590112,
@@ -27,11 +33,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "a4",
+  "position": "YwF",
   "title": "Shift+Tab never reaches Claude Code in a pane",
   "type": "bug",
-  "updated_at_millis": 1792200272716,
+  "updated_at_millis": 1792629960750,
   "history": [
-    {"field":"column","value":"next","at":1791946590112}
+    {"field":"column","value":"next","at":1791946590112},
+    {"field":"column","value":"done","at":1792629960750}
   ]
 }
