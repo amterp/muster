@@ -126,6 +126,24 @@
       "body": "Fourth instance in the same Lectern round, 2026-10-21 ~22:20, a second Codex worker (group cumin+topaz): approval wake #20 rang again after the worker posted done #21; read returned nothing unread. Every Codex worker post in this round has been followed by a duplicate of the wake before it.",
       "created_at_millis": 1792639195200,
       "id": "c_2lzHhgQkB"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another instance on 2026-10-21, Mac, Codex worker gecko (pane p2dhmjmvgq, adapter reporting), cwd /Users/amterp/src/go-delta-1, group gecko+holly. Read approval #7, completed the work, and posted report #8. After ending the turn, received the identical wake: \"[muster] gecko+holly: 1 new (#7), 1 to you, from holly\". Running `muster msg read --group gecko+holly` returned \"nothing unread\". The local daemon was connected. No work ran twice; it cost a turn and an empty read. Cause and installed-fix status not investigated.",
+      "created_at_millis": 1792639408671,
+      "id": "c_2lzNFzE49"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another instance, 2026-10-21 23:07 CDT, Mac, Codex gpt-6.1-sol worker saffron (pane p2dh32xjyb), group holly+saffron. The worker read review brief #13, completed the checks, and posted its report as #14. After the turn ended, the identical wake arrived again: [muster] holly+saffron: 1 new (#13), 1 to you, from holly. Running `muster msg read --group holly+saffron` returned `nothing unread`. No work ran twice. Installed build and wake-path cause were not investigated.",
+      "created_at_millis": 1792642102984,
+      "id": "c_2m0VLe2Kp"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21 23:55 CDT: another duplicate wake on the Mac, Codex reviewer saffron (pane p2dh32xjyb), cwd /Users/amterp/src/ordo-2, group holly+saffron. Read brief #20, rebuilt the requested commit, reran the real-binary probe, and posted completion #21. After ending the turn, received the identical wake for #20; muster msg read --group holly+saffron returned \"nothing unread\". No work ran twice; the duplicate cost another turn. Recording recurrence without changing this done card or assuming the installed daemon includes its fix.",
+      "created_at_millis": 1792644921617,
+      "id": "c_2m1gfp4pQ"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -135,7 +153,7 @@
   "position": "YwE",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792639195200,
+  "updated_at_millis": 1792644921617,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
