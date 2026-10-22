@@ -28,6 +28,7 @@ use muster_msg::{Activity, Presence, Reach};
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
 use super::{delivering, now_ms, told};
+use crate::pane::TypedBy;
 use crate::session::{Orphaned, Shared};
 
 /// How long a helper's need must hold before its maker is told of it.
@@ -63,6 +64,9 @@ pub(crate) struct Helper {
     /// as this machine writes them (`claude@lap`).
     pub(crate) to: String,
     pub(crate) activity: Option<Activity>,
+    /// Whether its agent's turn, at work now or ended last, is one Muster typed as a chore of its
+    /// own: a compaction or a rename, which is not the helper going to work.
+    pub(crate) chores_turn: bool,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to its maker, looked up only while it is idle.
@@ -175,6 +179,7 @@ impl Makers {
                 }
             });
             match helper.activity {
+                Some(Activity::Working) if helper.chores_turn => {}
                 Some(Activity::Working | Activity::Waiting) => {
                     if !watch.at_work {
                         watch.worked_since_ms = Some(now_ms);
@@ -423,6 +428,7 @@ fn helpers(
             last_post_ms: if idle { service.last_post(pane, &to) } else { None },
             to,
             activity: seen.activity,
+            chores_turn: seen.io.turn_typed_by() == Some(TypedBy::Chore),
             stopped: seen.stopped.clone(),
         });
     }
@@ -540,6 +546,7 @@ mod tests {
             maker: "p1".to_string(),
             to: "p1".to_string(),
             activity: Some(activity),
+            chores_turn: false,
             stopped: None,
             last_post_ms: None,
         }
@@ -631,6 +638,30 @@ mod tests {
         let reported = Helper { last_post_ms: Some(5_000), ..maple(Activity::Idle) };
         makers.judge(std::slice::from_ref(&reported), &called, 20_000);
         assert!(makers.judge(&[reported], &called, 40_000).is_empty());
+    }
+
+    /// A compaction Muster typed at a helper that had reported and gone idle is not it going to
+    /// work, so idle again after it is not told of. The prompt a compaction is followed by is
+    /// work, and idle after that without a report is.
+    #[test]
+    fn a_chores_turn_is_not_going_to_work() {
+        let called = called();
+        let mut makers = makers();
+        let posted = |activity, chores_turn| Helper {
+            last_post_ms: Some(5_000),
+            chores_turn,
+            ..maple(activity)
+        };
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        makers.judge(&[posted(Activity::Idle, false)], &called, 10_000);
+        makers.judge(&[posted(Activity::Working, true)], &called, 20_000);
+        makers.judge(&[posted(Activity::Idle, true)], &called, 30_000);
+        assert!(makers.judge(&[posted(Activity::Idle, true)], &called, 60_000).is_empty());
+
+        makers.judge(&[posted(Activity::Working, false)], &called, 70_000);
+        makers.judge(&[posted(Activity::Idle, false)], &called, 80_000);
+        let tells = makers.judge(&[posted(Activity::Idle, false)], &called, 90_000);
+        assert_eq!(needs(&tells), [Need::Unreported], "the follow-up was work");
     }
 
     /// The person is told every helper a closed maker left running, and how to bring them back.

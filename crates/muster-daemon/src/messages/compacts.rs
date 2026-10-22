@@ -33,6 +33,11 @@ impl Line for Compaction {
     const TYPED: &'static str = "daemon.compact.typed";
     const TAKEN_AT_WORK: bool = true;
 
+    /// The prompt it is followed by is somebody's work, which the agent goes to.
+    fn chore(step: &Step) -> bool {
+        !step.follow_up
+    }
+
     fn wanted(seen: &Seen) -> Option<(Step, &str)> {
         seen.compact.as_ref().map(|step| (step.clone(), step.line.as_str()))
     }

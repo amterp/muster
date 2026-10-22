@@ -42,6 +42,13 @@ pub(crate) trait Line {
     /// that starts a turn of its own.
     const TAKEN_AT_WORK: bool;
 
+    /// Whether the line is a chore of Muster's own, a rename or a compaction, rather than a line
+    /// for somebody's work, such as the prompt a compaction is followed by: the turn a chore
+    /// starts is not the agent going to work.
+    fn chore(_what: &Self::What) -> bool {
+        true
+    }
+
     /// The line still to be typed into the pane's agent, if one is, and what it is for.
     fn wanted(seen: &Seen) -> Option<(Self::What, &str)>;
 
@@ -108,7 +115,7 @@ pub(crate) fn look<L: Line>(
                 continue;
             }
         }
-        if !seen.io.queue(Input::Chore { text: prompt::as_typed(line), enter: true }) {
+        if !seen.io.queue(input_for::<L>(&what, prompt::as_typed(line))) {
             L::given_up(shared, pane, &what, "its pane would not take what was typed");
             continue;
         }
@@ -168,6 +175,15 @@ fn second_looks<L: Line>(
     }
 }
 
+/// What types `text` and its Return for a line of `what`'s.
+fn input_for<L: Line>(what: &L::What, text: String) -> Input {
+    if L::chore(what) {
+        Input::Chore { text, enter: true }
+    } else {
+        Input::Ring { text, enter: true }
+    }
+}
+
 enum Second {
     Taken,
     Pressed,
@@ -187,7 +203,7 @@ fn second_look<L: Line>(shared: &Shared, seen: &Seen, typed: &mut Typed<L::What>
             if typed.presses >= doorbell::PRESSES {
                 return Second::Ended("Return was pressed for it as often as it may be".into());
             }
-            if !seen.io.queue(Input::Chore { text: String::new(), enter: true }) {
+            if !seen.io.queue(input_for::<L>(&typed.what, String::new())) {
                 return Second::Ended("its pane would not take the Return".to_string());
             }
             typed.presses += 1;

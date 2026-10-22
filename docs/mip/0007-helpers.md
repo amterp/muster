@@ -177,7 +177,9 @@ the group the two share, made for the purpose if they have none: `maple is block
 `maple has stopped reading its input`, or `maple went idle without posting to you`. The idle case
 is a helper whose turn ended on an API error, or one that gave up without saying so; on
 2026-10-13 one sat idle for 35 minutes before its maker noticed. A helper that posts its report
-and then goes idle is not reported. MIP-4 section 16 already
+and then goes idle is not reported, and a compaction or a rename Muster typed at it is not going
+to work: on 2026-10-17 helpers compacted at their maker's request went idle afterwards and their
+maker was told, six times in one evening. MIP-4 section 16 already
 has a daemon tell a group once, and say why, when the group is held up on a member; this does the
 same for a helper and sends it to the maker, the agent that can act on it. The maker can answer
 the dialog with `muster pane send --key`, or bring the helper forward and ask the person.

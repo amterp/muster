@@ -72,8 +72,9 @@ pub(crate) enum Input {
     },
     /// One key of a send, written on its own a moment after the pane's last write (`KEY_GAP`).
     Press(KeyEvent),
-    /// The doorbell's own wake, or its Return pressed again: written as a send is, and told
-    /// apart from it only so a pane knows whether anyone else has typed since.
+    /// What the doorbell's thread types for somebody's work - a wake, the prompt a compaction is
+    /// followed by - or its Return pressed again: written as a send is, and told apart from it
+    /// only so a pane knows whether anyone else has typed since.
     Ring {
         text: String,
         enter: bool,
