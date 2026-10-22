@@ -96,6 +96,12 @@
       "body": "Three more Codex instances, 2026-10-21, 0.16.2-dev on the Mac, one parallel round, daemon connected and both adapters reporting. One pane was woken again for #8 right after posting its plan as #9, and later for #16 right after posting #17; a second pane was woken again for #21 after reading it. `muster msg read --group` answered 'nothing unread' each time. Same shape as the 10-18 and 10-20 rounds: the stale wake follows the Codex pane's own post.",
       "created_at_millis": 1792627656366,
       "id": "c_2luRWec1S"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Another instance, 2026-10-21 ~20:20, Mac, Codex worker (gpt-6.1-sol via bunx @openai/codex@0.162.1, adapter not reporting at first) in a parallel-work round, group cougar+topaz: the approval wake for #6 rang a second time after the worker had read #6, built and committed the work, and posted its waiting report. The second muster msg read returned 'nothing unread'. Same pattern as the earlier Codex instances: the duplicate follows the worker's own post in the group.",
+      "created_at_millis": 1792631997862,
+      "id": "c_2lwGT4Ges"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -105,7 +111,7 @@
   "position": "a3",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792627699290,
+  "updated_at_millis": 1792631997862,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
