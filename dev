@@ -836,10 +836,11 @@ fn build_bundle():
         print_err("the rpaths build_bundle adds are the usual cause.")
         exit(1)
     print("assembled {BUNDLE} ({said}) - open it, or drag it to the Dock")
-    // The install names the daemon's socket (MUSTER_INSTALL), and a bundle put in place of an
-    // installed Muster of another install starts an empty daemon beside the one holding its
-    // agents. Said here because this is the last moment anyone is looking.
-    if "(dev-" in said:
+    // The install names the daemon's socket, and a bundle put in place of an installed Muster of
+    // another install starts an empty daemon beside the one holding its agents. Said here because
+    // this is the last moment anyone is looking. Unset is the checkout's own install, as
+    // crates/muster-daemon-proto/build.rs decides.
+    if get_env("MUSTER_INSTALL") == "":
         print(dim("Built for this checkout's own install, so it runs a daemon of its own beside any"))
         print(dim("installed Muster's. To replace the installed Muster, use tools/install-main."))
 

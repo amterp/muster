@@ -16,6 +16,11 @@ use std::path::{Path, PathBuf};
 /// This build's install.
 pub const INSTALL: &str = env!("MUSTER_DAEMON_INSTALL");
 
+/// Whether [`INSTALL`] is this checkout's own rather than one `MUSTER_INSTALL` named, so a build
+/// that would start a daemon beside an installed Muster's can say so without knowing how
+/// `build.rs` spells a checkout's name.
+pub const IS_CHECKOUT: bool = !env!("MUSTER_DAEMON_INSTALL_IS_CHECKOUT").is_empty();
+
 /// What a daemon says on its stderr when it finds another serving its socket, and exits.
 ///
 /// A start that can see the daemon's exit status reads the same thing from that. One through
@@ -48,6 +53,13 @@ mod tests {
     fn the_install_is_a_name_a_file_can_have() {
         assert!(!INSTALL.is_empty());
         assert!(INSTALL.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+    }
+
+    /// `build.rs` says both, and they have to agree: an unnamed install is the checkout's, and
+    /// only it is named `dev-` and a hash.
+    #[test]
+    fn a_checkout_install_is_the_one_build_rs_names_for_the_checkout() {
+        assert_eq!(IS_CHECKOUT, INSTALL.starts_with("dev-"), "install {INSTALL}");
     }
 
     #[test]

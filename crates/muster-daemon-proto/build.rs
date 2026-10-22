@@ -54,6 +54,9 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=MUSTER_INSTALL");
     println!("cargo:rustc-env=MUSTER_DAEMON_INSTALL={}", install());
+    // Empty for a named install, so `install.rs` can read it in a const without parsing.
+    let checkout = if std::env::var_os("MUSTER_INSTALL").is_some() { "" } else { "yes" };
+    println!("cargo:rustc-env=MUSTER_DAEMON_INSTALL_IS_CHECKOUT={checkout}");
 }
 
 /// The install this build's daemon and clients belong to (`install.rs` says why).

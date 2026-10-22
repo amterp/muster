@@ -36,7 +36,7 @@ pub(crate) fn look_beside(ours: String) {
                 clear_problem(KEY, "no other install's daemon in this home holds panes");
                 return;
             }
-            let detail = sentence(install::INSTALL, &others);
+            let detail = sentence(install::INSTALL, install::IS_CHECKOUT, &others);
             let sockets: Vec<&str> = others.iter().map(|other| other.socket.as_str()).collect();
             log::warn(
                 "daemon.other_install",
@@ -63,23 +63,26 @@ pub(crate) fn look_beside(ours: String) {
     }
 }
 
-/// The daemons in `found` that answer and hold panes, beside `ours` in the same directory but on
-/// another socket: another install in this home.
+/// The daemons in `found` that answer and hold panes on a socket other than `ours`: another
+/// install in this home.
+///
+/// Sockets are matched by file name, as `app_lock::adopt` matches arrangements. Every record in
+/// this home's directory names a daemon started in this home's `daemon/`, and a home reached
+/// through a symlink spells that directory differently from one process to the next.
 fn beside<'a>(ours: &str, found: &'a [Census]) -> Vec<&'a Census> {
-    let directory = Path::new(ours).parent();
+    let ours = Path::new(ours).file_name();
     found
         .iter()
         .filter(|other| {
             other.state == State::Answering
                 && other.panes > 0
-                && other.socket != ours
-                && Path::new(&other.socket).parent() == directory
+                && Path::new(&other.socket).file_name() != ours
         })
         .collect()
 }
 
 /// What the person is told, naming each install by its socket's name as `muster daemons` does.
-fn sentence(ours: &str, others: &[&Census]) -> String {
+fn sentence(ours: &str, ours_is_checkout: bool, others: &[&Census]) -> String {
     let named: Vec<String> = others
         .iter()
         .map(|other| {
@@ -101,7 +104,7 @@ fn sentence(ours: &str, others: &[&Census]) -> String {
          daemons` lists every daemon here and how to end one.",
         named.join("; ")
     );
-    if ours.starts_with("dev-") {
+    if ours_is_checkout {
         detail.push_str(
             " A build meant to replace the installed Muster has to be built for its install, \
              with MUSTER_INSTALL: tools/install-main in a Muster checkout does that.",
@@ -126,24 +129,36 @@ mod tests {
     }
 
     #[test]
-    fn only_another_install_in_this_home_holding_panes_counts() {
+    fn only_another_install_holding_panes_counts() {
         let ours = "/home/a/.muster/daemon/dev-0a1b2c3d4e5f.sock";
         let found = [
             daemon(ours, State::Answering, 1),
             daemon("/home/a/.muster/daemon/release.sock", State::Answering, 18),
             daemon("/home/a/.muster/daemon/dev-ffffffffffff.sock", State::Answering, 0),
             daemon("/home/a/.muster/daemon/dev-eeeeeeeeeeee.sock", State::Silent, 0),
-            daemon("/home/a/.muster-dev/daemon/release.sock", State::Answering, 3),
         ];
         let others: Vec<&str> =
             beside(ours, &found).iter().map(|other| other.socket.as_str()).collect();
         assert_eq!(others, ["/home/a/.muster/daemon/release.sock"]);
     }
 
+    /// The same home reached through a symlink is the same daemon, however a record spells it.
+    #[test]
+    fn a_home_spelled_through_a_symlink_is_still_this_home() {
+        let ours = "/Users/a/.muster/daemon/release.sock";
+        let found = [
+            daemon("/private/link/a/.muster/daemon/release.sock", State::Answering, 18),
+            daemon("/private/link/a/.muster/daemon/dev-0a1b2c3d4e5f.sock", State::Answering, 1),
+        ];
+        let others: Vec<&str> =
+            beside(ours, &found).iter().map(|other| other.socket.as_str()).collect();
+        assert_eq!(others, ["/private/link/a/.muster/daemon/dev-0a1b2c3d4e5f.sock"]);
+    }
+
     #[test]
     fn a_development_build_is_told_how_to_replace_the_installed_muster() {
         let release = daemon("/home/a/.muster/daemon/release.sock", State::Answering, 18);
-        let detail = sentence("dev-0a1b2c3d4e5f", &[&release]);
+        let detail = sentence("dev-0a1b2c3d4e5f", true, &[&release]);
         assert!(
             detail.contains("release (0.17.0, 18 pane(s)) at /home/a/.muster/daemon/release.sock"),
             "{detail}"
@@ -155,7 +170,7 @@ mod tests {
     #[test]
     fn a_release_finding_a_stray_development_daemon_is_not_told_about_building() {
         let stray = daemon("/home/a/.muster/daemon/dev-0a1b2c3d4e5f.sock", State::Answering, 1);
-        let detail = sentence("release", &[&stray]);
+        let detail = sentence("release", false, &[&stray]);
         assert!(detail.contains("dev-0a1b2c3d4e5f (0.17.0, 1 pane(s))"), "{detail}");
         assert!(!detail.contains("MUSTER_INSTALL"), "{detail}");
     }

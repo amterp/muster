@@ -522,7 +522,7 @@ that.
   anything - a count of zero is a daemon you can end and lose nothing.
 - `version` is the build an answering daemon says it is, and empty for the rest. It is what
   decides whether a Muster replacing this one takes its panes over: only a newer version does,
-  comparing the numbers and ignoring anything after a `-`.
+  comparing the numbers and ignoring anything after a `-` or a `+`.
 - `attached_here` says whether the Muster answering is using it; every window of an app follows
   the same daemons. An app can only speak for itself, so `false` means "not this Muster" rather
   than "nothing". With two installs listening, pass `--socket` to hear one's answer; `muster docs
