@@ -5865,14 +5865,14 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
         };
         let mut writes = Vec::new();
         for (window, held) in session.windows.iter() {
-            for tab in
-                held.composition.tabs().filter(|tab| tab.daemons().any(|part| part == daemon))
+            let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+            for tab in held
+                .composition
+                .tabs()
+                .filter(|tab| tab.daemons().any(|part| part == daemon))
+                .filter(|tab| spanning::spans(tab, mirror))
             {
-                let (parts, settled) = spanning::parts_of(
-                    tab,
-                    |machine| mirrors.get(machine).map(|held| &**held),
-                    writable,
-                );
+                let (parts, settled) = spanning::parts_of(tab, mirror, writable);
                 let Some(merged) = spanning::merge(&parts, &settled) else { continue };
                 writes
                     .extend(merged.writes.into_iter().map(|write| (window, tab.id.clone(), write)));

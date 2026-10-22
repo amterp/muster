@@ -88,16 +88,19 @@ fn collect<T>(given: &Value, key: &str, read: impl Fn(&Value) -> T) -> Vec<T> {
 }
 
 /// A tab as a daemon sends it. `copy`, the daemon's whole tree in the text its harness prints
-/// (`[a|~x@devenv 0.50]`), is given only for a tab spanning machines, and is `root` otherwise.
+/// (`[a|~x@devenv 0.50]`), is given only for a tab spanning machines, and is `root` otherwise;
+/// `copyZoomed` likewise, for a zoom on another machine's pane, and is `zoomed` otherwise.
 pub(crate) fn read_tab(given: &Value) -> Tab {
     let root = read_node(given.get("root").unwrap_or(&Value::Null));
+    let zoomed = optional(given, "zoomed").map(PaneId::new);
     Tab {
         id: TabId::new(text(given, "id")),
         label: optional(given, "label"),
         generation: given.get("generation").and_then(Value::as_u64).unwrap_or_default(),
         copy: optional(given, "copy").map_or_else(|| CopyNode::of(&root), |copy| read_copy(&copy)),
         root,
-        zoomed: optional(given, "zoomed").map(PaneId::new),
+        copy_zoomed: optional(given, "copyZoomed").map(PaneId::new).or_else(|| zoomed.clone()),
+        zoomed,
         hidden: given.get("hidden").and_then(Value::as_bool).unwrap_or_default(),
         layout_generation: given
             .get("layoutGeneration")

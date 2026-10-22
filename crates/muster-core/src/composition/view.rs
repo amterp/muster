@@ -33,7 +33,7 @@ pub struct View {
     pub focused: Option<RegionId>,
     /// The tab's one tree over every machine it spans, merged from each machine's copy
     /// (`crate::spanning`, MIP-8): the whole tree, even while a region is zoomed. Published
-    /// beside the regions, which are what draws the tab.
+    /// beside the regions, which are what draws the tab, and only for a tab that spans machines.
     pub tree: Option<ViewTree>,
     /// Every pane this window has on screen, named by its daemon.
     ///
@@ -297,10 +297,14 @@ impl View {
             })
             .collect();
         // What the copies add up to, and nothing written: the seam sends the writes, from the
-        // same merge, and only it knows which machines can take one.
-        let (parts, settled) = spanning::parts_of(held, &mirror, |_| false);
-        let tree =
-            spanning::merge(&parts, &settled).map(|merged| ViewTree::of(&merged.tree, &pane));
+        // same merge, and only it knows which machines can take one. A tab on one machine is
+        // its one region's tree, which is already published above.
+        let tree = if spanning::spans(held, &mirror) {
+            let (parts, settled) = spanning::parts_of(held, &mirror, |_| false);
+            spanning::merge(&parts, &settled).map(|merged| ViewTree::of(&merged.tree, &pane))
+        } else {
+            None
+        };
         View {
             tab: Some(tab),
             regions,

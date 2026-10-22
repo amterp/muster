@@ -10,8 +10,8 @@ use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
-    Adapter, AgentFacts, CopyNode, LayoutNode, Pane, PaneId, PendingCompaction, Progress,
-    ProgressState, Resume, SplitAxis, Tab, TabId, UnreadInput,
+    Adapter, AgentFacts, CopyNode, Pane, PaneId, PendingCompaction, Progress, ProgressState,
+    Resume, SplitAxis, Tab, TabId, UnreadInput,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -182,21 +182,23 @@ pub fn pane(record: proto::Pane) -> Pane {
 
 /// A tab, or none when its tree does not read, which a daemon of this protocol never sends.
 ///
-/// The tree is this daemon's panes only: a pane on another machine (MIP-8) is left out, its
-/// split giving way to its sibling, so every region still draws the panes its daemon holds.
+/// `root` and `zoomed` are this daemon's panes only: a pane on another machine (MIP-8) is left
+/// out, its split giving way to its sibling, so every region still draws the panes its daemon
+/// holds. `copy` and `copy_zoomed` keep the whole tree, for the merge.
 pub fn tab(record: proto::Tab) -> Option<Tab> {
     let label = record.label.unwrap_or_default();
-    let tree = record.root?;
-    let copy = copy(tree.clone())?;
-    let Own::Tree(root) = node(tree)? else { return None };
+    let copy = copy(record.root?)?;
+    let root = copy.own()?;
+    let copy_zoomed = record.zoomed.map(PaneId::new);
     Some(Tab {
         id: TabId::new(record.tab),
         label: label.text.filter(|text| !text.is_empty()),
         generation: label.generation,
-        zoomed: record.zoomed.map(PaneId::new).filter(|zoomed| root.panes().contains(&zoomed)),
+        zoomed: copy_zoomed.clone().filter(|zoomed| root.panes().contains(&zoomed)),
         root,
         hidden: record.hidden,
         copy,
+        copy_zoomed,
         layout_generation: record.layout_generation,
     })
 }
@@ -225,8 +227,9 @@ pub fn copy_record(copy: &CopyNode) -> proto::Node {
     proto::Node { node: Some(node) }
 }
 
-/// The daemon's whole tree, other machines' panes included.
-fn copy(given: proto::Node) -> Option<CopyNode> {
+/// The daemon's whole tree, other machines' panes included, or `None` for a tree that does not
+/// read.
+pub fn copy(given: proto::Node) -> Option<CopyNode> {
     Some(match given.node? {
         proto::node::Node::Pane(pane) => CopyNode::Own(PaneId::new(pane)),
         proto::node::Node::Foreign(foreign) => {
@@ -243,37 +246,6 @@ fn copy(given: proto::Node) -> Option<CopyNode> {
                 ratio: split.ratio,
                 first: Box::new(copy(*split.first?)?),
                 second: Box::new(copy(*split.second?)?),
-            }
-        }
-    })
-}
-
-/// What a subtree holds of this daemon's panes.
-enum Own {
-    Tree(LayoutNode),
-    /// Only panes on other machines.
-    Elsewhere,
-}
-
-/// A tree, as this daemon's panes, or `None` for a tree that does not read.
-fn node(given: proto::Node) -> Option<Own> {
-    Some(match given.node? {
-        proto::node::Node::Pane(pane) => Own::Tree(LayoutNode::Pane(PaneId::new(pane))),
-        proto::node::Node::Foreign(_) => Own::Elsewhere,
-        proto::node::Node::Split(split) => {
-            let axis = match split.axis() {
-                proto::Axis::Columns => SplitAxis::Columns,
-                proto::Axis::Rows => SplitAxis::Rows,
-                proto::Axis::Unspecified => return None,
-            };
-            match (node(*split.first?)?, node(*split.second?)?) {
-                (Own::Tree(first), Own::Tree(second)) => Own::Tree(LayoutNode::Split {
-                    axis,
-                    ratio: split.ratio,
-                    first: Box::new(first),
-                    second: Box::new(second),
-                }),
-                (only, Own::Elsewhere) | (Own::Elsewhere, only) => only,
             }
         }
     })
@@ -484,6 +456,7 @@ mod tests {
         assert_eq!(tab.root.to_string(), "columns(a, b@0.5)");
         assert_eq!(tab.copy.to_string(), "columns(columns(a, ~x@devenv@0.5), b@0.5)");
         assert_eq!(tab.zoomed, None, "a zoom on another machine's pane fills no region here");
+        assert_eq!(tab.copy_zoomed, Some(PaneId::new("x")), "the merge still reads that zoom");
     }
 
     #[test]

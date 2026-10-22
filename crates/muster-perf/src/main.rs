@@ -480,6 +480,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             label: Some("t1".to_string()),
             generation: 1,
             copy: CopyNode::of(&nested(&ids)),
+            copy_zoomed: None,
             root: nested(&ids),
             zoomed: None,
             hidden: false,

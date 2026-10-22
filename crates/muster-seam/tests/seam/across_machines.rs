@@ -24,7 +24,7 @@ use muster::proto::{
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
     among_helpers, close_request, create, expect, helper, in_new_tab, make, read_text,
-    set_tree_request, shape,
+    set_zoomed_tree_request, shape,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -1498,8 +1498,9 @@ fn a_pane_is_drawn_no_callsign_another_machine_holds() {
 }
 
 /// One Muster tab with a part on each machine: `A` on the laptop and `X` on the devenv, each
-/// part's tree written as `laptop` and `devenv` say, at their generations. The names are the ones
-/// the window's config gives the two machines, which is what a window writes into a foreign leaf.
+/// part's tree written as `laptop` and `devenv` say, at their generations, and ending ` zoomed P`
+/// for a tree zoomed on `P`. The names are the ones the window's config gives the two machines,
+/// which is what a window writes into a foreign leaf.
 const SPANNING_TAB: &str = "t1span0000";
 const SPAN_A: &str = "p1spanaa00";
 const SPAN_B: &str = "p1spanbb00";
@@ -1521,20 +1522,12 @@ fn a_tab_spanning_two_machines(
             make(&mut control, create(&named(pane), beside));
         }
         if laptop.1 > 0 {
-            expect(
-                &mut control,
-                set_tree_request(SPANNING_TAB, &laptop.0, laptop.1, 0),
-                daemon_proto::Outcome::Done,
-            );
+            expect(&mut control, seeded(&laptop.0, laptop.1), daemon_proto::Outcome::Done);
         }
         let mut control = on_devenv.connect();
         make(&mut control, create(SPAN_X, in_new_tab(SPANNING_TAB)));
         if devenv.1 > 0 {
-            expect(
-                &mut control,
-                set_tree_request(SPANNING_TAB, &devenv.0, devenv.1, 0),
-                daemon_proto::Outcome::Done,
-            );
+            expect(&mut control, seeded(&devenv.0, devenv.1), daemon_proto::Outcome::Done);
         }
     });
     until(
@@ -1545,13 +1538,22 @@ fn a_tab_spanning_two_machines(
     machines
 }
 
+fn seeded(copy: &str, generation: u64) -> daemon_proto::request::Service {
+    let (tree, zoomed) =
+        copy.split_once(" zoomed ").map_or((copy, None), |(tree, zoomed)| (tree, Some(zoomed)));
+    set_zoomed_tree_request(SPANNING_TAB, tree, zoomed, generation, 0)
+}
+
 /// What `daemon` holds of the spanning tab: its tree as the harness prints one, with the panes
-/// called `A`, `B` and `X` again, and its layout generation.
+/// called `A`, `B` and `X` again and ` zoomed P` after a zoomed one, and its layout generation.
 fn spanning_copy(daemon: &Daemon) -> Option<(String, u64)> {
     let snapshot = snapshot(daemon);
     let tab = snapshot.tabs.into_iter().find(|tab| tab.tab == SPANNING_TAB)?;
-    let tree =
-        shape(tab.root.as_ref()?).replace(SPAN_A, "A").replace(SPAN_B, "B").replace(SPAN_X, "X");
+    let zoomed = tab.zoomed.map(|zoomed| format!(" zoomed {zoomed}")).unwrap_or_default();
+    let tree = format!("{}{zoomed}", shape(tab.root.as_ref()?))
+        .replace(SPAN_A, "A")
+        .replace(SPAN_B, "B")
+        .replace(SPAN_X, "X");
     Some((tree, tab.layout_generation))
 }
 
@@ -1574,6 +1576,55 @@ fn a_lagging_machines_copy_of_a_tab_spanning_machines_is_caught_up_as_the_window
         || format!("the devenv holds {:?}", spanning_copy(&machines.devenv)),
     );
     assert_eq!(spanning_copy(&machines.laptop), Some(("[A|~X@devenv 0.30]".to_string(), 2)));
+}
+
+/// A zoom is part of the tree, so a zoom on the devenv's pane is in the laptop's copy too, though
+/// the laptop does not run it. Catching the devenv up carries it there, and leaves the laptop's
+/// copy where it was: a window reading the laptop's copy as unzoomed would write the zoom away.
+#[test]
+fn a_zoom_on_another_machines_pane_reaches_a_lagging_copy() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_tab_spanning_two_machines(
+        &["A"],
+        ("[A|~X@devenv 0.30] zoomed X", 2),
+        ("[~A@laptop|X 0.50]", 1),
+    );
+    until(
+        "the devenv's copy to be caught up, zoom and all",
+        || {
+            spanning_copy(&machines.devenv)
+                .as_ref()
+                .map(|(tree, generation)| (tree.as_str(), *generation))
+                == Some(("[~A@laptop|X 0.30] zoomed X", 2))
+        },
+        || format!("the devenv holds {:?}", spanning_copy(&machines.devenv)),
+    );
+    assert_eq!(
+        spanning_copy(&machines.laptop),
+        Some(("[A|~X@devenv 0.30] zoomed X".to_string(), 2))
+    );
+}
+
+/// Another window, whose config calls the laptop `mac`, wrote the devenv's copy last. This window
+/// catches the laptop up and leaves the devenv's copy as it is: a foreign leaf's name is only the
+/// writing window's, and rewriting it would have the other window rewrite it back, each a
+/// generation higher (MIP-8, section 1).
+#[test]
+fn a_copy_calling_a_machine_by_another_windows_name_is_not_rewritten() {
+    let _turn = muster::testing::fresh_session();
+    let machines =
+        a_tab_spanning_two_machines(&["A"], ("[A|~X@devenv 0.30]", 1), ("[~A@mac|X 0.50]", 2));
+    until(
+        "the laptop's copy to be caught up",
+        || {
+            spanning_copy(&machines.laptop)
+                .as_ref()
+                .map(|(tree, generation)| (tree.as_str(), *generation))
+                == Some(("[A|~X@devenv 0.50]", 2))
+        },
+        || format!("the laptop holds {:?}", spanning_copy(&machines.laptop)),
+    );
+    assert_eq!(spanning_copy(&machines.devenv), Some(("[~A@mac|X 0.50]".to_string(), 2)));
 }
 
 /// A pane closing on the laptop leaves the devenv's copy naming it until a window says otherwise:

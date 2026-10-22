@@ -95,13 +95,16 @@ machine is a *spanning tab*. In a part's copy a leaf is one of two kinds:
   config gives it (`devenv`), and another window may call that machine something else, so a
   window finds a leaf's machine by asking which attached machine holds the pane, and goes by the
   name only when none does: to say which machine it is waiting for, and to drop the leaf once
-  that machine answers holding no such pane (section 2).
+  that machine answers holding no such pane (section 2). A window never rewrites a copy only to
+  change a name in it, since two windows naming one machine differently would then rewrite each
+  other's copies for as long as both are open.
 
 A tab held by one machine has no foreign leaves, and nothing about it changes.
 
 Each copy carries a **layout generation**, a number that goes up with every write a window makes to
 the arrangement, as a tab's `Label` generation does today. The zoomed pane, which `Tab.zoomed`
-already records per part, becomes part of the tree and is copied with it.
+already records per part, becomes part of the tree and is copied with it, so every part records
+the zoom even when the zoomed pane is on another machine.
 
 ### 2. The window merges the copies and writes them back
 
@@ -111,7 +114,8 @@ function beside `composition/view.rs`, and draws the result:
 1. **Start from the copy with the highest generation.** Copies of equal generation differ only in
    panes their own machines added or removed (section 3), which steps 2 and 3 reconcile whichever
    copy is taken. The window takes the one naming the lowest pane id among its own panes, so two
-   windows merging the same copies get the same tree whatever their configs call the machines.
+   windows merging the same copies get the same tree whatever their configs call the machines. A
+   copy whose machine has not yet said it holds any of its panes loses to one whose machine has.
 2. **Drop leaves whose pane is gone.** A leaf goes when its machine is connected, has finished
    restoring, and holds no such pane in this tab. A leaf whose machine is unreachable, still
    restoring, or not attached to this window stays: only the machine running a pane can say it has
@@ -120,9 +124,12 @@ function beside `composition/view.rs`, and draws the result:
    not name is put where that machine's own copy put it: beside the same neighbor, on the same
    side, at the same ratio. If that neighbor is not in the starting copy, the pane goes in as a
    column at the right.
-4. **Write the result back** to every connected part whose copy differs, at a generation one above
-   the highest seen. Each write names the generation it was based on, and a daemon whose copy has
-   moved on since refuses it; the window then merges again from the newer copy.
+4. **Write the result back** to every connected part whose copy differs in its tree or its zoom,
+   though not in the names it gives other machines (section 1). When only copies behind the
+   highest generation differ, the write catches them up at that generation; when a copy already
+   at it differs, every write goes one above it. Each write names the generation it was based on,
+   and a daemon whose copy has moved on since refuses it; the window then merges again from the
+   newer copy.
 
 This is how tab names already work: `rename_tab` writes one generation to every part and
 `catch_up_tab_names` rewrites a part that lagged when its machine answers again (both in
@@ -395,21 +402,23 @@ Each stage lands on its own with the suite green, and each is one worker's assig
    an own pane; a resize, swap or zoom asked of a daemon in a spanning tab is refused; a checked-in
    state file with foreign leaves loads as written; the protocol compatibility test across the
    minor.
-2. **The window merges and writes.** The merge as a pure function, `View` publishing the tree
-   beside the regions it publishes now, so the shell is untouched, and the write-back, to tabs a
-   window has already written as a spanning tree. A spanning tab made before this is merged from
-   its regions, side by side at their weights, and not written: no window writes one until stage
-   3, so in real use this stage writes nothing. Tests: conformance cases for each merge rule and
-   for the tree the view publishes; seam tests against two real daemons: a lagging copy caught
-   up, a pane closing on one machine dropped from the other's copy, a restarted machine needing
-   nothing written, and a tab grouped before this left unwritten.
-3. **The shell draws one tree.** The Swift view renders the per-tab tree and stops reading
-   regions; dividers and zoom across machines; `--layout` and `--json` move to the tree, per
-   question D. In the same stage the window sends every change to a spanning tab's arrangement
+2. **The window merges and writes.** The merge as a pure function; `View` publishing the tree of a
+   tab that spans machines beside the regions it publishes now, so the shell is untouched and a tab
+   on one machine costs nothing more; and the write-back, to tabs a window has already written as a
+   spanning tree. A spanning tab made before this is merged from its regions, side by side at their
+   weights, and not written: no window writes one until stage 3, so in real use this stage writes
+   nothing. Tests: conformance cases for each merge rule and for the tree the view publishes; seam
+   tests against two real daemons: a lagging copy caught up, a pane closing on one machine dropped
+   from the other's copy, a restarted machine needing nothing written, and a tab grouped before
+   this left unwritten.
+3. **The shell draws one tree.** The Swift view renders the per-tab tree and stops reading regions,
+   so `View` publishes the tree for every tab, a tab on one machine taking its one copy as it is
+   without merging; dividers and zoom across machines; `--layout` and `--json` move to the tree,
+   per question D. In the same stage the window sends every change to a spanning tab's arrangement
    as `SetTree` - resize, swap, zoom, divider ratios and equalize - and switches on writing
-   spanning tabs made before this, since from the first write on a part refuses those requests
-   sent one machine at a time. Tests: the Swift view tests, the CLI's `diagram.rs` unit tests,
-   a conformance case per arrangement change written as a tree, `docs/cli/window.md`.
+   spanning tabs made before this, since from the first write on a part refuses those requests sent
+   one machine at a time. Tests: the Swift view tests, the CLI's `diagram.rs` unit tests, a
+   conformance case per arrangement change written as a tree, `docs/cli/window.md`.
 4. **Every placement path.** `split_onto` beside the pane clicked on any side, `pane new
    --daemon` with a side, cross-machine drags and `pane move --onto`, the menu per question C,
    and the doctrine in section 10, since this stage makes `AGENTS.md`'s "Not built" line false.

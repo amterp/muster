@@ -278,6 +278,9 @@ pub struct Tab {
     /// this tree with only this machine's panes left in it, which is what a region draws; this
     /// is what a window merges across the machines a tab spans (`crate::spanning`).
     pub copy: CopyNode,
+    /// The pane `copy` has zoomed, which can be on another machine. `zoomed` is the same pane
+    /// only when it is this machine's, since a region fills itself with nothing else.
+    pub copy_zoomed: Option<PaneId>,
     /// How many times a window has written `copy`, which is how the newest of a tab's copies on
     /// its machines is told apart.
     pub layout_generation: u64,
@@ -311,6 +314,24 @@ impl CopyNode {
                 ratio: *ratio,
                 first: Box::new(CopyNode::of(first)),
                 second: Box::new(CopyNode::of(second)),
+            },
+        }
+    }
+
+    /// This tree with only this machine's panes in it, each split holding another machine's
+    /// panes alone giving way to its other side. `None` when every pane is another machine's.
+    pub fn own(&self) -> Option<LayoutNode> {
+        match self {
+            CopyNode::Own(pane) => Some(LayoutNode::Pane(pane.clone())),
+            CopyNode::Foreign { .. } => None,
+            CopyNode::Split { axis, ratio, first, second } => match (first.own(), second.own()) {
+                (Some(first), Some(second)) => Some(LayoutNode::Split {
+                    axis: *axis,
+                    ratio: *ratio,
+                    first: Box::new(first),
+                    second: Box::new(second),
+                }),
+                (only, None) | (None, only) => only,
             },
         }
     }

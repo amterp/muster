@@ -195,10 +195,21 @@ pub fn tree(text: &str) -> proto::Node {
 
 /// Writes `tab`'s whole tree, as a window that worked it out from generation `based_on` would.
 pub fn set_tree_request(tab: &str, text: &str, generation: u64, based_on: u64) -> Service {
+    set_zoomed_tree_request(tab, text, None, generation, based_on)
+}
+
+/// [`set_tree_request`], with `zoomed` filling the tab.
+pub fn set_zoomed_tree_request(
+    tab: &str,
+    text: &str,
+    zoomed: Option<&str>,
+    generation: u64,
+    based_on: u64,
+) -> Service {
     self::tab(tab_request::Request::SetTree(tab_request::SetTree {
         tab: tab.to_string(),
         root: Some(tree(text)),
-        zoomed: None,
+        zoomed: zoomed.map(str::to_string),
         generation,
         based_on,
     }))

@@ -58,6 +58,18 @@ pub struct Write {
     pub based_on: u64,
 }
 
+/// Whether a tab spans machines: it has a part on more than one, or its one part keeps panes on
+/// another. A tab that does not is its one machine's tree, with nothing to merge and nothing to
+/// write, which is how nearly every tab is, so this is asked before its parts are read.
+pub fn spans<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
+    let mut regions = tab.regions();
+    let Some(first) = regions.next() else { return false };
+    regions.next().is_some()
+        || mirror(&first.daemon)
+            .and_then(|held| held.tab(&tab.id))
+            .is_some_and(|layout| layout.copy.has_foreign())
+}
+
 /// A tab's parts as a window's mirrors hold them, in the order its regions sit, with which
 /// machines have said all they are going to about their panes: connected, and finished
 /// restoring, so a pane they do not hold is one they do not have. `writable` says which machines
@@ -82,7 +94,7 @@ pub fn parts_of<'a>(
         parts.push(Part {
             daemon: region.daemon.clone(),
             copy: layout.copy.clone(),
-            zoomed: layout.zoomed.clone(),
+            zoomed: layout.copy_zoomed.clone(),
             generation: layout.layout_generation,
             holds: held.panes_in_tab(&tab.id).map(|pane| pane.id.clone()).collect(),
             weight: region.weight,
@@ -122,26 +134,33 @@ pub fn merge(parts: &[Part], settled: &BTreeMap<DaemonId, bool>) -> Option<Merge
         parts.iter().find(|part| part.holds.contains(pane)).map(|part| part.daemon.clone())
     };
     let mut tree = pruned(tree, &holder, settled)?;
+    let mut named: BTreeSet<PaneId> =
+        tree.leaves().into_iter().map(|(pane, _)| pane.clone()).collect();
     for part in parts {
         for pane in panes_of(&part.copy) {
-            if part.holds.contains(pane) && !tree.names(pane) {
-                tree = added(tree, pane, part);
+            if part.holds.contains(pane) && !named.contains(pane) {
+                tree = added(tree, pane, part, &named);
+                named.insert(pane.clone());
             }
         }
     }
-    let zoomed = zoomed.filter(|zoomed| tree.names(zoomed));
+    let zoomed = zoomed.filter(|zoomed| named.contains(zoomed));
     let writes =
         if written == 0 { Vec::new() } else { writes(parts, &tree, zoomed.as_ref(), written) };
     Some(Merged { tree, zoomed, writes })
 }
 
-/// The copy a window wrote last, and on a tie the one naming the lowest pane of its own: two
-/// windows merging the same copies start from the same one whatever they call the machines.
+/// The copy a window wrote last, and on a tie the one naming the lowest pane of its own, a part
+/// holding none of its panes yet losing to one that does: two windows merging the same copies
+/// start from the same one whatever they call the machines.
 fn newest(parts: &[Part]) -> (SpanNode, Option<PaneId>) {
     let newest = parts
         .iter()
         .max_by(|one, other| {
-            one.generation.cmp(&other.generation).then_with(|| lowest(other).cmp(&lowest(one)))
+            one.generation.cmp(&other.generation).then_with(|| match (lowest(one), lowest(other)) {
+                (Some(one), Some(other)) => other.cmp(one),
+                (one, other) => one.is_some().cmp(&other.is_some()),
+            })
         })
         .expect("merge is given at least one part");
     (spanned(&newest.copy, &newest.daemon), newest.zoomed.clone())
@@ -214,13 +233,14 @@ fn pruned(
     }
 }
 
-/// `tree` with `pane` where `part`'s copy put it: beside the first pane of its sibling that the
-/// tree names, on the same side and at the same share. Else a column at the right, as wide as
-/// each pane would be if they were all columns.
-fn added(tree: SpanNode, pane: &PaneId, part: &Part) -> SpanNode {
+/// `tree`, whose panes are `named`, with `pane` where `part`'s copy put it: beside the first pane
+/// of its sibling that the tree names, on the same side and at the same share. Else a column at
+/// the right, as wide as each pane would be if they were all columns.
+fn added(tree: SpanNode, pane: &PaneId, part: &Part, named: &BTreeSet<PaneId>) -> SpanNode {
     let leaf = SpanNode::Pane { pane: pane.clone(), daemon: part.daemon.clone() };
     if let Some(beside) = sibling(&part.copy, pane)
-        && let Some(neighbour) = panes_of(beside.sibling).into_iter().find(|near| tree.names(near))
+        && let Some(neighbour) =
+            panes_of(beside.sibling).into_iter().find(|near| named.contains(*near))
     {
         let neighbour = neighbour.clone();
         return tree.replacing(&neighbour, &mut |near| {
@@ -268,6 +288,10 @@ fn sibling<'a>(copy: &'a CopyNode, pane: &PaneId) -> Option<Beside<'a>> {
 /// The copies to send so that every writable part holds `tree`. At the generation already
 /// written when every copy that differs is behind it, so catching up a lagging part does not
 /// rewrite the rest; one above it when a part already at that generation holds something else.
+///
+/// A copy differs by its tree and its zoom, never by what it calls another machine: that name
+/// is only the writing window's (MIP-8, section 1), so two windows naming one machine
+/// differently would otherwise rewrite each other's copies, each a generation above the last.
 fn writes(parts: &[Part], tree: &SpanNode, zoomed: Option<&PaneId>, written: u64) -> Vec<Write> {
     let wanted: Vec<(&Part, CopyNode)> = parts
         .iter()
@@ -275,7 +299,7 @@ fn writes(parts: &[Part], tree: &SpanNode, zoomed: Option<&PaneId>, written: u64
         .map(|part| (part, tree.copy_for(&part.daemon)))
         .collect();
     let differs =
-        |part: &Part, root: &CopyNode| part.copy != *root || part.zoomed.as_ref() != zoomed;
+        |part: &Part, root: &CopyNode| !alike(&part.copy, root) || part.zoomed.as_ref() != zoomed;
     let generation =
         if wanted.iter().any(|(part, root)| differs(part, root) && part.generation >= written) {
             written + 1
@@ -293,6 +317,31 @@ fn writes(parts: &[Part], tree: &SpanNode, zoomed: Option<&PaneId>, written: u64
             based_on: part.generation,
         })
         .collect()
+}
+
+#[expect(clippy::float_cmp, reason = "a ratio a daemon stores comes back as the bits it was sent")]
+fn alike(one: &CopyNode, other: &CopyNode) -> bool {
+    match (one, other) {
+        (CopyNode::Own(one), CopyNode::Own(other))
+        | (CopyNode::Foreign { pane: one, .. }, CopyNode::Foreign { pane: other, .. }) => {
+            one == other
+        }
+        (
+            CopyNode::Split { axis, ratio, first, second },
+            CopyNode::Split {
+                axis: other_axis,
+                ratio: other_ratio,
+                first: other_first,
+                second: other_second,
+            },
+        ) => {
+            axis == other_axis
+                && ratio == other_ratio
+                && alike(first, other_first)
+                && alike(second, other_second)
+        }
+        _ => false,
+    }
 }
 
 fn panes_of(copy: &CopyNode) -> Vec<&PaneId> {
@@ -317,10 +366,6 @@ impl SpanNode {
                 leaves
             }
         }
-    }
-
-    pub fn names(&self, pane: &PaneId) -> bool {
-        self.leaves().iter().any(|(leaf, _)| *leaf == pane)
     }
 
     /// Whether any two leaves are on different machines.

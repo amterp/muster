@@ -482,5 +482,6 @@ fn arrangement_moved(before: &Tab, now: &Tab) -> bool {
         || before.zoomed != now.zoomed
         || before.hidden != now.hidden
         || before.copy != now.copy
+        || before.copy_zoomed != now.copy_zoomed
         || before.layout_generation != now.layout_generation
 }

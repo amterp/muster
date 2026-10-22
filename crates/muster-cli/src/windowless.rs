@@ -1025,16 +1025,24 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
     window.layouts = snapshot
         .tabs
         .iter()
-        .map(|tab| (tab, tab.root.as_ref().and_then(own_panes)))
-        .map(|(tab, own)| muster_proto::TabLayout {
+        .map(|tab| {
+            let own = tab.root.as_ref().and_then(own_panes);
+            // A zoom on another machine's pane fills nothing here, as in a window's region.
+            let zoomed = tab
+                .zoomed
+                .clone()
+                .filter(|zoomed| own.as_ref().is_some_and(|own| names(own, zoomed)));
+            (tab, own, zoomed)
+        })
+        .map(|(tab, own, zoomed)| muster_proto::TabLayout {
             tab_id: tab.tab.clone(),
             regions: vec![muster_proto::ViewRegion {
                 daemon_id: machine.clone(),
                 tab_id: tab.tab.clone(),
-                pane_id: tab.zoomed.clone().unwrap_or_default(),
+                zoomed: zoomed.is_some(),
+                pane_id: zoomed.unwrap_or_default(),
                 weight: 1.0,
                 root: own.as_ref().and_then(view_node),
-                zoomed: tab.zoomed.is_some(),
                 ..muster_proto::ViewRegion::default()
             }],
             places: own
@@ -1089,6 +1097,16 @@ fn own_panes(node: &daemon_proto::Node) -> Option<daemon_proto::Node> {
                 (only, None) | (None, only) => only,
             }
         }
+    }
+}
+
+fn names(node: &daemon_proto::Node, pane: &str) -> bool {
+    match &node.node {
+        Some(daemon_proto::node::Node::Pane(leaf)) => leaf == pane,
+        Some(daemon_proto::node::Node::Split(split)) => {
+            [&split.first, &split.second].into_iter().flatten().any(|child| names(child, pane))
+        }
+        Some(daemon_proto::node::Node::Foreign(_)) | None => false,
     }
 }
 

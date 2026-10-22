@@ -6184,6 +6184,81 @@
           "r1 tab=t1 x"
         ]
       }
+    },
+    {
+      "name": "a tab on one machine publishes no tree beside its region",
+      "why": "Nearly every tab is on one machine, and its one region already carries its whole tree, so merging copies for it would be work on every view built that returns the tree it started from. The view publishes a tab's one tree only for a tab that spans machines (MIP-8).",
+      "given": {
+        "tree": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": {
+                  "axis": "rows",
+                  "ratio": 0.5,
+                  "first": "a",
+                  "second": "b"
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "a",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "b",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "t1"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "laptop",
+            "socketPath": "/tmp/daemon-laptop.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "laptop",
+            "tab": "t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "laptop",
+            "world": "laptop"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "laptop local=/tmp/daemon-laptop.sock"
+        ],
+        "focusedPane": "a",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=laptop tab=t1 pane=a"
+        ],
+        "showing": [
+          "laptop/a",
+          "laptop/b"
+        ],
+        "showingTab": "t1",
+        "tree": null,
+        "view": [
+          "r0 tab=t1 rows(a, b@0.5)"
+        ]
+      }
     }
   ]
 }

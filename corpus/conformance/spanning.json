@@ -117,7 +117,7 @@
     },
     {
       "name": "the machine holding a pane names it, whatever the copy called that machine",
-      "why": "The name in a foreign leaf is the one the writing window's config gives the machine, and another window may call the devenv `work`. The window finds a leaf's machine by asking which attached machine holds the pane, and uses the name only when none does. The laptop's copy is then rewritten under this window's name.",
+      "why": "The name in a foreign leaf is the one the writing window's config gives the machine, and another window may call the devenv `work`. The window finds a leaf's machine by asking which attached machine holds the pane, and uses the name only when none does. Both copies then hold the same tree, and nothing is written: writing this window's name back would have the other window write its own back in turn, each a generation higher, for as long as both are open.",
       "given": {
         "parts": [
           { "daemon": "laptop", "copy": "[a|~x@work 0.50]", "generation": 1, "holds": ["a"] },
@@ -128,7 +128,7 @@
       "expect": {
         "tree": "columns(a@laptop, x@devenv@0.5)",
         "zoomed": null,
-        "writes": ["laptop 2<-1 columns(a, ~x@devenv@0.5)", "devenv 2<-1 columns(~a@laptop, x@0.5)"]
+        "writes": []
       }
     },
     {
@@ -179,6 +179,38 @@
         "tree": "a@laptop",
         "zoomed": null,
         "writes": ["laptop 2<-1 a"]
+      }
+    },
+    {
+      "name": "a zoom on another machine's pane is every copy's, and copies agreeing on it are left alone",
+      "why": "The tab is zoomed on x, the devenv's pane, and both copies say so: the zoom is part of the tree, so the laptop keeps it too though it does not run x. Every copy already holds the merged tree and its zoom, so nothing is written. A window that read the laptop's copy as unzoomed would find it differing from the merge on every pass and write it again each time, a generation higher.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "zoomed": "x", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "zoomed": "x", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "zoomed": "x",
+        "writes": []
+      }
+    },
+    {
+      "name": "on a tie, a copy whose machine holds none of its panes yet does not win",
+      "why": "Both copies are at one generation, and the devenv, still restoring, has not said it holds x yet. A part holding none of its panes has no lowest pane to break the tie on, and it loses to one that has: otherwise every window would start from a copy chosen by which machine happened to be slow, and the laptop's 0.5 would give way to the devenv's 0.7.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.70]", "generation": 1, "holds": [], "writable": false }
+        ],
+        "settled": { "laptop": true, "devenv": false }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "zoomed": null,
+        "writes": []
       }
     }
   ]
