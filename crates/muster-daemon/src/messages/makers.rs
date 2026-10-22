@@ -115,6 +115,10 @@ struct Watch {
     /// waiting on its own work, through any dialog, to the look that sees it idle.
     worked_since_ms: Option<u64>,
     at_work: bool,
+    /// When a look first saw it at a dialog while it was not at work: where its stretch began if
+    /// it goes to work next, which a look the load delayed can see after the dialog. One that
+    /// goes idle next was a dialog at its idle prompt, a folder's trust or a picker, and no work.
+    dialog_since_ms: Option<u64>,
     /// What it needs, and since when.
     need: Option<(Need, u64)>,
     told: bool,
@@ -191,16 +195,21 @@ impl Makers {
             });
             match helper.activity {
                 Some(Activity::Working) if helper.chores_turn => {}
-                // At a dialog is in a turn too: a look the load delayed can see the dialog first,
-                // and the stretch must not begin after a report the helper posted from it.
-                Some(Activity::Working | Activity::Waiting | Activity::Blocked) => {
+                Some(Activity::Working | Activity::Waiting) => {
                     if !watch.at_work {
-                        watch.worked_since_ms = Some(now_ms);
+                        watch.worked_since_ms = Some(watch.dialog_since_ms.unwrap_or(now_ms));
                     }
                     watch.at_work = true;
+                    watch.dialog_since_ms = None;
                 }
-                Some(Activity::Idle) => watch.at_work = false,
-                Some(Activity::Stuck) | None => {}
+                Some(Activity::Blocked) if !watch.at_work => {
+                    watch.dialog_since_ms.get_or_insert(now_ms);
+                }
+                Some(Activity::Idle) => {
+                    watch.at_work = false;
+                    watch.dialog_since_ms = None;
+                }
+                Some(Activity::Blocked | Activity::Stuck) | None => {}
             }
             let need = need(helper, watch.worked_since_ms);
             if watch.need.map(|(was, _)| was) != need {
@@ -681,6 +690,18 @@ mod tests {
         let reported = Helper { last_post_ms: Some(12_000), ..maple(Activity::Idle) };
         assert!(makers.judge(std::slice::from_ref(&reported), &called, 14_000).is_empty());
         assert!(makers.judge(&[reported], &called, 30_000).is_empty());
+    }
+
+    /// A dialog at an idle prompt, a folder's trust or a picker, is no work: the helper going idle
+    /// after it is not told as having stopped without posting.
+    #[test]
+    fn a_dialog_at_an_idle_prompt_is_no_stretch_of_work() {
+        let mut makers = makers();
+        let called = called();
+        makers.judge(&[maple(Activity::Idle)], &called, 0);
+        makers.judge(&[maple(Activity::Blocked)], &called, 1_000);
+        makers.judge(&[maple(Activity::Idle)], &called, 5_000);
+        assert!(makers.judge(&[maple(Activity::Idle)], &called, 15_500).is_empty());
     }
 
     /// A helper whose program stopped reading is told of, with the stall watch's reason.
