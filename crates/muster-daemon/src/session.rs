@@ -4124,7 +4124,7 @@ fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> Kept 
     if pane.record.facts.as_ref().is_some_and(|facts| facts.waiting_until_exits.is_some()) {
         return Kept::OnProcess;
     }
-    let typed = pane.io.typed_just_now(std::time::Instant::now());
+    let typed = pane.io.prompted_by(std::time::Instant::now());
     if typed.is_some_and(TypedBy::is_musters) { Kept::ThroughPrompt } else { Kept::No }
 }
 

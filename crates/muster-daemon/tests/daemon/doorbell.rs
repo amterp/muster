@@ -943,8 +943,20 @@ fn a_quiet_session_with_its_id_reported_is_woken_by_its_command_from_the_post() 
 
 /// A wait the agent declared outlasts the turn a wake handed over by command starts, as it does
 /// one typed: Codex's prompt hook says no wait for a queued turn too, and nothing was typed.
+/// Here the hook reports the turn before the screen shows it.
 #[test]
 fn a_declared_wait_outlasts_a_turn_its_wake_command_started() {
+    declared_wait_through_a_command_wake(false);
+}
+
+/// The same with the screen first: the fake's wake command puts it to work, and the pane reads
+/// working before the prompt hook reports, as a loaded machine or a quick Codex orders them.
+#[test]
+fn a_declared_wait_outlasts_a_command_wakes_turn_the_screen_shows_first() {
+    declared_wait_through_a_command_wake(true);
+}
+
+fn declared_wait_through_a_command_wake(screen_first: bool) {
     let mut agent = Agent::in_a_pane();
     agent.reports_session("019a-s1");
     let report = |state: Option<proto::AgentState>, waiting: &str| {
@@ -968,6 +980,9 @@ fn a_declared_wait_outlasts_a_turn_its_wake_command_started() {
 
     agent.post("p1", "a brief");
     until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    if screen_first {
+        agent.daemon.until_agent("p1", proto::AgentState::Working);
+    }
     expect(&mut agent.control, report(Some(proto::AgentState::Working), ""), proto::Outcome::Done);
     expect(&mut agent.control, report(Some(proto::AgentState::Idle), ""), proto::Outcome::Done);
     assert_eq!(waiting_on(&mut agent).as_deref(), Some("the full gate"));

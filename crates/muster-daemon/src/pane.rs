@@ -207,6 +207,8 @@ struct Typed {
     /// Who typed what started the agent's current turn, as it started; none for a turn nothing
     /// typed started, as a finished background task starts one in Claude Code.
     turn: Option<TypedBy>,
+    /// When that turn started.
+    turn_at: Option<Instant>,
     /// Until when a wake the doorbell handed the harness by command, with nothing typed, may
     /// still start the agent's turn: Codex takes one from `codex queue` up to ten seconds later.
     commanded_until: Option<Instant>,
@@ -403,6 +405,15 @@ impl PaneIo {
         poison::lock(&self.typed, "daemon.pane.typed").commanded_until = Some(until);
     }
 
+    /// Moves the end of a wake handed over by command to `until`, while no turn has taken it and
+    /// nothing has been typed since.
+    pub(crate) fn extend_command_wake(&self, until: Instant) {
+        let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        if let Some(standing) = typed.commanded_until.as_mut() {
+            *standing = until;
+        }
+    }
+
     /// Who typed what a turn starting now started with: the last thing typed, a moment ago, or
     /// the doorbell for a wake it handed over by command since. None when nothing was.
     pub(crate) fn typed_just_now(&self, now: Instant) -> Option<TypedBy> {
@@ -421,8 +432,29 @@ impl PaneIo {
         let by = self.typed_just_now(now);
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
         typed.turn = by;
+        typed.turn_at = Some(now);
         typed.commanded_until = None;
         by
+    }
+
+    /// Who gave the prompt an agent's hook reports now: the turn it starts, if the screen showed
+    /// that turn begin after the last thing typed, and else the last thing typed. A wake handed
+    /// over by command types nothing, and Codex can show its queued turn before its prompt hook
+    /// reports it, so the turn has already taken the wake by then.
+    pub(crate) fn prompted_by(&self, now: Instant) -> Option<TypedBy> {
+        let typed_by = self.typed_just_now(now);
+        let typed = poison::lock(&self.typed, "daemon.pane.typed");
+        let recent =
+            |at: Option<Instant>| at.filter(|at| now.saturating_duration_since(*at) < TYPED_TURN);
+        match recent(typed.turn_at) {
+            Some(turn_at)
+                if typed.commanded_until.is_none()
+                    && recent(typed.prompted).is_none_or(|prompted| prompted <= turn_at) =>
+            {
+                typed.turn
+            }
+            _ => typed_by,
+        }
     }
 
     /// Who typed what started the agent's current turn, or its last one.
@@ -1607,6 +1639,26 @@ mod tests {
         assert_eq!(io.typed_just_now(rung + TYPED_TURN), None, "the pointer kept it open");
         io.wrote_input(soon, true, Some(TypedBy::Someone));
         assert_eq!(io.typed_just_now(soon), Some(TypedBy::Someone));
+    }
+
+    /// A prompt hook reporting a turn the screen already showed begin is that turn's, whatever
+    /// was typed before it: the command wake it took is used up by then.
+    #[test]
+    fn a_prompt_reported_after_its_turn_began_is_that_turns() {
+        let io = PaneIo::idle(1);
+        let launched = Instant::now();
+        io.wrote_input(launched, true, Some(TypedBy::Someone));
+        let handed = launched + Duration::from_secs(2);
+        io.woke_by_command(handed + Duration::from_secs(20));
+        let began = handed + Duration::from_secs(1);
+        assert_eq!(io.turn_started(began), Some(TypedBy::Doorbell));
+        let hooked = began + Duration::from_millis(200);
+        assert_eq!(io.typed_just_now(hooked), Some(TypedBy::Someone), "the launch, before it");
+        assert_eq!(io.prompted_by(hooked), Some(TypedBy::Doorbell));
+
+        let typed = began + Duration::from_secs(1);
+        io.wrote_input(typed, true, Some(TypedBy::Someone));
+        assert_eq!(io.prompted_by(typed), Some(TypedBy::Someone), "typed after the turn began");
     }
 
     /// A wake handed over by command counts as the doorbell's for as long as the doorbell gives
