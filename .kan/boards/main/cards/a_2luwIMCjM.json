@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "q-asks-before",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792628839190,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-18: \"confirm on cmd +q\". At triage on 2026-10-21 he settled the shape: ⌘Q asks, offering both quits, and leaving the agents running is the default that Return picks.\n\n⌘Q is the menu's \"Quit muster, Leaving Sessions Running\" (`Sources/MusterMac/AppMenu.swift`), and it quits without asking. Nothing is lost, since every agent keeps running and every window reopens at the next launch, but a stray ⌘Q costs a relaunch. \"Quit and Close Sessions\" has its own menu item and already asks first, with a sheet that names each machine, its pane count and its directories (`QuitSummary.swift`, a_28YghIUw2).\n\nWanted: ⌘Q opens one question offering:\n- Quit, leaving sessions running: the default button.\n- Quit and close sessions.\n\nThink this through before building, because the owner was unsure what the second option ends. Today it ends every daemon the app is attached to (`session::quitting` in `crates/muster-seam/src/session.rs`): a devenv's too, stopped through its ssh master, and a daemon Muster adopted rather than started, which the sheet warns about. It also forgets every window, so the next launch opens a fresh one. Open: whether the question offers finer choices, such as this machine only or only the daemons Muster started, and whether a setting turns the question off.",
+  "id": "a_2luwIMCjM",
+  "position": "b1F",
+  "title": "⌘Q asks before quitting, with leaving sessions running as the default",
+  "type": "enhancement",
+  "updated_at_millis": 1792628839190,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792628839190}
+  ]
+}
