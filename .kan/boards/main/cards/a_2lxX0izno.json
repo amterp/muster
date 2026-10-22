@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "codex-queue-outlasts",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792635017085,
+  "creator": "Alexander Terp",
+  "description": "Seen in the Mac mini's run log on 2026-10-21: codex queue was still running at the doorbell's 5 s patience 10 times, all on a loaded machine, and each wake was typed instead. None produced a duplicate, but each costs the session its command route after the second time. Consider a longer patience for the command itself, or measuring what codex queue spends its time on under load.",
+  "id": "a_2lxX0izno",
+  "position": "b1W",
+  "title": "codex queue outlasts its 5 s patience on a loaded machine",
+  "type": "enhancement",
+  "updated_at_millis": 1792635017085,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792635017085}
+  ]
+}

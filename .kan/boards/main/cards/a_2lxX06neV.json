@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "messaging-a-pane",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792635016707,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-21 on the Mac mini while running cargo test -p muster-daemon --test daemon messaging:: in a worktree, with the machine loaded (four agent workers building, swap in use). It failed once, then passed alone and in six more parallel runs. The panic message was not captured. Next time: keep the output, and check whether the test waits on wall-clock time that load can stretch.",
+  "id": "a_2lxX06neV",
+  "position": "b1H",
+  "title": "🎲 messaging::a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign failed once in a parallel run",
+  "type": "bug",
+  "updated_at_millis": 1792635016707,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792635016707}
+  ]
+}

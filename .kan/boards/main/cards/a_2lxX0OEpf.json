@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "measure-whether-an",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792635016884,
+  "creator": "Alexander Terp",
+  "description": "From the duplicate-wake fix (24151394, 2026-10-21). One trial, in the shared app-server setup: a message queued 3 s after a turn was ended with Esc was still not taken 60 s later. If an idle Codex without the app-server - the setup on the Mac mini, where ~/.codex/config.toml sets daemon_auto_start = false - behaves the same, a wake to an agent just interrupted with Esc is typed after COMMAND_ANSWER (20 s), and Codex delivers its stored copy as a second wake at the next turn's end. Measure with the stub-model setup in corpus/codex-0.163.0/queue-latency.txt and a stub that holds one request open, so the turn can be interrupted.",
+  "id": "a_2lxX0OEpf",
+  "position": "b1V",
+  "title": "Measure whether an idle Codex without the app-server takes a queued wake after an Esc",
+  "type": "chore",
+  "updated_at_millis": 1792635016884,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792635016884}
+  ]
+}
