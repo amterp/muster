@@ -1,0 +1,48 @@
+How long Codex 0.163.0 takes to start a turn for a message `codex queue` stored, at an idle
+composer.
+
+Recorded 2026-10-21 on macOS 26.4.1 / arm64, codex-cli 0.163.0 (Homebrew cask), in a Muster pane.
+CODEX_HOME was an empty scratch folder per run, with a config.toml naming a model provider at a
+local stub that answers every request with HTTP 400, so each turn ended at once with
+task_complete and none reached a model. A scratch script waited a random 0-20 s at the idle
+composer, ran `codex queue --thread <session id> --message "queue probe <n> <time>"` from another
+process with no CODEX_ or MUSTER_ variables, and read the session's rollout file for the
+task_started that carried that message. The times below are from `codex queue` exiting to that
+task_started.
+
+With `[features] daemon_auto_start = false` in config.toml, so the session runs in its own codex
+process with no shared app-server, which is how every Codex in a Muster pane on this machine runs:
+
+    trial  idle before   queue took   turn started after
+      1       6.5 s        0.04 s          5.28 s
+      2       3.0 s        0.04 s          6.92 s
+      3      13.0 s        0.10 s          6.81 s
+      4       1.4 s        0.07 s          8.42 s
+      5      10.7 s        0.05 s          9.14 s
+      6       7.3 s        0.05 s          2.59 s
+      7       1.2 s        0.05 s          8.72 s
+      8      10.1 s        0.07 s          9.74 s
+      9       0.7 s        0.04 s          9.17 s
+     10       8.7 s        0.04 s          1.22 s
+     11       1.4 s        0.04 s          8.50 s
+     12       1.8 s        0.05 s          8.09 s
+     13       8.5 s        0.05 s          1.41 s
+     14      16.5 s        0.11 s          3.27 s
+     15       2.5 s        0.04 s          7.46 s
+
+Every message was taken, 1.2-9.7 s after it was stored, spread across that range whatever the
+idle time before it; 11 of 15 took longer than 5 s.
+
+With the defaults, where the session joins a shared `codex app-server` that `codex` starts, the
+same 15 trials each started the turn before `codex queue` had exited (0.00-0.01 s earlier).
+
+Once, in that shared mode, a turn was ended with Esc ("Conversation interrupted") and a message
+was queued 3 s later: it was still in queue_1.sqlite's queued_items, not taken, 60 s after. Not
+repeated, and not tried without the app-server.
+
+In Muster's own run log for 2026-10-18 to 2026-10-22, on this machine, 45 wakes went through
+`codex queue` to idle Codex sessions. 23 sessions went to work within 5 s (0.1-4.4 s, by their
+hooks' reports), and the doorbell typed the other 22 into the pane. The Codex transcripts of
+2026-10-20 to 2026-10-22 show 11 of those wakes arriving twice, each the same way: the typed copy
+started a turn, and the stored copy started another as that turn ended, after the agent had read
+the message and answered it (within 50 ms of task_complete in the two that were timed).
