@@ -36,6 +36,13 @@ pub(crate) const DISAGREE: Duration = Duration::from_secs(2);
 /// screen moving; the rules read that screen instead.
 pub(crate) const RESTLESS_SECONDS: usize = 3;
 
+/// How long the screen must sit still before a blocked report the rules have not read counts. A
+/// hook can say a prompt is coming well before it draws, and sometimes when none comes at all:
+/// Claude Code and Codex fire `PermissionRequest` while their turn's spinner goes on, and an
+/// approval nobody is asked for ends it. A prompt waiting on you sits still, and the rules
+/// reading it count the report at once.
+pub(crate) const STILL: Duration = Duration::from_secs(1);
+
 /// How long a report from an agent the pane is not yet known to run waits to be confirmed: a
 /// hook can fire before detection's first probe of a new process.
 pub(crate) const UNCONFIRMED: Duration = Duration::from_secs(2);
@@ -75,6 +82,10 @@ pub struct Drift {
 #[derive(Debug, Default)]
 pub(crate) struct Reporting {
     report: Option<SelfReport>,
+    /// A blocked report the rules have not read, waiting for [`STILL`] before it takes
+    /// `report`'s place; the report before it counts meanwhile, so the pane does not read
+    /// whatever the screen shows in between.
+    pending: Option<SelfReport>,
     last_content_seq: Option<u64>,
     /// When the content count was last taken.
     last_tick: Option<Instant>,
@@ -97,7 +108,13 @@ pub(crate) struct Reporting {
 impl Reporting {
     pub(crate) fn report(&mut self, agent: Agent, state: State, now: Instant) {
         let confirmed = self.reading.is_some_and(|(read, _)| read == state);
-        self.report = Some(SelfReport { agent, state, at: now, confirmed });
+        let report = SelfReport { agent, state, at: now, confirmed };
+        if state == State::Blocked && !confirmed {
+            self.pending = Some(report);
+        } else {
+            self.pending = None;
+            self.report = Some(report);
+        }
     }
 
     /// Takes the pane's content count, each tick while an agent is identified, and when input
@@ -130,6 +147,9 @@ impl Reporting {
         } else {
             self.blocker_since = None;
         }
+        if self.pending.as_ref().is_some_and(|pending| pending.state == state) {
+            self.report = self.pending.take();
+        }
         if let Some(report) = self.report.as_mut().filter(|report| report.state == state) {
             report.confirmed = true;
         }
@@ -157,13 +177,15 @@ impl Reporting {
     /// after [`DISAGREE`] of the rules reading otherwise once they have read it the same way, or
     /// else after [`RESTLESS_SECONDS`] of output running. A working report is set aside, and
     /// counts again after, while the rules have read a prompt on screen for [`DISAGREE`], or
-    /// from the moment it comes if the prompt was on screen already.
+    /// from the moment it comes if the prompt was on screen already. A blocked report the rules
+    /// have not read does not count until the screen has sat still for [`STILL`] since it came.
     pub(crate) fn in_force(
         &mut self,
         agent: Option<&Agent>,
         exited: bool,
         now: Instant,
     ) -> Option<State> {
+        self.settle_pending(now);
         let report = self.report.as_ref()?;
         let confirmed = agent == Some(&report.agent);
         let quiet_since = self.last_output_at.map_or(report.at, |at| at.max(report.at));
@@ -188,6 +210,18 @@ impl Reporting {
             return None;
         }
         confirmed.then_some(report.state)
+    }
+
+    /// Lets a pending blocked report count once the screen has sat still for [`STILL`] since it
+    /// came, or drops it once output has run as long as would end it counting.
+    fn settle_pending(&mut self, now: Instant) {
+        let Some(pending) = &self.pending else { return };
+        let quiet_since = self.last_output_at.map_or(pending.at, |at| at.max(pending.at));
+        if now.duration_since(quiet_since) >= STILL {
+            self.report = self.pending.take();
+        } else if self.restless_since(pending.at, now) {
+            self.pending = None;
+        }
     }
 
     /// Since when every screen the rules read came to idle.

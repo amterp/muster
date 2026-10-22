@@ -297,7 +297,8 @@ impl Detector {
     }
 
     /// What the agent says about its own state, which outranks the screen rules while it counts
-    /// ([`reporting`]). Published at the next tick.
+    /// ([`reporting`]). Published at the next tick, but for a blocked report the rules do not
+    /// read yet, which waits for the screen to sit still ([`reporting::STILL`]).
     pub fn report(&mut self, agent: Agent, state: State, now: Instant) {
         self.reporting.report(agent, state, now);
     }

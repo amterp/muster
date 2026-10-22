@@ -898,7 +898,7 @@ fn an_agents_own_report_outranks_the_rules() {
     run.report(State::Working);
     assert_eq!(run.tick(), Some(reported(State::Working)));
     run.report(State::Blocked);
-    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    assert_eq!(run.run_for(reporting::STILL, None), [reported(State::Blocked)]);
     run.report(State::Idle);
     assert_eq!(run.tick(), Some(reported(State::Idle)));
 }
@@ -937,9 +937,66 @@ fn a_blocked_or_idle_report_holds_however_still_the_screen() {
     run.until_published(Duration::from_secs(2));
     for state in [State::Blocked, State::Idle] {
         run.report(state);
-        assert_eq!(run.tick(), Some(reported(state)));
+        let published = run.until_published(reporting::STILL + Duration::from_secs(1));
+        assert_eq!(published.map(|(_, publication)| publication), Some(reported(state)));
         assert_eq!(run.run_for(Duration::from_secs(30), None), []);
     }
+}
+
+/// A hook can say blocked while the turn's spinner goes on: Claude Code and Codex fire
+/// `PermissionRequest` before their prompt draws, and for an approval nobody is asked for. The
+/// report the turn made before stands, and the blocked one never counts while the screen moves.
+#[test]
+fn a_blocked_report_the_screen_has_not_shown_waits_while_the_screen_moves() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Working);
+    assert_eq!(run.tick(), Some(reported(State::Working)));
+
+    run.report(State::Blocked);
+    let running = run.run_for(Duration::from_secs(10), Some("busy"));
+    assert_eq!(running, [], "the pane read otherwise while its turn went on");
+    let still = run.run_for(Duration::from_secs(5), None);
+    assert!(
+        still.iter().all(|publication| publication.state != State::Blocked),
+        "a report output had run past counted once the screen stopped: {still:?}"
+    );
+}
+
+/// A prompt the rules cannot read sits still: the blocked report counts once the screen has
+/// for [`reporting::STILL`], and not before.
+#[test]
+fn a_blocked_report_counts_once_the_screen_sits_still() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Working);
+    run.tick();
+
+    run.report(State::Blocked);
+    run.run_for(Duration::from_millis(600), Some("busy"));
+    let (after, publication) =
+        run.until_published(Duration::from_secs(3)).expect("the report counted");
+    assert_eq!(publication, reported(State::Blocked));
+    assert!(after >= reporting::STILL, "counted after {after:?} of a still screen");
+}
+
+/// A blocked report the rules read too counts at once, however much else moves.
+#[test]
+fn a_blocked_report_the_rules_read_counts_at_once() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.run_for(Duration::from_secs(2), Some("busy"));
+    run.paint("allow? busy");
+    run.tick();
+    run.report(State::Blocked);
+    assert_eq!(run.tick(), Some(reported(State::Blocked)));
 }
 
 /// A permission prompt approved: nothing reports until the tool finishes, and the tool can run
@@ -1113,7 +1170,8 @@ fn an_unconfirmed_report_lapses_on_output_in_every_second_and_not_less() {
         run.paint("nothing a rule knows");
         run.until_published(Duration::from_secs(2));
         run.report(State::Blocked);
-        assert_eq!(run.tick(), Some(reported(State::Blocked)));
+        let counted = run.until_published(reporting::STILL + Duration::from_secs(1));
+        assert_eq!(counted.map(|(_, publication)| publication), Some(reported(State::Blocked)));
         let start = run.now;
         let mut painted = start;
         let mut frame = 0;

@@ -793,6 +793,13 @@ reader, which gives it to detection at once, and it counts until one of these:
   can run for minutes with the screen moving, and a background task keeps it moving after an idle
   report; either way the rules read that screen instead.
 
+A blocked report the rules are not reading as blocked when it comes does not count at once: the
+report before it goes on counting until the screen has sat still for a second, or the rules read
+the prompt, whichever comes first. Claude Code and Codex fire `PermissionRequest` while their
+turn's spinner still runs, before the prompt draws, and for an approval nobody is asked for,
+where no prompt draws at all. Counted at once, each read blocked for up to three seconds: long
+enough for `pane wait --until blocked` to answer, and for a key sent then to be lost.
+
 While a report counts, its state is published as it stands, with no startup grace and no idle
 debounce, and the pane's record says `state_reported`. The rules still read the screen underneath,
 and take over the moment the report stops counting. herdr arbitrated hooks too; nothing of its

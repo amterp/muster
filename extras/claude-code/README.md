@@ -41,7 +41,9 @@ on reporting working while another's prompt waits on you. Waiting on you or idle
 Muster's screen rules, having read it the same way, read something else for two seconds: Esc or
 No at a permission prompt fires no hook either. If the rules never read it that way, it is let go
 once the screen has moved for three seconds running: an approved tool fires no hook until it
-finishes, and a background task can keep the screen busy after `Stop`. `SubagentStart` and `SubagentStop`
+finishes, and a background task can keep the screen busy after `Stop`. Waiting on you that the
+rules do not read yet counts only once the screen has sat still for a second: `PermissionRequest`
+fires while the spinner still runs, before its prompt draws or when none will. `SubagentStart` and `SubagentStop`
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs. `SessionStart` also reports the session's id, however the session started, which is
 what lets the pane come back running this session after a daemon restart or a reboot
