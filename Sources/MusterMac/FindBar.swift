@@ -229,6 +229,16 @@ public final class FindBar {
   /// A short needle waiting out the debounce, cancelled by whatever is typed next.
   private var waiting: Task<Void, Never>?
 
+  /// How the bar puts the keyboard in its field: AppKit's own, except in a test.
+  ///
+  /// A text field taking the keyboard in a real window starts the input method, whose remote
+  /// view answers off the main thread, and the exception that raises takes a whole test process
+  /// down (kan a_2YAdjxmgM). So a test is told which view the bar asked for and gives the
+  /// keyboard to something that is not a text field.
+  var makeFirstResponder: @MainActor (NSWindow, NSView) -> Void = { window, view in
+    window.makeFirstResponder(view)
+  }
+
   public init() {}
 
   /// What asking to find means: the bar over this pane with the keyboard in its field, or, if
@@ -325,7 +335,7 @@ public final class FindBar {
         ])
       return
     }
-    window.makeFirstResponder(field)
+    makeFirstResponder(window, field)
   }
 
   private static func field(in view: NSView) -> NSTextField? {

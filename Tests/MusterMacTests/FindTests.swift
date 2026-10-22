@@ -31,6 +31,37 @@ private func windowed(_ surface: RecordingSurface) -> (NSWindow, PaneChrome) {
   return (window, pane)
 }
 
+/// The views a find bar asked to give the keyboard to.
+@MainActor
+private final class KeyboardRequests {
+  var views: [NSView] = []
+}
+
+/// A view that takes the keyboard and is not a text field.
+private final class KeyboardStandIn: NSView {
+  override var acceptsFirstResponder: Bool { true }
+}
+
+/// A find bar whose field never takes the keyboard itself.
+///
+/// A text field taking the keyboard in a real window starts the input method, whose remote view
+/// answers off the main thread, and the exception that raises takes the whole test process down
+/// (kan a_2YAdjxmgM). So the view the bar asks for is recorded, and a plain view inside it takes
+/// the keyboard in its place: the bar still holds the keyboard, and closing still has it to give
+/// back.
+@MainActor
+private func keyboardTaking() -> (FindBar, KeyboardRequests) {
+  let bar = FindBar()
+  let requests = KeyboardRequests()
+  bar.makeFirstResponder = { window, view in
+    requests.views.append(view)
+    let standIn = KeyboardStandIn(frame: .zero)
+    view.addSubview(standIn)
+    window.makeFirstResponder(standIn)
+  }
+  return (bar, requests)
+}
+
 @Suite("find")
 struct FindTests {
   @MainActor
@@ -248,16 +279,22 @@ struct FindTests {
 
   // Where the keyboard lands. Typing after cmd+f goes to the field, and closing the bar gives it
   // back to the pane - never to the pane while the bar is up, and never to nothing at all.
+  //
+  // Asked through `keyboardTaking`, which never lets the field itself take the keyboard. That the
+  // field selects the last needle when it does is a real window's question, in SurfaceGUITests.
 
   @MainActor
   @Test("asking to find puts the keyboard in the bar's field")
   func findTakesTheKeyboard() {
     let (window, pane) = windowed(RecordingSurface())
-    let bar = FindBar()
+    let (bar, asked) = keyboardTaking()
 
     bar.toggle(over: pane)
 
     #expect(bar.isShown)
+    #expect(asked.views.count == 1)
+    #expect(asked.views.first is NSTextField, "the bar asked for \(asked.views)")
+    #expect(asked.views.first?.isDescendant(of: pane) == true)
     #expect(
       bar.holdsKeyboard, "the keyboard stayed with \(String(describing: window.firstResponder))")
   }
@@ -267,7 +304,7 @@ struct FindTests {
   func findAgainCloses() {
     let surface = RecordingSurface()
     let (window, pane) = windowed(surface)
-    let bar = FindBar()
+    let (bar, _) = keyboardTaking()
     bar.toggle(over: pane)
     bar.typed("error")
 
@@ -284,7 +321,7 @@ struct FindTests {
     // What escape and the close button both do. A bar taken down with the keyboard in it
     // leaves the window itself as first responder, where typing goes nowhere.
     let (window, pane) = windowed(RecordingSurface())
-    let bar = FindBar()
+    let (bar, _) = keyboardTaking()
     bar.toggle(over: pane)
 
     bar.close()
@@ -299,7 +336,7 @@ struct FindTests {
     let (window, pane) = windowed(RecordingSurface())
     let other = chrome(RecordingSurface())
     window.contentView?.addSubview(other)
-    let bar = FindBar()
+    let (bar, _) = keyboardTaking()
     bar.toggle(over: pane)
     window.makeFirstResponder(other.surface)
 
@@ -309,22 +346,20 @@ struct FindTests {
   }
 
   @MainActor
-  @Test("reopening puts the keyboard in the field again, with the last needle selected")
+  @Test("reopening puts the keyboard in the field again")
   func reopeningTakesTheKeyboardAgain() {
     // The first open and every later one take different paths through SwiftUI, and the later
-    // ones were where the keyboard stayed in the pane. Selected, so typing replaces the needle.
-    let (window, pane) = windowed(RecordingSurface())
-    let bar = FindBar()
+    // ones were where the keyboard stayed in the pane.
+    let (_, pane) = windowed(RecordingSurface())
+    let (bar, asked) = keyboardTaking()
     bar.toggle(over: pane)
-    bar.state.needle = "error"
-    bar.toggle(over: pane)
-
     bar.toggle(over: pane)
 
+    bar.toggle(over: pane)
+
+    #expect(asked.views.count == 2)
+    #expect(asked.views.last is NSTextField, "the bar asked for \(asked.views)")
     #expect(bar.holdsKeyboard)
-    let editor = window.firstResponder as? NSText
-    #expect(editor?.string == "error")
-    #expect(editor?.selectedRange == NSRange(location: 0, length: 5))
   }
 
   @MainActor
@@ -333,7 +368,7 @@ struct FindTests {
     let (window, first) = windowed(RecordingSurface())
     let second = chrome(RecordingSurface())
     window.contentView?.addSubview(second)
-    let bar = FindBar()
+    let (bar, asked) = keyboardTaking()
     bar.toggle(over: first)
     window.makeFirstResponder(second.surface)
 
@@ -341,8 +376,9 @@ struct FindTests {
 
     #expect(bar.isShown)
     #expect(bar.holdsKeyboard)
-    let field = (window.firstResponder as? NSText)?.delegate as? NSView
-    #expect(field?.isDescendant(of: second) == true, "the field that took it is not over this pane")
+    #expect(
+      asked.views.last?.isDescendant(of: second) == true,
+      "the field that took it is not over this pane")
   }
 
   @MainActor

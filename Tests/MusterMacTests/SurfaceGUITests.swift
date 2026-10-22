@@ -30,6 +30,11 @@ import os
 // alone. A surface configured to consume every one opened no menu in any pane through 0.13.0,
 // with every test of the menu green against a recording.
 //
+// Then the find bar's field, which is not a surface but needs the same session: AppKit selects a
+// text field's contents when it takes the keyboard, and a field taking the keyboard in a real
+// window starts the input method, which crashed the default suite now and then (kan
+// a_2YAdjxmgM).
+//
 // Real surfaces: a real runtime, a real command behind a pty, and a Metal layer on a view. Two
 // runtimes in one process hang, so the tests share one and take turns.
 //
@@ -193,6 +198,35 @@ extension SurfaceGUITests {
       return await polled(within: .milliseconds(250)) { !opened.isEmpty }
     }
     #expect(opened.first == OpenedLink(kind: .hyperlink, url: "https://example.com/muster"))
+  }
+}
+
+extension SurfaceGUITests {
+  /// Selected, so that typing replaces the needle. The find tests in the default suite ask which
+  /// view the bar gives the keyboard to and never let the field take it; this lets it.
+  @MainActor
+  @Test("selects the find bar's last needle when its field takes the keyboard again")
+  func reopeningTheFindBarSelectsTheLastNeedle() {
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    view.attach(RecordingSurface(), typeable: true)
+    let pane = PaneChrome(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surface: view)
+    pane.attach(paneID: "p1w3r07bsd")
+    window.contentView?.addSubview(pane)
+    window.makeFirstResponder(view)
+    let bar = FindBar()
+    bar.toggle(over: pane)
+    bar.state.needle = "error"
+    bar.toggle(over: pane)
+
+    bar.toggle(over: pane)
+
+    #expect(bar.holdsKeyboard)
+    let editor = window.firstResponder as? NSText
+    #expect(editor?.string == "error")
+    #expect(editor?.selectedRange == NSRange(location: 0, length: 5))
   }
 }
 
