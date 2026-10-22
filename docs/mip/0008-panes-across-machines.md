@@ -117,9 +117,12 @@ function beside `composition/view.rs`, and draws the result:
    windows merging the same copies get the same tree whatever their configs call the machines. A
    copy whose machine has not yet said it holds any of its panes loses to one whose machine has.
 2. **Drop leaves whose pane is gone.** A leaf goes when its machine is connected, has finished
-   restoring, and holds no such pane in this tab. A leaf whose machine is unreachable, still
-   restoring, or not attached to this window stays: only the machine running a pane can say it has
-   gone.
+   restoring, is not stopping, and holds no such pane in this tab. A leaf whose machine is
+   unreachable, still restoring, stopping, or not attached to this window stays: only the machine
+   running a pane can say it has gone, and a stopping machine's closes say only that it is
+   stopping (section 7). So does a leaf whose machine holds a part of the tab that the window has
+   not taken into the tab yet: the window hears a machine before it reconciles what it heard, and
+   until then that part's panes are missing from the merge without being gone.
 3. **Add panes the tree lacks.** A pane a machine holds in this tab that the starting copy does
    not name is put where that machine's own copy put it: beside the same neighbor, on the same
    side, at the same ratio. If that neighbor is not in the starting copy, the pane goes in as a
@@ -180,6 +183,9 @@ Protocol minor 7 adds:
   one, called `label` and hidden when `hidden` says so, which today takes the window's `JoinTab`
   intent, sent as a `Placement.NewTab` of the tab's name. It leaves the zoom as it was: `SetTree`
   is the only write that changes it.
+- `Event.stopping`, which a daemon told to stop sends once, before it closes anything. A
+  stopping daemon closes every tab and pane it holds, as it always has, and its next run brings
+  them back; without this event a window cannot tell those closes from panes somebody closed.
 
 The state file gains the generation as a field with a default, but a foreign leaf is a new kind of
 node, which a daemon from before it cannot parse at all: it would move the file aside as damaged
@@ -232,9 +238,11 @@ change.
 
 ### 7. When a machine restarts, hands over, or goes away
 
-- **A daemon restarts.** Its file holds the whole tree, foreign leaves included. It restores its
-  own panes, keeps every leaf's place, and drops the leaves of its own panes that did not come
-  back. What the window says about a restart (`crates/muster-core/src/mirror/restart.rs`) counts
+- **A daemon restarts.** On its way down it says it is stopping and then closes every tab and pane,
+  and the window keeps that machine's leaves in every other part's copy, since the closes are of
+  panes its file holds (section 4). Its file holds the whole tree, foreign leaves included. It
+  restores its own panes, keeps every leaf's place, and drops the leaves of its own panes that did
+  not come back. What the window says about a restart (`crates/muster-core/src/mirror/restart.rs`) counts
   only the daemon's own panes, as now.
 - **A daemon hands over** to a newer one (MIP-3, section 10). The tree is part of the tab record
   the handoff carries, so the tab is the same shape on the other side.
@@ -289,7 +297,9 @@ first write on, the arrangement file stops carrying that tab's weights.
 never writes to it; its panes are placed in the newer parts' copies, wherever somebody puts them,
 and step 3 of the merge puts one the newer copies have never named as a column at the right, which
 is today's arrangement. A pane created on it beside a foreign pane is created with the placements
-it knows, and then placed in the newer copies where it was asked for. Only a daemon somebody runs
+it knows, and then placed in the newer copies where it was asked for. It never says it is
+stopping, so a window takes its closes on the way down at their word and drops its panes from the
+newer copies; they come back as columns at the right once it restarts. Only a daemon somebody runs
 themselves, at a socket named in the config, can be older for long, because Muster installs its
 own build on every machine it reaches over ssh. A tab whose parts are all on such daemons has
 nowhere to keep a spanning tree, so it is arranged as today, and a placement that needs one, such

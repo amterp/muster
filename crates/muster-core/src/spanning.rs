@@ -71,15 +71,22 @@ pub fn spans<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirro
 }
 
 /// A tab's parts as a window's mirrors hold them, in the order its regions sit, with which
-/// machines have said all they are going to about their panes: connected, and finished
-/// restoring, so a pane they do not hold is one they do not have. `writable` says which machines
+/// machines have said all they are going to about their panes: connected, finished restoring,
+/// and not stopping, so a pane they do not hold is one they do not have. A stopping daemon
+/// closes every pane it holds and brings them back on its next run, and a merge that took
+/// those closes at their word would drop the panes from every other machine's copy.
+///
+/// A machine whose mirror holds the tab, where the tab has no region onto it yet, has not
+/// said either: a mirror moves on before the window reconciles what it heard, and its part of
+/// the tab, with the panes it holds there, is not among the parts until then. `writable` says which machines
 /// speak a protocol that holds a spanning tree.
 pub fn parts_of<'a>(
     tab: &MusterTab,
     mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
     writable: impl Fn(&DaemonId) -> bool,
 ) -> (Vec<Part>, BTreeMap<DaemonId, bool>) {
-    let settled = |held: &Mirror| held.health() == Health::Connected && !held.restoring();
+    let settled =
+        |held: &Mirror| held.health() == Health::Connected && !held.restoring() && !held.stopping();
     let mut parts = Vec::new();
     let mut said = BTreeMap::new();
     for region in tab.regions() {
@@ -87,8 +94,10 @@ pub fn parts_of<'a>(
         said.insert(region.daemon.clone(), settled(held));
         let Some(layout) = held.tab(&tab.id) else { continue };
         for foreign in foreign_machines(&layout.copy) {
-            if let Some(other) = mirror(&foreign) {
-                said.insert(foreign, settled(other));
+            if let Some(other) = mirror(&foreign)
+                && !tab.daemons().any(|part| *part == foreign)
+            {
+                said.insert(foreign, settled(other) && other.tab(&tab.id).is_none());
             }
         }
         parts.push(Part {

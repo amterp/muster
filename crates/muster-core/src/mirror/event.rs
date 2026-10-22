@@ -27,6 +27,8 @@ pub enum BackendEvent {
     TabClosed(TabId),
     /// The daemon has finished bringing back its saved tabs, and says what it could not.
     Restored(Restored),
+    /// The daemon is stopping: what it closes from here on it has written down to bring back.
+    Stopping,
     /// A paste the daemon held back, because the pane's program did not ask for bracketed
     /// paste and the text holds a newline, so writing it would run every line as typed. It
     /// is written once somebody confirms it.

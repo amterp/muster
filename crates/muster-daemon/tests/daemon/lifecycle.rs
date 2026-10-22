@@ -33,8 +33,10 @@ fn a_second_daemon_on_a_claimed_socket_leaves_the_first_serving() {
     daemon.connect();
 }
 
+/// Saying it is stopping before the first close, so a client can tell those closes from a tab
+/// or pane somebody closed: what it closes now it has written down to bring back.
 #[test]
-fn stop_closes_every_pane_answers_and_exits() {
+fn stop_says_so_closes_every_pane_answers_and_exits() {
     let mut daemon = daemon();
     let mut control = daemon.connect();
     expect(&mut control, subscribe_request(), proto::Outcome::Done);
@@ -46,7 +48,10 @@ fn stop_closes_every_pane_answers_and_exits() {
         session(session_request::Request::Stop(session_request::Stop {})),
         proto::Outcome::Done,
     );
-    assert_eq!(names(&asked.events), ["tab_closed:t1", "pane_closed:p1", "pane_closed:p2"]);
+    assert_eq!(
+        names(&asked.events),
+        ["stopping", "tab_closed:t1", "pane_closed:p1", "pane_closed:p2"]
+    );
     assert!(daemon.wait_for_exit().success());
     assert!(!daemon.socket_path().exists(), "the daemon removes its socket on the way out");
 }

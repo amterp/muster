@@ -6259,6 +6259,101 @@
           "r0 tab=t1 rows(a, b@0.5)"
         ]
       }
+    },
+    {
+      "name": "a pane on a machine the window has not reconciled yet keeps its place in the tree",
+      "why": "The devenv came back, and its mirror already holds its part of the tab, but the window has not reconciled what it heard: the tab has no region onto the devenv yet. A mirror moves on before the window reconciles, since a window hears a daemon on one thread and reconciles on another. Until it does, the devenv's part and the panes it holds are not among the tab's parts, so nothing says the devenv holds x, and taking the devenv's silence as its word would drop x from the tree and from the laptop's copy (MIP-8, section 2).",
+      "given": {
+        "tree": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": "a",
+                "copy": "[a|~x@devenv 0.50]",
+                "layoutGeneration": 1
+              }
+            ],
+            "panes": [
+              {
+                "id": "a",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "devenv": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": "x",
+                "copy": "[~a@laptop|x 0.50]",
+                "layoutGeneration": 1
+              }
+            ],
+            "panes": [
+              {
+                "id": "x",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "t1"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "laptop",
+            "socketPath": "/tmp/daemon-laptop.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "laptop",
+            "tab": "t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "laptop",
+            "world": "laptop"
+          },
+          {
+            "do": "hear",
+            "daemon": "devenv",
+            "world": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "laptop local=/tmp/daemon-laptop.sock"
+        ],
+        "focusedPane": "a",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=laptop tab=t1 pane=a"
+        ],
+        "showing": [
+          "laptop/a"
+        ],
+        "showingTab": "t1",
+        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "view": [
+          "r0 tab=t1 a"
+        ]
+      }
     }
   ]
 }

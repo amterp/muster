@@ -1257,8 +1257,16 @@ message Event {
     // means nothing waits there any more. A window takes it only from a daemon on its own
     // machine, the human's home (MIP-4, sections 10 and 11).
     MsgAnswer.Notice human_notice = 21;
+    // Since 1.7.
+    Stopping stopping = 22;
   }
 }
+
+// This daemon is stopping, sent once before it closes anything. Every tab and pane it closes
+// from here on is one it has written down for its next run to bring back, not one that is
+// gone, so a client keeps what it holds about them that outlives a daemon: a window keeps this
+// daemon's panes in the trees other machines hold of a tab spanning machines (MIP-8).
+message Stopping {}
 
 // This daemon has handed every pane to a new one, which serves the same socket, and is about
 // to exit: the connection ends next. A client connects again and finds a new `instance`, so

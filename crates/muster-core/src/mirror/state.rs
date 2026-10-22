@@ -38,6 +38,8 @@ pub struct Mirror {
     progress: BTreeMap<PaneId, Progress>,
     /// The daemon is still bringing back its saved tabs.
     restoring: bool,
+    /// The daemon said it is stopping, so the tabs and panes it closes since are coming back.
+    stopping: bool,
     /// What waits for the human, by group, as the daemon last said.
     human: BTreeMap<String, HumanNotice>,
     health: Health,
@@ -80,6 +82,7 @@ impl Mirror {
         self.instance = Some(snapshot.instance);
         let restored_from_file = snapshot.restored_from_file;
         self.restoring = snapshot.restoring;
+        self.stopping = false;
         self.health = Health::Connected;
         self.health_detail.clear();
 
@@ -214,6 +217,10 @@ impl Mirror {
                 }
                 changes
             }
+            BackendEvent::Stopping => {
+                self.stopping = true;
+                Vec::new()
+            }
             BackendEvent::PasteHeld { pane, text } => vec![Change::PasteHeld { pane, text }],
             BackendEvent::ClipboardWrite { pane, text } => {
                 vec![Change::ClipboardWrite { pane, text }]
@@ -345,6 +352,12 @@ impl Mirror {
     /// not yet mean it is empty.
     pub fn restoring(&self) -> bool {
         self.restoring
+    }
+
+    /// Whether the daemon has said it is stopping. What it closes since is written down for its
+    /// next run rather than gone, so its holding nothing says nothing about what it will hold.
+    pub fn stopping(&self) -> bool {
+        self.stopping
     }
 
     pub fn pane(&self, id: &PaneId) -> Option<&Pane> {

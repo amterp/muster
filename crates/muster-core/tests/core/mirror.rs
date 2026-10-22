@@ -49,6 +49,8 @@ fn mirror_conformance() {
             ("layouts", Some(layouts(&mirror))),
             ("health", Some(json!(mirror.health().as_str()))),
             ("restoring", Some(json!(mirror.restoring()))),
+            // Only once a daemon has said it, so every other case says it has not.
+            ("stopping", mirror.stopping().then_some(Value::Bool(true))),
             ("progress", progress(&mirror)),
             ("human", human(&mirror)),
             ("changes", Some(json!(changes.iter().map(describe).collect::<Vec<_>>()))),
@@ -210,6 +212,7 @@ fn read_event(given: &Value) -> BackendEvent {
         "tabOpened" => BackendEvent::TabOpened(read_tab(given)),
         "tabChanged" => BackendEvent::TabChanged(read_tab(given)),
         "tabClosed" => BackendEvent::TabClosed(TabId::new(text(given, "id"))),
+        "stopping" => BackendEvent::Stopping,
         "restored" => BackendEvent::Restored(Restored {
             lost_tabs: names("lostTabs").into_iter().map(TabId::new).collect(),
             lost_panes: names("lostPanes").into_iter().map(PaneId::new).collect(),

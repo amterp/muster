@@ -2585,6 +2585,107 @@
           "agentDescribed:p1"
         ]
       }
+    },
+    {
+      "name": "a daemon that says it is stopping is known to be, through the closes that follow",
+      "why": "A stopping daemon closes every tab and pane it holds, and brings them back on its next run. It says so first, and the mirror keeps that it did: a window merging a tab spanning machines must not take those closes as the daemon's word that its panes have gone, or it drops them from every other machine's copy of the tab (MIP-8).",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "stopping"
+          },
+          {
+            "kind": "tabClosed",
+            "id": "t1"
+          },
+          {
+            "kind": "paneClosed",
+            "id": "p1"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "paneTabs": {},
+        "agentStates": {},
+        "layouts": {},
+        "health": "connected",
+        "restoring": false,
+        "stopping": true,
+        "changes": [
+          "tabRemoved:t1",
+          "paneRemoved:p1"
+        ]
+      }
+    },
+    {
+      "name": "the next run of a daemon that stopped is not stopping",
+      "why": "Stopping belongs to the run that said it. A snapshot from the next run, restoring what the last one wrote down, starts a picture in which nothing has said it is stopping.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": "p1"
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "stopping"
+          },
+          {
+            "kind": "tabClosed",
+            "id": "t1"
+          },
+          {
+            "kind": "paneClosed",
+            "id": "p1"
+          }
+        ],
+        "resnapshot": {
+          "tabs": [],
+          "panes": [],
+          "restoring": true,
+          "instance": 2
+        }
+      },
+      "expect": {
+        "panes": [],
+        "tabs": [],
+        "paneTabs": {},
+        "agentStates": {},
+        "layouts": {},
+        "health": "connected",
+        "restoring": true,
+        "changes": [
+          "tabRemoved:t1",
+          "paneRemoved:p1"
+        ]
+      }
     }
   ]
 }

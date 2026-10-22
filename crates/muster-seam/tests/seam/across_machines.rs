@@ -1690,6 +1690,75 @@ fn a_machine_restarted_under_a_tab_spanning_machines_needs_nothing_written_back(
     assert_eq!(spanning_copy(&machines.laptop), Some(("[A|~X@devenv 0.50]".to_string(), 1)));
 }
 
+/// A daemon told to stop closes every pane it holds, saying first that it is stopping, and its
+/// next run brings them back. A change on the laptop while the devenv is on its way down keeps
+/// the devenv's pane in the laptop's copy, because the devenv's closes are not its word that the
+/// pane has gone (MIP-8, section 7).
+///
+/// A pane on the devenv that ignores the hang-up holds the stopping daemon, still connected, for
+/// the grace it gives such a program before killing it. That is the moment a window used to
+/// take the closes at their word and write the laptop's copy without `X`, which a busy machine
+/// reached by chance after the devenv's own tab closed, and this test reaches every time.
+#[test]
+fn a_change_on_one_machine_while_another_stops_keeps_the_stopping_machines_panes() {
+    let _turn = muster::testing::fresh_session();
+    let mut machines =
+        a_tab_spanning_two_machines(&["A"], ("[A|~X@devenv 0.50]", 1), ("[~A@laptop|X 0.50]", 1));
+    let mut on_devenv = machines.devenv.connect();
+    let deaf = daemon_proto::pane_request::Create {
+        command: Some("trap '' HUP; echo deaf; while :; do sleep 1; done".to_string()),
+        ..create("p1deaf0000", in_new_tab("t1deaf0000"))
+    };
+    make(&mut on_devenv, deaf);
+    until(
+        "the devenv's deaf pane to be ignoring the hang-up",
+        || screen(&machines.devenv, "p1deaf0000").contains("deaf"),
+        || format!("it shows {:?}", screen(&machines.devenv, "p1deaf0000")),
+    );
+    expect(
+        &mut on_devenv,
+        muster_harness::requests::session(daemon_proto::session_request::Request::Stop(
+            daemon_proto::session_request::Stop {},
+        )),
+        daemon_proto::Outcome::Done,
+    );
+    let below = muster_harness::requests::beside(SPAN_A, daemon_proto::Side::Down);
+    make(&mut machines.laptop.connect(), create(SPAN_B, below));
+    until(
+        "the window to list the laptop's new pane",
+        || panes_on("laptop").iter().any(|pane| pane == SPAN_B),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert_eq!(
+        spanning_copy(&machines.laptop),
+        Some(("[[A/B 0.50]|~X@devenv 0.50]".to_string(), 1)),
+        "the laptop's copy keeps the stopping devenv's pane, and nothing was written to it"
+    );
+
+    machines.devenv.wait_for_exit();
+    machines.devenv.restart();
+    until(
+        "both copies to hold all three panes at one generation",
+        || {
+            let (laptop, devenv) =
+                (spanning_copy(&machines.laptop), spanning_copy(&machines.devenv));
+            laptop.as_ref().is_some_and(|(tree, _)| tree == "[[A/B 0.50]|~X@devenv 0.50]")
+                && devenv
+                    .as_ref()
+                    .is_some_and(|(tree, _)| tree == "[[~A@laptop/~B@laptop 0.50]|X 0.50]")
+                && laptop.map(|(_, generation)| generation)
+                    == devenv.map(|(_, generation)| generation)
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
+    );
+}
+
 /// A tab grouped across two machines before either kept the whole tree is drawn as it always was,
 /// and nothing is written to it: a part holding a foreign leaf refuses the resize, zoom and swap
 /// a window still sends one machine at a time (MIP-8, "How it lands").

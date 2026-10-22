@@ -1243,6 +1243,7 @@ impl Session {
     pub(crate) fn close_everything(&mut self) {
         if !self.stopping {
             self.persister.stopping(self.persisted());
+            self.emit(Payload::Stopping(proto::Stopping {}));
         }
         self.stopping = true;
         while let Some(tab) = self.tabs.first() {
@@ -1327,7 +1328,10 @@ impl Session {
     fn emit(&mut self, payload: Payload) {
         if !matches!(
             payload,
-            Payload::PaneEffect(_) | Payload::PasteHeld(_) | Payload::HumanNotice(_)
+            Payload::PaneEffect(_)
+                | Payload::PasteHeld(_)
+                | Payload::HumanNotice(_)
+                | Payload::Stopping(_)
         ) {
             self.persister.changed();
         }

@@ -252,6 +252,7 @@ pub fn named(event: &proto::Event) -> String {
         E::Restored(restored) => format!("restored:{}", restored.lost_tabs.join(",")),
         E::Replaced(replaced) => format!("replaced:{}", replaced.daemon_version),
         E::HumanNotice(notice) => format!("human_notice:{}", notice.group),
+        E::Stopping(_) => "stopping".to_string(),
     }
 }
 

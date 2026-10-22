@@ -224,6 +224,17 @@ fn act(
                 })?;
             sizes.adjust(&pane, change);
         }
+        // What a daemon's mirror holds moving on before composition reconciles it, which a
+        // mirror does: a window hears a daemon on one thread and reconciles on another.
+        "hear" => {
+            let name = text(step, "world");
+            if !worlds.contains_key(&name) {
+                return Err(CaseError::new(format!(
+                    "the case hears a world it never named: {name}"
+                )));
+            }
+            current.insert(daemon(step), name);
+        }
         "reconcile" => {
             let name = text(step, "world");
             let world = worlds.get(&name).ok_or_else(|| {

@@ -57,6 +57,7 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         event::Event::TabChanged(changed) => BackendEvent::TabChanged(tab(changed.tab?)?),
         event::Event::TabClosed(closed) => BackendEvent::TabClosed(TabId::new(closed.tab)),
         event::Event::Restored(restored) => BackendEvent::Restored(lost(restored)),
+        event::Event::Stopping(_) => BackendEvent::Stopping,
         event::Event::PasteHeld(held) => {
             BackendEvent::PasteHeld { pane: PaneId::new(held.pane), text: held.text }
         }
