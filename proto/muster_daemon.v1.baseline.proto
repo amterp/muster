@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.6
+// Version: 1.7
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -38,8 +38,9 @@
 // request has taken effect. A client that sees a gap, or whose connection the daemon drops for
 // falling behind, subscribes again.
 //
-// A tab's tree never names a pane the client has not been told about: a pane is opened before
-// any tree holds it, and leaves every tree before it is closed.
+// A tab's tree never names a pane of this daemon's that the client has not been told about: a
+// pane is opened before any tree holds it, and leaves every tree before it is closed. A foreign
+// leaf names a pane on another machine, which this daemon is never told about (MIP-8).
 //
 // ## The daemon's log
 //
@@ -214,6 +215,8 @@ message TabRequest {
     SetSplitRatio set_split_ratio = 3;
     // Since 1.6.
     SetHidden set_hidden = 4;
+    // Since 1.7.
+    SetTree set_tree = 5;
   }
 
   // Closes the tab and every pane in it.
@@ -228,6 +231,8 @@ message TabRequest {
     Label label = 2;
   }
 
+  // REFUSED, since 1.7, in a tab whose tree holds another machine's pane: a window writes that
+  // tab's arrangement whole, with SetTree (MIP-8, section 3). So are Resize, Zoom and Swap.
   message SetSplitRatio {
     string tab = 1;
     // The turns from the tab's root to the split.
@@ -246,6 +251,23 @@ message TabRequest {
     // called what it should be. A generation lower than the tab's is not taken, as `Rename`
     // refuses it, and the tab is hidden or shown regardless.
     Label label = 3;
+  }
+
+  // Replaces a tab's whole tree with one a window worked out over every machine the tab spans
+  // (MIP-8, section 2). REFUSED, with the reason, when `based_on` is below the tab's
+  // `layout_generation` (the window read an older tree), when `generation` is not above
+  // `based_on`, when the tree leaves out one of this daemon's panes in the tab, names a leaf
+  // twice, names as this daemon's a pane it does not hold or holds in another tab, or `zoomed`
+  // names no leaf. ALREADY_SO when the tree, the zoom and the generation are as asked. Since 1.7.
+  message SetTree {
+    string tab = 1;
+    Node root = 2;
+    // The leaf filling the tab, which may be on another machine. Absent: none.
+    optional string zoomed = 3;
+    // The tab's `layout_generation` afterwards.
+    uint64 generation = 4;
+    // The `layout_generation` the window worked the tree out from.
+    uint64 based_on = 5;
   }
 }
 
@@ -367,7 +389,7 @@ message PaneRequest {
   }
 
   // Moves the nearest divider on `direction`'s axis in that direction, preferring one on that
-  // side of the pane.
+  // side of the pane. REFUSED, since 1.7, in a tab spanning machines, as SetSplitRatio is.
   message Resize {
     string pane = 1;
     Side direction = 2;
@@ -375,12 +397,14 @@ message PaneRequest {
     optional float fraction = 3;
   }
 
+  // REFUSED, since 1.7, in a tab spanning machines, as SetSplitRatio is.
   message Zoom {
     string pane = 1;
     bool zoomed = 2;
   }
 
-  // Exchanges two panes' places. Both are in one tab.
+  // Exchanges two panes' places. Both are in one tab. REFUSED, since 1.7, in a tab spanning
+  // machines, as SetSplitRatio is.
   message Swap {
     string pane = 1;
     string with = 2;
@@ -455,6 +479,10 @@ message PaneRequest {
     // (MIP-5, section 7). Needs its agent, and counts only while detection finds that agent in
     // the pane. Empty forgets it.
     optional string session_id = 12;
+    // Since 1.7. The process whose exit ends the wait this report declares
+    // (AgentFacts.waiting_until_exits). Needs a waiting that is not empty, and a process that has
+    // not already exited.
+    optional uint32 waiting_until_exits = 13;
   }
 }
 
@@ -474,6 +502,8 @@ message Placement {
     NewTab new_tab = 2;
     // Since 1.6.
     Helpers helpers = 3;
+    // Since 1.7.
+    InTree in_tree = 4;
   }
 
   message Beside {
@@ -502,6 +532,21 @@ message Placement {
   message Helpers {
     string tab = 1;
     Label label = 2;
+  }
+
+  // In `tab`, at the leaf of `root` that names the pane, with `root` as the tab's whole tree
+  // afterwards: for a pane put somewhere only a window that sees every machine could work out,
+  // such as below a pane on another machine (MIP-8). When this daemon holds no part of the tab,
+  // this makes one, hidden when `hidden` says so and called `label`. `root` must name the pane
+  // as this daemon's and satisfy `SetTree`'s rules, which also decide `based_on`; the tab's
+  // generation becomes `generation`. Since 1.7.
+  message InTree {
+    string tab = 1;
+    Node root = 2;
+    uint64 generation = 3;
+    uint64 based_on = 4;
+    Label label = 5;
+    bool hidden = 6;
   }
 }
 
@@ -1218,8 +1263,16 @@ message Event {
     // means nothing waits there any more. A window takes it only from a daemon on its own
     // machine, the human's home (MIP-4, sections 10 and 11).
     MsgAnswer.Notice human_notice = 21;
+    // Since 1.7.
+    Stopping stopping = 22;
   }
 }
+
+// This daemon is stopping, sent once before it closes anything. Every tab and pane it closes
+// from here on is one it has written down for its next run to bring back, not one that is
+// gone, so a client keeps what it holds about them that outlives a daemon: a window keeps this
+// daemon's panes in the trees other machines hold of a tab spanning machines (MIP-8).
+message Stopping {}
 
 // This daemon has handed every pane to a new one, which serves the same socket, and is about
 // to exit: the connection ends next. A client connects again and finds a new `instance`, so
@@ -1477,6 +1530,10 @@ message AgentFacts {
   // without the agent declaring it again, and sets no finished_unseen while it holds: an agent
   // waiting on its own work has not finished.
   optional string waiting = 6;
+  // Since 1.7. The process whose exit ends that wait: the daemon then clears it and tells the
+  // agent, in a message from @muster, which wakes it. A turn ending does not clear such a wait,
+  // nor does the empty wait a harness's prompt hook reports with its state.
+  optional uint32 waiting_until_exits = 7;
 }
 
 enum AgentState {
@@ -1496,6 +1553,11 @@ message Tab {
   // `TabRequest.SetHidden`; bringing one pane back moves it into a tab that is not. Written to
   // the state file. Since 1.5.
   bool hidden = 5;
+  // How many times a window has written this tab's arrangement since it began spanning machines,
+  // which is how a window tells the newest of a tab's copies on its machines (MIP-8). This daemon's
+  // own changes, its panes coming and going, leave it alone. Zero for a tab no window has written.
+  // Since 1.7.
+  uint64 layout_generation = 6;
 }
 
 // A tab's name, as a person gave it. Every daemon holding part of a grouped tab stores it, and
@@ -1509,7 +1571,17 @@ message Node {
   oneof node {
     string pane = 1;
     Split split = 2;
+    // Since 1.7.
+    Foreign foreign = 3;
   }
+}
+
+// A pane on another machine, in a tab that spans machines: kept in its place, and never run or
+// announced by this daemon. Since 1.7.
+message Foreign {
+  string pane = 1;
+  // The window's name for the machine holding it, which only a window reads.
+  string daemon = 2;
 }
 
 message Split {
