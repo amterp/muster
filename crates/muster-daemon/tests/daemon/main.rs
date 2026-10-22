@@ -32,6 +32,7 @@ mod relay;
 mod restart;
 mod resume;
 mod session_names;
+mod spanning;
 mod ssh_terminfo;
 mod streams;
 mod subscribing;

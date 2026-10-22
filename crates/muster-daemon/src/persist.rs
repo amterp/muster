@@ -21,6 +21,11 @@
 //!   protocol's enums are stored as their numbers, which a renamed value leaves alone; a split's
 //!   axis is stored as a word, and follows the rule for fields.
 //! - Anything else bumps [`VERSION`], and [`load`] goes on reading every earlier version.
+//!   Version 2 is the first that can hold a pane on another machine in a tab's tree (MIP-8),
+//!   which a version-1 daemon's parser cannot read. A file is written at the oldest version
+//!   that holds it ([`version_for`]), so a daemon downgraded before anybody made a tab spanning
+//!   machines still reads its file; one with such a tab refuses a version-2 file and saves
+//!   nothing over it.
 //! - A fixture is frozen once written. A new version gets a fixture of its own, and so does a
 //!   setting added since the last fixture: the tests' `FIXTURES` says which fixture holds which
 //!   setting, and fails until every setting is held by one.
@@ -43,7 +48,12 @@ use crate::session::{Shared, valid_name, valid_ratio};
 use crate::tree::Node;
 
 /// The file's format. A daemon reads every version up to its own and refuses a newer one.
-pub(crate) const VERSION: u32 = 1;
+pub(crate) const VERSION: u32 = 2;
+
+/// The oldest version that holds these tabs: 2 once a tree holds another machine's pane, else 1.
+pub(crate) fn version_for(tabs: &[Tab]) -> u32 {
+    if tabs.iter().any(|tab| tab.root.has_foreign()) { 2 } else { 1 }
+}
 
 /// How long after a change the state is written. Later changes do not push it back, so a pane
 /// retitling itself every second cannot put the write off forever.
@@ -76,6 +86,14 @@ pub(crate) struct Tab {
     /// The maker it was made for, when it was made for a maker's helpers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) helpers_of: Option<String>,
+    /// How many times a window has written this tab's tree (`proto::Tab::layout_generation`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub(crate) layout_generation: u64,
+}
+
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde passes a field by reference")]
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -188,15 +206,31 @@ fn validate(state: &State) -> Result<(), String> {
             return Err(format!("tab {} is recorded twice", tab.name));
         }
         let panes = tab.root.panes();
+        if panes.is_empty() {
+            return Err(format!("tab {} holds none of this daemon's panes", tab.name));
+        }
         for pane in &panes {
             valid_name("pane", pane)?;
             if !placed.insert(pane.to_string()) {
                 return Err(format!("pane {pane} is in two places"));
             }
         }
+        let mut leaves = HashSet::new();
+        for leaf in tab.root.leaves() {
+            valid_name("pane", leaf)?;
+            if !leaves.insert(leaf) {
+                return Err(format!("tab {} names {leaf} twice", tab.name));
+            }
+        }
+        if tab.root.has_foreign() && state.version < 2 {
+            return Err(format!(
+                "tab {} holds another machine's pane, which a version-{} file cannot",
+                tab.name, state.version
+            ));
+        }
         ratios(&tab.root)?;
         if let Some(zoomed) = &tab.zoomed
-            && !tab.root.contains(zoomed)
+            && !tab.root.has_leaf(zoomed)
         {
             return Err(format!("tab {} zooms {zoomed}, which it does not hold", tab.name));
         }
@@ -672,7 +706,7 @@ mod tests {
 
     fn state() -> State {
         State {
-            version: VERSION,
+            version: 1,
             daemon: "test".to_string(),
             settings: proto::Settings {
                 palette: Some(proto::Palette { entries: vec![0x10_20_30], ..Default::default() }),
@@ -690,6 +724,7 @@ mod tests {
                 },
                 hidden: false,
                 helpers_of: None,
+                layout_generation: 0,
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
             released_callsigns: vec!["otter".to_string()],
@@ -721,6 +756,29 @@ mod tests {
             Loaded::State(Box::new(next)),
             "the leftover is written over"
         );
+    }
+
+    #[test]
+    fn a_file_takes_version_2_only_once_a_tab_holds_another_machines_pane() {
+        let mut tabs = state().tabs;
+        assert_eq!(version_for(&tabs), 1, "a daemon from before version 2 can still read it");
+        tabs[0].root = Node::Split {
+            axis: Axis::Columns,
+            ratio: 0.5,
+            first: Box::new(tabs[0].root.clone()),
+            second: Box::new(Node::Foreign { pane: "x".to_string(), daemon: "devenv".to_string() }),
+        };
+        assert_eq!(version_for(&tabs), 2);
+    }
+
+    #[test]
+    fn a_version_1_file_holding_another_machines_pane_is_damaged() {
+        let bytes = std::fs::read(fixture("state-v2-foreign-leaves.json")).unwrap();
+        assert!(matches!(parse(&bytes), Loaded::State(_)));
+        let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        json["version"] = 1.into();
+        let relabelled = serde_json::to_vec(&json).unwrap();
+        assert!(matches!(parse(&relabelled), Loaded::Corrupt(_)));
     }
 
     #[test]
@@ -827,7 +885,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 10] = [
+    const FIXTURES: [(&str, &[&str]); 11] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -843,6 +901,9 @@ mod tests {
         ("state-v1-maker-closed.json", &[]),
         // No setting: the first to hold a tab made for a maker's helpers.
         ("state-v1-helpers-tab.json", &[]),
+        // No setting: version 2, the first to hold a pane on another machine and a tab's layout
+        // generation (MIP-8).
+        ("state-v2-foreign-leaves.json", &[]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -909,6 +970,7 @@ mod tests {
                     root: split(Axis::Columns, 0.3, "p1", "p2"),
                     hidden: false,
                     helpers_of: None,
+                    layout_generation: 0,
                 },
                 Tab {
                     name: "t2".to_string(),
@@ -917,6 +979,7 @@ mod tests {
                     root: split(Axis::Rows, 0.6, "p3", "p4"),
                     hidden: false,
                     helpers_of: None,
+                    layout_generation: 0,
                 },
             ],
             panes: vec![

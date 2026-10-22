@@ -615,7 +615,7 @@ fn tab_holds(tab: &muster_daemon_proto::Tab, pane: &str) -> bool {
                 split.first.as_ref().is_some_and(|first| holds(first, pane))
                     || split.second.as_ref().is_some_and(|second| holds(second, pane))
             }
-            None => false,
+            Some(muster_daemon_proto::node::Node::Foreign(_)) | None => false,
         }
     }
     tab.root.as_ref().is_some_and(|root| holds(root, pane))

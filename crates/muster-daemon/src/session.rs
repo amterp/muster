@@ -476,6 +476,9 @@ struct Tab {
     /// The maker it was made for, when it was made for a maker's helpers, which new helpers of
     /// that maker join ([`Session::helpers_tab`]).
     helpers_of: Option<String>,
+    /// How many times a window has written this tab's tree (`proto::Tab::layout_generation`).
+    /// This daemon's own changes leave it alone.
+    layout_generation: u64,
 }
 
 impl Tab {
@@ -486,6 +489,7 @@ impl Tab {
             root: Some(node_record(&self.root)),
             zoomed: self.zoomed.clone(),
             hidden: self.hidden,
+            layout_generation: self.layout_generation,
         }
     }
 }
@@ -1078,6 +1082,18 @@ enum Target {
         name: String,
         label: proto::Label,
     },
+    /// At its leaf of `root`, a tree a window worked out over every machine the tab spans
+    /// (MIP-8). `makes` when this daemon holds no part of `tab` yet, which `label` and `hidden`
+    /// are for.
+    InTree {
+        tab: String,
+        root: Node,
+        generation: u64,
+        based_on: u64,
+        makes: bool,
+        label: proto::Label,
+        hidden: bool,
+    },
 }
 
 impl Target {
@@ -1085,7 +1101,8 @@ impl Target {
     fn new_tab(&self) -> Option<&str> {
         match self {
             Target::NewTab { name, .. } | Target::Helpers { name, .. } => Some(name),
-            Target::Beside { .. } => None,
+            Target::InTree { tab, makes: true, .. } => Some(tab),
+            Target::Beside { .. } | Target::InTree { .. } => None,
         }
     }
 }
@@ -1138,6 +1155,7 @@ impl Session {
                 T::Rename(rename) => self.rename_tab(rename),
                 T::SetSplitRatio(set) => self.set_split_ratio(&set),
                 T::SetHidden(set) => self.set_tab_hidden(set),
+                T::SetTree(set) => self.set_tree(set),
             },
             Service::Pane(proto::PaneRequest { request: Some(request) }) => match request {
                 P::Create(create) => return self.create(create),
@@ -1369,7 +1387,7 @@ impl Session {
         let target = self.target(create.placement, &create.pane, maker.as_deref())?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
-            Target::NewTab { .. } | Target::Helpers { .. } => None,
+            Target::NewTab { .. } | Target::Helpers { .. } | Target::InTree { .. } => None,
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
@@ -1475,6 +1493,16 @@ impl Session {
             Target::Beside { pane, .. } if self.tab_of(pane).is_none() => Some(Reply::not_there(
                 format!("{pane} closed while the pane beside it was starting"),
             )),
+            Target::InTree { tab, root, generation, based_on, .. } => self
+                .check_tree(tab, root, *generation, *based_on, Some(&starting.pane))
+                .err()
+                .map(|refused| {
+                    Reply::refused(format!(
+                        "the tab changed while the pane was starting, and the tree it was to go \
+                         in no longer fits: {}",
+                        refused.reason
+                    ))
+                }),
             _ => None,
         };
         if let Some(reply) = gone {
@@ -1613,7 +1641,107 @@ impl Session {
                     label: helpers.label.unwrap_or_default(),
                 })
             }
+            proto::placement::Where::InTree(in_tree) => {
+                let root = in_tree
+                    .root
+                    .ok_or_else(|| Reply::refused("the placement carries no tree"))
+                    .and_then(|root| node_from_record(&root).map_err(Reply::refused))?;
+                self.check_tree(
+                    &in_tree.tab,
+                    &root,
+                    in_tree.generation,
+                    in_tree.based_on,
+                    Some(moving),
+                )?;
+                let new_part = self.tab_index(&in_tree.tab).is_none();
+                if new_part {
+                    self.free_tab(&in_tree.tab)?;
+                }
+                Ok(Target::InTree {
+                    tab: in_tree.tab,
+                    root,
+                    generation: in_tree.generation,
+                    based_on: in_tree.based_on,
+                    makes: new_part,
+                    label: in_tree.label.unwrap_or_default(),
+                    hidden: in_tree.hidden,
+                })
+            }
         }
+    }
+
+    /// Refuses a tree a window wrote for `tab` that would lose or invent one of this daemon's
+    /// panes, or was worked out from an older tree than this daemon holds (MIP-8, section 4).
+    /// `joining` is a pane being placed by the same request, which the tree names as this
+    /// daemon's although it is in no tab here yet, or in another one.
+    ///
+    /// The checks on panes are what keep a window's write from undoing this daemon's own
+    /// changes: a pane that opened or closed here after the window read the tree makes the tree
+    /// name one too few or one too many.
+    fn check_tree(
+        &self,
+        tab: &str,
+        root: &Node,
+        generation: u64,
+        based_on: u64,
+        joining: Option<&str>,
+    ) -> Result<(), Reply> {
+        let mut seen = HashSet::new();
+        if let Some(twice) = root.leaves().into_iter().find(|leaf| !seen.insert(*leaf)) {
+            return Err(Reply::refused(format!("the tree names {twice} twice")));
+        }
+        if generation <= based_on {
+            return Err(Reply::refused(format!(
+                "the tree's generation {generation} is not above the {based_on} it was worked \
+                 out from"
+            )));
+        }
+        if let Some(index) = self.tab_index(tab) {
+            let held = &self.tabs[index];
+            if based_on < held.layout_generation {
+                return Err(Reply::refused(format!(
+                    "tab {tab} is at layout generation {}, newer than the {based_on} this tree \
+                     was worked out from; merge again from the newer tree",
+                    held.layout_generation
+                )));
+            }
+            if let Some(left_out) = held.root.panes().into_iter().find(|pane| !root.contains(pane))
+            {
+                return Err(Reply::refused(format!(
+                    "the tree leaves out {left_out}, which this daemon holds in tab {tab}"
+                )));
+            }
+        }
+        for pane in root.panes() {
+            if Some(pane) == joining {
+                continue;
+            }
+            match self.tab_of(pane) {
+                None => {
+                    return Err(Reply::refused(format!(
+                        "the tree names {pane} as this daemon's, and it holds no such pane"
+                    )));
+                }
+                Some(index) if self.tabs[index].name != tab => {
+                    return Err(Reply::refused(format!(
+                        "the tree names {pane}, which this daemon holds in tab {}",
+                        self.tabs[index].name
+                    )));
+                }
+                Some(_) => {}
+            }
+        }
+        if let Some(joining) = joining
+            && !root.contains(joining)
+        {
+            return Err(Reply::refused(format!(
+                "the tree does not name {joining}, the pane it is to place, as this daemon's"
+            )));
+        }
+        if root.panes().is_empty() {
+            return Err(Reply::refused("the tree names none of this daemon's panes"));
+        }
+        Ok(())
     }
 
     /// Refuses a name for a new tab that is not one, or is already here or being made.
@@ -1663,7 +1791,15 @@ impl Session {
             }
             Target::NewTab { name, label, hidden } => {
                 let root = Node::Pane(pane.to_string());
-                let tab = Tab { name, label, root, zoomed: None, hidden, helpers_of: None };
+                let tab = Tab {
+                    name,
+                    label,
+                    root,
+                    zoomed: None,
+                    hidden,
+                    helpers_of: None,
+                    layout_generation: 0,
+                };
                 let record = tab.record();
                 self.tabs.push(tab);
                 self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
@@ -1678,11 +1814,38 @@ impl Session {
                     self.tabs.last_mut().expect("a tab was just made").helpers_of = Some(maker);
                 }
             }
+            Target::InTree { tab: name, root, generation, label, hidden, .. } => {
+                if let Some(index) = self.tab_index(&name) {
+                    let tab = &mut self.tabs[index];
+                    tab.root = root;
+                    tab.layout_generation = generation;
+                    if tab.zoomed.as_ref().is_some_and(|zoomed| !tab.root.has_leaf(zoomed)) {
+                        tab.zoomed = None;
+                    }
+                    let record = tab.record();
+                    self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+                } else {
+                    let tab = Tab {
+                        name,
+                        label,
+                        root,
+                        zoomed: None,
+                        hidden,
+                        helpers_of: None,
+                        layout_generation: generation,
+                    };
+                    let record = tab.record();
+                    self.tabs.push(tab);
+                    self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
+                }
+            }
         }
     }
 
-    /// Takes a pane out of its tab's tree, closing the tab if that emptied it. Returns the
-    /// tab's event, for the caller to emit when its own changes are done.
+    /// Takes a pane out of its tab's tree, closing the tab if that left none of this daemon's
+    /// panes in it: a part holding only other machines' panes has nothing here to run, and their
+    /// own machines keep the tab (MIP-8). Returns the tab's event, for the caller to emit when
+    /// its own changes are done.
     fn lift(&mut self, pane: &str) -> Payload {
         let index = self.tab_of(pane).expect("every pane is in a tab");
         let tab = &mut self.tabs[index];
@@ -1690,7 +1853,9 @@ impl Session {
         if tab.zoomed.as_deref() == Some(pane) {
             tab.zoomed = None;
         }
-        if let Some(rest) = root.without(pane).0 {
+        if let Some(rest) = root.without(pane).0
+            && !rest.panes().is_empty()
+        {
             tab.root = rest;
             return Payload::TabChanged(proto::TabChanged { tab: Some(tab.record()) });
         }
@@ -2348,6 +2513,9 @@ impl Session {
         let Some(index) = self.tab_of(&resize.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", resize.pane));
         };
+        if let Some(refused) = self.spans_machines(index) {
+            return refused;
+        }
         let Some(direction) = side(resize.direction) else {
             return Reply::refused("the direction is not one of left, right, up or down");
         };
@@ -2370,6 +2538,9 @@ impl Session {
         let Some(index) = self.tab_of(&zoom.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", zoom.pane));
         };
+        if let Some(refused) = self.spans_machines(index) {
+            return refused;
+        }
         let tab = &mut self.tabs[index];
         let is_zoomed = tab.zoomed.as_deref() == Some(zoom.pane.as_str());
         if is_zoomed == zoom.zoomed {
@@ -2393,6 +2564,9 @@ impl Session {
         }
         if index != other {
             return Reply::refused("the two panes are in different tabs; move one instead");
+        }
+        if let Some(refused) = self.spans_machines(index) {
+            return refused;
         }
         self.tabs[index].root.swap(&swap.pane, &swap.with);
         let record = self.tabs[index].record();
@@ -2418,6 +2592,13 @@ impl Session {
             Err(reply) => return reply,
         };
         let source_name = self.tabs[source].name.clone();
+        if matches!(&target, Target::InTree { tab, .. } if *tab == source_name) {
+            // The tree already says where the pane goes in the tab it is in, and lifting it
+            // first could close this daemon's part of the tab only to open it again.
+            self.place(&moved.pane, target);
+            log::info("daemon.pane.moved", fields! { "pane" => moved.pane, "from" => source_name });
+            return Reply::done();
+        }
         let staying = matches!(&target, Target::Beside { pane, .. }
             if self.tab_of(pane) == Some(source));
         let source_event = self.lift(&moved.pane);
@@ -2527,6 +2708,9 @@ impl Session {
         let Some(index) = self.tab_index(&set.tab) else {
             return Reply::not_there(format!("no tab {} on this daemon", set.tab));
         };
+        if let Some(refused) = self.spans_machines(index) {
+            return refused;
+        }
         let path: Option<Vec<tree::Branch>> = set.path.iter().map(|&step| branch(step)).collect();
         let Some(path) = path else {
             return Reply::refused("a step in the path is neither first nor second");
@@ -2540,6 +2724,55 @@ impl Session {
             Ok(false) => Reply::already(),
             Err(why) => Reply::refused(why),
         }
+    }
+
+    fn set_tree(&mut self, set: tab_request::SetTree) -> Reply {
+        let Some(index) = self.tab_index(&set.tab) else {
+            return Reply::not_there(format!("no tab {} on this daemon", set.tab));
+        };
+        let root = match set.root.as_ref().map(node_from_record) {
+            Some(Ok(root)) => root,
+            Some(Err(why)) => return Reply::refused(why),
+            None => return Reply::refused("the request carries no tree"),
+        };
+        let held = &self.tabs[index];
+        if held.root == root
+            && held.zoomed == set.zoomed
+            && held.layout_generation == set.generation
+        {
+            return Reply::already();
+        }
+        if let Err(refused) = self.check_tree(&set.tab, &root, set.generation, set.based_on, None) {
+            return refused;
+        }
+        if let Some(zoomed) = &set.zoomed
+            && !root.has_leaf(zoomed)
+        {
+            return Reply::refused(format!(
+                "the tree is zoomed on {zoomed}, which it does not name"
+            ));
+        }
+        let tab = &mut self.tabs[index];
+        tab.root = root;
+        tab.zoomed = set.zoomed;
+        tab.layout_generation = set.generation;
+        let record = tab.record();
+        self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+        Reply::done()
+    }
+
+    /// The refusal for a change to the arrangement of a tab whose tree holds another machine's
+    /// panes. A window writes that tab's tree whole (`SetTree`); a change made here would race
+    /// the window's next write and could be lost to it (MIP-8, section 3).
+    fn spans_machines(&self, index: usize) -> Option<Reply> {
+        let tab = &self.tabs[index];
+        tab.root.has_foreign().then(|| {
+            Reply::refused(format!(
+                "tab {} spans machines, so its arrangement is the window's to write as a whole \
+                 tree; ask the window, which sends it to every machine the tab is on",
+                tab.name
+            ))
+        })
     }
 
     // -----------------------------------------------------------------------------------------
@@ -2940,22 +3173,24 @@ impl Session {
 
     /// What a restart needs of the session now.
     pub(crate) fn persisted(&self) -> persist::State {
+        let tabs: Vec<persist::Tab> = self
+            .tabs
+            .iter()
+            .map(|tab| persist::Tab {
+                name: tab.name.clone(),
+                label: tab.label.clone(),
+                zoomed: tab.zoomed.clone(),
+                root: tab.root.clone(),
+                hidden: tab.hidden,
+                helpers_of: tab.helpers_of.clone(),
+                layout_generation: tab.layout_generation,
+            })
+            .collect();
         persist::State {
-            version: persist::VERSION,
+            version: persist::version_for(&tabs),
             daemon: env!("CARGO_PKG_VERSION").to_string(),
             settings: self.settings.clone(),
-            tabs: self
-                .tabs
-                .iter()
-                .map(|tab| persist::Tab {
-                    name: tab.name.clone(),
-                    label: tab.label.clone(),
-                    zoomed: tab.zoomed.clone(),
-                    root: tab.root.clone(),
-                    hidden: tab.hidden,
-                    helpers_of: tab.helpers_of.clone(),
-                })
-                .collect(),
+            tabs,
             panes: self
                 .panes
                 .iter()
@@ -3125,7 +3360,7 @@ impl Session {
         for pane in &gone {
             root = root.and_then(|root| root.without(pane).0);
         }
-        let Some(root) = root else {
+        let Some(root) = root.filter(|root| !root.panes().is_empty()) else {
             log::warn(
                 "daemon.state.tab_lost",
                 fields! {
@@ -3137,7 +3372,7 @@ impl Session {
             lost.tabs.push(tab.name);
             return;
         };
-        let zoomed = tab.zoomed.filter(|pane| root.contains(pane));
+        let zoomed = tab.zoomed.filter(|pane| root.has_leaf(pane));
         let tab = Tab {
             name: tab.name,
             label: tab.label,
@@ -3145,6 +3380,7 @@ impl Session {
             zoomed,
             hidden: tab.hidden,
             helpers_of: tab.helpers_of,
+            layout_generation: tab.layout_generation,
         };
         let record = tab.record();
         self.tabs.push(tab);
@@ -3387,6 +3623,7 @@ impl Session {
                 zoomed: tab.zoomed,
                 hidden: tab.hidden,
                 helpers_of: tab.helpers_of,
+                layout_generation: tab.layout_generation,
             });
         }
         Ok(())
@@ -3590,6 +3827,10 @@ fn branch(branch: i32) -> Option<tree::Branch> {
 fn node_record(node: &Node) -> proto::Node {
     let node = match node {
         Node::Pane(name) => proto::node::Node::Pane(name.clone()),
+        Node::Foreign { pane, daemon } => proto::node::Node::Foreign(proto::Foreign {
+            pane: pane.clone(),
+            daemon: daemon.clone(),
+        }),
         Node::Split { axis, ratio, first, second } => {
             proto::node::Node::Split(Box::new(proto::Split {
                 axis: match axis {
@@ -3604,6 +3845,40 @@ fn node_record(node: &Node) -> proto::Node {
         }
     };
     proto::Node { node: Some(node) }
+}
+
+/// A tree a window sent, refused when it is not one: a split with a child missing, an axis or
+/// ratio no split has, or a leaf with no name.
+fn node_from_record(node: &proto::Node) -> Result<Node, String> {
+    match &node.node {
+        Some(proto::node::Node::Pane(name)) => {
+            valid_name("pane", name)?;
+            Ok(Node::Pane(name.clone()))
+        }
+        Some(proto::node::Node::Foreign(foreign)) => {
+            valid_name("pane", &foreign.pane)?;
+            Ok(Node::Foreign { pane: foreign.pane.clone(), daemon: foreign.daemon.clone() })
+        }
+        Some(proto::node::Node::Split(split)) => {
+            let axis = match proto::Axis::try_from(split.axis) {
+                Ok(proto::Axis::Columns) => tree::Axis::Columns,
+                Ok(proto::Axis::Rows) => tree::Axis::Rows,
+                _ => return Err("a split's axis is neither columns nor rows".to_string()),
+            };
+            let ratio = valid_ratio(split.ratio)?;
+            Ok(Node::Split {
+                axis,
+                ratio,
+                first: Box::new(node_from_record(split_child(split.first.as_deref())?)?),
+                second: Box::new(node_from_record(split_child(split.second.as_deref())?)?),
+            })
+        }
+        None => Err("a node in the tree is empty".to_string()),
+    }
+}
+
+fn split_child(child: Option<&proto::Node>) -> Result<&proto::Node, String> {
+    child.ok_or_else(|| "a split is missing a child".to_string())
 }
 
 /// Whether `agent` can be compacted from its prompt, by the manifests in use.
@@ -3914,6 +4189,7 @@ mod tests {
             },
             hidden: false,
             helpers_of: None,
+            layout_generation: 0,
         };
         let tabs = [tab("t1", ["p1", "p2"]), tab("t2", ["p3", "p4"])];
         assert_eq!(in_no_tab(["p1", "p4"].into_iter(), &tabs), None);

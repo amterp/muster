@@ -1025,19 +1025,19 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
     window.layouts = snapshot
         .tabs
         .iter()
-        .map(|tab| muster_proto::TabLayout {
+        .map(|tab| (tab, tab.root.as_ref().and_then(own_panes)))
+        .map(|(tab, own)| muster_proto::TabLayout {
             tab_id: tab.tab.clone(),
             regions: vec![muster_proto::ViewRegion {
                 daemon_id: machine.clone(),
                 tab_id: tab.tab.clone(),
                 pane_id: tab.zoomed.clone().unwrap_or_default(),
                 weight: 1.0,
-                root: tab.root.as_ref().and_then(view_node),
+                root: own.as_ref().and_then(view_node),
                 zoomed: tab.zoomed.is_some(),
                 ..muster_proto::ViewRegion::default()
             }],
-            places: tab
-                .root
+            places: own
                 .as_ref()
                 .and_then(core_node)
                 .map(|root| {
@@ -1069,7 +1069,30 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
         .collect();
 }
 
-/// A daemon's tree as the core places one.
+/// A daemon's tree with only its own panes in it: a pane on another machine (MIP-8) is one this
+/// daemon cannot describe, so its split gives way to its sibling, as a window's mirror does.
+fn own_panes(node: &daemon_proto::Node) -> Option<daemon_proto::Node> {
+    match node.node.as_ref()? {
+        daemon_proto::node::Node::Pane(_) => Some(node.clone()),
+        daemon_proto::node::Node::Foreign(_) => None,
+        daemon_proto::node::Node::Split(split) => {
+            let first = split.first.as_deref().and_then(own_panes);
+            let second = split.second.as_deref().and_then(own_panes);
+            match (first, second) {
+                (Some(first), Some(second)) => Some(daemon_proto::Node {
+                    node: Some(daemon_proto::node::Node::Split(Box::new(daemon_proto::Split {
+                        first: Some(Box::new(first)),
+                        second: Some(Box::new(second)),
+                        ..(**split).clone()
+                    }))),
+                }),
+                (only, None) | (None, only) => only,
+            }
+        }
+    }
+}
+
+/// A daemon's tree as the core places one, from [`own_panes`].
 fn core_node(node: &daemon_proto::Node) -> Option<ViewNode> {
     Some(match node.node.as_ref()? {
         daemon_proto::node::Node::Pane(pane) => ViewNode::Pane(ViewPane {
@@ -1087,10 +1110,11 @@ fn core_node(node: &daemon_proto::Node) -> Option<ViewNode> {
             first: Box::new(core_node(split.first.as_deref()?)?),
             second: Box::new(core_node(split.second.as_deref()?)?),
         },
+        daemon_proto::node::Node::Foreign(_) => return None,
     })
 }
 
-/// A daemon's tree in a window's vocabulary.
+/// A daemon's tree in a window's vocabulary, from [`own_panes`].
 fn view_node(node: &daemon_proto::Node) -> Option<muster_proto::ViewNode> {
     let node = match node.node.as_ref()? {
         daemon_proto::node::Node::Pane(pane) => {
@@ -1111,6 +1135,7 @@ fn view_node(node: &daemon_proto::Node) -> Option<muster_proto::ViewNode> {
                 second: split.second.as_deref().and_then(view_node).map(Box::new),
             }))
         }
+        daemon_proto::node::Node::Foreign(_) => return None,
     };
     Some(muster_proto::ViewNode { node: Some(node) })
 }
@@ -1139,7 +1164,7 @@ fn panes_of(node: Option<&daemon_proto::Node>, into: &mut Vec<String>) {
             panes_of(split.first.as_deref(), into);
             panes_of(split.second.as_deref(), into);
         }
-        None => {}
+        Some(daemon_proto::node::Node::Foreign(_)) | None => {}
     }
 }
 

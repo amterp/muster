@@ -11,7 +11,7 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 6 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 7 };
 
 /// The first minor whose daemon presses the keys a `pane send` names. An older one ignores the
 /// field and would write the send's Return without them, so a client asks before sending any.
@@ -32,6 +32,11 @@ pub const RESTARTS: u32 = 6;
 /// The first minor whose daemon records which pane made a pane its helper, and holds a maker's
 /// hidden helpers in one tab. An older one drops the maker without a word, so a client asks first.
 pub const HELPERS: u32 = 6;
+
+/// The first minor whose daemon keeps a tree spanning machines: panes on other machines held as
+/// foreign leaves, and the tree written whole by `SetTree` (MIP-8). An older one knows neither
+/// the request nor the placement, so a client asks before sending either.
+pub const SPANNING: u32 = 7;
 
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no

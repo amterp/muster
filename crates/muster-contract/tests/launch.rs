@@ -1430,7 +1430,7 @@ fn panes_in(tree: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every pane in a daemon's tree.
+/// Every pane of a daemon's in its tree.
 fn leaves(node: &proto::Node) -> BTreeSet<String> {
     match node.node.as_ref() {
         Some(proto::node::Node::Pane(name)) => BTreeSet::from([name.clone()]),
@@ -1439,7 +1439,7 @@ fn leaves(node: &proto::Node) -> BTreeSet<String> {
             panes.extend(split.second.as_deref().map(leaves).unwrap_or_default());
             panes
         }
-        None => BTreeSet::new(),
+        Some(proto::node::Node::Foreign(_)) | None => BTreeSet::new(),
     }
 }
 

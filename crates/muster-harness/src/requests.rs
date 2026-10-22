@@ -128,10 +128,12 @@ pub fn snapshot(control: &mut Control) -> proto::Snapshot {
     }
 }
 
-/// A tab's tree as text: `[a|b .50]` for columns, `[a/b .50]` for rows.
+/// A tab's tree as text: `[a|b .50]` for columns, `[a/b .50]` for rows, and `~x@devenv` for a
+/// pane on another machine. [`tree`] reads the same text back.
 pub fn shape(node: &proto::Node) -> String {
     match node.node.as_ref().expect("a node holds something") {
         proto::node::Node::Pane(name) => name.clone(),
+        proto::node::Node::Foreign(foreign) => format!("~{}@{}", foreign.pane, foreign.daemon),
         proto::node::Node::Split(split) => {
             let divider = if split.axis() == proto::Axis::Columns { "|" } else { "/" };
             format!(
@@ -141,6 +143,78 @@ pub fn shape(node: &proto::Node) -> String {
                 split.ratio
             )
         }
+    }
+}
+
+/// The tree [`shape`] would print as `text`, for a test to send one a window would have worked
+/// out. Panics on text it cannot read, since a test wrote it.
+pub fn tree(text: &str) -> proto::Node {
+    fn node(text: &str) -> (proto::Node, &str) {
+        if let Some(rest) = text.strip_prefix('[') {
+            let (first, rest) = node(rest);
+            let (columns, rest) = match rest.chars().next() {
+                Some('|') => (true, &rest[1..]),
+                Some('/') => (false, &rest[1..]),
+                other => panic!("a split in {text:?} has {other:?} where | or / goes"),
+            };
+            let (second, rest) = node(rest);
+            let rest = rest.strip_prefix(' ').expect("a ratio follows a space");
+            let end = rest.find(']').expect("a split ends with ]");
+            let ratio: f32 = rest[..end].parse().expect("a ratio is a number");
+            let axis = if columns { proto::Axis::Columns } else { proto::Axis::Rows };
+            let split = proto::Split {
+                axis: axis.into(),
+                ratio,
+                first: Some(Box::new(first)),
+                second: Some(Box::new(second)),
+            };
+            (
+                proto::Node { node: Some(proto::node::Node::Split(Box::new(split))) },
+                &rest[end + 1..],
+            )
+        } else {
+            let end = text.find(['|', '/', ' ', ']']).unwrap_or(text.len());
+            let leaf = &text[..end];
+            let node = match leaf.strip_prefix('~') {
+                Some(foreign) => {
+                    let (pane, daemon) = foreign.split_once('@').expect("~pane@daemon");
+                    proto::node::Node::Foreign(proto::Foreign {
+                        pane: pane.to_string(),
+                        daemon: daemon.to_string(),
+                    })
+                }
+                None => proto::node::Node::Pane(leaf.to_string()),
+            };
+            (proto::Node { node: Some(node) }, &text[end..])
+        }
+    }
+    let (read, rest) = node(text);
+    assert!(rest.is_empty(), "{rest:?} is left over after the tree in {text:?}");
+    read
+}
+
+/// Writes `tab`'s whole tree, as a window that worked it out from generation `based_on` would.
+pub fn set_tree_request(tab: &str, text: &str, generation: u64, based_on: u64) -> Service {
+    self::tab(tab_request::Request::SetTree(tab_request::SetTree {
+        tab: tab.to_string(),
+        root: Some(tree(text)),
+        zoomed: None,
+        generation,
+        based_on,
+    }))
+}
+
+/// At the pane's leaf of `text`, which is `tab`'s whole tree afterwards.
+pub fn in_tree(tab: &str, text: &str, generation: u64, based_on: u64) -> proto::Placement {
+    proto::Placement {
+        r#where: Some(placement::Where::InTree(placement::InTree {
+            tab: tab.to_string(),
+            root: Some(tree(text)),
+            generation,
+            based_on,
+            label: None,
+            hidden: false,
+        })),
     }
 }
 

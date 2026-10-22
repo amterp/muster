@@ -152,24 +152,34 @@ and holds nothing.
 
 ### 4. The protocol
 
-One protocol minor adds:
+Protocol minor 7 adds:
 
 - `Node.foreign { pane, daemon }`, the foreign leaf. `daemon` because that is the word `muster
   window --json` already uses for a machine.
 - `Tab.layout_generation`.
-- `TabRequest.SetTree { tab, root, zoomed, based_on }`, the window's write. Refused, with the
-  reason, when `based_on` is below the part's generation, or when the tree leaves out one of this
-  daemon's panes in the tab, names one twice, or names one this daemon holds in another tab.
-- `Placement.InTree { tab, root, based_on }`, for a `Create` or `Move` whose resulting tree the
-  window worked out: the pane goes in this tab, at the leaf in `root` that names it. When the
-  daemon has no part of the tab yet, this makes one, hidden if the tab is hidden, which today
-  takes the window's `JoinTab` intent, sent as a `Placement.NewTab` of the tab's name. It leaves
-  the zoom as it was: `SetTree` is the only write that changes it.
+- `TabRequest.SetTree { tab, root, zoomed, generation, based_on }`, the window's write, which
+  leaves the tab at `generation`. Refused, with the reason, when `based_on` is below the part's
+  generation, when `generation` is not above `based_on`, when the tree leaves out one of this
+  daemon's panes in the tab, names a leaf twice, names as this daemon's a pane it does not hold
+  or holds in another tab, or `zoomed` names no leaf. The checks on panes are what catch a pane
+  that opened or closed on this daemon after the window read its copy: the window's tree then
+  names one too few or one too many, the write is refused, and the window merges again from the
+  copy the daemon's own `TabChanged` brings.
+- `Placement.InTree { tab, root, generation, based_on, label, hidden }`, for a `Create` or `Move`
+  whose resulting tree the window worked out: the pane goes in this tab, at the leaf in `root`
+  that names it, under `SetTree`'s rules. When the daemon has no part of the tab yet, this makes
+  one, called `label` and hidden when `hidden` says so, which today takes the window's `JoinTab`
+  intent, sent as a `Placement.NewTab` of the tab's name. It leaves the zoom as it was: `SetTree`
+  is the only write that changes it.
 
-The state file gains the foreign leaves and the generation as new fields with defaults, which is
-the one way its format may change without a new version (MIP-3, section 2). A daemon handoff
-carries `persist::Tab` whole (`crates/muster-daemon/src/handoff/mod.rs`), so it carries both
-without a change.
+The state file gains the generation as a field with a default, but a foreign leaf is a new kind of
+node, which a daemon from before it cannot parse at all: it would move the file aside as damaged
+and start empty. So a file holding a foreign leaf is version 2 of the format, and a daemon from
+before it refuses the file as newer, starting with no tabs and saving nothing over it (MIP-3,
+section 2). A file with no foreign leaf is still written as version 1, so going back to an older
+daemon costs nothing until somebody makes a tab spanning machines. A daemon handoff carries
+`persist::Tab` whole (`crates/muster-daemon/src/handoff/mod.rs`), so it carries both without a
+change.
 
 ### 5. What the window draws
 
@@ -354,6 +364,9 @@ below a laptop pane at all (Context, "What exists").
 - **A daemon holds facts about panes it does not run.** Foreign leaves are inert, but they are new
   in the state file and the protocol, and a daemon's copy can name a pane that closed while no
   window was open, until one opens.
+- **Going back to an older daemon loses its tabs** once any of them spans machines, because the
+  older daemon refuses a version-2 state file (section 4). It overwrites nothing, so going
+  forward again brings them back.
 - **More writes across the ssh link.** Every change to a spanning tab's arrangement is one
   `SetTree` to each part, so a divider drag in a tab spanning the laptop and the devenv sends
   each drag step to both. Tabs held by one machine send nothing new.
@@ -371,11 +384,12 @@ below a laptop pane at all (Context, "What exists").
 Each stage lands on its own with the suite green, and each is one worker's assignment.
 
 1. **The daemon keeps a spanning tree.** Foreign leaves, the generation, `SetTree`,
-   `Placement.InTree`, the state file and handoff, and the protocol minor. Nothing in the window
-   changes. Tests, in the daemon's suite: a restart keeps every foreign leaf in place; an own pane
-   closing keeps them; `SetTree` refuses a stale base and a tree that leaves out or doubles an own
-   pane; a resize, swap or zoom asked of a daemon in a spanning tab is refused; a checked-in state
-   file with foreign leaves loads as written; the protocol compatibility test across the minor.
+   `Placement.InTree`, the state file's version 2 and handoff, and the protocol minor. Nothing in
+   the window changes. Tests, in the daemon's suite: a restart keeps every foreign leaf in place; an
+   own pane closing keeps them; `SetTree` refuses a stale base and a tree that leaves out or doubles
+   an own pane; a resize, swap or zoom asked of a daemon in a spanning tab is refused; a checked-in
+   state file with foreign leaves loads as written; the protocol compatibility test across the
+   minor.
 2. **The window merges and writes.** The merge as a pure function, the write-back, the migration
    of spanning tabs made before this, and `View` publishing the tree beside the regions it publishes
    now, so the shell is untouched. Tests: conformance cases for each merge rule, a stale write and

@@ -523,7 +523,7 @@ fn tab_shape_holds(tab: &proto::Tab, pane: &str) -> bool {
                 split.first.as_ref().is_some_and(|first| holds(first, pane))
                     || split.second.as_ref().is_some_and(|second| holds(second, pane))
             }
-            None => false,
+            Some(proto::node::Node::Foreign(_)) | None => false,
         }
     }
     tab.root.as_ref().is_some_and(|root| holds(root, pane))

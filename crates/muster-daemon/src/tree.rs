@@ -47,6 +47,13 @@ pub(crate) enum Branch {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Node {
     Pane(String),
+    /// A pane on another machine, in a tab that spans machines (MIP-8). Kept in its place and
+    /// carried through every save, restore and handoff, and never run: `daemon` is the name the
+    /// window that wrote it gives that machine, and only a window reads it.
+    Foreign {
+        pane: String,
+        daemon: String,
+    },
     Split {
         axis: Axis,
         /// The first child's share of the area, strictly between 0 and 1.
@@ -81,19 +88,42 @@ impl Node {
         self.path_to(pane).is_some()
     }
 
-    /// Every pane, first child before second: left to right and top to bottom.
+    /// Every pane this daemon runs, first child before second: left to right and top to bottom.
+    /// A foreign leaf is not one of them.
     pub(crate) fn panes(&self) -> Vec<&str> {
         let mut found = Vec::new();
-        self.collect(&mut found);
+        self.collect(&mut found, false);
         found
     }
 
-    fn collect<'a>(&'a self, into: &mut Vec<&'a str>) {
+    /// Every leaf, this daemon's panes and other machines' alike, in the same order.
+    pub(crate) fn leaves(&self) -> Vec<&str> {
+        let mut found = Vec::new();
+        self.collect(&mut found, true);
+        found
+    }
+
+    /// Whether any leaf, this daemon's or another machine's, is `pane`.
+    pub(crate) fn has_leaf(&self, pane: &str) -> bool {
+        self.leaves().contains(&pane)
+    }
+
+    pub(crate) fn has_foreign(&self) -> bool {
+        match self {
+            Node::Pane(_) => false,
+            Node::Foreign { .. } => true,
+            Node::Split { first, second, .. } => first.has_foreign() || second.has_foreign(),
+        }
+    }
+
+    fn collect<'a>(&'a self, into: &mut Vec<&'a str>, foreign: bool) {
         match self {
             Node::Pane(name) => into.push(name),
+            Node::Foreign { pane, .. } if foreign => into.push(pane),
+            Node::Foreign { .. } => {}
             Node::Split { first, second, .. } => {
-                first.collect(into);
-                second.collect(into);
+                first.collect(into, foreign);
+                second.collect(into, foreign);
             }
         }
     }
@@ -117,7 +147,7 @@ impl Node {
     /// the tree would have if they were columns too: a tree only ever grown this way stays even.
     pub(crate) fn append_column(&mut self, new: &str) {
         #[expect(clippy::cast_precision_loss, reason = "a tab holds a handful of panes")]
-        let held = self.panes().len() as f32;
+        let held = self.leaves().len() as f32;
         let existing = Box::new(std::mem::replace(self, Node::Pane(String::new())));
         *self = Node::Split {
             axis: Axis::Columns,
@@ -132,7 +162,7 @@ impl Node {
     pub(crate) fn without(self, pane: &str) -> (Option<Node>, bool) {
         match self {
             Node::Pane(name) if name == pane => (None, true),
-            leaf @ Node::Pane(_) => (Some(leaf), false),
+            leaf @ (Node::Pane(_) | Node::Foreign { .. }) => (Some(leaf), false),
             Node::Split { axis, ratio, first, second } => {
                 let (first, found) = first.without(pane);
                 if found {
@@ -172,6 +202,7 @@ impl Node {
     fn rename_each(&mut self, rename: &mut impl FnMut(&str) -> String) {
         match self {
             Node::Pane(name) => *name = rename(name),
+            Node::Foreign { .. } => {}
             Node::Split { first, second, .. } => {
                 first.rename_each(rename);
                 second.rename_each(rename);
@@ -190,7 +221,9 @@ impl Node {
                 *current = ratio;
                 Ok(changed)
             }
-            Some(Node::Pane(_)) | None => Err(format!("there is no split at {path:?}")),
+            Some(Node::Pane(_) | Node::Foreign { .. }) | None => {
+                Err(format!("there is no split at {path:?}"))
+            }
         }
     }
 
@@ -228,6 +261,7 @@ impl Node {
     fn path_to(&self, pane: &str) -> Option<Vec<Branch>> {
         match self {
             Node::Pane(name) => (name == pane).then(Vec::new),
+            Node::Foreign { .. } => None,
             Node::Split { first, second, .. } => {
                 for (branch, child) in [(Branch::First, first), (Branch::Second, second)] {
                     if let Some(mut path) = child.path_to(pane) {
@@ -245,7 +279,7 @@ impl Node {
         match (self, step) {
             (Node::Split { first, .. }, Branch::First) => first.at(rest),
             (Node::Split { second, .. }, Branch::Second) => second.at(rest),
-            (Node::Pane(_), _) => None,
+            (Node::Pane(_) | Node::Foreign { .. }, _) => None,
         }
     }
 
@@ -254,7 +288,7 @@ impl Node {
         match (self, step) {
             (Node::Split { first, .. }, Branch::First) => first.at_mut(rest),
             (Node::Split { second, .. }, Branch::Second) => second.at_mut(rest),
-            (Node::Pane(_), _) => None,
+            (Node::Pane(_) | Node::Foreign { .. }, _) => None,
         }
     }
 }
@@ -293,6 +327,7 @@ mod tests {
         fn same(actual: &Node, expected: &Node) -> bool {
             match (actual, expected) {
                 (Node::Pane(a), Node::Pane(b)) => a == b,
+                (Node::Foreign { .. }, Node::Foreign { .. }) => actual == expected,
                 (
                     Node::Split { axis, ratio, first, second },
                     Node::Split { axis: axis_b, ratio: ratio_b, first: first_b, second: second_b },
@@ -399,5 +434,48 @@ mod tests {
         assert_eq!(tree.resize("a", Side::Down, None), Resized::AtLimit);
         assert_eq!(tree.resize("a", Side::Right, None), Resized::NoDivider);
         assert_eq!(tree.resize("missing", Side::Down, None), Resized::Absent);
+    }
+
+    fn foreign(name: &str) -> Node {
+        Node::Foreign { pane: name.to_string(), daemon: "devenv".to_string() }
+    }
+
+    #[test]
+    fn a_foreign_leaf_is_a_leaf_and_not_one_of_this_daemons_panes() {
+        let tree = columns(0.5, pane("a"), rows(0.5, foreign("x"), pane("b")));
+        assert_eq!(tree.panes(), ["a", "b"]);
+        assert_eq!(tree.leaves(), ["a", "x", "b"]);
+        assert!(tree.has_foreign());
+        assert!(!columns(0.5, pane("a"), pane("b")).has_foreign());
+        assert!(!tree.contains("x"), "only this daemon's panes are found by name");
+    }
+
+    #[test]
+    fn local_changes_keep_every_foreign_leaf_where_it_was() {
+        let mut tree = columns(0.5, pane("a"), foreign("x"));
+        assert!(tree.insert("a", "b", Side::Down, 0.5));
+        assert_shaped(&tree, &columns(0.5, rows(0.5, pane("a"), pane("b")), foreign("x")));
+        assert!(!tree.insert("x", "c", Side::Down, 0.5), "a foreign leaf is split by a window");
+        assert!(tree.swap("a", "b"));
+        assert_shaped(&tree, &columns(0.5, rows(0.5, pane("b"), pane("a")), foreign("x")));
+        assert!(!tree.swap("a", "x"));
+        let (rest, found) = tree.without("a");
+        assert!(found);
+        assert_shaped(&rest.expect("b and x remain"), &columns(0.5, pane("b"), foreign("x")));
+    }
+
+    #[test]
+    fn a_column_appended_beside_foreign_leaves_counts_them() {
+        let mut tree = columns(0.5, pane("a"), foreign("x"));
+        tree.append_column("b");
+        assert_shaped(&tree, &columns(2.0 / 3.0, columns(0.5, pane("a"), foreign("x")), pane("b")));
+    }
+
+    #[test]
+    fn a_foreign_leaf_serializes_under_its_own_tag() {
+        let json = serde_json::to_string(&foreign("x")).expect("a tree serializes");
+        assert_eq!(json, r#"{"foreign":{"pane":"x","daemon":"devenv"}}"#);
+        let back: Node = serde_json::from_str(&json).expect("and reads back");
+        assert_eq!(back, foreign("x"));
     }
 }

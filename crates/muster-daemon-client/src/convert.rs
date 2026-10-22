@@ -181,32 +181,48 @@ pub fn pane(record: proto::Pane) -> Pane {
 }
 
 /// A tab, or none when its tree does not read, which a daemon of this protocol never sends.
+///
+/// The tree is this daemon's panes only: a pane on another machine (MIP-8) is left out, its
+/// split giving way to its sibling, so every region still draws the panes its daemon holds.
 pub fn tab(record: proto::Tab) -> Option<Tab> {
     let label = record.label.unwrap_or_default();
+    let Own::Tree(root) = node(record.root?)? else { return None };
     Some(Tab {
         id: TabId::new(record.tab),
         label: label.text.filter(|text| !text.is_empty()),
         generation: label.generation,
-        root: node(record.root?)?,
-        zoomed: record.zoomed.map(PaneId::new),
+        zoomed: record.zoomed.map(PaneId::new).filter(|zoomed| root.panes().contains(&zoomed)),
+        root,
         hidden: record.hidden,
     })
 }
 
-fn node(given: proto::Node) -> Option<LayoutNode> {
+/// What a subtree holds of this daemon's panes.
+enum Own {
+    Tree(LayoutNode),
+    /// Only panes on other machines.
+    Elsewhere,
+}
+
+/// A tree, as this daemon's panes, or `None` for a tree that does not read.
+fn node(given: proto::Node) -> Option<Own> {
     Some(match given.node? {
-        proto::node::Node::Pane(pane) => LayoutNode::Pane(PaneId::new(pane)),
+        proto::node::Node::Pane(pane) => Own::Tree(LayoutNode::Pane(PaneId::new(pane))),
+        proto::node::Node::Foreign(_) => Own::Elsewhere,
         proto::node::Node::Split(split) => {
             let axis = match split.axis() {
                 proto::Axis::Columns => SplitAxis::Columns,
                 proto::Axis::Rows => SplitAxis::Rows,
                 proto::Axis::Unspecified => return None,
             };
-            LayoutNode::Split {
-                axis,
-                ratio: split.ratio,
-                first: Box::new(node(*split.first?)?),
-                second: Box::new(node(*split.second?)?),
+            match (node(*split.first?)?, node(*split.second?)?) {
+                (Own::Tree(first), Own::Tree(second)) => Own::Tree(LayoutNode::Split {
+                    axis,
+                    ratio: split.ratio,
+                    first: Box::new(first),
+                    second: Box::new(second),
+                }),
+                (only, Own::Elsewhere) | (Own::Elsewhere, only) => only,
             }
         }
     })
@@ -387,6 +403,35 @@ mod tests {
         let mut said = pane_effect::Progress { percent, ..Default::default() };
         said.set_state(state);
         effect(pane_effect::Effect::Progress(said))
+    }
+
+    #[test]
+    fn a_tab_reaches_the_mirror_as_this_daemons_panes_only() {
+        let leaf = |node: proto::node::Node| proto::Node { node: Some(node) };
+        let split = |first: proto::Node, second: proto::Node| {
+            leaf(proto::node::Node::Split(Box::new(proto::Split {
+                axis: proto::Axis::Columns.into(),
+                ratio: 0.5,
+                first: Some(Box::new(first)),
+                second: Some(Box::new(second)),
+            })))
+        };
+        let foreign = |pane: &str| {
+            leaf(proto::node::Node::Foreign(proto::Foreign {
+                pane: pane.to_string(),
+                daemon: "devenv".to_string(),
+            }))
+        };
+        let own = |pane: &str| leaf(proto::node::Node::Pane(pane.to_string()));
+        let record = proto::Tab {
+            tab: "t1".to_string(),
+            root: Some(split(split(own("a"), foreign("x")), own("b"))),
+            zoomed: Some("x".to_string()),
+            ..proto::Tab::default()
+        };
+        let tab = tab(record).expect("the tab reads");
+        assert_eq!(tab.root.to_string(), "columns(a, b@0.5)");
+        assert_eq!(tab.zoomed, None, "a zoom on another machine's pane fills no region here");
     }
 
     #[test]
