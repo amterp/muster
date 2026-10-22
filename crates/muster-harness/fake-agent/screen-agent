@@ -91,19 +91,20 @@ case "$1" in
     placeholder) placeholder=yes ;;
 esac
 
+# The whole screen in one write, as an agent draws a frame: one read between the clear and the
+# state's line matches no rule, which reads idle, and a loaded machine found it there.
 paint() {
-    printf '\033[2J\033[H'
-    printf 'screen-agent - fake coding agent, detected by screen\n'
-    printf 'tick %s\n\n' "$tick"
-    printf 'PROBE-STATE:%s\n' "$(echo "$state" | tr '[:lower:]' '[:upper:]')"
+    menu_line=
     if [ -n "$menu" ]; then
-        printf 'PROBE-MENU\n'
+        menu_line='PROBE-MENU\n'
     fi
-    printf 'PROBE-PROMPT> %s' "$draft"
+    hint=
     if [ -n "$placeholder" ] && [ -z "$draft" ]; then
         # Drawn faint, then the cursor goes back to where typing starts, as a prompt's does.
-        printf '\033[2mtry something\033[22m\033[13D'
+        hint='\033[2mtry something\033[22m\033[13D'
     fi
+    printf '\033[2J\033[Hscreen-agent - fake coding agent, detected by screen\ntick %s\n\nPROBE-STATE:%s\n%bPROBE-PROMPT> %s%b' \
+        "$tick" "$(echo "$state" | tr '[:lower:]' '[:upper:]')" "$menu_line" "$draft" "$hint"
 }
 
 if [ "$2" = unechoed ]; then
