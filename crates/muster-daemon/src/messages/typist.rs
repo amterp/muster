@@ -23,7 +23,7 @@ use muster_msg::Activity;
 
 use super::doorbell::{self, Moving, Now};
 use super::presence::{Panes, Seen};
-use super::prompt::{self, AtPrompt};
+use super::prompt::{self, AtPrompt, Unseen};
 use crate::session::Shared;
 use crate::writer::Input;
 
@@ -195,6 +195,9 @@ fn second_look<L: Line>(shared: &Shared, seen: &Seen, typed: &mut Typed<L::What>
             Second::Pressed
         }
         AtPrompt::Holds(_) => Second::Ended(format!("its prompt holds more than the {}", L::NOUN)),
+        // Its screen at work while its state is not yet: an agent's idle report outranks its
+        // screen until the screen has said otherwise for a moment longer than this look waits.
+        AtPrompt::Not(Unseen::AtWork, _) if L::TAKEN_AT_WORK => Second::Taken,
         AtPrompt::Not(unseen, _) => Second::Ended(unseen.why().to_string()),
     }
 }

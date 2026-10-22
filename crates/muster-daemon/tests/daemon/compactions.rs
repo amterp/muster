@@ -291,6 +291,26 @@ fn a_compaction_with_a_prompt_has_it_typed_once_the_compaction_has_run() {
     assert!(at("/compact keep the work notes") < at("carry on with the plan"), "{heard:?}");
 }
 
+/// An agent that reports its own state reads idle for a moment after its screen has gone to work
+/// on the compaction, since its last idle report outranks the screen until the screen has said
+/// otherwise for a while. The compaction is taken all the same, and its prompt follows it.
+#[test]
+fn a_compaction_taken_while_the_agents_idle_report_still_stands_has_its_prompt_typed() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.type_into("p1", "hook --agent claude --state idle");
+    let reported = p1.daemon.root().join("home/fake-agent-reported");
+    until_some("the agent's idle report to be taken", || {
+        std::fs::read_to_string(&reported).ok().filter(|said| said.contains("hook 0"))
+    });
+    let asked = p1.compact_then(Some("keep the work notes"), Some("carry on with the plan"));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+
+    p1.until_heard_line("/compact keep the work notes");
+    p1.until_pending(proto::PendingCompaction::FollowUp);
+    p1.daemon.type_into("p1", "rest");
+    p1.until_heard_line("carry on with the plan");
+}
+
 /// A later ask is what its asker means: one with no prompt takes back a prompt still owed.
 #[test]
 fn a_later_compaction_takes_back_a_prompt_still_owed() {
