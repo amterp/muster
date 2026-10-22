@@ -120,6 +120,12 @@
       "body": "Third instance in the same Lectern round, 2026-10-21 ~21:45: the same Codex worker got approval wake #20 again after it had posted done #21; read returned nothing unread.",
       "created_at_millis": 1792637154351,
       "id": "c_2lyQbzc5K"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Fourth instance in the same Lectern round, 2026-10-21 ~22:20, a second Codex worker (group cumin+topaz): approval wake #20 rang again after the worker posted done #21; read returned nothing unread. Every Codex worker post in this round has been followed by a duplicate of the wake before it.",
+      "created_at_millis": 1792639195200,
+      "id": "c_2lzHhgQkB"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -129,7 +135,7 @@
   "position": "YwE",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792637393167,
+  "updated_at_millis": 1792639195200,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},

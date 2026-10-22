@@ -7,6 +7,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: failed natively on macOS too, once, in a full ./dev on main (319119e2's parent) on the Mac mini, with the same assertion (left [\"served 0\"], right [\"served 1\"]) while the machine's load reached 19.4 against 6 performance cores (four agent workers building, another project's gate, 6 GB in swap). It passed 3 of 3 run alone straight after. So it is not only the emulator: it is timing-dependent, and slowness of any kind can make the server's report be taken. The earlier note that it is 'neither load' was about load under emulation; the native case says the race is real. Look at how the daemon tells a backgrounded server from the pane's agent and what it reads before the server's process is fully set up.",
+      "created_at_millis": 1792638942018,
+      "id": "c_2lzB7Jkm4"
+    }
+  ],
   "created_at_millis": 1792257675573,
   "creator": "Alexander Terp",
   "description": "2026-10-17, `./dev --linux` on the laptop (main at 76c1aae5): aarch64 ran natively and passed all 860 tests; x86_64 ran under emulation and failed one, `attribution::a_pane_with_no_agent_refuses_a_report_through_a_server` (crates/muster-daemon/tests/daemon/attribution.rs:110): left [\"served 0\"], right [\"served 1\"], i.e. the report through `\u003cfake agent\u003e serve \u0026` was taken where it should be refused. It fails 3 of 3 run alone under emulation, and still fails with the fake agent's shebang put back to #!/bin/sh, so it is neither load nor the dash change. The test is unchanged since 2026-10-07 (f17d3b67); nothing in that day's unpushed range touched attribution.rs.\n\nLikely the emulator again: `./dev` already skips `the_system_reports_a_real_process_group` under emulation (EMULATED_ARGV) because qemu replaces what /proc says about a process, and recognising the fake agent's server depends on identifying the process. Not confirmed. To settle: run it on a native x86_64 Linux (CI's linux job once credits return, or the devenv); if it passes there, add it to the emulated skips in `./dev` with the reason; if it fails, it is a real bug in server_of on x86_64.",
@@ -14,7 +22,7 @@
   "position": "b13",
   "title": "Under x86_64 emulation, a pane with no agent takes a report through a server",
   "type": "bug",
-  "updated_at_millis": 1792257675573,
+  "updated_at_millis": 1792638942018,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792257675573}
   ]
