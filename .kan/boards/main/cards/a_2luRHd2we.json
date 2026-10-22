@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "in-progress",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: fixed on main (22ab94ce, d8e0a77c, d28385c4). report --waiting \"\u003cwhat\u003e\" --until-exits \u003cpid\u003e: the daemon ends the wait when the process exits and posts @muster's message to the agent alone, which wakes it as any message does (typed, or codex queue). A declared wait from a harness whose manifest lacks [session] wakes_when_jobs_end (every harness but Claude Code), or one carried through a turn Muster typed, runs out after 10 minutes, so the pane reads idle and a maker is told. Codex's SessionStart line names --until-exits.",
+      "created_at_millis": 1792636682617,
+      "id": "c_2lyEL7Eza"
+    }
+  ],
   "created_at_millis": 1792627647097,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-20 and 2026-10-21, 0.16.2-dev on the Mac, three sightings, all Codex helpers in overnight rounds. Each ended its turn saying it would resume when its background job (a `qm` job, a background `./dev`) finished, then sat at an empty prompt with nothing running. Muster showed the pane `waiting` for 75 minutes in one case and 40 in another, so its maker heard nothing (the maker watch tells only idle), and the job's end woke nobody: Codex has nothing that starts a turn when a background process exits. One round lost about 40 minutes of its critical path.\n\nWhere the `waiting` came from is not established. A wait declared with `report --waiting` has no time limit (61045758 limits only a wait read off the screen), which would explain it; check the run log for a `report --waiting` from those panes. Declaring a wait is right for Claude Code, which a finished background task wakes, and wrong for a harness nothing wakes.\n\nTwo Codex agents tried to arrange their own wake: a watcher script that ran `muster msg post --to \u003citself\u003e` when the job finished. Muster refuses that (\"a post cannot be addressed to its own author\").\n\nOptions, not exclusive:\n- `report --waiting --until-exits \u003cpid\u003e`, or a `muster wake --when-exits \u003cpid\u003e`: the daemon ends the wait and rings the agent when the process exits.\n- Limit a declared wait for a harness that a finished job cannot wake, as the screen's wait is limited, so the pane reads idle and the maker is told.\n- Tell Codex agents, in its adapter's instructions, not to declare a wait nothing will end.",
@@ -13,7 +21,7 @@
   "position": "Zy",
   "title": "A Codex agent waiting on its own background job reads waiting for an hour, and nothing wakes it",
   "type": "bug",
-  "updated_at_millis": 1792632580370,
+  "updated_at_millis": 1792636682617,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627647097},
     {"field":"column","value":"next","at":1792627699478},

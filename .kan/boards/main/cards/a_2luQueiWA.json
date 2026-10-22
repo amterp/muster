@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: fixed on main in 701101b9. Every compaction in the 10-18..21 run log (35 of 35) was logged given_up: the typist's second look found the screen at work while a hooked agent's idle report still outranked it, gave up, and dropped the --then prompt. A line taken at work now counts as taken; a test reproduced the bug first. The --then prompt is also typed as work now (2d02510c).",
+      "created_at_millis": 1792636682775,
+      "id": "c_2lyELNUOK"
+    }
+  ],
   "created_at_millis": 1792627632846,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-17, 0.16.1-dev on the Mac, twice. `muster pane compact --pane \u003chelper\u003e \"\u003cfocus\u003e\" --then \"\u003cnext brief\u003e\"` exited 0 with no output. The compaction ran: context went to 0%, and the transcript shows `/compact` and `Compacted`. The `--then` prompt never appeared, and the Claude Code helper sat idle at an empty prompt until its maker sent the same text with `muster msg post`, which started it at once. The first time, Claude Code's \"Heads up\" tip box showed above the prompt; the second time nothing did, so the tip box is not the cause.\n\n`--then` came with a_2izzbA9cT, and the daemon takes it in `Compaction::ask` (`crates/muster-daemon/src/compaction.rs`). Find where the prompt is dropped. Then have the CLI or the daemon say when a `--then` prompt was not taken, as `pane send --confirm` does, since otherwise the maker learns of it only from an idle notice.",
@@ -13,7 +21,7 @@
   "position": "!!!!!!!V",
   "title": "pane compact --then exits 0, and its prompt never reaches the compacted agent",
   "type": "bug",
-  "updated_at_millis": 1792632594137,
+  "updated_at_millis": 1792636682775,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627632846},
     {"field":"column","value":"in-progress","at":1792632580732},

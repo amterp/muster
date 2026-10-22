@@ -114,6 +114,12 @@
       "body": "2026-10-21: cause found and fixed on main (d83a509f..24151394). Every Codex duplicate on this Mac (11 on 10-20..22) followed msg.ring.command_untaken: codex queue stored the wake, a Codex without the shared app-server (daemon_auto_start = false here) polls its queue every ~10 s, the doorbell typed its fallback copy at 5 s, and Codex then delivered its stored copy as that turn ended - right after the agent's own post. The command wake now gets 20 s (COMMAND_ANSWER) before it is typed; a test with a fake session that takes its wake 8 s late failed before the fix. Measurement in docs/observations/codex-0.163.0.md. The Claude Code sightings are a different path, now a_2lxWzorui. Full gate pending (disk).",
       "created_at_millis": 1792635027445,
       "id": "c_2lxXHUYzg"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Third instance in the same Lectern round, 2026-10-21 ~21:45: the same Codex worker got approval wake #20 again after it had posted done #21; read returned nothing unread.",
+      "created_at_millis": 1792637154351,
+      "id": "c_2lyQbzc5K"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -123,7 +129,7 @@
   "position": "a0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792635027445,
+  "updated_at_millis": 1792637154351,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
