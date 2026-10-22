@@ -1,0 +1,366 @@
+#!/usr/bin/env rad
+---
+Builds a commit of Muster and puts it in place of this machine's Muster, keeping every agent.
+
+The build carries a version one patch past both the installed Muster and its running daemon,
+so the new app's daemon is handed every pane, and it is built for the installed app's install
+(MUSTER_INSTALL), so it takes over that daemon rather than starting an empty one beside it. It
+is signed with this keychain's Developer ID when there is one, so macOS permissions survive.
+
+It asks before quitting Muster. The old app is kept beside the new one, named for its version.
+Run from a Muster checkout: tools/install-main, or tools/install-main --dry-run first.
+---
+args:
+    rev str = "main"                      # The commit to build.
+    app str = "/Applications/Muster.app"  # The installed Muster to replace.
+    bundle str = ""                       # Install this already built bundle instead of building one.
+    dry_run n bool                        # Say what would happen, and change nothing.
+    yes y bool                            # Replace the app without asking.
+
+// A release bundle builds everything twice over, debug and release, plus both Linux daemons.
+FREE_GIB_NEEDED = 25
+
+// Quits the Muster running from the app being replaced, moves that app aside, copies the new one
+// in, and opens it if one was quit. Detached from this script, so the swap finishes whatever
+// happens to the terminal running it - which is often a pane of the Muster being quit. The last
+// line it writes says how it ended, and a failure puts the old app back.
+SWAP = r"""
+set -u
+app=$1 staged=$2 aside=$3
+quit=0
+for pid in $(pgrep -x muster); do
+  if [ "$(ps -o comm= -p "$pid")" = "$app/Contents/MacOS/muster" ]; then
+    kill -TERM "$pid"
+    quit=1
+    for _ in $(seq 60); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "failed: Muster (pid $pid) did not quit within 30 seconds, so nothing was moved"
+      exit 1
+    fi
+  fi
+done
+if ! mv "$app" "$aside"; then
+  [ "$quit" = 1 ] && open "$app"
+  echo "failed: could not move $app aside to $aside"
+  exit 1
+fi
+if ! ditto "$staged" "$app"; then
+  rm -rf "$app"
+  mv "$aside" "$app"
+  [ "$quit" = 1 ] && open "$app"
+  echo "failed: could not copy $staged to $app, so the old app was put back"
+  exit 1
+fi
+[ "$quit" = 1 ] && open "$app"
+echo "swapped quit=$quit"
+"""
+
+fn fail(lines):
+    print_err(red(lines[0]))
+    for line in lines[1:]:
+        print_err(line)
+    exit(1)
+
+fn step(name):
+    print(bold("\n▸ {name}"))
+
+// major.minor.patch as numbers, ignoring anything after a `-` or `+`: the comparison the
+// daemon handover makes (muster-daemon-client/src/handover.rs), so "newer" here means the same
+// as "will be handed the panes" there.
+fn numbers(version):
+    core = version.split("-")[0].split("+")[0]
+    parts = core.split(".")
+    if len(parts) != 3:
+        return []
+    found = []
+    for part in parts:
+        n = parse_int(part) catch:
+            return []
+        found += [n]
+    return found
+
+fn newer(version, than):
+    a = numbers(version)
+    b = numbers(than)
+    if len(a) == 0 or len(b) == 0:
+        return false
+    for i in range(3):
+        if a[i] != b[i]:
+            return a[i] > b[i]
+    return false
+
+fn highest(versions):
+    best = ""
+    for version in versions:
+        if len(numbers(version)) == 3 and (best == "" or newer(version, best)):
+            best = version
+    return best
+
+fn next_dev(version):
+    n = numbers(version)
+    return "{n[0]}.{n[1]}.{n[2] + 1}-dev"
+
+fn plist_version(app):
+    version = quiet $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' {app}/Contents/Info.plist`.stdout.trim() catch:
+        version = ""
+    return version
+
+// "muster-daemon 0.17.1-dev (release)" from an app's own daemon, as [version, install].
+fn daemon_identity(app):
+    said = quiet $`{app}/Contents/Library/MusterSessions.app/Contents/MacOS/muster-daemon --version`.stdout.trim() catch:
+        return ["", ""]
+    words = said.split(" ")
+    if len(words) != 3 or words[0] != "muster-daemon":
+        return ["", ""]
+    return [words[1], words[2].trim_prefix("(").trim_suffix(")")]
+
+// What the daemon on `socket` says, asked of the window through `cli`: [version, panes, known].
+// A Muster from before `muster daemons` gave versions answers without one. `relaunched` drops
+// MUSTER_SOCKET, which in a pane names the window that has just quit, so the CLI looks for the
+// one running now.
+fn running_daemon(cli, socket, relaunched):
+    if relaunched:
+        stdout, stderr, code = quiet $`env -u MUSTER_SOCKET {cli} daemons --json` catch:
+            return ["", 0, false]
+    else:
+        stdout, stderr, code = quiet $`{cli} daemons --json` catch:
+            return ["", 0, false]
+    for daemon in parse_json(stdout).daemons:
+        if daemon.socket == socket and daemon.state == "answering":
+            version = "version" in daemon ? daemon.version : ""
+            return [version, daemon.panes, true]
+    return ["", 0, false]
+
+fn developer_id():
+    chosen = get_env("MUSTER_SIGN_IDENTITY")
+    if chosen != "":
+        return chosen
+    found = []
+    for line in quiet $`security find-identity -v -p codesigning`.stdout.split_lines():
+        if "\"Developer ID Application:" in line:
+            found += [line.split("\"")[1]]
+    return len(found) == 1 ? found[0] : ""
+
+fn free_gib(path):
+    kib = quiet $`df -k {path} | tail -1 | awk '\{print $4\}'`.stdout.trim()
+    return parse_int(kib) / 1024 / 1024
+
+fn cargo_version(text):
+    for line in text.split_lines():
+        if line.starts_with("version = \""):
+            return line.trim_prefix("version = \"").trim_suffix("\"")
+    return ""
+
+// ---------------------------------------------------------------------------------------
+
+step("what is installed")
+home = get_env("MUSTER_HOME")
+if home == "":
+    home = "{get_env('HOME')}/.muster"
+
+installed = quiet $`test -d {app}`.ok
+installed_version = ""
+install = "release"
+if installed:
+    installed_version = plist_version(app)
+    identity = daemon_identity(app)
+    if identity[1] == "":
+        fail(["{app}'s daemon did not say which install it belongs to.",
+              "Impact: a build for the wrong install would start an empty daemon beside the one",
+              "holding every agent. Check that {app} is a Muster bundle."])
+    install = identity[1]
+    print("{app} is {installed_version}, install {install}.")
+else:
+    print("Nothing is installed at {app}, so this installs it for install {install}.")
+
+socket = "{home}/daemon/{install}.sock"
+cli = installed ? "{app}/Contents/MacOS/muster-cli" : "muster"
+running = running_daemon(cli, socket, false)
+running_version = running[0]
+before_panes = running[1]
+if running[2] and running_version != "":
+    print("Its daemon is {running_version}, holding {before_panes} pane(s).")
+else if running[2]:
+    print("Its daemon holds {before_panes} pane(s), and the window is too old to say its version,")
+    print("so the installed app's version stands in for it.")
+else:
+    print("No window answered for its daemon, so the installed app's version stands in for it.")
+
+if bundle == "":
+    repo = quiet $`git rev-parse --show-toplevel`.stdout.trim() catch:
+        fail(["This is not inside a git checkout, so there is nothing to build.",
+              "Run it from a Muster checkout, or pass --bundle to install one already built."])
+    if not quiet $`test -x {repo}/dev`.ok:
+        fail(["{repo} is not a Muster checkout: it has no ./dev to build with."])
+    sha = quiet $`git -C {repo} rev-parse --verify --quiet {rev}^0`.stdout.trim() catch:
+        fail(["{rev} names no commit in {repo}."])
+    cargo = quiet $`git -C {repo} show {sha}:Cargo.toml`.stdout
+    base_cargo = cargo_version(cargo)
+    target = next_dev(highest([base_cargo, installed_version, running_version]))
+    identity = developer_id()
+    staging = "{get_env('TMPDIR').trim_suffix('/')}/muster-install"
+    build = "{staging}/build-{sha[:10]}"
+    staged = "{staging}/{target}/Muster.app"
+
+    step("the build")
+    print("{rev} ({sha[:10]}) builds as {target}: one patch past the highest of Cargo.toml's")
+    print("{base_cargo}, the installed {installed_version or 'nothing'} and the running daemon's {running_version or 'unknown'}.")
+    print("MUSTER_INSTALL={install}, so it takes over {socket}.")
+    if identity != "":
+        print("Signed with {identity}.")
+    else:
+        print(yellow("No Developer ID in this keychain, so the build is signed ad hoc: every"))
+        print(yellow("permission granted to Muster is asked for again after the swap."))
+    gib = free_gib(get_env("TMPDIR"))
+    print("Built in {build}, which is removed after; the bundle waits in {staged}.")
+    if gib < FREE_GIB_NEEDED:
+        fail(["{gib} GiB free, and a bundle needs about {FREE_GIB_NEEDED}.",
+              "Impact: the build would fill the disk part way through, and swap shares it.",
+              "Free some space and run this again."])
+
+    if dry_run:
+        print(dim("\n--dry-run: nothing was built or changed."))
+        exit(0)
+
+    if quiet $`test -e {build}`.ok:
+        fail(["{build} is left from an earlier run.",
+              "Remove it with: git -C {repo} worktree remove --force {build}"])
+    quiet $`mkdir -p {staging}`
+    $`git -C {repo} worktree add --detach {build} {sha}`
+    // libghostty is the same pin in every recent commit, and building it costs minutes. A copy
+    // that is the wrong pin is rebuilt by ./dev, since deps/.built records what it was built
+    // from.
+    if quiet $`test -d {repo}/deps/ghostty`.ok:
+        $`cp -c -R {repo}/deps/ghostty {build}/deps/ghostty`
+    if quiet $`test -f {repo}/deps/.built`.ok:
+        $`cp {repo}/deps/.built {build}/deps/.built`
+
+    built_cargo = read_file("{build}/Cargo.toml").content
+    if built_cargo.count("\nversion = \"{base_cargo}\"\n") != 1:
+        fail(["{build}/Cargo.toml has no single 'version = \"{base_cargo}\"' line to set {target} on.",
+              "The build worktree is left in place."])
+    write_file("{build}/Cargo.toml", built_cargo.replace("\nversion = \"{base_cargo}\"\n", "\nversion = \"{target}\"\n"))
+
+    $`cd {build} && MUSTER_INSTALL={install} MUSTER_SIGN_IDENTITY={identity} ./dev --bundle` catch:
+        fail(["The bundle did not build. Its worktree is left at {build}; remove it with",
+              "  git -C {repo} worktree remove --force {build}",
+              "Nothing installed was touched."])
+    quiet $`rm -rf {staging}/{target}`
+    quiet $`mkdir -p {staging}/{target}`
+    $`ditto {build}/.build/muster.app {staged}`
+    $`git -C {repo} worktree remove --force {build}`
+    print("Built {staged}.")
+else:
+    staged = bundle
+    target = plist_version(staged)
+    step("the bundle")
+    print("{staged} is {target}.")
+
+// Checked whether this run built it or was handed it: a bundle that is not newer than the
+// running daemon, by the handover's rule, is not handed the panes and runs none of its own
+// daemon's changes; one of another install starts a daemon of its own.
+cli_says = quiet $`{staged}/Contents/MacOS/muster-cli --version`.stdout.trim() catch:
+    cli_says = ""
+staged_identity = daemon_identity(staged)
+if cli_says != "muster {target}" or staged_identity[0] != target:
+    fail(["{staged} disagrees with itself about its version: Info.plist says {target}, its CLI",
+          "'{cli_says}', its daemon '{staged_identity[0]}'. Build it again."])
+if staged_identity[1] != install:
+    fail(["{staged} is built for install {staged_identity[1]}, and {app} is install {install}.",
+          "Impact: it would start an empty daemon beside the one holding every agent.",
+          "Build it with MUSTER_INSTALL={install}, which this script does when it builds."])
+for floor in [installed_version, running_version]:
+    if floor != "" and not newer(target, floor):
+        fail(["{target} is not newer than {floor}, comparing major.minor.patch only.",
+              "Impact: the new app would adopt the running daemon as it is, so none of this",
+              "build's daemon changes would run until that daemon restarts, ending every agent.",
+              "Build it again with this script, which picks a newer version."])
+
+if dry_run:
+    print(dim("\n--dry-run: nothing was changed."))
+    exit(0)
+
+aside = "{app}.{installed_version or 'old'}"
+n = 2
+while quiet $`test -e {aside}`.ok:
+    aside = "{app}.{installed_version or 'old'}-{n}"
+    n += 1
+
+step("the swap")
+if installed:
+    print("A Muster running from {app} quits, the app moves to {aside}, and {target} takes")
+    print("its place and opens.")
+    print("Every agent keeps running: the new daemon is handed the panes.")
+else:
+    print("{target} is copied to {app}.")
+if not yes:
+    if not quiet $`test -t 0`.ok:
+        fail(["Not replacing {app} without asking, and there is no terminal to ask on.",
+              "Run this again with --yes once replacing it now is agreed:",
+              "  tools/install-main --bundle {staged} --yes"])
+    // Read by the shell rather than with input(), which rad refuses to run anywhere without a
+    // terminal - a --dry-run from an agent included - even on a branch that never asks.
+    print("Replace {app} with {target} now? [y/N] ")
+    answer = quiet $`bash -c 'read -r answer </dev/tty && printf %s "$answer"'`.stdout catch:
+        answer = ""
+    if answer.trim().lower() not in ["y", "yes"]:
+        print("Left as it was. Swap later with:")
+        print("  tools/install-main --bundle {staged}")
+        exit(0)
+
+if installed:
+    log = "{staged}.swap.log"
+    quiet $`rm -f {log}`
+    quiet $`nohup bash -c {SWAP} install-main-swap {app} {staged} {aside} > {log} 2>&1 &`
+    ended = ""
+    waited = 0
+    while ended == "":
+        sleep(1)
+        waited += 1
+        last = quiet $`tail -1 {log}`.stdout.trim()
+        if last.starts_with("swapped") or last.starts_with("failed"):
+            ended = last
+        else if waited > 120:
+            fail(["The swap has not finished in two minutes; {log} says how far it got."])
+    if ended.starts_with("failed"):
+        fail([ended, "{log} has the rest."])
+    quit = ended == "swapped quit=1"
+else:
+    $`ditto {staged} {app}`
+    quit = false
+
+if not quit:
+    print("Nothing was running from {app}, so nothing was quit or opened.")
+else:
+    step("the handover")
+    new_cli = "{app}/Contents/MacOS/muster-cli"
+    seen = ["", 0, false]
+    waited = 0
+    while waited < 90 and not (seen[2] and seen[0] == target):
+        sleep(3)
+        waited += 3
+        seen = running_daemon(new_cli, socket, true)
+    if seen[0] != target:
+        print_err(yellow("The window does not yet say its daemon is {target} ({seen[0] or 'no answer'})."))
+        print_err("Check with: muster daemons. The handover may still be under way, or the new app")
+        print_err("may have adopted the old daemon as it is; its roster says which.")
+    else if seen[1] < before_panes:
+        print_err(yellow("The daemon is {target} and holds {seen[1]} pane(s), where it held {before_panes}."))
+        print_err("Check with: muster window, and the roster's problems.")
+    else:
+        print(green("The daemon is {target} and holds all {seen[1]} pane(s)."))
+
+if bundle == "":
+    quiet $`rm -rf {staging}/{target}`
+
+print("\n{app} is {target}.")
+if installed:
+    print("The previous app is {aside}; to go back, quit Muster and move it back.")
+if quit:
+    print("The daemon stays {target} until it restarts, which ends its agents, so going back keeps it.")
+    print("Codex keeps its own copy of Muster's adapter: muster harness install codex.")
+    print("Homebrew still records the version it installed, so brew upgrade replaces this with the")
+    print("next release, which takes the panes over if it is a minor release or later.")

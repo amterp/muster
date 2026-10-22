@@ -205,13 +205,26 @@ Dock, or hand to somebody, with muster-daemon and its data, both dylibs, the ico
 Release, where the gate builds debug: until 0.9.0 every bundle shipped the unoptimized shell, core and bridge, which
 nobody had chosen. Out of the gate because nothing in the gate needs one, and it is also the only way to meet the
 descriptor ceiling launchd imposes on a GUI-launched process. The signature is ad-hoc, which is what macOS needs to
-run a Mach-O at all and asserts nothing about who built it.
+run a Mach-O at all and asserts nothing about who built it. It belongs to the checkout's own install, as every build
+here does, so it runs a daemon of its own beside an installed Muster's unless `MUSTER_INSTALL` names that install;
+the run's last line says which.
 
 **`tools/run-checkout` runs this tree's debug build beside an installed Muster**, for trying a change on a machine
 that also uses the release. A checkout's build already gets its own daemon, but in the release's home its launch
 would repoint `~/.muster/bin/muster` at the checkout's CLI for every release pane, so the script runs it under
 `~/.muster-dev` (`MUSTER_DEV_HOME` moves it) with `config.toml` linked from `~/.muster`, and with the environment a
 Dock launch gets rather than the pane's. Build first with `./dev -b`.
+
+**`tools/install-main` makes a commit of main the everyday Muster**, keeping every agent. Two things decide whether
+a replacement app is handed the running daemon's panes, and the script sets both: the build has to be for the
+installed app's install, so it takes over that daemon rather than starting an empty one beside it, and its version
+has to be newer than the running daemon's, which a build of main is not until `./release` bumps it. So it builds in
+a scratch worktree with a version one patch past the installed app and the running daemon (`0.17.1-dev` over
+`0.17.0`; the next minor release is newer again, so a Homebrew upgrade takes the panes over in turn), signs with the
+keychain's Developer ID so macOS permissions survive, and asks before it quits Muster, keeps the old app beside the
+new one and opens it. `--dry-run` says all of that and changes nothing, and `--bundle` installs one it built
+earlier. A window that finds another install's daemon in its home holding panes says so, which is how a bundle
+installed any other way shows up.
 
 **`MUSTER_SIGN_IDENTITY` is what makes a bundle somebody else can run**, and `./dev --notarize` is the rest of it.
 Set the variable to a Developer ID and the same `--bundle` signs with it instead, under the hardened runtime and with

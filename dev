@@ -829,13 +829,19 @@ fn build_bundle():
     // that cannot find libghostty-vt is present, signed and dead at launch, and a window
     // shows that only as panes that never render. With the checkout's rpaths gone, this is
     // the bundle's own copy loading, even on the machine that built it.
-    quiet $`{daemon} --version` catch:
+    said = quiet $`{daemon} --version`.stdout.trim() catch:
         print_err(red("The bundled muster-daemon does not start."))
         print_err("Impact: every pane in this bundle's window stays blank.")
         print_err("Check: run {daemon} --version and read what dyld says it could not load;")
         print_err("the rpaths build_bundle adds are the usual cause.")
         exit(1)
-    print("assembled {BUNDLE} - open it, or drag it to the Dock")
+    print("assembled {BUNDLE} ({said}) - open it, or drag it to the Dock")
+    // The install names the daemon's socket (MUSTER_INSTALL), and a bundle put in place of an
+    // installed Muster of another install starts an empty daemon beside the one holding its
+    // agents. Said here because this is the last moment anyone is looking.
+    if "(dev-" in said:
+        print(dim("Built for this checkout's own install, so it runs a daemon of its own beside any"))
+        print(dim("installed Muster's. To replace the installed Muster, use tools/install-main."))
 
 // Deletes the rpaths that point into this checkout, so a bundled binary loads only what the
 // bundle carries. Left in, the binary would load from target/ or the ghostty checkout on the
