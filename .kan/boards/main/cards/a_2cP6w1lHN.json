@@ -102,6 +102,12 @@
       "body": "Another instance, 2026-10-21 ~20:20, Mac, Codex worker (gpt-6.1-sol via bunx @openai/codex@0.162.1, adapter not reporting at first) in a parallel-work round, group cougar+topaz: the approval wake for #6 rang a second time after the worker had read #6, built and committed the work, and posted its waiting report. The second muster msg read returned 'nothing unread'. Same pattern as the earlier Codex instances: the duplicate follows the worker's own post in the group.",
       "created_at_millis": 1792631997862,
       "id": "c_2lwGT4Ges"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Second instance in the same Lectern round, 2026-10-21 ~20:45, same Codex worker (group cougar+topaz): approval wake #11 rang again after the worker read it, built the work and posted #12; read returned 'nothing unread'.",
+      "created_at_millis": 1792633610107,
+      "id": "c_2lwwPSj3M"
     }
   ],
   "created_at_millis": 1791223112987,
@@ -111,7 +117,7 @@
   "position": "a0",
   "title": "📬 A Codex agent got a second wake for a message it had read and answered",
   "type": "bug",
-  "updated_at_millis": 1792632580068,
+  "updated_at_millis": 1792633610107,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791223112987},
     {"field":"column","value":"in-progress","at":1791249592118},
