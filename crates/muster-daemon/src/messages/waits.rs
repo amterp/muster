@@ -134,6 +134,11 @@ impl Waits {
 /// Ends each declared wait that is over, and tells an agent whose process exited. Called by the
 /// doorbell's thread with no lock held, on every wake; says how long until the next look is due.
 pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
+    // A daemon handing over refuses every post, so a wait ended now would be cleared with nobody
+    // told. The newer daemon takes the wait over with the pane's facts and ends it there.
+    if shared.messages().handing_over {
+        return NOTHING_DUE;
+    }
     let held = shared.lock().declared_waits();
     if held.is_empty() {
         waits.since.clear();
