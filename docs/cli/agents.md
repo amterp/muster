@@ -471,11 +471,13 @@ under Hidden, since there is no row to list it under.
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
 stuck, or goes idle without having posted to its maker since it last went to work, and stays so
 for 10 seconds, its daemon tells the maker once, in a message from `@muster` that says why and
-what answers it (`muster docs msg`), whether or not the helper is quiet. A helper that posts its
-report and then goes idle is not reported, nor is one waiting on its own work, nor one going idle
-after a compaction or a rename Muster typed, which is not going to work. While its maker's
-pane holds no agent, because the agent exited to its shell or the helper was made from a plain
-shell, a quiet helper asks for you as if it were not quiet, since nothing there hears it.
+what answers it (`muster docs msg`), whether or not the helper is quiet. While the maker is at
+work it is told once its turn ends, and only if the helper still needs it: a maker approving its
+helpers' plans one after another is not told about dialogs it has already answered. A helper
+that posts its report and then goes idle is not reported, nor is one waiting on its own work, nor
+one going idle after a compaction or a rename Muster typed, which is not going to work. While its
+maker's pane holds no agent, because the agent exited to its shell or the helper was made from a
+plain shell, a quiet helper asks for you as if it were not quiet, since nothing there hears it.
 
 A helper and its maker can be on different machines, made with `--daemon` or `--helper-of`. The
 maker is told on its own machine, which needs a window attached to both, since that is what links

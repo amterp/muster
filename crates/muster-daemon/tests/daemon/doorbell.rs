@@ -1328,6 +1328,57 @@ fn a_helper_at_a_dialog_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
 }
 
+/// A helper that blocks while its maker is at work is held until the maker can hear it, and told
+/// then while it is still blocked: a post to a maker at work would wait for its turn to end
+/// anyway. The advice names the helper by its callsign, which no other pane can hold.
+#[test]
+fn a_helper_blocked_while_its_maker_works_is_told_once_the_maker_is_free() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+
+    logging.logged_until(r#""event":"msg.helper.held""#, Duration::from_secs(20));
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told a busy maker");
+
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let read = agent.read_in_its_pane();
+    assert_eq!(read.len(), 1, "{read:?}");
+    let callsign = snapshot(&mut agent.control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == "p2")
+        .and_then(|record| record.callsign)
+        .expect("p2 was drawn a callsign");
+    assert!(read[0].contains(&format!("{callsign} (p2) is blocked at a dialog: ")), "{read:?}");
+    assert!(read[0].contains(&format!("--pane {callsign}`")), "{read:?}");
+}
+
+/// A helper's dialog answered while its maker was at work, as a maker approving its helpers'
+/// plans answers each in the one turn, is never told: by the time the maker could read the
+/// notice it would be stale.
+#[test]
+fn a_helper_answered_while_its_maker_worked_is_not_told() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+    logging.logged_until(r#""event":"msg.helper.held""#, Duration::from_secs(20));
+
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told of a dialog answered");
+}
+
 /// A helper that blocks before reading its maker's task holds their group up too, and the maker
 /// hears of it once: the maker watch tells it, and the stall watch leaves the maker to that.
 #[test]

@@ -10,7 +10,10 @@
 //! group kept here, which that machine is sent.
 //!
 //! A need is told once it has held for [`SETTLE`]: a dialog the person answers at once, or a turn
-//! the maker's next message starts again straight away, wakes nobody.
+//! the maker's next message starts again straight away, wakes nobody. And it is told only once
+//! its maker can hear it: a post to a maker at work waits for its turn to end, and a need held
+//! that long has often been met, as a plan dialog the maker itself is about to answer is. So
+//! while the maker is busy the need is held, and told when it comes free if it still holds.
 //!
 //! When a maker's pane closes, its helpers go on running and stop being quiet, which the session
 //! does as the pane closes, and the person is told here, once per maker (MIP-7, section 6). On a
@@ -71,6 +74,9 @@ pub(crate) struct Helper {
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to its maker, looked up only while it is idle.
     pub(crate) last_post_ms: Option<u64>,
+    /// Whether its maker would not be woken by a post now: an agent here at work, at a dialog or
+    /// stuck, whose hooks do not fetch messages mid-turn.
+    pub(crate) maker_busy: bool,
 }
 
 /// What a helper needs that its maker is told of.
@@ -112,6 +118,8 @@ struct Watch {
     /// What it needs, and since when.
     need: Option<(Need, u64)>,
     told: bool,
+    /// Whether its need is due and waits for its maker to be free.
+    held: bool,
 }
 
 /// Every helper this daemon is watching, between looks.
@@ -133,6 +141,8 @@ pub(crate) struct Makers {
     /// What the daemon that handed these panes over had told each helper's maker, by the helper,
     /// taken as told when the helper is first weighed here.
     carried: BTreeMap<String, Need>,
+    /// Each need held since the last look, for it to log: the helper, its maker, and the need.
+    newly_held: Vec<(String, String, Need)>,
 }
 
 impl Makers {
@@ -150,6 +160,7 @@ impl Makers {
             held: Vec::new(),
             told: BTreeMap::new(),
             carried: BTreeMap::new(),
+            newly_held: Vec::new(),
         }
     }
 
@@ -193,29 +204,40 @@ impl Makers {
             if watch.need.map(|(was, _)| was) != need {
                 watch.need = need.map(|need| (need, now_ms));
                 watch.told = false;
+                watch.held = false;
             }
             let Some((need, since_ms)) = watch.need else { continue };
-            if watch.told || now_ms.saturating_sub(since_ms) < self.settle_ms {
+            let held_ms = now_ms.saturating_sub(since_ms);
+            if watch.told || held_ms < self.settle_ms {
+                continue;
+            }
+            if helper.maker_busy {
+                if !watch.held {
+                    watch.held = true;
+                    self.newly_held.push((helper.pane.clone(), helper.maker.clone(), need));
+                }
                 continue;
             }
             watch.told = true;
+            watch.held = false;
             let worked_ms = now_ms.saturating_sub(watch.worked_since_ms.unwrap_or(now_ms));
             tells.push(Tell {
                 maker: helper.maker.clone(),
                 to: helper.to.clone(),
                 helper: helper.pane.clone(),
                 need,
-                body: body(helper, need, called, worked_ms),
+                body: body(helper, need, called, worked_ms, held_ms),
             });
         }
         tells
     }
 
-    /// How long until a need held now is due to be told.
+    /// How long until a need held now is due to be told. One waiting for its maker to be free is
+    /// looked at again when the maker changes, which wakes the doorbell's thread anyway.
     fn due(&self, now_ms: u64) -> Duration {
         self.watches
             .values()
-            .filter(|watch| !watch.told)
+            .filter(|watch| !watch.told && !watch.held)
             .filter_map(|watch| watch.need)
             .map(|(_, since_ms)| {
                 let left = (since_ms + self.settle_ms).saturating_sub(now_ms);
@@ -243,17 +265,24 @@ fn need(helper: &Helper, worked_since_ms: Option<u64>) -> Option<Need> {
 }
 
 /// What the maker is told: the MIP's own sentence, the stall watch's reason, and what the maker
-/// can do about it.
-fn body(helper: &Helper, need: Need, called: &BTreeMap<String, String>, worked_ms: u64) -> String {
+/// can do about it. A block says how long it has held, since a busy maker hears of it late.
+fn body(
+    helper: &Helper,
+    need: Need,
+    called: &BTreeMap<String, String>,
+    worked_ms: u64,
+    held_ms: u64,
+) -> String {
     let named = shown(called, &helper.pane);
     // What a command takes it by: its name, which `--pane` takes as it takes the id.
     let pane = called.get(&helper.pane).unwrap_or(&helper.pane);
     match need {
         Need::Blocked => format!(
-            "{named} is blocked at a dialog: {AT_A_DIALOG}. `muster pane read --pane {pane}` \
-             shows it and `muster pane send --pane {pane} --key <key>` answers it, or bring it \
+            "{named} is blocked at a dialog: {AT_A_DIALOG}, and has been for {held}. `muster pane \
+             read --pane {pane}` shows it and `muster pane send --pane {pane} --key <key>` answers it, or bring it \
              forward with `muster pane show --pane {pane}` and ask the person. Muster says this \
-             once each time it blocks."
+             once each time it blocks.",
+            held = said_as_time(held_ms),
         ),
         Need::Stuck => {
             let why = helper.stopped.as_ref().map_or_else(
@@ -314,7 +343,7 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         if messages.handing_over {
             return NOTHING_DUE;
         }
-        let helpers = helpers(&messages.service, &panes, makers);
+        let helpers = helpers(&messages.service, &panes, makers, now_ms());
         (helpers, messages.service.called(&panes))
     };
     let mut called = called;
@@ -326,7 +355,14 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         }
     }
     let now = now_ms();
-    for tell in makers.judge(&helpers, &called, now) {
+    let tells = makers.judge(&helpers, &called, now);
+    for (helper, maker, need) in makers.newly_held.drain(..) {
+        log::info(
+            "msg.helper.held",
+            fields! { "helper" => helper, "maker" => maker, "need" => need.as_str() },
+        );
+    }
+    for tell in tells {
         if !tell_maker(shared, &panes, &tell) {
             // Whoever is in the maker's pane there may have changed: asked again next time.
             makers.there.remove(&tell.maker);
@@ -397,6 +433,7 @@ fn helpers(
     service: &muster_msg::Messaging<super::store::Files>,
     panes: &Panes,
     makers: &mut Makers,
+    now_ms: u64,
 ) -> Vec<Helper> {
     let mut helpers = Vec::new();
     for (pane, maker) in panes.makers() {
@@ -422,7 +459,11 @@ fn helpers(
         };
         let Some(seen) = panes.get(pane) else { continue };
         let idle = seen.activity == Some(Activity::Idle);
+        let maker_at_work = panes.get(maker).is_some_and(|maker| {
+            matches!(maker.activity, Some(Activity::Working | Activity::Blocked | Activity::Stuck))
+        });
         helpers.push(Helper {
+            maker_busy: maker_at_work && !service.hooked(&to, now_ms, panes),
             pane: pane.clone(),
             maker: maker.clone(),
             last_post_ms: if idle { service.last_post(pane, &to) } else { None },
@@ -549,6 +590,7 @@ mod tests {
             chores_turn: false,
             stopped: None,
             last_post_ms: None,
+            maker_busy: false,
         }
     }
 
@@ -576,6 +618,7 @@ mod tests {
         assert_eq!(needs(&tells), [Need::Blocked]);
         assert_eq!(tells[0].maker, "p1");
         assert!(tells[0].body.starts_with("maple (p2) is blocked at a dialog: it is at a dialog"));
+        assert!(tells[0].body.contains(", and has been for 10s."), "{}", tells[0].body);
         assert!(tells[0].body.contains("--pane maple"), "{}", tells[0].body);
         assert!(makers.judge(&[maple(Activity::Blocked)], &called, 60_000).is_empty(), "once");
 
@@ -583,6 +626,40 @@ mod tests {
         makers.judge(&[maple(Activity::Blocked)], &called, 62_000);
         let again = makers.judge(&[maple(Activity::Blocked)], &called, 72_000);
         assert_eq!(needs(&again), [Need::Blocked], "blocked again");
+    }
+
+    /// A block that comes due while the maker is at work waits for the maker to be free, is told
+    /// then while it still holds, and says how long it has; the thread is not asked to look
+    /// again for it meanwhile.
+    #[test]
+    fn a_block_waits_for_a_busy_maker_and_is_told_once_it_is_free() {
+        let mut makers = makers();
+        let called = called();
+        let busy = |activity| Helper { maker_busy: true, ..maple(activity) };
+        makers.judge(&[busy(Activity::Working)], &called, 0);
+        makers.judge(&[busy(Activity::Blocked)], &called, 1_000);
+        assert!(makers.judge(&[busy(Activity::Blocked)], &called, 30_000).is_empty());
+        assert_eq!(makers.due(30_000), NOTHING_DUE);
+        assert_eq!(makers.newly_held, [("p2".to_string(), "p1".to_string(), Need::Blocked)]);
+
+        let tells = makers.judge(&[maple(Activity::Blocked)], &called, 40_000);
+        assert_eq!(needs(&tells), [Need::Blocked]);
+        assert!(tells[0].body.contains("answer it, and has been for 39s."), "{}", tells[0].body);
+        assert!(makers.judge(&[maple(Activity::Blocked)], &called, 50_000).is_empty(), "once");
+    }
+
+    /// A block answered while its maker was busy, as a maker approving its helpers' plans
+    /// answers each, is never told.
+    #[test]
+    fn a_block_answered_while_the_maker_was_busy_is_not_told() {
+        let mut makers = makers();
+        let called = called();
+        let busy = |activity| Helper { maker_busy: true, ..maple(activity) };
+        makers.judge(&[busy(Activity::Working)], &called, 0);
+        makers.judge(&[busy(Activity::Blocked)], &called, 1_000);
+        assert!(makers.judge(&[busy(Activity::Blocked)], &called, 20_000).is_empty());
+        assert!(makers.judge(&[busy(Activity::Working)], &called, 21_000).is_empty());
+        assert!(makers.judge(&[maple(Activity::Working)], &called, 90_000).is_empty());
     }
 
     /// A helper whose program stopped reading is told of, with the stall watch's reason.

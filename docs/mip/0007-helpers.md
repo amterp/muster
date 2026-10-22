@@ -184,6 +184,11 @@ has a daemon tell a group once, and say why, when the group is held up on a memb
 same for a helper and sends it to the maker, the agent that can act on it. The maker can answer
 the dialog with `muster pane send --key`, or bring the helper forward and ask the person.
 
+A maker at work is told once it can hear it, and only if the need still holds. A post to it would
+wait for its turn to end anyway, and on 2026-10-21 every plan dialog its maker answered within
+that turn reached it as a notice two minutes later, after the helper was back at work. A maker
+whose hooks fetch messages mid-turn is told at once, as before.
+
 The person is not told while the maker is alive and reachable. The person is told in two cases:
 
 - **The maker is unreachable**, its machine not answering. The person is the only one who can

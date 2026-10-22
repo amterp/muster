@@ -341,9 +341,10 @@ are not watched, since that is also what a finished group looks like.
 **A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An
 agent's helpers") becomes blocked, becomes stuck, or goes idle without having posted to its maker
 since it last went to work, and stays that way for 10 seconds, its daemon tells the maker, once
-each time, from `@muster`:
+each time, from `@muster`. A maker at work, which a post would wake only once its turn ends, is
+told then instead, if the helper still needs it, and the notice says how long it has:
 
-    @muster: maple (p2w3r07bsd) is blocked at a dialog: it is at a dialog, waiting for somebody to answer it. `muster pane read --pane maple` shows it and `muster pane send --pane maple --key <key>` answers it, or bring it forward with `muster pane show --pane maple` and ask the person. Muster says this once each time it blocks.
+    @muster: maple (p2w3r07bsd) is blocked at a dialog: it is at a dialog, waiting for somebody to answer it, and has been for 12s. `muster pane read --pane maple` shows it and `muster pane send --pane maple --key <key>` answers it, or bring it forward with `muster pane show --pane maple` and ask the person. Muster says this once each time it blocks.
 
 It goes in the group of exactly the two when there is one, else the one group both are in, and
 else a group made for them as a post between them would make it, so the maker's reply addressed to
