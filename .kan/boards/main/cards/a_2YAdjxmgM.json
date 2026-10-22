@@ -2,17 +2,26 @@
   "_v": 3,
   "alias": "the-swift-suite",
   "alias_explicit": false,
-  "column": "done",
+  "column": "in-progress",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-22 00:30: back. A full ./dev on main (ad9138ae, load about 2) crashed the Swift test process with the same uncaught 'already on an AppKit thread' from ViewBridge's NSRemoteView. Likely cause: the find bar's new tests (1d25a6a4, Tests/MusterMacTests/FindTests.swift) make the bar's NSTextField first responder in an offscreen window, seven times - the case 7e00653f removed from the select-all test, since it starts InputMethodKit. Sent back to be asked without the input method, as 7e00653f did.",
+      "created_at_millis": 1792646941737,
+      "id": "c_2m2XE59JP"
+    }
+  ],
   "created_at_millis": 1790597571361,
   "creator": "Alexander Terp",
   "description": "About 3 runs in 16 of ./dev, on sources before and after 2026-09-28's rounds, the Swift test run crashes with an unexpected thread in ViewBridge. It is not tied to one change. Worth a symbolized crash log and a look at which test touches a view off the main thread.",
   "id": "a_2YAdjxmgM",
-  "position": "Yzb",
+  "position": "Zt",
   "title": "The Swift suite sometimes crashes in AppKit's ViewBridge",
   "type": "bug",
-  "updated_at_millis": 1790620413482,
+  "updated_at_millis": 1792646941832,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790597571361},
-    {"field":"column","value":"done","at":1790620413482}
+    {"field":"column","value":"done","at":1790620413482},
+    {"field":"column","value":"in-progress","at":1792646941832}
   ]
 }
