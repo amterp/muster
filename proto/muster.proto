@@ -2830,7 +2830,8 @@ message ViewChanged {
 
   // The tab's one tree over every machine it spans, merged from the copy each machine keeps
   // (docs/mip/0008-panes-across-machines.md): the whole tree, even while a region is zoomed.
-  // Published beside `regions`, which are what draws the tab. Absent with no tab on screen.
+  // Published beside `regions`, which are what draws the tab. Absent with no tab on screen,
+  // and for a tab on one machine holding no other machine's pane, whose region carries its tree.
   ViewTree tree = 4;
 }
 
