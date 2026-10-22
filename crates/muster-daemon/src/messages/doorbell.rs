@@ -96,6 +96,12 @@ const IDLE: Duration = Duration::from_mins(1);
 /// before Return is pressed again.
 pub(crate) const ANSWER: Duration = Duration::from_secs(5);
 
+/// How long an agent woken by command has to take the wake before it is typed instead: two polls
+/// of a Codex without the shared app-server, which starts a turn for a queued message up to ten
+/// seconds after it was stored (docs/observations/codex-0.163.0.md). Typed sooner, the wake
+/// starts a turn, and Codex wakes the agent a second time with its stored copy as that turn ends.
+const COMMAND_ANSWER: Duration = Duration::from_secs(20);
+
 /// How long an agent whose hooks fetch its messages is left once it is seen idle with nothing
 /// fetching, before it is rung: its `Stop` hook starts as the turn ends, and its wait may connect
 /// just after, which is then told instead.
@@ -554,9 +560,9 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
 }
 
 /// Looks at each wake handed over by command, before anything is rung: one whose agent has gone
-/// to work or read was taken. One that was not within [`ANSWER`] is typed instead, and the
-/// session's id forgotten, so that it is; a message the harness kept may then arrive as well, a
-/// wake too many rather than one lost. Says when to look again.
+/// to work or read was taken. One that was not within [`COMMAND_ANSWER`] is typed instead, and
+/// the session's id forgotten, so that it is; a message the harness kept may then arrive as well,
+/// a wake too many rather than one lost. Says when to look again.
 fn unanswered_commands(shared: &Shared) -> Option<Instant> {
     if shared.messages().commanded.is_empty() {
         return None;
@@ -576,7 +582,7 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
             if !woken || !idle {
                 continue;
             }
-            let due = commanded.at + ANSWER;
+            let due = commanded.at + COMMAND_ANSWER;
             if due > now {
                 sooner(&mut next, due);
                 messages.commanded.push(commanded);

@@ -21,6 +21,9 @@ const QUIET: Duration = Duration::from_secs(3);
 /// How long the daemon gives a rung agent to take the ring before pressing Return again.
 const ANSWER: Duration = Duration::from_secs(5);
 
+/// How long the daemon gives an agent woken by command to take the wake before typing it.
+const COMMAND_ANSWER: Duration = Duration::from_secs(20);
+
 struct Agent {
     daemon: Daemon,
     control: Control,
@@ -974,9 +977,35 @@ fn a_command_wake_nobody_takes_is_typed_instead() {
     std::thread::sleep(QUIET);
     agent.post("p1", "a brief");
     until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
-    let rung = agent.until_rung(1);
-    assert_eq!(rung.len(), 1);
+    // The daemon gives a command wake 20 seconds, past Codex's queue poll, before typing it.
+    muster_harness::until_within(
+        "the wake to be typed instead",
+        COMMAND_ANSWER + muster_harness::PATIENCE,
+        || !agent.rung().is_empty(),
+        || format!("heard: {:?}", agent.heard()),
+    );
+    assert_eq!(agent.rung().len(), 1);
     assert_eq!(agent.woken().len(), 1, "the command was run again");
+}
+
+/// A Codex running its session without the shared app-server polls its queue, and starts the turn
+/// for a stored wake up to ten seconds later. That wake is not typed as well: typed, it starts a
+/// turn of its own, and Codex wakes the agent again with the stored copy as that turn ends, for a
+/// message it has read and answered (docs/observations/codex-0.163.0.md).
+#[test]
+fn a_command_wake_its_agent_takes_late_is_not_typed_as_well() {
+    let mut agent = Agent::in_a_pane();
+    agent.reports_session("late");
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a brief");
+    until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
+    agent.until_shows("PROBE-STATE:WORKING");
+    assert_eq!(agent.read_in_its_pane(), ["integrator: a brief"]);
+    agent.type_in("idle", true);
+    agent.until_shows("PROBE-STATE:IDLE");
+    std::thread::sleep(QUIET + ANSWER);
+    assert_eq!(agent.rung(), Vec::<String>::new(), "the stored wake was typed as well");
+    assert_eq!(agent.woken().len(), 1);
 }
 
 /// A command that outlasts the daemon's patience - a login shell slow to start on a loaded machine -

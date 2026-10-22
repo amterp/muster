@@ -299,14 +299,18 @@ sections 6 to 9):
   A command that succeeds says only that Codex stored the message, as it does for a session
   whose Codex has exited - which a `codex exec` run from the pane leaves behind, having reported
   its own session's id through the same hook. So a wake handed over by command is watched like a
-  typed ring: if its agent neither goes to work nor reads within five seconds, the wake is typed
-  instead and the session's id forgotten. A message Codex kept may then arrive too, a wake too
-  many rather than one lost. A command that fails is rung as usual; one that refused - exited
-  non-zero, or could not start - is not run for that session again, while one that only took
-  longer than five seconds, as a loaded machine can make it, has that wake typed and is tried
-  again for the next; a second time, it is not run for that session again either. Each command
-  runs on a thread of its own, one per pane at a time, so a slow one delays no other pane's ring
-  or rename, and nothing is typed into its own pane until it ends.
+  typed ring: if its agent neither goes to work nor reads within 20 seconds, the wake is typed
+  instead and the session's id forgotten. Twenty, because a Codex running without its shared
+  app-server polls its queue about every ten seconds (`docs/observations/codex-0.163.0.md`). Five,
+  as this was first built, typed nearly half of all command wakes while Codex still held them, and
+  Codex woke the agent a second time with its stored copy as the typed turn ended. A session that
+  had exited still holds its stored copy, and delivers it if it is resumed later: a wake too many
+  rather than one lost. A command that fails is rung as usual; one that refused - exited non-zero,
+  or could not start - is not run for that session again, while one that only took longer than
+  five seconds to run, as a loaded machine can make it, has that wake typed and is tried again for
+  the next; a second time, it is not run for that session again either. Each command runs on a
+  thread of its own, one per pane at a time, so a slow one delays no other pane's ring or rename,
+  and nothing is typed into its own pane until it ends.
   It runs through a login shell, which reads `.zprofile` but not `.zshrc`, so `codex` must be on
   the `PATH` a login shell sets.
 
