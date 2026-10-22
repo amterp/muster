@@ -392,8 +392,9 @@ An urgent message says so on its first line: `--- review #44 | director -> build
 says how many and the `read` that clears it. There is no override: read, then post again. The
 human is not held to it: the guard keeps a model from acting on a conversation it has not seen,
 and a person reads the transcript as it arrives, on a screen the daemon cannot see. Joins
-and leaves never count as unread. Your place in a group starts where you joined it; `log` shows
-what came before.
+and leaves never count as unread, and neither does what `@muster` tells another member, such as
+your maker told that you are blocked: nothing in it is context you need before you post. Your
+place in a group starts where you joined it; `log` shows what came before.
 
 A member someone else removed with `group remove` can still `read` what others had posted
 there and it had not read, once: everything before its removal, and nothing after. Its wake

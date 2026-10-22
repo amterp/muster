@@ -288,7 +288,10 @@ Take the lexer; leave the parser to critic.
 ```
 
 Joins, leaves and policy changes appear in `read` as one-line notices and do not count as unread.
-v1's lock counted them, so every join made every pending post stale.
+v1's lock counted them, so every join made every pending post stale. As built, neither does a
+message `@muster` addresses to other members (MIP-7): a helper's maker told that the helper is
+blocked made the helper's next report to it refused, over a message about the helper that the
+helper had no need to read.
 
 **The guard.** `post` to a group is refused while its author has unread messages there, and the
 refusal says how many and to run `muster msg read --group review`. The post carries the author's

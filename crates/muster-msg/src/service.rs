@@ -2609,13 +2609,22 @@ impl<S: Store> Messaging<S> {
     }
 
     /// Messages by others after the cursor: what the guard counts. Notices never count, or
-    /// every join would make every pending post stale, as it did in council v1.
+    /// every join would make every pending post stale, as it did in council v1. Nor does what
+    /// Muster tells another member: a maker told that its helper is blocked holds nothing the
+    /// helper needs to have read before it reports, and counting it refused that report.
     pub(crate) fn unread_from_others(&self, name: &str, group: &str) -> u64 {
         self.unread_after(name, group, self.cursor(name, group))
     }
 
     fn unread_after(&self, name: &str, group: &str, cursor: u64) -> u64 {
-        self.unread_between(name, group, cursor, u64::MAX)
+        let count = self.groups[group]
+            .log
+            .iter()
+            .filter(|entry| entry.seq > cursor)
+            .filter(|entry| entry.author().is_some_and(|author| author != name))
+            .filter(|entry| !is_muster_telling_another(entry, name))
+            .count();
+        count as u64
     }
 
     fn unread_between(&self, name: &str, group: &str, after: u64, before: u64) -> u64 {
@@ -3104,4 +3113,10 @@ pub(crate) fn check_body(body: &str) -> Result<(), Refusal> {
 /// the first time or given again.
 fn replaced<T: PartialEq>(held: Option<&T>, given: Option<&T>) -> bool {
     held.is_some() && given.is_some() && held != given
+}
+
+/// Whether `entry` is a message from Muster addressed to members other than `name`.
+fn is_muster_telling_another(entry: &Entry, name: &str) -> bool {
+    matches!(&entry.what, What::Message { author, to, .. }
+        if author == MUSTER && !to.is_empty() && !to.iter().any(|to| to == name))
 }

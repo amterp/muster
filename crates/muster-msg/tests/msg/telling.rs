@@ -2,7 +2,7 @@
 //! needs it, and the human that a maker closed with its helpers still running. Which group it
 //! lands in, who it reaches, and whether a helper has posted to its maker.
 
-use muster_msg::{Caller, HUMAN, MUSTER, Memory, Messaging, Participant, Presence, What};
+use muster_msg::{Caller, HUMAN, MUSTER, Memory, Messaging, Participant, Presence, Refusal, What};
 
 /// `p1` is the integrator and `p2` its helper maple, each with an agent in it; `p3` is critic.
 /// Any other pane is closed.
@@ -125,4 +125,18 @@ fn a_post_to_the_maker_is_found_and_one_to_somebody_else_is_not() {
     messaging.post(&in_pane("p2"), Some("crew"), &[], "done", &Open, 60).unwrap();
     assert_eq!(messaging.last_post("p2", "p1"), Some(60), "unaddressed, in the maker's group");
     assert_eq!(messaging.last_post("p1", "p2"), None, "the maker has posted nothing");
+}
+
+/// What Muster tells a maker about its helper does not hold the helper's next post, since the
+/// helper needs nothing in it before reporting. What Muster tells the helper itself still does.
+#[test]
+fn a_notice_to_the_maker_holds_no_post_of_the_helpers_and_one_to_the_helper_does() {
+    let mut messaging = Messaging::new(Memory::default());
+    let told = messaging.tell_as_muster("p1", "p2", None, "maple is blocked", &Open, 10).unwrap();
+    let to_maker = vec!["p1".to_string()];
+    messaging.post(&in_pane("p2"), Some(&told.group), &to_maker, "my report", &Open, 20).unwrap();
+
+    messaging.tell_as_muster("p2", "p1", None, "integrator is waiting", &Open, 30).unwrap();
+    let refused = messaging.post(&in_pane("p2"), Some(&told.group), &to_maker, "again", &Open, 40);
+    assert_eq!(refused.unwrap_err(), Refusal::Unread { group: told.group, count: 1 });
 }
