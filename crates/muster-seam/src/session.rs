@@ -69,6 +69,7 @@ use crate::{command, convert, ffi, watchdog};
 
 pub(crate) mod attaching;
 pub(crate) mod lifecycle;
+mod other_installs;
 pub(crate) mod problems;
 mod starting_again;
 
@@ -614,6 +615,7 @@ fn reach(daemon: &DaemonId, endpoint: &Endpoint) -> Result<Reached, Unattached> 
         }),
         Endpoint::Local { socket_path: None } => {
             let here = start_here("this window has no session behind it")?;
+            other_installs::look_beside(here.socket_path.clone());
             let handover = (here.reached == launch::Reached::Adopted)
                 .then(|| {
                     handover_for(

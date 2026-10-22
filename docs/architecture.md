@@ -67,7 +67,9 @@ and it listens on a socket named for the install, `~/.muster/daemon/<install>.so
 the release daemon, two checkouts never adopt each other's, and tests start one on a socket of their own. A release
 does adopt the release daemon an earlier version started, if it speaks that daemon's protocol, which is what keeps an
 upgrade from ending every agent (MIP-3, sections 1 and 9). A stranger is then not something to detect; it is something
-that cannot arise.
+that cannot arise. The one thing a socket per install cannot prevent is a build of the wrong install put in
+the installed one's place, which starts an empty daemon beside the one holding every agent; a window that finds another
+install's daemon in its home holding panes raises an error naming it.
 
 **How it runs it is a permissions decision rather than a packaging one.** In a bundle the daemon is a helper
 application of its own, `Contents/Library/MusterSessions.app`, and Muster starts it through Launch Services rather
