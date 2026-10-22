@@ -1,0 +1,23 @@
+{
+  "_v": 3,
+  "alias": "msg-post-window-on",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792709972313,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-22 on 0.18.0, laptop. `muster msg post --to \u003cpane\u003e --window window-6 \"...\"` was refused: \"--window window-6 names the window a command is about, and this command is not about one window, so nothing was done. `muster window reopen window-6` brings a closed window back.\" window-6 was open, with 16 panes in `muster window list`, so the reopen hint pointed the wrong way. `msg post --help` lists `--window` among its options, which is why it was passed. Without `--window` the post found the pane on its own.\n\n`for_window` in `crates/muster-cli/src/args.rs` gives the reopen hint on every refusal: for every command that is not about one window, whether the named window is open or closed.\n\nPossibly: give the reopen hint only when the named window is closed, and otherwise say the command finds its targets across windows without `--window`. If help can be shaped per command, leave `--window` out of the help of commands that refuse it.",
+  "id": "a_2mSywBHkP",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b1d",
+  "title": "msg post --window on an open window says to reopen it",
+  "type": "bug",
+  "updated_at_millis": 1792709972313,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792709972313}
+  ]
+}
