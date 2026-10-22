@@ -303,6 +303,82 @@ private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
   #expect(recording.modifierChanges.isEmpty)
 }
 
+// Ctrl+Return reaches a view as a key equivalent before it is a keystroke, and AppKit has its
+// own use for it there. Ghostty's view claims it for the pane; these pin that Muster's does, and
+// claims nothing else.
+
+@Test(.ownsTheSeam) @MainActor func ctrlReturnIsAKeystrokeForThePane() {
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let window = holding(pane)
+
+  #expect(pane.performKeyEquivalent(with: key("\r", keyCode: 0x24, flags: .control)))
+
+  #expect(recorder.requests.map { $0.keyDown.key.key } == ["Enter"])
+  #expect(recorder.requests.first?.keyDown.key.modifiers == ["control"])
+  withExtendedLifetime(window) {}
+}
+
+@Test(.ownsTheSeam) @MainActor func otherKeyEquivalentsAreLeftToAppKit() {
+  // Plain Return is an ordinary keystroke already, and a pane without the keyboard has no claim
+  // on any key: a second split's view saying yes would type into the wrong pane.
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let other = view(recorder)
+  let window = holding(pane)
+  window.contentView?.addSubview(other)
+
+  #expect(!pane.performKeyEquivalent(with: key("\r", keyCode: 0x24)))
+  #expect(!pane.performKeyEquivalent(with: key("d", keyCode: 0x02, flags: .command)))
+  #expect(!other.performKeyEquivalent(with: key("\r", keyCode: 0x24, flags: .control)))
+  #expect(recorder.requests.isEmpty)
+}
+
+@Test(.ownsTheSeam) @MainActor func ctrlReturnBoundInTheKeymapIsTheMenusToKeep() {
+  // Muster's chords are menu items, and a view claiming a key equivalent comes before AppKit
+  // asks the menu. A `[keymap]` line binding ctrl+return would never fire otherwise.
+  let app = NSApplication.shared
+  let before = app.mainMenu
+  defer { app.mainMenu = before }
+  let chosen = MenuChoice()
+  let item = NSMenuItem(
+    title: "Bound", action: #selector(MenuChoice.choose(_:)), keyEquivalent: "\r")
+  item.keyEquivalentModifierMask = .control
+  item.target = chosen
+  let submenu = NSMenu(title: "Pane")
+  submenu.addItem(item)
+  let top = NSMenuItem(title: "Pane", action: nil, keyEquivalent: "")
+  top.submenu = submenu
+  app.mainMenu = NSMenu(title: "Main")
+  app.mainMenu?.addItem(top)
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let window = holding(pane)
+
+  #expect(pane.performKeyEquivalent(with: key("\r", keyCode: 0x24, flags: .control)))
+
+  #expect(chosen.count == 1)
+  #expect(recorder.requests.isEmpty, "the pane was sent a key the keymap had bound")
+  withExtendedLifetime(window) {}
+}
+
+@MainActor
+private final class MenuChoice: NSObject {
+  var count = 0
+  @objc func choose(_ sender: Any?) { count += 1 }
+}
+
+/// An offscreen window with `pane` in it holding the keyboard.
+@MainActor
+private func holding(_ pane: SurfaceView) -> NSWindow {
+  let window = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
+    backing: .buffered, defer: true)
+  window.contentView?.addSubview(pane)
+  window.makeFirstResponder(pane)
+  return window
+}
+
 // Selection and the clipboard, which is the one input path that never reaches the core: the
 // grid libghostty painted is where a drag lands, so the oracle here is the surface rather than
 // the seam.
@@ -580,9 +656,11 @@ private func mice(_ recorder: RecordingDispatcher) -> [Muster_Mouse] {
   #expect(pastes == ["cargo test"])
 }
 
-private func key(_ characters: String, keyCode: UInt16) -> NSEvent {
+private func key(
+  _ characters: String, keyCode: UInt16, flags: NSEvent.ModifierFlags = []
+) -> NSEvent {
   NSEvent.keyEvent(
-    with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+    with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
     context: nil, characters: characters, charactersIgnoringModifiers: characters,
     isARepeat: false, keyCode: keyCode)!
 }

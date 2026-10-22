@@ -334,6 +334,23 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       event, committed: committedText, composing: wasComposing || hasMarkedText())
   }
 
+  /// Takes ctrl+return as a keystroke for the pane, as Ghostty's view does.
+  ///
+  /// AppKit offers a control chord to the window's views as a key equivalent before it is a
+  /// keystroke at all, and Ghostty's view claims this one there "to prevent the default context
+  /// menu equivalent". Every other key equivalent goes on its way unchanged.
+  public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard event.type == .keyDown, window?.firstResponder === self,
+      event.charactersIgnoringModifiers == "\r", event.modifierFlags.contains(.control)
+    else { return super.performKeyEquivalent(with: event) }
+    // The menu first, because Muster's chords are its items, and claiming the key here comes
+    // before AppKit would have asked the menu: a `[keymap]` line binding ctrl+return would
+    // otherwise never fire.
+    if NSApp?.mainMenu?.performKeyEquivalent(with: event) == true { return true }
+    keyDown(with: event)
+    return true
+  }
+
   public override func keyUp(with event: NSEvent) {
     // Only reported when the pane asked for release events, which the encoder decides from
     // the mode profile. Sending it unconditionally is how a program that never asked ends
