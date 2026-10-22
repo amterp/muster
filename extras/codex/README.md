@@ -61,7 +61,10 @@ input itself; before a session's first prompt, Codex is rung by typing as any ag
 since Muster runs it through one.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
-turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
+turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`, and
+for a job it started in the background adds `--until-exits <pid>`. Codex has nothing that starts a
+turn when such a job ends, so Muster ends the wait when the process exits and wakes Codex with a
+message from `@muster`; a wait declared without it ends after 10 minutes.
 The line also says that waiting for a message or a person is just ending the turn, since an agent
 that reads `waiting` is not idle and a `muster pane wait --until idle` on it would not return; a
 message wakes it either way. Muster then holds off calling the pane done until a later turn ends without the agent declaring
