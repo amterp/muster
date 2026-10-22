@@ -18,11 +18,13 @@ mod renames;
 mod stalls;
 mod store;
 mod typist;
+mod waits;
 mod wire;
 
 pub(crate) use doorbell::Doorbell;
 pub(crate) use makers::Need;
 pub(crate) use peer::Peers;
+pub(crate) use waits::{Declared, Over};
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;

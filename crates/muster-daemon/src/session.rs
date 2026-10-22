@@ -46,7 +46,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::{Doorbell, Messages, Need, Peers};
+use crate::messages::{Declared, Doorbell, Messages, Need, Over, Peers};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -1905,18 +1905,13 @@ impl Session {
         let Some(index) = self.pane_index(&report.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", report.pane));
         };
-        let own_state = match report.state.take().map(proto::AgentState::try_from) {
-            None => None,
-            Some(_) if report.agent.is_empty() => {
-                return Reply::refused("a state needs the name of the agent reporting it");
-            }
-            Some(Ok(
-                state @ (proto::AgentState::Working
-                | proto::AgentState::Blocked
-                | proto::AgentState::Idle),
-            )) => Some(detect::state_of(state)),
-            Some(_) => return Reply::refused("an agent reports itself working, blocked or idle"),
+        let own_state = match own_state(&mut report) {
+            Ok(state) => state,
+            Err(refused) => return refused,
         };
+        if let Some(refused) = gone_process(&report) {
+            return refused;
+        }
         let agent = std::mem::take(&mut report.agent);
         let mut session_name = report.session_name.take();
         if session_name.is_some() && agent.is_empty() {
@@ -1942,7 +1937,7 @@ impl Session {
         let cleared = report.clear;
         let context_used = report.context_used;
         let kept = keeps_wait(&self.panes[index], own_state.is_some(), &report);
-        if kept {
+        if kept != Kept::No {
             report.waiting = None;
         }
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
@@ -1982,7 +1977,7 @@ impl Session {
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
-        heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept);
+        heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept == Kept::ThroughPrompt);
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
             if pane.record.agent.as_deref() == Some(agent.as_str()) {
@@ -2044,6 +2039,46 @@ impl Session {
         );
         pane.compaction.crossed(line);
         pane.compaction.wanted().is_some()
+    }
+
+    /// Every wait an agent here declared and holds, for the watch that ends one whose process
+    /// exits or that runs out (`messages/waits.rs`). Not one its screen shows, which detection
+    /// limits.
+    pub(crate) fn declared_waits(&self) -> Vec<Declared> {
+        self.panes
+            .iter()
+            .filter(|pane| pane.holds_declared_wait())
+            .map(|pane| Declared {
+                pane: pane.record.pane.clone(),
+                serial: pane.turns.wait_serial,
+                until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
+                limited: pane.turns.wait_carried,
+            })
+            .collect()
+    }
+
+    /// Ends the wait `pane`'s agent declared, if it still holds the one numbered `serial`, and
+    /// says what it was. A wait that ran out leaves the turn it held back finished, as a wait
+    /// the screen showed does.
+    pub(crate) fn wait_over(&mut self, pane: &str, serial: u64, over: Over) -> Option<String> {
+        let index = self.pane_index(pane)?;
+        let pane = &mut self.panes[index];
+        if !pane.holds_declared_wait() || pane.turns.wait_serial != serial {
+            return None;
+        }
+        let waited = pane.record.facts.as_ref()?.waiting.clone()?;
+        pane.turns.wait_carried = false;
+        let by = match over {
+            Over::Exited => "exit",
+            Over::RanOut => "limit",
+        };
+        forget_wait(&mut pane.record, by);
+        if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
+            pane.record.finished_unseen = true;
+        }
+        let record = pane.record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        Some(waited)
     }
 
     /// Forgets the session id a pane's agent reported, if it is still `id`: a wake the command
@@ -4032,15 +4067,57 @@ fn agent_left(pane: &mut Pane, name: &str) -> bool {
     resumed
 }
 
+/// The state a report says its agent is in, taken out of it, or a refusal.
+fn own_state(report: &mut pane_request::Report) -> Result<Option<muster_detect::State>, Reply> {
+    match report.state.take().map(proto::AgentState::try_from) {
+        None => Ok(None),
+        Some(_) if report.agent.is_empty() => {
+            Err(Reply::refused("a state needs the name of the agent reporting it"))
+        }
+        Some(Ok(
+            state @ (proto::AgentState::Working
+            | proto::AgentState::Blocked
+            | proto::AgentState::Idle),
+        )) => Ok(Some(detect::state_of(state))),
+        Some(_) => Err(Reply::refused("an agent reports itself working, blocked or idle")),
+    }
+}
+
+/// A refusal for a report declaring a wait until a process exits that has exited already: the
+/// wait would never end.
+fn gone_process(report: &pane_request::Report) -> Option<Reply> {
+    let pid = report.waiting_until_exits?;
+    let exists = i32::try_from(pid).is_ok_and(pty::process_exists);
+    (!exists).then(|| {
+        Reply::refused(format!(
+            "no process {pid}: it has already exited, or never ran, so a wait on it would never \
+             end; no wait is declared"
+        ))
+    })
+}
+
+/// Whether a report that says no wait leaves standing the one the agent declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kept {
+    No,
+    /// A wait until a process exits, which only that, or the agent, ends.
+    OnProcess,
+    /// The adapter's prompt hook, for a prompt Muster typed: a wake or a compaction. That is
+    /// nobody moving the agent on, and the turn it starts is not the agent's work waking it.
+    ThroughPrompt,
+}
+
 /// Whether a report leaves standing the wait the agent declared, although it says no wait: one
-/// with a state, from the adapter's prompt hook, for a prompt Muster typed - a wake or a
-/// compaction. That is nobody moving the agent on, and the turn it starts is not the agent's
-/// work waking it.
-fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> bool {
-    states
-        && report.waiting.as_deref() == Some("")
-        && pane.holds_declared_wait()
-        && pane.io.typed_just_now(std::time::Instant::now()).is_some_and(TypedBy::is_musters)
+/// with a state, from the adapter's prompt hook. The agent saying no wait itself ends any.
+fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> Kept {
+    if !states || report.waiting.as_deref() != Some("") || !pane.holds_declared_wait() {
+        return Kept::No;
+    }
+    if pane.record.facts.as_ref().is_some_and(|facts| facts.waiting_until_exits.is_some()) {
+        return Kept::OnProcess;
+    }
+    let typed = pane.io.typed_just_now(std::time::Instant::now());
+    if typed.is_some_and(TypedBy::is_musters) { Kept::ThroughPrompt } else { Kept::No }
 }
 
 /// What a report said of the agent's wait, for when its turn ends: said, which keeps it as the
@@ -4050,6 +4127,7 @@ fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
     if said {
         pane.turns.wait_declared = true;
         pane.turns.wait_carried = false;
+        pane.turns.wait_serial += 1;
     }
     if kept {
         carry_wait(&pane.record.pane, &mut pane.turns, "prompt");
@@ -4074,6 +4152,7 @@ fn carry_through_musters_turn(record: &proto::Pane, turns: &mut Turns, io: &Pane
 fn carry_wait(pane: &str, turns: &mut Turns, by: &str) {
     turns.wait_declared = true;
     turns.wait_carried = true;
+    turns.wait_serial += 1;
     log::debug("daemon.report.waiting_carried", fields! { "pane" => pane, "by" => by });
 }
 
@@ -4084,7 +4163,17 @@ fn settle_wait(record: &mut proto::Pane, turns: &mut Turns, by: &str) -> bool {
     if std::mem::replace(&mut turns.wait_declared, false) || turns.wait_on_screen {
         return false;
     }
+    // Ended by its process, which a turn says nothing about.
+    if record.facts.as_ref().is_some_and(|facts| facts.waiting_until_exits.is_some()) {
+        return false;
+    }
+    forget_wait(record, by)
+}
+
+/// Forgets what the agent declared it waits on, saying whether it had declared anything.
+fn forget_wait(record: &mut proto::Pane, by: &str) -> bool {
     let Some(facts) = record.facts.as_mut() else { return false };
+    facts.waiting_until_exits = None;
     if facts.waiting.take().is_none() {
         return false;
     }

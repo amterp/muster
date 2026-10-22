@@ -42,9 +42,19 @@ pub(crate) fn apply(
         }
         facts.cost_usd = Some(cost_usd);
     }
+    if let Some(pid) = report.waiting_until_exits {
+        if report.waiting.as_deref().is_none_or(str::is_empty) {
+            return Err("waiting_until_exits needs the wait it ends, in waiting".to_string());
+        }
+        if pid == 0 {
+            return Err("waiting_until_exits is 0, which names no process".to_string());
+        }
+    }
+    // A wait declared again replaces the one before, the process it was to end with included.
     if let Some(waiting) = report.waiting {
         text("waiting", &waiting, VALUE_BYTES)?;
         facts.waiting = Some(waiting).filter(|waiting| !waiting.is_empty());
+        facts.waiting_until_exits = report.waiting_until_exits;
     }
     match subagent {
         proto::SubagentChange::Started => facts.subagents = facts.subagents.saturating_add(1),
@@ -114,6 +124,25 @@ mod tests {
         assert_eq!(cleared, Ok(None));
         let long = Report { waiting: Some("x".repeat(VALUE_BYTES + 1)), ..report() };
         assert!(apply(None, long).unwrap_err().contains("waiting"));
+    }
+
+    #[test]
+    fn a_wait_ends_with_a_process_only_when_declared_with_it() {
+        let until = |waiting: &str, pid| Report {
+            waiting: Some(waiting.into()),
+            waiting_until_exits: pid,
+            ..report()
+        };
+        let on_pid = applied(None, until("the full gate", Some(4242)));
+        assert_eq!(on_pid.waiting_until_exits, Some(4242));
+        let plain = applied(Some(&on_pid), until("a review", None));
+        assert_eq!(plain.waiting_until_exits, None, "declared again, without a process");
+        assert_eq!(apply(Some(&on_pid), until("", None)), Ok(None), "cleared with its process");
+
+        assert!(apply(None, until("", Some(4242))).unwrap_err().contains("needs the wait"));
+        let alone = Report { waiting_until_exits: Some(4242), ..report() };
+        assert!(apply(None, alone).unwrap_err().contains("needs the wait"));
+        assert!(apply(None, until("x", Some(0))).unwrap_err().contains("no process"));
     }
 
     #[test]

@@ -40,7 +40,7 @@ const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
-    [--fact KEY=VALUE]... [--waiting TEXT] [--clear] \
+    [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
@@ -49,9 +49,10 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     reported before, and applies first. --waiting says what the agent ended its turn to wait \
     on, work it started itself; it lasts until a later turn ends without saying it again, and \
     an empty one clears it. Say it in each turn that ends to wait: work that never wakes the \
-    agent leaves the pane waiting until the next turn. --state is the agent's own word on what \
-    it is doing, \
-    which outranks what detection reads off its screen while fresh; --agent names the agent, \
+    agent leaves the pane waiting until the next turn. --until-exits ends the wait when process \
+    PID exits instead, and the daemon then tells the agent in a message, which wakes it: for a \
+    harness nothing else wakes when its work ends. Turns do not end such a wait. --state is the \
+    agent's own word on what it is doing, which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's. --session-name is what the agent's harness calls its session, empty for no \
     name: the pane takes a name the session is given once it has started, and gives the \
@@ -246,6 +247,16 @@ fn parse(
                 facts.insert(key.to_string(), value.to_string());
             }
             "--waiting" => report.waiting = Some(value("--waiting")?),
+            "--until-exits" => {
+                let given = value("--until-exits")?;
+                report.waiting_until_exits = Some(
+                    given
+                        .parse()
+                        .ok()
+                        .filter(|pid| *pid > 0)
+                        .ok_or(format!("--until-exits {given} is not a process id"))?,
+                );
+            }
             "--clear" => report.clear = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
@@ -262,6 +273,9 @@ fn parse(
             "--help" | "-h" => return Ok(Parsed::Help),
             other => return Err(format!("{other} is not an option")),
         }
+    }
+    if report.waiting_until_exits.is_some() && report.waiting.as_deref().is_none_or(str::is_empty) {
+        return Err("--until-exits needs --waiting, saying what the agent waits on".to_string());
     }
     if report.state.is_some() && report.agent.is_empty() {
         return Err("--state needs --agent, naming the agent that is reporting".to_string());
@@ -467,6 +481,8 @@ mod tests {
         assert_eq!(waiting.waiting.as_deref(), Some("the full gate"));
         let ended = parsed(&["--waiting", ""], Some("p1")).unwrap();
         assert_eq!(ended.waiting.as_deref(), Some(""), "an empty wait is sent, to clear one");
+        let on_a_job = parsed(&["--waiting", "the gate", "--until-exits", "4242"], Some("p1"));
+        assert_eq!(on_a_job.unwrap().waiting_until_exits, Some(4242));
         let started = parsed(&["--subagent-started", "--pane", "p2"], Some("p1")).unwrap();
         assert_eq!(
             (started.pane.as_str(), started.subagent()),
@@ -507,6 +523,12 @@ mod tests {
         assert!(parsed(&["--cost-usd", "lots"], Some("p1")).unwrap_err().contains("--cost-usd"));
         assert!(parsed(&["--fact", "novalue"], Some("p1")).unwrap_err().contains("KEY=VALUE"));
         assert!(parsed(&["--model"], Some("p1")).unwrap_err().contains("needs a value"));
+        let alone = parsed(&["--until-exits", "4242"], Some("p1"));
+        assert!(alone.unwrap_err().contains("needs --waiting"));
+        for pid in ["0", "-1", "job"] {
+            let bad = parsed(&["--waiting", "x", "--until-exits", pid], Some("p1"));
+            assert!(bad.unwrap_err().contains("not a process id"), "{pid}");
+        }
         let twice = parsed(&["--subagent-stopped", "--subagent-stopped"], Some("p1"));
         assert!(twice.unwrap_err().contains("given twice"));
         let both = parsed(&["--subagent-started", "--subagent-stopped"], Some("p1"));

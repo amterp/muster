@@ -41,3 +41,4 @@ mod terminal;
 mod turn;
 mod typing;
 mod unread;
+mod waits;

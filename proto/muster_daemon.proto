@@ -473,6 +473,10 @@ message PaneRequest {
     // (MIP-5, section 7). Needs its agent, and counts only while detection finds that agent in
     // the pane. Empty forgets it.
     optional string session_id = 12;
+    // Since 1.7. The process whose exit ends the wait this report declares
+    // (AgentFacts.waiting_until_exits). Needs a waiting that is not empty, and a process that has
+    // not already exited.
+    optional uint32 waiting_until_exits = 13;
   }
 }
 
@@ -1512,6 +1516,10 @@ message AgentFacts {
   // without the agent declaring it again, and sets no finished_unseen while it holds: an agent
   // waiting on its own work has not finished.
   optional string waiting = 6;
+  // Since 1.7. The process whose exit ends that wait: the daemon then clears it and tells the
+  // agent, in a message from @muster, which wakes it. A turn ending does not clear such a wait,
+  // nor does the empty wait a harness's prompt hook reports with its state.
+  optional uint32 waiting_until_exits = 7;
 }
 
 enum AgentState {

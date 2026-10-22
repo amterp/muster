@@ -731,6 +731,7 @@ fn adopt_panes(
                     reports_turns: pane.reports_turns,
                     wait_on_screen: false,
                     wait_carried: false,
+                    wait_serial: 0,
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,

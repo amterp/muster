@@ -52,6 +52,7 @@ use super::presence::{Panes, Seen};
 use super::prompt::{self, AtPrompt, Judged, Unseen};
 use super::renames::{self, Typing};
 use super::stalls::{self, Stalls};
+use super::waits::{self, Waits};
 use super::{Messages, notice_of};
 use crate::session::Shared;
 use crate::writer::Input;
@@ -692,6 +693,7 @@ fn run(shared: &Weak<Shared>) {
     let mut moving = Moving::new();
     let mut stalls = Stalls::new(Instant::now());
     let mut makers = Makers::new();
+    let mut waits = Waits::new();
     // The first look is at once: a daemon that starts may already hold wakes to ring again.
     let mut sleep = Duration::ZERO;
     loop {
@@ -703,6 +705,8 @@ fn run(shared: &Weak<Shared>) {
         sleep = sleep.min(stalls::look(&shared, &mut stalls, &makers));
         // On every wake rather than a clock of its own: every change in an agent wakes it.
         sleep = sleep.min(makers::look(&shared, &mut makers));
+        // Before the next look, so a wait it ends wakes its agent on the same pass.
+        sleep = sleep.min(waits::look(&shared, &mut waits));
     }
 }
 

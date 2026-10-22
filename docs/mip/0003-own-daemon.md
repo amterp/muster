@@ -747,7 +747,11 @@ declaration this daemon did not see, handed over or restored, keeps its wait thr
 end, so the wait lasts a turn too long rather than too short.
 
 One wait still outlives its work: a wait on something that never wakes the agent, a CI run
-elsewhere, stands until somebody prompts it, and the pane is not called done meanwhile. The daemon
+elsewhere, stands until somebody prompts it, and the pane is not called done meanwhile. Since
+2026-10-21 a wait on a process the agent started can say so, `report --waiting "<what>"
+--until-exits <pid>`, and the daemon ends it when the process exits and tells the agent in a
+message from `@muster`, which wakes it: Codex has nothing that starts a turn when its job ends,
+and its agents sat waiting for 40 and 75 minutes after theirs had. The daemon
 logs `daemon.agent.turn_ended` at debug with whether the agent had declared a wait, so how often
 agents do can be counted from the run log, and `daemon.report.waiting_cleared` with what cleared
 one.

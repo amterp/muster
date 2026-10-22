@@ -985,6 +985,34 @@ impl<S: Store> Messaging<S> {
         self.post_as_muster(&group, vec![to], body, presence, now_ms)
     }
 
+    /// Posts what Muster has to tell `to` alone, as [`MUSTER`]: that a wait it declared is over,
+    /// the process it waited on having exited. `to` is a pane, made a participant as a post to it
+    /// would make it. It goes in the group `to` alone is in, made for the purpose when there is
+    /// none and named as a group of its one member is, so it lands nowhere anybody else reads.
+    pub fn tell_alone_as_muster(
+        &mut self,
+        to: &str,
+        body: &str,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Result<Posted, Refusal> {
+        check_body(body)?;
+        let to = self.party(to, None, presence);
+        let own = self
+            .memberships(&to)
+            .into_iter()
+            .find(|group| self.groups[group].members.len() == 1 && self.here(group).is_ok());
+        let group = if let Some(group) = own {
+            group
+        } else {
+            let group = self.pair_name(&[&to])?;
+            self.ensure_group(&group, MUSTER, now_ms)?;
+            self.add_member(&group, &to, now_ms)?;
+            group
+        };
+        self.post_as_muster(&group, vec![to], body, presence, now_ms)
+    }
+
     /// The participant Muster speaks to or of for `name`: the human, here or where it is homed;
     /// somebody on another machine, as they are written; or the one in the pane `name`, made as
     /// an addressed pane's is, or as it was when it closed.

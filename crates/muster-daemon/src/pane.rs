@@ -869,6 +869,9 @@ pub(crate) struct Turns {
     /// inside that turn, as Claude Code hands it a finished background task, and then no later
     /// turn comes to end the wait; so a carried wait runs out (`messages/waits.rs`).
     pub(crate) wait_carried: bool,
+    /// Which wait the agent holds, counted up each time one is declared or carried, so a wait
+    /// that runs out or whose process exits is ended only if it is still the one held.
+    pub(crate) wait_serial: u64,
 }
 
 impl Default for Turns {
@@ -880,6 +883,7 @@ impl Default for Turns {
             reports_turns: false,
             wait_on_screen: false,
             wait_carried: false,
+            wait_serial: 0,
         }
     }
 }

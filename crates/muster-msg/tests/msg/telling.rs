@@ -84,6 +84,23 @@ fn a_notice_goes_to_the_twos_own_group_then_the_one_they_share_then_a_new_pair()
     assert_eq!(told(&mut messaging), "integrator+maple", "and that group from then on");
 }
 
+/// What Muster tells one agent alone lands in a group of that agent alone, named for it, and
+/// stays out of every group it shares with anybody; the next notice goes in the same group.
+#[test]
+fn an_agent_told_alone_is_told_in_a_group_of_its_own() {
+    let mut messaging = Messaging::new(Memory::default());
+    join(&mut messaging, "p1", "crew");
+    join(&mut messaging, "p2", "crew");
+    let told = |messaging: &mut Messaging<Memory>, now| {
+        messaging.tell_alone_as_muster("p2", "the wait is over", &Open, now).unwrap()
+    };
+    let posted = told(&mut messaging, 40);
+    assert_eq!((posted.author.as_str(), posted.group.as_str()), (MUSTER, "maple"));
+    assert_eq!(members(&messaging, "maple"), ["maple"]);
+    assert_eq!(posted.wakes.len(), 1, "maple is woken: {:?}", posted.wakes);
+    assert_eq!(told(&mut messaging, 50).group, "maple", "and that group from then on");
+}
+
 /// The human is told about a maker that closed before it ever took part in a conversation, by
 /// what the maker was called.
 #[test]
