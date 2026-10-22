@@ -5,17 +5,18 @@
   "area": [
     "testing"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1792207432461,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-16 with restarting an agent in its pane (a_2dmIEdCn6). Only the fake agent has been restarted by that code: nobody has seen a real Claude Code end on SIGTERM inside its grace, leave its shell at a prompt, and come back from the typed resume in the same conversation. A step in ./dev --claude-code would say so on every harness update, and one in ./dev --codex once the OpenAI account is back (2026-11-02), since Codex now resumes without its flags.",
   "id": "a_2j47a0Hq8",
-  "position": "a3V",
+  "position": "Zq",
   "title": "./dev --claude-code restarts a real Claude Code and sees it come back resumed",
   "type": "chore",
-  "updated_at_millis": 1792211139569,
+  "updated_at_millis": 1792637394103,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792207432461},
-    {"field":"column","value":"next","at":1792211139569}
+    {"field":"column","value":"next","at":1792211139569},
+    {"field":"column","value":"in-progress","at":1792637394103}
   ]
 }

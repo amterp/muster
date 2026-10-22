@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -18,12 +18,13 @@
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-17, Mac, all on 0.16.1-dev, which already had ce23494e (Claude Code waiting on its background shells reads waiting) and 61045758. The maker watch (`crates/muster-daemon/src/messages/makers.rs`) told a maker \"\u003chelper\u003e went idle without posting to you since it went to work ...\" in four cases where the helper was fine:\n\n- A Claude Code helper started a 10-minute run with background Bash and ended its turn to wait for it. Its footer said \"1 shell still running\", yet its row read `idle` and the notice fired 32 s after it went to work.\n- A worker ran `\"$MUSTER_DAEMON\" report --waiting \"\u003cwhat\u003e\"`, as the SessionStart hook says, before ending each turn to wait on its own background build. Its maker still got the notice twice in one assignment. A declared wait should hold the pane at `waiting` until the wait ends.\n- A helper under Claude Code Monitor tools woke for a few seconds per monitor event and went idle again: three notices in ten minutes, while `muster window` showed the pane `waiting ... on its background shells`.\n- The maker ran `muster pane compact --pane \u003chelper\u003e` on an idle helper. The compaction counted as going to work, so the helper going idle after it raised the notice (twice, two helpers). A turn Muster typed at the maker's request is not the helper going to work.\n\n`need()` in makers.rs raises the notice only on `Activity::Idle`, so in the first three cases the helper's activity read idle while the screen or a declaration said waiting. Guess, unconfirmed: the adapter's turn-end report outranks both. The fourth case is the watch itself: any `Working` starts a stretch of work.",
   "id": "a_2luQuOfD1",
-  "position": "Zx",
+  "position": "YwB",
   "title": "A helper that declared a wait, or was only compacted, is reported idle without posting",
   "type": "bug",
-  "updated_at_millis": 1792636682694,
+  "updated_at_millis": 1792637393525,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627632683},
-    {"field":"column","value":"in-progress","at":1792632580556}
+    {"field":"column","value":"in-progress","at":1792632580556},
+    {"field":"column","value":"done","at":1792637393525}
   ]
 }

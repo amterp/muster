@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -21,13 +21,14 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "Zz",
+  "position": "YwD",
   "title": "A notice @muster addresses to one member refuses the other members' posts",
   "type": "bug",
-  "updated_at_millis": 1792635027564,
+  "updated_at_millis": 1792637393283,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627632523},
     {"field":"column","value":"next","at":1792627699386},
-    {"field":"column","value":"in-progress","at":1792632580247}
+    {"field":"column","value":"in-progress","at":1792632580247},
+    {"field":"column","value":"done","at":1792637393283}
   ]
 }
