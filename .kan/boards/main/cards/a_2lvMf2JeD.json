@@ -13,6 +13,12 @@
       "body": "2026-10-21: MIP-8 drafted (a031d6a0, docs/mip/0008-panes-across-machines.md), with four questions A-D for amterp at its end. Stage 1 of its 'How it lands' is on main (3c00f285): the daemon can keep a tab's whole tree with other machines' panes as foreign leaves, protocol 1.7, state file v2 only when a foreign leaf exists. Nothing visible changes until stage 3. Stage 2 (the window merges the copies) in progress.",
       "created_at_millis": 1792635534375,
       "id": "c_2lxkT7Bks"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: stage 2 on main too (24251e43): the core merges a tab's copies (highest generation, prune only on the holder's own word, add a missing pane beside its sibling) as a pure module with 11 conformance cases, publishes View.tree beside the regions, and writes back only to tabs already held as spanning trees (the migration's write waits for stage 3, which sends resize/swap/zoom as SetTree). Nothing visible changes. Next is stage 3 (the shell draws one tree), which needs amterp's answer to question D; stage 4 needs C, stage 5 A and B. MIP corrections from building are in the MIP.",
+      "created_at_millis": 1792639464122,
+      "id": "c_2lzOhQABT"
     }
   ],
   "created_at_millis": 1792629852682,
@@ -22,7 +28,7 @@
   "position": "Zu",
   "title": "Arrange panes from different machines in any split, as if they were on one",
   "type": "feature",
-  "updated_at_millis": 1792635534375,
+  "updated_at_millis": 1792639464122,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852682},
     {"field":"column","value":"in-progress","at":1792632594244}

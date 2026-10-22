@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "record-what-claude",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792639897127,
+  "creator": "Alexander Terp",
+  "description": "From the early-blocked fix (04f7d15f, 2026-10-21). Run logs show Claude Code's and Codex's PermissionRequest hook firing 2-4 s before any dialog is drawn, and often for approvals nobody is asked (auto mode, or an approval the harness settles itself). The fix waits for a still screen rather than trusting the hook, but what the harness does in that window is not recorded. Record it for the current Claude Code in docs/observations/claude-code-\u003cversion\u003e.md, with a transcript in corpus/, and say whether PermissionRequest fires for approvals nobody sees.",
+  "id": "a_2lzZxjX8N",
+  "position": "b1a",
+  "title": "Record what Claude Code does between PermissionRequest and drawing its dialog",
+  "type": "chore",
+  "updated_at_millis": 1792639897127,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792639897127}
+  ]
+}

@@ -18,6 +18,12 @@
       "body": "Same round, ~20:33: stale notices for sparrow and vole too, each about two minutes after its plan dialog was answered, both panes working with no dialog. Three of the round's four approvals so far; the pattern is every Claude Code plan approval.",
       "created_at_millis": 1792632641349,
       "id": "c_2lwXCwdNp"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: fixed on main in ae9e4da3. Cause, from tonight's run log: the watch judged each need correctly at 10 s, but its post to a maker that was mid-turn (approving these same dialogs) was deferred to the end of that turn, 1.5-2 min later, when the dialog had long been answered. A need that comes due while its maker is working, blocked or stuck (and not fetching mid-turn by hook) is now held and judged again once the maker is free: told if still true, dropped if not. A blocked notice says how long it has held; the advice names the callsign (pinned by a test).",
+      "created_at_millis": 1792639896823,
+      "id": "c_2lzZxKNv7"
     }
   ],
   "created_at_millis": 1792627633007,
@@ -27,7 +33,7 @@
   "position": "Zt",
   "title": "A helper's 'blocked at a dialog' notice arrives after the dialog was answered",
   "type": "bug",
-  "updated_at_millis": 1792637393754,
+  "updated_at_millis": 1792639896823,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792627633007},
     {"field":"column","value":"in-progress","at":1792637393754}
