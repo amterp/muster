@@ -2,7 +2,7 @@
   "_v": 3,
   "alias": "a-bundle-built-from",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -39,19 +39,26 @@
       "body": "Done 2026-10-18 14:16: main at 1a97670d (callsigns) built as 0.16.2-dev with MUSTER_INSTALL=release, now /Applications/Muster.app; 0.16.1-dev kept as Muster.app.0.16.1-dev. The new daemon took all 8 panes by handoff about a second after launch and every agent kept running. Bundle took 6.3 min with deps/ghostty and deps/.built copied in by cp -c. Run tai reinstall from ~/src/tai-personal afterwards: its codex-settings post_install step uses a cwd-relative path. Next main build: 0.16.3-dev.",
       "created_at_millis": 1792351110124,
       "id": "c_2k2PIKETy"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-21: done on main (9cf9562c..9c648322). tools/install-main [rev] builds a commit in a scratch worktree as one patch past the highest of Cargo.toml, the installed app and the running daemon (-dev), for the installed app's install (MUSTER_INSTALL), signed with the keychain's Developer ID when there is exactly one; checks the bundle is newer than both app and daemon; asks before swapping; the detached swap quits only a Muster running from the destination, moves the old app aside as \u003capp\u003e.\u003cversion\u003e, ditto's the new one in, reopens it, and waits for muster daemons to show the new version with the same pane count. --dry-run, --bundle \u003cpath\u003e, --yes. Also: muster daemons shows each daemon's version, and a window raises an error when another install's daemon in its home holds panes. Ran: a real build (0.17.1-dev, release, Developer ID, 632 s) and the swap against a scratch copy. Not run: the real swap (the owner's to run) and the launch-time error in a real window. --bundle still defaults to the checkout's own install, so the contract tier's bundle keeps its daemon.",
+      "created_at_millis": 1792641081651,
+      "id": "c_2m04mLPHk"
     }
   ],
   "created_at_millis": 1791810415852,
   "creator": "Alexander Terp",
   "description": "Replacing a Homebrew install with \\`./dev --bundle\\` (to run unreleased main) looks like it works and quietly does not. Without \\`MUSTER_INSTALL=release\\`, the build names its daemon after the checkout's path (\\`dev-\u003chash\u003e.sock\\`, crates/muster-daemon-proto/build.rs), so the new app starts a fresh daemon beside \\`release.sock\\` rather than handing off from it. The window opens with one empty pane, every running agent stays on the old daemon out of view, and a second dev-named daemon is installed and started on each attached devenv too.\n\nMet on 2026-10-12 putting 0.15.0 (gate failed, so unreleased) on the laptop: it took a full rebuild with \\`MUSTER_INSTALL=release\\` and killing two stray daemons by hand.\n\nAGENTS.md sells \\`--bundle\\` as \"a thing you can double-click, keep in the Dock, or hand to somebody\", and only release.yml says the variable matters. Options: document it beside \\`--bundle\\`; have \\`--bundle\\` default to \\`release\\` (it is what a bundle is for, while the debug app stays per-checkout); or have the app warn on launch when it finds another install's daemon holding panes.",
   "id": "a_2gNXMhi6k",
-  "position": "Zr",
+  "position": "Yw8",
   "title": "A bundle built from a checkout starts its own daemon instead of taking over the installed one",
   "type": "bug",
-  "updated_at_millis": 1792637394000,
+  "updated_at_millis": 1792641081651,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791810415852},
     {"field":"column","value":"next","at":1792211139654},
-    {"field":"column","value":"in-progress","at":1792637394000}
+    {"field":"column","value":"in-progress","at":1792637394000},
+    {"field":"column","value":"done","at":1792641081583}
   ]
 }

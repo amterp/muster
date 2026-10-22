@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "dev-bundle-builds",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792641081813,
+  "creator": "Alexander Terp",
+  "description": "From tools/install-main (2026-10-21): a real install took 632 s, 380 s of it the debug build that ./dev --bundle implies (if bundle: build = true), and that build costs several GB the release bundle never uses. Measure whether anything --bundle does needs the debug build, and drop the implication if not.",
+  "id": "a_2m04mXb9H",
+  "position": "b1b",
+  "title": "./dev --bundle builds the debug tree first, which a bundle never uses",
+  "type": "enhancement",
+  "updated_at_millis": 1792641081813,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792641081813}
+  ]
+}
