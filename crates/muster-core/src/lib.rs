@@ -33,6 +33,7 @@ pub mod problems;
 pub mod reconnect;
 pub mod respawn;
 pub mod roster;
+pub mod spanning;
 pub mod transcript;
 pub mod typeable;
 

@@ -5960,6 +5960,230 @@
           "r0 tab=w1:t1 w1:p1"
         ]
       }
+    },
+    {
+      "name": "a tab spanning machines publishes one tree merged from each machine's copy, beside its regions",
+      "why": "Each machine keeps the whole tab's tree, the other machine's pane in it as a leaf it never runs (MIP-8). The view merges the copies into one tree naming the machine of every pane and publishes it beside the regions, which still draw the tab: each region is its machine's own panes, with the other machine's leaf left out. Nothing a person sees changes until the shell draws the tree.",
+      "given": {
+        "tree": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": {
+                  "axis": "rows",
+                  "ratio": 0.5,
+                  "first": "a",
+                  "second": "b"
+                },
+                "copy": "[[a/~x@devenv 0.50]|b 0.50]",
+                "layoutGeneration": 1
+              }
+            ],
+            "panes": [
+              {
+                "id": "a",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "b",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "devenv": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": "x",
+                "copy": "[[~a@laptop/x 0.50]|~b@laptop 0.50]",
+                "layoutGeneration": 1
+              }
+            ],
+            "panes": [
+              {
+                "id": "x",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "t1"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "laptop",
+            "socketPath": "/tmp/daemon-laptop.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "laptop",
+            "tab": "t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "laptop",
+            "world": "laptop"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "laptop local=/tmp/daemon-laptop.sock"
+        ],
+        "focusedPane": "a",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=laptop tab=t1 pane=a",
+          "r1 daemon=devenv tab=t1 pane=x"
+        ],
+        "showing": [
+          "devenv/x",
+          "laptop/a",
+          "laptop/b"
+        ],
+        "showingTab": "t1",
+        "tree": "columns(rows(a@laptop, x@devenv@0.5), b@laptop@0.5)",
+        "view": [
+          "r0 tab=t1 rows(a, b@0.5)",
+          "r1 tab=t1 x"
+        ]
+      }
+    },
+    {
+      "name": "a tab grouped before any machine kept a copy of the whole tree publishes its parts side by side",
+      "why": "A tab grouped across two machines before spanning trees existed has nothing but each machine's own panes in each part. Its tree is the parts as columns in the order the regions sit, which is exactly how the window draws it, so the tree a later shell draws looks like the window did before.",
+      "given": {
+        "tree": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": {
+                  "axis": "rows",
+                  "ratio": 0.5,
+                  "first": "a",
+                  "second": "b"
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "a",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "b",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "devenv": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": "x"
+              }
+            ],
+            "panes": [
+              {
+                "id": "x",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "do": "hold",
+            "tab": "t1"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "laptop",
+            "socketPath": "/tmp/daemon-laptop.sock"
+          },
+          {
+            "do": "attachDaemon",
+            "daemon": "devenv",
+            "socketPath": "/tmp/daemon-devenv.sock"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "laptop",
+            "tab": "t1"
+          },
+          {
+            "do": "openRegion",
+            "daemon": "devenv",
+            "tab": "t1"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "laptop",
+            "world": "laptop"
+          },
+          {
+            "do": "reconcile",
+            "daemon": "devenv",
+            "world": "devenv"
+          }
+        ]
+      },
+      "expect": {
+        "daemons": [
+          "devenv local=/tmp/daemon-devenv.sock",
+          "laptop local=/tmp/daemon-laptop.sock"
+        ],
+        "focusedPane": "a",
+        "focusedRegion": "r0",
+        "regions": [
+          "r0 daemon=laptop tab=t1 pane=a",
+          "r1 daemon=devenv tab=t1 pane=x"
+        ],
+        "showing": [
+          "devenv/x",
+          "laptop/a",
+          "laptop/b"
+        ],
+        "showingTab": "t1",
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)",
+        "view": [
+          "r0 tab=t1 rows(a, b@0.5)",
+          "r1 tab=t1 x"
+        ]
+      }
     }
   ]
 }

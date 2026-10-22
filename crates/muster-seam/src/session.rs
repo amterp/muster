@@ -45,6 +45,7 @@ use muster_core::problems::Severity;
 use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
+use muster_core::spanning;
 use muster_core::transcript;
 use muster_core::typeable::Ask;
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
@@ -2557,6 +2558,7 @@ pub(crate) fn submit_from(
             | BackendIntent::CompactPane { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
+            | BackendIntent::SetTabTree { .. }
             | BackendIntent::SetTabHidden { .. }
             | BackendIntent::MakerClosed { .. }
             | BackendIntent::SwapPanes { .. }
@@ -5370,6 +5372,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             publish("bootstrap");
             health(daemon, Health::Connected, "");
             catch_up_tab_names(daemon);
+            catch_up_tab_trees(daemon);
             for change in &changes {
                 if let Change::PaneRemoved { pane, called } = change {
                     tell_closed_maker(daemon, pane, called.as_deref());
@@ -5388,6 +5391,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             // composition can see.
             if change.moves_structure() {
                 reconcile(daemon);
+                catch_up_tab_trees(daemon);
             }
             if change.republishes() {
                 publish(change.kind());
@@ -5824,6 +5828,80 @@ fn catch_up_tab_names(daemon: &DaemonId) {
                                  window shows the newest one, and another window reading only \
                                  this machine shows the old one",
                     "check" => "`muster tab rename` sets the name on every part again",
+                },
+            );
+        }
+    }
+}
+
+/// Writes each tab spanning machines back to every part of it whose copy the merge of all of
+/// them has moved past, for the tabs `daemon` holds a part of (MIP-8, `muster_core::spanning`).
+///
+/// Worked out under the lock and sent outside it, as `catch_up_tab_names` sends a name. A write
+/// a daemon refuses is one it had moved on from - a pane of its own opened or closed after the
+/// mirrors were read - and the change that moved it arrives as an event that runs this again,
+/// so there is nothing to retry here.
+fn catch_up_tab_trees(daemon: &DaemonId) {
+    let writes: Vec<(WindowId, TabId, spanning::Write)> = {
+        let session = poison::lock(&SESSION, "session");
+        let mirrors = session.mirrors();
+        let writable = |machine: &DaemonId| {
+            session
+                .backends
+                .get(machine)
+                .and_then(|backend| backend.follower.connection().control())
+                .is_some_and(|control| {
+                    muster_daemon_proto::version::too_old(
+                        machine.as_str(),
+                        control.welcome().protocol.as_ref(),
+                        muster_daemon_proto::version::SPANNING,
+                        "hold a tab spanning machines",
+                        "written",
+                    )
+                    .is_none()
+                })
+        };
+        let mut writes = Vec::new();
+        for (window, held) in session.windows.iter() {
+            for tab in
+                held.composition.tabs().filter(|tab| tab.daemons().any(|part| part == daemon))
+            {
+                let (parts, settled) = spanning::parts_of(
+                    tab,
+                    |machine| mirrors.get(machine).map(|held| &**held),
+                    writable,
+                );
+                let Some(merged) = spanning::merge(&parts, &settled) else { continue };
+                writes
+                    .extend(merged.writes.into_iter().map(|write| (window, tab.id.clone(), write)));
+            }
+        }
+        writes
+    };
+    for (window, tab, write) in writes {
+        let machine = write.daemon.clone();
+        let intent = BackendIntent::SetTabTree {
+            tab: tab.clone(),
+            root: write.root,
+            zoomed: write.zoomed,
+            generation: write.generation,
+            based_on: write.based_on,
+        };
+        if let Err(refusal) = submit(window, &machine, &intent, Keyboard::StaysPut) {
+            log::warn(
+                "tab.layout.write_refused",
+                fields! {
+                    "daemon" => machine.to_string(),
+                    "tab" => tab.to_string(),
+                    "generation" => write.generation.to_string(),
+                    "detail" => refusal.to_string(),
+                    "impact" => "this machine's copy of the tab's tree stays behind the window's \
+                                 for now; the window still draws the merged tree, and a window \
+                                 that can reach only this machine draws its older copy",
+                    "check" => "a refusal naming an older tree or a pane opened or closed is \
+                                ordinary and is followed by a write that is taken; one that \
+                                repeats for the same tab is a bug in the merge or the daemon's \
+                                checks, and the daemon's log holds its side",
                 },
             );
         }

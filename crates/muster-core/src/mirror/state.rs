@@ -478,5 +478,9 @@ fn described(before: &Pane, now: &Pane) -> bool {
 
 /// Whether a tab's tree, its zoom or whether it is hidden has moved.
 fn arrangement_moved(before: &Tab, now: &Tab) -> bool {
-    before.root != now.root || before.zoomed != now.zoomed || before.hidden != now.hidden
+    before.root != now.root
+        || before.zoomed != now.zoomed
+        || before.hidden != now.hidden
+        || before.copy != now.copy
+        || before.layout_generation != now.layout_generation
 }

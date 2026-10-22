@@ -426,6 +426,20 @@ impl BackendChannel for DaemonBackend {
                 }))?;
                 done
             }
+            BackendIntent::SetTabTree { tab, root, zoomed, generation, based_on } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::SPANNING,
+                    "hold a tab spanning machines",
+                )?;
+                self.tab_request(tab_request::Request::SetTree(tab_request::SetTree {
+                    tab: tab.to_string(),
+                    root: Some(convert::copy_record(&root)),
+                    zoomed: zoomed.map(|pane| pane.to_string()),
+                    generation,
+                    based_on,
+                }))?;
+                done
+            }
             BackendIntent::SetTabHidden { tab, hidden, name } => {
                 self.speaks_since(
                     muster_daemon_proto::version::HELPERS,

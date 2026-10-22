@@ -337,6 +337,20 @@ pub enum BackendIntent {
         generation: u64,
     },
 
+    /// Writes a tab's whole tree on one machine holding part of it, other machines' panes
+    /// included: how a window catches a machine's copy up with the tab it merged from every
+    /// copy (MIP-8, `crate::spanning`). The daemon refuses one worked out from an older copy
+    /// than it holds, or one that would lose or invent a pane of its own.
+    SetTabTree {
+        tab: TabId,
+        root: crate::mirror::backend::CopyNode,
+        zoomed: Option<PaneId>,
+        /// The tab's layout generation afterwards.
+        generation: u64,
+        /// The generation of the copy the tree was worked out from.
+        based_on: u64,
+    },
+
     /// Hides a tab from every window, or brings it back, its panes arranged as they were: how a
     /// maker's helpers come forward together and go back (MIP-7, section 5).
     SetTabHidden {

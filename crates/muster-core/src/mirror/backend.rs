@@ -274,6 +274,72 @@ pub struct Tab {
     /// No window shows it: its panes are hidden, listed apart and brought back from there. The
     /// daemon's fact, set when the tab is made.
     pub hidden: bool,
+    /// The daemon's whole tree for the tab, other machines' panes included (MIP-8). `root` is
+    /// this tree with only this machine's panes left in it, which is what a region draws; this
+    /// is what a window merges across the machines a tab spans (`crate::spanning`).
+    pub copy: CopyNode,
+    /// How many times a window has written `copy`, which is how the newest of a tab's copies on
+    /// its machines is told apart.
+    pub layout_generation: u64,
+}
+
+/// A daemon's whole tree for a tab: its own panes, and the panes on other machines it keeps in
+/// their places without running them.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CopyNode {
+    Own(PaneId),
+    /// A pane on another machine, with the name the window that wrote it gives that machine.
+    Foreign {
+        pane: PaneId,
+        daemon: String,
+    },
+    Split {
+        axis: SplitAxis,
+        ratio: f32,
+        first: Box<CopyNode>,
+        second: Box<CopyNode>,
+    },
+}
+
+impl CopyNode {
+    /// A tree of this daemon's panes, as a copy that holds nothing else.
+    pub fn of(root: &LayoutNode) -> CopyNode {
+        match root {
+            LayoutNode::Pane(pane) => CopyNode::Own(pane.clone()),
+            LayoutNode::Split { axis, ratio, first, second } => CopyNode::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(CopyNode::of(first)),
+                second: Box::new(CopyNode::of(second)),
+            },
+        }
+    }
+
+    pub fn has_foreign(&self) -> bool {
+        match self {
+            CopyNode::Own(_) => false,
+            CopyNode::Foreign { .. } => true,
+            CopyNode::Split { first, second, .. } => first.has_foreign() || second.has_foreign(),
+        }
+    }
+}
+
+/// `p1` for this daemon's pane and `~x@devenv` for another machine's, as the daemon's test
+/// harness writes them.
+impl std::fmt::Display for CopyNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CopyNode::Own(pane) => write!(f, "{pane}"),
+            CopyNode::Foreign { pane, daemon } => write!(f, "~{pane}@{daemon}"),
+            CopyNode::Split { axis, ratio, first, second } => {
+                let axis = match axis {
+                    SplitAxis::Columns => "columns",
+                    SplitAxis::Rows => "rows",
+                };
+                write!(f, "{axis}({first}, {second}@{ratio})")
+            }
+        }
+    }
 }
 
 /// Which way a split divides its area.

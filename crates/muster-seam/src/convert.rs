@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use muster_core::composition::{DaemonId, View, ViewNode};
+use muster_core::composition::{DaemonId, View, ViewNode, ViewPane, ViewTree};
 use muster_core::config::Rgb;
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
@@ -98,7 +98,26 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
             })
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
+        tree: view.tree.as_ref().map(tree),
     }
+}
+
+fn tree(tree: &ViewTree) -> proto::ViewTree {
+    let node = match tree {
+        ViewTree::Pane { daemon, pane } => proto::view_tree::Node::Pane(proto::ViewTreePane {
+            daemon_id: daemon.to_string(),
+            pane: Some(self::pane(pane)),
+        }),
+        ViewTree::Split { axis, ratio, first, second } => {
+            proto::view_tree::Node::Split(Box::new(proto::ViewTreeSplit {
+                axis: self::axis(*axis),
+                ratio: *ratio,
+                first: Some(Box::new(self::tree(first))),
+                second: Some(Box::new(self::tree(second))),
+            }))
+        }
+    };
+    proto::ViewTree { node: Some(node) }
 }
 
 /// What exists, on its way out to the shell.
@@ -213,18 +232,10 @@ fn pressed(place: Option<usize>) -> u32 {
 
 fn node(node: &ViewNode) -> proto::ViewNode {
     let payload = match node {
-        ViewNode::Pane(pane) => proto::view_node::Node::Pane(proto::ViewPane {
-            pane_id: pane.id.to_string(),
-            link_socket_path: pane.link_socket_path.clone().unwrap_or_default(),
-            font_size_offset: pane.font_size_offset,
-            bridge_restarts: pane.bridge_restarts,
-        }),
+        ViewNode::Pane(pane) => proto::view_node::Node::Pane(self::pane(pane)),
         ViewNode::Split { axis, ratio, first, second } => {
             proto::view_node::Node::Split(Box::new(proto::ViewSplit {
-                axis: match axis {
-                    SplitAxis::Columns => "columns".to_string(),
-                    SplitAxis::Rows => "rows".to_string(),
-                },
+                axis: self::axis(*axis),
                 ratio: *ratio,
                 first: Some(Box::new(self::node(first))),
                 second: Some(Box::new(self::node(second))),
@@ -232,6 +243,22 @@ fn node(node: &ViewNode) -> proto::ViewNode {
         }
     };
     proto::ViewNode { node: Some(payload) }
+}
+
+fn pane(pane: &ViewPane) -> proto::ViewPane {
+    proto::ViewPane {
+        pane_id: pane.id.to_string(),
+        link_socket_path: pane.link_socket_path.clone().unwrap_or_default(),
+        font_size_offset: pane.font_size_offset,
+        bridge_restarts: pane.bridge_restarts,
+    }
+}
+
+fn axis(axis: SplitAxis) -> String {
+    match axis {
+        SplitAxis::Columns => "columns".to_string(),
+        SplitAxis::Rows => "rows".to_string(),
+    }
 }
 
 pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {

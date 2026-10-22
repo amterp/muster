@@ -10,7 +10,7 @@ use muster_core::AgentState;
 use muster_core::attention::HumanNotice;
 use muster_core::composition::{Daemon, Endpoint};
 use muster_core::mirror::backend::{
-    AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
+    AgentFacts, CopyNode, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
 };
 use serde_json::Value;
 
@@ -87,15 +87,58 @@ fn collect<T>(given: &Value, key: &str, read: impl Fn(&Value) -> T) -> Vec<T> {
     given.get(key).and_then(Value::as_array).into_iter().flatten().map(read).collect()
 }
 
+/// A tab as a daemon sends it. `copy`, the daemon's whole tree in the text its harness prints
+/// (`[a|~x@devenv 0.50]`), is given only for a tab spanning machines, and is `root` otherwise.
 pub(crate) fn read_tab(given: &Value) -> Tab {
+    let root = read_node(given.get("root").unwrap_or(&Value::Null));
     Tab {
         id: TabId::new(text(given, "id")),
         label: optional(given, "label"),
         generation: given.get("generation").and_then(Value::as_u64).unwrap_or_default(),
-        root: read_node(given.get("root").unwrap_or(&Value::Null)),
+        copy: optional(given, "copy").map_or_else(|| CopyNode::of(&root), |copy| read_copy(&copy)),
+        root,
         zoomed: optional(given, "zoomed").map(PaneId::new),
         hidden: given.get("hidden").and_then(Value::as_bool).unwrap_or_default(),
+        layout_generation: given
+            .get("layoutGeneration")
+            .and_then(Value::as_u64)
+            .unwrap_or_default(),
     }
+}
+
+/// A daemon's whole tree, in the text its harness prints: `[a|b 0.50]` for columns, `[a/b 0.50]`
+/// for rows, `~x@devenv` for another machine's pane.
+pub(crate) fn read_copy(text: &str) -> CopyNode {
+    fn node(text: &str) -> (CopyNode, &str) {
+        if let Some(rest) = text.strip_prefix('[') {
+            let (first, rest) = node(rest);
+            let axis = match rest.chars().next() {
+                Some('|') => SplitAxis::Columns,
+                Some('/') => SplitAxis::Rows,
+                other => panic!("a split in {text:?} has {other:?} where | or / goes"),
+            };
+            let (second, rest) = node(&rest[1..]);
+            let rest = rest.strip_prefix(' ').expect("a ratio follows a space");
+            let end = rest.find(']').expect("a split ends with ]");
+            let ratio = rest[..end].parse().expect("a ratio is a number");
+            let split =
+                CopyNode::Split { axis, ratio, first: Box::new(first), second: Box::new(second) };
+            (split, &rest[end + 1..])
+        } else {
+            let end = text.find(['|', '/', ' ', ']']).unwrap_or(text.len());
+            let leaf = match text[..end].strip_prefix('~') {
+                Some(foreign) => {
+                    let (pane, daemon) = foreign.split_once('@').expect("~pane@daemon");
+                    CopyNode::Foreign { pane: PaneId::new(pane), daemon: daemon.to_string() }
+                }
+                None => CopyNode::Own(PaneId::new(&text[..end])),
+            };
+            (leaf, &text[end..])
+        }
+    }
+    let (read, rest) = node(text);
+    assert!(rest.is_empty(), "{rest:?} is left over after the tree in {text:?}");
+    read
 }
 
 pub(crate) fn read_pane(given: &Value) -> Pane {

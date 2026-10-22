@@ -92,8 +92,10 @@ machine is a *spanning tab*. In a part's copy a leaf is one of two kinds:
   keeps it where it is, carries it through every save, restore and handoff, and never runs,
   checks or reports it. The id is what identifies the pane, since a pane id is unique across
   machines (`crates/muster-core/src/names.rs`). The machine's name is the one the writing window's
-  config gives it (`devenv`), and serves only as a hint: a window that cannot reach that machine
-  uses it to say which one it is waiting for, and nothing compares it.
+  config gives it (`devenv`), and another window may call that machine something else, so a
+  window finds a leaf's machine by asking which attached machine holds the pane, and goes by the
+  name only when none does: to say which machine it is waiting for, and to drop the leaf once
+  that machine answers holding no such pane (section 2).
 
 A tab held by one machine has no foreign leaves, and nothing about it changes.
 
@@ -268,10 +270,13 @@ ended up.
 
 ### 9. Spanning tabs made before this, and daemons older than it
 
-**A spanning tab made before this** has region weights in its window's arrangement. The first
-window to open it after this lands writes it as a tree: the regions in order, each region's tree
-as a column, the weights as the columns' ratios. From then on the arrangement file stops carrying
-weights, and keeps only which pane each tab's keyboard was on.
+**A spanning tab made before this** has region weights in its window's arrangement, and every
+part of it is at generation zero. The merge starts such a tab from its regions in order, each
+region's tree as a column, the weights as the columns' ratios, which is how the window drew it.
+Writing that tree to the tab's parts waits until the window sends every change to a spanning
+tab's arrangement as a whole tree, because a part holding foreign leaves refuses the resize, zoom
+and swap that a window sends one machine at a time (section 3, and "How it lands"). From the
+first write on, the arrangement file stops carrying that tab's weights.
 
 **A daemon older than this minor** keeps its own tree and cannot hold foreign leaves. The window
 never writes to it; its panes are placed in the newer parts' copies, wherever somebody puts them,
@@ -390,14 +395,21 @@ Each stage lands on its own with the suite green, and each is one worker's assig
    an own pane; a resize, swap or zoom asked of a daemon in a spanning tab is refused; a checked-in
    state file with foreign leaves loads as written; the protocol compatibility test across the
    minor.
-2. **The window merges and writes.** The merge as a pure function, the write-back, the migration
-   of spanning tabs made before this, and `View` publishing the tree beside the regions it publishes
-   now, so the shell is untouched. Tests: conformance cases for each merge rule, a stale write and
-   its retry, and the migration; seam tests against two real daemons, one restarted mid-tab.
+2. **The window merges and writes.** The merge as a pure function, `View` publishing the tree
+   beside the regions it publishes now, so the shell is untouched, and the write-back, to tabs a
+   window has already written as a spanning tree. A spanning tab made before this is merged from
+   its regions, side by side at their weights, and not written: no window writes one until stage
+   3, so in real use this stage writes nothing. Tests: conformance cases for each merge rule and
+   for the tree the view publishes; seam tests against two real daemons: a lagging copy caught
+   up, a pane closing on one machine dropped from the other's copy, a restarted machine needing
+   nothing written, and a tab grouped before this left unwritten.
 3. **The shell draws one tree.** The Swift view renders the per-tab tree and stops reading
    regions; dividers and zoom across machines; `--layout` and `--json` move to the tree, per
-   question D. Tests: the Swift view tests, the CLI's `diagram.rs` unit tests,
-   `docs/cli/window.md`.
+   question D. In the same stage the window sends every change to a spanning tab's arrangement
+   as `SetTree` - resize, swap, zoom, divider ratios and equalize - and switches on writing
+   spanning tabs made before this, since from the first write on a part refuses those requests
+   sent one machine at a time. Tests: the Swift view tests, the CLI's `diagram.rs` unit tests,
+   a conformance case per arrangement change written as a tree, `docs/cli/window.md`.
 4. **Every placement path.** `split_onto` beside the pane clicked on any side, `pane new
    --daemon` with a side, cross-machine drags and `pane move --onto`, the menu per question C,
    and the doctrine in section 10, since this stage makes `AGENTS.md`'s "Not built" line false.

@@ -20,7 +20,7 @@ use muster_core::input::{
     InputEvent, InputSink, Key, KeyEvent, Modifiers, NotSent, PaneInput, PaneInputSettings,
 };
 use muster_core::mirror::backend::{
-    AgentFacts, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
+    AgentFacts, CopyNode, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
 };
 use muster_core::mirror::{BackendEvent, Mirror};
 use muster_core::roster::Roster;
@@ -479,9 +479,11 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
             id: tab.clone(),
             label: Some("t1".to_string()),
             generation: 1,
+            copy: CopyNode::of(&nested(&ids)),
             root: nested(&ids),
             zoomed: None,
             hidden: false,
+            layout_generation: 0,
         }],
         panes: ids.iter().map(|id| agent_pane(id, &tab)).collect(),
         restored_from_file: false,

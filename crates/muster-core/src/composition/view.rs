@@ -18,6 +18,7 @@ use std::collections::BTreeSet;
 use crate::composition::record::{Composition, DaemonId, MusterTab, PaneKey, Region, RegionId};
 use crate::mirror::Mirror;
 use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, Tab, TabId};
+use crate::spanning::{self, SpanNode};
 
 /// Everything one window is showing.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +31,10 @@ pub struct View {
     pub regions: Vec<ViewRegion>,
     /// The region whose pane the keyboard feeds.
     pub focused: Option<RegionId>,
+    /// The tab's one tree over every machine it spans, merged from each machine's copy
+    /// (`crate::spanning`, MIP-8): the whole tree, even while a region is zoomed. Published
+    /// beside the regions, which are what draws the tab.
+    pub tree: Option<ViewTree>,
     /// Every pane this window has on screen, named by its daemon.
     ///
     /// Held rather than derived from `regions`, because it is not the same question as the
@@ -79,6 +84,46 @@ pub struct ViewRegion {
     /// Whether the daemon is on another machine, which is where a bridge asks for a window of
     /// unacknowledged output sized for the link.
     pub remote: bool,
+}
+
+/// A tab's tree over every machine it spans, with the panes filled in and each leaf naming the
+/// machine running it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ViewTree {
+    Pane { daemon: DaemonId, pane: ViewPane },
+    Split { axis: SplitAxis, ratio: f32, first: Box<ViewTree>, second: Box<ViewTree> },
+}
+
+impl ViewTree {
+    fn of(tree: &SpanNode, pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane) -> ViewTree {
+        match tree {
+            SpanNode::Pane { pane: id, daemon } => {
+                ViewTree::Pane { daemon: daemon.clone(), pane: pane(daemon, id) }
+            }
+            SpanNode::Split { axis, ratio, first, second } => ViewTree::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(ViewTree::of(first, pane)),
+                second: Box::new(ViewTree::of(second, pane)),
+            },
+        }
+    }
+}
+
+/// `columns(p1@laptop, x@devenv@0.5)`, as `crate::spanning::SpanNode` is written.
+impl std::fmt::Display for ViewTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewTree::Pane { daemon, pane } => write!(f, "{}@{daemon}", pane.id),
+            ViewTree::Split { axis, ratio, first, second } => {
+                let axis = match axis {
+                    SplitAxis::Columns => "columns",
+                    SplitAxis::Rows => "rows",
+                };
+                write!(f, "{axis}({first}, {second}@{ratio})")
+            }
+        }
+    }
 }
 
 /// A region's tree, with the panes filled in.
@@ -151,9 +196,13 @@ impl View {
     ) -> View {
         match composition.showing().and_then(|tab| composition.tab(tab)) {
             Some(tab) => View::built(tab, Zoom::Resolved, mirror, daemon_socket, remote, pane),
-            None => {
-                View { tab: None, regions: Vec::new(), focused: None, showing: BTreeSet::new() }
-            }
+            None => View {
+                tab: None,
+                regions: Vec::new(),
+                focused: None,
+                tree: None,
+                showing: BTreeSet::new(),
+            },
         }
     }
 
@@ -247,10 +296,16 @@ impl View {
                 })
             })
             .collect();
+        // What the copies add up to, and nothing written: the seam sends the writes, from the
+        // same merge, and only it knows which machines can take one.
+        let (parts, settled) = spanning::parts_of(held, &mirror, |_| false);
+        let tree =
+            spanning::merge(&parts, &settled).map(|merged| ViewTree::of(&merged.tree, &pane));
         View {
             tab: Some(tab),
             regions,
             focused: held.focused_region().map(|region| region.id),
+            tree,
             showing,
         }
     }

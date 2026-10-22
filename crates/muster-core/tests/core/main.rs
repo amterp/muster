@@ -24,6 +24,7 @@ mod problems;
 mod reconnect;
 mod respawn;
 mod roster;
+mod spanning;
 mod support;
 mod tab_holding;
 mod typeable;

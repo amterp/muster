@@ -1,0 +1,185 @@
+{
+  "concept": "spanning.merge",
+  "source": "authored",
+  "numbers": "f32",
+  "citation": "docs/mip/0008-panes-across-machines.md, section 2 (the merge) and \"How it lands\" (why nothing is written for a tab no window has written yet). No oracle sits above these: what the copies add up to is Muster's own policy, decided in that MIP.",
+  "why": "What a tab spanning machines looks like when each machine keeps its own copy of the tab's whole tree. Every daemon holding a part of the tab keeps every pane in it, with the other machines' panes as foreign leaves, and no daemon knows the others exist, so only a window sees every copy. These cases pin the four rules that turn the copies into one tree and say which copies to write back.\n\nA tree is written `columns(a@laptop, x@devenv@0.5)`: each pane with the machine running it, and each split's share after its second child. A copy is written as its daemon's test harness writes one, `[a|~x@devenv 0.50]`, where `~x@devenv` is a pane this machine keeps in place without running. A write reads `devenv 2<-1 <copy>`: the machine, the generation it leaves the tab at, the generation it was worked out from, and the copy it sends.",
+  "cases": [
+    {
+      "name": "a tab no window has written is its parts side by side, and nothing is written",
+      "why": "Every tab grouped across two machines before this existed: each machine's part holds only its own panes, at generation zero. The window draws it as it always has, the parts as columns in the order its regions sit. Nothing is written back, because a part holding foreign leaves refuses the resize, zoom and swap that a window still sends one machine at a time, and that would break them in every grouped tab until a window sends those as whole trees.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "holds": ["a", "b"], "weight": 1.0 },
+          { "daemon": "devenv", "copy": "x", "holds": ["x"], "weight": 1.0 }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(columns(a@laptop, b@laptop@0.5), x@devenv@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "a tab arranged before keeps the widths somebody dragged its parts to",
+      "why": "The weights a window kept for its regions become the ratios of the columns, so a tab where the laptop's part was dragged to two thirds of the width still draws that way. Three parts make two splits: each split's share is its first part's weight over the weight of everything from there on.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "a", "holds": ["a"], "weight": 2.0 },
+          { "daemon": "devenv", "copy": "x", "holds": ["x"], "weight": 1.0 },
+          { "daemon": "gpu", "copy": "g", "holds": ["g"], "weight": 1.0 }
+        ],
+        "settled": { "laptop": true, "devenv": true, "gpu": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, columns(x@devenv, g@gpu@0.5)@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "the copy a window wrote last wins, and a lagging copy is caught up at that generation",
+      "why": "The devenv was unreachable while somebody put x under a on the laptop, so its copy still has the older arrangement. The laptop's copy is newer, and the devenv is told the newer tree at the generation the laptop already holds: catching one machine up does not rewrite the others.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/~x@devenv 0.50]|b 0.50]", "generation": 2, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop|~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, x@devenv@0.5), b@laptop@0.5)",
+        "zoomed": null,
+        "writes": ["devenv 2<-1 columns(rows(~a@laptop, x@0.5), ~b@laptop@0.5)"]
+      }
+    },
+    {
+      "name": "copies at one generation that differ are settled the same way by every window",
+      "why": "Two copies at one generation differ only in panes their own machines added or removed, and the rules below reconcile those whichever copy is taken first. The tie still has to break the same way in every window, or two windows would write each other's arrangement back and forth. It breaks on the lowest pane id a copy holds of its own, which no window's config can rename. Both parts end up one generation on, so the next merge has a newest copy again.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.30]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.70]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, x@devenv@0.3)",
+        "zoomed": null,
+        "writes": ["laptop 2<-1 columns(a, ~x@devenv@0.3)", "devenv 2<-1 columns(~a@laptop, x@0.3)"]
+      }
+    },
+    {
+      "name": "a pane is dropped once its own machine says it is gone",
+      "why": "x's shell exited on the devenv, which closed the devenv's part of the tab: its last pane there went. The devenv is connected and has finished restoring, and holds no x, so x leaves the tree and the laptop's copy is told.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/~x@devenv 0.50]|b 0.50]", "generation": 1, "holds": ["a", "b"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, b@laptop@0.5)",
+        "zoomed": null,
+        "writes": ["laptop 2<-1 columns(a, b@0.5)"]
+      }
+    },
+    {
+      "name": "a pane on a machine that cannot say keeps its place",
+      "why": "The same copy, with the devenv unreachable. Only the machine running a pane can say it has gone; a machine that is not answering may well be running it still, so x keeps its place and nothing is written.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/~x@devenv 0.50]|b 0.50]", "generation": 1, "holds": ["a", "b"] }
+        ],
+        "settled": { "laptop": true, "devenv": false }
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, x@devenv@0.5), b@laptop@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "a pane on a machine this window is not attached to keeps its place",
+      "why": "A second laptop's window attached only to the devenv sees a tab whose copy names the first laptop's panes. It cannot ask the first laptop anything, so it keeps those leaves in every tree it writes rather than deleting another person's arrangement.",
+      "given": {
+        "parts": [
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 3, "holds": ["x"] }
+        ],
+        "settled": { "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "the machine holding a pane names it, whatever the copy called that machine",
+      "why": "The name in a foreign leaf is the one the writing window's config gives the machine, and another window may call the devenv `work`. The window finds a leaf's machine by asking which attached machine holds the pane, and uses the name only when none does. The laptop's copy is then rewritten under this window's name.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@work 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "zoomed": null,
+        "writes": ["laptop 2<-1 columns(a, ~x@devenv@0.5)", "devenv 2<-1 columns(~a@laptop, x@0.5)"]
+      }
+    },
+    {
+      "name": "a pane made on its own machine goes beside its sibling there",
+      "why": "An agent on the devenv split x and made y below it, which the devenv does on its own without a window. The laptop's copy, taken first on the tie, does not name y, so y goes where the devenv's copy put it: below x, at the same share. Its place does not depend on which copy the merge started from.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/~x@devenv 0.50]|b 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/[x/y 0.40] 0.50]|~b@laptop 0.50]", "generation": 1, "holds": ["x", "y"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, rows(x@devenv, y@devenv@0.4)@0.5), b@laptop@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(a, rows(~x@devenv, ~y@devenv@0.4)@0.5), b@0.5)",
+          "devenv 2<-1 columns(rows(~a@laptop, rows(x, y@0.4)@0.5), ~b@laptop@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane with no sibling in the tree goes in as a column at the right, and an older machine is not written",
+      "why": "The gpu's daemon is older than spanning trees: its part is its own pane alone, at no generation, and nothing can be written to it. Its pane goes in where today's window would put a second machine's region, as a column at the right as wide as each pane would be as columns. Only the laptop, which can hold the tree, is told.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "gpu", "copy": "g", "holds": ["g"], "writable": false }
+        ],
+        "settled": { "laptop": true, "gpu": true }
+      },
+      "expect": {
+        "tree": "columns(columns(a@laptop, b@laptop@0.5), g@gpu@0.6666667)",
+        "zoomed": null,
+        "writes": ["laptop 2<-1 columns(columns(a, b@0.5), ~g@gpu@0.6666667)"]
+      }
+    },
+    {
+      "name": "a zoom on a pane that is gone fills nothing",
+      "why": "The tab was zoomed on x, and x has gone from the devenv. A zoom naming no pane would leave the window filling the tab with nothing, so it goes with the pane, in the tree and in the write.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "zoomed": "x", "generation": 1, "holds": ["a"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "a@laptop",
+        "zoomed": null,
+        "writes": ["laptop 2<-1 a"]
+      }
+    }
+  ]
+}

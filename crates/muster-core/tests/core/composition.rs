@@ -69,6 +69,15 @@ fn composition_conformance() {
                         .collect::<Vec<String>>()
                 )),
             ),
+            // Only where a case asks: the tab's one tree over every machine it spans, merged
+            // from each machine's copy (MIP-8), which the view publishes beside its regions.
+            (
+                "tree",
+                given.get("tree").and_then(Value::as_bool).filter(|asked| *asked).map(|_| {
+                    let view = view_of(&composition, given, &worlds, &current, &sizes);
+                    view.tree.map_or(Value::Null, |tree| json!(tree.to_string()))
+                }),
+            ),
             // Only where a case names a tab: how that tab is arranged whether or not it is on
             // screen, and where each of its panes sits as fractions of the tab.
             (

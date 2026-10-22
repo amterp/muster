@@ -10,8 +10,8 @@ use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
-    Adapter, AgentFacts, LayoutNode, Pane, PaneId, PendingCompaction, Progress, ProgressState,
-    Resume, SplitAxis, Tab, TabId, UnreadInput,
+    Adapter, AgentFacts, CopyNode, LayoutNode, Pane, PaneId, PendingCompaction, Progress,
+    ProgressState, Resume, SplitAxis, Tab, TabId, UnreadInput,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -186,7 +186,9 @@ pub fn pane(record: proto::Pane) -> Pane {
 /// split giving way to its sibling, so every region still draws the panes its daemon holds.
 pub fn tab(record: proto::Tab) -> Option<Tab> {
     let label = record.label.unwrap_or_default();
-    let Own::Tree(root) = node(record.root?)? else { return None };
+    let tree = record.root?;
+    let copy = copy(tree.clone())?;
+    let Own::Tree(root) = node(tree)? else { return None };
     Some(Tab {
         id: TabId::new(record.tab),
         label: label.text.filter(|text| !text.is_empty()),
@@ -194,6 +196,55 @@ pub fn tab(record: proto::Tab) -> Option<Tab> {
         zoomed: record.zoomed.map(PaneId::new).filter(|zoomed| root.panes().contains(&zoomed)),
         root,
         hidden: record.hidden,
+        copy,
+        layout_generation: record.layout_generation,
+    })
+}
+
+/// A tree a window worked out, as the daemon's protocol spells it.
+pub fn copy_record(copy: &CopyNode) -> proto::Node {
+    let node = match copy {
+        CopyNode::Own(pane) => proto::node::Node::Pane(pane.to_string()),
+        CopyNode::Foreign { pane, daemon } => proto::node::Node::Foreign(proto::Foreign {
+            pane: pane.to_string(),
+            daemon: daemon.clone(),
+        }),
+        CopyNode::Split { axis, ratio, first, second } => {
+            proto::node::Node::Split(Box::new(proto::Split {
+                axis: match axis {
+                    SplitAxis::Columns => proto::Axis::Columns,
+                    SplitAxis::Rows => proto::Axis::Rows,
+                }
+                .into(),
+                ratio: *ratio,
+                first: Some(Box::new(copy_record(first))),
+                second: Some(Box::new(copy_record(second))),
+            }))
+        }
+    };
+    proto::Node { node: Some(node) }
+}
+
+/// The daemon's whole tree, other machines' panes included.
+fn copy(given: proto::Node) -> Option<CopyNode> {
+    Some(match given.node? {
+        proto::node::Node::Pane(pane) => CopyNode::Own(PaneId::new(pane)),
+        proto::node::Node::Foreign(foreign) => {
+            CopyNode::Foreign { pane: PaneId::new(foreign.pane), daemon: foreign.daemon }
+        }
+        proto::node::Node::Split(split) => {
+            let axis = match split.axis() {
+                proto::Axis::Columns => SplitAxis::Columns,
+                proto::Axis::Rows => SplitAxis::Rows,
+                proto::Axis::Unspecified => return None,
+            };
+            CopyNode::Split {
+                axis,
+                ratio: split.ratio,
+                first: Box::new(copy(*split.first?)?),
+                second: Box::new(copy(*split.second?)?),
+            }
+        }
     })
 }
 
@@ -431,6 +482,7 @@ mod tests {
         };
         let tab = tab(record).expect("the tab reads");
         assert_eq!(tab.root.to_string(), "columns(a, b@0.5)");
+        assert_eq!(tab.copy.to_string(), "columns(columns(a, ~x@devenv@0.5), b@0.5)");
         assert_eq!(tab.zoomed, None, "a zoom on another machine's pane fills no region here");
     }
 

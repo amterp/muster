@@ -2820,6 +2820,33 @@ message ViewChanged {
   // Which region's pane the keyboard feeds. Empty when none does, which is what a window
   // with no daemon behind it looks like.
   string focused_region = 2;
+
+  // The tab's one tree over every machine it spans, merged from the copy each machine keeps
+  // (docs/mip/0008-panes-across-machines.md): the whole tree, even while a region is zoomed.
+  // Published beside `regions`, which are what draws the tab. Absent with no tab on screen.
+  ViewTree tree = 4;
+}
+
+// A tab's tree over every machine it spans: a leaf names the machine running its pane.
+message ViewTree {
+  oneof node {
+    ViewTreePane pane = 1;
+    ViewTreeSplit split = 2;
+  }
+}
+
+message ViewTreePane {
+  // The machine running the pane, as `ViewRegion.daemon_id` names one.
+  string daemon_id = 1;
+  ViewPane pane = 2;
+}
+
+// As `ViewSplit`.
+message ViewTreeSplit {
+  string axis = 1;
+  float ratio = 2;
+  ViewTree first = 3;
+  ViewTree second = 4;
 }
 
 // One region, showing one tab's pane tree.
