@@ -2043,8 +2043,17 @@ impl Session {
 
     /// Every wait an agent here declared and holds, for the watch that ends one whose process
     /// exits or that runs out (`messages/waits.rs`). Not one its screen shows, which detection
-    /// limits.
+    /// limits. A wait runs out when it was carried through a turn Muster typed, or when nothing
+    /// is known to wake its agent: its manifest does not say that the agent's own jobs do. While
+    /// the manifests have not loaded, or no agent is found, that is not known either way.
     pub(crate) fn declared_waits(&self) -> Vec<Declared> {
+        let manifests = self.detecting.manifests();
+        let woken = |agent: Option<&str>| {
+            let known = manifests.as_ref().zip(agent);
+            known.is_none_or(|(manifests, agent)| {
+                manifests.wakes_when_jobs_end(&muster_detect::Agent::new(agent))
+            })
+        };
         self.panes
             .iter()
             .filter(|pane| pane.holds_declared_wait())
@@ -2052,7 +2061,7 @@ impl Session {
                 pane: pane.record.pane.clone(),
                 serial: pane.turns.wait_serial,
                 until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
-                limited: pane.turns.wait_carried,
+                limited: pane.turns.wait_carried || !woken(pane.record.agent.as_deref()),
             })
             .collect()
     }

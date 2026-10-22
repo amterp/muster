@@ -1,7 +1,7 @@
 id = "claude"
-version = "2026.10.17.1"
-min_engine_version = 16
-updated_at = "2026-10-17T00:00:00Z"
+version = "2026.10.21.1"
+min_engine_version = 17
+updated_at = "2026-10-21T00:00:00Z"
 aliases = ["claude-code"]
 
 # Typed at an empty prompt with a Return, as a person names a session: what `/resume` lists and
@@ -11,6 +11,9 @@ rename = "/rename {name}"
 # Typed the same way, and what follows it is what the summary should keep
 # (docs/observations/claude-code-2.1.289.md, section 1).
 compact = "/compact {focus}"
+# A background shell the agent started starts its next turn when it ends, so a wait it declared
+# on one ends with that turn, and has no limit (corpus/claude-code-2.1.302/background-shells.txt).
+wakes_when_jobs_end = true
 # What a pane runs after a daemon restart to start its session again, with the arguments Claude
 # Code was running with where {args} is (crates/muster-detect/src/resume.rs). From `claude --help`
 # at 2.1.289: what starts, forks or leaves a session of its own is dropped, and every option

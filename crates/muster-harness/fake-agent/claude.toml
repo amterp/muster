@@ -9,8 +9,8 @@
 # claude session.
 
 id = "claude"
-version = "2026.10.17.1"
-min_engine_version = 16
+version = "2026.10.21.1"
+min_engine_version = 17
 
 # What renames a session, as Claude Code's own manifest says it: the fake writes down every line
 # it reads, so a test sees the rename typed.
@@ -24,6 +24,8 @@ remedy = "run the fake agent without its server"
 rename = "/rename {name}"
 # What compacts a session, as Claude Code's own manifest says it, written down the same way.
 compact = "/compact {focus}"
+# Woken by its own finished jobs, as Claude Code's own manifest says it is.
+wakes_when_jobs_end = true
 # What starts the session again after a restart, as Claude Code's manifest spells it, but running
 # this fake from where the harness installed it rather than a `claude` on the PATH.
 resume = ["/bin/sh", "-c", "exec \"$HOME/.muster/bin/claude\" \"$@\"", "claude", "{args}", "--resume", "{session}"]

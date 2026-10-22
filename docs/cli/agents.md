@@ -58,10 +58,12 @@ still running is waiting on them, since a shell that ends starts its next turn, 
 at most: the line saying so stays for as long as a shell lives, so after that the pane reads idle,
 its turn finished, which is what a dev server left running comes to. A wait the agent declared
 outlasts a turn Muster typed, a wake for a message or a compaction, since that turn is not its
-work waking it. One declared with `report --waiting "<what>" --until-exits <pid>` ends when that
-process exits instead, whatever turns come meanwhile, and the agent is then told so in a message
-from `@muster`, which wakes it: what a harness nothing else wakes when its work ends, Codex,
-declares. Add `waiting` to the list to hear of a wait too.
+work waking it. Where nothing is known to end it, from a harness whose own finished jobs do not
+wake it or once carried through such a turn, it lasts 10 minutes at most, and the pane then
+reads idle, its turn finished. One declared with `report --waiting "<what>" --until-exits <pid>`
+ends when that process exits instead, whatever turns come meanwhile, and the agent is then told so
+in a message from `@muster`, which wakes it: what a harness nothing else wakes when its work ends,
+Codex, declares. Add `waiting` to the list to hear of a wait too.
 `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 

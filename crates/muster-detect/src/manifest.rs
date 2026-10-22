@@ -33,9 +33,10 @@ use region::Region;
 /// names the harness runs its own binary under for work that is not a session, and 14 a
 /// `[server]` table, the subcommand under which that binary serves sessions other than its own,
 /// 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest,
-/// and a rule's `shows`, what a screen hiding the prompt shows, and 16 an idle rule's `waiting`,
-/// the work of its own an agent at its prompt is waiting on.
-pub const ENGINE_VERSION: u32 = 16;
+/// and a rule's `shows`, what a screen hiding the prompt shows, 16 an idle rule's `waiting`,
+/// the work of its own an agent at its prompt is waiting on, and 17 a `[session]`
+/// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends.
+pub const ENGINE_VERSION: u32 = 17;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -77,6 +78,9 @@ const SHOWS_ENGINE_VERSION: u32 = 15;
 
 /// The engine version that introduced a rule's `waiting`.
 const WAITING_ENGINE_VERSION: u32 = 16;
+
+/// The engine version that introduced `[session]` `wakes_when_jobs_end`.
+const JOBS_WAKE_ENGINE_VERSION: u32 = 17;
 
 /// Where a `[session]` compact's template takes what to keep, when its harness takes one.
 const FOCUS_PLACEHOLDER: &str = "{focus}";
@@ -170,6 +174,8 @@ pub struct Manifest {
     compact: Option<String>,
     /// The command that starts the session again after a daemon restart.
     resume: Option<resume::Spelling>,
+    /// Whether a job the agent started in the background starts its next turn when it ends.
+    wakes_when_jobs_end: bool,
 }
 
 /// The harness's binary serving sessions other than its own, as Codex's shared app-server does:
@@ -323,6 +329,12 @@ impl Manifest {
             )));
         }
         Some(Ok(template.replace(FOCUS_PLACEHOLDER, focus.unwrap_or_default()).trim().to_string()))
+    }
+
+    /// Whether a job the agent started in the background starts its next turn when it ends, so
+    /// that a wait it declared on one ends with that turn. Unsaid, it does not.
+    pub fn wakes_when_jobs_end(&self) -> bool {
+        self.wakes_when_jobs_end
     }
 
     /// The command, as arguments, that starts the session with id `session` again after the
@@ -582,6 +594,8 @@ struct RawSession {
     resume_values: Vec<String>,
     #[serde(default)]
     resume_keeps: Vec<String>,
+    #[serde(default)]
+    wakes_when_jobs_end: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -846,6 +860,14 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     }
     if let Some(compact) = &session.compact {
         validate_compact(manifest, compact)?;
+    }
+    if session.wakes_when_jobs_end
+        && manifest.min_engine_version.unwrap_or(0) < JOBS_WAKE_ENGINE_VERSION
+    {
+        return Err(format!(
+            "[session] wakes_when_jobs_end needs min_engine_version {JOBS_WAKE_ENGINE_VERSION} or \
+             later"
+        ));
     }
     validate_resume(manifest, session)?;
     let Some(rename) = &session.rename else { return Ok(()) };
@@ -1209,6 +1231,10 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),
+        wakes_when_jobs_end: raw
+            .session
+            .as_ref()
+            .is_some_and(|session| session.wakes_when_jobs_end),
         resume: raw.session.as_ref().and_then(|session| {
             Some(resume::Spelling {
                 command: session.resume.clone()?,

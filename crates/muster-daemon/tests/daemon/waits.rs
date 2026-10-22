@@ -1,5 +1,6 @@
 //! A wait an agent declared that its next turn does not end: one until a process exits, which
-//! ends when the process does and wakes the agent with a message from `@muster`. The agent is the
+//! ends when the process does and wakes the agent with a message from `@muster`, and one that runs
+//! out, from a harness nothing wakes or carried through a turn Muster typed. The agent is the
 //! harness's fake under `claude`'s manifest, idle at its prompt, which writes down every line it
 //! reads, so a wake typed into it is on disk.
 
@@ -16,7 +17,16 @@ struct Pane {
 impl Pane {
     /// A daemon with the fake agent idle in pane `p1`.
     fn with_an_agent() -> Pane {
-        let daemon = Daemon::start_detecting();
+        Pane::with_an_agent_given(&[])
+    }
+
+    /// [`Pane::with_an_agent`], with a declared wait that nothing ends lasting [`LIMIT_MS`].
+    fn with_a_short_limit() -> Pane {
+        Pane::with_an_agent_given(&[("MUSTER_DAEMON_DECLARED_WAIT_MS", LIMIT_MS)])
+    }
+
+    fn with_an_agent_given(environment: &[(&str, &str)]) -> Pane {
+        let daemon = Daemon::start_detecting_with(environment);
         let mut control = daemon.connect();
         make(&mut control, create("p1", in_new_tab("t1")));
         daemon.run_agent("p1");
@@ -57,6 +67,42 @@ impl Pane {
         Some((facts.waiting?, facts.waiting_until_exits))
     }
 
+    /// Has the agent's manifest say nothing wakes it when its jobs end, as Codex's does not.
+    fn unwoken_by_its_jobs(&mut self) {
+        let path = self.daemon.root().join("home/.muster/agent-detection/claude.toml");
+        let manifest = std::fs::read_to_string(&path).expect("the harness wrote it");
+        let unwoken: String = manifest
+            .lines()
+            .filter(|line| !line.starts_with("wakes_when_jobs_end"))
+            .flat_map(|line| [line, "\n"])
+            .collect();
+        assert_ne!(unwoken, manifest, "the harness's manifest says its jobs wake it");
+        std::fs::write(&path, unwoken).expect("the override is rewritten");
+        let send = session(proto::session_request::Request::SendManifests(
+            proto::SendManifests::default(),
+        ));
+        let asked = self.control.ask(send);
+        assert!(
+            matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo),
+            "sending the manifests was refused: {}",
+            asked.answer.reason
+        );
+    }
+
+    /// Declares a wait in a turn of the agent's, as an agent does before ending it to wait.
+    fn turn_declaring(&mut self, waiting: &str) {
+        self.hook_reports(proto::AgentState::Working);
+        let asked = self.declares(waiting, None);
+        assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+        self.hook_reports(proto::AgentState::Idle);
+        assert_eq!(self.waiting_on(), Some((waiting.to_string(), None)));
+    }
+
+    fn finished_unseen(&mut self) -> bool {
+        let records = snapshot(&mut self.control).panes;
+        records.into_iter().find(|record| record.pane == "p1").is_some_and(|r| r.finished_unseen)
+    }
+
     /// Every wake the doorbell typed into the agent.
     fn rings_heard(&self) -> Vec<String> {
         std::fs::read_to_string(self.daemon.root().join("home/fake-agent-heard"))
@@ -67,6 +113,12 @@ impl Pane {
             .collect()
     }
 }
+
+/// How long a wait nothing ends lasts here, in milliseconds.
+const LIMIT_MS: &str = "3000";
+
+/// Longer than [`LIMIT_MS`], with room for a look of the doorbell's thread.
+const PAST_THE_LIMIT: Duration = Duration::from_secs(5);
 
 /// A process that runs until it is killed, as a background job does until it is done.
 fn job() -> std::process::Child {
@@ -125,4 +177,45 @@ fn a_wait_on_a_process_already_gone_is_refused() {
     assert_eq!(asked.outcome(), proto::Outcome::Refused);
     assert!(asked.answer.reason.contains("already exited"), "{}", asked.answer.reason);
     assert_eq!(p1.waiting_on(), None);
+}
+
+/// A wait from a harness that nothing wakes when its jobs end runs out, and the turn it held back
+/// is finished, so the pane reads idle and a helper's maker hears of it.
+#[test]
+fn a_wait_from_a_harness_its_jobs_do_not_wake_runs_out() {
+    let mut p1 = Pane::with_a_short_limit();
+    p1.unwoken_by_its_jobs();
+    p1.turn_declaring("the full gate");
+    assert!(!p1.finished_unseen(), "waiting is not done");
+    until_some("the wait to run out", || p1.waiting_on().is_none().then_some(()));
+    assert!(p1.finished_unseen(), "the turn it held back is finished");
+}
+
+/// Claude Code's own jobs wake it, so a wait it declared lasts until a turn ends without it; one
+/// carried through a compaction Muster typed runs out, since the job may have woken it inside
+/// that turn, after which no turn comes to end the wait.
+#[test]
+fn a_wait_its_jobs_end_has_no_limit_until_it_is_carried() {
+    use proto::AgentState::{Idle, Working};
+    let mut p1 = Pane::with_a_short_limit();
+    p1.turn_declaring("the full gate");
+    std::thread::sleep(PAST_THE_LIMIT);
+    assert_eq!(p1.waiting_on(), Some(("the full gate".to_string(), None)), "it ran out");
+
+    let compact = proto::pane_request::Compact {
+        pane: "p1".to_string(),
+        focus: Some("keep the work notes".to_string()),
+        then: None,
+    };
+    let asked = p1.control.ask(pane(proto::pane_request::Request::Compact(compact)));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    until_some("the compaction to be typed", || {
+        let heard = std::fs::read_to_string(p1.daemon.root().join("home/fake-agent-heard"));
+        heard.ok().filter(|heard| heard.contains("/compact keep the work notes"))
+    });
+    p1.hook_reports(Working);
+    p1.hook_reports(Idle);
+    assert_eq!(p1.waiting_on(), Some(("the full gate".to_string(), None)), "carried");
+    until_some("the carried wait to run out", || p1.waiting_on().is_none().then_some(()));
+    assert!(p1.finished_unseen(), "the turn it held back is finished");
 }

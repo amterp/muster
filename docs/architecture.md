@@ -231,11 +231,14 @@ facts the daemon holds, and one from the window's own connection to it, so the v
 run. It has not finished and nobody is holding it up,
 so it is neither idle nor done, and a caller waiting for `idle` is not answered by it. A wait the screen shows lasts
 until the screen stops showing it, or 10 minutes at most, after which the turn it held back is finished; it never
-replaces one the agent said, which has no limit. A wait the agent said ends with its next turn that does not say it
-again, and a turn Muster typed, a wake for a message or a compaction, does not count: it is not the agent's work
-waking it. One said with `--until-exits <pid>` ends when that process exits, turns or no turns, and the agent is told
-in a message from `@muster`, which wakes it as any message does; the daemon's doorbell thread looks for the process
-once a second while one is waited on (`messages/waits.rs`).
+replaces one the agent said. A wait the agent said ends with its next turn that does not say it again, and a turn
+Muster typed, a wake for a message or a compaction, does not count: it is not the agent's work waking it. That turn
+is all that ends it only where the agent's own finished jobs start one, which its manifest says
+(`wakes_when_jobs_end`, Claude Code's); anywhere else, and once carried through a turn Muster typed, where the job may
+have woken the agent inside that turn, it lasts 10 minutes at most, as the screen's does. One said with
+`--until-exits <pid>` has no limit: it ends when that process exits, turns or no turns, and the agent is told in a
+message from `@muster`, which wakes it as any message does. The daemon's doorbell thread keeps both clocks, looking
+for the process once a second while one is waited on (`messages/waits.rs`).
 
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its

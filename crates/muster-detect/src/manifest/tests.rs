@@ -563,6 +563,24 @@ fn a_session_compact_takes_a_focus_only_where_it_says_and_needs_engine_eleven() 
     assert_eq!(without.session_compact(None), None);
 }
 
+/// A harness its own finished jobs wake says so in `[session]`, from engine 17; one that says
+/// nothing is taken for one they do not.
+#[test]
+fn a_session_says_its_jobs_wake_it_from_engine_seventeen() {
+    let with = |engine: u32, wakes: &str| {
+        format!(
+            "{}\n[session]\nwakes_when_jobs_end = {wakes}\n",
+            with_prompt(engine, "idle", "whole_recent")
+        )
+    };
+    assert!(Manifest::parse(&with(17, "true")).unwrap().wakes_when_jobs_end());
+    assert!(!Manifest::parse(&with(17, "false")).unwrap().wakes_when_jobs_end());
+    let below = Manifest::parse(&with(16, "true")).unwrap_err();
+    assert!(below.contains("wakes_when_jobs_end needs min_engine_version 17"), "{below}");
+    let unsaid = Manifest::parse(&with_prompt(17, "idle", "whole_recent")).unwrap();
+    assert!(!unsaid.wakes_when_jobs_end());
+}
+
 /// A resume names its program, and takes the session's id and the carried arguments each in
 /// exactly one whole argument; its flag lists hold flags, and need it.
 #[test]

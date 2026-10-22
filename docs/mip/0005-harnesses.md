@@ -161,7 +161,8 @@ alias of it (`claude-code` for `claude`), and `<id>` for the manifest id itself.
 | Screen state | Working, blocked or idle, read off the screen | No state at all | Manifest rules |
 | Reported state | The harness's own word on its state, outranking the screen | The screen alone decides, and a harness update that redraws its screen can break the reading | Hooks in `extras/<harness>`, calling `report --agent <id> --state` |
 | Interrupt reported | A turn ended at Esc reads idle at once | A working report lapses ten quiet seconds later | A hook for the harness's interrupt event |
-| Waiting declared | A turn ended to wait on work reads `waiting`, not idle | Such a pane reads idle, and done once seen | A hook telling the model to run `report --waiting` |
+| Waiting declared | A turn ended to wait on work reads `waiting`, not idle | Such a pane reads idle, and done once seen | A hook telling the model to run `report --waiting`, with `--until-exits <pid>` where the harness's finished jobs do not wake it |
+| Woken by its jobs | A declared wait lasts until a turn ends without it | A declared wait lasts 10 minutes at most | Manifest: `[session]` `wakes_when_jobs_end` (detection engine 17) |
 | Context, model, cost | Shows the pane's context used, model and spend | Not shown | A statusline or hook calling `report --context-used` and the rest |
 | Sub-agents | How many sub-agents run | Not shown | Hooks calling `report --subagent-started` and `--subagent-stopped` |
 | Readable prompt | The doorbell rings the agent, idle at an empty prompt | A post to it says its prompt cannot be read | A manifest rule carrying `prompt` |

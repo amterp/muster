@@ -311,6 +311,12 @@ impl Manifests {
         self.entry(agent)?.manifest.session_compact(focus)
     }
 
+    /// Whether a job the agent started in the background starts its next turn when it ends, by
+    /// its manifest. No for an agent with none.
+    pub fn wakes_when_jobs_end(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.wakes_when_jobs_end())
+    }
+
     /// Whether the agent's manifest says how to compact its session from its prompt.
     pub fn compacts(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.session_compact(None).is_some())

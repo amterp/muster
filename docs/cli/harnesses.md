@@ -115,8 +115,14 @@ kimi, kiro, maki, pi, qodercli.
   the state itself. Claude Code's reads the end of the line it prints as a turn ends, `· 2 shells
   still running`, since a background shell that ends starts its next turn; a monitor alone does
   not count. A wait read off the screen lasts 10 minutes at most, since that line stays for as
-  long as a shell lives, and the agent then reads idle, its turn finished. A wait the agent said
-  itself has no limit. Needs no adapter.
+  long as a shell lives, and the agent then reads idle, its turn finished. Needs no adapter.
+- **Woken by its own finished jobs**: a manifest's `[session]` `wakes_when_jobs_end = true` says
+  that a job the agent started in the background starts its next turn when it ends, as Claude
+  Code's background shells do (detection engine 17). A wait such an agent declared lasts until a
+  turn ends without it. Anywhere else nothing ends it, so it lasts 10 minutes at most, and the
+  agent then reads idle, its turn finished; a Codex waiting on a job of its own declares it with
+  `report --waiting "<what>" --until-exits <pid>` instead, which ends when the process exits and
+  wakes the agent with a message from `@muster`.
 
 The first name a session reports is the one it started with, not a rename: a pane with a name
 keeps it and gives it to the session, and a pane without one takes the session's. Neither
