@@ -148,6 +148,27 @@ fn free_gib(path):
     kib = quiet $`df -k {path} | tail -1 | awk '\{print $4\}'`.stdout.trim()
     return parse_int(kib) / 1024 / 1024
 
+// The app at `app` as it is now: [present, version, install].
+fn installed_now(app):
+    if not quiet $`test -d {app}`.ok:
+        return [false, "", "release"]
+    identity = daemon_identity(app)
+    if identity[1] == "":
+        fail(["{app}'s daemon did not say which install it belongs to.",
+              "Impact: a build for the wrong install would start an empty daemon beside the one",
+              "holding every agent. Check that {app} is a Muster bundle."])
+    return [true, plist_version(app), identity[1]]
+
+// A bundle that is not newer than the installed app and the running daemon, by the handover's
+// rule, is not handed the panes and runs none of its own daemon's changes.
+fn refuse_unless_newer(target, floors):
+    for floor in floors:
+        if floor != "" and not newer(target, floor):
+            fail(["{target} is not newer than {floor}, comparing major.minor.patch only.",
+                  "Impact: the new app would adopt the running daemon as it is, so none of this",
+                  "build's daemon changes would run until that daemon restarts, ending every agent.",
+                  "Build it again with this script, which picks a newer version."])
+
 fn cargo_version(text):
     for line in text.split_lines():
         if line.starts_with("version = \""):
@@ -161,17 +182,11 @@ home = get_env("MUSTER_HOME")
 if home == "":
     home = "{get_env('HOME')}/.muster"
 
-installed = quiet $`test -d {app}`.ok
-installed_version = ""
-install = "release"
+now = installed_now(app)
+installed = now[0]
+installed_version = now[1]
+install = now[2]
 if installed:
-    installed_version = plist_version(app)
-    identity = daemon_identity(app)
-    if identity[1] == "":
-        fail(["{app}'s daemon did not say which install it belongs to.",
-              "Impact: a build for the wrong install would start an empty daemon beside the one",
-              "holding every agent. Check that {app} is a Muster bundle."])
-    install = identity[1]
     print("{app} is {installed_version}, install {install}.")
 else:
     print("Nothing is installed at {app}, so this installs it for install {install}.")
@@ -202,8 +217,6 @@ if bundle == "":
     target = next_dev(highest([base_cargo, installed_version, running_version]))
     identity = developer_id()
     staging = "{get_env('TMPDIR').trim_suffix('/')}/muster-install"
-    build = "{staging}/build-{sha[:10]}"
-    staged = "{staging}/{target}/Muster.app"
 
     step("the build")
     print("{rev} ({sha[:10]}) builds as {target}: one patch past the highest of Cargo.toml's")
@@ -215,7 +228,8 @@ if bundle == "":
         print(yellow("No Developer ID in this keychain, so the build is signed ad hoc: every"))
         print(yellow("permission granted to Muster is asked for again after the swap."))
     gib = free_gib(get_env("TMPDIR"))
-    print("Built in {build}, which is removed after; the bundle waits in {staged}.")
+    print("Built in a directory of its own under {staging}, where the bundle waits once the")
+    print("build's worktree is removed.")
     if gib < FREE_GIB_NEEDED:
         fail(["{gib} GiB free, and a bundle needs about {FREE_GIB_NEEDED}.",
               "Impact: the build would fill the disk part way through, and swap shares it.",
@@ -225,10 +239,11 @@ if bundle == "":
         print(dim("\n--dry-run: nothing was built or changed."))
         exit(0)
 
-    if quiet $`test -e {build}`.ok:
-        fail(["{build} is left from an earlier run.",
-              "Remove it with: git -C {repo} worktree remove --force {build}"])
+    // A directory per run, so two runs at once never build in or delete each other's.
     quiet $`mkdir -p {staging}`
+    run = quiet $`mktemp -d {staging}/run-XXXXXX`.stdout.trim()
+    build = "{run}/build"
+    staged = "{run}/Muster.app"
     $`git -C {repo} worktree add --detach {build} {sha}`
     // libghostty is the same pin in every recent commit, and building it costs minutes. A copy
     // that is the wrong pin is rebuilt by ./dev, since deps/.built records what it was built
@@ -248,8 +263,6 @@ if bundle == "":
         fail(["The bundle did not build. Its worktree is left at {build}; remove it with",
               "  git -C {repo} worktree remove --force {build}",
               "Nothing installed was touched."])
-    quiet $`rm -rf {staging}/{target}`
-    quiet $`mkdir -p {staging}/{target}`
     $`ditto {build}/.build/muster.app {staged}`
     $`git -C {repo} worktree remove --force {build}`
     print("Built {staged}.")
@@ -259,9 +272,8 @@ else:
     step("the bundle")
     print("{staged} is {target}.")
 
-// Checked whether this run built it or was handed it: a bundle that is not newer than the
-// running daemon, by the handover's rule, is not handed the panes and runs none of its own
-// daemon's changes; one of another install starts a daemon of its own.
+// Checked whether this run built it or was handed it: a bundle of another install starts a
+// daemon of its own, and one that is not newer is not handed the panes.
 cli_says = quiet $`{staged}/Contents/MacOS/muster-cli --version`.stdout.trim() catch:
     cli_says = ""
 staged_identity = daemon_identity(staged)
@@ -272,27 +284,16 @@ if staged_identity[1] != install:
     fail(["{staged} is built for install {staged_identity[1]}, and {app} is install {install}.",
           "Impact: it would start an empty daemon beside the one holding every agent.",
           "Build it with MUSTER_INSTALL={install}, which this script does when it builds."])
-for floor in [installed_version, running_version]:
-    if floor != "" and not newer(target, floor):
-        fail(["{target} is not newer than {floor}, comparing major.minor.patch only.",
-              "Impact: the new app would adopt the running daemon as it is, so none of this",
-              "build's daemon changes would run until that daemon restarts, ending every agent.",
-              "Build it again with this script, which picks a newer version."])
+refuse_unless_newer(target, [installed_version, running_version])
 
 if dry_run:
     print(dim("\n--dry-run: nothing was changed."))
     exit(0)
 
-aside = "{app}.{installed_version or 'old'}"
-n = 2
-while quiet $`test -e {aside}`.ok:
-    aside = "{app}.{installed_version or 'old'}-{n}"
-    n += 1
-
 step("the swap")
 if installed:
-    print("A Muster running from {app} quits, the app moves to {aside}, and {target} takes")
-    print("its place and opens.")
+    print("A Muster running from {app} quits, the app moves aside named for its version, and")
+    print("{target} takes its place and opens.")
     print("Every agent keeps running: the new daemon is handed the panes.")
 else:
     print("{target} is copied to {app}.")
@@ -311,6 +312,27 @@ if not yes:
         print("  tools/install-main --bundle {staged}")
         exit(0)
 
+// Measured again, since the build took minutes and the question waited on a person: another run
+// or a Homebrew upgrade may have replaced the app or handed the daemon over meanwhile, and the
+// pane count after the swap is judged against what the daemon holds now.
+now = installed_now(app)
+installed = now[0]
+installed_version = now[1]
+if installed and now[2] != install:
+    fail(["{app} is now install {now[2]}, and {staged} was checked against install {install}.",
+          "Something replaced it during this run. Run this again."])
+cli = installed ? "{app}/Contents/MacOS/muster-cli" : "muster"
+running = running_daemon(cli, socket, false)
+running_version = running[0]
+before_panes = running[1]
+refuse_unless_newer(target, [installed_version, running_version])
+
+aside = "{app}.{installed_version or 'old'}"
+n = 2
+while quiet $`test -e {aside}`.ok:
+    aside = "{app}.{installed_version or 'old'}-{n}"
+    n += 1
+
 if installed:
     log = "{staged}.swap.log"
     quiet $`rm -f {log}`
@@ -320,7 +342,9 @@ if installed:
     while ended == "":
         sleep(1)
         waited += 1
-        last = quiet $`tail -1 {log}`.stdout.trim()
+        // Absent until the detached swap's shell has opened it.
+        last = quiet $`tail -1 {log}`.stdout.trim() catch:
+            last = ""
         if last.starts_with("swapped") or last.starts_with("failed"):
             ended = last
         else if waited > 120:
@@ -354,7 +378,7 @@ else:
         print(green("The daemon is {target} and holds all {seen[1]} pane(s)."))
 
 if bundle == "":
-    quiet $`rm -rf {staging}/{target}`
+    quiet $`rm -rf {run}`
 
 print("\n{app} is {target}.")
 if installed:
