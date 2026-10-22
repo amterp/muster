@@ -8,7 +8,7 @@
 //! Watched on the doorbell's thread, which already reads a clock for the maker watch: the session
 //! reads none of its own.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,6 +47,8 @@ fn limit() -> Duration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Declared {
     pub(crate) pane: String,
+    /// What the agent said it waits on.
+    pub(crate) waiting: String,
     /// Which of the pane's waits it is ([`crate::pane::Turns`]).
     pub(crate) serial: u64,
     /// The process whose exit ends it.
@@ -92,6 +94,9 @@ struct Ended {
 pub(crate) struct Waits {
     limit: Duration,
     since: HashMap<String, (u64, Instant)>,
+    /// Waits on a process that exited whose agent could not be told yet, by pane and serial:
+    /// said once each, and tried again at each look.
+    untold: HashSet<(String, u64)>,
 }
 
 impl Waits {
@@ -100,7 +105,7 @@ impl Waits {
     }
 
     fn after(limit: Duration) -> Waits {
-        Waits { limit, since: HashMap::new() }
+        Waits { limit, since: HashMap::new(), untold: HashSet::new() }
     }
 
     /// Which of the waits `held` are over at `now`, `exited` saying whether a process has, and
@@ -157,51 +162,70 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
     let held = shared.lock().declared_waits();
     if held.is_empty() {
         waits.since.clear();
+        waits.untold.clear();
         return NOTHING_DUE;
     }
-    let (ended, next) = waits.judge(&held, Instant::now(), |pid| !exists(pid));
+    waits.untold.retain(|(pane, serial)| {
+        held.iter().any(|wait| wait.pane == *pane && wait.serial == *serial)
+    });
+    let (ended, mut next) = waits.judge(&held, Instant::now(), |pid| !exists(pid));
     for Ended { pane, serial, over } in ended {
-        let Some(waited) = shared.lock().wait_over(&pane, serial, over) else { continue };
-        let pid = held.iter().find(|wait| wait.pane == pane).and_then(|wait| wait.until_exits);
+        let Some(wait) = held.iter().find(|wait| wait.pane == pane) else { continue };
+        // The agent is told before its wait ends: a wait cleared and its wake refused would
+        // leave it idle with nothing to start its next turn. Told and not ended, as when it
+        // declares another wait meanwhile, it reads that its process exited, which is so.
+        if let Some(pid) = wait.until_exits.filter(|_| over == Over::Exited) {
+            if let Err(reason) = tell(shared, &pane, &wait.waiting, pid) {
+                if waits.untold.insert((pane.clone(), serial)) {
+                    untold(&pane, pid, &reason);
+                }
+                next = next.min(EXIT_LOOK);
+                continue;
+            }
+            waits.untold.remove(&(pane.clone(), serial));
+        }
+        if !shared.lock().wait_over(&pane, serial, over) {
+            continue;
+        }
         log::info(
             "daemon.wait.over",
             fields! {
                 "pane" => pane,
                 "by" => over.as_str(),
-                "pid" => pid.map(|pid| pid.to_string()).unwrap_or_default(),
+                "pid" => wait.until_exits.map(|pid| pid.to_string()).unwrap_or_default(),
             },
         );
-        if let Some(pid) = pid.filter(|_| over == Over::Exited) {
-            tell(shared, &pane, &waited, pid);
-        }
     }
     next
 }
 
-/// Tells the agent in `pane` that its wait on `waited` is over, in a message of its own.
-fn tell(shared: &Arc<Shared>, pane: &str, waited: &str, pid: u32) {
+/// Tells the agent in `pane` that its wait on `waited` is over, in a message of its own, or says
+/// why it could not.
+fn tell(shared: &Arc<Shared>, pane: &str, waited: &str, pid: u32) -> Result<(), String> {
     let panes = Panes::of(shared);
     let body = format!("Your wait on {waited} is over: process {pid} has exited.");
     let delivered = delivering(shared, &panes, |service| {
         service.tell_alone_as_muster(pane, &body, &panes, now_ms())
     });
-    match delivered {
-        Ok(delivered) => {
-            told("msg.wait.told", Some(body.len()), &delivered);
-        }
-        Err(reply) => log::warn(
-            "msg.wait.untold",
-            fields! {
-                "pane" => pane,
-                "pid" => pid,
-                "reason" => reply.reason,
-                "impact" => "the agent is not woken by the end of the work it waited on: its \
-                             pane reads idle, and nothing starts its next turn",
-                "check" => "the reason: a store that would not write, or a handoff under way; \
-                            `muster pane send` can prompt the agent",
-            },
-        ),
-    }
+    let delivered = delivered.map_err(|reply| reply.reason)?;
+    told("msg.wait.told", Some(body.len()), &delivered);
+    Ok(())
+}
+
+fn untold(pane: &str, pid: u32, reason: &str) {
+    log::warn(
+        "msg.wait.untold",
+        fields! {
+            "pane" => pane,
+            "pid" => pid,
+            "reason" => reason,
+            "impact" => "the agent's wait stands and it is not woken until it can be told: its \
+                         pane reads waiting though the work it waited on has ended; tried again \
+                         every second",
+            "check" => "the reason: a store that would not write, or a handoff under way; \
+                        `muster pane send` can prompt the agent",
+        },
+    );
 }
 
 #[cfg(test)]
@@ -211,7 +235,13 @@ mod tests {
     const LIMIT_MS: u64 = 600_000;
 
     fn wait(pane: &str, serial: u64, until_exits: Option<u32>, limited: bool) -> Declared {
-        Declared { pane: pane.to_string(), serial, until_exits, limited }
+        Declared {
+            pane: pane.to_string(),
+            waiting: "the gate".to_string(),
+            serial,
+            until_exits,
+            limited,
+        }
     }
 
     fn overs(ended: &[Ended]) -> Vec<(&str, Over)> {

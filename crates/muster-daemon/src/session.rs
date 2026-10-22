@@ -2057,8 +2057,13 @@ impl Session {
         self.panes
             .iter()
             .filter(|pane| pane.holds_declared_wait())
-            .map(|pane| Declared {
+            .filter_map(|pane| {
+                let waiting = pane.record.facts.as_ref()?.waiting.clone()?;
+                Some((pane, waiting))
+            })
+            .map(|(pane, waiting)| Declared {
                 pane: pane.record.pane.clone(),
+                waiting,
                 serial: pane.turns.wait_serial,
                 until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
                 limited: pane.turns.wait_carried || !woken(pane.record.agent.as_deref()),
@@ -2067,15 +2072,14 @@ impl Session {
     }
 
     /// Ends the wait `pane`'s agent declared, if it still holds the one numbered `serial`, and
-    /// says what it was. A wait that ran out leaves the turn it held back finished, as a wait
+    /// says whether it did. A wait that ran out leaves the turn it held back finished, as a wait
     /// the screen showed does.
-    pub(crate) fn wait_over(&mut self, pane: &str, serial: u64, over: Over) -> Option<String> {
-        let index = self.pane_index(pane)?;
+    pub(crate) fn wait_over(&mut self, pane: &str, serial: u64, over: Over) -> bool {
+        let Some(index) = self.pane_index(pane) else { return false };
         let pane = &mut self.panes[index];
         if !pane.holds_declared_wait() || pane.turns.wait_serial != serial {
-            return None;
+            return false;
         }
-        let waited = pane.record.facts.as_ref()?.waiting.clone()?;
         pane.turns.wait_carried = false;
         forget_wait(&mut pane.record, over.as_str());
         if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
@@ -2083,7 +2087,7 @@ impl Session {
         }
         let record = pane.record.clone();
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-        Some(waited)
+        true
     }
 
     /// Forgets the session id a pane's agent reported, if it is still `id`: a wake the command

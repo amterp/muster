@@ -146,6 +146,41 @@ fn a_wait_until_a_process_exits_ends_with_it_and_wakes_the_agent() {
     assert!(rings[0].contains("from @muster"), "{rings:?}");
 }
 
+/// A wait whose process exited stands while the agent cannot be told, and ends once it is: a
+/// wait cleared with its wake refused would leave the agent idle with nothing to start its turn.
+#[test]
+fn a_wait_whose_wake_cannot_be_posted_stands_until_it_is() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut p1 = Pane::with_an_agent();
+    let mut job = job();
+    let asked = p1.declares("the full gate", Some(job.id()));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    // The message store, made before its first write and left unwritable, refuses the wake.
+    let store = p1.daemon.socket_path().with_extension("msg");
+    std::fs::create_dir_all(&store).expect("the store's directory is made");
+    let writable = |mode| {
+        let permissions = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(&store, permissions).expect("the store's mode is set");
+    };
+    writable(0o555);
+
+    job.kill().expect("the job is killed");
+    job.wait().expect("and reaped");
+    std::thread::sleep(Duration::from_secs(4));
+    let standing = p1.waiting_on();
+    writable(0o755);
+    assert_eq!(standing, Some(("the full gate".to_string(), Some(job.id()))), "ended untold");
+    assert_eq!(p1.rings_heard(), Vec::<String>::new());
+
+    until_some("the wait to end once its wake is posted", || {
+        p1.waiting_on().is_none().then_some(())
+    });
+    let rings = until_some("the agent to be woken", || {
+        Some(p1.rings_heard()).filter(|rings| !rings.is_empty())
+    });
+    assert!(rings[0].contains("from @muster"), "{rings:?}");
+}
+
 /// Neither a turn ending nor a prompt's hook ends a wait on a process; the agent saying no wait
 /// itself does.
 #[test]
