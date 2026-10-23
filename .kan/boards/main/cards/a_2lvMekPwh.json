@@ -12,6 +12,12 @@
       "body": "2026-10-21: fixed on main in 1d25a6a4. The field now takes the keyboard through AppKit (makeFirstResponder on the hosting view's NSTextField) instead of @FocusState; cmd+f toggles; one Esc closes; closing hands the pane the keyboard back (before, it left the window itself first responder, so typing went nowhere until a click - confirmed and pinned by a test); the arrow and close buttons are never focusable. 7 offscreen-window tests. Not yet tried in the real app: needs a build of main installed. By-hand steps: report-3 of the 10-21 round, also in the commit's card trail - (1) cmd+f, type, text reaches the field (2) Return/Shift+Return walk (3) one Esc closes, typing reaches the pane (4) cmd+f reopens with the old needle selected (5) cmd+f closes (6) cmd+g/shift+cmd+g from the pane (7) the close button gives the pane the keyboard (8) cmd+f over a second pane moves the bar there (9) with Keyboard navigation on, the keyboard never lands on a button (10) the same over a devenv pane. Move to done once seen.",
       "created_at_millis": 1792633334528,
       "id": "c_2lwpEys5T"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-23 re-triage: 1d25a6a4 is in v0.18.0, but this Mac mini still runs Muster 0.16.2-dev, built 2026-10-18 before the fix. The by-hand check waits for an upgrade to 0.18.0 or a tools/install-main build.",
+      "created_at_millis": 1792799187384,
+      "id": "c_2n4PpasxC"
     }
   ],
   "created_at_millis": 1792629852506,
@@ -21,7 +27,7 @@
   "position": "Zv",
   "title": "⌘F does not reliably put the keyboard in the find field, and does not close the bar",
   "type": "bug",
-  "updated_at_millis": 1792633334528,
+  "updated_at_millis": 1792799187384,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852506},
     {"field":"column","value":"in-progress","at":1792632580891}

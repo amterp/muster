@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-23 re-triage: moved to backlog-hi. It is a reported bug on 0.18.0 that misleads a script launching a helper: a maker that posts its brief on idle and treats blocked as stuck would decide the helper never got past its dialog. Same family as a_2luRHNGh6 (done).",
+      "created_at_millis": 1792799187237,
+      "id": "c_2n4PpLICT"
+    }
+  ],
   "created_at_millis": 1792792470395,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-23 on 0.18.0, on the Linux devenv. A maker started a Codex helper with `muster pane new --helper --run '\u003ccodex launcher\u003e ...'` in a folder Codex had not trusted yet. The pane read `blocked` at Codex's folder-trust dialog, which was right. The maker answered it with `muster pane send --pane \u003cp\u003e --key enter`, then ran `muster pane wait --pane \u003cp\u003e --until idle,blocked --timeout 120`. The wait printed `\u003cp\u003e  blocked` at once, while `muster pane read` showed Codex already at its empty prompt. A moment later `muster window` showed the pane as `done` with \"(adapter not reporting)\", and the adapter began reporting (context %) only after the first message woke the agent.\n\nSo a wait sent just after the keypress answers from the state the keypress ended. A script that posts its brief on idle and treats blocked as \"still stuck\" would decide the helper never got past the dialog.\n\nPossibly: after a `pane send` that answers a dialog, treat the pane's state as unknown until a new screen has been read, as for a freshly started agent. Related, fixed: a_2luRHNGh6 (pane wait --until blocked answering from a stale blocked mid-turn).",
   "id": "a_2n1b5WC4C",
-  "position": "b1e",
+  "position": "!!!!!!0V",
   "title": "pane wait --until idle,blocked answers blocked right after the dialog was answered",
   "type": "bug",
-  "updated_at_millis": 1792792470395,
+  "updated_at_millis": 1792799187237,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792792470395}
+    {"field":"column","value":"backlog-lo","at":1792792470395},
+    {"field":"column","value":"backlog-hi","at":1792799187162}
   ]
 }

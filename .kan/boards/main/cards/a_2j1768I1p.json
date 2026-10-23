@@ -18,6 +18,12 @@
       "body": "2026-10-21: fixed on main in 73a1352b by porting Ghostty's performKeyEquivalent case: the pane's view claims ctrl+return as a keystroke while it has the keyboard, after asking the main menu first so a [keymap] binding on ctrl+return still wins. 3 tests. Not yet tried in the real app. By hand on a build of main: printf '\\\\e[\u003e5u\\\\e[\u003e4;2m'; cat -v, then ctrl+return prints ^[[13;5u and no context menu opens; and in Claude Code, a line typed while it works is sent at once by ctrl+return. Move to done once seen.",
       "created_at_millis": 1792633334601,
       "id": "c_2lwpF6sWk"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-23 re-triage: 73a1352b is in v0.18.0, but this Mac mini still runs Muster 0.16.2-dev, built 2026-10-18 before the fix. The by-hand check waits for an upgrade to 0.18.0 or a tools/install-main build.",
+      "created_at_millis": 1792799187460,
+      "id": "c_2n4PpiJbp"
     }
   ],
   "created_at_millis": 1792200264041,
@@ -27,7 +33,7 @@
   "position": "a3z",
   "title": "Ctrl+Return does not reach Claude Code in a pane",
   "type": "bug",
-  "updated_at_millis": 1792633334601,
+  "updated_at_millis": 1792799187460,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792200264041},
     {"field":"column","value":"in-progress","at":1792208577265},
