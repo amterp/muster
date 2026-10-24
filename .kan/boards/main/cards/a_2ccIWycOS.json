@@ -12,6 +12,12 @@
       "body": "2026-10-17: the refusal's reason now prints (c8db68c0), in this assert and in two others that dropped it (the CLI's messaging tests, the bridge's link.rs). The CLI's messaging:: tests ran 25 times throttled at load 4-10 with no failure, so which refusal it was is still unknown; the next sighting in a gate will say.",
       "created_at_millis": 1792248095629,
       "id": "c_2jLBPu2jl"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: not reproduced in 12 full CLI suite runs, three at a time at load 10, with the daemon binary given a new inode before each round to force macOS's first-exec assessment. Candidates unchanged: begin_replacing, or a 10 s STEP in handoff/mod.rs running out.",
+      "created_at_millis": 1792855654353,
+      "id": "c_2nS6nLu6z"
     }
   ],
   "created_at_millis": 1791254541353,
@@ -21,7 +27,7 @@
   "position": "!!!!!!3",
   "title": "🎲 a_followed_log_prints_each_entry_as_it_lands_across_a_handover saw its handover refused",
   "type": "bug",
-  "updated_at_millis": 1792248095716,
+  "updated_at_millis": 1792855654353,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791254541353},
     {"field":"column","value":"in-progress","at":1792242026077},

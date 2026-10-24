@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: not reproduced in 57 runs (45 alone, 12 suite runs three at a time at load 10). Ruled out from code: both forms render quiet from one roster field, nothing clears it between the reads, callsigns do not change. The two text reads never checked their exit status, so a failed read looked exactly like this; 77e34684 asserts it, so a next sighting saying 'muster window failed' means the read failed.",
+      "created_at_millis": 1792855654286,
+      "id": "c_2nS6nEAB1"
+    }
+  ],
   "created_at_millis": 1792851896027,
   "creator": "Alexander Terp",
   "description": "Seen once 2026-10-24 in a full cargo test -p muster-cli on the Mac mini: at driving_a_window.rs:247 the text muster window did not yet list the pane under hidden as (quiet), though the --json read just before had said so. Passed alone. Looks like a race between the waited-for JSON read and the text read after it.",
@@ -13,7 +21,7 @@
   "position": "b1O",
   "title": "🎲 driving_a_window::a_pane_can_drive_the_window_it_is_drawn_in saw no (quiet) under hidden",
   "type": "bug",
-  "updated_at_millis": 1792851896027,
+  "updated_at_millis": 1792855654286,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792851896027}
   ]

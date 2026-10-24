@@ -6,7 +6,7 @@
     "backend",
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -19,17 +19,24 @@
       "body": "2026-10-24: the same failure on macOS, natively: a full ./dev on main (93a786a9) on the Mac mini at load 14.1 saw ['served 0'] where ['served 1'] was expected. It passed 5 of 5 alone right after, so it is not emulation-specific. A guess that fits both sightings, not verified: the fake agent's 'serve --context-used 55 \u0026' reports and exits at once, so a daemon slow to handle the report walks the sender's processes after they are gone, finds no server, and lets the agentless pane take the report as it takes any other. If so, a real Codex hook that exits before the daemon walks it could slip past the app-server refusal the same way under load. Check whether the walk can be made from facts captured at accept time (peer pid and its ancestors read before the report is queued), or whether a walk that finds the sender gone should refuse rather than accept.",
       "created_at_millis": 1792852820023,
       "id": "c_2nQv3q92L"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: cause verified, and it is the test, not the process walk (the guess in the previous comment was wrong: muster-daemon report holds its connection open until answered, so nothing on the walk has exited). sender_of waits 1 s (MANIFESTS_PATIENCE) for the first manifest load, then takes the report unattributed; the two agentless-pane tests reported before detection loaded. Staged with a FIFO as the override manifest, now a committed test. Fixed on main in ca7b807e: both tests wait for daemon.detect.loaded, and the daemon logs daemon.report.unattributed once when it takes a report it could not attribute. Taking such a report stays deliberate (detect.rs).",
+      "created_at_millis": 1792855653941,
+      "id": "c_2nS6mgBc3"
     }
   ],
   "created_at_millis": 1792257675573,
   "creator": "Alexander Terp",
   "description": "2026-10-17, `./dev --linux` on the laptop (main at 76c1aae5): aarch64 ran natively and passed all 860 tests; x86_64 ran under emulation and failed one, `attribution::a_pane_with_no_agent_refuses_a_report_through_a_server` (crates/muster-daemon/tests/daemon/attribution.rs:110): left [\"served 0\"], right [\"served 1\"], i.e. the report through `\u003cfake agent\u003e serve \u0026` was taken where it should be refused. It fails 3 of 3 run alone under emulation, and still fails with the fake agent's shebang put back to #!/bin/sh, so it is neither load nor the dash change. The test is unchanged since 2026-10-07 (f17d3b67); nothing in that day's unpushed range touched attribution.rs.\n\nLikely the emulator again: `./dev` already skips `the_system_reports_a_real_process_group` under emulation (EMULATED_ARGV) because qemu replaces what /proc says about a process, and recognising the fake agent's server depends on identifying the process. Not confirmed. To settle: run it on a native x86_64 Linux (CI's linux job once credits return, or the devenv); if it passes there, add it to the emulated skips in `./dev` with the reason; if it fails, it is a real bug in server_of on x86_64.",
   "id": "a_2jPCdMlpU",
-  "position": "b13",
+  "position": "Yvm",
   "title": "Under x86_64 emulation, a pane with no agent takes a report through a server",
   "type": "bug",
-  "updated_at_millis": 1792852820023,
+  "updated_at_millis": 1792855654043,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792257675573}
+    {"field":"column","value":"backlog-hi","at":1792257675573},
+    {"field":"column","value":"done","at":1792855654043}
   ]
 }

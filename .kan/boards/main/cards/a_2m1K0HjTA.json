@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: the measurement is right (spawn returned to first answer, 1 ms polls; best-of-five absorbs CPU load but not swap, which lasts across all five). Owner's decision, not made: move this budget to --perf, which refuses a busy machine, or have ./dev print swap in use beside the load average so a failure explains itself.",
+      "created_at_millis": 1792855654420,
+      "id": "c_2nS6nSZQ5"
+    }
+  ],
   "created_at_millis": 1792644050216,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-21 23:35 in a full ./dev on main (5878e4bf) on the Mac mini, load 11.4 and about 6 GB in swap while two other projects' agent rounds ran: lifecycle::a_spawned_daemon_answers_its_first_request_within_budget measured the fastest of five daemon starts at 27.2 ms (all: 62.2, 32.6, 27.2, 33.5, 33.0) against the 25 ms budget. It passed 3 of 3 alone straight after at load 7.9. The test's doc says twenty starts measured 3.9 ms at a load average of 30, so CPU load alone does not explain it; memory pressure and swap may. That evening, four of five full gates each failed on a different timing-sensitive test (this, a_2jPCdMlpU, a_2lzok4LKg, and a linked maker-watch test fixed in 60264451). Measure a daemon start under memory pressure, and decide whether the budget should account for it or the gate should say when the machine is swapping, as it already says the load.",
@@ -13,7 +21,7 @@
   "position": "b1K",
   "title": "🎲 The daemon start budget failed under load with swap in use",
   "type": "bug",
-  "updated_at_millis": 1792644050216,
+  "updated_at_millis": 1792855654420,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792644050216}
   ]

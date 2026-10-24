@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-second-post-can",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1792855654579,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-10-24 under load: messaging::a_post_to_agents_in_panes_says_when_each_is_rung failed 2 of 12 CLI suite runs, its #8 saying 'woke: \u003cp3\u003e (p3, idle)' where p3's wake is held because its prompt holds a draft. Likely the hold guard added with b76817b6, which leaves a new wake to one in a doorbell look's hands and reports it as woken. Delivery is right; what the post prints is not. Being fixed with the in-hand case staged in a test.",
+  "id": "a_2nS6ndAwW",
+  "position": "Zw",
+  "title": "A second post can say woke for a wake still held behind a draft",
+  "type": "bug",
+  "updated_at_millis": 1792855654579,
+  "history": [
+    {"field":"column","value":"in-progress","at":1792855654579}
+  ]
+}
