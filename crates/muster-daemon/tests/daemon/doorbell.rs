@@ -1420,6 +1420,15 @@ fn a_group_held_up_on_a_wake_a_menu_holds_is_told_so() {
     for said in [r#""held":"covered""#, r#""zoomed_on":"p2""#] {
         assert!(line.line.contains(said), "{said} in {}", line.line);
     }
+    // What the doorbell judged, which the debug lines before it held only while they lasted: the
+    // rule that read the screen, its shape and its title's, and how long it had been still.
+    for field in ["rule", "shape", "drawn_ms_ago"] {
+        let named = format!(r#""{field}":"#);
+        assert!(line.line.contains(&named), "{field} missing from {}", line.line);
+        let empty = format!(r#"{named}"""#);
+        assert!(!line.line.contains(&empty), "{field} empty in {}", line.line);
+    }
+    assert!(line.line.contains(r#""title":"#), "title missing from {}", line.line);
 
     logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(10));
     let read = agent.read_as("integrator");

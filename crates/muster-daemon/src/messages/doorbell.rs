@@ -166,7 +166,8 @@ pub(crate) struct Left {
 pub(crate) enum Held {
     /// Its prompt holds something typed and not sent.
     Draft,
-    Unseen(Unseen),
+    /// Its prompt is not on its screen, and what the rules made of that screen.
+    Unseen(Unseen, Judged),
 }
 
 impl Held {
@@ -174,7 +175,7 @@ impl Held {
     pub(crate) fn why(&self) -> Cow<'static, str> {
         match self {
             Held::Draft => "its prompt holds something typed and not sent".into(),
-            Held::Unseen(unseen) => unseen.why(),
+            Held::Unseen(unseen, _) => unseen.why(),
         }
     }
 
@@ -182,11 +183,11 @@ impl Held {
     pub(crate) fn word(&self) -> &'static str {
         match self {
             Held::Draft => "draft",
-            Held::Unseen(Unseen::Covered(_)) => "covered",
-            Held::Unseen(Unseen::AtWork) => "at_work",
-            Held::Unseen(Unseen::NoPrompt) => "no_prompt",
-            Held::Unseen(Unseen::NotForeground) => "not_foreground",
-            Held::Unseen(Unseen::NoManifests | Unseen::Unreadable) => "unreadable",
+            Held::Unseen(Unseen::Covered(_), _) => "covered",
+            Held::Unseen(Unseen::AtWork, _) => "at_work",
+            Held::Unseen(Unseen::NoPrompt, _) => "no_prompt",
+            Held::Unseen(Unseen::NotForeground, _) => "not_foreground",
+            Held::Unseen(Unseen::NoManifests | Unseen::Unreadable, _) => "unreadable",
         }
     }
 }
@@ -331,9 +332,10 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
             }
             AtPrompt::Not(unseen, judged) => {
                 waits_unseen(&wake, &unseen, &judged);
-                held.push((pane_of(&wake).to_string(), Held::Unseen(unseen.clone())));
+                let unseen = Held::Unseen(unseen, judged);
+                held.push((pane_of(&wake).to_string(), unseen.clone()));
                 waiting.push(wake);
-                came.push(Came::Waits(Some(Held::Unseen(unseen))));
+                came.push(Came::Waits(Some(unseen)));
             }
         }
     }
@@ -433,7 +435,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             prompt::look(&seen.io, &seen.agent, &shared.detecting, false)
         {
             waits_unseen(&wake, &unseen, &judged);
-            held.push((pane.clone(), Held::Unseen(unseen)));
+            held.push((pane.clone(), Held::Unseen(unseen, judged)));
             waiting.push(wake);
             came.push(Came::Waits(None));
             continue;
@@ -733,6 +735,7 @@ fn waits_unseen(wake: &Wake, unseen: &Unseen, judged: &Judged) {
             "why" => unseen.why(),
             "rule" => judged.rule.as_deref().unwrap_or_default(),
             "shape" => judged.shape,
+            "title" => judged.title,
         },
     );
 }
@@ -1238,6 +1241,7 @@ fn covered(mut rung: Rung, unseen: &Unseen, judged: &Judged) -> Rung {
                 "why" => unseen.why(),
                 "rule" => judged.rule.as_deref().unwrap_or_default(),
                 "shape" => judged.shape,
+                "title" => judged.title,
             },
         );
     }

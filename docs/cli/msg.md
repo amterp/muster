@@ -324,10 +324,12 @@ of names under `woke`, `deferred`, `already_woken`, `waiting`, `gone`, `no_agent
 
 **A group held up on a member is said so, once.** When a message by somebody else has waited
 unread for 2 minutes on an agent in a pane that is not working, its daemon records the stall in
-its log (`msg.group.stalled`, with every member and what each is doing). A daemon counts those 2
-minutes from its own start at the earliest, and not while the agent in a new pane is still
-starting, so agents resuming after a restart are not held up. If the agent's last wake
-never landed, it is woken once more. Otherwise, or if that does not move it either, whoever posted
+its log (`msg.group.stalled`, with every member and what each is doing, how long since the
+agent's screen last changed, and, when a wake was held because its prompt was not on its screen,
+the rule that read the screen and the screen's and title's shape without their text). A daemon
+counts those 2 minutes from its own start at the earliest, and not while the agent in a new
+pane is still starting, so agents resuming after a restart are not held up. If the agent's last
+wake never landed, it is woken once more. Otherwise, or if that does not move it either, whoever posted
 what waits is told why, in the group, by `@muster`:
 
     @muster: otter (p2w3r07bsd) has not read #4, from director, 2 minutes after it was posted: its program, codex, has stopped reading its input and left 2817 bytes unread, so nothing reaches it until somebody interrupts it; `muster pane restart --pane otter` ends it and resumes its session. Muster says this once; `muster window` shows its pane.

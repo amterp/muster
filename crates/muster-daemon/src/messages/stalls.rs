@@ -29,7 +29,7 @@ use muster_msg::{Activity, Holding, Presence, Ringable, Via};
 use super::doorbell::Held;
 use super::makers::{self, Makers};
 use super::presence::Panes;
-use super::prompt::Unseen;
+use super::prompt::{Judged, Unseen};
 use super::{Messages, delivering, now_ms, ring, told};
 use crate::session::Shared;
 
@@ -77,6 +77,9 @@ pub(crate) struct Member {
     pub(crate) held: Option<Held>,
     /// Its pane's size, columns by rows.
     pub(crate) size: Option<(u16, u16)>,
+    /// How long since its program last wrote to its screen, in milliseconds: a wake held for
+    /// minutes on a screen nothing has redrawn was judged on one frame all along.
+    pub(crate) drawn_ms_ago: Option<u64>,
     /// The pane its tab is zoomed on, when the zoom hides its own.
     pub(crate) zoomed_on: Option<String>,
     /// The program in its pane that has stopped reading, and what it left unread.
@@ -90,7 +93,7 @@ pub(crate) struct Member {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Act {
     /// A member has held its group up long enough to say so, and what will be done about it.
-    Stalled { member: Member, held_ms: u64, unlock: Unlock },
+    Stalled { member: Box<Member>, held_ms: u64, unlock: Unlock },
     /// The member's wake never landed; wake it once more.
     WakeAgain { name: String, group: String },
     /// Tell whoever is waiting on the member why it has not answered.
@@ -237,13 +240,13 @@ impl Stalls {
                 // left is a wake that never landed.
                 Stage::Watching if episode.told && unlock(member) != Unlock::WakeAgain => {
                     let unlock = Unlock::ToldAlready;
-                    acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+                    acts.push(Act::Stalled { member: Box::new(member.clone()), held_ms, unlock });
                     episode.recorded = true;
                     episode.stage = Stage::Told;
                 }
                 Stage::Watching => {
                     let unlock = unlock(member);
-                    acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+                    acts.push(Act::Stalled { member: Box::new(member.clone()), held_ms, unlock });
                     episode.recorded = true;
                     match unlock {
                         Unlock::WakeAgain => {
@@ -329,7 +332,7 @@ impl Stalls {
         if !episode.told {
             let unlock = if waiting_on(member).is_empty() { Unlock::Nothing } else { Unlock::Tell };
             let held_ms = now_ms.saturating_sub(episode.since_ms);
-            acts.push(Act::Stalled { member: member.clone(), held_ms, unlock });
+            acts.push(Act::Stalled { member: Box::new(member.clone()), held_ms, unlock });
             episode.recorded = true;
             if unlock == Unlock::Tell {
                 let worked = said_as_time(now_ms.saturating_sub(worked_since));
@@ -495,7 +498,7 @@ pub(crate) fn unread_why(member: &Member, called: &BTreeMap<String, String>) -> 
 /// What holds a wake for a member, by what the doorbell last found in its pane.
 fn held(member: &Member, called: &BTreeMap<String, String>) -> String {
     let mut said = match (&member.held, member.size) {
-        (Some(Held::Unseen(Unseen::NoPrompt)), Some((cols, rows))) => format!(
+        (Some(Held::Unseen(Unseen::NoPrompt, _)), Some((cols, rows))) => format!(
             "a wake for it is held because its prompt is not on its screen, which is \
              {cols}x{rows} and may be too short to show it"
         ),
@@ -567,6 +570,9 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
                     let grid = seen.io.grid();
                     (grid.cols, grid.rows)
                 }),
+                drawn_ms_ago: seen
+                    .and_then(super::presence::Seen::drawn_at)
+                    .map(|at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)),
                 zoomed_on: panes.zoomed_on(&holding.pane).map(str::to_string),
                 maker: Vec::new(),
                 holding,
@@ -644,6 +650,11 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
             let held = &member.holding;
             let (program, bytes) = member.stopped.clone().unwrap_or_default();
             let size = member.size.map_or(String::new(), |(cols, rows)| format!("{cols}x{rows}"));
+            let judged = match &member.held {
+                Some(Held::Unseen(_, judged)) => judged.clone(),
+                _ => Judged::default(),
+            };
+            let drawn = member.drawn_ms_ago.map_or(String::new(), |ms| ms.to_string());
             log::warn(
                 "msg.group.stalled",
                 fields! {
@@ -657,6 +668,10 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                     "woken" => held.woken,
                     "waking" => member.waking,
                     "held" => member.held.as_ref().map_or("", Held::word),
+                    "rule" => judged.rule.unwrap_or_default(),
+                    "shape" => judged.shape,
+                    "title" => judged.title,
+                    "drawn_ms_ago" => drawn,
                     "size" => size,
                     "zoomed_on" => member.zoomed_on.clone().unwrap_or_default(),
                     "rings" => member.doorbell == Ringable::Rings,
@@ -748,6 +763,7 @@ mod tests {
             rung: false,
             held: None,
             size: Some((89, 9)),
+            drawn_ms_ago: None,
             zoomed_on: None,
             stopped: None,
             maker: Vec::new(),
@@ -1015,22 +1031,27 @@ mod tests {
         let said = |held| told(waking(held), &none);
         assert!(said(Some(Held::Draft)).contains("its prompt holds something typed and not sent"));
         assert!(
-            said(Some(Held::Unseen(Unseen::NoPrompt)))
+            said(Some(Held::Unseen(Unseen::NoPrompt, Judged::default())))
                 .contains("its prompt is not on its screen, which is 89x9 and may be too short"),
         );
         assert!(
-            said(Some(Held::Unseen(Unseen::Covered(None))))
+            said(Some(Held::Unseen(Unseen::Covered(None), Judged::default())))
                 .contains("a menu, a viewer or a dialog")
         );
         let drafted = "Claude Code's box for a bug report it drafted (1 to review, 2 to send, 0 to \
                        dismiss)";
         assert!(
-            said(Some(Held::Unseen(Unseen::Covered(Some(drafted.to_string())))))
+            said(Some(Held::Unseen(Unseen::Covered(Some(drafted.to_string())), Judged::default())))
                 .contains(&format!("a wake for it is held because {drafted} covers its prompt")),
         );
-        assert!(said(Some(Held::Unseen(Unseen::AtWork))).contains("reads as its agent at work"));
+        assert!(
+            said(Some(Held::Unseen(Unseen::AtWork, Judged::default())))
+                .contains("reads as its agent at work")
+        );
         assert!(said(None).contains("a wake for it is waiting to be rung."));
-        for held in [None, Some(Held::Draft), Some(Held::Unseen(Unseen::NoPrompt))] {
+        for held in
+            [None, Some(Held::Draft), Some(Held::Unseen(Unseen::NoPrompt, Judged::default()))]
+        {
             assert!(!said(held.clone()).contains("menu over it"), "{held:?}");
         }
     }
@@ -1077,7 +1098,7 @@ mod tests {
         let called: BTreeMap<String, String> = [("p3".to_string(), "heron".to_string())].into();
         let hidden = Member {
             waking: true,
-            held: Some(Held::Unseen(Unseen::NoPrompt)),
+            held: Some(Held::Unseen(Unseen::NoPrompt, Judged::default())),
             zoomed_on: Some("p3".to_string()),
             ..worker()
         };

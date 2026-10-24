@@ -973,7 +973,10 @@ of the message and the agent last being seen at work. Members outside panes and 
 judged: nothing says whether they are working, and the human is notified already. The daemon then,
 once per stall:
 
-- records `msg.group.stalled` in its log, with every member of the group and what each is doing;
+- records `msg.group.stalled` in its log, with every member of the group and what each is doing,
+  how long since the member's screen last changed, and, for a wake held because its prompt was
+  not on its screen, what the doorbell made of that screen: the rule that decided it and the shape
+  of its last rows and of its title, without their text;
 - wakes the member once more, if its last wake never landed and its agent could take one. This is
   not the third wake section 5 rules out: that one is for an agent that was reached and went on
   with something else, and this is for one nothing reached;

@@ -26,12 +26,14 @@ pub(crate) enum AtPrompt {
 }
 
 /// What detection made of a screen whose prompt it could not read, for the log: the rule that
-/// decided the screen, and the screen's [`shape`]. Never its text, since a screen holds what
-/// somebody typed. Empty when no screen was read.
+/// decided the screen, the screen's [`shape`], and its title's, which rules read too. Never their
+/// text, since a screen holds what somebody typed and a title may name the task. Empty when no
+/// screen was read.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Judged {
     pub(crate) rule: Option<String>,
     pub(crate) shape: String,
+    pub(crate) title: String,
 }
 
 /// How many of a screen's last rows its [`shape`] describes: a prompt box, what is drawn over or
@@ -48,19 +50,22 @@ fn shape(screen: &str) -> String {
         .rev()
         .filter(|line| !line.trim().is_empty())
         .take(SHAPE_ROWS)
-        .map(|line| {
-            let indent = line.chars().take_while(|ch| ch.is_whitespace()).count();
-            let first = match line.chars().find(|ch| !ch.is_whitespace()) {
-                Some(ch) if ch.is_alphabetic() => 'a',
-                Some(ch) if ch.is_numeric() => '#',
-                Some(ch) => ch,
-                None => ' ',
-            };
-            format!("{indent}{first}{}", line.chars().count())
-        })
+        .map(row_shape)
         .collect();
     rows.reverse();
     rows.join(" ")
+}
+
+/// One row's indent, first character and width, as [`shape`] writes it; nothing for a blank one.
+fn row_shape(line: &str) -> String {
+    let indent = line.chars().take_while(|ch| ch.is_whitespace()).count();
+    let first = match line.chars().find(|ch| !ch.is_whitespace()) {
+        Some(ch) if ch.is_alphabetic() => 'a',
+        Some(ch) if ch.is_numeric() => '#',
+        Some(ch) => ch,
+        None => return String::new(),
+    };
+    format!("{indent}{first}{}", line.chars().count())
 }
 
 /// Why the doorbell found no prompt to type into.
@@ -142,7 +147,11 @@ pub(crate) fn look(io: &PaneIo, agent: &str, detecting: &Detecting, at_work: boo
         None => {
             let detection = manifests.detect(Some(&agent), input);
             let shows = detection.rule.as_deref().and_then(|rule| manifests.shows(&agent, rule));
-            let judged = Judged { rule: detection.rule.clone(), shape: shape(&drawn) };
+            let judged = Judged {
+                rule: detection.rule.clone(),
+                shape: shape(&drawn),
+                title: row_shape(&title),
+            };
             AtPrompt::Not(Unseen::of(&detection, shows), judged)
         }
     }
@@ -247,6 +256,10 @@ mod tests {
         for word in ["token", "sk", "1234", "secret", "Heads"] {
             assert!(!shaped.contains(word), "{word} in {shaped}");
         }
+
+        // A title still showing a busy spinner keeps its glyph, and not the task it names.
+        assert_eq!(row_shape("⠂ Fix the login token"), "0⠂21");
+        assert_eq!(row_shape(""), "");
 
         let tall = vec!["text"; SHAPE_ROWS + 5].join("\n");
         assert_eq!(shape(&tall).split(' ').count(), SHAPE_ROWS, "the last rows only");
