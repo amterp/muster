@@ -1502,7 +1502,7 @@
     },
     {
       "name": "deleting a group lets every member go, ends a wait kept to it, and frees its name",
-      "why": "A group stays until it is deleted (MIP-4, section 12). Deleting takes its log, unread messages included, and each member's place in it; a wait kept to the group ends as a leave would end it, and the name can be used again, from #1 (MIP-4, section 8).",
+      "why": "A group stays until it is deleted (MIP-4, section 12). Deleting takes its log, unread messages included, and each member's place in it; a wait kept to the group ends as a leave would end it, and the name can be used again, numbering on from the deleted group's last entry so that no number in it ever means two things (MIP-4, section 8).",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a", "group": "g"},
         {"session": "b", "do": "join", "name": "b", "group": "g"},
@@ -1515,6 +1515,7 @@
         {"session": "a", "do": "post", "group": "g", "body": "two"},
         {"session": "a", "do": "log", "group": "g"},
         {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "b", "do": "log", "group": "g"},
         {"do": "groups"}
       ] },
       "expect": { "said": [
@@ -1529,6 +1530,7 @@
         "refused no_such_group g",
         "refused no_such_group g",
         "b joined g (created)",
+        "#6 created by b | #7 b joined",
         "g [b], other [c]"
       ] }
     },

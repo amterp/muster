@@ -9,8 +9,28 @@ use crate::{Entry, HumanHome, Participant, Policy};
 pub trait Store {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String>;
     fn save(&mut self, state: &Saved) -> Result<(), String>;
-    /// Forgets a deleted group's log. A log already gone is not an error.
+    /// Forgets a deleted group's log, keeping only `last`, the number of its last entry, so a
+    /// group made again under the name numbers on from it and never issues a number twice.
+    fn retire(&mut self, group: &str, last: u64) -> Result<(), String>;
+    /// Forgets a log altogether: a retired name made again spelled with other letter case, whose
+    /// new log a file system that ignores case would otherwise keep in the old one's file. A log
+    /// already gone is not an error.
     fn remove(&mut self, group: &str) -> Result<(), String>;
+}
+
+/// A group's log as the store kept it: its entries, numbered on from `after`, the last number a
+/// group deleted under the same name issued (0 for a name never deleted). A log holding no
+/// entries is a name retired, with no group.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Log {
+    pub after: u64,
+    pub entries: Vec<Entry>,
+}
+
+impl From<Vec<Entry>> for Log {
+    fn from(entries: Vec<Entry>) -> Log {
+        Log { after: 0, entries }
+    }
 }
 
 /// Everything but the logs. A group's members are not here: they are read back from its log's
@@ -42,8 +62,12 @@ pub struct Memory {
     pub saved: Option<Saved>,
     /// How many times the state was saved.
     pub saves: usize,
+    /// Groups whose log was retired, with the last number each issued, in order.
+    pub retired: Vec<(String, u64)>,
     /// Groups whose log was removed, in order.
     pub removed: Vec<String>,
+    /// What a disk would hold now: each log as appended, retired and removed.
+    pub kept: BTreeMap<String, Log>,
     /// Set to make every call fail, as a full disk would.
     pub failing: bool,
     /// Set to make only saving the state fail, as a disk filling up between two writes would.
@@ -56,6 +80,7 @@ impl Store for Memory {
             return Err("the store is failing on purpose".to_string());
         }
         self.appended.push((group.to_string(), entry.clone()));
+        self.kept.entry(group.to_string()).or_default().entries.push(entry.clone());
         Ok(())
     }
 
@@ -68,11 +93,28 @@ impl Store for Memory {
         Ok(())
     }
 
+    fn retire(&mut self, group: &str, last: u64) -> Result<(), String> {
+        if self.failing {
+            return Err("the store is failing on purpose".to_string());
+        }
+        self.retired.push((group.to_string(), last));
+        self.kept.insert(group.to_string(), Log { after: last, entries: Vec::new() });
+        Ok(())
+    }
+
     fn remove(&mut self, group: &str) -> Result<(), String> {
         if self.failing {
             return Err("the store is failing on purpose".to_string());
         }
         self.removed.push(group.to_string());
+        self.kept.remove(group);
         Ok(())
+    }
+}
+
+impl Memory {
+    /// The logs a service restored from this store would read.
+    pub fn logs(&self) -> BTreeMap<String, Log> {
+        self.kept.clone()
     }
 }

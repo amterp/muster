@@ -7,8 +7,8 @@ use crate::names::{
     check_addressee, check_group, check_participant, is_human, split_machine, title_says,
 };
 use crate::{
-    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, MUSTER, Policy, Refusal, Saved, Store,
-    What, default_name, pair_group,
+    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Log, MUSTER, Policy, Refusal, Saved,
+    Store, What, default_name, pair_group,
 };
 
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
@@ -483,6 +483,8 @@ pub(crate) struct Group {
     /// The machine the group is kept on, when that is not this one: this is its replica, which
     /// the store never sees (MIP-4, sections 11 and 12).
     pub(crate) home: Option<String>,
+    /// The last number a group deleted under this name issued, which this one numbers on from.
+    pub(crate) after: u64,
 }
 
 impl Group {
@@ -493,11 +495,12 @@ impl Group {
             members: BTreeSet::new(),
             log: Vec::new(),
             home: Some(machine.to_string()),
+            after: 0,
         }
     }
 
     pub(crate) fn head(&self) -> u64 {
-        self.log.last().map_or(0, |entry| entry.seq)
+        self.log.last().map_or(self.after, |entry| entry.seq)
     }
 }
 
@@ -543,6 +546,8 @@ pub struct Messaging<S: Store> {
     pub(crate) folded: Folded,
     /// What each pane participant on another machine is called: see [`Saved::called_elsewhere`].
     pub(crate) called_elsewhere: BTreeMap<String, String>,
+    /// Names of groups deleted here and not made again, with the last number each issued.
+    pub(crate) retired: BTreeMap<String, u64>,
 }
 
 impl<S: Store> Messaging<S> {
@@ -555,11 +560,16 @@ impl<S: Store> Messaging<S> {
     /// whether it is paused, where the log records them, since the saved state may have missed
     /// its last write (`muster-daemon`'s store does not sync the directory after replacing it, so
     /// a power loss can undo the last replace).
-    pub fn restore(store: S, saved: Saved, logs: BTreeMap<String, Vec<Entry>>) -> Messaging<S> {
+    pub fn restore(store: S, saved: Saved, logs: BTreeMap<String, Log>) -> Messaging<S> {
         let mut policies: BTreeMap<String, Policy> =
             saved.groups.into_iter().map(|record| (record.name, record.policy)).collect();
         let mut groups = BTreeMap::new();
-        for (name, log) in logs {
+        let mut retired = BTreeMap::new();
+        for (name, Log { after, entries: log }) in logs {
+            if log.is_empty() {
+                retired.insert(name, after);
+                continue;
+            }
             let mut members = BTreeSet::new();
             let mut set: Option<Policy> = None;
             let mut paused: Option<bool> = None;
@@ -586,7 +596,7 @@ impl<S: Store> Messaging<S> {
             if let Some(paused) = paused {
                 policy.paused = paused;
             }
-            groups.insert(name, Group { policy, members, log, home: None });
+            groups.insert(name, Group { policy, members, log, home: None, after });
         }
         // A cursor past its log's head is what a log that lost entries leaves; the next entry
         // would take a number the reader has already passed. A replica's log is not kept, so its
@@ -643,6 +653,7 @@ impl<S: Store> Messaging<S> {
             folded: Folded::default(),
             human_home: saved.human_home,
             called_elsewhere: saved.called_elsewhere,
+            retired,
         };
         messaging.kept = messaging.snapshot();
         messaging
@@ -1569,8 +1580,10 @@ impl<S: Store> Messaging<S> {
         let entries = record.log.len() as u64;
         let let_go: Vec<String> = record.members.iter().cloned().collect();
         let forget = self.tell(group, 0, None).into_iter().map(|tell| tell.machine).collect();
-        self.store.remove(group).map_err(|error| Refusal::Store { error })?;
+        let last = record.head();
+        self.store.retire(group, last).map_err(|error| Refusal::Store { error })?;
         let ended = self.drop_group(group);
+        self.retired.insert(group.to_string(), last);
         let mut deleted =
             Deleted { by, group: group.to_string(), entries, let_go, ended, forget, unsaved: None };
         if let Err(Refusal::Store { error }) = self.save() {
@@ -2444,15 +2457,30 @@ impl<S: Store> Messaging<S> {
                 existing: existing.clone(),
             });
         }
+        // A name deleted before numbers on from it. Spelled with other letter case, its log is let
+        // go, so that a file system ignoring case keeps the new log under the new name.
+        let retired = self.retired.keys().find(|old| old.eq_ignore_ascii_case(name)).cloned();
+        let mut after = 0;
+        if let Some(old) = retired {
+            if old != name {
+                self.store.remove(&old).map_err(|error| Refusal::Store { error })?;
+            }
+            after = self.retired.remove(&old).unwrap_or(0);
+        }
         let group = Group {
             policy: Policy::default(),
             members: BTreeSet::new(),
             log: Vec::new(),
             home: None,
+            after,
         };
         self.groups.insert(name.to_string(), group);
         if let Err(refusal) = self.append(name, What::Created { by: by.to_string() }, now_ms) {
-            self.groups.remove(name);
+            if let Some(unmade) = self.groups.remove(name)
+                && unmade.after > 0
+            {
+                self.retired.insert(name.to_string(), unmade.after);
+            }
             return Err(refusal);
         }
         Ok(true)

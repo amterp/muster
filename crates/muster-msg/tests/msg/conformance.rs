@@ -454,14 +454,12 @@ fn idle(service: &mut Messaging<Memory>, sessions: &Sessions, name: &str, now: u
 /// state it last saved.
 fn restart(service: &mut Messaging<Memory>) -> String {
     let store = service.store();
-    let mut logs: BTreeMap<String, Vec<muster_msg::Entry>> = BTreeMap::new();
-    for (group, entry) in &store.appended {
-        logs.entry(group.clone()).or_default().push(entry.clone());
-    }
+    let logs = store.logs();
     let saved = store.saved.clone().unwrap_or_default();
     let kept = Memory {
         appended: store.appended.clone(),
         saved: store.saved.clone(),
+        kept: logs.clone(),
         ..Memory::default()
     };
     *service = Messaging::restore(kept, saved, logs);

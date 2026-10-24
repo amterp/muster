@@ -1,6 +1,8 @@
 //! Where the message service's state lives on disk: beside the socket, in a directory named for
 //! it, holding one append-only log per group and one file for everything else (MIP-4, section
-//! 12). Both are readable by this user only, since a log holds whatever agents wrote.
+//! 12). Both are readable by this user only, since a log holds whatever agents wrote. A deleted
+//! group's log is replaced by one line saying the last number it issued, which a group made again
+//! under the name numbers on from and appends after.
 
 use std::collections::BTreeMap;
 use std::fs::{DirBuilder, OpenOptions};
@@ -10,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Entry, Saved, Store};
+use muster_msg::{Entry, Log, Saved, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::persist;
@@ -18,6 +20,12 @@ use crate::persist;
 /// The state file's format. A daemon refuses a newer one rather than dropping what it cannot
 /// read, as it does for its tabs.
 const VERSION: u32 = 1;
+
+/// The line a deleted group's log is replaced by.
+#[derive(Serialize, Deserialize)]
+struct Retired {
+    deleted_after: u64,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Kept {
@@ -34,7 +42,7 @@ pub(crate) struct Files {
 /// What a daemon found in its message store.
 pub(crate) struct Found {
     pub(crate) saved: Saved,
-    pub(crate) logs: BTreeMap<String, Vec<Entry>>,
+    pub(crate) logs: BTreeMap<String, Log>,
 }
 
 impl Files {
@@ -212,6 +220,15 @@ impl Store for Files {
         persist::replace(&self.state(), &bytes).map_err(describe)
     }
 
+    /// Replaced whole, so the file holds the old log or the line, never part of either.
+    fn retire(&mut self, group: &str, last: u64) -> Result<(), String> {
+        let describe = |error: std::io::Error| format!("{}: {error}", self.log_of(group).display());
+        let mut line = serde_json::to_vec(&Retired { deleted_after: last })
+            .map_err(|error| error.to_string())?;
+        line.push(b'\n');
+        persist::replace(&self.log_of(group), &line).map_err(describe)
+    }
+
     fn remove(&mut self, group: &str) -> Result<(), String> {
         match std::fs::remove_file(self.log_of(group)) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
@@ -250,23 +267,27 @@ fn mend(path: &Path) {
     }
 }
 
-/// A group's entries. A line that does not parse is skipped and logged: the last one is what a
-/// crash mid-append leaves, and anything else is damage that should not cost the rest.
-fn read_log(path: &Path) -> Vec<Entry> {
+/// A group's log. A line that does not parse is skipped and logged: the last one is what a crash
+/// mid-append leaves, and anything else is damage that should not cost the rest.
+fn read_log(path: &Path) -> Log {
     let text = match std::fs::read(path) {
         Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(error) => {
             unreadable(path, &error.to_string());
-            return Vec::new();
+            return Log::default();
         }
     };
-    let mut entries = Vec::new();
+    let mut kept = Log::default();
     for (number, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
+        if let Ok(retired) = serde_json::from_str::<Retired>(line) {
+            kept = Log { after: retired.deleted_after, entries: Vec::new() };
+            continue;
+        }
         match serde_json::from_str::<Entry>(line) {
-            Ok(entry) => entries.push(entry),
+            Ok(entry) => kept.entries.push(entry),
             Err(error) => log::warn(
                 "msg.store.line_skipped",
                 fields! {
@@ -280,7 +301,7 @@ fn read_log(path: &Path) -> Vec<Entry> {
             ),
         }
     }
-    entries
+    kept
 }
 
 fn unreadable(path: &Path, error: &str) {
@@ -334,8 +355,8 @@ mod tests {
         files.save(&saved).unwrap();
 
         let found = Files::beside(&socket).load();
-        assert_eq!(found.logs["g"], vec![message(1, "one")]);
-        assert_eq!(found.logs["a+b"], vec![message(1, "two")]);
+        assert_eq!(found.logs["g"].entries, vec![message(1, "one")]);
+        assert_eq!(found.logs["a+b"].entries, vec![message(1, "two")]);
         assert_eq!(found.saved, saved);
         let mode = std::fs::metadata(socket.with_extension("msg")).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o700);
@@ -348,7 +369,7 @@ mod tests {
         files.append("g", &message(1, "kept")).unwrap();
         let mut file = OpenOptions::new().append(true).open(files.log_of("g")).unwrap();
         file.write_all(b"{\"seq\":2,\"at_ms\":2,\"kind\":\"mess").unwrap();
-        assert_eq!(Files::beside(&socket).load().logs["g"], vec![message(1, "kept")]);
+        assert_eq!(Files::beside(&socket).load().logs["g"].entries, vec![message(1, "kept")]);
     }
 
     /// The next post after a crash starts on a line of its own, so the entry the daemon answered
@@ -362,12 +383,31 @@ mod tests {
         file.write_all(b"{\"seq\":2,\"at_ms\":2,\"kind\":\"mess").unwrap();
 
         let mut files = Files::beside(&socket);
-        assert_eq!(files.load().logs["g"], vec![message(1, "kept")]);
+        assert_eq!(files.load().logs["g"].entries, vec![message(1, "kept")]);
         files.append("g", &message(2, "answered as kept")).unwrap();
         assert_eq!(
-            Files::beside(&socket).load().logs["g"],
+            Files::beside(&socket).load().logs["g"].entries,
             vec![message(1, "kept"), message(2, "answered as kept")]
         );
+    }
+
+    /// A deleted group's log keeps only the last number it issued, and a group made again under
+    /// the name appends after it, so a restart finds the new group numbering on from the old.
+    #[test]
+    fn a_retired_log_keeps_its_last_number_and_a_new_group_appends_after_it() {
+        let socket = scratch("retired");
+        let mut files = Files::beside(&socket);
+        files.append("g", &message(1, "gone")).unwrap();
+        files.append("g", &message(2, "gone too")).unwrap();
+        files.retire("g", 2).unwrap();
+        let retired = Files::beside(&socket).load().logs.remove("g").unwrap();
+        assert_eq!(retired, Log { after: 2, entries: Vec::new() });
+        let text = std::fs::read_to_string(files.log_of("g")).unwrap();
+        assert!(!text.contains("gone"), "the messages went with the group: {text}");
+
+        files.append("g", &message(3, "made again")).unwrap();
+        let again = Files::beside(&socket).load().logs.remove("g").unwrap();
+        assert_eq!(again, Log { after: 2, entries: vec![message(3, "made again")] });
     }
 
     /// What is in the store's directory beside the state file, named `state.json.<tag>-...`.
@@ -407,7 +447,7 @@ mod tests {
 
         let found = Files::beside(&socket).load();
         assert_eq!(found.saved, Saved::default());
-        assert_eq!(found.logs["g"], vec![message(1, "kept")]);
+        assert_eq!(found.logs["g"].entries, vec![message(1, "kept")]);
         assert_eq!(set_aside(&files, "corrupt"), [b"{\"version\":1,\"partici".to_vec()]);
         files.save(&Saved::default()).unwrap();
         assert_eq!(set_aside(&files, "corrupt").len(), 1, "the save replaced the damaged file");

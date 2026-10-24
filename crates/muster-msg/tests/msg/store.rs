@@ -30,12 +30,8 @@ fn a_restored_service_has_the_same_members_cursors_and_log() {
     first.post(&session("a"), None, &[], "before the restart", &Everyone, 3).unwrap();
 
     let store = first.store();
-    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
-    for (group, entry) in &store.appended {
-        logs.entry(group.clone()).or_default().push(entry.clone());
-    }
     let saved = store.saved.clone().expect("the service saved its state");
-    let mut second = Messaging::restore(Memory::default(), saved, logs);
+    let mut second = Messaging::restore(Memory::default(), saved, store.logs());
 
     // b's unread message is still unread, so the guard still holds...
     let refused = second.post(&session("b"), None, &[], "too soon", &Everyone, 4);
@@ -62,11 +58,7 @@ fn a_policy_and_a_pause_the_saved_state_missed_are_read_back_from_the_log() {
     first.group_set(&session("a"), "g", only_a.clone(), &Everyone, 2).unwrap();
     first.pause(&session("a"), "g", &Everyone, 3).unwrap();
 
-    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
-    for (group, entry) in &first.store().appended {
-        logs.entry(group.clone()).or_default().push(entry.clone());
-    }
-    let second = Messaging::restore(Memory::default(), before, logs);
+    let second = Messaging::restore(Memory::default(), before, first.store().logs());
 
     assert_eq!(second.policy("g"), Some(&Policy { paused: true, ..only_a }));
 }
@@ -107,10 +99,7 @@ fn a_cursor_past_the_head_of_its_log_is_brought_back_to_it() {
     let mut first = Messaging::new(Memory::default());
     first.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
     first.join(&session("b"), Some("b"), Some("g"), &Everyone, 2).unwrap();
-    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
-    for (group, entry) in &first.store().appended {
-        logs.entry(group.clone()).or_default().push(entry.clone());
-    }
+    let logs = first.store().logs();
     let mut saved = first.store().saved.clone().expect("the service saved its state");
     for participant in &mut saved.participants {
         if participant.name == "b" {
@@ -142,21 +131,17 @@ fn a_request_that_changes_nothing_saves_nothing() {
     assert_eq!(service.store().saves, saves);
 }
 
-/// A delete removes the log before it saves, so a crash between the two leaves the group's
-/// policy and its members' places with no log. A restore keeps neither: the group stays deleted,
-/// and does not come back with the default policy.
+/// A delete retires the log before it saves, so a crash between the two leaves the group's policy
+/// and its members' places beside a log that holds only its last number. A restore keeps neither:
+/// the group stays deleted, and does not come back with the default policy.
 #[test]
 fn a_group_whose_log_was_removed_before_a_crash_stays_deleted() {
     let mut first = Messaging::new(Memory::default());
     first.join(&session("a"), Some("a"), Some("g"), &Everyone, 1).unwrap();
     first.join(&session("a"), Some("a"), Some("kept"), &Everyone, 2).unwrap();
     let saved = first.store().saved.clone().expect("the service saved its state");
-    let mut logs: BTreeMap<String, Vec<_>> = BTreeMap::new();
-    for (group, entry) in &first.store().appended {
-        if group != "g" {
-            logs.entry(group.clone()).or_default().push(entry.clone());
-        }
-    }
+    let mut logs = first.store().logs();
+    logs.insert("g".to_string(), muster_msg::Log { after: 2, entries: Vec::new() });
 
     let second = Messaging::restore(Memory::default(), saved, logs);
     assert_eq!(second.log("g", 0), Err(Refusal::NoSuchGroup { group: "g".to_string() }));
@@ -203,11 +188,11 @@ fn a_pane_means_whoever_holds_it_over_a_participant_named_after_it() {
     };
     let logs = BTreeMap::from([(
         "g".to_string(),
-        vec![
+        muster_msg::Log::from(vec![
             muster_msg::Entry { seq: 1, at_ms: 0, what: What::Created { by: "p1".to_string() } },
             joined(2, "p1"),
             joined(3, "a"),
-        ],
+        ]),
     )]);
     let mut service = Messaging::restore(Memory::default(), saved, logs);
     let to = ["p1".to_string()];
@@ -217,4 +202,43 @@ fn a_pane_means_whoever_holds_it_over_a_participant_named_after_it() {
         posted.reached.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(),
         ["builder"]
     );
+}
+
+/// A pair group deleted between two posts was made again from #1, so the second post took #4
+/// again and the log lost the first. A group made again under a deleted group's name numbers on
+/// from it, so no number in a group means two messages.
+#[test]
+fn a_group_made_again_after_a_delete_numbers_on_from_it() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("x"), &Everyone, 1).unwrap();
+    service.join(&session("b"), Some("b"), Some("y"), &Everyone, 2).unwrap();
+    let to = ["b".to_string()];
+    let first = service.post(&session("a"), None, &to, "the first", &Everyone, 3).unwrap();
+    assert_eq!((first.group.as_str(), first.seq), ("a+b", 4));
+    service.group_delete(&session("a"), "a+b", &Everyone).unwrap();
+
+    let second = service.post(&session("a"), None, &to, "the second", &Everyone, 4).unwrap();
+    assert_eq!((second.group.as_str(), second.seq), ("a+b", 8));
+    assert_eq!(service.log("a+b", 0).unwrap().first().map(|entry| entry.seq), Some(5));
+
+    // And so it does after a restart, from what the store kept of the deleted group.
+    service.group_delete(&session("a"), "a+b", &Everyone).unwrap();
+    let store = service.store();
+    let saved = store.saved.clone().expect("the service saved its state");
+    let mut restored = Messaging::restore(Memory::default(), saved, store.logs());
+    let third = restored.post(&session("a"), None, &to, "the third", &Everyone, 5).unwrap();
+    assert_eq!(third.seq, 12);
+}
+
+/// A deleted group's name made again spelled with other letter case numbers on from it too, and
+/// its old log is let go, so a file system that ignores case does not keep the new group's log
+/// under the old name.
+#[test]
+fn a_deleted_name_made_again_in_other_case_lets_the_old_log_go() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("Review"), &Everyone, 1).unwrap();
+    service.group_delete(&session("a"), "Review", &Everyone).unwrap();
+    service.join(&session("a"), Some("a"), Some("review"), &Everyone, 2).unwrap();
+    assert_eq!(service.store().removed, ["Review"]);
+    assert_eq!(service.log("review", 0).unwrap().first().map(|entry| entry.seq), Some(3));
 }

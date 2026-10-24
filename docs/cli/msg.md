@@ -171,8 +171,9 @@ group to stop for a moment.
 `group delete G` deletes the group and its log, unread messages included, and lets every
 member go: each stays a participant in its other groups, a `wait --group G` ends as a leave
 ends it, and a `log --follow` of it ends, refused as `no_such_group`. A group stays until it
-is deleted, and the name is free again afterwards, from #1. Nothing unread holds a delete
-back, so read the group with `log` first if anything in it matters:
+is deleted, and the name is free again afterwards. A group made again under it numbers on from
+the deleted one, so its first entry is not #1 and no number means two messages. Nothing unread
+holds a delete back, so read the group with `log` first if anything in it matters:
 
     deleted review (42 entries); let go: builder, critic, director
 
@@ -604,9 +605,7 @@ A daemon links only to the machines a window attaches it to, so an agent on one 
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,
 not between devenvs.
 
-A group deleted while a machine with members in it was out of reach, and made again under the
-same name before the link returned, is taken there for the group it replaced: that machine
-misses the new group's first messages. A machine whose daemon is older than this Muster is not
-told of a delete at all, and keeps the group until Muster there is updated.
+A machine whose daemon is older than this Muster is not told of a delete at all, and keeps the
+group until Muster there is updated.
 `docs/mip/0004-agent-messaging.md` is the
 design and its order.

@@ -657,8 +657,9 @@ fn a_follow_of_a_log_is_answered_by_the_next_entry() {
     assert_eq!(seqs.first(), Some(&3), "{entries:?}");
 }
 
-/// Deleting a group takes its log off the disk, ends a wait and a follow kept to it, tells the
-/// window nothing waits for the human there, and answers with what went.
+/// Deleting a group takes its log off the disk, keeping only the last number it issued, ends a
+/// wait and a follow kept to it, tells the window nothing waits for the human there, and answers
+/// with what went.
 #[test]
 fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     let daemon = daemon();
@@ -695,7 +696,8 @@ fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     assert_eq!((deleted.group.as_str(), deleted.entries), ("g", 5));
     assert_eq!(deleted.let_go, ["@human", "a", "b"]);
 
-    assert!(!log.exists(), "the log is still at {}", log.display());
+    let kept = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(kept, "{\"deleted_after\":5}\n", "the log is still at {}", log.display());
     assert_eq!(until_answer(&mut waiting).refusal, "left");
     assert_eq!(until_answer(&mut following).refusal, "no_such_group");
     let told = human_notice(&mut window);

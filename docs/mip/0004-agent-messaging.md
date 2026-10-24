@@ -640,16 +640,18 @@ As built in stage 4:
   nothing unread refuses the delete, which is deliberate, and `log` reads a group first. No
   leave entries are written, since the log they would go in is going. What waits for the
   human there is told as nothing, a follow of the log ends as `no_such_group`, and the name is
-  free again, from #1. The log file is removed before the saved state is written, so a crash
-  between the two leaves a policy with no log, which loading drops, rather than a log whose
-  policy fell back to the permissive default.
+  free again. A group made again under it numbers on from the deleted group's last entry, so no
+  number in a group ever means two messages: the log file is replaced by one line holding that
+  number, which the new group's entries follow. That line is written before the saved state,
+  so a crash between the two leaves a policy beside a retired log, which loading drops, rather
+  than a log whose policy fell back to the permissive default.
 - **A delete reaches the replicas.** The home tells each machine with a member to forget the
   group, and that machine drops its replica as the home dropped the group. A machine out of
   reach then finds out when the link returns: its refetch is refused as `no_such_group`, and a
-  replica whose home says that is forgotten. One case is not handled: a group deleted and made
-  again under the same name while the link was down is taken for the old one, whose head is
-  past the new log's, so the replica misses the new group's first entries. Telling the two
-  apart needs something like a creation stamp on the group.
+  replica whose home says that is forgotten. A group deleted and made again under the same name
+  while the link was down numbers on from the old one, so the refetch finds the new group's
+  creation after what the replica held, and the replica lets go of the old group's members and
+  log as it takes it.
 
 `allow` binds within its group. Two members who share no other group can still reach each other
 by posting to a new group of their own; the policy exists to keep a convened group's rules in
@@ -1261,3 +1263,6 @@ bind.
   told of twice (section 16).
 - 2026-10-24 A post to an agent idle and woken already wakes it again, as a new batch (section
   5): after Codex's `/new`, a brief sat unread for nine minutes behind "already woken".
+- 2026-10-24 A group made again under a deleted group's name numbers on from it rather than from
+  #1 (section 8): a pair group with the human, made again between two posts, issued #4 twice.
+  A replica refetched over a group made again while its link was down takes the new group.

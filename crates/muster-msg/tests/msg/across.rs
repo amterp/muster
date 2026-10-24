@@ -984,6 +984,8 @@ fn applying_skips_what_it_has_and_reports_a_gap() {
 
     let head = whole.entries.last().unwrap().seq;
     let mut ahead = whole;
+    // A creation begins a group, whatever its number, so a gap is in what follows one.
+    ahead.entries.retain(|entry| !matches!(entry.what, What::Created { .. }));
     ahead.entries.iter_mut().for_each(|entry| entry.seq += head + 1);
     assert_eq!(devenv.apply(&Side::Devenv.peer(), ahead, sessions, 71), Err(head));
 }
@@ -1303,6 +1305,7 @@ fn a_batch_refused_for_a_gap_leaves_the_replicas_policy_alone() {
 
     let mut ahead = wire.laptop.since("review", 0).unwrap();
     let head = ahead.entries.last().unwrap().seq;
+    ahead.entries.retain(|entry| !matches!(entry.what, What::Created { .. }));
     ahead.entries.iter_mut().for_each(|entry| entry.seq += head + 1);
     ahead.policy.paused = true;
     let (devenv, sessions) = wire.split(Side::Devenv);
@@ -2086,7 +2089,9 @@ fn a_group_deleted_at_its_home_is_forgotten_on_the_other_machine() {
     let deleted = laptop.group_delete(&builder, "review", sessions).unwrap();
     assert_eq!(deleted.let_go, ["builder", "critic@devenv"]);
     assert_eq!(deleted.forget, ["devenv"]);
-    assert_eq!(wire.laptop.store().removed, ["review"]);
+    let retired: Vec<&str> =
+        wire.laptop.store().retired.iter().map(|(group, _)| group.as_str()).collect();
+    assert_eq!(retired, ["review"]);
 
     let forgot = wire.devenv.forget_replica(&Side::Devenv.peer(), "review").unwrap();
     assert_eq!(forgot.group, "review@lap");
@@ -2119,6 +2124,53 @@ fn a_replica_that_missed_a_delete_forgets_the_group_when_the_link_returns() {
     assert_eq!(refused.code(), "no_such_group");
     assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
     assert!(!wire.devenv.participant("critic").unwrap().cursors.contains_key("review@lap"));
+}
+
+/// A group deleted and made again under its name while a machine with a member in it was out of
+/// reach numbers on from the old one, so that machine's refetch finds the new group's creation
+/// after what it held, and lets go of the old group's members and log rather than taking the new
+/// entries for more of the old. Its member there is in no group by that name now.
+#[test]
+fn a_replica_of_a_group_made_again_while_the_link_was_down_takes_the_new_group() {
+    let mut wire = Wire::new();
+    let (builder, critic, director) = (session("builder"), session("critic"), session("director"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+
+    wire.cut();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_delete(&builder, "review", sessions).unwrap();
+    laptop.join(&director, Some("director"), Some("review"), sessions, now).unwrap();
+    wire.mend();
+
+    let held = wire.devenv.groups().into_iter().find(|group| group.name == "review@lap");
+    assert_eq!(held.map(|group| group.members), None, "the critic is in the new group");
+    let critic_there = wire.devenv.participant("critic").unwrap();
+    assert!(!critic_there.cursors.contains_key("review@lap"), "{:?}", critic_there.cursors);
+    assert!(wire.devenv.replicas_of("lap").is_empty(), "nothing left to refetch");
+}
+
+/// A replica made afresh of a group made again under a deleted group's name takes its log, which
+/// begins with its creation numbered on from the old group's, rather than asking forever for the
+/// #1 it never had.
+#[test]
+fn a_replica_made_afresh_takes_a_log_that_begins_past_one() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.group_delete(&builder, "review", sessions).unwrap();
+    wire.devenv.forget_replica(&Side::Devenv.peer(), "review").unwrap();
+
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let log = wire.devenv.log("review@lap", 0).unwrap();
+    let seqs: Vec<u64> = log.iter().map(|entry| entry.seq).collect();
+    assert_eq!(seqs, [4, 5, 6], "{log:?}");
+    let held = wire.devenv.groups().into_iter().find(|group| group.name == "review@lap");
+    assert_eq!(held.map(|group| group.members), Some(vec!["builder@lap".into(), "critic".into()]));
 }
 
 /// Muster tells a helper's maker on another machine that the helper needs it, as that machine

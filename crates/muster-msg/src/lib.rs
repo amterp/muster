@@ -31,7 +31,7 @@ pub use service::{
     Joined, Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read,
     Removed, Ringable, Unread, Via, Waited, Wake,
 };
-pub use store::{GroupRecord, Memory, Saved, Store};
+pub use store::{GroupRecord, Log, Memory, Saved, Store};
 
 /// The largest message body, in bytes. A daemon frame may be 16 MiB, and a message is meant to
 /// be read by a model, so this leaves room for everything else a frame carries.

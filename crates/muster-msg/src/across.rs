@@ -918,7 +918,11 @@ impl<S: Store> Messaging<S> {
         let earlier = reached_before(self.lately_reached.get(&key), head, &caught.entries);
         let fresh: Vec<Entry> =
             caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
-        if fresh.first().is_some_and(|first| first.seq != head + 1) {
+        // A log begins with its group's creation, numbered on from any group deleted under the
+        // same name before it, so a creation follows whatever came before.
+        let follows =
+            |first: &Entry| first.seq == head + 1 || matches!(first.what, What::Created { .. });
+        if fresh.first().is_some_and(|first| !follows(first)) {
             return Err(head);
         }
         // A batch carries the policy at its end, and the log records that a policy was set but
@@ -952,6 +956,12 @@ impl<S: Store> Messaging<S> {
             let entry = peer.entry(entry);
             let group = self.groups.get_mut(&key).expect("made above");
             match &entry.what {
+                // The group this replica held was deleted and another made under its name while
+                // this machine was out of reach: what it held was the old group's.
+                What::Created { .. } if !group.log.is_empty() => {
+                    group.log.clear();
+                    group.members.clear();
+                }
                 What::Joined { who } => {
                     group.members.insert(who.clone());
                     self.cursor_from_join(who, &key, entry.seq, presence);
