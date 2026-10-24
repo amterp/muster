@@ -28,3 +28,4 @@ corrections get a superseding MIP, and the History section records the transitio
 | [MIP-6](0006-one-process.md) | Every window is a window of one Muster process | Architecture | Draft |
 | [MIP-7](0007-helpers.md) | An agent's helpers - panes an agent makes as its own, kept out of the way | Product | Accepted |
 | [MIP-8](0008-panes-across-machines.md) | Panes from any machine, anywhere in a tab | Architecture | Draft |
+| [MIP-9](0009-group-conversation.md) | A group's conversation and a banner, drawn by Muster for the human | Product | Draft |

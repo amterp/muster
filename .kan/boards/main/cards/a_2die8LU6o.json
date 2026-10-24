@@ -66,6 +66,12 @@
       "body": "Decided 2026-10-24 under the owner's say-so to settle what does not need him: (1) Next step is MIP-9, covering the conversation view, with Muster's own banner (a_2naAacfIB) as its first stage, since both share posting as @human from the window, the send outcomes and the read rules, and offered answers (a_2naAat73L) as a later stage, so the message field is designed once. (2) Markdown is parsed in the core (pulldown-cmark) and crosses the seam as blocks: the parsing rules are then tested in the gate, and no logic lands in the shell. (3) The views are SwiftUI hosted in the AppKit shell, which already does this in one place. (4) Banner defaults for the MIP to confirm or change: it shows for messages that wake the human while Muster is in front and that group's conversation is not on screen, is replaced by the next message from the same group, and stays until answered, dismissed or read. Muster's own banner for other attention (blocked panes) is a later question, not this MIP's. Remaining one-way choices go in the MIP's Decisions section, as usual.",
       "created_at_millis": 1792875895137,
       "id": "c_2nabLlSNq"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "MIP-9 drafted, 2026-10-24: docs/mip/0009-group-conversation.md, status Draft. It records the decisions from the design rounds and stages the work as the banner (no daemon change), the conversation (the core's view of a window gains the conversation, so covered panes count as unseen), then offered answers. Two hard-to-undo choices are flagged in it for amterp's veto: --option as the flag, and msg open answering with a window instead of a pane.",
+      "created_at_millis": 1792878037721,
+      "id": "c_2nbV5YEuV"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -75,7 +81,7 @@
   "position": "Zz",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792875895263,
+  "updated_at_millis": 1792878037721,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},
