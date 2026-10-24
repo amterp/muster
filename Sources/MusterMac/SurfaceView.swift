@@ -334,21 +334,39 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       event, committed: committedText, composing: wasComposing || hasMarkedText())
   }
 
-  /// Takes ctrl+return as a keystroke for the pane, as Ghostty's view does.
+  /// Takes ctrl+return and ctrl+/ as keystrokes for the pane, as Ghostty's view does.
   ///
   /// AppKit offers a control chord to the window's views as a key equivalent before it is a
-  /// keystroke at all, and Ghostty's view claims this one there "to prevent the default context
-  /// menu equivalent". Every other key equivalent goes on its way unchanged.
+  /// keystroke at all. Ghostty's view claims ctrl+return there "to prevent the default context
+  /// menu equivalent", and ctrl+/ as ctrl+_, because macOS beeps on ctrl+/ and never delivers
+  /// it. Every other key equivalent goes on its way unchanged.
   public override func performKeyEquivalent(with event: NSEvent) -> Bool {
     guard event.type == .keyDown, window?.firstResponder === self,
-      event.charactersIgnoringModifiers == "\r", event.modifierFlags.contains(.control)
+      let equivalent = Self.paneEquivalent(of: event)
     else { return super.performKeyEquivalent(with: event) }
     // The menu first, because Muster's chords are its items, and claiming the key here comes
-    // before AppKit would have asked the menu: a `[keymap]` line binding ctrl+return would
+    // before AppKit would have asked the menu: a `[keymap]` line binding either chord would
     // otherwise never fire.
     if NSApp?.mainMenu?.performKeyEquivalent(with: event) == true { return true }
-    keyDown(with: event)
+    keyDown(with: equivalent)
     return true
+  }
+
+  /// The keystroke the pane gets for a key equivalent it claims, or nothing for one it leaves.
+  private static func paneEquivalent(of event: NSEvent) -> NSEvent? {
+    let flags = event.modifierFlags
+    switch event.charactersIgnoringModifiers {
+    case "\r" where flags.contains(.control):
+      return event
+    case "/" where flags.contains(.control) && flags.isDisjoint(with: [.shift, .command, .option]):
+      return NSEvent.keyEvent(
+        with: .keyDown, location: event.locationInWindow, modifierFlags: flags,
+        timestamp: event.timestamp, windowNumber: event.windowNumber, context: nil,
+        characters: "_", charactersIgnoringModifiers: "_", isARepeat: event.isARepeat,
+        keyCode: event.keyCode)
+    default:
+      return nil
+    }
   }
 
   public override func keyUp(with event: NSEvent) {

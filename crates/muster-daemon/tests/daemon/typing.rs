@@ -331,6 +331,29 @@ fn ctrl_return_is_ctrl_enter_in_each_keyboard_mode() {
     received(&unasked, b"\x1b[27;5;13~");
 }
 
+/// Ctrl+/ as the window sends it, which is what Ghostty's app sends: macOS never delivers ctrl+/,
+/// so the view hands on the Slash key with ctrl held and `_` as its text. A program that asked
+/// for nothing reads ctrl+_, the byte a terminal has always sent for ctrl+/.
+#[test]
+fn ctrl_slash_reaches_a_plain_program_as_ctrl_underscore() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let unasked = receiving(&mut control, &daemon, "unasked", b"");
+    let mut input = Input::connect(daemon.socket_path());
+    input.send(
+        "unasked",
+        Event::Key(input_event::Key {
+            action: proto::KeyAction::Press.into(),
+            key: muster_vt::key_code(Key::Slash),
+            mods: MODS_CTRL,
+            text: "_".to_string(),
+            unshifted_codepoint: u32::from('/'),
+            ..input_event::Key::default()
+        }),
+    );
+    received(&unasked, b"\x1f");
+}
+
 /// A send naming a key the daemon cannot read is not written at all, text and Return included:
 /// a Return after a key that went missing would take a dialog's other answer.
 #[test]

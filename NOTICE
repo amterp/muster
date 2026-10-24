@@ -16,7 +16,7 @@ Specifically:
   macos/Sources/Ghostty/Surface View/SurfaceView.swift (SurfaceSearchOverlay) - the
   layout, the corner-snapping drag, the button style, and what return does.
 
-  Sources/MusterMac/SurfaceView.swift ports the ctrl+return case of
+  Sources/MusterMac/SurfaceView.swift ports the ctrl+return and ctrl+/ cases of
   performKeyEquivalent from macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift.
 
   Sources/MusterRenderer/SurfaceKeys.swift ports how a keystroke is handed to a

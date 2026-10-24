@@ -303,9 +303,9 @@ private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
   #expect(recording.modifierChanges.isEmpty)
 }
 
-// Ctrl+Return reaches a view as a key equivalent before it is a keystroke, and AppKit has its
-// own use for it there. Ghostty's view claims it for the pane; these pin that Muster's does, and
-// claims nothing else.
+// Ctrl+Return and ctrl+/ reach a view as key equivalents before they are keystrokes, and AppKit
+// has its own use for each there. Ghostty's view claims both for the pane; these pin that
+// Muster's does, and claims nothing else.
 
 @Test(.ownsTheSeam) @MainActor func ctrlReturnIsAKeystrokeForThePane() {
   let recorder = RecordingDispatcher()
@@ -316,6 +316,36 @@ private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
 
   #expect(recorder.requests.map { $0.keyDown.key.key } == ["Enter"])
   #expect(recorder.requests.first?.keyDown.key.modifiers == ["control"])
+  withExtendedLifetime(window) {}
+}
+
+@Test(.ownsTheSeam) @MainActor func ctrlSlashIsCtrlUnderscoreForThePane() {
+  // macOS beeps on ctrl+/ and never delivers it, so Ghostty's view sends ctrl+_ in its place,
+  // which a terminal reads as the same control character.
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let window = holding(pane)
+
+  #expect(pane.performKeyEquivalent(with: key("/", keyCode: 0x2C, flags: .control)))
+
+  let sent = recorder.requests.first?.keyDown.key
+  #expect(sent?.key == "Slash")
+  #expect(sent?.modifiers == ["control"])
+  #expect(sent?.text == "_")
+  withExtendedLifetime(window) {}
+}
+
+@Test(.ownsTheSeam) @MainActor func ctrlSlashWithAnotherModifierIsLeftToAppKit() {
+  // Ghostty claims ctrl+/ alone, so these keep whatever macOS or a menu makes of them.
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let window = holding(pane)
+
+  #expect(!pane.performKeyEquivalent(with: key("/", keyCode: 0x2C)))
+  #expect(!pane.performKeyEquivalent(with: key("/", keyCode: 0x2C, flags: [.control, .shift])))
+  #expect(!pane.performKeyEquivalent(with: key("/", keyCode: 0x2C, flags: [.control, .option])))
+  #expect(!pane.performKeyEquivalent(with: key("/", keyCode: 0x2C, flags: [.control, .command])))
+  #expect(recorder.requests.isEmpty)
   withExtendedLifetime(window) {}
 }
 
