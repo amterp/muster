@@ -6368,8 +6368,16 @@ pub(crate) fn arrive(
             ))
         })?
         .writes;
+    // Missing when the tab's tree already names the pane: a part that has not yet said the pane
+    // left it still lists it there, so the merge reads this as a move inside the tab and has
+    // nothing for the pane's own machine to do.
     let Some(own) = writes.iter().position(|write| write.daemon == *daemon) else {
-        unreachable!("an arriving pane's machine is always written")
+        return Err(Refusal::Declined(format!(
+            "a part of the tab {tab} still names {pane} as one of its panes, though {daemon} \
+             holds it elsewhere, so it was not placed: placing it needs {daemon} to move it, and \
+             the tab's tree says it is already there. That part is caught up once it answers; \
+             asking again then places it."
+        )));
     };
     let own = writes.remove(own);
     let at = InTree {
