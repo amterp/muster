@@ -918,11 +918,7 @@ impl<S: Store> Messaging<S> {
         let earlier = reached_before(self.lately_reached.get(&key), head, &caught.entries);
         let fresh: Vec<Entry> =
             caught.entries.into_iter().filter(|entry| entry.seq > head).collect();
-        // A log begins with its group's creation, numbered on from any group deleted under the
-        // same name before it, so a creation follows whatever came before.
-        let follows =
-            |first: &Entry| first.seq == head + 1 || matches!(first.what, What::Created { .. });
-        if fresh.first().is_some_and(|first| !follows(first)) {
+        if fresh.first().is_some_and(|first| !follows(head, first)) {
             return Err(head);
         }
         // A batch carries the policy at its end, and the log records that a policy was set but
@@ -1583,4 +1579,10 @@ fn keep_last_human_wake(wakes: &mut Vec<Wake>) {
             wake.via != Via::Human || index - 1 == last
         });
     }
+}
+
+/// Whether `entry` may follow a replica's `head`: the next number, or a creation, since a log
+/// begins with its group's creation, numbered on from any group deleted under the same name.
+fn follows(head: u64, entry: &Entry) -> bool {
+    entry.seq == head + 1 || matches!(entry.what, What::Created { .. })
 }
