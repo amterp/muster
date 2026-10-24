@@ -24,6 +24,12 @@
       "body": "Mockups, 2026-10-24: Lectern artifact muster-group-conversation. Recommended direction: a native drawer over the panes (A), with a queue of everything waiting on you (B) and banner/sidebar replies (C) as later additions. Agreed in its thread for the MIP: the conversation shows each member's pane state, including a turn that ended without a post, and muster docs msg states plainly how each channel reaches the human. Which channel an agent uses stays the user's skills' call, not Muster's. Open in the MIP: Markdown parsed in the core or in Swift; answers an agent offers as buttons (a new message field).",
       "created_at_millis": 1792873957812,
       "id": "c_2nZmx3Joy"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Agreed on the mockups since (muster-group-conversation v3): a message that starts with @ and a member's name addresses that member in place of the default recipient, and an @ later only completes the name; only the composer reads it, and msg post keeps --to. Answers an agent offers fill the reply instead of sending it, so a note can go with them; the reply carries the choice as text for the agent and as a field for Muster. Unsent replies are kept per group on the daemon, with the human's participant, and the sidebar row marks a waiting draft.",
+      "created_at_millis": 1792874303573,
+      "id": "c_2nZvwj1I9"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -33,7 +39,7 @@
   "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792873957812,
+  "updated_at_millis": 1792874303573,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286}
