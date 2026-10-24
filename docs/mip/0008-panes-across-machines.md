@@ -429,6 +429,13 @@ Each stage lands on its own with the suite green, and each is one worker's assig
    spanning tabs made before this, since from the first write on a part refuses those requests sent
    one machine at a time. Tests: the Swift view tests, the CLI's `diagram.rs` unit tests, a
    conformance case per arrangement change written as a tree, `docs/cli/window.md`.
+
+   It lands in two steps, each with the suite green. First the core and the CLI: every change to
+   a tab whose copies already hold foreign leaves is worked out on the whole tree and sent as
+   `SetTree`, the view publishes every tab's tree, and `--layout` and `--json` read it. No tab in
+   real use holds foreign leaves yet, so nothing a person sees changes. Then the shell draws the
+   tree and the migration's write switches on, together: once a tab made before this is written,
+   the shell's dividers, which still name one machine's part, would be refused.
 4. **Every placement path.** `split_onto` beside the pane clicked on any side, `pane new
    --daemon` with a side, cross-machine drags and `pane move --onto`, the menu per question C,
    and the doctrine in section 10, since this stage makes `AGENTS.md`'s "Not built" line false.
@@ -517,3 +524,4 @@ release that ships stage 3 says in its notes that `regions[]` is gone and what r
 ## History
 - 2026-10-21 Draft.
 - 2026-10-23 Question D decided: drop `regions[]` at once. Stage 3 is unblocked.
+- 2026-10-24 Stage 3 split in two steps; the first, the core and the CLI, landed.
