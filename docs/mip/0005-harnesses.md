@@ -360,6 +360,10 @@ A session reference, the third, is built in exactly those two forms for Codex (s
 report field, `--session-id`, and a manifest's `[session] wake`. Claude Code's hooks report its
 session's id since a restart resumes the session (`[session] resume`, detection engine 12), with
 `--from session-id=/session_id`, which reads it from the hook's input, as Codex's hook does.
+Its statusline sends the same id as `--context-session`, a field of its own (protocol 1.8): the
+session its context and cost belong to, so a report naming another session, as after `/clear`,
+forgets the last one's. A statusline runs with no plugin, and an id it read before a `/clear` can
+land after the hook's, so it never names the session a restart resumes.
 
 The fourth, a session name kept in step with the pane's, is built, both ways, in exactly those
 two forms:

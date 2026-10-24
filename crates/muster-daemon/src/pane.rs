@@ -901,6 +901,10 @@ pub(crate) struct Pane {
     /// that agent leaves the pane. A wake reaches the session by it, through the command the
     /// agent's manifest names (`messages::command`).
     pub(crate) session_id: Option<String>,
+    /// The session the context and cost in its record belong to, as its statusline named it, so
+    /// a report about another session forgets them first. Not handed over or saved: a daemon
+    /// that took the pane over learns it from the next report.
+    pub(crate) context_session: Option<String>,
     /// What starts that session again after a restart, built when the session was reported;
     /// forgotten with it. Kept when a wake forgets the id: whether the session can be woken is
     /// a different question from whether it can be resumed.
@@ -1142,6 +1146,7 @@ impl Pane {
             session_name: SessionName::default(),
             compaction: Compaction::default(),
             session_id: None,
+            context_session: None,
             resume: None,
             resume_missed: None,
             maker_told: None,

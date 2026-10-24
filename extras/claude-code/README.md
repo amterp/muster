@@ -95,6 +95,11 @@ the statusline, so `refreshInterval` is what brings the new name to the pane wit
 without it, the pane takes it at the session's next message. Renaming the pane renames the
 session either way (`muster docs harnesses`).
 
+It also sends the session's id, as the session the context and cost belong to. `/clear` starts a
+session with a new id whose JSON holds no context until its first message, so the pane forgets
+the last session's context and cost rather than keeping them. That id does not change what
+`muster pane restart` resumes, which is the session the plugin's SessionStart hook reports.
+
 Your command gets the same JSON on stdin it always did. The report needs nothing installed:
 `muster-daemon report` reads Claude Code's JSON itself. With nothing after it, `statusline.sh`
 draws the model and how full the context is, and that needs `jq`, which macOS ships in `/usr/bin`

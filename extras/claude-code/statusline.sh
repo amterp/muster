@@ -26,9 +26,11 @@ if [ -n "$MUSTER_DAEMON" ]; then
     # Claude Code reads the line until every writer has closed it, so the background job's own
     # output goes nowhere. Redirecting only the call inside it would leave the job holding the
     # line open until the report finished. An empty --session-name first says the session has
-    # no name when the JSON has none.
+    # no name when the JSON has none. The session id says whose context it is: after /clear the
+    # JSON has a new session's id and no context, and the pane forgets the last session's.
     { printf '%s' "$input" | "$MUSTER_DAEMON" report --agent claude --session-name '' \
         --from context-used=/context_window/used_percentage \
+        --from context-session=/session_id \
         --from model=/model/display_name \
         --from cost-usd=/cost/total_cost_usd \
         --from session-name=/session_name; } >/dev/null 2>&1 &

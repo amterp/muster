@@ -1974,6 +1974,8 @@ impl Session {
             return Reply::refused(why);
         }
         let cleared = report.clear;
+        let new_session =
+            self.context_session(index, &agent, cleared, report.context_session.take());
         let context_used = report.context_used;
         let from_adapter = own_state.is_some()
             || session_id.is_some()
@@ -1986,7 +1988,11 @@ impl Session {
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let speaks_of_waiting = report.waiting.is_some();
         let record = &mut self.panes[index].record;
-        let facts = match facts::apply(record.facts.as_ref(), report) {
+        let mut current = record.facts.clone();
+        if new_session && let Some(facts) = current.as_mut() {
+            (facts.context_used, facts.cost_usd) = (None, None);
+        }
+        let facts = match facts::apply(current.as_ref(), report) {
             Ok(facts) => facts,
             Err(why) => return Reply::refused(why),
         };
@@ -2046,6 +2052,37 @@ impl Session {
         } else {
             Reply::already()
         }
+    }
+
+    /// Notes the session a report says its context belongs to, saying whether that is another
+    /// session than the last report named: a new one after `/clear`, or another resumed. Its
+    /// compaction starts over then, as after a clear. Counts while its agent is the pane's or
+    /// before detection has found one, as a session's id does. A clear forgets it first.
+    fn context_session(
+        &mut self,
+        index: usize,
+        agent: &str,
+        cleared: bool,
+        said: Option<String>,
+    ) -> bool {
+        let pane = &mut self.panes[index];
+        if cleared {
+            pane.context_session = None;
+        }
+        let Some(said) = said.filter(|said| !said.is_empty()) else { return false };
+        if pane.record.agent.as_deref().is_some_and(|found| !agent.is_empty() && found != agent) {
+            return false;
+        }
+        let before = pane.context_session.replace(said);
+        let switched = before.is_some_and(|before| Some(&before) != pane.context_session.as_ref());
+        if switched {
+            log::debug(
+                "daemon.report.context_session_changed",
+                fields! { "pane" => pane.record.pane },
+            );
+            pane.compaction.cleared();
+        }
+        switched
     }
 
     /// What a report of the context says against `compact_at` ([`crate::compaction`]); true when
@@ -4137,6 +4174,7 @@ fn agent_left(pane: &mut Pane, name: &str) -> bool {
     record.set_adapter(proto::Adapter::Unsaid);
     pane.turns.reports_turns = false;
     pane.session_id = None;
+    pane.context_session = None;
     let resumed = pane.resume.take().is_some();
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();

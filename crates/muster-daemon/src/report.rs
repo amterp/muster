@@ -23,8 +23,9 @@ use crate::session::HANDING_OVER;
 const STDIN_BYTES: u64 = 1 << 20;
 
 /// The flags `--from` may fill: each one that takes one value.
-const FROM_FLAGS: [&str; 8] = [
+const FROM_FLAGS: [&str; 9] = [
     "context-used",
+    "context-session",
     "model",
     "cost-usd",
     "waiting",
@@ -39,14 +40,17 @@ const FROM_FLAGS: [&str; 8] = [
 const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
-    [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
+    [--context-session ID] [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
-    reported before, and applies first. --waiting says what the agent ended its turn to wait \
+    reported before, and applies first. --context-session is the harness's id for the session \
+    the context and cost belong to: a report naming another session than the last forgets the \
+    context and cost reported before it, as a statusline naming a new session after /clear \
+    does. It does not name the pane's session, as --session-id does. --waiting says what the agent ended its turn to wait \
     on, work it started itself; it lasts until a later turn ends without saying it again, and \
     an empty one clears it. Say it in each turn that ends to wait. A prompt Muster gives the \
     agent, a message's wake or a compaction, does not end it, and a wait nothing is known to \
@@ -216,6 +220,7 @@ fn parse(
                         .map_err(|_| format!("--context-used {given} is not a number"))?,
                 );
             }
+            "--context-session" => report.context_session = Some(value("--context-session")?),
             "--model" => report.model = Some(value("--model")?),
             "--cost-usd" => {
                 let given = value("--cost-usd")?;
@@ -440,6 +445,17 @@ mod tests {
             Parsed::Report(report) => Ok(*report),
             Parsed::Help => Err("help".to_string()),
         }
+    }
+
+    /// A statusline names the session its context belongs to, which is not the pane's session id.
+    #[test]
+    fn a_statusline_names_the_session_its_context_belongs_to() {
+        let arguments = ["--agent", "claude", "--from", "context-session=/session_id"];
+        let given = filled(&arguments, r#"{"session_id":"0199-c"}"#).unwrap();
+        let report = parsed(&given.iter().map(String::as_str).collect::<Vec<_>>(), Some("p1"));
+        let report = report.unwrap();
+        assert_eq!(report.context_session.as_deref(), Some("0199-c"));
+        assert_eq!(report.session_id, None);
     }
 
     /// A hook hands its session's id in the JSON on its standard input, however the session

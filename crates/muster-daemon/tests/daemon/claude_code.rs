@@ -132,3 +132,59 @@ fn the_statusline_reports_the_session_with_no_jq_installed() {
     });
     assert_eq!(unnamed.label.as_deref(), Some("🤖 A"), "no name took the pane's away");
 }
+
+/// `/clear` starts a session with a new id, whose statusline JSON says nothing of its context
+/// until its first message. The statusline names the session its context belongs to, so the pane
+/// forgets the last session's context and cost rather than keeping them as unknown.
+#[test]
+fn the_statusline_forgets_a_sessions_context_once_it_names_another() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let run = |status: &str| {
+        let mut statusline = Command::new("/bin/sh")
+            .args([STATUSLINE, "cat"])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .env("MUSTER_PANE", "p1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("sh runs the statusline");
+        statusline.stdin.take().unwrap().write_all(status.as_bytes()).unwrap();
+        assert!(statusline.wait().unwrap().success());
+    };
+    let facts = |control: &mut Control| {
+        let record = snapshot(control).panes.into_iter().find(|record| record.pane == "p1");
+        record.unwrap().facts.unwrap_or_default()
+    };
+
+    run(&STATUS.replace("{\"model\"", "{\"session_id\":\"before\",\"model\""));
+    until_some("the first session's report to land", || {
+        (facts(&mut control).context_used == Some(42.0)).then_some(())
+    });
+
+    let cleared = "{\"session_id\":\"after\",\"model\":{\"display_name\":\"Sonnet\"},\
+                   \"context_window\":{}}\n";
+    run(cleared);
+    let after = until_some("the new session's report to land", || {
+        let facts = facts(&mut control);
+        (facts.model.as_deref() == Some("Sonnet")).then_some(facts)
+    });
+    assert_eq!((after.context_used, after.cost_usd), (None, None), "{after:?}");
+
+    // A run that started before the clear and lands after it puts the old context back, until
+    // the next run, which names the new session again.
+    run(&STATUS.replace("{\"model\"", "{\"session_id\":\"before\",\"model\""));
+    until_some("the late report to land", || {
+        (facts(&mut control).context_used == Some(42.0)).then_some(())
+    });
+    run(cleared);
+    until_some("the next report to forget it", || {
+        (facts(&mut control).context_used.is_none()).then_some(())
+    });
+    let record = snapshot(&mut control).panes.into_iter().find(|record| record.pane == "p1");
+    assert_eq!(record.unwrap().session_id, None, "the pane's session is not the statusline's");
+}
