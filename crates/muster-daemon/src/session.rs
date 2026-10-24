@@ -2001,23 +2001,7 @@ impl Session {
         let facts_changed = record.facts != facts;
         let heard = from_adapter && adapter_heard(record, &agent);
         if facts_changed {
-            let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
-            let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
-            record.facts = facts;
-            if withdrawn {
-                log::debug(
-                    "daemon.report.waiting_cleared",
-                    fields! { "pane" => record.pane, "by" => "report" },
-                );
-            }
-            if declared {
-                // An agent waiting on its own work has not finished.
-                record.finished_unseen = false;
-                log::debug(
-                    "daemon.report.waiting",
-                    fields! { "pane" => record.pane, "agent" => agent.as_str() },
-                );
-            }
+            take_facts(record, facts, &agent);
         }
         if facts_changed || heard {
             let record = record.clone();
@@ -4150,6 +4134,24 @@ fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {
         record.set_adapter(proto::Adapter::Reporting);
     }
     heard
+}
+
+/// Takes facts a report changed into the pane's record, noting a wait declared or withdrawn.
+fn take_facts(record: &mut proto::Pane, facts: Option<proto::AgentFacts>, agent: &str) {
+    let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
+    let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
+    record.facts = facts;
+    if withdrawn {
+        log::debug(
+            "daemon.report.waiting_cleared",
+            fields! { "pane" => record.pane, "by" => "report" },
+        );
+    }
+    if declared {
+        // An agent waiting on its own work has not finished.
+        record.finished_unseen = false;
+        log::debug("daemon.report.waiting", fields! { "pane" => record.pane, "agent" => agent });
+    }
 }
 
 fn is_waiting(facts: Option<&proto::AgentFacts>) -> bool {
