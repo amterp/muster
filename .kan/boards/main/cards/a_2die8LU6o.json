@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -60,18 +60,25 @@
       "body": "Settled by the owner, 2026-10-24: while Muster is not in front, a message for the human still raises a macOS notification, as a pointer back to Muster only. It carries no reply field and no answers; choosing it brings Muster forward to the message. Everything else is answered in Muster's own banner and conversation.",
       "created_at_millis": 1792875736905,
       "id": "c_2naXEYVdj"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Decided 2026-10-24 under the owner's say-so to settle what does not need him: (1) Next step is MIP-9, covering the conversation view, with Muster's own banner (a_2naAacfIB) as its first stage, since both share posting as @human from the window, the send outcomes and the read rules, and offered answers (a_2naAat73L) as a later stage, so the message field is designed once. (2) Markdown is parsed in the core (pulldown-cmark) and crosses the seam as blocks: the parsing rules are then tested in the gate, and no logic lands in the shell. (3) The views are SwiftUI hosted in the AppKit shell, which already does this in one place. (4) Banner defaults for the MIP to confirm or change: it shows for messages that wake the human while Muster is in front and that group's conversation is not on screen, is replaced by the next message from the same group, and stays until answered, dismissed or read. Muster's own banner for other attention (blocked panes) is a later question, not this MIP's. Remaining one-way choices go in the MIP's Decisions section, as usual.",
+      "created_at_millis": 1792875895137,
+      "id": "c_2nabLlSNq"
     }
   ],
   "created_at_millis": 1791417434804,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-07: \"GUI for following groups\". Clarified 2026-10-07: following a group today means a tab running `muster msg log --follow`, which is \"a very plain text file. It's really hard to parse ... not really easy to understand and follow. It's not really a GUI either for contributing back to the discussion in a way that others can see. Like you still have to talk to the agents directly. There's no way for me to kind of like talk in the group and have that be broadcast through muster.\" \"It's a pretty big feature ... might require some design input.\"\n\nAnd a related wish, same day: \"if you have agents that work together in a group, it would be nice in the UI to have some sort of way to see what groups are active and which panes are involved in which groups, like some sort of visualization.\"\n\nSo two parts: a group conversation view that reads well (authors, addressees, urgency, joins and leaves) with a place for the human to post into the group; and an overview of active groups and which panes are in each. Needs a MIP: native AppKit view over a core view-model versus a richer terminal view, and how membership shows on panes and agent-list rows.",
   "id": "a_2die8LU6o",
-  "position": "!!!!!!7",
+  "position": "Zz",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792875736905,
+  "updated_at_millis": 1792875895263,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
-    {"field":"column","value":"backlog-hi","at":1792200747286}
+    {"field":"column","value":"backlog-hi","at":1792200747286},
+    {"field":"column","value":"next","at":1792875895263}
   ]
 }

@@ -5,17 +5,21 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1792874866856,
   "creator": "Alexander Terp",
   "description": "An agent can tell the human something two ways: by posting to @human, or by leaving it as text in its own pane. They reach the person differently, and agents mix them up. Settled in the Lectern page muster-group-conversation (2026-10-24): which one an agent should use is for the user's skills to say, since Muster imposes no workflow, but muster docs msg should state the mechanics plainly so a skill author can write that rule. A post to @human raises a banner and waits in the group's conversation; text left in a pane is seen only when somebody opens that pane. A reply from the human reaches the agent inside its own session, so the agent's session holds both.",
   "id": "a_2naAbBoP6",
+  "labels": [
+    "ai-hi"
+  ],
   "parent": "a_2die8LU6o",
-  "position": "b1T",
+  "position": "Zy",
   "title": "msg docs say how a post and a pane's own text each reach the human",
   "type": "docs",
-  "updated_at_millis": 1792874866856,
+  "updated_at_millis": 1792875895376,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792874866856}
+    {"field":"column","value":"backlog-hi","at":1792874866856},
+    {"field":"column","value":"next","at":1792875895376}
   ]
 }
