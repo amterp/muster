@@ -659,7 +659,8 @@ impl<S: Store> Messaging<S> {
     }
 
     /// The pane whose place in the replica `key` a join as `name` takes: the caller's pane, when
-    /// it is a member there under its own name.
+    /// it is a member there under its own name, or the one `name` was folded in from and the
+    /// home has not yet been told of.
     fn pane_to_fold(
         &self,
         caller: &Caller,
@@ -667,9 +668,34 @@ impl<S: Store> Messaging<S> {
         key: &str,
         presence: &dyn Presence,
     ) -> Option<String> {
-        let pane = self.made_by_address(&Self::addressed(caller, presence), presence)?;
-        let member = self.groups.get(key).is_some_and(|group| group.members.contains(&pane));
-        (pane != name && member).then_some(pane)
+        let member = |pane: &String| {
+            *pane != name && self.groups.get(key).is_some_and(|group| group.members.contains(pane))
+        };
+        let pane = self.made_by_address(&Self::addressed(caller, presence), presence);
+        let owed = || self.participants.get(name)?.folds_owed.get(key).cloned();
+        pane.filter(member).or_else(owed)
+    }
+
+    /// The joins this machine owes `machine` for panes folded into names while it could not be
+    /// asked: each puts the name in its pane's place in a group kept there.
+    pub fn folds_owed_to(&self, machine: &str) -> Vec<Away> {
+        let mut owed = Vec::new();
+        for participant in self.participants.values() {
+            for (key, pane) in &participant.folds_owed {
+                let Some((group, at)) = split_machine(key) else { continue };
+                if at != machine {
+                    continue;
+                }
+                let call = Call::Join {
+                    name: participant.name.clone(),
+                    group: group.to_string(),
+                    head: self.head_of(key),
+                    was: Some(pane.clone()),
+                };
+                owed.push(Away { machine: machine.to_string(), call });
+            }
+        }
+        owed
     }
 
     /// Where `post` is answered. A post to a group kept elsewhere is checked here against the
@@ -881,6 +907,12 @@ impl<S: Store> Messaging<S> {
                 if let Some(caught) = caught {
                     apply(self, caught);
                 }
+                // The home's refusal of a pane's place is final, so it is not asked again.
+                if let Call::Join { name, was: Some(_), .. } = call
+                    && let Some(participant) = self.participants.get_mut(name)
+                {
+                    participant.folds_owed.remove(&key);
+                }
                 // The home no longer keeps a group this machine holds a replica of: it was
                 // deleted while the link was down, or this machine missed being told.
                 if matches!(refusal, Refusal::NoSuchGroup { .. })
@@ -911,6 +943,7 @@ impl<S: Store> Messaging<S> {
                 };
                 // The cursor first, so nothing from before the join counts as unread to it.
                 if let Some(participant) = self.participants.get_mut(name) {
+                    participant.folds_owed.remove(&key);
                     participant.cursors.entry(key.clone()).or_insert(seq);
                     participant.woken.remove(&key);
                     participant.rewoken.remove(&key);

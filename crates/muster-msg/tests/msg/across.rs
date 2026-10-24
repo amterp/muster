@@ -146,13 +146,17 @@ impl Wire {
         self.devenv.unlinked("lap");
     }
 
-    /// The link comes up, and each side refetches the replicas it holds, as a daemon does.
+    /// The link comes up, and each side sends the folds it owes and then refetches the replicas
+    /// it holds, as a daemon does.
     fn mend(&mut self) {
         self.up = true;
         self.laptop.linked(&Side::Laptop.peer());
         self.devenv.linked(&Side::Devenv.peer());
         for side in [Side::Laptop, Side::Devenv] {
             let machine = side.peer().name;
+            for away in self.service(side).folds_owed_to(&machine) {
+                self.send(side, &away.call).expect("the home takes the name in place of the pane");
+            }
             for (group, head) in self.service(side).replicas_of(&machine) {
                 let call = Call::Since { group, after: head };
                 self.send(side, &call).expect("the link is up");
@@ -306,10 +310,13 @@ impl Wire {
     }
 
     /// Tells the homes of the groups a join folded a pane into a name in, as a daemon does once
-    /// the join is answered.
+    /// the join is answered. With the link down nothing is sent, as a daemon's call is refused.
     fn fold(&mut self, side: Side) {
         let folded = self.service(side).take_folded();
         self.tell(side, &folded.tell);
+        if !self.up {
+            return;
+        }
         for away in folded.away {
             self.send(side, &away.call).expect("the home takes the name in place of the pane");
         }
@@ -2441,4 +2448,30 @@ fn a_join_through_another_machine_says_when_it_took_over_a_name() {
     assert!(joined.took_over, "{joined:?}");
     assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
     assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "tracer"]);
+}
+
+/// An agent that names itself while the home of a group its pane is in cannot be reached takes
+/// the pane's place there once the link returns, and after a restart of its own daemon meanwhile.
+#[test]
+fn a_rename_while_a_groups_home_is_unreachable_reaches_it_when_the_link_returns() {
+    for restarting in [false, true] {
+        let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+        wire.cut();
+        let now = wire.tick();
+        let (devenv, sessions) = wire.split(Side::Devenv);
+        devenv.join(&agent, Some("tracer"), None, sessions, now).unwrap();
+        wire.fold(Side::Devenv);
+        assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "p9@devenv"]);
+        if restarting {
+            let saved = wire.devenv.store().saved.clone().unwrap();
+            wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+        }
+
+        wire.mend();
+        assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
+        assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "tracer"]);
+        let tracer = wire.devenv.participant("tracer").unwrap();
+        assert!(tracer.folds_owed.is_empty(), "asked once: {:?}", tracer.folds_owed);
+        assert!(tracer.cursors.contains_key("review@lap"), "the pane's place is the name's");
+    }
 }

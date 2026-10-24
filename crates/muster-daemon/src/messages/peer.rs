@@ -504,6 +504,7 @@ fn up(shared: &Arc<Shared>, link: &Arc<Link>, dialed: bool) {
     shared.doorbell.nudge();
     let (link, shared) = (Arc::clone(link), Arc::clone(shared));
     let _ = std::thread::Builder::new().name("peer-refetch".to_string()).spawn(move || {
+        refold(&shared, &link);
         refetch(&shared, &link);
     });
 }
@@ -552,6 +553,16 @@ fn read(shared: &Arc<Shared>, link: &Arc<Link>, mut stream: UnixStream) -> Strin
             }
             Some(Frame::Introduce(_)) | None => {}
         }
+    }
+}
+
+/// Sends the machine at the other end the joins owed it for panes folded into names while it
+/// could not be asked. First, since each answer catches its group's copy up as a refetch would,
+/// and a refetch first would find the name in no group there and let go of its place.
+fn refold(shared: &Shared, link: &Link) {
+    let owed = shared.messages().service.folds_owed_to(&link.peer.name);
+    for away in owed {
+        super::send_fold(shared, &away);
     }
 }
 

@@ -782,7 +782,10 @@ this adds a connection, not a tunnel.
 
 **When the link is down**, a post to a remote-homed group fails at once, naming the unreachable
 machine. It is not queued: a queued post would land behind messages its author never saw. Groups
-homed on this machine keep working, and `read` and `log` on a replica say it may be behind.
+homed on this machine keep working, and `read` and `log` on a replica say it may be behind. A pane
+folded into a name meanwhile still owes each remote home the join that puts the name in its place:
+the participant keeps it, across a restart, and its daemon sends it when the link comes up, before
+refetching.
 
 A group or participant name is unique on its home daemon, and a verb accepts `review@devenv` when
 two attached machines use the same name.
@@ -815,19 +818,20 @@ or the human it has no participant for makes one, as `--to` does, and wakes it. 
 built: a daemon reaches only the machines it is linked to directly, so an agent on one devenv
 cannot reach an agent or group on a second devenv (the second hop).
 
-**A group's policy binds at its home** (section 8). A forwarded post runs through the same checks
-as one made there, whom its author may address and whether the group is paused among them, and a
-forwarded join or leave is checked against `membership`. Every batch of entries the home sends
-carries the policy, so a replica wakes its own members as the home would, and a pause or resume
-there holds or wakes the replica's members too. The batch carries the policy at its end, and each
-entry setting a policy records the policy it set, so a replica reads every message under the one it
-was posted under: a pause exactly, since each pause and resume is an entry, and a ring set as the
-replica's previous policy until the batch sets a new one, then as each new one in turn. An entry
-written before the log recorded the policy, or sent by a daemon before protocol 1.3, says only that
-a policy was set; a message after it is read under the policy at the batch's end, as every one was
-before. The field is optional in the log's JSON and on the wire, so an older build reading a newer
-log or peer skips it and reads as it always did, and nothing has to be rewritten. Only the home
-changes a policy, its members or its pause; those verbs on a replica are refused as
+**A group's policy binds at its home** (section 8). A forwarded post runs through the same checks as
+one made there, whom its author may address and whether the group is paused among them, and a
+forwarded join or leave is checked against `membership`. A join under a new name renames the caller
+only once the home has taken it, since the asker's copy of the policy may be behind. Every batch of
+entries the home sends carries the policy, so a replica wakes its own members as the home would, and
+a pause or resume there holds or wakes the replica's members too. The batch carries the policy at
+its end, and each entry setting a policy records the policy it set, so a replica reads every message
+under the one it was posted under: a pause exactly, since each pause and resume is an entry, and a
+ring set as the replica's previous policy until the batch sets a new one, then as each new one in
+turn. An entry written before the log recorded the policy, or sent by a daemon before protocol 1.3,
+says only that a policy was set; a message after it is read under the policy at the batch's end, as
+every one was before. The field is optional in the log's JSON and on the wire, so an older build
+reading a newer log or peer skips it and reads as it always did, and nothing has to be rewritten.
+Only the home changes a policy, its members or its pause; those verbs on a replica are refused as
 `kept_elsewhere`, naming the home. A policy may name a member on another machine as the home names
 it, `director@devenv`, and a replica reads it in its own names, so a devenv agent can direct a
 council kept on the laptop, or join a group whose `membership` names it.
@@ -1275,3 +1279,7 @@ bind.
   A replica refetched over a group made again while its link was down takes the new group.
 - 2026-10-24 Protocol 1.8: a stall in a group kept on another machine is told there, through the
   group's home (section 16); until then it was only logged.
+- 2026-10-24 A join to a group kept elsewhere renames the caller only once the home takes it, and
+  says when the name was taken over (section 11). A pane's place owed to a home that could not be
+  reached is handed over when the link returns, and a join that fails after appending still sends
+  its entries on.

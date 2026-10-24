@@ -232,6 +232,7 @@ mod tests {
             rewoken: std::collections::BTreeSet::default(),
             pull: false,
             removed: std::collections::BTreeMap::default(),
+            folds_owed: std::collections::BTreeMap::default(),
         };
         assert!(!Sockets.alive(&participant));
     }

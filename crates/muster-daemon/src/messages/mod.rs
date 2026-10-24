@@ -938,23 +938,44 @@ fn send_folded(shared: &Arc<Shared>) {
     };
     peer::tell(shared, &folded.tell);
     for away in folded.away {
-        let (settle, holding) = peer::call_away(shared, &away);
-        ring(shared, holding);
-        if let Err(refusal) = settle.result {
-            log::warn(
-                "msg.fold.refused",
+        send_fold(shared, &away);
+    }
+}
+
+/// Asks a group's home to put a name in the place of the pane it was folded in from. One that
+/// cannot be reached is asked again when the link to it comes up.
+pub(super) fn send_fold(shared: &Shared, away: &Away) {
+    let (settle, holding) = peer::call_away(shared, away);
+    ring(shared, holding);
+    match settle.result {
+        Ok(_) => {}
+        Err(refusal @ (Refusal::Unreachable { .. } | Refusal::Unanswered { .. })) => {
+            let muster_msg::Call::Join { name, was, .. } = &away.call else { return };
+            log::info(
+                "msg.fold.owed",
                 fields! {
                     "machine" => away.machine,
                     "group" => away.call.group(),
+                    "name" => name,
+                    "pane" => was.clone().unwrap_or_default(),
                     "why" => words(&refusal),
-                    "impact" => "the group still lists the agent by its pane's name there, and \
-                                 posts to that name find nobody here to wake",
-                    "check" => "whether that machine's daemon speaks a protocol before 1.4, which \
-                                takes this as an ordinary join its policy may refuse, or the \
-                                link dropped; there, `group add` adds the agent by its new name",
+                    "then" => "asked again when the link to that machine comes up",
                 },
             );
         }
+        Err(refusal) => log::warn(
+            "msg.fold.refused",
+            fields! {
+                "machine" => away.machine,
+                "group" => away.call.group(),
+                "why" => words(&refusal),
+                "impact" => "the group still lists the agent by its pane's name there, and \
+                             posts to that name find nobody here to wake",
+                "check" => "whether that machine's daemon speaks a protocol before 1.4, which \
+                            takes this as an ordinary join its policy may refuse; there, \
+                            `group add` adds the agent by its new name",
+            },
+        ),
     }
 }
 

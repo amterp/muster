@@ -539,7 +539,8 @@ from the other:
   says it, and names a group made for it by the callsign, `builder+otter`. `group add` finds
   names the same way. When the agent in such a pane joins under a name of its own, its machine
   asks each group's home to put the name in the pane's place, which that home does whatever its
-  policy says about joining.
+  policy says about joining. A join to a group kept elsewhere renames you only once that group's
+  machine has taken it, so a refusal there leaves you as you were.
 - **Each machine wakes its own agents.** A post is numbered on the group's machine, and the guard
   counts what you have not read there, so it holds across machines as it does on one. A post's
   answer says what each machine did for its own agents.
@@ -605,10 +606,11 @@ A member removed from a group kept on another machine loses what it had left to 
 its own daemon restarts first, since a copy of a group kept elsewhere is not written to disk.
 `log` on the group's machine still has it.
 
-A pane's place in a group kept on a machine whose daemon is older than this Muster, or on one
-that cannot be reached when the agent in the pane names itself, is not handed to the name: that
-group still lists the pane, and posts to it find nobody. `group add` there adds the agent by its
-new name.
+When the agent in a pane names itself while a group its pane is in is kept on a machine that
+cannot be reached, that machine is asked again to hand the pane's place to the name when the link
+returns, even after a restart of either daemon. One whose daemon is older than this Muster takes
+the request as an ordinary join, which its policy may refuse: that group still lists the pane,
+and posts to it find nobody. `group add` there adds the agent by its new name.
 
 A daemon links only to the machines a window attaches it to, so an agent on one devenv cannot
 reach an agent or a group on another: messages cross from the laptop to each devenv and back,

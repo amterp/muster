@@ -74,6 +74,11 @@ pub struct Participant {
     /// read there: `read` hands it those, once, and nothing posted after its removal.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub removed: BTreeMap<String, Removed>,
+    /// Groups kept on other machines whose home has not yet put it in the place of the pane it
+    /// was folded in from, each with that pane: its machine asks again when the link to the home
+    /// comes up ([`Messaging::folds_owed_to`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub folds_owed: BTreeMap<String, String>,
 }
 
 /// What a participant removed from a group may still read there: the entries after where it had
@@ -97,6 +102,7 @@ impl Participant {
             rewoken: BTreeSet::new(),
             pull: false,
             removed: BTreeMap::new(),
+            folds_owed: BTreeMap::new(),
         }
     }
 }
@@ -2375,6 +2381,9 @@ impl<S: Store> Messaging<S> {
                     was: Some(from.to_string()),
                 };
                 self.folded.away.push(Away { machine, call });
+                if let Some(into) = self.participants.get_mut(into) {
+                    into.folds_owed.insert(group.clone(), from.to_string());
+                }
             } else {
                 let after = self.groups[&group].head();
                 let folded = self.fold_here(&group, into, from, at_ms);
@@ -2396,6 +2405,9 @@ impl<S: Store> Messaging<S> {
         into.rewoken.extend(from.rewoken);
         for (group, removed) in from.removed {
             into.removed.entry(group).or_insert(removed);
+        }
+        for (group, pane) in from.folds_owed {
+            into.folds_owed.entry(group).or_insert(pane);
         }
         Ok(())
     }

@@ -892,3 +892,51 @@ fn a_stall_on_the_far_machine_is_told_in_a_group_kept_on_the_near_one() {
     assert!(told.starts_with("crew @muster: "), "{told}");
     assert!(told.contains("@far (p1@far) has not read #4, from integrator,"), "{told}");
 }
+
+/// An agent on the far machine that names itself while the link is down takes its pane's place
+/// in a group kept on the near one once the link is back. Another that names itself by joining a
+/// group kept there is renamed once the near daemon takes the join: it posts as the name.
+#[test]
+fn an_agent_named_while_the_link_is_down_takes_its_panes_place_once_it_is_back() {
+    let near = daemon();
+    let far = Daemon::start_detecting();
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    for pane in ["p1", "p2"] {
+        make(&mut far_control, create(pane, in_new_tab(&format!("t-{pane}"))));
+        far.run_agent(pane);
+    }
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["p1"], "a brief"),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Posted(posted)) = &msg_answer(&posted).answer else { panic!("posted") };
+    let pair = posted.group.clone();
+    assert_eq!(who(&mut near_control, &pair).len(), 2);
+    cut(holding, &mut near_log, &mut far_log, 1);
+
+    let named_itself = Asked::Join(msg_request::Join {
+        name: Some("tracer".to_string()),
+        group: None,
+        pull: false,
+    });
+    expect(&mut far_control, msg(&in_pane("p1"), named_itself), proto::Outcome::Done);
+    far_log.logged_until(r#""event":"msg.fold.owed""#, LINKING);
+    let members = who(&mut near_control, &pair);
+    assert!(members.iter().any(|(name, _)| name == "p1@far"), "{members:?}");
+
+    let _holding = link(&near, &far, &mut near_log, 2);
+    let members = until_some("the near daemon to list the name in the pane's place", || {
+        let members = who(&mut near_control, &pair);
+        members.iter().any(|(name, _)| name == "tracer@far").then_some(members)
+    });
+    assert!(!members.iter().any(|(name, _)| name == "p1@far"), "{members:?}");
+
+    let there = join(&mut far_control, &in_pane("p2"), "critic", "review");
+    expect(&mut far_control, post(&in_pane("p2"), Some(&there), &[], "done"), proto::Outcome::Done);
+    let (messages, _) = read(&mut near_control, &named("builder"));
+    assert!(messages.contains(&"review critic@far: done".to_string()), "{messages:?}");
+}
