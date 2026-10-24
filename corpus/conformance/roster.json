@@ -3486,6 +3486,58 @@
         "restartable": ["local/w1:p1 claude --model opus --resume s-1"],
         "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"]
       }
+    },
+    {
+      "name": "a tab interleaving two machines is numbered in its tree's reading order",
+      "why": "The devenv's pane sits between the laptop's two, below a and to the left of c, so it is second in the tree and second in the list. Going machine by machine would number it third, and cmd+2 would land on c, which the window draws third (MIP-8, section 5).",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": { "axis": "columns", "first": "a", "second": "c" },
+                "copy": "[[a/~x@devenv 0.50]|c 0.50]",
+                "layoutGeneration": 2
+              }
+            ],
+            "panes": [
+              { "id": "a", "cwd": "/src/a", "tab": "t1" },
+              { "id": "c", "cwd": "/src/c", "tab": "t1" }
+            ]
+          },
+          "box": {
+            "tabs": [
+              {
+                "id": "t1",
+                "label": "t1",
+                "root": "x",
+                "copy": "[[~a@local/x 0.50]|~c@local 0.50]",
+                "layoutGeneration": 2
+              }
+            ],
+            "panes": [{ "id": "x", "cwd": "/src/x", "tab": "t1" }]
+          }
+        },
+        "daemons": [
+          { "id": "local", "world": "laptop" },
+          { "id": "devenv", "world": "box" }
+        ],
+        "regions": [
+          { "daemon": "local", "tab": "t1" },
+          { "daemon": "devenv", "tab": "t1" }
+        ]
+      },
+      "expect": {
+        "machines": ["devenv connected 1 panes", "local connected 2 panes"],
+        "panes": [
+          "local/a place=1 tab=t1 label=\"a\" off-screen",
+          "devenv/x place=2 tab=t1 label=\"x\" off-screen",
+          "local/c place=3 tab=t1 label=\"c\" off-screen"
+        ],
+        "tabs": ["t1 on=local+devenv place=1 label=\"t1\" given-name=\"t1\" on-screen"]
+      }
     }
   ]
 }

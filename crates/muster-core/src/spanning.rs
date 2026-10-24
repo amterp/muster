@@ -341,17 +341,30 @@ fn added(tree: SpanNode, pane: &PaneId, part: &Part, named: &BTreeSet<PaneId>) -
             panes_of(beside.sibling).into_iter().find(|near| named.contains(*near))
     {
         let neighbour = neighbour.clone();
-        return tree.replacing(&neighbour, &mut |near| {
-            let (first, second) =
-                if beside.first { (leaf.clone(), near) } else { (near, leaf.clone()) };
-            SpanNode::Split {
-                axis: beside.axis,
-                ratio: beside.ratio,
-                first: Box::new(first),
-                second: Box::new(second),
-            }
-        });
+        return sharing(tree, &neighbour, &leaf, beside.axis, beside.first, beside.ratio);
     }
+    with_column(tree, leaf)
+}
+
+/// `tree` with `leaf` sharing `near`'s place in a split on `axis`, as its first child when
+/// `first`, the first child's share `ratio`.
+fn sharing(
+    tree: SpanNode,
+    near: &PaneId,
+    leaf: &SpanNode,
+    axis: SplitAxis,
+    first: bool,
+    ratio: f32,
+) -> SpanNode {
+    tree.replacing(near, &mut |near| {
+        let (one, other) = if first { (leaf.clone(), near) } else { (near, leaf.clone()) };
+        SpanNode::Split { axis, ratio, first: Box::new(one), second: Box::new(other) }
+    })
+}
+
+/// `tree` with `leaf` as a column at its right, as wide as each pane would be if they were all
+/// columns.
+fn with_column(tree: SpanNode, leaf: SpanNode) -> SpanNode {
     #[expect(clippy::cast_precision_loss, reason = "a tab holds a handful of panes")]
     let held = tree.leaves().len() as f32;
     SpanNode::Split {
@@ -377,6 +390,21 @@ pub enum Change {
     Zoom { pane: PaneId },
     /// The panes around `pane` evened out, as [`equalize::dividers`] has it.
     Even { pane: PaneId, evenly: Evenly },
+    /// `pane`, which `daemon` runs, put at `at`: moved there when the tree holds it already, and
+    /// otherwise arriving, made there or moved in from another tab. An arriving pane's machine has
+    /// to act, so it is written to whether or not it holds a part of the tab yet.
+    Place { pane: PaneId, daemon: DaemonId, at: Spot },
+}
+
+/// Where in a tab's tree a pane is put.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Spot {
+    /// Beside `pane`, on `side` of it, the two sharing its place: `ratio` is `pane`'s share
+    /// afterwards, half when absent, as a split means it.
+    Beside { pane: PaneId, side: Side, ratio: Option<f32> },
+    /// A column at the right of the whole tree, as wide as each pane would be if they were all
+    /// columns: where a pane dropped on a tab with nothing to go beside lands.
+    Column,
 }
 
 /// Whether a tab's arrangement is the window's to write as one tree, so every change to it goes
@@ -435,7 +463,7 @@ pub fn rearrange(
         return Ok(merged);
     }
     let generation = written + 1;
-    let writes: Vec<Write> = parts
+    let mut writes: Vec<Write> = parts
         .iter()
         .filter(|part| part.writable)
         .map(|part| Write {
@@ -446,6 +474,26 @@ pub fn rearrange(
             based_on: part.generation,
         })
         .collect();
+    if let Change::Place { pane, daemon, .. } = &change
+        && !merged.tree.leaves().iter().any(|(leaf, _)| *leaf == pane)
+    {
+        match parts.iter().find(|part| part.daemon == *daemon) {
+            Some(part) if !part.writable => {
+                return Err(format!(
+                    "{daemon} cannot take {pane} into the tab just now: it is unreachable, still \
+                     restoring, stopping, or too old to hold a tree spanning machines"
+                ));
+            }
+            Some(_) => {}
+            None => writes.push(Write {
+                daemon: daemon.clone(),
+                root: tree.copy_for(daemon),
+                zoomed: zoomed.clone(),
+                generation,
+                based_on: 0,
+            }),
+        }
+    }
     if writes.is_empty() {
         return Err("no machine holding a part of the tab can take its tree just now: each is \
                     unreachable, still restoring, stopping, or too old to hold one"
@@ -500,6 +548,31 @@ fn changed(
             named(pane)?;
             let unzooming = zoomed.as_ref() == Some(pane);
             Ok((tree.clone(), (!unzooming).then(|| pane.clone())))
+        }
+        Change::Place { pane, daemon, at } => {
+            let leaf = SpanNode::Pane { pane: pane.clone(), daemon: daemon.clone() };
+            if let Spot::Beside { pane: near, .. } = at {
+                if near == pane {
+                    return Err(format!("{pane} cannot go beside itself"));
+                }
+                named(near)?;
+            }
+            let Some(rest) = drawn(tree, &|leaf: &PaneId| leaf != pane) else {
+                return Ok((leaf, zoomed));
+            };
+            let placed = match at {
+                Spot::Beside { pane: near, side, ratio } => {
+                    let axis = match side {
+                        Side::Left | Side::Right => SplitAxis::Columns,
+                        Side::Up | Side::Down => SplitAxis::Rows,
+                    };
+                    let first = matches!(side, Side::Left | Side::Up);
+                    let kept = ratio.unwrap_or(0.5);
+                    sharing(rest, near, &leaf, axis, first, if first { 1.0 - kept } else { kept })
+                }
+                Spot::Column => with_column(rest, leaf),
+            };
+            Ok((placed, zoomed))
         }
         Change::Even { pane, evenly } => {
             named(pane)?;

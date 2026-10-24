@@ -13,8 +13,8 @@ use std::time::Duration;
 use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Directory, Grid, Maker, MoveDestination, Outcome, Refusal,
-    Restarted, Side,
+    BackendChannel, BackendIntent, Directory, Grid, InTree, Maker, MoveDestination, Outcome,
+    Refusal, Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -173,6 +173,16 @@ impl DaemonBackend {
 
     /// Makes a pane, and says which and the callsign its daemon drew it.
     fn create(&self, placement: placement::Where, making: Making) -> Result<Outcome, Refusal> {
+        self.create_named(self.mint_pane(), placement, making)
+    }
+
+    /// [`DaemonBackend::create`], for a pane the window has already named.
+    fn create_named(
+        &self,
+        pane: PaneId,
+        placement: placement::Where,
+        making: Making,
+    ) -> Result<Outcome, Refusal> {
         let Making { cwd, run, name, quiet, maker } = making;
         let (cwd, cwd_inherited) = match cwd {
             Some(Directory::Named(cwd)) => (Some(cwd), false),
@@ -189,7 +199,6 @@ impl DaemonBackend {
         if maker.is_some() {
             self.speaks_since(muster_daemon_proto::version::HELPERS, "make a helper")?;
         }
-        let pane = self.mint_pane();
         let answer = self
             .pane_request(pane_request::Request::Create(pane_request::Create {
                 pane: pane.to_string(),
@@ -247,6 +256,7 @@ impl DaemonBackend {
                 (placement, Some(tab))
             }
             MoveDestination::Tab { tab } => (self.placement_in(&tab), None),
+            MoveDestination::InTree(at) => (in_tree(&at), None),
         }
     }
 
@@ -279,6 +289,19 @@ fn new_tab(tab: &TabId, hidden: bool) -> placement::Where {
         tab: tab.to_string(),
         label: Some(proto::Label::default()),
         hidden,
+    })
+}
+
+/// At a pane's leaf of a tab's whole tree. A part this makes starts unnamed, for the reason
+/// [`new_tab`]'s does.
+fn in_tree(at: &InTree) -> placement::Where {
+    placement::Where::InTree(placement::InTree {
+        tab: at.tab.to_string(),
+        root: Some(convert::copy_record(&at.root)),
+        generation: at.generation,
+        based_on: at.based_on,
+        label: Some(proto::Label::default()),
+        hidden: at.hidden,
     })
 }
 
@@ -327,6 +350,14 @@ impl BackendChannel for DaemonBackend {
                 let cwd = cwd.map(Directory::Named);
                 self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })
             }
+            BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::SPANNING,
+                    "make a pane beside another machine's",
+                )?;
+                let cwd = cwd.map(Directory::Named);
+                self.create_named(pane, in_tree(&at), Making { cwd, run, name, quiet, maker })
+            }
             BackendIntent::ClosePane { pane } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
                     pane: pane.to_string(),
@@ -359,6 +390,12 @@ impl BackendChannel for DaemonBackend {
             BackendIntent::MovePane { pane, to } => {
                 if matches!(to, MoveDestination::NewTab { hidden: true, .. }) {
                     self.hides_and_quiets("hide a pane")?;
+                }
+                if matches!(to, MoveDestination::InTree(_)) {
+                    self.speaks_since(
+                        muster_daemon_proto::version::SPANNING,
+                        "move a pane beside another machine's",
+                    )?;
                 }
                 let (placement, created_tab) = self.destination(to);
                 self.pane_request(pane_request::Request::Move(pane_request::Move {

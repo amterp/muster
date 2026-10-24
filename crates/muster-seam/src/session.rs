@@ -2584,6 +2584,7 @@ pub(crate) fn submit_from(
             // the ones no region is showing. A new tab has no region until it exists.
             BackendIntent::CreateTab { .. }
             | BackendIntent::JoinTab { .. }
+            | BackendIntent::CreateInTree { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
             | BackendIntent::RestartAgent { .. }
@@ -2706,7 +2707,7 @@ pub(crate) fn submit_from(
         // tab. The mirror already holds it, since a daemon's events arrive before its answer,
         // but the reconcile behind them runs on the daemon's notice thread and may not have
         // yet - and without the region the keyboard could not follow the new pane.
-        if matches!(intent, BackendIntent::JoinTab { .. }) {
+        if matches!(intent, BackendIntent::JoinTab { .. } | BackendIntent::CreateInTree { .. }) {
             session.reconcile(daemon);
         }
         let composition = &mut session.windows[window].composition;
@@ -2724,6 +2725,7 @@ pub(crate) fn submit_from(
                 }
                 Some(joined)
             }
+            BackendIntent::CreateInTree { at, .. } => composition.region_of(daemon, &at.tab),
             _ => None,
         });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {

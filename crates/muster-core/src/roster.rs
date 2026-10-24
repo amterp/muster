@@ -29,11 +29,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::composition::{Composition, DaemonId, PaneKey};
+use crate::composition::{Composition, DaemonId, MusterTab, PaneKey};
 use crate::config::Rgb;
 use crate::mirror::Mirror;
 use crate::mirror::backend::Health;
 use crate::mirror::backend::{Pane, PaneId, TabId};
+use crate::spanning;
 
 /// Everything the attached daemons hold, in the order to show it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -539,18 +540,11 @@ impl Roster {
             .tabs()
             .map(|tab| {
                 tab_place += 1;
-                let panes: Vec<RosterPane> = tab
-                    .regions()
-                    .filter_map(|region| Some((&region.daemon, mirror(&region.daemon)?)))
-                    .flat_map(|(daemon, held)| {
-                        ordered_panes(held, &tab.id)
-                            .into_iter()
-                            .map(move |pane| (daemon, pane))
-                            .collect::<Vec<_>>()
-                    })
+                let panes: Vec<RosterPane> = tab_panes(tab, &mirror)
+                    .into_iter()
                     .enumerate()
                     .map(|(at, (daemon, pane))| {
-                        let key = PaneKey::new(daemon, &pane.id);
+                        let key = PaneKey::new(&daemon, &pane.id);
                         let label = pane_label(pane);
                         pane_place += 1;
                         RosterPane {
@@ -792,14 +786,51 @@ fn resumes_as(pane: &Pane) -> Option<String> {
     pane.resume.as_ref().map(|resume| resume.command.join(" "))
 }
 
-/// One tab's panes, in the order they are laid out.
+/// A tab's panes on every machine it spans, in the reading order of the tree the window draws,
+/// which interleaves machines once a pane sits above or beside another machine's (MIP-8, section
+/// 5). A pane the merged tree does not name yet follows, in the order of its machine's region.
+/// A tab on one machine is that machine's tree, with nothing to merge.
+fn tab_panes<'a>(
+    tab: &MusterTab,
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+) -> Vec<(DaemonId, &'a Pane)> {
+    let by_region = || {
+        tab.regions().filter_map(|region| Some((&region.daemon, mirror(&region.daemon)?))).flat_map(
+            |(daemon, held)| {
+                ordered_panes(held, &tab.id).into_iter().map(move |pane| (daemon.clone(), pane))
+            },
+        )
+    };
+    if !spanning::spans(tab, mirror) {
+        return by_region().collect();
+    }
+    let (parts, settled) = spanning::parts_of(tab, mirror, |_| false);
+    let Some(merged) = spanning::merge(&parts, &settled) else { return by_region().collect() };
+    let mut panes: Vec<(DaemonId, &'a Pane)> = merged
+        .tree
+        .leaves()
+        .into_iter()
+        .filter_map(|(pane, daemon)| {
+            let held = mirror(daemon)?.pane(pane).filter(|held| held.tab == tab.id)?;
+            Some((daemon.clone(), held))
+        })
+        .collect();
+    for (daemon, pane) in by_region() {
+        if !panes.iter().any(|(_, listed)| listed.id == pane.id) {
+            panes.push((daemon, pane));
+        }
+    }
+    panes
+}
+
+/// One machine's panes in a tab, in the order they are laid out.
 ///
 /// The tree decides, so the list reads the way the splits do. A tab whose tree has not
 /// arrived, or whose tree disagrees with the panes it holds, falls back to the pane list in
 /// its own order - the panes exist and belong on the list either way, and an arrangement
 /// nobody has described yet is not a reason to hide them (`architecture.md`, a tree that
 /// disagrees with its tab is not an arrangement).
-fn ordered_panes<'a>(mirror: &'a Mirror, tab: &'a TabId) -> Vec<&'a Pane> {
+fn ordered_panes<'a>(mirror: &'a Mirror, tab: &TabId) -> Vec<&'a Pane> {
     let held: Vec<&Pane> = mirror.panes_in_tab(tab).collect();
     let Some(layout) = mirror.tab(tab) else { return held };
     let arranged: Vec<&PaneId> = layout.root.panes();

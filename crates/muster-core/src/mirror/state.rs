@@ -376,7 +376,10 @@ impl Mirror {
         self.tabs.values()
     }
 
-    pub fn panes_in_tab<'a>(&'a self, tab: &'a TabId) -> impl Iterator<Item = &'a Pane> {
+    pub fn panes_in_tab<'a, 't>(&'a self, tab: &'t TabId) -> impl Iterator<Item = &'a Pane> + 't
+    where
+        'a: 't,
+    {
         self.panes.values().filter(move |pane| &pane.tab == tab)
     }
 

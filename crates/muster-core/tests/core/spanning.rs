@@ -9,7 +9,7 @@ use muster_core::composition::DaemonId;
 use muster_core::equalize::Evenly;
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::PaneId;
-use muster_core::spanning::{self, Change, Divider, Merged, Part, Write};
+use muster_core::spanning::{self, Change, Divider, Merged, Part, Spot, Write};
 use serde_json::{Value, json};
 
 #[test]
@@ -116,7 +116,8 @@ fn described(write: &Write) -> String {
 
 /// A change as the cases spell one: `ratio <turns> <ratio>`, with the turns `first,second` from the
 /// root and `-` for the root itself; `resize <pane> <side> [fraction]`; `swap <pane> <with>`;
-/// `zoom <pane>`; `even <pane> <tab|row|column>`.
+/// `zoom <pane>`; `even <pane> <tab|row|column>`; `place <pane>@<daemon> beside <pane> <side>
+/// [ratio]` and `place <pane>@<daemon> column`.
 fn read_change(text: &str) -> Change {
     let words: Vec<&str> = text.split_whitespace().collect();
     let number = |word: &str| word.parse::<f32>().expect("a number");
@@ -133,6 +134,19 @@ fn read_change(text: &str) -> Change {
             pane: PaneId::new(*pane),
             evenly: Evenly::parse(evenly).expect("a scope"),
         },
+        ["place", placed, at @ ..] => {
+            let (pane, daemon) = placed.split_once('@').expect("a pane placed names its machine");
+            let at = match at {
+                ["beside", near, side, rest @ ..] => Spot::Beside {
+                    pane: PaneId::new(*near),
+                    side: Side::parse(side).expect("a side"),
+                    ratio: rest.first().map(|ratio| number(ratio)),
+                },
+                ["column"] => Spot::Column,
+                _ => panic!("{text} places a pane nowhere"),
+            };
+            Change::Place { pane: PaneId::new(pane), daemon: DaemonId::new(daemon), at }
+        }
         _ => panic!("{text} is not a change"),
     }
 }

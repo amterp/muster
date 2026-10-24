@@ -55,7 +55,7 @@ impl Side {
 /// land. "Give this a tab of its own" names nowhere, and used to cost three commands and a login
 /// shell started and killed on the way (kan `a_2IXGSgZi7`). "Put this in that tab" names a tab
 /// and nothing inside it, which is the one that can span machines.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MoveDestination {
     /// Beside a pane, in that pane's tab, on one side of it.
     ///
@@ -92,9 +92,31 @@ pub enum MoveDestination {
     /// the two machines' parts one tab (MIP-3, section 2).
     ///
     /// Distinct from [`MoveDestination::Beside`] rather than a second meaning for its `tab`,
-    /// because the two are different requests: `Beside` orders one pane against another and both
-    /// have to be in one tree, which is one machine's. This names no pane and orders nothing.
+    /// because the two are different requests: `Beside` orders one pane against another in the
+    /// tree of the machine running both. This names no pane and orders nothing.
     Tab { tab: TabId },
+
+    /// Into a tab at the place a tree the window worked out over every machine the tab spans
+    /// gives it: beside a pane on another machine, or as a column at the right of the whole tab
+    /// (MIP-8, section 6).
+    InTree(InTree),
+}
+
+/// A tab's whole tree as a pane being placed leaves it, written to the machine running that pane
+/// (MIP-8, section 4). The tree names the pane as that machine's, so a pane being made is named
+/// before it is asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InTree {
+    pub tab: TabId,
+    pub root: crate::mirror::backend::CopyNode,
+    /// The tab's layout generation afterwards.
+    pub generation: u64,
+    /// The generation of the copy the tree was worked out from, 0 when this machine holds no
+    /// part of the tab yet.
+    pub based_on: u64,
+    /// Whether the tab is hidden, which a part this makes has to say too: every part of a tab
+    /// says the same.
+    pub hidden: bool,
 }
 
 /// Which child a step down a tree takes.
@@ -220,6 +242,22 @@ pub enum BackendIntent {
         /// Whose helper it is, as on [`BackendIntent::SplitPane`].
         maker: Option<Maker>,
     },
+    /// Makes `pane` on this machine at its leaf of a tab's whole tree, which the window worked
+    /// out because the place is beside another machine's pane or at the edge of the whole tab
+    /// (MIP-8, section 6). Makes this machine's part of the tab when it has none yet.
+    ///
+    /// Names its pane, unlike every other create: the tree has to say where the pane goes, so the
+    /// window mints the name before asking.
+    CreateInTree {
+        pane: PaneId,
+        at: InTree,
+        /// Each means what it means on [`BackendIntent::JoinTab`].
+        cwd: Option<String>,
+        run: Option<String>,
+        name: Option<String>,
+        quiet: bool,
+        maker: Option<Maker>,
+    },
     /// Grows or shrinks a pane against its neighbour, by a share of the region.
     ///
     /// Unlike `SetSplitRatio`, which names a divider by the turns down to it and says exactly
@@ -260,12 +298,11 @@ pub enum BackendIntent {
         with: PaneId,
     },
 
-    /// Moves a pane out of its tab and puts it somewhere else on the same daemon.
+    /// Moves a pane out of its place and puts it somewhere else.
     ///
-    /// Same daemon only, and that is not a limitation worth working around: a pane is a PTY the
-    /// daemon owns, so "move it to the other machine" would mean killing a process on one host
-    /// and starting a different one on another. That is not a move, and the shell refuses the
-    /// drop rather than sending this.
+    /// Asked of the daemon running the pane, which keeps running it: a pane is a PTY the daemon
+    /// owns, so a move changes where it sits and never which machine it is on. Beside another
+    /// machine's pane is a place in a tab's tree like any other ([`MoveDestination::InTree`]).
     MovePane {
         pane: PaneId,
         to: MoveDestination,
@@ -422,6 +459,17 @@ impl BackendIntent {
             BackendIntent::CreateTab { tab, cwd, run, name, quiet, hidden, maker } => format!(
                 "CreateTab {{ tab: {tab}, cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, \
                  hidden: {hidden}, maker: {} }}",
+                counted(run.as_ref()),
+                named(name.as_deref()),
+                made_by(maker.as_ref())
+            ),
+            BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker } => format!(
+                "CreateInTree {{ pane: {pane}, tab: {}, generation: {}, based_on: {}, hidden: {}, \
+                 cwd: {cwd:?}, run: {}, name: {}, quiet: {quiet}, maker: {} }}",
+                at.tab,
+                at.generation,
+                at.based_on,
+                at.hidden,
                 counted(run.as_ref()),
                 named(name.as_deref()),
                 made_by(maker.as_ref())

@@ -497,6 +497,150 @@
         "divider": "second"
       },
       "expect": { "divider": null }
+    },
+    {
+      "name": "a pane made on another machine below a pane goes below it, and that machine is written its first copy",
+      "why": "`muster pane new --daemon devenv --down` from a, in a tab only the laptop holds. The devenv has no part of the tab yet, so it has to make one, with the pane where the tree puts it: its write is worked out from nothing, generation 0. The laptop's copy gains the new pane as a foreign leaf at the same generation, so the two copies agree.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "a", "generation": 0, "holds": ["a"] }
+        ],
+        "settled": { "laptop": true },
+        "change": "place n@devenv beside a down"
+      },
+      "expect": {
+        "tree": "rows(a@laptop, n@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 1<-0 rows(a, ~n@devenv@0.5)",
+          "devenv 1<-0 rows(~a@laptop, n@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane made on another machine goes beside the pane split, not into that machine's part",
+      "why": "The devenv already holds x, to the right of a. Split on Machine from a puts the new devenv pane beside a, on the side asked, where it used to split x: the place is a fact about the tree, whichever machine runs the panes in it.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "place n@devenv beside a right"
+      },
+      "expect": {
+        "tree": "columns(columns(a@laptop, n@devenv@0.5), x@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(columns(a, ~n@devenv@0.5), ~x@devenv@0.5)",
+          "devenv 2<-1 columns(columns(~a@laptop, n@0.5), x@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane dropped on another machine's pane's edge moves there, and every part is written",
+      "why": "x already sits in the tab, so nothing has to be made or moved between tabs: this is a rearrangement, worked out on the whole tree and written to both parts. x leaves its column, which collapses, and shares a's place below it, a keeping the share asked for.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "place x@devenv beside a down 0.6"
+      },
+      "expect": {
+        "tree": "rows(a@laptop, x@devenv@0.6)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 rows(a, ~x@devenv@0.6)",
+          "devenv 2<-1 rows(~a@laptop, x@0.6)"
+        ]
+      }
+    },
+    {
+      "name": "a pane dropped on a tab's caption goes in as a column at the right of its whole tree",
+      "why": "A drop on a caption names no pane to go beside, so the pane lands where a machine's region used to: at the right, as wide as each pane would be if they were all columns, a third here.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "place n@devenv column"
+      },
+      "expect": {
+        "tree": "columns(columns(a@laptop, x@devenv@0.5), n@devenv@0.6666667)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(columns(a, ~x@devenv@0.5), ~n@devenv@0.6666667)",
+          "devenv 2<-1 columns(columns(~a@laptop, x@0.5), n@0.6666667)"
+        ]
+      }
+    },
+    {
+      "name": "two panes on different machines trade places",
+      "why": "A row dropped on a row in the same tab is an exchange, and across machines that is two leaves trading places in one tree. Each keeps its machine.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "swap a x"
+      },
+      "expect": {
+        "tree": "columns(x@devenv, a@laptop@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(~x@devenv, a@0.5)",
+          "devenv 2<-1 columns(x, ~a@laptop@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane cannot be put beside a pane the tab does not hold",
+      "why": "A drop worked out against a tree that has since lost its target lands here, and nothing is written.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "place n@devenv beside gone right"
+      },
+      "expect": { "refused": "the tab's tree holds no pane gone" }
+    },
+    {
+      "name": "a pane cannot arrive from a machine whose part cannot take a write",
+      "why": "The devenv is still restoring, and a pane made or moved into the tab there needs it to act. The laptop alone could be written, but its copy would then name a pane the devenv never placed.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 1, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"], "writable": false }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "change": "place n@devenv beside a down"
+      },
+      "expect": { "refused": "devenv cannot take n into the tab just now: it is unreachable, still restoring, stopping, or too old to hold a tree spanning machines" }
+    },
+    {
+      "name": "a pane moved around an unreachable machine's pane is written to the parts that answer",
+      "why": "Rearranging needs no machine to act, so the devenv being down blocks nothing: the laptop is written, and the devenv is caught up when it answers. a and b are both the laptop's; x stays where it was.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"], "writable": false }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "change": "place a@laptop beside x up"
+      },
+      "expect": {
+        "tree": "columns(b@laptop, rows(a@laptop, x@devenv@0.5)@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(b, rows(a, ~x@devenv@0.5)@0.5)"
+        ]
+      }
     }
   ]
 }
