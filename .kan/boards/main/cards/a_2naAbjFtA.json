@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "a-group-s",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1792874867196,
+  "creator": "Alexander Terp",
+  "description": "The owner wants the door kept open (Lectern page muster-group-conversation, 2026-10-24): the conversation view placed in a tab beside terminal panes and arranged with them, rather than only shown in place of the panes. The view is drawn from a group, so the shell side is small; the open part is the daemon's tree, which would have to hold a pane with no terminal behind it, a protocol change. Not needed for the first version, which should not assume it cannot happen.",
+  "id": "a_2naAbjFtA",
+  "parent": "a_2die8LU6o",
+  "position": "aa",
+  "title": "A group's conversation as a pane in a tab's tree",
+  "type": "feature",
+  "updated_at_millis": 1792874867196,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792874867196}
+  ]
+}

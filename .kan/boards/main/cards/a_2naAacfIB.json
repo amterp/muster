@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "a-message-banner",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792874866507,
+  "creator": "Alexander Terp",
+  "description": "A banner for a message to the human says only how many wait and from whom (\"2 messages for you from heron, otter\", MessageNotification.body), so answering even a yes-or-no question means opening the transcript tab. Agreed in the Lectern page muster-group-conversation (2026-10-24) as the cheapest part of the group conversation work, and the one to ship first: the banner shows the newest message's text, and macOS's reply field posts the answer to that message's author, in that group, as @human, without bringing Muster forward. That gives agents a quick way to ask something small, with no new verb: msg post --to @human with no --group already lands in a group of just that agent and the human. What the daemon tells windows about messages waiting for the human carries counts and authors, not text, so it has to send the newest message's text as well.",
+  "id": "a_2naAacfIB",
+  "parent": "a_2die8LU6o",
+  "position": "b1R",
+  "title": "A message banner shows what was asked and takes a reply",
+  "type": "enhancement",
+  "updated_at_millis": 1792874866507,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792874866507}
+  ]
+}

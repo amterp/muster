@@ -1,0 +1,22 @@
+{
+  "_v": 3,
+  "alias": "an-agent-can-offer",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792874866674,
+  "creator": "Alexander Terp",
+  "description": "Most questions agents put to the human are a choice between two or three things. Agreed in the Lectern page muster-group-conversation (2026-10-24): a post carries answers the agent offers (something like msg post --option \"Run it now\" --option \"Skip it\"; the spelling is open). The conversation view draws them as buttons, and the banner can offer them as its actions. Picking one fills the human's reply rather than sending it, so a note can go with it, and writing without picking stays an ordinary reply. The reply carries the choice twice: as text at the top of its body, which an agent reads with no new parsing, and as a field naming the question and the option, so Muster can show the question as answered. Digits must not pick an answer inside the message box, since a reply may start with \"1.\". Open: whether a question may take several answers, as Claude Code's multi-select does. Needs a field on a message, so a daemon protocol minor.",
+  "id": "a_2naAat73L",
+  "parent": "a_2die8LU6o",
+  "position": "b1S",
+  "title": "An agent can offer answers to a question it posts",
+  "type": "feature",
+  "updated_at_millis": 1792874866674,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792874866674}
+  ]
+}

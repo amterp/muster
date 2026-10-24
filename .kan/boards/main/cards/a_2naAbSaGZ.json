@@ -1,0 +1,21 @@
+{
+  "_v": 3,
+  "alias": "needs-you-one-queue",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792874867030,
+  "creator": "Alexander Terp",
+  "description": "Board B in the Lectern page muster-group-conversation: one list of every message addressed to the human from any group, beside the agents stopped at a dialog, each opening with the messages before it and a message box addressed to its author. It is ⌘⇧A's list made visible: today that chord jumps to the single most urgent thing without showing what else waits. Built on the group conversation view's view model, filtered across groups. The label on screen is \"Needs you\"; code and CLI keep the existing word, asking (focus_asking, read_asking). Not \"Inbox\": a participant's inbox is already the socket it is woken on.",
+  "id": "a_2naAbSaGZ",
+  "parent": "a_2die8LU6o",
+  "position": "b1p",
+  "title": "Needs you: one queue of everything asking for the human",
+  "type": "feature",
+  "updated_at_millis": 1792874867030,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792874867030}
+  ]
+}

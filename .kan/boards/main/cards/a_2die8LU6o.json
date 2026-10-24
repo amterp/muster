@@ -36,6 +36,12 @@
       "body": "Direction changed in muster-group-conversation v4, replacing the drawer: choosing a group (sidebar row or banner) shows its conversation in place of the panes until Esc or a tab or pane is chosen; a members column gives each agent Go to pane. Any window can show any group, two at once included; each window's message box and draft are its own (kept with the window's saved arrangement, not the daemon), and a post shows in both. Keep the door open to a conversation pane in a tab's tree later (a pane with no terminal, a protocol change). Terms: group, conversation, message box, transcript (the msg log pane), Needs you, banner. A banner with a reply field and offered answers is the first piece to ship.",
       "created_at_millis": 1792874622788,
       "id": "c_2na4FafxE"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Owner approved the design in muster-group-conversation v4 (2026-10-24). This card stays the conversation view itself, whose next step is the MIP. Split out as children: a_2naAacfIB (banner shows the message and takes a reply; ship first), a_2naAat73L (answers an agent offers), a_2naAbBoP6 (msg docs on how each channel reaches the human), a_2naAbSaGZ (Needs you queue), a_2naAbjFtA (conversation as a pane, uncommitted). Naming: B's queue is \"Needs you\" on screen and \"asking\" in code and CLI.",
+      "created_at_millis": 1792874871680,
+      "id": "c_2naAj2CE3"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -45,7 +51,7 @@
   "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792874622788,
+  "updated_at_millis": 1792874871680,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286}
