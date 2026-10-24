@@ -2522,3 +2522,31 @@ fn a_join_taking_a_panes_place_whose_answer_is_lost_keeps_the_place() {
     assert!(tracer.folds_owed.is_empty(), "the home confirmed it: {:?}", tracer.folds_owed);
     assert_eq!(wire.read(Side::Devenv, &agent, None), ["review@lap director@lap: unread"]);
 }
+
+/// A home that cannot take an owed fold for a reason that passes, such as its store failing, is
+/// asked again the next time the link comes up, rather than the fold being given up.
+#[test]
+fn an_owed_fold_the_home_cannot_take_yet_is_asked_again() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    wire.cut();
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.join(&agent, Some("tracer"), None, sessions, now).unwrap();
+    wire.fold(Side::Devenv);
+
+    wire.laptop.store_mut().failing = true;
+    wire.up = true;
+    wire.laptop.linked(&Side::Laptop.peer());
+    wire.devenv.linked(&Side::Devenv.peer());
+    for away in wire.devenv.folds_owed_to("lap") {
+        let refused = wire.send(Side::Devenv, &away.call);
+        assert!(matches!(refused, Err(Refusal::Store { .. })), "{refused:?}");
+    }
+    assert_eq!(wire.devenv.folds_owed_to("lap").len(), 1, "still owed");
+
+    wire.laptop.store_mut().failing = false;
+    wire.cut();
+    wire.mend();
+    assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
+    assert!(wire.devenv.folds_owed_to("lap").is_empty());
+}

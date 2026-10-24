@@ -970,9 +970,10 @@ pub(super) fn send_fold(shared: &Shared, away: &Away) {
                 "group" => away.call.group(),
                 "why" => words(&refusal),
                 "impact" => "the group still lists the agent by its pane's name there, and \
-                             posts to that name find nobody here to wake",
-                "check" => "whether that machine's daemon speaks a protocol before 1.4, which \
-                            takes this as an ordinary join its policy may refuse; there, \
+                             posts to that name find nobody here to wake, until that machine \
+                             takes the name; it is asked again the next time the link comes up",
+                "check" => "the reason given; a daemon there speaking a protocol before 1.4 \
+                            takes this as an ordinary join its policy may refuse, and there \
                             `group add` adds the agent by its new name",
             },
         ),

@@ -955,20 +955,21 @@ impl<S: Store> Messaging<S> {
                 if let Some(caught) = caught {
                     apply(self, caught);
                 }
-                // The home's refusal of a pane's place is final, so it is not asked again.
-                if let Call::Join { name, was: Some(_), .. } = call
-                    && let Some(participant) = self.participants.get_mut(name)
-                {
-                    participant.folds_owed.remove(&key);
-                }
                 // The home no longer keeps a group this machine holds a replica of: it was
-                // deleted while the link was down, or this machine missed being told.
-                if matches!(refusal, Refusal::NoSuchGroup { .. })
-                    && let Some(forgot) = self.forget_replica(peer, call.group())
-                {
-                    applied.ended.extend(forgot.ended);
-                    applied.wakes.extend(forgot.wakes);
-                    applied.unsaved = applied.unsaved.take().or(forgot.unsaved);
+                // deleted while the link was down, or this machine missed being told. No pane's
+                // place in it is owed any more. Any other refusal of a fold may pass, a store
+                // failing there among them, so the home is asked again on the next link up.
+                if matches!(refusal, Refusal::NoSuchGroup { .. }) {
+                    if let Call::Join { name, was: Some(_), .. } = call
+                        && let Some(participant) = self.participants.get_mut(name)
+                    {
+                        participant.folds_owed.remove(&key);
+                    }
+                    if let Some(forgot) = self.forget_replica(peer, call.group()) {
+                        applied.ended.extend(forgot.ended);
+                        applied.wakes.extend(forgot.wakes);
+                        applied.unsaved = applied.unsaved.take().or(forgot.unsaved);
+                    }
                 }
                 Err(peer.refusal(refusal))
             }
