@@ -348,9 +348,7 @@ fn sender_of(
     let asked = attributed(service)?;
     let peer = peer?;
     let Some(manifests) = shared.detecting.manifests_within(MANIFESTS_PATIENCE) else {
-        if asked == attribution::Asked::Report {
-            attribution::unattributed(peer, MANIFESTS_PATIENCE);
-        }
+        attribution::unattributed(peer, MANIFESTS_PATIENCE, asked);
         return None;
     };
     attribution::sender(peer, &manifests)

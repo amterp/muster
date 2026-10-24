@@ -210,23 +210,42 @@ fn first_refusal(pid: u32, asked: Asked) -> bool {
     logged.insert((pid, asked))
 }
 
-/// Logs a report taken unattributed because the manifests had not loaded after `waited`, once
-/// per daemon: until they do, every report is taken, and one line says why.
-pub(crate) fn unattributed(sender: u32, waited: Duration) {
-    static LOGGED: AtomicBool = AtomicBool::new(false);
-    if LOGGED.swap(true, Ordering::Relaxed) {
+/// Logs what was `asked` taken unattributed because the manifests had not loaded after
+/// `waited`, once per daemon and kind: until they do, every report and every msg request is
+/// taken, and one line for each says why.
+pub(crate) fn unattributed(sender: u32, waited: Duration, asked: Asked) {
+    static REPORTS: AtomicBool = AtomicBool::new(false);
+    static REQUESTS: AtomicBool = AtomicBool::new(false);
+    let (logged, event, impact) = match asked {
+        Asked::Report => (
+            &REPORTS,
+            "daemon.report.unattributed",
+            "until they load, every report is taken as one from the pane's own agent would be, so \
+             a nested agent's or a shared server's reports can land in the pane they name; this \
+             is logged once per daemon",
+        ),
+        Asked::Request => (
+            &REQUESTS,
+            "msg.request.unattributed",
+            "until they load, every msg request is taken as from the pane it names, so one through \
+             a shared server posts and reads as whichever session started that server; this is \
+             logged once per daemon",
+        ),
+    };
+    if logged.swap(true, Ordering::Relaxed) {
         return;
     }
     log::warn(
-        "daemon.report.unattributed",
+        event,
         fields! {
             "sender_pid" => sender,
             "waited_ms" => waited.as_millis(),
-            "why" => "the agent detection manifests had not loaded, so which agent sent the \
-                      report could not be told",
-            "impact" => "until they load, every report is taken as one from the pane's own agent \
-                         would be, so a nested agent's or a shared server's reports can land in \
-                         the pane they name; this is logged once per daemon",
+            "why" => format!(
+                "the agent detection manifests had not loaded, so which agent sent the {} could \
+                 not be told",
+                asked.noun()
+            ),
+            "impact" => impact,
             "check" => "the daemon.detect.loaded line after this one, whose ms says how long the \
                         load took; one that never comes is a load reading an override directory \
                         (~/.muster/agent-detection) on a mount that hangs",

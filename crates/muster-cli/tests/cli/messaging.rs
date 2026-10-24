@@ -589,6 +589,39 @@ fn a_msg_request_through_an_agents_server_is_refused_and_says_what_to_do() {
     assert!(posted.starts_with("posted #4 to "), "{posted}");
 }
 
+/// A msg request that comes before the daemon's first manifest load cannot be attributed, so it
+/// is taken even through a server, and the daemon says why once, as it does for a report. The load
+/// here reads an override that never ends, as one on a mount that hangs does: a FIFO nobody opens.
+#[test]
+fn a_msg_request_before_the_manifests_load_is_taken_and_says_why() {
+    let home = std::env::temp_dir().join(format!("muster-msg-unattributed-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join("agent-detection")).unwrap();
+    let fifo = home.join("agent-detection/claude.toml");
+    let path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    // SAFETY: mkfifo reads a NUL-terminated path the test owns.
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    let daemon = Daemon::start_detecting_with(&[("MUSTER_HOME", home.to_str().unwrap())]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+
+    let (agent, cli) = (daemon.agent_path(), env!("CARGO_BIN_EXE_muster"));
+    daemon.type_into("p1", &format!("{} serve run {cli} msg read &", agent.display()));
+    let reported = daemon.root().join("home/fake-agent-reported");
+    let said = until_some("the read through the server to answer", || {
+        std::fs::read_to_string(&reported).ok().filter(|said| !said.is_empty())
+    });
+    let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
+    // Lets the load finish, whatever the verdict.
+    drop(std::fs::OpenOptions::new().write(true).open(&fifo));
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(said.trim(), "served 0", "a request nothing could attribute was refused");
+    let logged = |event: &str| log.contains(&format!("\"event\":\"{event}\""));
+    assert!(logged("msg.request.unattributed"), "the daemon did not say why: {log}");
+    assert!(!logged("daemon.detect.loaded"), "the manifests loaded first: {log}");
+}
+
 /// The preset a directed council is convened with (MIP-4, section 8).
 const DIRECTED: &str = include_str!("../../../../extras/skill/council/directed.toml");
 
