@@ -729,6 +729,32 @@
       ] }
     },
     {
+      "name": "a post to an agent idle and woken already wakes it again, as a new batch",
+      "why": "Woken already says the agent will read this too, which an idle one will not: its turn ended without reading, or `/new` or `/clear` threw its wake away with its session, and nothing tells the service. So a post to it wakes it, and it may be woken once more as it next goes idle. A post while it works still waits for that (MIP-4, section 5).",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"session": "s1", "do": "join", "name": "b", "group": "g", "pane": "p1"},
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"do": "idle", "name": "b"},
+        {"session": "a", "do": "post", "body": "two"},
+        {"do": "idle", "name": "b"},
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "a", "do": "post", "body": "three"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "b joined g (created)",
+        "a joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a] rung p1",
+        "rewoke b [g #4-4 x1 to-you:0 from a again] rung p1",
+        "a posted #5 to g; woke b [g #4-5 x2 to-you:0 from a] rung p1",
+        "rewoke b [g #4-5 x2 to-you:0 from a again] rung p1",
+        "p1 working",
+        "a posted #6 to g; already woken b"
+      ] }
+    },
+    {
       "name": "a member removed and added back is woken once more for what it leaves unread",
       "why": "Leaving a group forgets everything the member was woken for there, the second wake included; a member added back starts afresh, and is woken once more for a post it does not read, as any member is (MIP-4, section 5).",
       "given": { "steps": [
@@ -834,6 +860,7 @@
         {"session": "a", "do": "join", "name": "a"},
         {"session": "a", "do": "post", "to": ["p1"], "body": "one"},
         {"session": "s1", "do": "wait", "pane": "p1"},
+        {"do": "agent", "pane": "p1", "state": "working"},
         {"session": "a", "do": "post", "to": ["p1"], "body": "two"}
       ] },
       "expect": { "said": [
@@ -841,6 +868,7 @@
         "a registered",
         "a posted #4 to a+p1; woke p1 [a+p1 #4-4 x1 to-you:1 from a] rung p1",
         "ready a+p1 #4-4 x1 to-you:1 from a",
+        "p1 working",
         "a posted #5 to a+p1; already woken p1"
       ] }
     },

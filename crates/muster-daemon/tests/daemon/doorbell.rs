@@ -359,6 +359,41 @@ fn an_agent_gone_idle_with_messages_unread_is_rung_once_more() {
     assert_eq!(agent.rung().len(), 2, "woken a third time: {:?}", agent.rung());
 }
 
+/// An agent rung and still idle with what it was rung for unread will not read a later post by
+/// itself: its turn ended without reading, or `/new` threw the ring away with its session. The
+/// later post rings it, saying everything that waits.
+#[test]
+fn a_post_rings_an_idle_agent_woken_already() {
+    let mut agent = Agent::in_a_pane();
+    agent.post("p1", "a brief");
+    agent.until_rung(1);
+    // Once the doorbell has stopped watching the ring, nothing more is on its way.
+    until_some("the ring to be settled", || {
+        agent.unread().iter().any(|why| why.contains("neither read it nor gone to work")).then_some(())
+    });
+
+    let posted = agent.post("p1", "the brief again");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Woken);
+    let rung = agent.until_rung(2);
+    assert!(rung[1].contains("2 new"), "{rung:?}");
+}
+
+/// A post that comes while a ring is still on its way to an idle agent - typed, and not yet seen
+/// taken - leaves it to that ring rather than ringing a second time.
+#[test]
+fn a_post_while_a_ring_is_on_its_way_rings_nothing_more() {
+    let mut agent = Agent::to_come();
+    agent.daemon.run_starting_agent("p1");
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+
+    let posted = agent.post("p1", "and another");
+    assert_eq!(posted.reached[0].reach(), msg_answer::Reach::Woken);
+    agent.until_rung(1);
+    std::thread::sleep(QUIET + ANSWER + Duration::from_secs(2));
+    assert_eq!(agent.rung().len(), 1, "rung twice: {:?}", agent.rung());
+}
+
 /// `muster pane new --run claude` and then a post to the pane it printed: the post comes before
 /// detection has found the agent, and is rung once it has and the agent is idle (MIP-4, section
 /// 14).

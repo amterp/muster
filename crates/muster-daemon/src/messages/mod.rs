@@ -639,7 +639,13 @@ impl Messages {
     /// taken, or handed to its session by command.
     fn wakes_for(&self, name: &str, group: &str) -> bool {
         self.pending.iter().any(|wake| wake.name == name && wake.notice.group == group)
-            || self.in_hand.contains(&(name.to_string(), group.to_string()))
+            || self.delivering(name, group)
+    }
+
+    /// Whether a wake for `name` about `group` is past waiting: being rung or handed over, rung
+    /// and not yet taken, or handed to its session by command and not yet taken.
+    fn delivering(&self, name: &str, group: &str) -> bool {
+        self.in_hand.contains(&(name.to_string(), group.to_string()))
             || self.rung.iter().any(|rung| rung.is_for(name, group))
             || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
     }
@@ -693,8 +699,15 @@ impl Messages {
                     continue;
                 }
             };
+            // A post to an idle agent woken already wakes it again, and just after a ring the agent
+            // still reads idle: the ring on its way covers this one. Only an urgent post makes a
+            // second.
+            let urgent = doorbell::is_urgent(wake);
+            if !urgent && self.delivering(&wake.name, &wake.notice.group) {
+                continue;
+            }
             // A later wake for a group stands for any earlier one still waiting to ring: its
-            // notice covers everything unread there. Only an urgent post makes a second.
+            // notice covers everything unread there.
             self.pending.retain(|earlier| {
                 earlier.name != wake.name || earlier.notice.group != wake.notice.group
             });
@@ -706,7 +719,6 @@ impl Messages {
                 continue;
             }
             // A pane whose agent has not been found yet waits for it like a busy one.
-            let urgent = doorbell::is_urgent(wake);
             let ringing = panes
                 .get(pane)
                 .map(|seen| (doorbell::reach(seen, now, urgent, None, self.types(wake)), seen));

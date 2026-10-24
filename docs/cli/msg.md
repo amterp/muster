@@ -170,8 +170,8 @@ back, so read the group with `log` first if anything in it matters:
 
 ## Being woken
 
-A post wakes each participant it is for once, and not again for that group until it reads. Ten
-messages arriving while an agent works cost it one wake. The wake is one line and never the
+A post wakes each participant it is for once, and not again for that group until it reads or a
+post finds it idle (below). Ten messages arriving while an agent works cost it one wake. The wake is one line and never the
 message:
 
     [muster] review: 3 new (#40-42), 1 to you, from director, critic. Read: muster msg read --group review
@@ -210,6 +210,11 @@ show it yet - the ring ends, and the next post rings afresh.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.
+
+A post to an agent that is idle with an earlier wake unread rings it again, saying everything
+that waits. Its turn ended without reading, or `/new` or `/clear` threw the wake away with its
+session, and nothing else would reach it. A post while a ring is still on its way is left to that
+ring. A post to an agent at work keeps the rule, and the agent is woken once more as it goes idle.
 
 **An urgent post reaches an agent at work.** `post --urgent` is for what should change what an
 agent is doing now, not once it is done:

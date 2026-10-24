@@ -2846,12 +2846,20 @@ impl<S: Store> Messaging<S> {
             .pane
             .as_ref()
             .is_some_and(|pane| presence.doorbell(pane) == Ringable::AgentToCome);
+        // Woken already says it will read this too, which an agent idle in its pane will not: the
+        // turn its wake started has ended without reading, or `/new` or `/clear` threw the wake
+        // away with its session, and nothing reports that. So a post to it starts a new batch.
+        let idle_in_pane = matches!(via, Ok(Via::Pane(_)))
+            && matches!(presence.activity(participant), Some(Activity::Idle | Activity::Waiting));
         if participant.woken.contains(group)
             && !urgent
             && via.is_ok()
             && (to_come || presence.alive(participant))
         {
-            return Reach::AlreadyWoken;
+            if !idle_in_pane {
+                return Reach::AlreadyWoken;
+            }
+            participant.rewoken.remove(group);
         }
         // Mid-turn, its next PostToolUse hook reads this; at the turn's end its Stop hook is told.
         if hooked {

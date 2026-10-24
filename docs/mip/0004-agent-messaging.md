@@ -324,6 +324,15 @@ so Claude Code's filter for identical repeats keeps it. It needs presence, so it
 one wake. Every wake an agent acts on is a turn it pays for, so this rule and the ring set are
 what bound a group's cost.
 
+**A post to an idle agent woken already starts a new batch.** Added 2026-10-24: a post that finds
+its addressee woken and not since read, with its agent idle in its pane, wakes it again rather
+than counting it woken. Woken already means the agent will read this too, which holds while it
+works and while a ring is on its way, and not for an agent idle at its prompt: its turn ended
+without reading, or `/new` or `/clear` threw the wake away with its session, and no harness says
+so - Codex reports a new session only with its first prompt. An idle agent costs a turn per post
+that way; one at work still costs one wake for any number of posts, and the host leaves a post to
+a ring already on its way.
+
 **The wake text is a notice, not the message:**
 
 ```
@@ -1250,3 +1259,5 @@ bind.
   woken once more or the posters told why by `@muster`, once (section 16).
 - 2026-10-17 A stall is one unread message: a member that works a turn without reading it is not
   told of twice (section 16).
+- 2026-10-24 A post to an agent idle and woken already wakes it again, as a new batch (section
+  5): after Codex's `/new`, a brief sat unread for nine minutes behind "already woken".
