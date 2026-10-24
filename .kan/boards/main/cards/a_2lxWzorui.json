@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1792635016526,
   "creator": "Alexander Terp",
   "description": "From the 10-17 Claude Code sighting on a_2cP6w1lHN (duplicate wakes), traced 2026-10-21. When a ring's Return is lost - behind Claude Code's 'Heads up' banner, for one - its text stays in the prompt, and the next Return anybody presses, or the doorbell's own send_left, sends a wake that is out of date: the agent read the messages meanwhile, and starts a turn for nothing. Proposal: take back (Backspace) a left ring whose group has nothing unread for that agent, instead of sending it. The doorbell already erases a ring typed at work whose message was read before its Return (doorbell.rs module doc); this extends that to a ring left at an idle prompt. Related: the feedback board's a_2iUefqPcQ (a late urgent ring).",
   "id": "a_2lxWzorui",
-  "position": "b1G",
+  "position": "Zr",
   "title": "A ring left in a Claude Code prompt is sent after its messages were read",
   "type": "bug",
-  "updated_at_millis": 1792635016526,
+  "updated_at_millis": 1792848464290,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792635016526}
+    {"field":"column","value":"backlog-hi","at":1792635016526},
+    {"field":"column","value":"in-progress","at":1792848464290}
   ]
 }
