@@ -401,6 +401,17 @@ pub(crate) fn handle(
     naming_the_panes(shared, reply, &panes)
 }
 
+/// Refuses a `msg` request that came through a harness's server, which cannot say which pane it
+/// is from: acted on, it would post and read as whichever session started that server.
+pub(crate) fn through_server(
+    request: &proto::MsgRequest,
+    server: &crate::attribution::Server,
+) -> Reply {
+    let pane = request.caller.as_ref().and_then(|caller| caller.pane.as_deref()).unwrap_or("");
+    crate::attribution::request_through_server(pane, server);
+    refused_as("", "shared_server", &server.refusal(crate::attribution::Asked::Request))
+}
+
 /// The answer, saying what each participant named after its pane is called, for it to be shown
 /// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one. An
 /// answer carried from another machine already says what that machine calls its names.

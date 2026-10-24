@@ -15,7 +15,7 @@ use muster_daemon_proto::{self as proto, messaging, session_request};
 use muster_harness::requests::{
     beside, close_request, create, expect, in_new_tab, make, session, snapshot, until_text,
 };
-use muster_harness::{Daemon, Input};
+use muster_harness::{Daemon, Input, until_some};
 use serde_json::Value;
 
 fn muster(daemon: &Daemon, arguments: &[&str]) -> Output {
@@ -540,6 +540,53 @@ fn a_post_to_an_agent_whose_pane_closed_is_unheard() {
         unheard(&muster(&daemon, &["msg", "--as", "lead", "post", "--to", "p1", "more"])),
         format!("posted #5 to {pair}\nnot woken: {word} (p1, no agent in its pane)")
     );
+}
+
+/// A `muster msg` run under an agent's server is refused, saying which server and what to do: the
+/// server runs every session's commands with the environment of the one that started it, as
+/// Codex's shared app-server does, so the pane it names is no more its pane than any other. A
+/// post taken would be p1's, and a read would hand p1's messages to whichever session asked.
+#[test]
+fn a_msg_request_through_an_agents_server_is_refused_and_says_what_to_do() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    daemon.run_agent("p1");
+    daemon.run_agent("p2");
+    let home = daemon.root().join("home");
+    let served = |line: &str, count: usize| {
+        let cli = env!("CARGO_BIN_EXE_muster");
+        daemon.type_into("p1", &format!("served-run {cli} {line}"));
+        let reported = until_some(&format!("{count} commands through the server"), || {
+            let reported = std::fs::read_to_string(home.join("fake-agent-reported")).ok()?;
+            let lines: Vec<String> = reported.lines().map(str::to_string).collect();
+            (lines.len() >= count).then_some(lines)
+        });
+        let said = std::fs::read_to_string(home.join("fake-agent-served-said")).unwrap_or_default();
+        (reported[count - 1].clone(), said)
+    };
+
+    for (count, line) in [(1, "msg post --to p2 hello"), (2, "msg read")] {
+        let (status, said) = served(line, count);
+        assert_eq!(status, "served 1", "`{line}` through the server was taken: {said}");
+        assert!(said.contains("this request came through `claude serve`"), "{said}");
+        assert!(said.contains("run the fake agent without its server"), "{said}");
+    }
+
+    // p1's own post, not through the server, is the pair group's first: nothing was posted for it.
+    let word = words(&daemon)["p2"].clone();
+    let as_p1 = Command::new(env!("CARGO_BIN_EXE_muster"))
+        .args(["msg", "post", "--to", &word, "hello"])
+        .env_clear()
+        .env("HOME", std::env::temp_dir())
+        .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+        .env("MUSTER_PANE", "p1")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the muster binary runs");
+    let posted = ok(&as_p1);
+    assert!(posted.starts_with("posted #4 to "), "{posted}");
 }
 
 /// The preset a directed council is convened with (MIP-4, section 8).

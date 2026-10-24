@@ -42,9 +42,10 @@
 # Bash tool starts a `claude -p` whose hooks report. `served <args>` starts a copy as
 # `claude serve`, the subcommand fake-agent/claude.toml names as its server, in a process group
 # of its own, which runs the report the same way, as Codex's shared app-server runs its hooks.
-# Each appends `hook <status>`, `nested <status>` or `served <status>` to
-# $HOME/fake-agent-reported once the report has answered, and the server's report also leaves
-# what it printed in $HOME/fake-agent-served-said.
+# `served-run <command...>` has that server run any command instead, as the app-server runs an
+# agent's `muster msg`. Each appends `hook <status>`, `nested <status>` or `served <status>` to
+# $HOME/fake-agent-reported once its command has answered, and what the server ran also leaves
+# what it printed on stderr in $HOME/fake-agent-served-said.
 #
 # Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
@@ -78,6 +79,13 @@ if [ "$1" = nested-report ]; then
 fi
 
 # The copy `served` starts, as the agent's server: it reports and leaves, painting nothing.
+# Started with `run` after `serve`, it runs the command that follows instead of a report.
+if [ "$1" = serve ] && [ "$2" = run ]; then
+    shift 2
+    "$@" >/dev/null 2>"$HOME/fake-agent-served-said"
+    printf 'served %s\n' "$?" >> "$HOME/fake-agent-reported"
+    exit 0
+fi
 if [ "$1" = serve ]; then
     shift
     sh -c '"$MUSTER_DAEMON" report "$@" >/dev/null 2>"$HOME/fake-agent-served-said"' report "$@"
@@ -189,6 +197,12 @@ while :; do
             set -m
             # shellcheck disable=SC2086
             "$0" nested-report ${line#nested } &
+            wait $!
+            set +m ;;
+        served-run\ *)
+            set -m
+            # shellcheck disable=SC2086
+            "$0" serve run ${line#served-run } &
             wait $!
             set +m ;;
         served\ *)

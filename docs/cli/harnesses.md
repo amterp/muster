@@ -161,8 +161,8 @@ since Claude Code takes a statusline only from its settings.
 
 Codex runs a hook only once you trust it, in `/hooks`. Left on, `daemon_auto_start` runs every Codex
 session's commands and hooks in one app-server that carries the first session's pane, and Muster
-refuses every report that comes through it (`muster docs limits`); `codex features enable
-daemon_auto_start` turns it back on, at the cost of those reports. An app-server already running
+refuses every report and `muster msg` request that comes through it (`muster docs limits`);
+`codex features enable daemon_auto_start` turns it back on, at the cost of those. An app-server already running
 still takes new sessions until `codex app-server daemon stop`, which install leaves to you because
 it ends the sessions running there. Codex installs a copy of the plugin, recorded against the
 resolved path of `<extras>`, so run the install again after updating Muster: it first removes a

@@ -236,9 +236,12 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         let sender = sender_of(peer, request.service.as_ref(), shared);
         let handled = match request.service {
             // Outside the session's lock: messages have their own (crate::messages).
-            Some(Service::Msg(request)) => {
-                Handled::Reply(messages::handle(shared, request, &|| hung_up(&stream)))
-            }
+            Some(Service::Msg(request)) => Handled::Reply(match &sender {
+                Some(attribution::Sender::Server(server)) => {
+                    messages::through_server(&request, server)
+                }
+                _ => messages::handle(shared, request, &|| hung_up(&stream)),
+            }),
             Some(service) => {
                 let mut session = locked();
                 match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
@@ -333,24 +336,44 @@ fn handle(
     handled
 }
 
-/// The nearest agent above a report's sender, for a report; read before the session's lock is
-/// taken, since the walk reads the process table a process at a time. Waits briefly for a
-/// starting daemon's manifests, since a hook can report the moment a restarted daemon listens.
+/// The nearest agent or server above the sender of a report, or of a msg request that names a
+/// pane or an inbox; read before the session's lock is taken, since the walk reads the process
+/// table a process at a time. Waits briefly for a starting daemon's manifests, since a hook can
+/// report the moment a restarted daemon listens.
 fn sender_of(
     peer: Option<u32>,
     service: Option<&Service>,
     shared: &Shared,
 ) -> Option<attribution::Sender> {
-    let report = matches!(
-        service,
-        Some(Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }))
-    );
-    let peer = peer.filter(|_| report)?;
+    let asked = attributed(service)?;
+    let peer = peer?;
     let Some(manifests) = shared.detecting.manifests_within(MANIFESTS_PATIENCE) else {
-        attribution::unattributed(peer, MANIFESTS_PATIENCE);
+        if asked == attribution::Asked::Report {
+            attribution::unattributed(peer, MANIFESTS_PATIENCE);
+        }
         return None;
     };
     attribution::sender(peer, &manifests)
+}
+
+/// Whether `service` names who it is from in a way a walk can contradict. A msg request naming
+/// neither a pane nor an inbox is the person's, which nothing here ties to a process, and a peer
+/// daemon's link names neither.
+fn attributed(service: Option<&Service>) -> Option<attribution::Asked> {
+    match service? {
+        Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }) => {
+            Some(attribution::Asked::Report)
+        }
+        Service::Msg(request) => request
+            .caller
+            .as_ref()
+            .filter(|caller| {
+                caller.pane.as_deref().is_some_and(|pane| !pane.is_empty())
+                    || caller.inbox.is_some()
+            })
+            .map(|_| attribution::Asked::Request),
+        _ => None,
+    }
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

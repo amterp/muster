@@ -499,6 +499,11 @@ by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may
 daemon hung up, or another machine never answered), 5 a wait that timed out, 6 a post that woke
 nobody live.
 
+A verb run in a pane acts as that pane's agent, which `$MUSTER_PANE` names. One run under a
+harness's server that runs every session's commands, as Codex's shared app-server does, carries
+the environment of whichever session started the server, so it is refused, naming the server and
+what to do (`muster docs limits`).
+
 ## Across machines
 
 A group is kept on the machine it was made on. While a Muster window is attached to your laptop's

@@ -1923,7 +1923,7 @@ impl Session {
         let sender = match sender {
             crate::attribution::Sender::Server(server) => {
                 crate::attribution::refused_through_server(&report.pane, server);
-                return Some(Reply::refused(server.refusal()));
+                return Some(Reply::refused(server.refusal(crate::attribution::Asked::Report)));
             }
             crate::attribution::Sender::Agent(nearest) => nearest,
         };

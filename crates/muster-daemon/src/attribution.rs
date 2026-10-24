@@ -21,6 +21,10 @@
 //! machine, all with the environment of whichever session started it, and stays its child while
 //! that session runs: walking past it would find that session's agent and file every other
 //! session's reports under its pane (`docs/observations/codex-0.160.0.md`, section 1).
+//!
+//! A `muster msg` request names its pane the same way, and is walked too when it names one. Only
+//! a server refuses it: a nested agent the pane's agent started speaks for that agent, and its
+//! messages are the pane's, where its reports would overwrite the pane's own agent's state.
 
 use std::collections::HashSet;
 use std::os::fd::AsRawFd;
@@ -39,6 +43,22 @@ const DEPTH: usize = 32;
 
 /// How many offending processes are remembered as already logged, before the memory starts over.
 const LOGGED: usize = 256;
+
+/// What a walk is asked about: a report, or a `muster msg` request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Asked {
+    Report,
+    Request,
+}
+
+impl Asked {
+    fn noun(self) -> &'static str {
+        match self {
+            Asked::Report => "report",
+            Asked::Request => "request",
+        }
+    }
+}
 
 /// Who sent a report, as far as a walk up from its sender can say.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,13 +85,18 @@ pub(crate) struct Server {
 }
 
 impl Server {
-    /// Why a report through this server is refused, and what a person does about it.
-    pub(crate) fn refusal(&self) -> String {
+    /// Why what was `asked` through this server is refused, and what a person does about it.
+    pub(crate) fn refusal(&self, asked: Asked) -> String {
         format!(
-            "this report came through `{} {}` (pid {}), which runs the commands and hooks of every \
+            "this {} came through `{} {}` (pid {}), which runs the commands and hooks of every \
              {} session on this machine with the environment of the session that started it, so \
              it cannot say which pane it is from. To fix it, {}",
-            self.agent, self.subcommand, self.pid, self.agent, self.remedy
+            asked.noun(),
+            self.agent,
+            self.subcommand,
+            self.pid,
+            self.agent,
+            self.remedy
         )
     }
 }
@@ -173,16 +198,16 @@ fn own_ancestors() -> &'static HashSet<u32> {
     })
 }
 
-/// Whether a refusal of a report from `pid` is yet to be logged: an agent's hooks report on every
-/// turn, and one line per process says all there is to say.
-fn first_refusal(pid: u32) -> bool {
-    static LOGGED_PIDS: Mutex<Option<HashSet<u32>>> = Mutex::new(None);
+/// Whether a refusal of what was `asked` from `pid` is yet to be logged: an agent's hooks report
+/// on every turn, and one line per process and kind says all there is to say.
+fn first_refusal(pid: u32, asked: Asked) -> bool {
+    static LOGGED_PIDS: Mutex<Option<HashSet<(u32, Asked)>>> = Mutex::new(None);
     let mut logged = poison::lock(&LOGGED_PIDS, "daemon.report.refused");
     let logged = logged.get_or_insert_with(HashSet::new);
     if logged.len() >= LOGGED {
         logged.clear();
     }
-    logged.insert(pid)
+    logged.insert((pid, asked))
 }
 
 /// Logs a report taken unattributed because the manifests had not loaded after `waited`, once
@@ -211,7 +236,7 @@ pub(crate) fn unattributed(sender: u32, waited: Duration) {
 
 /// Logs a report refused because `nearest` sent it, once per process.
 pub(crate) fn refused(pane: &str, own: &str, nearest: &Nearest) {
-    if !first_refusal(nearest.pid) {
+    if !first_refusal(nearest.pid, Asked::Report) {
         return;
     }
     log::warn(
@@ -234,7 +259,7 @@ pub(crate) fn refused(pane: &str, own: &str, nearest: &Nearest) {
 
 /// Logs a report refused because it came through `server`, once per server.
 pub(crate) fn refused_through_server(pane: &str, server: &Server) {
-    if !first_refusal(server.pid) {
+    if !first_refusal(server.pid, Asked::Report) {
         return;
     }
     log::warn(
@@ -250,6 +275,29 @@ pub(crate) fn refused_through_server(pane: &str, server: &Server) {
             "impact" => "every report through this server is refused, so its sessions' panes are \
                          read off their screens, and an agent's own `report --waiting` fails; \
                          this is logged once per server",
+            "check" => server.remedy,
+        },
+    );
+}
+
+/// Logs a `muster msg` request refused because it came through `server`, once per server.
+pub(crate) fn request_through_server(pane: &str, server: &Server) {
+    if !first_refusal(server.pid, Asked::Request) {
+        return;
+    }
+    log::warn(
+        "msg.request.shared_server",
+        fields! {
+            "pane" => pane,
+            "sender_agent" => server.agent,
+            "server" => format!("{} {}", server.agent, server.subcommand),
+            "server_pid" => server.pid,
+            "why" => "the request came from below a server that runs the work of every session of \
+                      its harness on this machine, with the environment of whichever session \
+                      started it, so the pane it names may not be the one it came from",
+            "impact" => "every msg request through this server is refused, so its sessions neither \
+                         post nor read, and their messaging hooks deliver nothing; this is logged \
+                         once per server",
             "check" => server.remedy,
         },
     );
@@ -402,8 +450,11 @@ mod tests {
                     panic!("report {report} {when} was not stopped at the server");
                 };
                 assert_eq!((server.pid, server.agent.as_str()), (120, "codex"), "{when}");
-                let refusal = server.refusal();
+                let refusal = server.refusal(Asked::Report);
+                assert!(refusal.starts_with("this report came through"), "{refusal}");
                 assert!(refusal.contains("`codex app-server` (pid 120)"), "{refusal}");
+                let request = server.refusal(Asked::Request);
+                assert!(request.starts_with("this request came through"), "{request}");
                 assert!(refusal.contains("codex features disable daemon_auto_start"), "{refusal}");
             }
         }

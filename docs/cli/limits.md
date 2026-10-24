@@ -502,7 +502,8 @@ app-server, even into a pane that has gone or runs no agent, and the refusal nam
 features disable daemon_auto_start`, which `muster harness install codex` runs, turns the app-server
 off for sessions started later, one already running still serves them until `codex app-server daemon
 stop`, and `codex --no-daemon` keeps a single session out of it. `muster msg` run from under the
-app-server still acts as the first session's pane.
+app-server is refused the same way, saying the same: taken, a post would be the first session's,
+and a read would hand the first session's messages to whichever session asked.
 
 ## A closed maker's helpers are listed under Hidden
 

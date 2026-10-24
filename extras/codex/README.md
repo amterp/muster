@@ -104,7 +104,8 @@ With its defaults, Codex 0.160 runs the commands and hooks of every session on t
 `codex app-server` process. The first session starts it, every later one joins it, and it outlives
 the first session, so everything it runs carries the first session's `$MUSTER_PANE`. A hook's
 report, or the model's `report --waiting`, would name the wrong pane, so Muster refuses every
-report that comes through it, and says why.
+report that comes through it, and says why. It refuses `muster msg` through it too, so the
+messaging hooks below deliver nothing to a session in it.
 
 `codex features disable daemon_auto_start`, which the install runs, makes each session run its own
 commands and hooks again; `codex features enable daemon_auto_start` turns it back on. What needs
