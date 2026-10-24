@@ -3,7 +3,7 @@
   "source": "authored",
   "numbers": "f32",
   "citation": "docs/mip/0008-panes-across-machines.md, section 2 (the merge) and \"How it lands\" (why nothing is written for a tab no window has written yet). No oracle sits above these: what the copies add up to is Muster's own policy, decided in that MIP.",
-  "why": "What a tab spanning machines looks like when each machine keeps its own copy of the tab's whole tree. Every daemon holding a part of the tab keeps every pane in it, with the other machines' panes as foreign leaves, and no daemon knows the others exist, so only a window sees every copy. These cases pin the four rules that turn the copies into one tree and say which copies to write back.\n\nA tree is written `columns(a@laptop, x@devenv@0.5)`: each pane with the machine running it, and each split's share after its second child. A copy is written as its daemon's test harness writes one, `[a|~x@devenv 0.50]`, where `~x@devenv` is a pane this machine keeps in place without running. A write reads `devenv 2<-1 <copy>`: the machine, the generation it leaves the tab at, the generation it was worked out from, and the copy it sends.",
+  "why": "What a tab spanning machines looks like when each machine keeps its own copy of the tab's whole tree. Every daemon holding a part of the tab keeps every pane in it, with the other machines' panes as foreign leaves, and no daemon knows the others exist, so only a window sees every copy. These cases pin the four rules that turn the copies into one tree and say which copies to write back.\n\nA tree is written `columns(a@laptop, x@devenv@0.5)`: each pane with the machine running it, and each split's share after its second child. A copy is written as its daemon's test harness writes one, `[a|~x@devenv 0.50]`, where `~x@devenv` is a pane this machine keeps in place without running. A write reads `devenv 2<-1 <copy>`: the machine, the generation it leaves the tab at, the generation it was worked out from, and the copy it sends. The cases with a change pin what a window writes when somebody rearranges such a tab: the change is worked out on the merged tree and every part that can take it is written one generation above the newest copy, since a part holding foreign leaves refuses a change asked of it alone (MIP-8, section 3). A change is written `ratio <turns> <ratio>`, `resize <pane> <side> [fraction]`, `swap <pane> <with>`, `zoom <pane>` or `even <pane> <scope>`.",
   "cases": [
     {
       "name": "a tab no window has written is its parts side by side, and nothing is written",
@@ -211,6 +211,195 @@
         "tree": "columns(a@laptop, x@devenv@0.5)",
         "zoomed": null,
         "writes": []
+      }
+    },
+    {
+      "name": "a divider moved in a tab spanning machines is written to every part, one above the newest copy",
+      "why": "Somebody dragged the line between the laptop's panes and the devenv's. Each part holds the whole tree, so the new ratio goes to both, as one tree each. The laptop's copy is the newest, at generation 2, and the devenv's lags at 1; the change leaves both at 3, each write naming the generation its own copy was at, so a part that moved on meanwhile refuses it rather than losing what it did.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 2, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "ratio - 0.25"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.25)",
+        "zoomed": null,
+        "writes": [
+          "laptop 3<-2 columns(rows(a, b@0.5), ~x@devenv@0.25)",
+          "devenv 3<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.25)"
+        ]
+      }
+    },
+    {
+      "name": "a divider is named by the turns down the tab's whole tree",
+      "why": "The path is read in the tree every machine's panes are drawn in, not in one machine's part of it: second-then-nothing from the root would be x, a pane, so the split between a and b is first from the root. The devenv does not run a or b and still gets the new ratio, since its copy keeps them in place.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "ratio first 0.75"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.75), x@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.75), ~x@devenv@0.5)",
+          "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.75), x@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a divider that is not there is refused, and nothing is written",
+      "why": "first then first from the root is the pane a, so there is no split to move. A drag computed against a tree that has since changed shape lands here; writing nothing is what the next merge expects.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "ratio first,first 0.4"
+      },
+      "expect": {
+        "refused": "the tab's tree has no split at [First, First]"
+      }
+    },
+    {
+      "name": "a resize across machines moves the divider a daemon would have moved in its own tree",
+      "why": "b, on the laptop, grows to the right: the nearest split with b on its left is the column split between the laptop's panes and the devenv's, so that is the one that moves, by the share asked for. It is the rule a daemon applies to its own tree, shared with it, so a chord does the same in a tab on one machine and a tab across two.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "resize b right 0.25"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.75)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.5), ~x@devenv@0.75)",
+          "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.75)"
+        ]
+      }
+    },
+    {
+      "name": "a resize with no divider on its axis is refused",
+      "why": "x fills the whole height of the tab, so there is nothing above or below it to move.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "resize x down"
+      },
+      "expect": {
+        "refused": "no split on that axis holds x, so there is no divider to move"
+      }
+    },
+    {
+      "name": "two panes trade places, and each keeps its machine",
+      "why": "Swapping a and b changes where each sits in the tree and nothing about which machine runs it, so every copy is told the exchange.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "swap a b"
+      },
+      "expect": {
+        "tree": "columns(rows(b@laptop, a@laptop@0.5), x@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(b, a@0.5), ~x@devenv@0.5)",
+          "devenv 2<-1 columns(rows(~b@laptop, ~a@laptop@0.5), x@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a zoom on one machine's pane is written to every part",
+      "why": "The zoom is part of the tree, so the laptop records a zoom on x though it does not run x: a window that can reach only the laptop still knows what fills the tab.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "zoom x"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)",
+        "zoomed": "x",
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.5), ~x@devenv@0.5) zoomed x",
+          "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.5) zoomed x"
+        ]
+      }
+    },
+    {
+      "name": "zooming the zoomed pane puts the tab back",
+      "why": "One key zooms and the same key unzooms, as it does in a tab on one machine.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"], "zoomed": "x" },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"], "zoomed": "x" }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "zoom x"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.5), ~x@devenv@0.5)",
+          "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a part that cannot take a write is left to catch up later",
+      "why": "The devenv is still restoring, so only the laptop is written. Its copy is then the newest, and the devenv is caught up from it once it has finished, as any lagging part is.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"], "writable": false }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "change": "zoom a"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)",
+        "zoomed": "a",
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.5), ~x@devenv@0.5) zoomed a"
+        ]
+      }
+    },
+    {
+      "name": "evening out a tab spanning machines evens every pane in it, whatever machine runs it",
+      "why": "Three panes, two on the laptop and one on the devenv, each end with a third of the tab: the column split gives the laptop's side two shares to the devenv's one.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/b 0.50]|~x@devenv 0.50]", "generation": 1, "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[[~a@laptop/~b@laptop 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "even a tab"
+      },
+      "expect": {
+        "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.6666667)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(rows(a, b@0.5), ~x@devenv@0.6666667)",
+          "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.6666667)"
+        ]
       }
     }
   ]

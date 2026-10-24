@@ -12,8 +12,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::{DaemonId, MusterTab};
+use crate::equalize::{self, Evenly};
+use crate::intent::{Branch, Side};
 use crate::mirror::Mirror;
-use crate::mirror::backend::{CopyNode, Health, PaneId, SplitAxis};
+use crate::mirror::backend::{CopyNode, Health, LayoutNode, PaneId, SplitAxis};
+use crate::resize;
 
 /// A tab's tree over every machine it spans, each leaf naming the machine running its pane.
 #[derive(Debug, Clone, PartialEq)]
@@ -273,6 +276,132 @@ fn added(tree: SpanNode, pane: &PaneId, part: &Part, named: &BTreeSet<PaneId>) -
     }
 }
 
+/// A change to a tab's arrangement, worked out on the tab's whole tree rather than asked of one
+/// machine: a part holding other machines' panes refuses those requests, since a change it made
+/// on its own would race the window's next write (MIP-8, section 3).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// The split at `path`, in the tab's whole tree as a window draws it, to `ratio`.
+    Ratio { path: Vec<Branch>, ratio: f32 },
+    /// The divider nearest `pane` toward `side`, by the rule a daemon resizes its own tree by.
+    Resize { pane: PaneId, side: Side, fraction: Option<f32> },
+    /// Two panes trading places.
+    Swap { pane: PaneId, with: PaneId },
+    /// `pane` filling the tab, or nothing zoomed when it already does.
+    Zoom { pane: PaneId },
+    /// The panes around `pane` evened out, as [`equalize::dividers`] has it.
+    Even { pane: PaneId, evenly: Evenly },
+}
+
+/// Whether a tab's arrangement is written as one tree: some part's copy holds another machine's
+/// pane, so the parts refuse a change asked of one machine and every change goes through
+/// [`rearrange`].
+pub fn written<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
+    tab.regions().any(|region| {
+        mirror(&region.daemon)
+            .and_then(|held| held.tab(&tab.id))
+            .is_some_and(|layout| layout.copy.has_foreign())
+    })
+}
+
+/// The tab merged as [`merge`] has it, with `change` made to it and written to every part that
+/// can take it, one generation above the newest copy. A change that leaves the tree as it was
+/// writes only what the merge would have.
+///
+/// Refused, saying why, when the change names a pane or a split the tree does not hold, or no
+/// part can take a write.
+pub fn rearrange(
+    parts: &[Part],
+    settled: &BTreeMap<DaemonId, bool>,
+    change: &Change,
+) -> Result<Merged, String> {
+    let merged = merge(parts, settled).ok_or("the tab has no part on any machine")?;
+    let written = parts.iter().map(|part| part.generation).max().unwrap_or_default();
+    let (tree, zoomed) = changed(&merged.tree, merged.zoomed.as_ref(), change)?;
+    if tree == merged.tree && zoomed == merged.zoomed {
+        return Ok(merged);
+    }
+    let generation = written + 1;
+    let writes: Vec<Write> = parts
+        .iter()
+        .filter(|part| part.writable)
+        .map(|part| Write {
+            daemon: part.daemon.clone(),
+            root: tree.copy_for(&part.daemon),
+            zoomed: zoomed.clone(),
+            generation,
+            based_on: part.generation,
+        })
+        .collect();
+    if writes.is_empty() {
+        return Err("no machine holding a part of the tab can take its tree just now: each is \
+                    unreachable, still restoring, stopping, or too old to hold one"
+            .to_string());
+    }
+    Ok(Merged { tree, zoomed, writes })
+}
+
+fn changed(
+    tree: &SpanNode,
+    zoomed: Option<&PaneId>,
+    change: &Change,
+) -> Result<(SpanNode, Option<PaneId>), String> {
+    let named = |pane: &PaneId| {
+        if tree.leaves().iter().any(|(leaf, _)| *leaf == pane) {
+            Ok(())
+        } else {
+            Err(format!("the tab's tree holds no pane {pane}"))
+        }
+    };
+    let zoomed = zoomed.cloned();
+    match change {
+        Change::Ratio { path, ratio } => {
+            let Some(SpanNode::Split { .. }) = tree.at(path) else {
+                return Err(format!("the tab's tree has no split at {path:?}"));
+            };
+            Ok((tree.with_ratio(path, *ratio)?, zoomed))
+        }
+        Change::Resize { pane, side, fraction } => {
+            named(pane)?;
+            let turns = tree.turns_to(pane).unwrap_or_default();
+            let Some(depth) = resize::divider(&turns, *side) else {
+                return Err(format!(
+                    "no split on that axis holds {pane}, so there is no divider to move"
+                ));
+            };
+            let path: Vec<Branch> = turns[..depth].iter().map(|turn| turn.branch).collect();
+            let Some(SpanNode::Split { ratio, .. }) = tree.at(&path) else {
+                unreachable!("the depth was chosen because a split is there")
+            };
+            match resize::stepped(*ratio, *side, *fraction) {
+                Some(moved) => Ok((tree.with_ratio(&path, moved)?, zoomed)),
+                None => Ok((tree.clone(), zoomed)),
+            }
+        }
+        Change::Swap { pane, with } => {
+            named(pane)?;
+            named(with)?;
+            Ok((tree.swapped(pane, with), zoomed))
+        }
+        Change::Zoom { pane } => {
+            named(pane)?;
+            let unzooming = zoomed.as_ref() == Some(pane);
+            Ok((tree.clone(), (!unzooming).then(|| pane.clone())))
+        }
+        Change::Even { pane, evenly } => {
+            named(pane)?;
+            let dividers = equalize::dividers(&tree.layout(), pane, *evenly).ok_or_else(|| {
+                format!("the pane {pane} sits in no {} that could be evened out", evenly.as_str())
+            })?;
+            let mut evened = tree.clone();
+            for divider in dividers {
+                evened = evened.with_ratio(&divider.path, divider.ratio)?;
+            }
+            Ok((evened, zoomed))
+        }
+    }
+}
+
 /// Where a pane sits in a copy: the split holding it, whether it is that split's first child,
 /// and the other child.
 struct Beside<'a> {
@@ -399,6 +528,101 @@ impl SpanNode {
                 ratio: *ratio,
                 first: Box::new(first.copy_for(daemon)),
                 second: Box::new(second.copy_for(daemon)),
+            },
+        }
+    }
+
+    /// The way down to `pane`: each split's axis and the child taken there.
+    fn turns_to(&self, pane: &PaneId) -> Option<Vec<resize::Turn>> {
+        match self {
+            SpanNode::Pane { pane: leaf, .. } => (leaf == pane).then(Vec::new),
+            SpanNode::Split { axis, first, second, .. } => {
+                for (branch, child) in [(Branch::First, first), (Branch::Second, second)] {
+                    if let Some(mut turns) = child.turns_to(pane) {
+                        turns.insert(0, resize::Turn { branch, axis: *axis });
+                        return Some(turns);
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    fn at(&self, path: &[Branch]) -> Option<&SpanNode> {
+        let Some((step, rest)) = path.split_first() else { return Some(self) };
+        match (self, step) {
+            (SpanNode::Split { first, .. }, Branch::First) => first.at(rest),
+            (SpanNode::Split { second, .. }, Branch::Second) => second.at(rest),
+            (SpanNode::Pane { .. }, _) => None,
+        }
+    }
+
+    /// This tree with the split at `path` at `ratio`.
+    fn with_ratio(&self, path: &[Branch], ratio: f32) -> Result<SpanNode, String> {
+        if !(ratio.is_finite() && ratio > 0.0 && ratio < 1.0) {
+            return Err(format!("a ratio is strictly between 0 and 1, and {ratio} is not"));
+        }
+        match (self, path.split_first()) {
+            (SpanNode::Split { axis, first, second, .. }, None) => Ok(SpanNode::Split {
+                axis: *axis,
+                ratio,
+                first: first.clone(),
+                second: second.clone(),
+            }),
+            (SpanNode::Split { axis, ratio: held, first, second }, Some((step, rest))) => {
+                let (first, second) = match step {
+                    Branch::First => (Box::new(first.with_ratio(rest, ratio)?), second.clone()),
+                    Branch::Second => (first.clone(), Box::new(second.with_ratio(rest, ratio)?)),
+                };
+                Ok(SpanNode::Split { axis: *axis, ratio: *held, first, second })
+            }
+            (SpanNode::Pane { .. }, _) => Err(format!("the tab's tree has no split at {path:?}")),
+        }
+    }
+
+    /// This tree with `one` and `other` in each other's places, each leaf keeping its machine.
+    fn swapped(&self, one: &PaneId, other: &PaneId) -> SpanNode {
+        let leaf = |pane: &PaneId| {
+            self.leaves()
+                .into_iter()
+                .find(|(leaf, _)| *leaf == pane)
+                .map(|(pane, daemon)| SpanNode::Pane { pane: pane.clone(), daemon: daemon.clone() })
+        };
+        let (Some(first), Some(second)) = (leaf(one), leaf(other)) else { return self.clone() };
+        self.mapped(&|pane| {
+            if pane == one {
+                Some(second.clone())
+            } else if pane == other {
+                Some(first.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    /// This tree with each leaf `swap` answers for put in its place.
+    fn mapped(&self, swap: &impl Fn(&PaneId) -> Option<SpanNode>) -> SpanNode {
+        match self {
+            SpanNode::Pane { pane, .. } => swap(pane).unwrap_or_else(|| self.clone()),
+            SpanNode::Split { axis, ratio, first, second } => SpanNode::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(first.mapped(swap)),
+                second: Box::new(second.mapped(swap)),
+            },
+        }
+    }
+
+    /// The tree with each leaf a pane alone, which is how a daemon's own tree is shaped: pane ids
+    /// are unique across machines, so the arithmetic written for one machine's tree reads it.
+    fn layout(&self) -> LayoutNode {
+        match self {
+            SpanNode::Pane { pane, .. } => LayoutNode::Pane(pane.clone()),
+            SpanNode::Split { axis, ratio, first, second } => LayoutNode::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(first.layout()),
+                second: Box::new(second.layout()),
             },
         }
     }

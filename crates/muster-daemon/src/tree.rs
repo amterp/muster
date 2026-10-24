@@ -4,6 +4,10 @@
 //! draws it at whatever size its window is, and nobody reconstructs a shape from coordinates
 //! (MIP-3, section 2). Pure: nothing here knows a PTY exists.
 
+use muster_core::intent;
+use muster_core::mirror::backend::SplitAxis;
+use muster_core::resize;
+
 /// How a split divides its area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -34,6 +38,25 @@ impl Side {
     fn is_after(self) -> bool {
         matches!(self, Side::Right | Side::Down)
     }
+
+    /// The core's word for it, whose resize rule this tree shares with a window's.
+    fn shared(self) -> intent::Side {
+        match self {
+            Side::Left => intent::Side::Left,
+            Side::Right => intent::Side::Right,
+            Side::Up => intent::Side::Up,
+            Side::Down => intent::Side::Down,
+        }
+    }
+}
+
+impl Axis {
+    fn shared(self) -> SplitAxis {
+        match self {
+            Axis::Columns => SplitAxis::Columns,
+            Axis::Rows => SplitAxis::Rows,
+        }
+    }
 }
 
 /// Which child a step down the tree takes.
@@ -41,6 +64,15 @@ impl Side {
 pub(crate) enum Branch {
     First,
     Second,
+}
+
+impl Branch {
+    fn shared(self) -> intent::Branch {
+        match self {
+            Branch::First => intent::Branch::First,
+            Branch::Second => intent::Branch::Second,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -73,15 +105,6 @@ pub(crate) enum Resized {
     NoDivider,
     Absent,
 }
-
-/// How far one resize moves a divider when the request does not say.
-const DEFAULT_STEP: f32 = 0.05;
-/// The most one resize moves a divider, and the closest a divider comes to either edge.
-///
-/// herdr's figures (`observations/herdr-0.8.0.md` section 19), kept so a resize chord moves the
-/// divider as far as it did before the daemon changed.
-const LARGEST_STEP: f32 = 0.5;
-const NEAREST_EDGE: f32 = 0.1;
 
 impl Node {
     pub(crate) fn contains(&self, pane: &str) -> bool {
@@ -234,26 +257,25 @@ impl Node {
     /// is on. `fraction` is a share of that split's area.
     pub(crate) fn resize(&mut self, pane: &str, direction: Side, fraction: Option<f32>) -> Resized {
         let Some(path) = self.path_to(pane) else { return Resized::Absent };
-        let axis = direction.axis();
-        let toward = if direction.is_after() { Branch::First } else { Branch::Second };
-        let ancestors = |taking: Branch| {
-            (0..path.len()).rev().find(|&depth| {
-                path[depth] == taking
-                    && matches!(self.at(&path[..depth]), Some(Node::Split { axis: found, .. }) if *found == axis)
+        let turns: Vec<resize::Turn> = path
+            .iter()
+            .enumerate()
+            .filter_map(|(depth, branch)| match self.at(&path[..depth]) {
+                Some(Node::Split { axis, .. }) => {
+                    Some(resize::Turn { branch: branch.shared(), axis: axis.shared() })
+                }
+                _ => None,
             })
-        };
-        let Some(depth) = ancestors(toward).or_else(|| ancestors(opposite(toward))) else {
+            .collect();
+        let Some(depth) = resize::divider(&turns, direction.shared()) else {
             return Resized::NoDivider;
         };
-        let step = fraction.unwrap_or(DEFAULT_STEP).abs().min(LARGEST_STEP);
         let Some(Node::Split { ratio, .. }) = self.at_mut(&path[..depth]) else {
             unreachable!("the depth was chosen because a split is there")
         };
-        let moved = if direction.is_after() { *ratio + step } else { *ratio - step };
-        let moved = moved.clamp(NEAREST_EDGE, 1.0 - NEAREST_EDGE);
-        if (moved - *ratio).abs() <= f32::EPSILON {
+        let Some(moved) = resize::stepped(*ratio, direction.shared(), fraction) else {
             return Resized::AtLimit;
-        }
+        };
         *ratio = moved;
         Resized::Moved
     }
@@ -295,13 +317,6 @@ impl Node {
 
 fn split(axis: Axis, ratio: f32, first: Node, second: Node) -> Node {
     Node::Split { axis, ratio, first: Box::new(first), second: Box::new(second) }
-}
-
-fn opposite(branch: Branch) -> Branch {
-    match branch {
-        Branch::First => Branch::Second,
-        Branch::Second => Branch::First,
-    }
 }
 
 #[cfg(test)]

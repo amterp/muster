@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::support::backend::{read_copy, text};
 use conformance::{Conformance, fields};
 use muster_core::composition::DaemonId;
+use muster_core::equalize::Evenly;
+use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::PaneId;
-use muster_core::spanning::{self, Part, Write};
+use muster_core::spanning::{self, Change, Merged, Part, Write};
 use serde_json::{Value, json};
 
 #[test]
@@ -24,7 +26,17 @@ fn spanning_conformance() {
             .flatten()
             .map(|(daemon, settled)| (DaemonId::new(daemon), settled.as_bool().unwrap_or_default()))
             .collect();
-        let merged = spanning::merge(&parts, &settled);
+        let merged: Result<Option<Merged>, String> = match given
+            .get("change")
+            .and_then(Value::as_str)
+        {
+            Some(change) => spanning::rearrange(&parts, &settled, &read_change(change)).map(Some),
+            None => Ok(spanning::merge(&parts, &settled)),
+        };
+        let merged = match merged {
+            Ok(merged) => merged,
+            Err(refused) => return Ok(fields([("refused", Some(json!(refused)))])),
+        };
         Ok(fields([
             (
                 "tree",
@@ -82,4 +94,38 @@ fn described(write: &Write) -> String {
     let zoomed =
         write.zoomed.as_ref().map(|zoomed| format!(" zoomed {zoomed}")).unwrap_or_default();
     format!("{} {}<-{} {}{zoomed}", write.daemon, write.generation, write.based_on, write.root)
+}
+
+/// A change as the cases spell one: `ratio <turns> <ratio>`, with the turns `first,second` from the
+/// root and `-` for the root itself; `resize <pane> <side> [fraction]`; `swap <pane> <with>`;
+/// `zoom <pane>`; `even <pane> <tab|row|column>`.
+fn read_change(text: &str) -> Change {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let number = |word: &str| word.parse::<f32>().expect("a number");
+    match words.as_slice() {
+        ["ratio", turns, ratio] => Change::Ratio {
+            path: turns
+                .split(',')
+                .filter(|turn| *turn != "-")
+                .map(|turn| match turn {
+                    "first" => Branch::First,
+                    "second" => Branch::Second,
+                    other => panic!("{other} is not a turn"),
+                })
+                .collect(),
+            ratio: number(ratio),
+        },
+        ["resize", pane, side, rest @ ..] => Change::Resize {
+            pane: PaneId::new(*pane),
+            side: Side::parse(side).expect("a side"),
+            fraction: rest.first().map(|fraction| number(fraction)),
+        },
+        ["swap", pane, with] => Change::Swap { pane: PaneId::new(*pane), with: PaneId::new(*with) },
+        ["zoom", pane] => Change::Zoom { pane: PaneId::new(*pane) },
+        ["even", pane, evenly] => Change::Even {
+            pane: PaneId::new(*pane),
+            evenly: Evenly::parse(evenly).expect("a scope"),
+        },
+        _ => panic!("{text} is not a change"),
+    }
 }

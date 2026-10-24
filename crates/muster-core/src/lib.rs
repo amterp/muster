@@ -31,6 +31,7 @@ pub mod pane_focus;
 pub mod pane_text;
 pub mod problems;
 pub mod reconnect;
+pub mod resize;
 pub mod respawn;
 pub mod roster;
 pub mod spanning;
