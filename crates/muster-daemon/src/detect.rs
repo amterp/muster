@@ -399,6 +399,13 @@ impl Detection {
         self.due = now;
     }
 
+    /// A Return or Esc somebody typed, ticked on at once: at a dialog the pane reads as blocked,
+    /// it reads working from now until the screen shows what came of it.
+    pub(crate) fn answered(&mut self, now: Instant) {
+        self.detector.answered(now);
+        self.due = now;
+    }
+
     /// Every chunk of the pane's output, in order.
     pub(crate) fn observe(&mut self, bytes: &[u8]) {
         self.progress.observe(bytes);

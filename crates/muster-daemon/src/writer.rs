@@ -144,6 +144,12 @@ impl Input {
         }
     }
 
+    /// Whether somebody typed this at the keyboard, or `pane send` did: what can answer a dialog.
+    /// Not a paste, the pointer's, or the doorbell's, which never types at a dialog.
+    fn is_keyed(&self) -> bool {
+        matches!(self, Input::Bound(_) | Input::Key(_) | Input::Send { .. } | Input::Press(_))
+    }
+
     /// Whether this is the pointer's: a click, a drag, a move or a wheel turn.
     fn is_pointer(&self) -> bool {
         matches!(self, Input::Mouse(_) | Input::Wheel(_))
@@ -186,6 +192,14 @@ impl Input {
             input => vec![(input, false)],
         }
     }
+}
+
+/// Whether keyed input, as written, is a Return or an Esc - alone, or a Return ending a line -
+/// which may answer a dialog. Arrows, Tab, letters and digits do not count: a person typing into a
+/// dialog's text field would otherwise read as answering it at every key. Each key's legacy
+/// encoding and the kitty keyboard protocol's are both read, since a harness may ask for either.
+fn answers(bytes: &[u8]) -> bool {
+    bytes.ends_with(b"\r") || bytes.ends_with(b"\x1b[13u") || bytes == b"\x1b" || bytes == b"\x1b[27u"
 }
 
 /// How long a paced write waits, given when the pane was last written to.
@@ -526,6 +540,7 @@ impl Writer {
         let typed = input.is_typed();
         let someones = input.is_someones_text();
         let by = input.typed_by();
+        let keyed = input.is_keyed();
         // The encoding is released before the write, which can wait on a program that is
         // not reading, so the reader's refresh never waits on it.
         let bytes = self.encode(input);
@@ -544,6 +559,9 @@ impl Writer {
             && let Some(io) = self.io.upgrade()
         {
             io.wrote_line();
+        }
+        if keyed && answers(&bytes) && let Some(io) = self.io.upgrade() {
+            io.answering();
         }
         wrote_input();
         // Only a restart's flush abandons a write part way: it empties the terminal's input as
@@ -1015,6 +1033,18 @@ mod tests {
         assert_eq!(writing.io.input_at(), None, "a reply and a focus report are not typed");
         writing.written(key("a"));
         assert!(writing.io.input_at().is_some(), "a key is typed");
+    }
+
+    /// A Return or an Esc may answer a dialog, in either encoding a harness asks for; a key that
+    /// moves around a dialog or types into it does not, and nor does Shift-Return or a release.
+    #[test]
+    fn a_return_or_an_esc_may_answer_a_dialog_and_other_keys_do_not() {
+        for written in [&b"\r"[..], b"1\r", b"\x1b", b"\x1b[13u", b"\x1b[27u"] {
+            assert!(answers(written), "{written:?}");
+        }
+        for written in [&b"\x1b[B"[..], b"\t", b"x", b"1", b"\x1b[27;2;13~", b"\x1b[13;1:3u"] {
+            assert!(!answers(written), "{written:?}");
+        }
     }
 
     /// A paste bigger than the program reads at once is written in pieces as it reads them, and

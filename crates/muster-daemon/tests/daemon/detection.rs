@@ -975,3 +975,76 @@ fn a_report_from_another_agent_is_not_the_panes_adapter() {
     report_state(&mut control, "codex", proto::AgentState::Working);
     assert_eq!(adapter(&mut control), proto::Adapter::Unsaid);
 }
+
+/// The fake agent at a dialog in p1, and a subscription to what the daemon publishes after it.
+fn at_a_dialog() -> (Daemon, Control) {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent_at_a_dialog("p1");
+    let mut watcher = daemon.connect();
+    expect(&mut watcher, subscribe_request(), proto::Outcome::Done);
+    (daemon, watcher)
+}
+
+/// The states published for p1, a run of the same state counted once, until `last` is, each with
+/// when it was heard.
+fn published_until(
+    watcher: &mut Control,
+    last: proto::AgentState,
+) -> Vec<(proto::AgentState, Instant)> {
+    let deadline = Instant::now() + SETTLE_LIMIT;
+    let mut published: Vec<(proto::AgentState, Instant)> = Vec::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        if let Some(proto::control_message::Message::Event(event)) = watcher.next_message(left)
+            && let Some(proto::event::Event::PaneChanged(changed)) = event.event
+            && let Some(record) = changed.pane.filter(|record| record.pane == "p1")
+        {
+            let state = record.agent_state();
+            if published.last().is_none_or(|(before, _)| *before != state) {
+                published.push((state, Instant::now()));
+            }
+            if state == last {
+                return published;
+            }
+        }
+    }
+    panic!("p1 never read {last:?}; published {published:?}");
+}
+
+fn states(published: &[(proto::AgentState, Instant)]) -> Vec<proto::AgentState> {
+    published.iter().map(|(state, _)| *state).collect()
+}
+
+/// A dialog answered with a Return reads working until the screen shows what came of the key,
+/// and never blocked after it: `pane wait --until idle,blocked` sent just after the key would
+/// otherwise be answered by the dialog the key had closed.
+#[test]
+fn a_dialog_answered_reads_working_and_then_what_follows() {
+    let (daemon, mut watcher) = at_a_dialog();
+    daemon.type_into("p1", "idle");
+    let published = published_until(&mut watcher, proto::AgentState::Idle);
+    assert_eq!(
+        states(&published),
+        [proto::AgentState::Working, proto::AgentState::Idle],
+        "published after the Return"
+    );
+}
+
+/// A Return the agent never takes leaves its dialog as it was, and the pane reads blocked again
+/// once the window for the screen to change has run out.
+#[test]
+fn a_return_lost_at_a_dialog_reads_blocked_again() {
+    let (daemon, mut watcher) = at_a_dialog();
+    // Its own Return is taken; every later one is discarded.
+    daemon.type_into("p1", "heedless");
+    let published = published_until(&mut watcher, proto::AgentState::Blocked);
+    assert_eq!(states(&published), [proto::AgentState::Working, proto::AgentState::Blocked]);
+
+    let key = Instant::now();
+    daemon.type_into("p1", "");
+    let published = published_until(&mut watcher, proto::AgentState::Blocked);
+    assert_eq!(states(&published), [proto::AgentState::Working, proto::AgentState::Blocked]);
+    let blocked_after = published[1].1 - key;
+    assert!(blocked_after >= Duration::from_secs(4), "blocked again {blocked_after:?} after");
+}

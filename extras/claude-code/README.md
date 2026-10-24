@@ -43,7 +43,9 @@ No at a permission prompt fires no hook either. If the rules never read it that 
 once the screen has moved for three seconds running: an approved tool fires no hook until it
 finishes, and a background task can keep the screen busy after `Stop`. Waiting on you that the
 rules do not read yet counts only once the screen has sat still for a second: `PermissionRequest`
-fires while the spinner still runs, before its prompt draws or when none will. `SubagentStart` and `SubagentStop`
+fires while the spinner still runs, before its prompt draws or when none will. Return or Esc at a
+prompt that reads waiting on you reads working until the screen shows what came of it, so the
+waiting on you it answered is not read a moment after. `SubagentStart` and `SubagentStop`
 count sub-agents, and `SessionStart` forgets the last session's facts when a new one starts or
 `/clear` runs. `SessionStart` also reports the session's id, however the session started, which is
 what lets the pane come back running this session after a daemon restart or a reboot

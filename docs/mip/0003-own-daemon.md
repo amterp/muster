@@ -807,6 +807,19 @@ turn's spinner still runs, before the prompt draws, and for an approval nobody i
 where no prompt draws at all. Counted at once, each read blocked for up to three seconds: long
 enough for `pane wait --until blocked` to answer, and for a key sent then to be lost.
 
+A Return or Esc typed into a pane that reads blocked may have answered its dialog, and the screen
+cannot say so until the harness redraws and detection reads it again: up to a tick and a redraw
+later for the rules, and two seconds later for a blocked report they had confirmed. A `pane wait
+--until idle,blocked` sent just after the key was answered by the dialog the key had closed. So
+the pane reads working from the key until a screen whose text differs from the dialog's has been
+read: then what the rules read counts, a blocked report from before the key with it, except that
+a dialog read on the changed screen counts only once a second read finds the same text, since a
+frame part way through the redraw can still hold the dialog's rows. A report after the key ends
+it, and a screen that never changes reads blocked again five seconds after the key, which is a
+Return the harness never took. Text, rather than the count of output, because a harness writes
+escapes over a dialog still drawn. Arrows, Tab, letters and digits do not count: typing into a
+dialog's text field would read as answering it at every key.
+
 While a report counts, its state is published as it stands, with no startup grace and no idle
 debounce, and the pane's record says `state_reported`. The rules still read the screen underneath,
 and take over the moment the report stops counting. herdr arbitrated hooks too; nothing of its

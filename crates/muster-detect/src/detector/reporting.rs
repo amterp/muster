@@ -160,6 +160,20 @@ impl Reporting {
         }
     }
 
+    /// A dialog answered at `at` has gone from the screen: a blocked report from before then
+    /// described it, and stops counting rather than waiting out [`DISAGREE`].
+    pub(crate) fn answered(&mut self, at: Instant) {
+        let before = |report: &Option<SelfReport>| {
+            report.as_ref().is_some_and(|report| report.state == State::Blocked && report.at <= at)
+        };
+        if before(&self.report) {
+            self.report = None;
+        }
+        if before(&self.pending) {
+            self.pending = None;
+        }
+    }
+
     /// The pane's agent changed: what was learned of the last one's screen is no guide.
     pub(crate) fn agent_changed(&mut self) {
         self.reading = None;

@@ -34,6 +34,10 @@ const PENDING_IDLE_CONFIRMATIONS: u8 = 3;
 const PENDING_IDLE_CAP: Duration = Duration::from_millis(700);
 const STARTUP_GRACE: Duration = Duration::from_secs(3);
 
+/// How long a dialog answered reads working when its screen never changes: a key the harness
+/// never took leaves the dialog where it was, and the pane reads blocked again after this.
+const ANSWERED_CAP: Duration = Duration::from_secs(5);
+
 const AGENT_MISS_CONFIRMATION_ATTEMPTS: u8 = 6;
 const PROCESS_RECHECK_IDENTIFIED: Duration = Duration::from_secs(5);
 const PROCESS_RECHECK_MISSING_FOREGROUND_GROUP: Duration = Duration::from_secs(30);
@@ -150,6 +154,9 @@ pub struct Detector {
     /// agent's own report outranks it.
     last_concluded: Option<Publication>,
     reporting: Reporting,
+    /// A Return or Esc typed at a dialog the pane read as blocked, until its screen shows what
+    /// came of it.
+    answered: Option<Answered>,
     /// A reset forgot what was known, so the next tick publishes what it finds, even when it
     /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
     /// manifest would go on showing the old agent's last state.
@@ -193,6 +200,7 @@ impl Detector {
             last_emitted: None,
             last_concluded: None,
             reporting: Reporting::default(),
+            answered: None,
             owed: false,
         }
     }
@@ -217,6 +225,7 @@ impl Detector {
         self.waiting = None;
         self.waiting_since = None;
         self.waited_out = false;
+        self.answered = None;
         self.owed = true;
     }
 
@@ -300,7 +309,20 @@ impl Detector {
     /// ([`reporting`]). Published at the next tick, but for a blocked report the rules do not
     /// read yet, which waits for the screen to sit still ([`reporting::STILL`]).
     pub fn report(&mut self, agent: Agent, state: State, now: Instant) {
+        self.answered = None;
         self.reporting.report(agent, state, now);
+    }
+
+    /// A Return or Esc was typed into the pane at `now`. Typed at a dialog the pane reads as
+    /// blocked, it may have answered it, and the pane reads working from the next tick until its
+    /// screen shows what came of the key: a wait for blocked or idle sent just after the key
+    /// would otherwise be answered by the dialog the key closed. Ended by a report, or after
+    /// [`ANSWERED_CAP`] for a screen that never changes.
+    pub fn answered(&mut self, now: Instant) {
+        if self.last_emitted.as_ref().is_some_and(|emitted| emitted.state == State::Blocked) {
+            let screen = self.last_detection_text.clone();
+            self.answered = Some(Answered { at: now, screen, changed: None });
+        }
     }
 
     /// What the rules last concluded, with the agent's own report laid over it while that counts.
@@ -319,10 +341,14 @@ impl Detector {
         let exited = self.pending_foreground_shell_clear;
         let reported = self.reporting.in_force(agent, exited, now);
         let unreadable = self.reporting.unreadable(agent, reported, now);
-        let state = reported.unwrap_or(concluded.state);
+        let state = if self.answered.is_some() {
+            State::Working
+        } else {
+            reported.unwrap_or(concluded.state)
+        };
         Some(Publication {
             state,
-            reported: reported.is_some(),
+            reported: reported.is_some() && self.answered.is_none(),
             unreadable,
             // A wait the screen shows is only what an idle agent is waiting on: one reported at
             // work is at work, whatever its screen still says.
@@ -339,6 +365,9 @@ impl Detector {
         manifests: &Manifests,
     ) -> Tick {
         let concluded = self.step(now, pane, processes, manifests).or_else(|| self.wait_out(now));
+        if self.answered.as_ref().is_some_and(|answered| now >= answered.at + ANSWERED_CAP) {
+            self.answered = None;
+        }
         if std::mem::take(&mut self.owed) && concluded.is_none() {
             self.conclude(self.presence.current.clone(), self.published.state);
         }
@@ -444,6 +473,7 @@ impl Detector {
         if !process_exited {
             self.reporting.rules(detection.state, detection.rule.is_some(), detection.visible, now);
         }
+        self.weigh_answer(&content, detection.state, process_exited);
         let waiting = self.screen_waits(detection.waiting, now);
         let next = PublishState { state: detection.state, visible: detection.visible };
         if decide_transition(
@@ -608,6 +638,20 @@ impl Detector {
     }
 
     /// Records what the rules concluded, returning it when it changed.
+    /// Weighs a screen read while a dialog answered reads working, which the rules read as
+    /// `read`, and ends that once the screen shows what came of the key. A blocked report from
+    /// before the key goes with it, unless the screen shows a dialog still.
+    fn weigh_answer(&mut self, screen: &str, read: State, exited: bool) {
+        let Some(answered) = self.answered.as_mut() else { return };
+        if !exited && !answered.shown(screen, read) {
+            return;
+        }
+        if read != State::Blocked {
+            self.reporting.answered(answered.at);
+        }
+        self.answered = None;
+    }
+
     fn conclude(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {
         let publication = Publication::concluded(agent, state, self.waiting.clone());
         if self.last_concluded.as_ref() == Some(&publication) {
@@ -623,6 +667,33 @@ impl Detector {
         }
         self.last_emitted = Some(publication.clone());
         Some(publication)
+    }
+}
+
+/// A Return or Esc typed at a dialog, and the screens read since.
+#[derive(Debug)]
+struct Answered {
+    at: Instant,
+    /// The screen the dialog was read from.
+    screen: String,
+    /// The last screen read since, once one has differed from `screen`.
+    changed: Option<String>,
+}
+
+impl Answered {
+    /// Whether a screen read now, which the rules read as `read`, shows what came of the key.
+    ///
+    /// Its text must differ from the dialog's: the content count moves on any output, a cursor
+    /// hidden over a dialog still drawn among it. A changed screen read otherwise than blocked
+    /// shows it at once. One read as blocked shows it once a read finds the same text again,
+    /// since a frame part way through the redraw can still hold the dialog's rows.
+    fn shown(&mut self, screen: &str, read: State) -> bool {
+        if self.changed.is_none() && screen == self.screen {
+            return false;
+        }
+        let still = self.changed.as_deref() == Some(screen);
+        self.changed = Some(screen.to_string());
+        read != State::Blocked || still
     }
 }
 

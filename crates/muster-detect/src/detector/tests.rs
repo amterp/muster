@@ -1475,3 +1475,115 @@ fn an_agent_reported_at_work_waits_on_nothing() {
     let publication = run.until_published(Duration::from_secs(1)).unwrap().1;
     assert_eq!((publication.state, publication.waiting), (State::Working, None));
 }
+
+// ---- a dialog answered ----
+
+impl Run {
+    /// Claude at a dialog the rules read, published blocked.
+    fn at_a_dialog() -> Run {
+        let mut run = Run::new();
+        run.tick();
+        run.start_agent();
+        run.paint("allow?");
+        let (_, publication) = run.until_published(Duration::from_secs(1)).unwrap();
+        assert_eq!(publication.state, State::Blocked);
+        run
+    }
+
+    /// A Return or Esc typed at the dialog, and the tick it brings at once.
+    fn answer(&mut self) -> Option<Publication> {
+        self.detector.answered(self.now);
+        self.tick()
+    }
+}
+
+/// Answered, the pane reads working at once. A screen that still shows the dialog says nothing
+/// yet about what came of the key - the harness may not have redrawn - however often the pane
+/// produces output that leaves its text as it was.
+#[test]
+fn a_dialog_answered_reads_working_until_its_screen_changes() {
+    let mut run = Run::at_a_dialog();
+    assert_eq!(run.answer(), Some(published(Some(claude()), State::Working)));
+    for _ in 0..5 {
+        run.pane.content_seq += 1;
+        assert_eq!(run.tick(), None);
+    }
+}
+
+#[test]
+fn a_dialog_answered_reads_what_its_new_screen_shows() {
+    let mut run = Run::at_a_dialog();
+    run.answer();
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+}
+
+/// A frame part way through the redraw can still hold the dialog's words, so a dialog read on a
+/// changed screen counts once the screen has sat still for a read: a second dialog, drawn after
+/// the first, does.
+#[test]
+fn a_dialog_read_on_a_changed_screen_counts_once_it_sits_still() {
+    let mut run = Run::at_a_dialog();
+    run.answer();
+    run.paint("allow? half drawn");
+    assert_eq!(run.tick(), None);
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+
+    run.paint("allow?");
+    run.until_published(Duration::from_secs(1)).unwrap();
+    run.answer();
+    run.paint("allow? the next question");
+    assert_eq!(run.tick(), None);
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+}
+
+/// A key that changed nothing - a Return the harness never took - reads blocked again once the
+/// window runs out.
+#[test]
+fn a_dialog_whose_screen_never_changes_reads_blocked_again_after_a_while() {
+    let mut run = Run::at_a_dialog();
+    let key = run.now;
+    run.answer();
+    let (_, publication) = run.until_published(ANSWERED_CAP * 2).expect("blocked again");
+    assert_eq!(publication, published(Some(claude()), State::Blocked));
+    let after = run.now - key;
+    assert!(after >= ANSWERED_CAP, "blocked again {after:?} after the key");
+}
+
+/// A blocked report from before the key gives way as soon as the screen shows the dialog gone,
+/// rather than holding the pane blocked while the rules read otherwise.
+#[test]
+fn a_blocked_report_from_before_the_key_gives_way_to_the_new_screen() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.report(State::Blocked);
+    run.paint("allow?");
+    assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, reported(State::Blocked));
+
+    run.answer();
+    run.paint("busy");
+    assert_eq!(run.tick(), None, "working, as it already reads");
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+}
+
+/// What the agent says after the key outranks the guess.
+#[test]
+fn a_report_after_the_key_ends_the_window() {
+    let mut run = Run::at_a_dialog();
+    run.answer();
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+}
+
+#[test]
+fn a_key_at_a_pane_that_is_not_blocked_changes_nothing() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("ready>");
+    run.until_published(Duration::from_secs(1)).unwrap();
+    assert_eq!(run.answer(), None);
+}

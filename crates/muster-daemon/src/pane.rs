@@ -155,6 +155,9 @@ pub(crate) struct PaneIo {
     carried: Mutex<Option<proto::handoff::Detection>>,
     /// What the pane's agent last said about its own state, for the reader to hand detection.
     self_report: Mutex<Option<(String, muster_detect::State)>>,
+    /// A Return or Esc somebody typed, for the reader to tell detection: it may have answered a
+    /// dialog.
+    answered: AtomicBool,
     /// The process group detection last found the pane's agent in, zero for none: written by the
     /// reader, read by a connection judging who sent a report.
     agent_group: AtomicU32,
@@ -332,6 +335,16 @@ impl PaneIo {
     pub(crate) fn report_state(&self, agent: String, state: muster_detect::State) {
         *poison::lock(&self.self_report, "daemon.pane.self_report") = Some((agent, state));
         self.hold.nudge();
+    }
+
+    /// A Return or Esc somebody typed is about to be written: its reader tells detection at once.
+    pub(crate) fn answering(&self) {
+        self.answered.store(true, Ordering::Release);
+        self.hold.nudge();
+    }
+
+    fn take_answered(&self) -> bool {
+        self.answered.swap(false, Ordering::AcqRel)
     }
 
     /// Notes what the screen shows, as the pane's agent starts a turn.
@@ -1053,6 +1066,7 @@ impl Pane {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            answered: AtomicBool::new(false),
             agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
             begun: Begun::new(process),
@@ -1312,6 +1326,9 @@ impl Reader {
             );
             if let Some((agent, state)) = self.io.take_self_report() {
                 self.detection.report(&agent, state, Instant::now());
+            }
+            if self.io.take_answered() {
+                self.detection.answered(Instant::now());
             }
             let master = self.io.master.as_raw_fd();
             let mut watched = [
@@ -1609,6 +1626,7 @@ impl PaneIo {
             deferred: Mutex::new(Deferred::default()),
             carried: Mutex::new(None),
             self_report: Mutex::new(None),
+            answered: AtomicBool::new(false),
             agent_group: AtomicU32::new(0),
             typed: Mutex::default(),
             begun: Begun::new(None),
