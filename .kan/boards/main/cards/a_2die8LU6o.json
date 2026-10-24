@@ -54,6 +54,12 @@
       "body": "Owner, 2026-10-24: nothing in this work is answered through a macOS notification. Muster draws its own banner in the window (Swift, SwiftUI), for the reason MIP-3 replaced herdr: \"the more vertically integrated we are, the better an experience we can deliver with Muster.\" The banner card a_2naAacfIB is rewritten to match. Open: whether a message still raises a macOS notification, as a pointer back to Muster only, while Muster is not in front.",
       "created_at_millis": 1792875606019,
       "id": "c_2naTpRU7X"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Settled by the owner, 2026-10-24: while Muster is not in front, a message for the human still raises a macOS notification, as a pointer back to Muster only. It carries no reply field and no answers; choosing it brings Muster forward to the message. Everything else is answered in Muster's own banner and conversation.",
+      "created_at_millis": 1792875736905,
+      "id": "c_2naXEYVdj"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -63,7 +69,7 @@
   "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792875606019,
+  "updated_at_millis": 1792875736905,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286}
