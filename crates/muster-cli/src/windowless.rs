@@ -761,10 +761,8 @@ fn make_pane(
                 let Some(held) = held.panes.iter().find(|held| &held.pane == pane) else {
                     return Ok(not_held(socket, pane, "made"));
                 };
-                if cwd.is_none() {
-                    cwd = said(&held.cwd);
-                    cwd_inherited = cwd.is_some();
-                }
+                cwd_inherited = cwd.is_none() && !held.cwd.is_empty();
+                cwd = cwd.or_else(|| said(&held.cwd));
             }
             in_a_tab(split.hidden, maker.as_ref().map(|(_, name)| name.as_str()))
         }

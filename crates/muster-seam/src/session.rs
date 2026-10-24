@@ -4272,29 +4272,40 @@ pub(crate) fn address_panes(payload: &mut request::Payload) -> Result<(), String
 
 /// [`address_panes`], for panes typed anywhere else.
 pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
+    // Copied out so the session is not held while every typed name is read against them.
+    struct Held {
+        pane: String,
+        name: String,
+        callsign: Option<String>,
+        machine: String,
+        former: Vec<String>,
+    }
     if typed.iter().all(|pane| pane.is_empty()) {
         return Ok(());
     }
     let session = poison::lock(&SESSION, "session");
-    let mut held: Vec<(String, String, Option<String>, String, Vec<String>)> = Vec::new();
+    let mut held: Vec<Held> = Vec::new();
     for (daemon, backend) in &session.backends {
         let mirror = poison::lock(&backend.mirror, "mirror");
         held.extend(mirror.panes().filter_map(|pane| {
-            let name = muster_core::roster::pane_name(pane)?;
-            let callsign = pane.callsign.clone().filter(|word| !word.is_empty());
-            let former = pane.former_names.clone();
-            Some((pane.id.to_string(), name.to_string(), callsign, daemon.to_string(), former))
+            Some(Held {
+                pane: pane.id.to_string(),
+                name: muster_core::roster::pane_name(pane)?.to_string(),
+                callsign: pane.callsign.clone().filter(|word| !word.is_empty()),
+                machine: daemon.to_string(),
+                former: pane.former_names.clone(),
+            })
         }));
     }
     drop(session);
     let candidates: Vec<Candidate<'_>> = held
         .iter()
-        .map(|(pane, name, callsign, machine, former)| Candidate {
-            pane,
-            name: Some(name),
-            callsign: callsign.as_deref(),
-            machine,
-            former,
+        .map(|held| Candidate {
+            pane: &held.pane,
+            name: Some(&held.name),
+            callsign: held.callsign.as_deref(),
+            machine: &held.machine,
+            former: &held.former,
         })
         .collect();
     for pane in typed.iter_mut() {

@@ -4,6 +4,15 @@ use conformance::{CaseError, Conformance, fields};
 use muster_core::pane_address::{Address, Candidate, resolve};
 use serde_json::{Value, json};
 
+/// A pane as a case gives it.
+struct Held {
+    pane: String,
+    name: String,
+    callsign: Option<String>,
+    machine: String,
+    former: Vec<String>,
+}
+
 #[test]
 fn pane_address_conformance() {
     let corpus = Conformance::load("pane-addresses.json");
@@ -16,30 +25,32 @@ fn pane_address_conformance() {
                 .ok_or_else(|| CaseError::new(format!("{key} is missing from {value}")))
         };
         let panes = given.get("panes").and_then(Value::as_array).cloned().unwrap_or_default();
-        let held: Vec<(String, String, Option<String>, String, Vec<String>)> = panes
+        let held: Vec<Held> = panes
             .iter()
             .map(|pane| {
-                let callsign = pane.get("callsign").and_then(Value::as_str).map(str::to_string);
-                let former = pane
-                    .get("formerly")
-                    .and_then(Value::as_array)
-                    .map(|names| {
-                        names.iter().filter_map(Value::as_str).map(str::to_string).collect()
-                    })
-                    .unwrap_or_default();
-                let (pane_id, name, machine) =
-                    (text(pane, "pane")?, text(pane, "name")?, text(pane, "machine")?);
-                Ok((pane_id, name, callsign, machine, former))
+                Ok(Held {
+                    pane: text(pane, "pane")?,
+                    name: text(pane, "name")?,
+                    callsign: pane.get("callsign").and_then(Value::as_str).map(str::to_string),
+                    machine: text(pane, "machine")?,
+                    former: pane
+                        .get("formerly")
+                        .and_then(Value::as_array)
+                        .map(|names| {
+                            names.iter().filter_map(Value::as_str).map(str::to_string).collect()
+                        })
+                        .unwrap_or_default(),
+                })
             })
             .collect::<Result<_, CaseError>>()?;
         let candidates: Vec<Candidate<'_>> = held
             .iter()
-            .map(|(pane, name, callsign, machine, former)| Candidate {
-                pane,
-                name: Some(name),
-                callsign: callsign.as_deref(),
-                machine,
-                former,
+            .map(|held| Candidate {
+                pane: &held.pane,
+                name: Some(&held.name),
+                callsign: held.callsign.as_deref(),
+                machine: &held.machine,
+                former: &held.former,
             })
             .collect();
         Ok(match resolve(&text(given, "typed")?, &candidates) {
