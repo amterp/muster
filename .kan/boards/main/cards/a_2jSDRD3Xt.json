@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1792264856323,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-17: no Claude Code session on this Mac loads Muster's plugin (`claude plugin list` has no muster entry and no running `claude` passes `--plugin-dir`), yet every Claude Code pane in `muster window` says `adapter: reporting`. The statusline's report is enough, since `adapter_heard` counts any report from the pane's agent.\n\nSo nothing tells the person the hooks are missing, which `silent` exists to do. Without them a pane's state comes only from its screen, `/clear` leaves the old context ring (a_2jSDHoYDD), and the daemon never hears a session id, so `pane restart` has nothing to resume (inferred from the code, not tried).\n\nLikely fix: a statusline report alone (context, model, cost, session name) does not make the adapter `reporting`; a hook's report (`--state`, `--session-id`, `--subagent-*`) does. Then a pane with the statusline and no plugin reads `silent`, and `muster harness install claude` is the advice it already gets.",
   "id": "a_2jSDRD3Xt",
-  "position": "b14",
+  "position": "Zr",
   "title": "muster window says adapter reporting when only the statusline reports",
   "type": "bug",
-  "updated_at_millis": 1792264856323,
+  "updated_at_millis": 1792852838185,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792264856323}
+    {"field":"column","value":"backlog-hi","at":1792264856323},
+    {"field":"column","value":"in-progress","at":1792852838185}
   ]
 }

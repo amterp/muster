@@ -5,7 +5,15 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: fixed on main in 7786ed20, with a test that failed before the fix. The stall watch forgets a member's working run once nothing waits on it.",
+      "created_at_millis": 1792852837522,
+      "id": "c_2nQvW4pDK"
+    }
+  ],
   "created_at_millis": 1792792470993,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-23 on 0.18.0, on the Linux devenv, in a council. The director posted #81 to helper walrus while walrus was in a turn of about 42 minutes. 30 minutes later @muster posted: \"walrus has not read #81 ... 30 minutes after it was posted: it has read as working for 1554 minutes without a break, so it is rung only once it stops\". walrus had been idle less than an hour earlier: two posts woke it at 15:50, and its turn before that ended after 41m 49s. 1554 minutes is about 26 hours. The rest of the notice was right: walrus was mid-turn and read #81 when the turn ended.\n\nLikely cause, read from source at 5e8f824b and not reproduced: in `crates/muster-daemon/src/messages/stalls.rs`, `judge` removes a member's `working_since` entry only when it judges that member not working, and it judges only members a message waits on. A member that goes idle and is woken again before any message waits on it keeps the entry from a turn a day earlier. `worked_too_long` gates on `since_ms`, the latest of `first_at_ms`, `worked_since` and `started_ms`, which is why the notice came at the right time, but the text prints `now_ms - worked_since`.\n\nPossibly: print the span the gate used, or clear `working_since` whenever the pane is seen idle, not only when it is judged.",
@@ -13,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b1f",
+  "position": "Yw1",
   "title": "A held-wake notice says a member worked 1554 minutes without a break; it was idle an hour before",
   "type": "bug",
-  "updated_at_millis": 1792792470993,
+  "updated_at_millis": 1792852837522,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792792470993}
+    {"field":"column","value":"backlog-lo","at":1792792470993},
+    {"field":"column","value":"done","at":1792852820439}
   ]
 }

@@ -5,7 +5,15 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: fixed on main in 8e7ae0f7, with a test that failed before the fix. A pane verb given a name from before a rename refuses naming the pane's present name, callsign and id. Pane.former_labels, memory only. muster msg is a_2nQcxfhTU.",
+      "created_at_millis": 1792852837773,
+      "id": "c_2nQvWTZg5"
+    }
+  ],
   "created_at_millis": 1792197591179,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-10-14, 0.16.0 on the laptop. A Claude Code pane born as `kelp` was renamed after its session's title (Muster follows a harness `/rename`), so `$MUSTER_PANE_NAME` still said `kelp`, as docs/cli/limits.md says it will. `muster pane wait --pane kelp` then failed: \"no daemon this window is following holds a pane called kelp ... Either it closed, or the name came from an older window\". Neither was the cause, so an agent that addresses itself from that variable, or gives it to others, is not pointed at the rename. When a name is not found, the daemon could check whether a live pane had that name before and answer with its current name and id, e.g. \"kelp was renamed to \u003cname\u003e (p2...)\". The three refusals are in `crates/muster-seam/src/handler.rs`. A name freed by a rename can be taken by a new pane, and the live holder should win.",
@@ -13,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "b16",
+  "position": "Yvy",
   "title": "A pane looked up by its name from before a rename is reported closed or from an older window",
   "type": "enhancement",
-  "updated_at_millis": 1792197591179,
+  "updated_at_millis": 1792852837773,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792197591179}
+    {"field":"column","value":"backlog-lo","at":1792197591179},
+    {"field":"column","value":"done","at":1792852820765}
   ]
 }

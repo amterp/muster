@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "driving-a-window-a",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792851896027,
+  "creator": "Alexander Terp",
+  "description": "Seen once 2026-10-24 in a full cargo test -p muster-cli on the Mac mini: at driving_a_window.rs:247 the text muster window did not yet list the pane under hidden as (quiet), though the --json read just before had said so. Passed alone. Looks like a race between the waited-for JSON read and the text read after it.",
+  "id": "a_2nQX1Sxmv",
+  "position": "b1O",
+  "title": "🎲 driving_a_window::a_pane_can_drive_the_window_it_is_drawn_in saw no (quiet) under hidden",
+  "type": "bug",
+  "updated_at_millis": 1792851896027,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792851896027}
+  ]
+}

@@ -5,25 +5,32 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "2026-10-23 re-triage: filed from tooling feedback a_2lyi2udb7 and put at the top of backlog-hi. A brief went unseen for 9 minutes, and the integrator saw no sign of it.",
       "created_at_millis": 1792799187310,
       "id": "c_2n4PpThGV"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: fixed on main in b76817b6, with a test that failed before the fix. A post to an idle agent already woken rings it again (MIP-4 section 5 now says so); a wake already on its way is left alone. Not checked in a real Codex pane.",
+      "created_at_millis": 1792852837281,
+      "id": "c_2nQvVgGvJ"
     }
   ],
   "created_at_millis": 1792799177969,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-21 about 21:52-22:01 CDT on the Mac mini, Muster 0.16.2-dev, from tooling feedback. An integrator typed /new into a Codex worker's pane (bunx @openai/codex@0.162.1) and posted a new brief. The worker still had one unread message from before /new, whose wake had been typed into the old session. The post printed `woke: cumin (p2dgy9mk4b, idle, already woken)`, nothing was typed into the pane, and Codex sat idle at its empty prompt for 9 minutes. A second post 9 minutes later printed the same and rang nothing. `muster pane send` reached the agent at once.\n\nSo a participant's woken state outlives the session it was true for: /new discarded the typed wake, and nothing told the daemon. `unwake` in `crates/muster-msg/src/service.rs` forgets a wake only when it never reached the pane. Not checked against 0.18.0.\n\nPossibly: forget a participant's woken state when its pane's session changes (/new, /clear, a restart), or ring again an idle pane whose prompt is empty while it still has unread messages. The same is likely true of Claude Code's /clear; unchecked.",
   "id": "a_2n4PaKOtY",
-  "position": "Zs",
+  "position": "Yw4",
   "title": "A post after /new in a Codex pane finds it 'already woken' and rings nothing",
   "type": "bug",
-  "updated_at_millis": 1792848464192,
+  "updated_at_millis": 1792852837281,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792799177969},
-    {"field":"column","value":"in-progress","at":1792848464192}
+    {"field":"column","value":"in-progress","at":1792848464192},
+    {"field":"column","value":"done","at":1792852820122}
   ]
 }

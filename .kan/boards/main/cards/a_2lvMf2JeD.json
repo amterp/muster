@@ -31,6 +31,12 @@
       "body": "2026-10-23: question D decided, (a): `muster window --json` drops `regions[]` at once, and the release that ships stage 3 says so in its notes. amterp left the choice to an agent, which took the MIP's recommendation (recorded in MIP-8). Stage 3, the shell drawing one tree, is unblocked: blocked label off, moved to next. Stages 4 and 5 still wait on questions C, A and B.",
       "created_at_millis": 1792800268575,
       "id": "c_2n4rxRvGu"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: stage 3's first half on main (4400037c..1eed31d4): spanning::rearrange works out resize, swap, zoom, a divider ratio and equalize on a spanning tab's whole tree, and the seam sends each as one SetTabTree per part; the resize rule moved into muster_core::resize, shared with the daemon; every tab's tree is in the view, and muster window --json drops regions[] for tabs[].layout and tabs[].zoomed (question D). Dormant in real use: no window writes a tab made before MIP-8 until the second half. Stage 3 was cut in two because the shell drawing the tree and the migration write must land together (MIP-8, How it lands). Second half in progress. Release-note line: muster window --json no longer has regions[] or tabs[].regions; the tab on screen has layout, its whole tree with the machine on every pane, and zoomed; with --layout, every tab has both.",
+      "created_at_millis": 1792851895509,
+      "id": "c_2nQX0gDvZ"
     }
   ],
   "created_at_millis": 1792629852682,
@@ -40,7 +46,7 @@
   "position": "Zt",
   "title": "Arrange panes from different machines in any split, as if they were on one",
   "type": "feature",
-  "updated_at_millis": 1792848464093,
+  "updated_at_millis": 1792851895509,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852682},
     {"field":"column","value":"in-progress","at":1792632594244},
