@@ -199,7 +199,10 @@ impl Input {
 /// dialog's text field would otherwise read as answering it at every key. Each key's legacy
 /// encoding and the kitty keyboard protocol's are both read, since a harness may ask for either.
 fn answers(bytes: &[u8]) -> bool {
-    bytes.ends_with(b"\r") || bytes.ends_with(b"\x1b[13u") || bytes == b"\x1b" || bytes == b"\x1b[27u"
+    bytes.ends_with(b"\r")
+        || bytes.ends_with(b"\x1b[13u")
+        || bytes == b"\x1b"
+        || bytes == b"\x1b[27u"
 }
 
 /// How long a paced write waits, given when the pane was last written to.
@@ -560,7 +563,10 @@ impl Writer {
         {
             io.wrote_line();
         }
-        if keyed && answers(&bytes) && let Some(io) = self.io.upgrade() {
+        if keyed
+            && answers(&bytes)
+            && let Some(io) = self.io.upgrade()
+        {
             io.answering();
         }
         wrote_input();

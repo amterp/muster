@@ -369,7 +369,11 @@ fn a_post_rings_an_idle_agent_woken_already() {
     agent.until_rung(1);
     // Once the doorbell has stopped watching the ring, nothing more is on its way.
     until_some("the ring to be settled", || {
-        agent.unread().iter().any(|why| why.contains("neither read it nor gone to work")).then_some(())
+        agent
+            .unread()
+            .iter()
+            .any(|why| why.contains("neither read it nor gone to work"))
+            .then_some(())
     });
 
     let posted = agent.post("p1", "the brief again");

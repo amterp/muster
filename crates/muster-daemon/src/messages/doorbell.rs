@@ -668,7 +668,8 @@ fn take_back_left(shared: &Shared, panes: &Panes) -> bool {
     let mut kept = false;
     let mut done = Vec::new();
     for (pane, left) in due {
-        let typed_after = |seen: &Seen| seen.io.someone_typed_at().is_some_and(|at| at > left.typed);
+        let typed_after =
+            |seen: &Seen| seen.io.someone_typed_at().is_some_and(|at| at > left.typed);
         let Some(seen) = panes.get(&pane).filter(|seen| !typed_after(seen)) else {
             done.push((pane, left.typed));
             continue;
