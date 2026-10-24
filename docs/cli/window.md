@@ -206,8 +206,9 @@ One entry per pane every followed daemon holds, on screen or not.
   gave none.
 - `rang` - whether a program in the pane rang the bell and nobody has looked at the pane since.
 - `adapter` - whether the agent reports itself through its harness's adapter: `reporting` once it
-  has; `silent` once it has ended a turn without reporting, for a harness Muster ships an adapter
-  for, which `muster harness install` installs; `none`, the same for a harness it has none for.
+  has reported its state, its session or its sub-agents, which a statusline alone does not;
+  `silent` once it has ended a turn without reporting, for a harness Muster ships an adapter for,
+  which `muster harness install` installs; `none`, the same for a harness it has none for.
   `null` until there is something to say: no agent, or one that has not yet ended a turn - Codex
   reports nothing until it is first prompted, so a fresh agent is not called silent. An agent
   that changes or leaves takes it with it.

@@ -1975,6 +1975,10 @@ impl Session {
         }
         let cleared = report.clear;
         let context_used = report.context_used;
+        let from_adapter = own_state.is_some()
+            || session_id.is_some()
+            || cleared
+            || report.subagent() != proto::SubagentChange::None;
         let kept = keeps_wait(&self.panes[index], own_state.is_some(), &report);
         if kept != Kept::No {
             report.waiting = None;
@@ -1987,7 +1991,7 @@ impl Session {
             Err(why) => return Reply::refused(why),
         };
         let facts_changed = record.facts != facts;
-        let heard = adapter_heard(record, &agent);
+        let heard = from_adapter && adapter_heard(record, &agent);
         if facts_changed {
             let declared = is_waiting(facts.as_ref()) && !is_waiting(record.facts.as_ref());
             let withdrawn = !is_waiting(facts.as_ref()) && is_waiting(record.facts.as_ref());
@@ -4085,8 +4089,10 @@ impl Turn {
     }
 }
 
-/// Marks the pane's agent as reporting through its adapter, saying whether that is news. Only once
-/// detection has named the agent: a report from no agent - a statusline's last run after its agent
+/// Marks the pane's agent as reporting through its adapter, saying whether that is news. Called
+/// only for what an adapter alone says - a state, a session id, a sub-agent, a new session's
+/// clear - since Claude Code runs a statusline that reports its context with no adapter
+/// installed. Only once detection has named the agent: a report from no agent - a statusline's last run after its agent
 /// left - would otherwise pass to whichever agent comes next. One naming another agent than the
 /// detected one is not this agent's adapter either.
 fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {

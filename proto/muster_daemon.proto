@@ -1509,7 +1509,8 @@ enum Adapter {
   // Nothing to say yet: no agent, or one that has not yet ended a turn. A harness that reports
   // only once it is prompted, as Codex does, has not had the chance.
   ADAPTER_UNSAID = 0;
-  // The agent has reported since it came into the pane.
+  // The agent has reported its state, its session or its sub-agents since it came into the pane.
+  // What a statusline alone reports - context, model, cost, the session's name - does not count.
   ADAPTER_REPORTING = 1;
   // The agent ended a turn and had reported nothing: its harness has no adapter installed, or
   // one that is not running.

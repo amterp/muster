@@ -932,6 +932,39 @@ fn an_agent_that_ends_a_turn_without_reporting_has_a_silent_adapter() {
     assert_eq!(adapter(&mut control), proto::Adapter::Unsaid, "it went with the agent");
 }
 
+/// What a statusline reports - the context, the model, the session's name - is not the adapter:
+/// Claude Code runs a statusline with no plugin installed, and the pane must still read silent.
+#[test]
+fn a_statusline_report_alone_leaves_the_adapter_silent() {
+    use proto::AgentState::{Idle, Working};
+    let home = Home::new("adapter-statusline", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), Idle);
+
+    let statusline = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        context_used: Some(49.0),
+        model: Some("Opus".to_string()),
+        cost_usd: Some(1.5),
+        session_name: Some(String::new()),
+        ..Default::default()
+    };
+    expect(
+        &mut control,
+        pane(proto::pane_request::Request::Report(statusline)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(adapter(&mut control), proto::Adapter::Unsaid, "a statusline is not the adapter");
+
+    settle(&mut control, &mut input, "working", Working);
+    settle(&mut control, &mut input, "idle", Idle);
+    assert_eq!(adapter(&mut control), proto::Adapter::Silent);
+}
+
 /// A report before detection names an agent is nobody's: it may be the last word of an agent
 /// that has left. The agent's own reports count, and the new daemon in a handoff knows it.
 #[test]

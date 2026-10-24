@@ -441,8 +441,9 @@ Not built, and why:
 A person had to find an adapter in Muster's source, and nothing said whether one was running.
 
 - **Knowing.** The daemon's pane record carries `adapter`: reporting once the pane's agent has
-  reported, silent once it ended a turn having reported nothing, unsaid before either and again
-  when the agent changes or leaves. A turn's end rather than a timeout, because every adapter
+  reported its state, its session or its sub-agents, silent once it ended a turn having reported
+  nothing, unsaid before either and again when the agent changes or leaves. What a statusline
+  alone reports does not count, since Claude Code runs one with no adapter installed. A turn's end rather than a timeout, because every adapter
   reports by then and Codex reports nothing until it is first prompted, so a fresh, hooked Codex
   would otherwise read as missing its adapter. `muster window --json` says `reporting`, `silent`
   or `none` - `none` when the harness has no adapter in `extras/`, which
