@@ -29,10 +29,10 @@
 //! Return can send nothing but the ring. The first is what the daemon saw written, since the
 //! screen can lag it. A ring given up with its text still in the prompt is sent by the next ring
 //! that finds exactly that text there, so a prompt the doorbell filled never reads as somebody's
-//! draft for good. One whose message its agent reads while its text may still be in the prompt -
-//! typed at work before its Return, returned to an agent that never took the Return, or given up
-//! - is erased instead: sent, it would wake the agent for nothing, and left, it would be sent with
-//! whatever is typed next.
+//! draft for good. One whose message its agent reads while its text may still be in the prompt is
+//! erased instead: sent, it would wake the agent for nothing, and left, it would be sent with
+//! whatever is typed next. That is a ring typed at work before its Return, one returned to an agent
+//! that never took the Return, or one given up.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -659,11 +659,13 @@ fn send_left(shared: &Shared, wake: &Wake, seen: &Seen, held: &str) {
 /// was paused: sent, it would wake the agent for nothing, and left, the next Return anybody
 /// presses sends it. Only a prompt holding that ring and nothing else is erased. A ring that can
 /// be neither sent nor taken back any more - its prompt empty, something typed after it, its agent
-/// gone - is forgotten. Called with no lock held; true when any is kept to look at again.
-fn take_back_left(shared: &Shared, panes: &Panes) -> bool {
+/// gone - is forgotten. Called with no lock held, before anything is rung in the same look, so a
+/// wake finds the prompt as this leaves it; says through `next` when to look again at one kept.
+/// A doorbell with nothing else to do still looks while one is due ([`standing`]).
+fn take_back_left(shared: &Shared, panes: &Panes, next: &mut Option<Instant>) {
     let due = due_back(&shared.messages());
     if due.is_empty() {
-        return false;
+        return;
     }
     let mut kept = false;
     let mut done = Vec::new();
@@ -701,7 +703,9 @@ fn take_back_left(shared: &Shared, panes: &Panes) -> bool {
             messages.left.remove(&pane);
         }
     }
-    kept
+    if kept {
+        sooner(next, Instant::now() + LOOK_AGAIN);
+    }
 }
 
 /// The rings left in prompts whose agent has nothing unread for them any more, by pane.
@@ -817,10 +821,6 @@ fn look(
     // First, so that a ring looking at the same pane sees the rename's write and waits it out.
     moving.retain(|pane, _| panes.exists(pane));
     type_lines(shared, &panes, typing, compacting, moving, &mut next);
-    // Before anything is rung, so a wake finding the prompt finds it as this leaves it.
-    if take_back_left(shared, &panes) {
-        sooner(&mut next, Instant::now() + LOOK_AGAIN);
-    }
     if quiet {
         before.clear();
         return until(next, false);
@@ -910,7 +910,7 @@ fn look(
         take_in_hand(&mut messages, &commanding, &ringing);
         unanswered_rings(&mut messages, &panes, now, moving, &mut next)
     };
-    deliver(shared, commanding, ringing, pressing, &mut next);
+    deliver(shared, &panes, commanding, ringing, pressing, &mut next);
     until(next, unfound)
 }
 
@@ -954,15 +954,17 @@ fn also<'a>(busy: &'a HashSet<String>, typed: impl Iterator<Item = &'a String>) 
     busy.iter().chain(typed).cloned().collect()
 }
 
-/// Runs, rings and presses Return for what a look found due, with no lock held, and says through
-/// `next` when to look again.
+/// Takes back the rings left in prompts that nobody needs, then runs, rings and presses Return for
+/// what a look found due, with no lock held, and says through `next` when to look again.
 fn deliver(
     shared: &Arc<Shared>,
+    panes: &Panes,
     commanding: Reaching,
     ringing: Reaching,
     pressing: Vec<Pressing>,
     next: &mut Option<Instant>,
 ) {
+    take_back_left(shared, panes, next);
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
     shared.messages().in_hand.clear();
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
