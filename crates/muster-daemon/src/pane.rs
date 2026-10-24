@@ -1200,7 +1200,7 @@ impl Pane {
                 "daemon.pane.not_signaled",
                 fields! {
                     "pane" => self.record.pane,
-                    "process" => self.process.unwrap_or_default(),
+                    "shell_pid" => self.process.unwrap_or_default(),
                     "why" => "its shell has ended and its pid now belongs to another process",
                 },
             );
@@ -1480,7 +1480,7 @@ fn said_unread(
                     "pane" => pane,
                     "bytes" => bytes,
                     "program" => program,
-                    "pid" => pid,
+                    "program_pid" => pid,
                     "unread_ms" => waited.as_millis(),
                     "impact" => "the pane's program is not reading what is typed or sent to it, \
                                  so it paints nothing in answer; its agent reads as stuck, and \

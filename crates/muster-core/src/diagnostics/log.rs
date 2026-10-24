@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 
 use super::clock::{monotonic_now, wall_clock_millis};
-use super::sink::JsonLinesSink;
+use super::sink::{JsonLinesSink, RECORD_KEYS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
@@ -192,6 +192,11 @@ pub fn enabled(level: LogLevel) -> bool {
 }
 
 pub fn emit(level: LogLevel, event: &str, fields: BTreeMap<String, String>) {
+    debug_assert!(
+        !RECORD_KEYS.iter().any(|key| fields.contains_key(*key)),
+        "{event} has a field named after a key every line already carries ({RECORD_KEYS:?}), \
+         so its line would hold that key twice; name the field for what it is"
+    );
     let slot = recovered!(INSTALLED.read());
     // SAFETY: getpid is always safe to call and reads no memory we own.
     let pid = unsafe { libc::getpid() };
@@ -370,5 +375,13 @@ mod tests {
     fn a_line_that_is_not_a_record_is_not_relabelled() {
         assert_eq!(relabelled("not json", "d", None), None);
         assert_eq!(relabelled("{\"time\":\"x\"}", "d", Some(1)), None, "no clock to replace");
+    }
+
+    /// Refused before it reaches any sink, so nothing this binary keeps is touched.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "a.program.stopped has a field named after a key")]
+    fn a_field_named_after_a_key_every_line_carries_is_refused() {
+        emit(LogLevel::Warn, "a.program.stopped", crate::fields! { "pid" => 42 });
     }
 }

@@ -21,6 +21,12 @@ use super::log::{LogRecord, LogSink};
 /// oversized record is the cheaper failure.
 const MAXIMUM_RECORD_BYTES: usize = 4096;
 
+/// The keys [`encode`] writes on every line before a record's own fields, and the one a cut
+/// adds. A field by one of these names makes a line with the key twice, and a JSON reader keeps
+/// whichever comes last, so a run log's `pid` once read as an agent's rather than the daemon's.
+pub const RECORD_KEYS: [&str; 7] =
+    ["time", "mono_ns", "level", "process", "pid", "event", "truncated"];
+
 #[derive(Debug)]
 pub struct JsonLinesSink {
     fd: i32,
@@ -194,5 +200,23 @@ mod tests {
             0,
             "the log is open in every child this process starts"
         );
+    }
+
+    #[test]
+    fn the_keys_a_field_may_not_take_are_the_ones_a_line_carries() {
+        let record = LogRecord::now(
+            super::super::log::LogLevel::Info,
+            "app",
+            1,
+            "x",
+            std::collections::BTreeMap::new(),
+        );
+        let line: serde_json::Value = serde_json::from_str(&encode(&record)).unwrap();
+        let mut written: Vec<&str> = line.as_object().unwrap().keys().map(String::as_str).collect();
+        written.push("truncated");
+        written.sort_unstable();
+        let mut reserved = RECORD_KEYS.to_vec();
+        reserved.sort_unstable();
+        assert_eq!(written, reserved);
     }
 }

@@ -207,7 +207,7 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
             fields! {
                 "pane" => pane,
                 "by" => over.as_str(),
-                "pid" => wait.until_exits.map(|pid| pid.to_string()).unwrap_or_default(),
+                "waited_pid" => wait.until_exits.map(|pid| pid.to_string()).unwrap_or_default(),
             },
         );
     }
@@ -232,7 +232,7 @@ fn given_up(pane: &str, pid: u32, reason: &str) {
         "msg.wait.given_up",
         fields! {
             "pane" => pane,
-            "pid" => pid,
+            "waited_pid" => pid,
             "reason" => reason,
             "impact" => "the agent's wait ends untold: its pane reads idle, and nothing starts \
                          its next turn; somebody has to prompt it",
@@ -247,7 +247,7 @@ fn untold(pane: &str, pid: u32, reason: &str) {
         "msg.wait.untold",
         fields! {
             "pane" => pane,
-            "pid" => pid,
+            "waited_pid" => pid,
             "reason" => reason,
             "impact" => "the agent's wait stands and it is not woken until it can be told: its \
                          pane reads waiting though the work it waited on has ended; tried again \

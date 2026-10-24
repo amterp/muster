@@ -43,7 +43,7 @@ pub fn end_left_behind(directory: &Path) {
         log::info(
             "tunnel.left_behind.ended",
             fields! {
-                "pid" => pid.to_string(),
+                "muster_pid" => pid.to_string(),
                 "tunnel" => name,
                 "asked" => match asked {
                     Ok(()) => "the master left when its control path asked it to".to_string(),
