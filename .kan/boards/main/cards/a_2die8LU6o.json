@@ -30,6 +30,12 @@
       "body": "Agreed on the mockups since (muster-group-conversation v3): a message that starts with @ and a member's name addresses that member in place of the default recipient, and an @ later only completes the name; only the composer reads it, and msg post keeps --to. Answers an agent offers fill the reply instead of sending it, so a note can go with them; the reply carries the choice as text for the agent and as a field for Muster. Unsent replies are kept per group on the daemon, with the human's participant, and the sidebar row marks a waiting draft.",
       "created_at_millis": 1792874303573,
       "id": "c_2nZvwj1I9"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Direction changed in muster-group-conversation v4, replacing the drawer: choosing a group (sidebar row or banner) shows its conversation in place of the panes until Esc or a tab or pane is chosen; a members column gives each agent Go to pane. Any window can show any group, two at once included; each window's message box and draft are its own (kept with the window's saved arrangement, not the daemon), and a post shows in both. Keep the door open to a conversation pane in a tab's tree later (a pane with no terminal, a protocol change). Terms: group, conversation, message box, transcript (the msg log pane), Needs you, banner. A banner with a reply field and offered answers is the first piece to ship.",
+      "created_at_millis": 1792874622788,
+      "id": "c_2na4FafxE"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -39,7 +45,7 @@
   "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792874303573,
+  "updated_at_millis": 1792874622788,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286}
