@@ -32,9 +32,13 @@ pub struct View {
     /// The region whose pane the keyboard feeds.
     pub focused: Option<RegionId>,
     /// The tab's one tree over every machine it spans, merged from each machine's copy
-    /// (`crate::spanning`, MIP-8): the whole tree, even while a region is zoomed. Published
-    /// beside the regions, which are what draws the tab, and only for a tab that spans machines.
+    /// (`crate::spanning`, MIP-8), a tab on one machine taking its one copy as it is: the whole
+    /// tree, even while the tab is zoomed. Published beside the regions, which are what draws
+    /// the tab.
     pub tree: Option<ViewTree>,
+    /// The pane filling the tab, when it is zoomed: the one the keyboard is on, wherever in the
+    /// tab it runs, which is how a window draws a zoom.
+    pub zoomed: Option<PaneKey>,
     /// Every pane this window has on screen, named by its daemon.
     ///
     /// Held rather than derived from `regions`, because it is not the same question as the
@@ -105,6 +109,27 @@ impl ViewTree {
                 ratio: *ratio,
                 first: Box::new(ViewTree::of(first, pane)),
                 second: Box::new(ViewTree::of(second, pane)),
+            },
+        }
+    }
+}
+
+impl ViewTree {
+    /// One machine's tree, every leaf its pane.
+    fn own(
+        node: &LayoutNode,
+        daemon: &DaemonId,
+        pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
+    ) -> ViewTree {
+        match node {
+            LayoutNode::Pane(id) => {
+                ViewTree::Pane { daemon: daemon.clone(), pane: pane(daemon, id) }
+            }
+            LayoutNode::Split { axis, ratio, first, second } => ViewTree::Split {
+                axis: *axis,
+                ratio: *ratio,
+                first: Box::new(ViewTree::own(first, daemon, pane)),
+                second: Box::new(ViewTree::own(second, daemon, pane)),
             },
         }
     }
@@ -201,6 +226,7 @@ impl View {
                 regions: Vec::new(),
                 focused: None,
                 tree: None,
+                zoomed: None,
                 showing: BTreeSet::new(),
             },
         }
@@ -299,17 +325,49 @@ impl View {
         // What the copies add up to, and nothing written: the seam sends the writes, from the
         // same merge, and only it knows which machines can take one. A tab on one machine is
         // its one region's tree, which is already published above.
-        let tree = if spanning::spans(held, &mirror) {
+        let keyboard = held
+            .focused_region()
+            .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
+        let (tree, zoomed) = if spanning::spans(held, &mirror) {
             let (parts, settled) = spanning::parts_of(held, &mirror, |_| false);
-            spanning::merge(&parts, &settled).map(|merged| ViewTree::of(&merged.tree, &pane))
+            match spanning::merge(&parts, &settled) {
+                Some(merged) => {
+                    let zoomed = merged.zoomed.as_ref().and_then(|zoomed| {
+                        let in_tree =
+                            |key: &PaneKey| {
+                                merged.tree.leaves().into_iter().any(|(pane, daemon)| {
+                                    *pane == key.pane && *daemon == key.daemon
+                                })
+                            };
+                        keyboard.clone().filter(in_tree).or_else(|| {
+                            let (pane, daemon) = merged
+                                .tree
+                                .leaves()
+                                .into_iter()
+                                .find(|(pane, _)| *pane == zoomed)?;
+                            Some(PaneKey::new(daemon, pane))
+                        })
+                    });
+                    (Some(ViewTree::of(&merged.tree, &pane)), zoomed)
+                }
+                None => (None, None),
+            }
         } else {
-            None
+            let one = held.regions().next();
+            let layout = one.and_then(|region| Some((region, arranged(region)?)));
+            let zoomed = layout.and_then(|(region, layout)| {
+                Some(PaneKey::new(&region.daemon, &zoom_filling(region, Some(layout))?))
+            });
+            let tree =
+                layout.map(|(region, layout)| ViewTree::own(&layout.root, &region.daemon, &pane));
+            (tree, zoomed)
         };
         View {
             tab: Some(tab),
             regions,
             focused: held.focused_region().map(|region| region.id),
             tree,
+            zoomed,
             showing,
         }
     }

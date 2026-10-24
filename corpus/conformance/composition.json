@@ -6186,8 +6186,8 @@
       }
     },
     {
-      "name": "a tab on one machine publishes no tree beside its region",
-      "why": "Nearly every tab is on one machine, and its one region already carries its whole tree, so merging copies for it would be work on every view built that returns the tree it started from. The view publishes a tab's one tree only for a tab that spans machines (MIP-8).",
+      "name": "a tab on one machine publishes its own copy as its tree, unmerged",
+      "why": "Nearly every tab is on one machine, and its one copy is already the whole tab, so merging copies for it would be work on every view built that returns the tree it started from. Its tree is published as that copy stands, with the one machine on every pane, so a reader of the view finds every tab arranged the same way whatever machines it is on (MIP-8).",
       "given": {
         "tree": true,
         "worlds": {
@@ -6254,7 +6254,7 @@
           "laptop/b"
         ],
         "showingTab": "t1",
-        "tree": null,
+        "tree": "rows(a@laptop, b@laptop@0.5)",
         "view": [
           "r0 tab=t1 rows(a, b@0.5)"
         ]

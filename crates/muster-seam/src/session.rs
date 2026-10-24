@@ -3222,7 +3222,7 @@ pub(crate) fn equalize(
             format!(
                 "the pane {pane} sits in no {} that could be evened out, so nothing moved. A pane \
                  with nothing beside it is in no row and a pane with nothing above or below it is \
-                 in no column; `regions[].layout` in `muster window --json` says which.",
+                 in no column; `tabs[].layout` in `muster window --json` says which.",
                 evenly.as_str()
             )
         })?;

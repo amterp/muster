@@ -32,13 +32,6 @@ pub enum Node {
     },
 }
 
-/// One machine's part of a tab: its share of the width, and its tree when the daemon has said.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Part {
-    pub weight: f32,
-    pub root: Option<Node>,
-}
-
 /// What a pane's box says, a line at a time, each line a run of styled pieces.
 pub type Lines = Vec<Vec<(String, Style)>>;
 
@@ -49,39 +42,23 @@ const NARROWEST: usize = 12;
 /// have room to show.
 const SHORTEST: usize = 10;
 
-/// What a part says while its daemon has not said how the tab is arranged.
+/// What a tab says while no machine has said how it is arranged.
 const UNARRANGED: &str = "not arranged yet";
 
 /// The tab, `width` columns wide.
 ///
-/// `boxes[i]` is what pane `i` says. A part with no tree is drawn as one box saying so.
-pub fn draw(parts: &[Part], boxes: &[Lines], width: usize) -> Vec<String> {
-    let unarranged: Lines = vec![vec![(UNARRANGED.to_string(), Style::new().dimmed())]];
-    let wanted = |node: Option<&Node>| -> (usize, usize) {
-        match node {
-            Some(node) => least(node, boxes),
-            None => (NARROWEST, 1),
-        }
-    };
-    let tallest = parts.iter().map(|part| wanted(part.root.as_ref()).1).max().unwrap_or(1);
+/// `boxes[i]` is what pane `i` says. A tab with no tree is drawn as one box saying so.
+pub fn draw(root: Option<&Node>, boxes: &[Lines], width: usize) -> Vec<String> {
+    let (_, tallest) = root.map_or((NARROWEST, 1), |root| least(root, boxes));
     let height = tallest.max(SHORTEST) + 2;
     let width = width.max(3);
     let mut canvas = Canvas::new(width, height);
-
-    let spans = divide(
-        0,
-        width - 1,
-        &parts.iter().map(|part| part.weight.max(0.0)).collect::<Vec<f32>>(),
-        &parts.iter().map(|part| wanted(part.root.as_ref()).0).collect::<Vec<usize>>(),
-    );
-    for (part, (left, right)) in parts.iter().zip(spans) {
-        let area = Area { left, top: 0, right, bottom: height - 1 };
-        if let Some(root) = &part.root {
-            lay(&mut canvas, root, area, boxes);
-        } else {
-            canvas.frame(area);
-            canvas.write(area, &unarranged);
-        }
+    let area = Area { left: 0, top: 0, right: width - 1, bottom: height - 1 };
+    if let Some(root) = root {
+        lay(&mut canvas, root, area, boxes);
+    } else {
+        canvas.frame(area);
+        canvas.write(area, &vec![vec![(UNARRANGED.to_string(), Style::new().dimmed())]]);
     }
     canvas.lines()
 }
@@ -163,22 +140,6 @@ fn between(low: usize, high: usize, ratio: f32, first: usize, second: usize) -> 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
 fn share(ratio: f32, span: usize) -> usize {
     (ratio.clamp(0.0, 1.0) * span as f32).round() as usize
-}
-
-/// The borders between parts laid side by side, from their weights: each part's span, sharing
-/// the border between it and the next.
-fn divide(low: usize, high: usize, weights: &[f32], least: &[usize]) -> Vec<(usize, usize)> {
-    let Some((weight, rest)) = weights.split_first() else { return Vec::new() };
-    if rest.is_empty() {
-        return vec![(low, high)];
-    }
-    let total: f32 = weights.iter().sum();
-    let ratio = if total > 0.0 { weight / total } else { 0.5 };
-    let others: usize = least[1..].iter().sum::<usize>() + least.len() - 2;
-    let at = between(low, high, ratio, least[0], others);
-    let mut spans = vec![(low, at)];
-    spans.extend(divide(at, high, rest, &least[1..]));
-    spans
 }
 
 /// Which sides of a cell a line leaves by.
@@ -304,7 +265,7 @@ fn glyph(bits: u8) -> char {
 
 #[cfg(test)]
 mod tests {
-    use super::{Lines, Node, Part, draw};
+    use super::{Lines, Node, draw};
     use anstyle::Style;
     use unicode_width::UnicodeWidthStr;
 
@@ -316,10 +277,6 @@ mod tests {
         Node::Split { columns, ratio, first: Box::new(first), second: Box::new(second) }
     }
 
-    fn one(root: Node) -> Vec<Part> {
-        vec![Part { weight: 1.0, root: Some(root) }]
-    }
-
     /// The lines with any styling taken off, which is what a terminal shows of their layout.
     fn plain(lines: Vec<String>) -> Vec<String> {
         lines.into_iter().map(|line| anstream::adapter::strip_str(&line).to_string()).collect()
@@ -327,7 +284,7 @@ mod tests {
 
     #[test]
     fn one_pane_fills_the_drawing() {
-        let drawn = plain(draw(&one(Node::Pane(0)), &[says(&["p1"])], 20));
+        let drawn = plain(draw(Some(&Node::Pane(0)), &[says(&["p1"])], 20));
         assert_eq!(drawn.len(), 12, "the least height a drawing is given, borders included");
         assert_eq!(drawn[0], "┌──────────────────┐");
         assert_eq!(drawn[1], "│ p1               │");
@@ -338,7 +295,7 @@ mod tests {
     #[test]
     fn panes_side_by_side_share_a_border_and_their_junctions_join() {
         let root = split(true, 0.5, Node::Pane(0), Node::Pane(1));
-        let drawn = plain(draw(&one(root), &[says(&["a"]), says(&["b"])], 31));
+        let drawn = plain(draw(Some(&root), &[says(&["a"]), says(&["b"])], 31));
         assert_eq!(drawn[0], "┌──────────────┬──────────────┐");
         assert_eq!(drawn[1], "│ a            │ b            │");
         assert_eq!(drawn[11], "└──────────────┴──────────────┘");
@@ -347,7 +304,7 @@ mod tests {
     #[test]
     fn a_stack_inside_a_column_meets_it_with_tees() {
         let root = split(true, 0.5, Node::Pane(0), split(false, 0.5, Node::Pane(1), Node::Pane(2)));
-        let drawn = plain(draw(&one(root), &[says(&["a"]), says(&["b"]), says(&["c"])], 31));
+        let drawn = plain(draw(Some(&root), &[says(&["a"]), says(&["b"]), says(&["c"])], 31));
         let divider = drawn.iter().position(|line| line.contains('├')).expect("a tee");
         assert!(drawn[divider].ends_with('┤'), "{drawn:#?}");
         assert_eq!(drawn[divider].chars().nth(15), Some('├'), "{drawn:#?}");
@@ -357,24 +314,13 @@ mod tests {
     #[test]
     fn an_uneven_split_is_drawn_uneven() {
         let root = split(true, 0.7, Node::Pane(0), Node::Pane(1));
-        let drawn = plain(draw(&one(root), &[says(&["a"]), says(&["b"])], 61));
+        let drawn = plain(draw(Some(&root), &[says(&["a"]), says(&["b"])], 61));
         assert_eq!(drawn[0].chars().position(|ch| ch == '┬'), Some(42), "{drawn:#?}");
     }
 
     #[test]
-    fn machines_side_by_side_take_their_weights() {
-        let parts = vec![
-            Part { weight: 2.0, root: Some(Node::Pane(0)) },
-            Part { weight: 1.0, root: Some(Node::Pane(1)) },
-        ];
-        let drawn = plain(draw(&parts, &[says(&["laptop"]), says(&["devenv"])], 61));
-        assert_eq!(drawn[0].chars().position(|ch| ch == '┬'), Some(40), "{drawn:#?}");
-    }
-
-    #[test]
-    fn a_part_nobody_has_described_says_so() {
-        let parts = vec![Part { weight: 1.0, root: None }];
-        let drawn = plain(draw(&parts, &[], 30));
+    fn a_tab_nobody_has_described_says_so() {
+        let drawn = plain(draw(None, &[], 30));
         assert!(drawn[1].contains("not arranged yet"), "{drawn:#?}");
     }
 
@@ -382,7 +328,7 @@ mod tests {
     fn text_too_long_for_its_box_is_cut_and_every_line_is_the_width_asked() {
         let root = split(true, 0.5, Node::Pane(0), Node::Pane(1));
         let boxes = [says(&["▸ p1w3r07bsd", "🤖 A · reading AGENTS.md all day"]), says(&["b"])];
-        let drawn = plain(draw(&one(root), &boxes, 33));
+        let drawn = plain(draw(Some(&root), &boxes, 33));
         for line in &drawn {
             assert_eq!(line.width(), 33, "{line:?} in {drawn:#?}");
         }
@@ -393,7 +339,7 @@ mod tests {
     #[test]
     fn a_split_too_narrow_to_honor_still_names_every_pane() {
         let root = split(true, 0.95, Node::Pane(0), Node::Pane(1));
-        let drawn = plain(draw(&one(root), &[says(&["left"]), says(&["right"])], 40));
+        let drawn = plain(draw(Some(&root), &[says(&["left"]), says(&["right"])], 40));
         assert!(drawn[1].contains("right"), "the narrow side keeps room for its name: {drawn:#?}");
     }
 }

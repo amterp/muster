@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
 use crate::Trouble;
-use crate::diagram::{self, Lines, Part};
+use crate::diagram::{self, Lines};
 
 /// How a refusal is marked, here so that `report` and this file agree on it.
 pub const ERROR: Style = Style::new().fg_color(Some(anstyle::Color::Ansi(AnsiColor::Red))).bold();
@@ -547,19 +547,11 @@ fn drawn_tab_line(
     layout: &muster_proto::TabLayout,
 ) -> String {
     let mut heading = tab_line(widths, tab);
-    let zoomed =
-        covering_zoom(layout).or_else(|| layout.regions.iter().find(|region| region.zoomed));
-    if let Some(zoomed) = zoomed {
+    if !layout.zoomed_pane_id.is_empty() {
         heading.push_str("  ");
-        heading.push_str(&styled(&format!("zoomed on {}", zoomed.pane_id), QUIET));
+        heading.push_str(&styled(&format!("zoomed on {}", layout.zoomed_pane_id), QUIET));
     }
     heading
-}
-
-/// The zoomed part holding the keyboard, which fills the whole tab whatever machines the other
-/// parts are on, as the window draws it.
-fn covering_zoom(layout: &muster_proto::TabLayout) -> Option<&muster_proto::ViewRegion> {
-    layout.regions.iter().find(|region| region.region_id == layout.focused_region && region.zoomed)
 }
 
 /// What `--layout` draws from: every tab's arrangement and every pane's size, from an answer
@@ -597,40 +589,24 @@ impl<'a> Drawing<'a> {
         width: usize,
     ) -> Vec<String> {
         let mut order: Vec<&str> = Vec::new();
-        // A zoomed part is drawn as the one pane filling it, which is what is on screen and what
-        // its daemon sizes that pane to. The panes behind it keep the sizes they had before the
-        // zoom, and drawn in the tree beside a pane sized to the whole tab their boxes and their
-        // sizes would disagree, so they are named under the drawing instead. While that part
-        // holds the keyboard it fills the whole tab, and every other part is behind it too.
+        // A zoomed tab is drawn as the one pane filling it, which is what is on screen and what
+        // its daemon sizes that pane to, whatever machine the pane is on. The panes behind it
+        // keep the sizes they had before the zoom, and drawn in the tree beside a pane sized to
+        // the whole tab their boxes and their sizes would disagree, so they are named under the
+        // drawing instead.
         let mut behind: Vec<&str> = Vec::new();
-        let covering = covering_zoom(layout);
-        let drawn = |region: &&muster_proto::ViewRegion| {
-            covering.is_none_or(|covering| covering.region_id == region.region_id)
-        };
-        for region in layout.regions.iter().filter(|region| !drawn(region)) {
-            if let Some(root) = region.root.as_ref() {
-                tree(root, &mut behind);
+        let zoomed = layout.zoomed_pane_id.as_str();
+        let root = match layout.tree.as_ref() {
+            Some(root) if !zoomed.is_empty() => {
+                let mut all = Vec::new();
+                tree(root, &mut all);
+                behind.extend(all.into_iter().filter(|pane| *pane != zoomed));
+                order.push(zoomed);
+                Some(diagram::Node::Pane(0))
             }
-        }
-        let parts: Vec<Part> = layout
-            .regions
-            .iter()
-            .filter(drawn)
-            .map(|region| {
-                let root = match region.root.as_ref() {
-                    Some(root) if region.zoomed && !region.pane_id.is_empty() => {
-                        let mut all = Vec::new();
-                        tree(root, &mut all);
-                        behind.extend(all.into_iter().filter(|pane| *pane != region.pane_id));
-                        order.push(region.pane_id.as_str());
-                        Some(diagram::Node::Pane(order.len() - 1))
-                    }
-                    Some(root) => tree(root, &mut order),
-                    None => None,
-                };
-                Part { weight: region.weight, root }
-            })
-            .collect();
+            Some(root) => tree(root, &mut order),
+            None => None,
+        };
         let shares: BTreeMap<&str, &muster_proto::PanePlace> =
             layout.places.iter().map(|place| (place.pane_id.as_str(), place)).collect();
         let boxes: Vec<Lines> = order
@@ -650,7 +626,7 @@ impl<'a> Drawing<'a> {
                 pane_box(pane, row, agent, &size, self.keyboard == Some(*pane), self.say_machine)
             })
             .collect();
-        let mut lines = diagram::draw(&parts, &boxes, width);
+        let mut lines = diagram::draw(root.as_ref(), &boxes, width);
         if !behind.is_empty() {
             lines.push(styled(&format!("behind the zoom: {}", behind.join(", ")), QUIET));
         }
@@ -689,14 +665,14 @@ fn pane_box(
     lines
 }
 
-/// A region's tree as the diagram draws it, naming its panes in `order` as they are met.
-fn tree<'a>(node: &'a muster_proto::ViewNode, order: &mut Vec<&'a str>) -> Option<diagram::Node> {
+/// A tab's tree as the diagram draws it, naming its panes in `order` as they are met.
+fn tree<'a>(node: &'a muster_proto::ViewTree, order: &mut Vec<&'a str>) -> Option<diagram::Node> {
     match node.node.as_ref()? {
-        muster_proto::view_node::Node::Pane(pane) => {
-            order.push(pane.pane_id.as_str());
+        muster_proto::view_tree::Node::Pane(leaf) => {
+            order.push(leaf.pane.as_ref()?.pane_id.as_str());
             Some(diagram::Node::Pane(order.len() - 1))
         }
-        muster_proto::view_node::Node::Split(split) => Some(diagram::Node::Split {
+        muster_proto::view_tree::Node::Split(split) => Some(diagram::Node::Split {
             columns: split.axis != "rows",
             ratio: split.ratio,
             first: Box::new(tree(split.first.as_deref()?, order)?),
@@ -1333,18 +1309,23 @@ fn window_json(window: &Window, others: Others) -> Value {
     let mut tabs_out = Vec::new();
     let mut panes = Vec::new();
     for tab in tabs(window) {
-        tabs_out.push(json!({
+        let mut described = json!({
             "tab": tab.tab_id,
-            // The machines this tab holds panes on, in the order their regions sit on screen.
-            // Plural because a tab may span two, which is the whole of what changed here: a
-            // script that read `daemon` off a tab was reading a question the tab no longer
-            // answers on its own.
+            // The machines this tab holds panes on. Plural because a tab may span two, which is
+            // the whole of what changed here: a script that read `daemon` off a tab was reading
+            // a question the tab no longer answers on its own.
             "daemons": tab.daemon_ids,
             "place": tab.place,
             "label": tab.label,
             "given_name": tab.given_name,
             "on_screen": tab.on_screen,
-        }));
+        });
+        if let (Some(view), Value::Object(fields)) = (window.view.as_ref(), &mut described)
+            && view.tab_id == tab.tab_id
+        {
+            add_tree(fields, view.tree.as_ref(), &view.zoomed_pane_id);
+        }
+        tabs_out.push(described);
         for pane in &tab.panes {
             panes.push(with_agent(json!({
                 "pane": pane.pane_id,
@@ -1422,20 +1403,37 @@ fn window_json(window: &Window, others: Others) -> Value {
         "hidden": hidden,
         "daemons": daemons,
         "keyboard": keyboard,
-        // Which tab the window is on, named once rather than repeated on every region below.
-        // `tabs[].on_screen` says the same thing and needs a scan to find it.
+        // Which tab the window is on, named once rather than found by scanning
+        // `tabs[].on_screen`, which says the same thing.
         "showing": showing(window),
-        "regions": regions(window),
         "tabs": tabs_out,
         "panes": panes,
     })
+}
+
+/// A tab's `layout` and `zoomed`: for the tab on screen always, and under `--layout` for every tab.
+///
+/// `layout` is the tab's whole tree, every machine's panes in it, unzoomed: it says the shape that
+/// put each pane where its `rect` says, and which divider a caller would be moving. Null while no
+/// machine has said how the tab is arranged - an ordinary moment, and a different answer from a
+/// tab holding no panes. `zoomed` is the pane filling the tab while it is zoomed, the one the
+/// keyboard is on there, said because nothing else tells a zoomed tab from one holding a pane
+/// alone: the panes a zoom covers list as `on_screen: false`, exactly like a background tab's.
+fn add_tree(
+    fields: &mut serde_json::Map<String, Value>,
+    tree: Option<&muster_proto::ViewTree>,
+    zoomed: &str,
+) {
+    fields.insert("layout".to_string(), tree.map_or(Value::Null, layout_json));
+    let zoomed = if zoomed.is_empty() { Value::Null } else { json!(zoomed) };
+    fields.insert("zoomed".to_string(), zoomed);
 }
 
 fn rect_json(place: &muster_proto::PanePlace) -> Value {
     json!({ "x": place.x, "y": place.y, "width": place.width, "height": place.height })
 }
 
-/// What `--layout` adds to `tabs[]` and `panes[]`: each tab's regions, and each pane's frame and
+/// What `--layout` adds to `tabs[]` and `panes[]`: every tab's tree, and each pane's frame and
 /// size. Only when the layout was asked for, and absent rather than null otherwise, so a size
 /// nobody asked for is never read as a size nobody knows.
 ///
@@ -1468,13 +1466,12 @@ fn add_layout(window: &Window, tabs: &mut [Value], panes: &mut [Value], others: 
     };
     for tab in tabs.iter_mut() {
         let Value::Object(fields) = tab else { continue };
-        let regions = fields
-            .get("tab")
-            .and_then(Value::as_str)
-            .and_then(|name| layouts.get(name))
-            .map(|layout| regions_json(&layout.regions, &layout.focused_region))
-            .unwrap_or_default();
-        fields.insert("regions".to_string(), Value::Array(regions));
+        let Some(layout) =
+            fields.get("tab").and_then(Value::as_str).and_then(|name| layouts.get(name))
+        else {
+            continue;
+        };
+        add_tree(fields, layout.tree.as_ref(), &layout.zoomed_pane_id);
     }
     panes.iter_mut().for_each(size);
     for other in others.iter_mut() {
@@ -1498,60 +1495,15 @@ fn showing(window: &Window) -> Option<&str> {
     (!tab.is_empty()).then_some(tab)
 }
 
-/// The parts of the tab on screen, left to right, one per machine holding panes in it.
-///
-/// JSON only, and one region for every tab until somebody groups two. A person reads `on_screen`
-/// on a tab and has the window in front of them; a script arranging one has neither, and nothing
-/// else in the answer says how wide each machine's half is or which order they sit in. This is
-/// the only part of the arrangement Muster owns outright - no daemon knows another one exists.
-///
-/// Which tab these divide is `showing` above rather than a key on every row, because they all
-/// show the same one.
-fn regions(window: &Window) -> Vec<Value> {
-    let Some(view) = window.view.as_ref() else { return Vec::new() };
-    regions_json(&view.regions, &view.focused_region)
-}
-
-/// Regions as `regions[]` spells them, for the tab on screen and, under `--layout`, every tab.
-fn regions_json(regions: &[muster_proto::ViewRegion], focused: &str) -> Vec<Value> {
-    regions
-        .iter()
-        .map(|region| {
-            json!({
-                "region": region.region_id,
-                "daemon": region.daemon_id,
-                "pane": region.pane_id,
-                // A share of the sum rather than a fraction of the window, which is how the
-                // core holds it: every region starts at 1, so three untouched regions read as
-                // 1, 1, 1 rather than as three thirds that have to add up.
-                "weight": region.weight,
-                "keyboard": !focused.is_empty() && region.region_id == focused,
-                // Whether this region is filled by one pane rather than by its tab's whole
-                // tree. Reported because it is the difference between a tab holding one pane
-                // and a tab whose others are hidden, and nothing else in this answer implies
-                // it: every pane in the tab still lists, and the ones a zoom is covering read
-                // as `on_screen: false` exactly like the panes of a tab in the background.
-                "zoomed": region.zoomed,
-                // How this part splits, which is the only place the answer says so. `rect` on
-                // each pane says where everything ended up; this says the shape that put it
-                // there, and which divider a caller would be moving. Null while the daemon has
-                // not said how the tab is arranged - an ordinary moment, not a failure, and a
-                // different answer from a part holding no panes.
-                //
-                // Resolved for a zoom on screen, like `zoomed` beside it: a zoomed part is one
-                // pane there, because that is what is drawn. Under `tabs[].regions` it is the
-                // whole tree, because that says how the tab is laid out.
-                "layout": region.root.as_ref().map_or(Value::Null, layout_json),
-            })
-        })
-        .collect()
-}
-
-/// One node of a part's tree, and everything under it.
-fn layout_json(node: &muster_proto::ViewNode) -> Value {
+/// One node of a tab's tree, and everything under it.
+fn layout_json(node: &muster_proto::ViewTree) -> Value {
     match node.node.as_ref() {
-        Some(muster_proto::view_node::Node::Pane(pane)) => json!({ "pane": pane.pane_id }),
-        Some(muster_proto::view_node::Node::Split(split)) => json!({
+        Some(muster_proto::view_tree::Node::Pane(leaf)) => json!({
+            "pane": leaf.pane.as_ref().map(|pane| pane.pane_id.as_str()).unwrap_or_default(),
+            // The machine running it. A tab can hold panes on several, in any arrangement.
+            "daemon": leaf.daemon_id,
+        }),
+        Some(muster_proto::view_tree::Node::Split(split)) => json!({
             // `columns` puts its children side by side and `rows` stacks them, so a row of
             // panes is a `columns` split. Muster's own spelling rather than a backend's, which
             // says which way a split was made rather than how to lay two children out.
@@ -2285,14 +2237,22 @@ mod tests {
     #[test]
     fn a_zoomed_tab_is_drawn_as_the_pane_that_fills_it() {
         use muster_proto::{
-            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewNode, ViewPane,
-            ViewRegion, ViewSplit, Window, view_node,
+            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewPane, ViewTree,
+            ViewTreePane, ViewTreeSplit, Window, view_tree,
         };
-        let leaf = |pane: &str| ViewNode {
-            node: Some(view_node::Node::Pane(ViewPane {
-                pane_id: pane.to_string(),
-                ..ViewPane::default()
+        let leaf = |pane: &str, daemon: &str| ViewTree {
+            node: Some(view_tree::Node::Pane(ViewTreePane {
+                daemon_id: daemon.to_string(),
+                pane: Some(ViewPane { pane_id: pane.to_string(), ..ViewPane::default() }),
             })),
+        };
+        let columns = |first: ViewTree, second: ViewTree| ViewTree {
+            node: Some(view_tree::Node::Split(Box::new(ViewTreeSplit {
+                axis: "columns".to_string(),
+                ratio: 0.5,
+                first: Some(Box::new(first)),
+                second: Some(Box::new(second)),
+            }))),
         };
         let grid = |pane: &str, cols: u32| PaneGrid {
             pane_id: pane.to_string(),
@@ -2316,20 +2276,8 @@ mod tests {
             }),
             layouts: vec![TabLayout {
                 tab_id: "t1".to_string(),
-                regions: vec![ViewRegion {
-                    pane_id: "p1".to_string(),
-                    zoomed: true,
-                    weight: 1.0,
-                    root: Some(ViewNode {
-                        node: Some(view_node::Node::Split(Box::new(ViewSplit {
-                            axis: "columns".to_string(),
-                            ratio: 0.5,
-                            first: Some(Box::new(leaf("p1"))),
-                            second: Some(Box::new(leaf("p2"))),
-                        }))),
-                    }),
-                    ..ViewRegion::default()
-                }],
+                tree: Some(columns(leaf("p1", "local"), leaf("p2", "local"))),
+                zoomed_pane_id: "p1".to_string(),
                 ..TabLayout::default()
             }],
             grids: vec![grid("p1", 160), grid("p2", 79)],
@@ -2341,19 +2289,27 @@ mod tests {
         assert!(text.contains("behind the zoom: p2"), "{text}");
     }
 
-    /// A zoom in the part holding the keyboard fills the whole tab, so another machine's part is
-    /// behind it too rather than drawn beside it.
+    /// A zoom fills the whole tab, so the panes on another machine are behind it too rather than
+    /// drawn beside it.
     #[test]
     fn a_zoom_with_the_keyboard_is_drawn_filling_a_tab_on_two_machines() {
         use muster_proto::{
-            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewNode, ViewPane,
-            ViewRegion, ViewSplit, Window, view_node,
+            PaneGrid, RosterChanged, RosterPane, RosterTab, TabLayout, ViewPane, ViewTree,
+            ViewTreePane, ViewTreeSplit, Window, view_tree,
         };
-        let leaf = |pane: &str| ViewNode {
-            node: Some(view_node::Node::Pane(ViewPane {
-                pane_id: pane.to_string(),
-                ..ViewPane::default()
+        let leaf = |pane: &str, daemon: &str| ViewTree {
+            node: Some(view_tree::Node::Pane(ViewTreePane {
+                daemon_id: daemon.to_string(),
+                pane: Some(ViewPane { pane_id: pane.to_string(), ..ViewPane::default() }),
             })),
+        };
+        let columns = |first: ViewTree, second: ViewTree| ViewTree {
+            node: Some(view_tree::Node::Split(Box::new(ViewTreeSplit {
+                axis: "columns".to_string(),
+                ratio: 0.5,
+                first: Some(Box::new(first)),
+                second: Some(Box::new(second)),
+            }))),
         };
         let grid = |pane: &str, cols: u32| PaneGrid {
             pane_id: pane.to_string(),
@@ -2377,33 +2333,11 @@ mod tests {
             }),
             layouts: vec![TabLayout {
                 tab_id: "t1".to_string(),
-                focused_region: "r1".to_string(),
-                regions: vec![
-                    ViewRegion {
-                        region_id: "r0".to_string(),
-                        daemon_id: "laptop".to_string(),
-                        pane_id: "p1".to_string(),
-                        weight: 1.0,
-                        root: Some(leaf("p1")),
-                        ..ViewRegion::default()
-                    },
-                    ViewRegion {
-                        region_id: "r1".to_string(),
-                        daemon_id: "devenv".to_string(),
-                        pane_id: "p3".to_string(),
-                        zoomed: true,
-                        weight: 1.0,
-                        root: Some(ViewNode {
-                            node: Some(view_node::Node::Split(Box::new(ViewSplit {
-                                axis: "columns".to_string(),
-                                ratio: 0.5,
-                                first: Some(Box::new(leaf("p2"))),
-                                second: Some(Box::new(leaf("p3"))),
-                            }))),
-                        }),
-                        ..ViewRegion::default()
-                    },
-                ],
+                tree: Some(columns(
+                    leaf("p1", "laptop"),
+                    columns(leaf("p2", "devenv"), leaf("p3", "devenv")),
+                )),
+                zoomed_pane_id: "p3".to_string(),
                 ..TabLayout::default()
             }],
             grids: vec![grid("p1", 79), grid("p2", 39), grid("p3", 160)],

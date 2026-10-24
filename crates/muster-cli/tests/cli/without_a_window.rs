@@ -199,7 +199,7 @@ fn callsign_of(here: &Here, pane: &str) -> String {
 fn the_layout_is_the_daemons_trees(here: &Here) {
     let laid: Value =
         serde_json::from_str(&ok(&here.muster(&["--json", "window", "--layout"]))).unwrap();
-    let layout = &laid["tabs"][0]["regions"][0]["layout"];
+    let layout = &laid["tabs"][0]["layout"];
     assert_eq!(layout["axis"], json!("columns"), "p2 and p3 went to p1's right: {laid}");
     let mut widths = 0.0;
     for pane in laid["panes"].as_array().into_iter().flatten() {

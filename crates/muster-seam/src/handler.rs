@@ -2129,6 +2129,8 @@ fn laid_out(now: &session::WindowNow) -> (Vec<proto::TabLayout>, Vec<proto::Pane
                 regions: described.regions,
                 focused_region: described.focused_region,
                 places: places(view),
+                tree: described.tree,
+                zoomed_pane_id: described.zoomed_pane_id,
             }
         })
         .collect();

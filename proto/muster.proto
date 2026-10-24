@@ -1777,6 +1777,16 @@ message TabLayout {
   // Where each pane sits, as fractions of the tab rather than of what the window is drawing -
   // the same numbers Window.places gives the tab on screen, unzoomed.
   repeated PanePlace places = 4;
+
+  // The tab's whole tree, every machine's panes in it, with the machine on each leaf: merged
+  // from each machine's copy for a tab spanning machines (docs/mip/0008-panes-across-machines.md),
+  // and a tab on one machine's own tree. Unzoomed. Absent while no machine has said how the tab
+  // is arranged.
+  ViewTree tree = 5;
+
+  // The pane filling the tab while it is zoomed, which is the pane the keyboard is on there.
+  // Empty when the tab is not zoomed.
+  string zoomed_pane_id = 6;
 }
 
 // A pane's size in cells: the size its program last saw. For a pane on screen that is what it
@@ -2829,10 +2839,14 @@ message ViewChanged {
   string focused_region = 2;
 
   // The tab's one tree over every machine it spans, merged from the copy each machine keeps
-  // (docs/mip/0008-panes-across-machines.md): the whole tree, even while a region is zoomed.
-  // Published beside `regions`, which are what draws the tab. Absent with no tab on screen,
-  // and for a tab on one machine holding no other machine's pane, whose region carries its tree.
+  // (docs/mip/0008-panes-across-machines.md), and a tab on one machine's own tree: the whole
+  // tree, even while the tab is zoomed. Published beside `regions`, which are what draws the tab.
+  // Absent with no tab on screen, and while no machine has said how the tab is arranged.
   ViewTree tree = 4;
+
+  // The pane filling the tab while it is zoomed, which is the pane the keyboard is on there.
+  // Empty when the tab is not zoomed.
+  string zoomed_pane_id = 5;
 }
 
 // A tab's tree over every machine it spans: a leaf names the machine running its pane.

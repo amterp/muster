@@ -77,8 +77,8 @@ When no window answers, this machine's daemon does (`muster docs overview`, "Wit
 The same rows, less what only a window has: no places, no `▸`, no `(off screen)`, and no time in a
 state, which a window counts from when it first saw the pane. `done` is still a finish nobody has
 seen, as the daemon records it. In `--json`, `answered_by` is `"daemon"`; `name`, `keyboard`,
-`showing` and every `since` and `rect` are null; `regions` is empty; every `place` is 0 and every
-`on_screen` false.
+`showing` and every `since` and `rect` are null; no tab has a `layout` unless `--layout` asked;
+every `place` is 0 and every `on_screen` false.
 
 ## Other windows
 
@@ -267,42 +267,31 @@ One entry per pane every followed daemon holds, on screen or not.
 none. `keyboard` is the name of the pane the window's keyboard is on, or `null` when no pane has
 it.
 
-## regions[]
+## tabs[].layout
 
-The parts of the tab on screen, left to right, one per machine holding panes in it - so one entry
-for almost every tab. JSON only. A person reading the plain output has the window in front of
-them; a script arranging one has neither that nor any other way to tell how wide each machine's
-part is or which order they sit in.
+How the tab on screen is arranged: every pane in it, whatever machine runs each, as one tree. The
+tab on screen always has it, and with `--layout` every tab does. JSON only. A person reading the
+plain output has the window in front of them; a script arranging one has neither that nor any
+other way to tell where each pane sits.
 
-A zoom in the part the keyboard is in fills the whole tab, so while it lasts that part is the only
-entry; the others are still in `--layout`'s `tabs[].regions`, at the weights they come back at.
+- `layout` - the tab's tree. A leaf is `{"pane": "p1w3r07bsd", "daemon": "devenv"}`, `daemon`
+  being the machine running the pane; a divider is `{"axis": "columns"|"rows", "ratio": 0.5,
+  "first": …, "second": …}`, where `columns` puts its children side by side and `rows` stacks
+  them - so a row of panes is a `columns` split. `ratio` is the first child's share of what the
+  divider divides. The whole tree even while the tab is zoomed, since a zoom covers the
+  arrangement without changing it. `null` while no machine has said how the tab is arranged,
+  which is ordinary rather than a failure and is a different answer from a tab holding no panes.
+- `zoomed` - the pane filling the tab while it is zoomed, which is the pane the keyboard is on
+  there, or `null`. Nothing else in the answer says so: a zoom's hidden panes read
+  `on_screen: false` exactly like the panes of a tab in the background.
 
-- `region` - Muster's name for the part.
-- `daemon` - which machine's panes it is showing.
-- `pane` - the pane in it the keyboard feeds while this region is focused. Empty while the daemon
-  has not yet said what is in the tab.
-- `weight` - its share of the tab's width, relative to the other regions. A weight rather than a
-  fraction, so two untouched parts read as `1, 1` rather than as two halves. Divide by the sum to
-  get a width.
-- `keyboard` - whether this is the region the window's keyboard is in.
-- `zoomed` - whether one pane is filling it rather than the tab's whole tree. Nothing else in the
-  answer says so: a zoom's hidden panes read `on_screen: false` exactly like the panes of a tab
-  in the background, and `pane` above is the one still drawn.
-- `layout` - how this part splits. A leaf is `{"pane": "p1w3r07bsd"}`; a divider is
-  `{"axis": "columns"|"rows", "ratio": 0.5, "first": …, "second": …}`, where `columns` puts its
-  children side by side and `rows` stacks them - so a row of panes is a `columns` split. `ratio`
-  is the first child's share of what the divider divides. `null` while the daemon has not yet said
-  how the tab is arranged, which is ordinary rather than a failure and is a different answer from
-  a part holding no panes. Resolved for a zoom, like `zoomed` above: a zoomed part is one leaf,
-  because that is what is drawn.
-
-`rect` on a pane and `layout` here answer different halves of the same question. `rect` is where
+`rect` on a pane and `layout` answer different halves of the same question. `rect` is where
 everything ended up, which is what checks a resize; `layout` is the shape that put it there, which
 is what names the divider somebody would move.
 
-Which tab they divide is `showing` above rather than a key on every row, because they all show the
-same one. This is the one part of the arrangement Muster owns outright rather than mirrors from a
-daemon: no daemon knows the other one exists, so nothing else in this answer implies it.
+This used to be `regions[]`, one entry per machine holding panes in the tab on screen, side by
+side. A list of machines cannot describe a tab whose machines' panes interleave, so it went
+(`docs/mip/0008-panes-across-machines.md`, question D).
 
 ## The layout
 
@@ -338,14 +327,12 @@ share of the tab instead, `50% x 70%`. Sizes in points are not offered, because 
 knows them and they would change with the font.
 
 `--layout` asks every daemon for its panes' sizes, which the ordinary read does not, so it is a
-flag rather than the default. With `--json` it adds three keys, and nothing else changes:
+flag rather than the default. With `--json` it adds these, and nothing else changes:
 
-- `tabs[].regions` - each tab's parts, in the shape `regions[]` below has, with one difference:
-  `layout` is the tab's whole tree even when it is zoomed, because this says how the tab is
-  laid out and a zoom covers that without changing it. `zoomed` and `pane` say which pane fills it.
-  On a zoomed tab `frame` and `cells` therefore describe different things: `frame` is each pane's
-  place in that tree, and `cells` is what its program sees, which for the zoomed pane is the whole
-  tab and for the panes behind it the size they had before the zoom.
+- `tabs[].layout` and `tabs[].zoomed` - as [above](#tabslayout), for every tab rather than only
+  the one on screen. On a zoomed tab `frame` and `cells` describe different things: `frame` is
+  each pane's place in the tree, and `cells` is what its program sees, which for the zoomed pane
+  is the whole tab and for the panes behind it the size they had before the zoom.
 - `panes[].frame` - where the pane sits in its tab's arrangement, as fractions of the tab, in
   `rect`'s terms, whether or not the tab is on screen.
 - `panes[].cells` - `{"cols", "rows"}`, or `null` when its daemon could not say.
@@ -363,8 +350,8 @@ trees, one part each the whole width, and each `frame` is the pane's place in th
 
 `muster window --watch --layout` keeps the drawing current: it draws the layout, then draws it
 again each time the arrangement changes, until it is stopped. The arrangement is which window
-holds which tabs and in what order, which tab is on screen, each tab's parts and their widths,
-every split and its ratio, a zoom, and each pane's size. An agent changing state, a rename or
+holds which tabs and in what order, which tab is on screen, every split in each tab and its
+ratio, a zoom, and each pane's size. An agent changing state, a rename or
 the keyboard moving draws nothing on its own; a drawing shows them as they are when it is made.
 On a terminal each drawing replaces the last; piped, each follows the last after a blank line.
 With `--json`, each drawing is one line holding what `--layout --json` prints.

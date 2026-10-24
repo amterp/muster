@@ -99,6 +99,11 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
             .collect(),
         focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
         tree: view.tree.as_ref().map(tree),
+        zoomed_pane_id: view
+            .zoomed
+            .as_ref()
+            .map(|zoomed| zoomed.pane.to_string())
+            .unwrap_or_default(),
     }
 }
 

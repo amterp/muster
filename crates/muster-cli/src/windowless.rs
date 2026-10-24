@@ -4,8 +4,8 @@
 //! daemon's to know: a window only relays them. So on a devenv with no window reachable, or in a
 //! pane whose window has quit, these still work, against the daemon that holds the panes. The
 //! answers are the window's own messages, built from the daemon's, so the same renderer prints
-//! them and a caller reads the same thing either way. What only a window has - tabs arranged in
-//! regions, places, the keyboard, what is on screen - is left out rather than made up.
+//! them and a caller reads the same thing either way. What only a window has - a tab arranged
+//! across machines, places, the keyboard, what is on screen - is left out rather than made up.
 //!
 //! Every rule the window applies on the way is shared rather than copied: paging to a pane's
 //! newest rows (`muster_daemon_proto::pane_text`), counting rows and confirming a send
@@ -1036,15 +1036,8 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
         })
         .map(|(tab, own, zoomed)| muster_proto::TabLayout {
             tab_id: tab.tab.clone(),
-            regions: vec![muster_proto::ViewRegion {
-                daemon_id: machine.clone(),
-                tab_id: tab.tab.clone(),
-                zoomed: zoomed.is_some(),
-                pane_id: zoomed.unwrap_or_default(),
-                weight: 1.0,
-                root: own.as_ref().and_then(view_node),
-                ..muster_proto::ViewRegion::default()
-            }],
+            tree: own.as_ref().and_then(|own| view_tree(own, &machine)),
+            zoomed_pane_id: zoomed.unwrap_or_default(),
             places: own
                 .as_ref()
                 .and_then(core_node)
@@ -1132,30 +1125,41 @@ fn core_node(node: &daemon_proto::Node) -> Option<ViewNode> {
     })
 }
 
-/// A daemon's tree in a window's vocabulary, from [`own_panes`].
-fn view_node(node: &daemon_proto::Node) -> Option<muster_proto::ViewNode> {
+/// A daemon's tree in a window's vocabulary, from [`own_panes`], each leaf on `machine`.
+fn view_tree(node: &daemon_proto::Node, machine: &str) -> Option<muster_proto::ViewTree> {
     let node = match node.node.as_ref()? {
         daemon_proto::node::Node::Pane(pane) => {
-            muster_proto::view_node::Node::Pane(muster_proto::ViewPane {
-                pane_id: pane.clone(),
-                ..muster_proto::ViewPane::default()
+            muster_proto::view_tree::Node::Pane(muster_proto::ViewTreePane {
+                daemon_id: machine.to_string(),
+                pane: Some(muster_proto::ViewPane {
+                    pane_id: pane.clone(),
+                    ..muster_proto::ViewPane::default()
+                }),
             })
         }
         daemon_proto::node::Node::Split(split) => {
-            muster_proto::view_node::Node::Split(Box::new(muster_proto::ViewSplit {
+            muster_proto::view_tree::Node::Split(Box::new(muster_proto::ViewTreeSplit {
                 axis: match split.axis() {
                     daemon_proto::Axis::Rows => "rows",
                     daemon_proto::Axis::Columns | daemon_proto::Axis::Unspecified => "columns",
                 }
                 .to_string(),
                 ratio: split.ratio,
-                first: split.first.as_deref().and_then(view_node).map(Box::new),
-                second: split.second.as_deref().and_then(view_node).map(Box::new),
+                first: split
+                    .first
+                    .as_deref()
+                    .and_then(|first| view_tree(first, machine))
+                    .map(Box::new),
+                second: split
+                    .second
+                    .as_deref()
+                    .and_then(|second| view_tree(second, machine))
+                    .map(Box::new),
             }))
         }
         daemon_proto::node::Node::Foreign(_) => return None,
     };
-    Some(muster_proto::ViewNode { node: Some(node) })
+    Some(muster_proto::ViewTree { node: Some(node) })
 }
 
 /// Every pane's size, or none from a daemon that cannot say.

@@ -193,21 +193,13 @@ fn arrangement(answer: &Value) -> Value {
     fn each(list: &Value, of: impl Fn(&Value) -> Value) -> Value {
         Value::Array(list.as_array().into_iter().flatten().map(of).collect())
     }
-    let region = |region: &Value| {
-        let mut kept = pick(region, &["daemon", "weight", "zoomed", "layout"]);
-        // Which pane a region names is where its keyboard is, except in a zoom, where it is the
-        // pane filling the tab.
-        if region["zoomed"] == json!(true) {
-            kept["pane"] = region["pane"].clone();
-        }
-        kept
-    };
     let pane = |pane: &Value| pick(pane, &["pane", "tab", "daemon", "frame", "cells"]);
     json!({
         "showing": answer["showing"],
         "tabs": each(&answer["tabs"], |tab| json!({
             "tab": tab["tab"],
-            "regions": each(&tab["regions"], region),
+            "layout": tab["layout"],
+            "zoomed": tab["zoomed"],
         })),
         "panes": each(&answer["panes"], pane),
         "other_windows": each(&answer["other_windows"], |window| json!({
@@ -231,10 +223,8 @@ mod tests {
         let answer = json!({
             "showing": "t1",
             "keyboard": "p1",
-            "tabs": [{ "tab": "t1", "label": "x", "regions": [{
-                "daemon": "local", "pane": "p1", "keyboard": true, "weight": 1.0,
-                "zoomed": false, "layout": { "pane": "p1" },
-            }]}],
+            "tabs": [{ "tab": "t1", "label": "x", "zoomed": null,
+                "layout": { "pane": "p1", "daemon": "local" } }],
             "panes": [{ "pane": "p1", "tab": "t1", "state": "idle", "label": "x",
                 "frame": { "x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0 },
                 "cells": { "cols": 80, "rows": 24 } }],
@@ -243,7 +233,6 @@ mod tests {
         busy["panes"][0]["state"] = json!("working");
         busy["panes"][0]["label"] = json!("renamed");
         busy["keyboard"] = Value::Null;
-        busy["tabs"][0]["regions"][0]["keyboard"] = json!(false);
         assert_eq!(arrangement(&answer), arrangement(&busy));
 
         let mut resized = answer.clone();

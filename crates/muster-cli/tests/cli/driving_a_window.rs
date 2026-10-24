@@ -136,7 +136,7 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
     a_pane_can_be_read_back(&made_pane, &inside(&first));
     every_pane_says_since_when(&inside(&first));
     what_an_agent_says_and_a_bell_are_in_the_window(&daemon, &made_pane, &inside(&first));
-    the_columns_are_described(&inside(&first));
+    the_tab_on_screen_is_described(&inside(&first));
     the_arrangement_is_readable(&first, &made_pane, &inside(&first));
     the_layout_is_drawn_and_sized(&first, &made_pane, &inside(&first));
     an_uneven_tab_is_evened_out(&first, &made_pane, &inside(&first));
@@ -546,42 +546,32 @@ fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
     );
 }
 
-/// The parts of the tab on screen, which nothing else in the answer implies.
+/// How the tab on screen is arranged, which nothing else in the answer implies.
 ///
 /// A person reading the plain output has the window in front of them. A script arranging one has
-/// neither that nor any other way to tell how a tab is divided between the machines holding
-/// panes in it: `tabs[].daemons` says which they are and not how wide each is, and a weight has
-/// no other spelling at all.
-fn the_columns_are_described(environment: &[(&str, String)]) {
+/// neither that nor any other way to tell how a tab is divided: `tabs[].daemons` says which
+/// machines it holds panes on and not where each pane sits.
+fn the_tab_on_screen_is_described(environment: &[(&str, String)]) {
     let window = json_from(&run(&["window", "--json"], environment));
-    let regions = window["regions"].as_array().cloned().unwrap_or_default();
+    let tab = &window["tabs"][0];
     assert_eq!(
-        regions.len(),
-        1,
-        "a tab holding panes on one machine is one column, and this answer describes {}: {window}",
-        regions.len()
-    );
-    let region = &regions[0];
-    // Which tab they divide is said once, at the top. A key on every region would be the same
-    // answer repeated, since they all show the tab the window is on.
-    assert_eq!(
-        window["showing"], window["tabs"][0]["tab"],
+        window["showing"], tab["tab"],
         "the window says it is showing a tab the answer does not describe, so nothing can join \
          the two: {window}"
     );
-    assert_eq!(
-        region["daemon"], window["tabs"][0]["daemons"][0],
-        "the column names a machine the tab does not say it holds panes on: {window}"
-    );
-    assert_eq!(
-        region["keyboard"],
-        json!(true),
-        "no column has the keyboard, though a pane does: {window}"
-    );
-    assert!(
-        region["weight"].as_f64().is_some_and(|weight| weight > 0.0),
-        "a column with no width is a column nothing can be laid out from: {window}"
-    );
+    assert!(tab["layout"].is_object(), "the tab on screen does not say how it is arranged: {tab}");
+    assert!(tab["zoomed"].is_null(), "nothing zoomed this tab: {tab}");
+    let mut leaves = vec![&tab["layout"]];
+    while let Some(node) = leaves.pop() {
+        if node.get("axis").is_some() {
+            leaves.extend([&node["first"], &node["second"]]);
+            continue;
+        }
+        assert_eq!(
+            node["daemon"], tab["daemons"][0],
+            "a pane in the tree names a machine the tab does not say it holds panes on: {window}"
+        );
+    }
 }
 
 /// How the tab splits, and how big each pane came out.
@@ -593,7 +583,7 @@ fn the_columns_are_described(environment: &[(&str, String)]) {
 /// if the numbers do not reach the command somebody types.
 fn the_arrangement_is_readable(first: &str, made: &str, environment: &[(&str, String)]) {
     let window = json_from(&run(&["window", "--json"], environment));
-    let layout = &window["regions"][0]["layout"];
+    let layout = &window["tabs"][0]["layout"];
     assert_eq!(
         layout["axis"],
         json!("rows"),
@@ -668,7 +658,7 @@ fn the_layout_is_drawn_and_sized(first: &str, made: &str, environment: &[(&str, 
     let window = json_from(&run(&["window", "--layout", "--json"], environment));
     let tab = &window["tabs"][0];
     assert_eq!(
-        tab["regions"][0]["layout"]["axis"],
+        tab["layout"]["axis"],
         json!("rows"),
         "every tab carries its arrangement under --layout: {tab}"
     );
@@ -698,7 +688,7 @@ fn the_layout_is_drawn_and_sized(first: &str, made: &str, environment: &[(&str, 
 
     let plain = json_from(&run(&["window", "--json"], environment));
     assert!(
-        plain["panes"][0].get("cells").is_none() && plain["tabs"][0].get("regions").is_none(),
+        plain["panes"][0].get("cells").is_none() && plain["panes"][0].get("frame").is_none(),
         "without --layout nothing was asked of the daemons, so nothing is said: {plain}"
     );
 

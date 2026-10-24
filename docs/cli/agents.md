@@ -370,7 +370,7 @@ many panes hang off each divider, and turning that into ratios is the part an ag
 looking.
 
 `muster window --json` says whether it landed. Every pane on screen carries a `rect` with its
-share of the window, and `regions[].layout` says how the tab splits - `muster docs window` has
+share of the window, and `tabs[].layout` says how the tab splits - `muster docs window` has
 both.
 
 ## Out of sight
