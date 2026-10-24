@@ -197,7 +197,9 @@ fn an_agent_makes_helpers_that_are_listed_as_its_own(maker: &str, environment: &
 
     // Read as a person reads it, both are listed under the agent, a level in, and not under
     // `hidden`, which they leave.
-    let readable = run(&["window"], environment).out;
+    let readable = run(&["window"], environment);
+    assert_eq!(readable.code, 0, "`muster window` failed: {}", readable.errors);
+    let readable = readable.out;
     let rows: Vec<&str> = readable.lines().collect();
     let maker_called = callsign(&window, maker);
     let maker_row =
@@ -240,6 +242,7 @@ fn a_pane_is_hidden_quiet_and_brought_back(root: &Path, environment: &[(&str, St
         "a hidden pane is listed among the window's own: {window}"
     );
     let readable = run(&["window"], environment);
+    assert_eq!(readable.code, 0, "`muster window` failed: {}", readable.errors);
     let callsign = listed(&window).and_then(|pane| pane["callsign"].as_str().map(str::to_string));
     let callsign = callsign.expect("a hidden pane has a callsign");
     assert_eq!(callsign, drawn, "`pane new` said another callsign than the window lists");
