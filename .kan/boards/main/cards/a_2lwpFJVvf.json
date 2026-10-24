@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 3b6c5316. Ghostty's ctrl+/ case ported beside ctrl+return; a program in legacy mode reads 0x1f. Checked by test only: whether macOS beeps on ctrl+/ in a real key window is Ghostty's account.",
+      "created_at_millis": 1792854254665,
+      "id": "c_2nRWNmIul"
+    }
+  ],
   "created_at_millis": 1792633334776,
   "creator": "Alexander Terp",
   "description": "Ghostty's view turns C-/ into C-_ in performKeyEquivalent, because macOS beeps on C-/ and never delivers it. Muster's SurfaceView ports only Ghostty's ctrl+return case (73a1352b), so C-/ likely beeps in a Muster pane. Nobody has reported it; noticed while porting ctrl+return on 2026-10-21. Check by hand in a pane (cat -v, then C-/), and port the case if it beeps.",
   "id": "a_2lwpFJVvf",
-  "position": "b1U",
+  "position": "Yvv",
   "title": "Ctrl+/ beeps rather than reaching the pane, where Ghostty turns it into Ctrl+_",
   "type": "bug",
-  "updated_at_millis": 1792633334776,
+  "updated_at_millis": 1792854254759,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792633334776}
+    {"field":"column","value":"backlog-lo","at":1792633334776},
+    {"field":"column","value":"done","at":1792854254759}
   ]
 }

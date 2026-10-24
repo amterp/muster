@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in a1292811. whom on the answering machine reads the name as --to does, so a name meaning two agents is refused naming each, and the asker refuses with every candidate. A daemon from before this treats the refusal as no answer.",
+      "created_at_millis": 1792854254992,
+      "id": "c_2nRWOJurZ"
+    }
+  ],
   "created_at_millis": 1791431808004,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-07 with the msg --to name fix. join --name now refuses a name a pane goes by, and the daemon draws no word a participant holds, so the clash can only arise from an explicit pane rename to a participant's name on that machine. When it does, the address-time refusal catches it locally, but a cross-machine whom on the answering machine still picks the pane, since Reply::Named cannot say 'both'.",
   "id": "a_2dog2o3cN",
-  "position": "b0z",
+  "position": "Yvt",
   "title": "Across machines, whom prefers a pane's name over a participant of the same name",
   "type": "bug",
-  "updated_at_millis": 1791431808004,
+  "updated_at_millis": 1792854255088,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1791431808004}
+    {"field":"column","value":"backlog-lo","at":1791431808004},
+    {"field":"column","value":"done","at":1792854255088}
   ]
 }

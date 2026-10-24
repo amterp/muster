@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in cd39a5f3. --to a former name is refused with code renamed, naming the pane's present name, callsign and id; a live holder anywhere wins. A former name on a linked machine is a_2nRP5rqgG.",
+      "created_at_millis": 1792854255166,
+      "id": "c_2nRWOaq3P"
+    }
+  ],
   "created_at_millis": 1792852124314,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-24 with a_2izzZ0Sag, which made pane verbs answer a name from before a rename with the pane's present name, callsign@machine and id (Address::Renamed in muster_core::pane_address, fed by the daemon's Pane.former_labels). muster msg resolves recipients by muster-msg's own participant rules, which know nothing of former names, so --to kelp after kelp was renamed is still refused as nobody, or reaches whoever holds kelp now. docs/cli/limits.md says so. An agent addressing itself or a peer from $MUSTER_PANE_NAME is the common way to hit it.",
   "id": "a_2nQcxfhTU",
-  "position": "Zq",
+  "position": "Yvs",
   "title": "muster msg post --to a name from before a rename gets no pointer to the pane's name now",
   "type": "enhancement",
-  "updated_at_millis": 1792852838298,
+  "updated_at_millis": 1792854255283,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792852124314},
-    {"field":"column","value":"in-progress","at":1792852838298}
+    {"field":"column","value":"in-progress","at":1792852838298},
+    {"field":"column","value":"done","at":1792854255283}
   ]
 }
