@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-lo",
+  "column": "next",
   "created_at_millis": 1792851895857,
   "creator": "Alexander Terp",
   "description": "Found 2026-10-24 while looking for a_2m2NuyXID's route. catch_up_tab_trees in crates/muster-seam/src/session.rs works out its writes under the session lock and sends them outside it by daemon name. In the seam suite every test uses the same daemon names, tab and pane ids, and generations, so a write worked out against one test's session could be accepted by the next test's daemons. No test writes an X-only tree, so it does not explain a_2m2NuyXID, but it is a possible cross-test flake. Possibly: send by the daemon handle the write was worked out against, not by name.",
   "id": "a_2nQX1Bjqu",
-  "position": "b1g",
+  "position": "a0",
   "title": "catch_up_tab_trees can send one seam test's tree write to the next test's daemons",
   "type": "bug",
-  "updated_at_millis": 1792851895857,
+  "updated_at_millis": 1792860389373,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792851895857}
+    {"field":"column","value":"backlog-lo","at":1792851895857},
+    {"field":"column","value":"next","at":1792860389373}
   ]
 }
