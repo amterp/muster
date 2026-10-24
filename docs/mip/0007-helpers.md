@@ -176,7 +176,9 @@ it last went to work, its daemon tells the maker, once each time, in a message f
 the group the two share, made for the purpose if they have none: `maple is blocked at a dialog`,
 `maple has stopped reading its input`, or `maple went idle without posting to you`. The idle case
 is a helper whose turn ended on an API error, or one that gave up without saying so; on
-2026-10-13 one sat idle for 35 minutes before its maker noticed. A helper that posts its report
+2026-10-13 one sat idle for 35 minutes before its maker noticed. A helper whose declared wait
+ran out with nothing ending it is idle for a known reason, and the notice says that instead,
+naming the wait (added 2026-10-24). A helper that posts its report
 and then goes idle is not reported, and a compaction or a rename Muster typed at it is not going
 to work: on 2026-10-17 helpers compacted at their maker's request went idle afterwards and their
 maker was told, six times in one evening. MIP-4 section 16 already

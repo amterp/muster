@@ -37,6 +37,8 @@ pub(crate) struct Seen {
     pub(crate) session: Option<String>,
     /// The pane's program, when it has stopped reading its input, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
+    /// What the wait its agent declared was on, when that ran out and it has not worked since.
+    pub(crate) ran_out: Option<String>,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -142,6 +144,7 @@ impl Panes {
                         .unread_input
                         .as_ref()
                         .map(|unread| (unread.program.clone(), unread.bytes)),
+                    ran_out: pane.ran_out.clone(),
                     agent,
                     io: io.clone(),
                 }

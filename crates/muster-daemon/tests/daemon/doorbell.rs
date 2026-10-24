@@ -1467,6 +1467,57 @@ fn a_helper_at_a_dialog_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told twice");
 }
 
+/// A helper whose declared wait ran out with nothing ending it went idle for a known reason, and
+/// its maker is told that rather than a guess that its turn ended on an error.
+#[test]
+fn a_helper_whose_wait_ran_out_tells_its_maker_so() {
+    let mut agent = Agent::in_a_pane_with(&[
+        ("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000"),
+        ("MUSTER_DAEMON_DECLARED_WAIT_MS", "3000"),
+    ]);
+    // Nothing wakes the agent when its jobs end, as for Codex, so its declared wait is limited.
+    let path = agent.daemon.root().join("home/.muster/agent-detection/claude.toml");
+    let manifest = std::fs::read_to_string(&path).expect("the harness wrote it");
+    let unwoken: String = manifest
+        .lines()
+        .filter(|line| !line.starts_with("wakes_when_jobs_end"))
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    assert_ne!(unwoken, manifest, "the harness's manifest says its jobs wake it");
+    std::fs::write(&path, unwoken).expect("the override is rewritten");
+    let send =
+        session(proto::session_request::Request::SendManifests(proto::SendManifests::default()));
+    let asked = agent.control.ask(send);
+    assert!(matches!(asked.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
+
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    let declare = proto::pane_request::Report {
+        pane: "p2".to_string(),
+        waiting: Some("the full gate".to_string()),
+        ..Default::default()
+    };
+    expect(
+        &mut agent.control,
+        pane(proto::pane_request::Request::Report(declare)),
+        proto::Outcome::Done,
+    );
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+
+    logging.logged_until(r#""event":"daemon.wait.over""#, Duration::from_secs(20));
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let read = agent.read_in_its_pane();
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].contains(
+            "the wait it declared on the full gate ran out after 3s with nothing ending it."
+        ),
+        "{read:?}"
+    );
+}
+
 /// A helper that blocks while its maker is at work is held until the maker can hear it, and told
 /// then while it is still blocked: a post to a maker at work would wait for its turn to end
 /// anyway. The advice names the helper by its callsign, which no other pane can hold.

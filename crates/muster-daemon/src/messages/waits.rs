@@ -33,7 +33,7 @@ const EXIT_LOOK: Duration = Duration::from_secs(1);
 /// and no process waited on: a declaration nudges it anyway.
 const NOTHING_DUE: Duration = Duration::from_mins(1);
 
-fn limit() -> Duration {
+pub(super) fn limit() -> Duration {
     if cfg!(debug_assertions)
         && let Ok(said) = std::env::var(LIMIT_SAID)
         && let Ok(millis) = said.trim().parse::<u64>()
@@ -202,6 +202,9 @@ pub(crate) fn look(shared: &Arc<Shared>, waits: &mut Waits) -> Duration {
         if !shared.lock().wait_over(&pane, serial, over) {
             continue;
         }
+        // The pane reads idle now, which the maker watch weighs on the thread's next pass: this
+        // watch runs last, so that pass would otherwise wait for something else to wake it.
+        next = Duration::ZERO;
         log::info(
             "daemon.wait.over",
             fields! {

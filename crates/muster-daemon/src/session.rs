@@ -2028,6 +2028,9 @@ impl Session {
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
+        if says_waiting {
+            pane.ran_out = None;
+        }
         heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept == Kept::ThroughPrompt);
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
@@ -2171,6 +2174,9 @@ impl Session {
         let Some(index) = self.pane_index(pane) else { return false };
         let pane = &mut self.panes[index];
         pane.turns.wait_carried = false;
+        if over == Over::RanOut {
+            pane.ran_out = pane.record.facts.as_ref().and_then(|facts| facts.waiting.clone());
+        }
         forget_wait(&mut pane.record, over.as_str());
         if over == Over::RanOut && pane.record.agent_state() == proto::AgentState::Idle {
             pane.record.finished_unseen = true;
@@ -2469,6 +2475,7 @@ impl Session {
                 let turn = Turn::between(record.agent_state(), state);
                 if turn == Turn::Started && record.agent == agent {
                     carry_through_musters_turn(record, &mut pane.turns, &pane.io);
+                    pane.ran_out = None;
                 }
                 // An agent that reports its own state ends its own turns: a sub-agent's tool
                 // call can read as a turn here after the agent's turn has ended.
@@ -4179,6 +4186,7 @@ fn agent_left(pane: &mut Pane, name: &str) -> bool {
     pane.turns.reports_turns = false;
     pane.session_id = None;
     pane.context_session = None;
+    pane.ran_out = None;
     let resumed = pane.resume.take().is_some();
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();

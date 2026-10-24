@@ -30,7 +30,7 @@ use muster_msg::{Activity, Presence, Reach};
 
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
-use super::{delivering, now_ms, told};
+use super::{delivering, now_ms, told, waits};
 use crate::pane::TypedBy;
 use crate::session::{Orphaned, Shared};
 
@@ -70,6 +70,9 @@ pub(crate) struct Helper {
     /// Whether its agent's turn, at work now or ended last, is one Muster typed as a chore of its
     /// own: a compaction or a rename, which is not the helper going to work.
     pub(crate) chores_turn: bool,
+    /// What the wait it declared was on, when that wait ran out with nothing ending it and it
+    /// has not gone to work since.
+    pub(crate) ran_out: Option<String>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to its maker, looked up only while it is idle.
@@ -306,13 +309,21 @@ fn body(
                  stops."
             )
         }
-        Need::Unreported => format!(
-            "{named} went idle without posting to you since it went to work {worked} ago: its \
-             turn may have ended on an error, or it stopped without saying so. `muster pane read \
-             --pane {pane} --turn` shows what it printed. Muster says this once each time it goes \
-             idle.",
-            worked = said_as_time(worked_ms),
-        ),
+        Need::Unreported => {
+            let why = helper.ran_out.as_ref().map_or_else(
+                || "its turn may have ended on an error, or it stopped without saying so".to_string(),
+                |waited| {
+                    let limit = said_as_time(waits::limit().as_millis().try_into().unwrap_or(u64::MAX));
+                    format!("the wait it declared on {waited} ran out after {limit} with nothing ending it")
+                },
+            );
+            format!(
+                "{named} went idle without posting to you since it went to work {worked} ago: \
+                 {why}. `muster pane read --pane {pane} --turn` shows what it printed. Muster \
+                 says this once each time it goes idle.",
+                worked = said_as_time(worked_ms),
+            )
+        }
     }
 }
 
@@ -484,6 +495,7 @@ fn helpers(
             to,
             activity: seen.activity,
             chores_turn: seen.io.turn_typed_by() == Some(TypedBy::Chore),
+            ran_out: seen.ran_out.clone(),
             stopped: seen.stopped.clone(),
         });
     }
@@ -602,6 +614,7 @@ mod tests {
             to: "p1".to_string(),
             activity: Some(activity),
             chores_turn: false,
+            ran_out: None,
             stopped: None,
             last_post_ms: None,
             maker_busy: false,
@@ -743,6 +756,30 @@ mod tests {
         let reported = Helper { last_post_ms: Some(50_000), ..maple(Activity::Idle) };
         reporting.judge(std::slice::from_ref(&reported), &called, 60_000);
         assert!(reporting.judge(&[reported], &called, 90_000).is_empty(), "it posted its report");
+    }
+
+    /// A helper whose declared wait ran out is told of as that, not as a turn that may have ended
+    /// on an error: what happened is known.
+    #[test]
+    fn a_wait_that_ran_out_is_told_as_that() {
+        let called = called();
+        let mut makers = makers();
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        makers.judge(&[maple(Activity::Waiting)], &called, 60_000);
+        let ran_out =
+            Helper { ran_out: Some("the full gate".to_string()), ..maple(Activity::Idle) };
+        makers.judge(std::slice::from_ref(&ran_out), &called, 660_000);
+        let tells = makers.judge(&[ran_out], &called, 670_000);
+        assert_eq!(needs(&tells), [Need::Unreported]);
+        assert!(
+            tells[0].body.contains(
+                "the wait it declared on the full gate ran out after 10 minutes with nothing \
+                 ending it."
+            ),
+            "{}",
+            tells[0].body
+        );
+        assert!(!tells[0].body.contains("error"), "{}", tells[0].body);
     }
 
     /// A dialog in the middle of a turn does not start the turn again: a report posted before

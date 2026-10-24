@@ -918,6 +918,9 @@ pub(crate) struct Pane {
     /// a report about another session forgets them first. Not handed over or saved: a daemon
     /// that took the pane over learns it from the next report.
     pub(crate) context_session: Option<String>,
+    /// What the wait its agent declared was on, once it ran out with nothing ending it, until
+    /// the agent goes to work or declares another; for the maker's notice of its idle.
+    pub(crate) ran_out: Option<String>,
     /// What starts that session again after a restart, built when the session was reported;
     /// forgotten with it. Kept when a wake forgets the id: whether the session can be woken is
     /// a different question from whether it can be resumed.
@@ -1160,6 +1163,7 @@ impl Pane {
             compaction: Compaction::default(),
             session_id: None,
             context_session: None,
+            ran_out: None,
             resume: None,
             resume_missed: None,
             maker_told: None,
