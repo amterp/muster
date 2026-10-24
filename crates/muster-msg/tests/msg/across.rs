@@ -2284,3 +2284,74 @@ fn the_person_is_told_from_a_machine_where_it_is_not_homed() {
     assert_eq!(told_the_human(&wire), [(Side::Laptop, "@human+integrator@devenv")]);
     assert!(wire.devenv.participant(HUMAN).is_none(), "the devenv made a human of its own");
 }
+
+/// The members of `group` as `side` holds it, sorted.
+fn members_on(wire: &Wire, side: Side, group: &str) -> Vec<String> {
+    let service = match side {
+        Side::Laptop => &wire.laptop,
+        Side::Devenv => &wire.devenv,
+    };
+    let summary = service.groups().into_iter().find(|summary| summary.name == group);
+    summary.unwrap_or_else(|| panic!("{side:?} holds {group}")).members
+}
+
+/// A laptop agent in pane `p1`, added by its pane to `review` and `notes`, both kept on the
+/// laptop; `review` has a member on the devenv too. Returns the agent as it calls from its pane.
+fn pane_in_two_groups() -> (Wire, Caller) {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1");
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Laptop, &builder, Some("builder"), "notes");
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    for group in ["review", "notes"] {
+        let now = wire.tick();
+        let (laptop, sessions) = wire.split(Side::Laptop);
+        let pane = ["p1".to_string()];
+        let added = laptop.group_members(&builder, group, &pane, &[], &[], sessions, now).unwrap();
+        wire.tell(Side::Laptop, &added.tell);
+    }
+    (wire, Caller { pane: Some("p1".to_string()), ..session("tracer") })
+}
+
+/// A store that fails partway through folding a pane into a name leaves the groups folded so
+/// far under the name and the rest under the pane, each with its place, and the other machine
+/// hears of what was appended.
+#[test]
+fn a_join_a_store_error_stops_partway_leaves_the_agent_in_every_group() {
+    let (mut wire, tracer) = pane_in_two_groups();
+    // `notes` folds first, by name: its two entries go through and `review`'s first does not.
+    wire.laptop.store_mut().failing_after = Some(2);
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let refused = laptop.join(&tracer, Some("tracer"), None, sessions, now);
+    assert!(matches!(refused, Err(Refusal::Store { .. })), "{refused:?}");
+    wire.laptop.store_mut().failing_after = None;
+    wire.fold(Side::Laptop);
+
+    assert_eq!(members_on(&wire, Side::Laptop, "notes"), ["builder", "tracer"]);
+    assert_eq!(members_on(&wire, Side::Laptop, "review"), ["builder", "critic@devenv", "p1"]);
+    let pane = wire.laptop.participant("p1").expect("the pane keeps the groups it is still in");
+    assert!(pane.cursors.contains_key("review") && !pane.cursors.contains_key("notes"));
+    let name = wire.laptop.participant("tracer").unwrap();
+    assert!(name.cursors.contains_key("notes") && !name.cursors.contains_key("review"));
+}
+
+/// A join refused because the state could not be saved has still appended its fold, and the
+/// other machine hears of it.
+#[test]
+fn a_join_refused_for_its_save_still_tells_other_machines() {
+    let (mut wire, tracer) = pane_in_two_groups();
+    wire.laptop.store_mut().failing_saves = true;
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let refused = laptop.join(&tracer, Some("tracer"), None, sessions, now);
+    assert!(matches!(refused, Err(Refusal::Store { .. })), "{refused:?}");
+    wire.laptop.store_mut().failing_saves = false;
+    wire.fold(Side::Laptop);
+
+    assert_eq!(
+        members_on(&wire, Side::Devenv, "review@lap"),
+        ["builder@lap", "critic", "tracer@lap"]
+    );
+}

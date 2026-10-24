@@ -501,7 +501,8 @@ pub struct Found {
 
 /// What folding a pane into a name did that other machines must hear of, which the host sends
 /// once the join that folded it is answered: new entries in groups kept here, and the joins
-/// that put the name in the pane's place in groups kept elsewhere.
+/// that put the name in the pane's place in groups kept elsewhere. A join refused after it
+/// appended leaves its own entries here too, since they are in the log all the same.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Folded {
     pub tell: Vec<Tell>,

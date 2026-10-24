@@ -72,12 +72,18 @@ pub struct Memory {
     pub failing: bool,
     /// Set to make only saving the state fail, as a disk filling up between two writes would.
     pub failing_saves: bool,
+    /// Set to let this many more appends through and then fail every call, as a disk that fills
+    /// partway through a request would.
+    pub failing_after: Option<usize>,
 }
 
 impl Store for Memory {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String> {
-        if self.failing {
+        if self.failing() {
             return Err("the store is failing on purpose".to_string());
+        }
+        if let Some(left) = &mut self.failing_after {
+            *left -= 1;
         }
         self.appended.push((group.to_string(), entry.clone()));
         self.kept.entry(group.to_string()).or_default().entries.push(entry.clone());
@@ -85,7 +91,7 @@ impl Store for Memory {
     }
 
     fn save(&mut self, state: &Saved) -> Result<(), String> {
-        if self.failing || self.failing_saves {
+        if self.failing() || self.failing_saves {
             return Err("the store is failing on purpose".to_string());
         }
         self.saved = Some(state.clone());
@@ -94,7 +100,7 @@ impl Store for Memory {
     }
 
     fn retire(&mut self, group: &str, last: u64) -> Result<(), String> {
-        if self.failing {
+        if self.failing() {
             return Err("the store is failing on purpose".to_string());
         }
         self.retired.push((group.to_string(), last));
@@ -103,7 +109,7 @@ impl Store for Memory {
     }
 
     fn remove(&mut self, group: &str) -> Result<(), String> {
-        if self.failing {
+        if self.failing() {
             return Err("the store is failing on purpose".to_string());
         }
         self.removed.push(group.to_string());
@@ -113,6 +119,10 @@ impl Store for Memory {
 }
 
 impl Memory {
+    fn failing(&self) -> bool {
+        self.failing || self.failing_after == Some(0)
+    }
+
     /// The logs a service restored from this store would read.
     pub fn logs(&self) -> BTreeMap<String, Log> {
         self.kept.clone()

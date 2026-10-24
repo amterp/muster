@@ -700,7 +700,8 @@ impl<S: Store> Messaging<S> {
         };
         self.seen(&name, caller);
         let mut created = false;
-        let mut tell = std::mem::take(&mut self.folded.tell);
+        // What this join appends is left with the fold's until it is answered, so a join refused
+        // after appending still has its entries sent on with `take_folded`.
         if let Some(group) = group {
             if let Some(existing) = self.groups.get(group)
                 && !existing.members.contains(&name)
@@ -710,9 +711,11 @@ impl<S: Store> Messaging<S> {
             created = self.ensure_group(group, &name, now_ms)?;
             let after = self.groups[group].head();
             self.add_member(group, &name, now_ms)?;
-            tell.extend(self.tell(group, after, None));
+            let tell = self.tell(group, after, None);
+            self.folded.tell.extend(tell);
         }
         self.save()?;
+        let tell = std::mem::take(&mut self.folded.tell);
         let groups = self.memberships(&name);
         Ok(Joined { name, group: group.map(str::to_string), created, took_over, groups, tell })
     }
@@ -2342,28 +2345,38 @@ impl<S: Store> Messaging<S> {
     /// kept elsewhere is changed by its home, which is asked to put `into` in `from`'s place,
     /// and the replica follows when the home answers. What to send is kept for the host in
     /// [`Self::take_folded`].
+    ///
+    /// A log cannot take an entry back, so a store error partway is made safe step by step
+    /// instead: each group is folded with its place carried before the next, every entry
+    /// appended is kept to be sent on, and `from` goes only once every group has been folded. A
+    /// fold that stops leaves the groups before it under `into` and the rest under `from`, each
+    /// with its place.
     pub(crate) fn absorb(&mut self, into: &str, from: &str, at_ms: u64) -> Result<(), Refusal> {
-        let Some(from) = self.participants.remove(from) else { return Ok(()) };
-        for group in self.memberships(&from.name) {
+        if !self.participants.contains_key(from) {
+            return Ok(());
+        }
+        for group in self.memberships(from) {
             if let Some(machine) = self.groups[&group].home.clone() {
                 let call = Call::Join {
                     name: into.to_string(),
                     group: base(&group),
                     head: self.head_of(&group),
-                    was: Some(from.name.clone()),
+                    was: Some(from.to_string()),
                 };
                 self.folded.away.push(Away { machine, call });
-                continue;
+            } else {
+                let after = self.groups[&group].head();
+                let folded = self.fold_here(&group, into, from, at_ms);
+                if self.groups[&group].head() > after {
+                    let tell = self.tell(&group, after, None);
+                    self.folded.tell.extend(tell);
+                }
+                folded?;
             }
-            let after = self.groups[&group].head();
-            self.append(&group, What::Left { who: from.name.clone() }, at_ms)?;
-            if !self.groups[&group].members.contains(into) {
-                self.append(&group, What::Joined { who: into.to_string() }, at_ms)?;
-            }
-            let tell = self.tell(&group, after, None);
-            self.folded.tell.extend(tell);
+            self.carry_place(&group, into, from);
         }
-        self.waiters.remove(&from.name);
+        self.waiters.remove(from);
+        let Some(from) = self.participants.remove(from) else { return Ok(()) };
         let Some(into) = self.participants.get_mut(into) else { return Ok(()) };
         for (group, cursor) in from.cursors {
             into.cursors.entry(group).or_insert(cursor);
@@ -2374,6 +2387,39 @@ impl<S: Store> Messaging<S> {
             into.removed.entry(group).or_insert(removed);
         }
         Ok(())
+    }
+
+    /// `from` leaving a group kept here and `into` joining it, in the log.
+    fn fold_here(
+        &mut self,
+        group: &str,
+        into: &str,
+        from: &str,
+        at_ms: u64,
+    ) -> Result<(), Refusal> {
+        self.append(group, What::Left { who: from.to_string() }, at_ms)?;
+        if !self.groups[group].members.contains(into) {
+            self.append(group, What::Joined { who: into.to_string() }, at_ms)?;
+        }
+        Ok(())
+    }
+
+    /// Hands `from`'s place in `group` to `into`: where it had read to, and what it was woken for.
+    fn carry_place(&mut self, group: &str, into: &str, from: &str) {
+        let Some(from) = self.participants.get_mut(from) else { return };
+        let cursor = from.cursors.remove(group);
+        let woken = from.woken.remove(group);
+        let rewoken = from.rewoken.remove(group);
+        let Some(into) = self.participants.get_mut(into) else { return };
+        if let Some(cursor) = cursor {
+            into.cursors.entry(group.to_string()).or_insert(cursor);
+        }
+        if woken {
+            into.woken.insert(group.to_string());
+        }
+        if rewoken {
+            into.rewoken.insert(group.to_string());
+        }
     }
 
     /// What a join's fold of a pane into a name has for other machines, once the join has been
