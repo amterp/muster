@@ -131,48 +131,48 @@ struct PaneActionTests {
     // the moment the core refused - and then keystrokes would go somewhere else than the
     // ring says.
     let recorder = recorder()
-    let started = RegionView(
+    let started = TabView(
       frame: NSRect(x: 0, y: 0, width: 400, height: 300), surfaces: paneSurfaces())
+    let key = PaneKey(daemon: "devenv", pane: "w1:p1")
     started.apply(
-      WindowContents.Region(
-        id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
-        tree: .pane(.init(paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")), zoomed: false),
-      focused: true)
+      WindowContents(
+        tab: "w1:t1",
+        tree: .pane(.init(daemon: "devenv", paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")),
+        keyboard: key))
     let before = recorder.requests.count
 
-    started.chrome(for: "w1:p1")?.surface.mouseDown(with: click())
+    started.chrome(for: key)?.surface.mouseDown(with: click())
 
     let sent = recorder.sent(since: before) {
       if case .focusPane = $0.payload { true } else { false }
     }
     #expect(sent.map { $0.focusPane.paneID } == ["w1:p1"])
     // And it says which `w1:p1`. Both daemons hand out that id, so a click that named only
-    // the pane would be answered by whichever region the core searched first - which is a
+    // the pane would be answered by whichever machine the core searched first - which is a
     // keyboard landing on the wrong machine, silently.
     #expect(sent.map { $0.focusPane.daemonID } == ["devenv"])
   }
 
   @MainActor
-  @Test("a divider drag says which daemon's tab it is moving")
-  func aDragNamesItsDaemon() async {
-    // Tabs collide across daemons exactly as panes do, and a ratio applied to the wrong tab
-    // resizes a split the user is not looking at.
+  @Test("a divider between two machines' panes is named by the tab's whole tree, with no daemon")
+  func aDragAcrossMachinesNamesTheTab() async {
+    // A tab spanning machines is one tree, so the line between a laptop pane and a devenv pane
+    // is a split like any other and belongs to neither machine. The core finds what it divides
+    // from the tab and the path; a daemon named here would be one machine's guess.
     let recorder = recorder()
-    let region = RegionView(
-      frame: NSRect(x: 0, y: 0, width: 400, height: 300), surfaces: paneSurfaces())
-    region.apply(
-      WindowContents.Region(
-        id: "r0", daemon: "devenv", tab: "w1:t1", keyboardPane: "w1:p1",
+    let tab = TabView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), surfaces: paneSurfaces())
+    tab.apply(
+      WindowContents(
+        tab: "w1:t1",
         tree: .split(
           axis: .columns, ratio: 0.5,
-          first: .pane(.init(paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")),
-          second: .pane(.init(paneID: "w1:p2", linkSocketPath: "/tmp/b.sock"))),
-        zoomed: false),
-      focused: true)
+          first: .pane(.init(daemon: "local", paneID: "w1:p1", linkSocketPath: "/tmp/a.sock")),
+          second: .pane(.init(daemon: "devenv", paneID: "w1:p2", linkSocketPath: "/tmp/b.sock"))),
+        keyboard: PaneKey(daemon: "local", pane: "w1:p1")))
     let before = recorder.requests.count
 
-    region.layoutSubtreeIfNeeded()
-    let divider = region.subviews.compactMap { $0 as? DividerView }.first
+    tab.layoutSubtreeIfNeeded()
+    let divider = tab.subviews.compactMap { $0 as? DividerView }.first
     divider?.onDrag?(0.3)
 
     // Awaited, because a divider position leaves on a background queue rather than inline -
@@ -181,35 +181,9 @@ struct PaneActionTests {
       !ratios(recorder, since: before).isEmpty
     }
     let sent = ratios(recorder, since: before)
-    #expect(sent.map { $0.setSplitRatio.daemonID } == ["devenv"])
+    #expect(sent.map { $0.setSplitRatio.daemonID } == [""])
     #expect(sent.map { $0.setSplitRatio.tabID } == ["w1:t1"])
-  }
-
-  @MainActor
-  @Test("a region drag names the region on its left, not a position")
-  func aRegionDragNamesARegion() {
-    // The one drag no daemon is told about: how a window divides between a laptop and a
-    // devenv is Muster's own arrangement. Named by the region rather than by an index,
-    // because a drag is a stream of requests and a region can close underneath one - an
-    // index would then move some other line, silently.
-    let recorder = recorder()
-    let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 1000, height: 600))
-    strip.arrange([
-      (id: "r0", weight: 1, view: NSView()),
-      (id: "r1", weight: 1, view: NSView()),
-    ])
-    let before = recorder.requests.count
-
-    strip.layoutSubtreeIfNeeded()
-    let divider = strip.subviews.compactMap { $0 as? DividerView }.first
-    #expect(divider != nil, "two regions have one line between them")
-    divider?.onDrag?(0.25)
-
-    let sent = recorder.sent(since: before) {
-      if case .setRegionBoundary = $0.payload { true } else { false }
-    }
-    #expect(sent.map { $0.setRegionBoundary.regionID } == ["r0"])
-    #expect(sent.map { $0.setRegionBoundary.ratio } == [0.25])
+    #expect(sent.map { $0.setSplitRatio.path } == [[]])
   }
 
   @MainActor
@@ -244,7 +218,7 @@ struct PaneActionTests {
     // every test here swaps, and this send is answered on another thread - so a sender that
     // read the global would deliver into whichever test got there next.
     SplitRatioSender(dispatcher: recorder)
-      .send(daemonID: "local", tab: "w1:t1", path: [true, false], ratio: 0.25)
+      .send(tab: "w1:t1", path: [true, false], ratio: 0.25)
 
     await until("the divider position to reach the core") {
       !ratios(recorder, since: before).isEmpty
@@ -269,7 +243,7 @@ struct PaneActionTests {
     let before = recorder.requests.count
 
     for ratio in [0.3, 0.4, 0.5, 0.6, 0.7] {
-      sender.send(daemonID: "local", tab: "w1:t1", path: [], ratio: ratio)
+      sender.send(tab: "w1:t1", path: [], ratio: ratio)
     }
 
     // Two rather than five: the first goes straight out, and the four asked for while it was

@@ -161,123 +161,160 @@ struct PaneTreeTests {
   }
 }
 
+/// A leaf on `daemon`, as the core publishes one.
+private func treeLeaf(_ pane: Muster_ViewPane, on daemon: String = "local") -> Muster_ViewTree {
+  .with {
+    $0.pane = .with { leaf in
+      leaf.daemonID = daemon
+      leaf.pane = pane
+    }
+  }
+}
+
+private func treeSplit(
+  _ axis: String, _ ratio: Float, _ first: Muster_ViewTree, _ second: Muster_ViewTree
+) -> Muster_ViewTree {
+  .with {
+    $0.split = .with { split in
+      split.axis = axis
+      split.ratio = ratio
+      split.first = first
+      split.second = second
+    }
+  }
+}
+
+private func viewPane(_ id: String, socket: String = "") -> Muster_ViewPane {
+  .with {
+    $0.paneID = id
+    $0.linkSocketPath = socket
+  }
+}
+
 @Suite("the view the core publishes")
 struct WindowContentsTests {
-  @Test("a tree with no root is not a tab with no panes")
+  @Test("a tab with no tree is not a tab with no panes")
   func anAbsentTreeIsItsOwnAnswer() {
     // The distinction the whole message is built around: a shell told nil leaves its surfaces
     // alone, where one told "no panes" tears down surfaces that are about to be described.
-    var region = Muster_ViewRegion()
-    region.regionID = "r0"
-    region.tabID = "w1:t1"
     var changed = Muster_ViewChanged()
-    changed.regions = [region]
+    changed.tabID = "w1:t1"
 
     let contents = WindowContents(changed)
 
-    #expect(contents.regions[0].tree == nil)
-    #expect(contents.regions[0].keyboardPane == nil)
-    #expect(contents.focusedRegion == nil)
+    #expect(contents.tab == "w1:t1")
+    #expect(contents.tree == nil)
+    #expect(contents.panes == nil)
+    #expect(contents.keyboard == nil)
   }
 
   @Test("a pane with no socket says so rather than carrying an empty path")
   func anUnattachedPaneIsNil() {
     // A bridge spawned against an empty path dials nothing and the pane looks alive while
     // swallowing every keystroke, so the two must not be the same value here.
-    var pane = Muster_ViewPane()
-    pane.paneID = "w1:p1"
-    var node = Muster_ViewNode()
-    node.pane = pane
-
-    guard case .pane(let leaf) = PaneTree(node) else {
+    guard case .pane(let leaf) = PaneTree(treeLeaf(viewPane("w1:p1"))) else {
       Issue.record("expected a leaf")
       return
     }
     #expect(leaf.linkSocketPath == nil)
   }
 
-  @Test("a region whose daemon is not reached names no socket rather than an empty one")
+  @Test("a machine whose daemon is not reached names no socket rather than an empty one")
   func anUnreachedDaemonIsNil() {
     // An empty path on a bridge's command line is a bridge that dials nothing, so the window
     // has to be able to tell "no socket" from a socket.
-    var region = Muster_ViewRegion()
-    region.regionID = "r0"
     var changed = Muster_ViewChanged()
-    changed.regions = [region]
+    changed.machines = [.with { $0.daemonID = "devenv" }]
 
     let contents = WindowContents(changed)
 
-    #expect(contents.regions[0].daemonSocket == nil)
-    #expect(!contents.regions[0].remote)
+    #expect(contents.machines["devenv"] == WindowContents.Machine(socket: nil, remote: false))
   }
 
   @Test("each pane carries its own text size, and most carry none")
   func eachPaneCarriesItsOwnTextSize() {
     // Per pane rather than per window, which is what this reversed. A window that read one
     // number would size the pair together and pass every other assertion here.
-    var sized = Muster_ViewPane()
-    sized.paneID = "w1:p1"
+    var sized = viewPane("w1:p1")
     sized.fontSizeOffset = 3
-    var untouched = Muster_ViewPane()
-    untouched.paneID = "w1:p2"
-    var split = Muster_ViewSplit()
-    split.axis = "columns"
-    split.ratio = 0.5
-    split.first = .with { $0.pane = sized }
-    split.second = .with { $0.pane = untouched }
-    var region = Muster_ViewRegion()
-    region.regionID = "r0"
-    region.root = .with { $0.split = split }
     var changed = Muster_ViewChanged()
-    changed.regions = [region]
+    changed.tree = treeSplit("columns", 0.5, treeLeaf(sized), treeLeaf(viewPane("w1:p2")))
 
-    let leaves = WindowContents(changed).regions[0].tree?.leaves ?? []
+    let leaves = WindowContents(changed).tree?.leaves ?? []
 
     #expect(leaves.map(\.fontSizeOffset) == [3, 0])
   }
 
-  @Test("a whole view arrives as regions, trees and a keyboard")
+  @Test("a whole view arrives as one tree over its machines, and a keyboard")
   func aViewCrossesIntact() {
-    var first = Muster_ViewPane()
-    first.paneID = "w1:p1"
-    first.linkSocketPath = "/tmp/muster-1-0.sock"
-    var second = Muster_ViewPane()
-    second.paneID = "w1:p2"
-    var split = Muster_ViewSplit()
-    split.axis = "rows"
-    split.ratio = 0.25
-    split.first = .with { $0.pane = first }
-    split.second = .with { $0.pane = second }
-    var region = Muster_ViewRegion()
-    region.regionID = "r0"
-    region.daemonID = "devenv"
-    region.tabID = "w1:t1"
-    region.paneID = "w1:p2"
-    region.root = .with { $0.split = split }
-    region.daemonSocket = "/tmp/muster-devenv.sock"
-    region.remote = true
     var changed = Muster_ViewChanged()
-    changed.regions = [region]
-    changed.focusedRegion = "r0"
+    changed.tabID = "w1:t1"
+    changed.tree = treeSplit(
+      "rows", 0.25, treeLeaf(viewPane("w1:p1", socket: "/tmp/muster-1-0.sock")),
+      treeLeaf(viewPane("w1:p2"), on: "devenv"))
+    changed.keyboardPaneID = "w1:p2"
+    changed.machines = [
+      .with {
+        $0.daemonID = "local"
+        $0.daemonSocket = "/tmp/muster-local.sock"
+      },
+      .with {
+        $0.daemonID = "devenv"
+        $0.daemonSocket = "/tmp/muster-devenv.sock"
+        $0.remote = true
+      },
+    ]
 
     let contents = WindowContents(changed)
 
-    #expect(contents.keyboardPane == "w1:p2")
-    // The daemon has to survive the crossing. A region that arrived without one would send
-    // every click and every drag to whichever daemon the core was focused on, which is right
-    // exactly as often as the window shows one daemon.
-    #expect(contents.regions[0].daemon == "devenv")
-    #expect(contents.regions[0].tree?.leaves.map(\.paneID) == ["w1:p1", "w1:p2"])
-    #expect(contents.regions[0].tree?.leaves[0].linkSocketPath == "/tmp/muster-1-0.sock")
+    // The keyboard's machine is the leaf's: a key without it would send every keystroke to
+    // whichever daemon hands out the same pane id.
+    #expect(contents.keyboard == PaneKey(daemon: "devenv", pane: "w1:p2"))
+    // Each leaf keeps its machine, which is what every click and every drag on it is sent to.
+    #expect(
+      contents.tree?.leaves.map(\.key) == [
+        PaneKey(daemon: "local", pane: "w1:p1"), PaneKey(daemon: "devenv", pane: "w1:p2"),
+      ])
+    #expect(contents.tree?.leaves[0].linkSocketPath == "/tmp/muster-1-0.sock")
     // Both reach a bridge's command line, and a pane whose bridge dialled nothing renders
     // nothing for a reason no log line names.
-    #expect(contents.regions[0].daemonSocket == "/tmp/muster-devenv.sock")
-    #expect(contents.regions[0].remote)
-    guard case .split(let axis, let ratio, _, _) = contents.regions[0].tree else {
+    #expect(contents.machines["devenv"]?.socket == "/tmp/muster-devenv.sock")
+    #expect(contents.machines["devenv"]?.remote == true)
+    #expect(contents.machines["local"]?.remote == false)
+    #expect(!contents.zoomed)
+    guard case .split(let axis, let ratio, _, _) = contents.tree else {
       Issue.record("expected a split")
       return
     }
     #expect(axis == .rows)
     #expect(abs(ratio - 0.25) < 0.001)
+  }
+
+  @Test("a zoomed tab is drawn as the one pane filling it")
+  func aZoomIsResolvedToItsPane() {
+    // The core publishes the whole tree and names the zoomed pane beside it, so the tab's
+    // arrangement survives the zoom; what is drawn is the one pane, whichever machine runs it.
+    var changed = Muster_ViewChanged()
+    changed.tree = treeSplit(
+      "columns", 0.5, treeLeaf(viewPane("w1:p1")), treeLeaf(viewPane("w1:p2"), on: "devenv"))
+    changed.zoomedPaneID = "w1:p2"
+
+    let contents = WindowContents(changed)
+
+    #expect(contents.zoomed)
+    #expect(contents.panes == [PaneKey(daemon: "devenv", pane: "w1:p2")])
+  }
+
+  @Test("a zoom on a pane the tree does not hold draws the whole tree")
+  func aZoomOnNoLeafFillsNothing() {
+    var changed = Muster_ViewChanged()
+    changed.tree = treeSplit(
+      "columns", 0.5, treeLeaf(viewPane("w1:p1")), treeLeaf(viewPane("w1:p2")))
+    changed.zoomedPaneID = "w1:p9"
+
+    let contents = WindowContents(changed)
+
+    #expect(!contents.zoomed)
+    #expect(contents.panes?.count == 2)
   }
 }

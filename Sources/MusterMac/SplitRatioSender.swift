@@ -13,8 +13,6 @@ import Foundation
 /// What is here is only what a divider does differently, which is nearly nothing: there is no
 /// answer to draw, so a refusal is logged and a success is dropped.
 ///
-/// Deliberately only this request. The other drag in the window moves a region boundary, which
-/// is Muster's own composition and never reaches a daemon - there is nothing there to wait for.
 @MainActor
 public final class SplitRatioSender {
   private let sender: LatestRequestSender<Void>
@@ -33,10 +31,11 @@ public final class SplitRatioSender {
     sender.onAnswer = { [weak self] _ in self?.onAnswered?() }
   }
 
-  /// Asks for a divider position, and returns without waiting for it.
-  public func send(daemonID: String, tab: String, path: [Bool], ratio: CGFloat) {
+  /// Asks for a divider position, and returns without waiting for it. The path is the turns
+  /// down the tab's tree as this window draws it, whatever machines the divider sits between:
+  /// the core finds which of them it divides.
+  public func send(tab: String, path: [Bool], ratio: CGFloat) {
     var set = Muster_SetSplitRatio()
-    set.daemonID = daemonID
     set.tabID = tab
     set.path = path
     set.ratio = Float(ratio)

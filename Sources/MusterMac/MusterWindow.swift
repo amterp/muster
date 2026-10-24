@@ -3,7 +3,7 @@ import MusterRenderer
 
 /// The window, and everything hanging under it.
 ///
-/// The shell's whole contribution to what is on screen. It holds no truth: every region,
+/// The shell's whole contribution to what is on screen. It holds no truth: the tab's tree,
 /// every pane and which one has the keyboard arrive from the core as a whole view, and this
 /// applies it. What it does own is what only an OS layer can - a real window, real surfaces,
 /// the responder chain, and a title.
@@ -23,20 +23,22 @@ public final class MusterWindow: NSObject {
   public var onClosed: ((MusterWindow) -> Void)?
   private let renderer: Renderer
   private let executable: String
-  private let strip = RegionStrip(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let sidebar = SidebarView(frame: .zero)
   private let shortcuts = ShortcutsPanel()
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let empty = EmptyWindowView(frame: .zero)
-  private var regions: [String: RegionView] = [:]
+
+  /// The tab on screen. Implicitly unwrapped for the reason `surfaces` is, which it is built
+  /// from: non-nil from the end of `init` onwards.
+  private var tabView: TabView!
 
   /// Every pane's surface, held for as long as its daemon holds the pane rather than for as
-  /// long as a region is showing it.
+  /// long as the tab on screen is showing it.
   ///
   /// Implicitly unwrapped because it cannot be built any earlier: it parks panes inside the
   /// content view and starts them through this window, so it needs both a view hierarchy and
   /// a `self` to capture - and neither exists until `super.init` has run. Non-nil from the end
-  /// of `init` onwards, and every region is made through `make(regionID:)` after that.
+  /// of `init` onwards.
   private var surfaces: PaneSurfaces!
 
   /// Whether this window was opened with no daemon behind it on purpose.
@@ -65,7 +67,7 @@ public final class MusterWindow: NSObject {
   /// created by a split is described by the daemon before its surface exists here, and a
   /// chrome built afterwards would otherwise render as `unknown` until that agent next moved.
   ///
-  /// Keyed by daemon as well as pane, because this map spans regions and two daemons hand out
+  /// Keyed by daemon as well as pane, because this map spans machines and two daemons hand out
   /// the same pane ids - one keyed by pane alone would let a devenv agent paint a border on
   /// the laptop.
   private var agents: [PaneKey: PaneAgent] = [:]
@@ -92,10 +94,6 @@ public final class MusterWindow: NSObject {
   /// devenv row for a laptop pane.
   private var keyboardKey: PaneKey?
 
-  /// Which region the keyboard is in, kept so that a chord can reach the surface it happened
-  /// on. Held beside `keyboardKey` rather than searched for, because the pane id in that key
-  /// is only unique within its own daemon.
-  private var focusedRegionID: String?
   private var zoomed = false
   private var problem: String?
 
@@ -109,19 +107,19 @@ public final class MusterWindow: NSObject {
   /// the right answer: the font size is one window-wide setting, but a pane whose surface has
   /// not been sized yet has no measurement at all.
   private var keyboardSurface: SurfaceView? {
-    guard let region = focusedRegionID, let pane = keyboardKey?.pane else { return nil }
-    return regions[region]?.chrome(for: pane)?.surface
+    guard let keyboardKey else { return nil }
+    return tabView.chrome(for: keyboardKey)?.surface
   }
 
-  /// How big the region holding the keyboard is, or nil before it has been laid out.
+  /// How big the tab on screen is, or nil before it has been laid out.
   ///
-  /// The region rather than the pane, because a resize moves a divider by a share of what that
-  /// divider splits, and with one split on an axis the thing being split is the whole region.
+  /// The tab rather than the pane, because a resize moves a divider by a share of what that
+  /// divider splits, and with one split on an axis the thing being split is the whole tab.
   /// Measuring the focused pane instead would report about half the extent and so ask for
   /// about twice the distance.
   private var keyboardRegionSize: (width: Float, height: Float)? {
-    guard let region = focusedRegionID, let view = regions[region] else { return nil }
-    let size = view.bounds.size
+    guard let tabView else { return nil }
+    let size = tabView.bounds.size
     guard size.width > 0, size.height > 0 else { return nil }
     return (width: Float(size.width), height: Float(size.height))
   }
@@ -173,7 +171,7 @@ public final class MusterWindow: NSObject {
     self.renderer = renderer
     self.executable = executable
     let keyboard = KeyboardWindow(
-      contentRect: strip.frame,
+      contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered,
       defer: false)
@@ -193,14 +191,12 @@ public final class MusterWindow: NSObject {
         BoundAction.event, BoundAction.record(mouse: forward ? "focus_forward" : "focus_back"))
       self?.speaking { Core.focusHistory(forward: forward) }
     }
-    split.attach(sidebar: sidebar, strip: strip)
     // A window narrowed until the roster will not fit takes the problems area with it, so the
     // title has to pick them up at exactly that moment.
     split.onSidebarVisibilityChanged = { [weak self] in self?.applyTitle() }
     split.onSidebarDragged = { [weak self] width in
       self?.speaking { self?.sidebarWidths.send(Core.setSidebarWidth(width)) }
     }
-    strip.attach(empty: empty)
     let bindings = Core.bindings()
     self.bindings = bindings
     applyEmptyMessage()
@@ -210,9 +206,12 @@ public final class MusterWindow: NSObject {
     // After the content view, because a parked pane waits inside the window rather than
     // outside every hierarchy - a surface is handed to libghostty as a view, and keeping that
     // view in a window for its whole life is the only state this has ever run in.
-    surfaces = PaneSurfaces(parkedIn: split) { [weak self] region, chrome, pane in
-      self?.start(chrome, in: region, pane: pane)
+    surfaces = PaneSurfaces(parkedIn: split) { [weak self] machine, chrome, pane in
+      self?.start(chrome, on: machine, pane: pane)
     }
+    tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
+    split.attach(sidebar: sidebar, strip: tabView)
+    tabView.attach(empty: empty)
     surfaces.window(key: window.isKeyWindow)
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
@@ -275,7 +274,7 @@ public final class MusterWindow: NSObject {
       if let why = speaking({ Core.moveTab(tab, to: "") }) { tell(TabRefusal.move, why) }
     }
     // Both halves name their subject outright rather than leaving it to whatever has the
-    // keyboard: the row somebody double-clicked is very often a pane no region is showing,
+    // keyboard: the row somebody double-clicked is very often a pane the window is not showing,
     // which is what the list is for.
     sidebar.onRowRenamed = { [weak self] row in
       guard let self else { return }
@@ -352,59 +351,37 @@ public final class MusterWindow: NSObject {
 
   /// Renders what the core says this window is showing.
   ///
-  /// Whole-view and idempotent, so applying the same one twice is applying it once. Regions
-  /// that survive keep their surfaces, and a region that goes hands its panes back rather than
-  /// tearing them down - a surface belongs to its pane, and outlives every region that shows
-  /// it (`architecture.md`, a surface belongs to its pane).
+  /// Whole-view and idempotent, so applying the same one twice is applying it once. Panes that
+  /// survive keep their surfaces, and a pane that goes off screen is handed back rather than
+  /// torn down - a surface belongs to its pane, and outlives every tab that shows it
+  /// (`architecture.md`, a surface belongs to its pane).
   public func apply(_ contents: WindowContents) {
-    // Before any region applies, and it has to be before: a pane that moved from one region
-    // to another is named by the second, and a pass that ran afterwards would take it back
-    // from whichever of the two happened to apply first. What is left over waits off screen
-    // with its bridge running, which is what makes returning to a tab free rather than the
-    // half-second its machine takes to open another ssh session.
-    surfaces.park(
-      everythingBut: contents.regions.reduce(into: Set<PaneKey>()) { claimed, described in
-        claimed.formUnion(described.panes ?? regions[described.id]?.onScreen ?? [])
-      })
-
-    var order: [(id: String, weight: CGFloat, view: NSView)] = []
-    for described in contents.regions {
-      let region = regions[described.id] ?? make(regionID: described.id)
-      order.append((id: described.id, weight: described.weight, view: region))
-      region.apply(described, focused: described.id == contents.focusedRegion)
-      // After the surfaces exist, because a surface is what carries a size. Every pane every
-      // time: the core sends the whole view, so this is idempotent by the same argument the
-      // rest of this function is - and the surface itself skips a number it already has, which
-      // is what stops a publish per agent transition from reflowing the window.
-      for leaf in described.tree?.leaves ?? [] {
-        report(
-          region.chrome(for: leaf.paneID)?.surface.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
-      }
+    // Before the tab applies, so what is left over waits off screen with its bridge running,
+    // which is what makes returning to a tab free rather than the half-second its machine takes
+    // to open another ssh session. A tree not described yet keeps what the tab has.
+    let keeping = contents.tab == nil ? [] : tabView.onScreen
+    surfaces.park(everythingBut: contents.panes ?? keeping)
+    tabView.apply(contents)
+    // After the surfaces exist, because a surface is what carries a size. Every pane every
+    // time: the core sends the whole view, so this is idempotent by the same argument the rest
+    // of this function is - and the surface itself skips a number it already has, which is what
+    // stops a publish per agent transition from reflowing the window.
+    for leaf in contents.tree?.leaves ?? [] {
+      report(tabView.chrome(for: leaf.key)?.surface.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
     }
 
-    let named = Set(contents.regions.map(\.id))
-    for (id, gone) in regions where !named.contains(id) {
-      gone.removeFromSuperview()
-      regions.removeValue(forKey: id)
-    }
-    strip.arrange(order)
-
-    keyboardPane = contents.keyboardPane
-    let focused = contents.regions.first { $0.id == contents.focusedRegion }
-    focusedRegionID = focused?.id
-    keyboardKey = focused.flatMap { region in
-      region.keyboardPane.map { PaneKey(daemon: region.daemon, pane: $0) }
-    }
+    keyboardPane = contents.keyboard?.pane
+    keyboardKey = contents.keyboard
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
-    zoomed = focused?.zoomed ?? false
-    empty.apply(showing: !contents.regions.isEmpty)
+    zoomed = contents.zoomed
+    empty.apply(showing: contents.tab != nil)
     applyTitle()
   }
 
   public func apply(pane: PaneKey, agent: PaneAgent) {
     let rangBefore = agents[pane]?.rang ?? false
     agents[pane] = agent
-    // Whether or not a region is showing it. A pane parked off screen keeps its border
+    // Whether or not it is on screen. A pane parked off screen keeps its border
     // painted, so the tab somebody switches back to is right on its first frame rather than
     // on the agent's next transition.
     surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: agent.state)
@@ -429,7 +406,7 @@ public final class MusterWindow: NSObject {
   /// Everything the daemons hold, whether or not this window is showing it.
   ///
   /// The list is the half of the founding desideratum the window cannot carry on its own: a
-  /// pane no region shows has no border to colour, and it is the one most likely to have
+  /// pane off screen has no border to colour, and it is the one most likely to have
   /// finished while nobody was looking.
   public func apply(_ roster: Roster) {
     self.roster = roster
@@ -580,7 +557,7 @@ public final class MusterWindow: NSObject {
     chordModifiers = NumberedChord.modifiers(bindings)
   }
 
-  /// Every divider on screen, region boundaries and pane splits alike.
+  /// Every divider on screen.
   private func dividers() -> [DividerView] {
     var found: [DividerView] = []
     var pending: [NSView] = [split]
@@ -611,21 +588,12 @@ public final class MusterWindow: NSObject {
   /// ignores you and does not explain itself is the worst thing this app could ship.
   public func showRendererCheck() {
     rendererCheck = true
-    let region = make(regionID: "renderer-check")
-    strip.arrange([(id: "renderer-check", weight: 1, view: region)])
-    let chrome = PaneChrome(frame: strip.bounds, surface: SurfaceView(frame: strip.bounds))
-    region.addSubview(chrome)
+    let chrome = PaneChrome(frame: tabView.bounds, surface: SurfaceView(frame: tabView.bounds))
+    tabView.addSubview(chrome)
     chrome.autoresizingMask = [.width, .height]
-    region.layoutSubtreeIfNeeded()
+    tabView.layoutSubtreeIfNeeded()
     start(chrome, command: ProcessInfo.processInfo.environment["SHELL"], typeable: false)
     applyTitle()
-  }
-
-  private func make(regionID: String) -> RegionView {
-    let region = RegionView(frame: strip.bounds, surfaces: surfaces)
-    strip.addSubview(region)
-    regions[regionID] = region
-    return region
   }
 
   /// Opens a link somebody cmd-clicked in a pane, on this Mac, if `LinkPolicy` allows it.
@@ -663,10 +631,10 @@ public final class MusterWindow: NSObject {
 
   /// Gives a pane's chrome a surface, and starts the bridge that paints it.
   private func start(
-    _ chrome: PaneChrome, in region: WindowContents.Region, pane: PaneTree.Leaf
+    _ chrome: PaneChrome, on machine: WindowContents.Machine?, pane: PaneTree.Leaf
   ) {
     guard let paneID = chrome.paneID else { return }
-    let daemonID = region.daemon
+    let daemonID = pane.daemon
     if let agent = agents[PaneKey(daemon: daemonID, pane: paneID)] {
       chrome.apply(paneID: paneID, state: agent.state)
     }
@@ -684,7 +652,7 @@ public final class MusterWindow: NSObject {
         ])
       return
     }
-    guard let daemonSocket = region.daemonSocket else {
+    guard let machine, let daemonSocket = machine.socket else {
       // Rebuilt once the view names one: a surface that was never given a bridge for want of a
       // socket is not reused (PaneSurfaces.borrow).
       Core.warn(
@@ -702,7 +670,7 @@ public final class MusterWindow: NSObject {
     chrome.surface.onProcessExited = { processAlive in
       Core.bridgeExited(daemonID: daemonID, paneID: paneID, processAlive: processAlive)
     }
-    let onThisMachine = !region.remote
+    let onThisMachine = !machine.remote
     chrome.surface.onOpenLink = { [weak self] link in
       self?.open(link, onThisMachine: onThisMachine, daemon: daemonID)
     }
@@ -710,7 +678,7 @@ public final class MusterWindow: NSObject {
       chrome,
       command: PaneCommand.bridge(
         executable: executable, paneID: paneID, daemonSocket: daemonSocket,
-        linkSocketPath: linkSocketPath, remote: region.remote,
+        linkSocketPath: linkSocketPath, remote: machine.remote,
         reattaching: pane.bridgeRestarts > 0),
       typeable: true)
     Core.bridgeStarted(daemonID: daemonID, paneID: paneID, bridgeRestarts: pane.bridgeRestarts)
@@ -1273,10 +1241,10 @@ extension MusterWindow {
     if let why = Core.closePane() { tell(PaneRefusal.close, why) }
   }
 
-  // Each of the four reports the cell it is resizing by and the region it is resizing inside,
-  // because `resize_step` is a distance and what the daemon moves is a share of the region.
-  // Only a live surface can say how many points a cell is, and only the window can say how
-  // wide the region it drew is.
+  // Each of the four reports the cell it is resizing by and the tab it is resizing inside,
+  // because `resize_step` is a distance and what moves is a share of the tab. Only a live
+  // surface can say how many points a cell is, and only the window can say how wide the tab it
+  // drew is.
   @objc public func resizePaneLeft(_ sender: Any?) {
     beepUnless(
       Core.resize(
@@ -1586,137 +1554,5 @@ final class SidebarEdgeView: NSView {
   override func mouseDragged(with event: NSEvent) {
     guard let superview else { return }
     onDrag?(superview.convert(event.locationInWindow, from: nil).x)
-  }
-}
-
-/// Where each region sits, and where the lines between them are.
-///
-/// A pure function, in the same spirit as `PaneTree.frames`: this is the arithmetic, and
-/// arithmetic inside `layout` is arithmetic no test can call. A wrong frame here looks like a
-/// rendering problem and is a division.
-///
-/// Weights rather than a tree, because Muster owns no tree over regions - owning one is what
-/// would make it a multiplexer, a non-goal - so the whole arrangement is a list and a
-/// division by the sum of it.
-enum RegionStripLayout {
-  struct Placement: Equatable {
-    let frame: CGRect
-    /// The line on this region's right, and the area it shares with its neighbour. Absent on
-    /// the last region, which has nothing to its right to divide against.
-    let divider: CGRect?
-    let area: CGRect?
-  }
-
-  /// The same thickness a pane divider has. Two lines of different weights in one window
-  /// would read as two different kinds of thing, and they are the same thing one level apart.
-  static let dividerThickness = PaneTree.dividerThickness
-
-  static func place(weights: [CGFloat], in bounds: CGRect) -> [Placement] {
-    guard !weights.isEmpty else { return [] }
-    // A weight that is not a positive number is not this window's to validate - it came
-    // across the seam - so it is read as an equal share rather than collapsing the region to
-    // nothing or poisoning the total with a NaN.
-    let sane = weights.map { $0.isFinite && $0 > 0 ? $0 : 1 }
-    let total = sane.reduce(0, +)
-    let lines = CGFloat(weights.count - 1) * dividerThickness
-    let usable = max(0, bounds.width - lines)
-
-    var placements: [Placement] = []
-    var x = bounds.minX
-    for (index, weight) in sane.enumerated() {
-      let width = usable * weight / total
-      let frame = CGRect(x: x, y: bounds.minY, width: width, height: bounds.height)
-      x += width
-      guard index < sane.count - 1 else {
-        placements.append(Placement(frame: frame, divider: nil, area: nil))
-        continue
-      }
-      let divider = CGRect(
-        x: x, y: bounds.minY, width: dividerThickness, height: bounds.height)
-      // What the pair shares, which is what a drag's ratio is measured against - the two
-      // regions plus the line between them, and nothing further along the window.
-      let next = usable * sane[index + 1] / total
-      let area = CGRect(
-        x: frame.minX, y: bounds.minY, width: width + dividerThickness + next,
-        height: bounds.height)
-      x += dividerThickness
-      placements.append(Placement(frame: frame, divider: divider, area: area))
-    }
-    return placements
-  }
-}
-
-/// Regions, side by side, in the order the core listed them, at the widths it gave them.
-///
-/// Every region starts at the same weight, so equal shares are what a window that has never
-/// been dragged looks like - the floor this used to hardcode, now falling out of the
-/// arrangement rather than being it.
-///
-/// A drag moves nothing locally. It asks the core, which owns this arrangement outright, and
-/// the strip lands where the next published view puts it - the same discipline as a pane
-/// divider, for the same reason.
-@MainActor
-final class RegionStrip: NSView {
-  private var order: [NSView] = []
-  private var identities: [String] = []
-  private var weights: [CGFloat] = []
-  private var dividers: [DividerView] = []
-
-  /// What fills the strip when no region does. Behind the regions rather than beside them,
-  /// so it needs no share of the arrangement and a region drawn over it hides it.
-  private var empty: NSView?
-
-  override var isFlipped: Bool { true }
-
-  func attach(empty: NSView) {
-    self.empty = empty
-    addSubview(empty, positioned: .below, relativeTo: nil)
-    needsLayout = true
-  }
-
-  func arrange(_ regions: [(id: String, weight: CGFloat, view: NSView)]) {
-    order = regions.map(\.view)
-    identities = regions.map(\.id)
-    weights = regions.map(\.weight)
-    needsLayout = true
-  }
-
-  override func layout() {
-    super.layout()
-    empty?.frame = bounds
-    guard !order.isEmpty else { return }
-    let placements = RegionStripLayout.place(weights: weights, in: bounds)
-
-    let wanted = placements.filter { $0.divider != nil }.count
-    while dividers.count < wanted {
-      let divider = DividerView(frame: .zero)
-      addSubview(divider)
-      dividers.append(divider)
-    }
-    while dividers.count > wanted {
-      dividers.removeLast().removeFromSuperview()
-    }
-
-    var line = 0
-    for (index, placement) in placements.enumerated() {
-      order[index].frame = placement.frame
-      order[index].needsLayout = true
-      guard let frame = placement.divider, let area = placement.area else { continue }
-      let divider = dividers[line]
-      line += 1
-      let region = identities[index]
-      // A region's id is its window's own, so the boundary names the window it is in.
-      divider.onDrag = { [weak self] ratio in
-        Core.speaking(for: self?.shellWindowName ?? "") {
-          Core.setRegionBoundary(region: region, ratio: ratio)
-        }
-      }
-      divider.axis = .columns
-      divider.area = area
-      divider.frame = frame
-      // Cursor rectangles are cached against the frame they were set from, so a divider that
-      // moved shows the wrong resize cursor - or none - until this is asked for.
-      window?.invalidateCursorRects(for: divider)
-    }
   }
 }

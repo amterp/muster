@@ -1,40 +1,33 @@
 import AppKit
 
-/// One region of the window: one tab's pane tree, rendered.
+/// The tab on screen: its one tree over every machine it spans, rendered.
 ///
 /// Rebuilt from the whole view every time, and yet it tears nothing down that survives.
 /// Those are not in tension - the core publishes the whole arrangement because that is what
 /// keeps the shell from holding a picture it has to patch, and this diffs against what it
 /// already has because a surface is expensive and a rebuilt surface is a visible flicker.
-/// The rule is that identity is the pane id: same id, same surface, whatever moved around it
+/// The rule is that identity is the pane: same pane, same surface, whatever moved around it
 /// (`architecture.md`, rendering is driven by diffs scoped to what changed).
 ///
 /// Identity is settled when a view arrives; geometry is settled in `layout`. Keeping them
 /// apart is what makes a window resize cost arithmetic and no surfaces.
 @MainActor
-public final class RegionView: NSView {
-  /// Where the panes come from. Borrowed for as long as this region shows them and handed
-  /// back when it stops, because a surface outlives the region that was showing it: switching
-  /// a tab away and back would otherwise cost a new bridge and, on a devenv, the 440ms its
-  /// machine takes to open a session for one.
+public final class TabView: NSView {
+  /// Where the panes come from. Borrowed for as long as this tab shows them and handed back
+  /// when it stops, because a surface outlives the tab that was showing it: switching a tab
+  /// away and back would otherwise cost a new bridge and, on a devenv, the 440ms its machine
+  /// takes to open a session for one.
   private let surfaces: PaneSurfaces
-  private var showing: [String] = []
+  private var showing: [PaneKey] = []
   private var dividers: [DividerView] = []
   private var tree: PaneTree?
+  private var tab: String?
 
-  public private(set) var regionID: String = ""
+  /// What fills the tab when it has no panes. Behind them rather than beside them, so a pane
+  /// drawn over it hides it.
+  private var empty: NSView?
 
-  /// Which daemon this region's tab lives on.
-  ///
-  /// Held rather than passed around because every intent this region raises names it, and
-  /// because the window above keys agent state by it: pane ids repeat across daemons, so a
-  /// click or a state that travelled without this would land on whichever `w1:p1` was found
-  /// first.
-  public private(set) var daemonID: String = ""
-
-  private var tab: String = ""
-
-  /// Carries divider positions to the core without stalling the drag. One per region rather
+  /// Carries divider positions to the core without stalling the drag. One for the tab rather
   /// than one per divider, because a person drags one line at a time and a sender per pooled
   /// view would let two of them be in flight at once.
   ///
@@ -52,64 +45,76 @@ public final class RegionView: NSView {
   }
 
   /// Top-left origin, so that "the first child is the upper one" is what the arithmetic says.
-  /// A region laid out bottom-up would have to invert every row split on the way out, which
-  /// is one inversion away from a window that renders every stack upside down.
+  /// A tab laid out bottom-up would have to invert every row split on the way out, which is
+  /// one inversion away from a window that renders every stack upside down.
   public override var isFlipped: Bool { true }
 
-  /// The panes this region is showing, in reading order.
-  public var paneIDs: [String] { tree?.leaves.map(\.paneID) ?? [] }
-
-  /// The panes with a surface in this region right now, which is not always the same list.
-  /// A tree that named a pane the daemon had not described yet gets no chrome until it does.
-  public var onScreen: Set<PaneKey> {
-    Set(showing.map { PaneKey(daemon: daemonID, pane: $0) })
+  func attach(empty: NSView) {
+    self.empty = empty
+    addSubview(empty, positioned: .below, relativeTo: nil)
+    needsLayout = true
   }
 
-  public func chrome(for paneID: String) -> PaneChrome? {
-    guard showing.contains(paneID) else { return nil }
-    return surfaces.chrome(for: PaneKey(daemon: daemonID, pane: paneID))
+  /// The panes this tab is showing, in reading order.
+  public var panes: [PaneKey] { tree?.leaves.map(\.key) ?? [] }
+
+  /// The panes with a surface here right now, which is not always the same list. A tree that
+  /// named a pane the daemon had not described yet gets no chrome until it does.
+  public var onScreen: Set<PaneKey> { Set(showing) }
+
+  public func chrome(for key: PaneKey) -> PaneChrome? {
+    guard showing.contains(key) else { return nil }
+    return surfaces.chrome(for: key)
   }
 
-  /// Renders a region, keeping every surface the new tree still names.
+  /// Renders the tab, keeping every surface the new tree still names.
   ///
-  /// A nil tree leaves what is on screen alone. The daemon has not said how this tab is
-  /// arranged - it publishes the tree on its own event, which may follow the panes it names -
-  /// and tearing surfaces down for a moment that resolves in milliseconds is a flicker on
-  /// every split.
+  /// A nil tree for the tab already here leaves what is on screen alone. No machine has said
+  /// how the tab is arranged yet - a daemon publishes the tree on its own event, which may
+  /// follow the panes it names - and tearing surfaces down for a moment that resolves in
+  /// milliseconds is a flicker on every split. A nil tree for another tab shows nothing, since
+  /// what is here belongs to the tab that went.
   ///
-  /// Nothing is let go here. The window parks whatever the whole arrangement stops showing,
-  /// in one pass before any region applies, because a pane that moved between two regions is
-  /// named by one of them and neither region can see the other's answer.
-  public func apply(_ region: WindowContents.Region, focused: Bool) {
-    regionID = region.id
-    daemonID = region.daemon
-    tab = region.tab
-    guard let tree = region.tree else { return }
+  /// Nothing is let go here. The window parks whatever the view stops showing before this
+  /// applies, so a pane that moved is named once.
+  public func apply(_ contents: WindowContents) {
+    let sameTab = contents.tab == tab
+    tab = contents.tab
+    guard let tree = contents.tree else {
+      if !sameTab {
+        self.tree = nil
+        showing = []
+        needsLayout = true
+      }
+      return
+    }
     self.tree = tree
-    let fresh = takePanes(tree.leaves, daemonSocket: region.daemonSocket)
+    let fresh = takePanes(tree.leaves, machines: contents.machines)
     // Laid out before the surfaces are made, so each one is handed a view that already has
     // the size it will keep.
     needsLayout = true
     layoutSubtreeIfNeeded()
     for leaf in fresh {
-      guard let chrome = chrome(for: leaf.paneID) else { continue }
-      surfaces.start(in: region, chrome: chrome, leaf: leaf)
+      guard let chrome = chrome(for: leaf.key) else { continue }
+      surfaces.start(on: contents.machines[leaf.daemon], chrome: chrome, leaf: leaf)
     }
-    apply(keyboardPane: focused ? region.keyboardPane : nil)
+    apply(keyboard: contents.keyboard)
   }
 
-  /// Puts this region's panes in it, and says which of them still need a surface.
+  /// Puts the tab's panes in it, and says which of them still need a surface.
   ///
   /// A pane already here is left where it is: `addSubview` on a view that has this superview
   /// already still reorders it, and a surface reordered every publish is a flicker on every
   /// agent transition.
-  private func takePanes(_ leaves: [PaneTree.Leaf], daemonSocket: String?) -> [PaneTree.Leaf] {
+  private func takePanes(
+    _ leaves: [PaneTree.Leaf], machines: [String: WindowContents.Machine]
+  ) -> [PaneTree.Leaf] {
     var fresh: [PaneTree.Leaf] = []
-    showing = leaves.map(\.paneID)
+    showing = leaves.map(\.key)
     for leaf in leaves {
-      let daemon = daemonID
+      let daemon = leaf.daemon
       let taken = surfaces.borrow(
-        daemonID: daemon, daemonSocket: daemonSocket, leaf: leaf,
+        daemonID: daemon, daemonSocket: machines[daemon]?.socket, leaf: leaf,
         focus: { paneID in Core.focus(daemonID: daemon, paneID: paneID) },
         pointer: { paneID, pointer in Core.pointer(daemonID: daemon, paneID: paneID, pointer) })
       if taken.chrome.superview !== self {
@@ -127,11 +132,11 @@ public final class RegionView: NSView {
   /// one in the rest, which is the platform's own answer to "which of these am I typing
   /// into". It follows the core's view rather than leading it: AppKit's own focus is a
   /// consequence here, never the source.
-  private func apply(keyboardPane: String?) {
-    for paneID in showing {
-      chrome(for: paneID)?.apply(focused: paneID == keyboardPane)
+  private func apply(keyboard: PaneKey?) {
+    for key in showing {
+      chrome(for: key)?.apply(focused: key == keyboard)
     }
-    guard let keyboardPane, let chrome = chrome(for: keyboardPane), let window else { return }
+    guard let keyboard, let chrome = chrome(for: keyboard), let window else { return }
     if window.firstResponder !== chrome.surface {
       window.makeFirstResponder(chrome.surface)
     }
@@ -139,7 +144,11 @@ public final class RegionView: NSView {
 
   public override func layout() {
     super.layout()
-    guard let tree else { return }
+    empty?.frame = bounds
+    guard let tree, let tab else {
+      while let divider = dividers.popLast() { divider.removeFromSuperview() }
+      return
+    }
     let frames = tree.frames(in: bounds)
 
     while dividers.count < frames.dividers.count {
@@ -151,8 +160,9 @@ public final class RegionView: NSView {
       dividers.removeLast().removeFromSuperview()
     }
 
-    for placement in frames.panes {
-      guard let chrome = chrome(for: placement.paneID) else { continue }
+    // Placed in the tree's reading order, which is the order of its leaves.
+    for (placement, key) in zip(frames.panes, tree.leaves.map(\.key)) {
+      guard let chrome = chrome(for: key) else { continue }
       chrome.frame = placement.frame
       chrome.needsLayout = true
     }
@@ -161,9 +171,7 @@ public final class RegionView: NSView {
       // property of where it landed this time - the pool holds views and nothing else.
       let path = placement.path
       divider.onDrag = { [weak self] ratio in
-        guard let self else { return }
-        self.dividerPositions.send(
-          daemonID: self.daemonID, tab: self.tab, path: path, ratio: ratio)
+        self?.dividerPositions.send(tab: tab, path: path, ratio: ratio)
       }
       divider.axis = placement.axis
       divider.area = placement.area

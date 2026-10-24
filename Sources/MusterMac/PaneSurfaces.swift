@@ -29,11 +29,12 @@ public final class PaneSurfaces {
   /// Gives a pane's chrome a surface, and the bridge that feeds it.
   ///
   /// Injected because the real one needs a GPU, a libghostty runtime and a subprocess, and
-  /// what this class decides - which panes have surfaces, which region is showing each, when
-  /// one is let go - is worth testing without any of the three.
+  /// what this class decides - which panes have surfaces, which are on screen, when one is let
+  /// go - is worth testing without any of the three. `machine` is how the pane's daemon is
+  /// reached, nil while the view names no such machine.
   public typealias StartPane =
     @MainActor (
-      _ region: WindowContents.Region, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
+      _ machine: WindowContents.Machine?, _ chrome: PaneChrome, _ pane: PaneTree.Leaf
     ) -> Void
 
   private struct Held {
@@ -170,8 +171,8 @@ public final class PaneSurfaces {
   }
 
   /// Starts the bridge for a pane that has just been given a chrome and laid out.
-  public func start(in region: WindowContents.Region, chrome: PaneChrome, leaf: PaneTree.Leaf) {
-    startPane(region, chrome, leaf)
+  public func start(on machine: WindowContents.Machine?, chrome: PaneChrome, leaf: PaneTree.Leaf) {
+    startPane(machine, chrome, leaf)
   }
 
   /// Takes back every chrome no region is showing, and keeps it alive off screen.

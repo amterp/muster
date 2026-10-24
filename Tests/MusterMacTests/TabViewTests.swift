@@ -3,15 +3,15 @@ import Testing
 
 @testable import MusterMac
 
-// What a region does with a view it is handed. No GPU, no libghostty, no daemon: the surface
+// What the tab view does with a view it is handed. No GPU, no libghostty, no daemon: the surface
 // factory is a closure and this injects one that records rather than one that allocates.
 //
-// The property under test throughout is that identity is the pane id. The core publishes the
-// whole arrangement every time, so a region that rebuilt what it was handed would tear down
-// and respawn every surface and bridge in the window each time any pane in it changed - which
-// is invisible in a screenshot and obvious the moment an agent's output flickers away.
+// The property under test throughout is that identity is the pane. The core publishes the whole
+// arrangement every time, so a view that rebuilt what it was handed would tear down and respawn
+// every surface and bridge in the window each time any pane in it changed - which is invisible in
+// a screenshot and obvious the moment an agent's output flickers away.
 
-/// Records the panes a region asked to have stood up, and what socket each was pointed at.
+/// Records the panes the view asked to have stood up, and what socket each was pointed at.
 @MainActor
 private final class Started {
   var panes: [String] = []
@@ -24,103 +24,97 @@ private final class Started {
 /// A window's worth of surfaces, recorded rather than allocated.
 @MainActor
 private func surfaces(_ started: Started) -> PaneSurfaces {
-  paneSurfaces { region, chrome, pane in
+  paneSurfaces { machine, chrome, pane in
     started.panes.append(
-      "\(region.daemon):\(chrome.paneID ?? "")@\(pane.linkSocketPath ?? "-")")
-    started.daemonSockets.append(region.daemonSocket)
-    started.remote.append(region.remote)
+      "\(pane.daemon):\(chrome.paneID ?? "")@\(pane.linkSocketPath ?? "-")")
+    started.daemonSockets.append(machine?.socket)
+    started.remote.append(machine?.remote ?? false)
   }
 }
 
-/// A region whose surfaces are recorded rather than allocated.
+/// A tab view whose surfaces are recorded rather than allocated.
 @MainActor
-private func region(width: CGFloat = 800, height: CGFloat = 600) -> (RegionView, Started) {
-  let (view, started, _) = regionAndStore(width: width, height: height)
+private func tabView(width: CGFloat = 800, height: CGFloat = 600) -> (TabView, Started) {
+  let (view, started, _) = tabViewAndStore(width: width, height: height)
   return (view, started)
 }
 
 @MainActor
-private func regionAndStore(
+private func tabViewAndStore(
   width: CGFloat = 800, height: CGFloat = 600
-) -> (RegionView, Started, PaneSurfaces) {
+) -> (TabView, Started, PaneSurfaces) {
   let started = Started()
   let store = surfaces(started)
   return (
-    RegionView(frame: NSRect(x: 0, y: 0, width: width, height: height), surfaces: store),
+    TabView(frame: NSRect(x: 0, y: 0, width: width, height: height), surfaces: store),
     started, store
   )
 }
 
-/// One region, applied the way the window applies one.
-///
-/// The park is the window's step and not the region's, because a pane that moved between two
-/// regions is named by one of them and neither can see the other's answer - so it happens once
-/// for the whole arrangement, before any region takes anything. A test that skipped it would
-/// leave a departed pane's chrome sitting in the region that had it.
+/// A view, applied the way the window applies one: what it stops showing is parked first.
 @MainActor
-private func show(
-  _ view: RegionView, _ described: WindowContents.Region, focused: Bool = true,
-  in store: PaneSurfaces
-) {
+private func show(_ view: TabView, _ described: WindowContents, in store: PaneSurfaces) {
   store.park(everythingBut: described.panes ?? view.onScreen)
-  view.apply(described, focused: focused)
+  view.apply(described)
 }
 
+private func local(_ pane: String) -> PaneKey { PaneKey(daemon: "local", pane: pane) }
+
 private func leaf(
-  _ id: String, socket: String? = "/tmp/\(0).sock", restarts: UInt32 = 0
+  _ id: String, on daemon: String = "local", socket: String? = "/tmp/\(0).sock",
+  restarts: UInt32 = 0
 ) -> PaneTree {
-  .pane(.init(paneID: id, linkSocketPath: socket, bridgeRestarts: restarts))
+  .pane(.init(daemon: daemon, paneID: id, linkSocketPath: socket, bridgeRestarts: restarts))
 }
 
 private func contents(
   _ tree: PaneTree?, keyboard: String? = nil, daemonSocket: String? = "/tmp/muster/daemon.sock",
   remote: Bool = false
-) -> WindowContents.Region {
-  WindowContents.Region(
-    id: "r0", daemon: "local", tab: "w1:t1", keyboardPane: keyboard, tree: tree, zoomed: false,
-    daemonSocket: daemonSocket, remote: remote)
+) -> WindowContents {
+  WindowContents(
+    tab: "w1:t1", tree: tree, keyboard: keyboard.map(local),
+    machines: ["local": .init(socket: daemonSocket, remote: remote)])
 }
 
-@Suite("a region renders a tree", .ownsTheSeam)
-struct RegionViewTests {
+@Suite("a tab view renders a tree", .ownsTheSeam)
+struct TabViewTests {
   @MainActor
   @Test("a pane that survives a change keeps its surface")
   func survivingPanesAreNotRebuilt() {
     // The whole reason this class diffs rather than rebuilds. A split adds one pane; the
     // other one must not blink.
-    let (view, started) = region()
-    view.apply(contents(leaf("w1:p1", socket: "/tmp/a.sock")), focused: true)
-    let before = view.chrome(for: "w1:p1")
+    let (view, started) = tabView()
+    view.apply(contents(leaf("w1:p1", socket: "/tmp/a.sock")))
+    let before = view.chrome(for: local("w1:p1"))
 
     view.apply(
       contents(
         .split(
           axis: .columns, ratio: 0.5,
           first: leaf("w1:p1", socket: "/tmp/a.sock"),
-          second: leaf("w1:p2", socket: "/tmp/b.sock"))),
-      focused: true)
+          second: leaf("w1:p2", socket: "/tmp/b.sock"))))
 
-    #expect(view.chrome(for: "w1:p1") === before)
+    #expect(view.chrome(for: local("w1:p1")) === before)
     #expect(started.panes == ["local:w1:p1@/tmp/a.sock", "local:w1:p2@/tmp/b.sock"])
   }
 
   @MainActor
-  @Test("a pane the tree no longer names leaves the region, and keeps its bridge")
+  @Test("a pane the tree no longer names leaves the tab, and keeps its bridge")
   func departedPanesAreParked() {
     // Parked rather than torn down, which is the whole of a_2HzbwzO32. A remote pane's bridge
     // is an ssh exec, and the far machine takes about 440ms to open a session for one - so a
     // surface thrown away on every tab switch is half a second of blank pane on every switch
     // back. What replaces the teardown is the roster: a pane stops costing anything when its
     // daemon stops holding it.
-    let (view, _, store) = regionAndStore()
+    let (view, _, store) = tabViewAndStore()
     show(
       view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
       in: store)
 
     show(view, contents(leaf("w1:p1")), in: store)
 
-    #expect(view.chrome(for: "w1:p2") == nil)
-    #expect(view.paneIDs == ["w1:p1"])
+    #expect(view.chrome(for: local("w1:p2")) == nil)
+    #expect(view.panes.map(\.pane) == ["w1:p1"])
     #expect(view.subviews.compactMap { ($0 as? PaneChrome)?.paneID } == ["w1:p1"])
     #expect(store.parked == [PaneKey(daemon: "local", pane: "w1:p2")])
   }
@@ -131,7 +125,7 @@ struct RegionViewTests {
     // The measurement the card asked for, at the level a test can reach it: switching to a
     // tab and back used to spawn a bridge each time, and the log held seventeen bridge.start
     // records for three devenv panes in one session.
-    let (view, started, store) = regionAndStore()
+    let (view, started, store) = tabViewAndStore()
     let both = PaneTree.split(
       axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
     show(view, contents(both), in: store)
@@ -141,11 +135,11 @@ struct RegionViewTests {
     show(view, contents(both), in: store)
 
     #expect(started.panes.count == 2)
-    #expect(view.chrome(for: "w1:p2") === parked)
+    #expect(view.chrome(for: local("w1:p2")) === parked)
   }
 
   @MainActor
-  @Test("two regions showing one pane share its surface")
+  @Test("two views showing one pane share its surface")
   func onePanePerWindowHasOneSurface() {
     // A daemon lets one bridge draw a pane, so a pane drawn twice is one surface printing a
     // refusal and a panel nobody can close (kan a_2Ht74jTXV). The core
@@ -153,17 +147,18 @@ struct RegionViewTests {
     // even if it does again.
     let started = Started()
     let store = surfaces(started)
-    let first = RegionView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
-    let second = RegionView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
+    let first = TabView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
+    let second = TabView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), surfaces: store)
 
-    first.apply(contents(leaf("w1:p1")), focused: true)
-    second.apply(contents(leaf("w1:p1")), focused: false)
+    first.apply(contents(leaf("w1:p1")))
+    second.apply(contents(leaf("w1:p1")))
 
     #expect(started.panes == ["local:w1:p1@/tmp/0.sock"])
     #expect(store.count == 1)
     // And the second one is the one showing it, because it took it last.
     #expect(
-      second.chrome(for: "w1:p1") === store.chrome(for: PaneKey(daemon: "local", pane: "w1:p1")))
+      second.chrome(for: local("w1:p1"))
+        === store.chrome(for: PaneKey(daemon: "local", pane: "w1:p1")))
   }
 
   @MainActor
@@ -171,7 +166,7 @@ struct RegionViewTests {
   func closedPanesAreReleased() {
     // What stops the held set growing with switches. A window that visited fifteen tabs would
     // otherwise hold fifteen tabs' worth of bridges and sockets until it quit.
-    let (view, _, store) = regionAndStore()
+    let (view, _, store) = tabViewAndStore()
     show(
       view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
       in: store)
@@ -191,7 +186,7 @@ struct RegionViewTests {
     // that parks it comes after. No later roster need follow, so this park is the last chance
     // to let the pane go before it holds its surface and threads for as long as the window is
     // quiet.
-    let (view, _, store) = regionAndStore()
+    let (view, _, store) = tabViewAndStore()
     show(
       view, contents(.split(axis: .rows, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))),
       in: store)
@@ -204,17 +199,17 @@ struct RegionViewTests {
   }
 
   @MainActor
-  @Test("a pane a region is showing survives a roster that does not name it")
+  @Test("a pane on screen survives a roster that does not name it")
   func onScreenPanesAreNeverReleased() {
     // A roster arrives empty for reasons that are not "every pane closed" - a daemon
     // mid-reconnect, a publish between arrangements - and tearing the window down for one
     // would be the worst answer available to a transient.
-    let (view, _, store) = regionAndStore()
+    let (view, _, store) = tabViewAndStore()
     show(view, contents(leaf("w1:p1")), in: store)
 
     store.release(everythingBut: [])
 
-    #expect(view.chrome(for: "w1:p1") != nil)
+    #expect(view.chrome(for: local("w1:p1")) != nil)
     #expect(store.count == 1)
   }
 
@@ -224,10 +219,10 @@ struct RegionViewTests {
     // A bridge is spawned by its surface's command, so a pane whose socket changed is a pane
     // dialing a listener that is gone. It would keep painting and swallow every keystroke,
     // which is the failure that has cost this project the most time.
-    let (view, started) = region()
-    view.apply(contents(leaf("w1:p1", socket: nil)), focused: true)
+    let (view, started) = tabView()
+    view.apply(contents(leaf("w1:p1", socket: nil)))
 
-    view.apply(contents(leaf("w1:p1", socket: "/tmp/opened.sock")), focused: true)
+    view.apply(contents(leaf("w1:p1", socket: "/tmp/opened.sock")))
 
     #expect(started.panes == ["local:w1:p1@-", "local:w1:p1@/tmp/opened.sock"])
   }
@@ -238,14 +233,14 @@ struct RegionViewTests {
     // The other half of kan a_2HrmSyRAQ. A bridge is a surface's command, so the core saying
     // "this pane's bridge is gone" can only be acted on by building the surface again - and
     // this pane's socket has not moved, so nothing else here would notice.
-    let (view, started, store) = regionAndStore()
+    let (view, started, store) = tabViewAndStore()
     show(view, contents(leaf("w1:p1", socket: "/tmp/a.sock")), in: store)
-    let before = view.chrome(for: "w1:p1")
+    let before = view.chrome(for: local("w1:p1"))
 
     show(view, contents(leaf("w1:p1", socket: "/tmp/a.sock", restarts: 1)), in: store)
 
     #expect(started.panes == ["local:w1:p1@/tmp/a.sock", "local:w1:p1@/tmp/a.sock"])
-    #expect(view.chrome(for: "w1:p1") !== before)
+    #expect(view.chrome(for: local("w1:p1")) !== before)
     #expect(store.count == 1, "the surface it replaced is still being held somewhere")
   }
 
@@ -254,50 +249,87 @@ struct RegionViewTests {
   func anAbsentTreeChangesNothing() {
     // A tab's tree can arrive after the panes it names, so this is an ordinary moment rather
     // than a failure. Tearing surfaces down for it is a flicker on every split.
-    let (view, started) = region()
-    view.apply(contents(leaf("w1:p1")), focused: true)
+    let (view, started) = tabView()
+    view.apply(contents(leaf("w1:p1")))
 
-    view.apply(contents(nil), focused: true)
+    view.apply(contents(nil))
 
-    #expect(view.paneIDs == ["w1:p1"])
+    #expect(view.panes.map(\.pane) == ["w1:p1"])
     #expect(started.panes.count == 1)
   }
 
   @MainActor
   @Test("only the pane with the keyboard is marked as having it")
   func focusFollowsTheView() {
-    let (view, _) = region()
+    let (view, _) = tabView()
     let tree = PaneTree.split(
       axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
 
-    view.apply(contents(tree, keyboard: "w1:p2"), focused: true)
+    view.apply(contents(tree, keyboard: "w1:p2"))
 
-    #expect(view.chrome(for: "w1:p2")?.isFocused == true)
-    #expect(view.chrome(for: "w1:p1")?.isFocused == false)
+    #expect(view.chrome(for: local("w1:p2"))?.isFocused == true)
+    #expect(view.chrome(for: local("w1:p1"))?.isFocused == false)
   }
 
   @MainActor
-  @Test("a region that is not focused marks none of its panes")
-  func anUnfocusedRegionShowsNoKeyboard() {
-    // Two regions each drawing a focus ring is two windows' worth of "type here" on one
-    // screen, and the user has no way to tell which one is lying.
-    let (view, _) = region()
+  @Test("a tab whose keyboard is on no pane marks none of them")
+  func noKeyboardMarksNoPane() {
+    // A focus ring on a pane nothing is typing into is a "type here" that is lying.
+    let (view, _) = tabView()
 
-    view.apply(contents(leaf("w1:p1"), keyboard: "w1:p1"), focused: false)
+    view.apply(contents(leaf("w1:p1"), keyboard: nil))
 
-    #expect(view.chrome(for: "w1:p1")?.isFocused == false)
+    #expect(view.chrome(for: local("w1:p1"))?.isFocused == false)
   }
 
   @MainActor
-  @Test("every pane and divider is laid out inside the region")
-  func layoutFillsTheRegion() {
-    let (view, _) = region(width: 900, height: 500)
+  @Test("a tree that has not arrived for another tab shows nothing of the last one")
+  func anAbsentTreeForANewTabClearsTheView() {
+    // Leaving the last tab's panes up would draw one tab's panes under another tab's name, and
+    // feed the keyboard into a pane the sidebar says is somewhere else.
+    let (view, _, store) = tabViewAndStore()
+    show(view, contents(leaf("w1:p1")), in: store)
+
+    show(view, WindowContents(tab: "w1:t2", tree: nil, keyboard: nil), in: store)
+
+    #expect(view.panes.isEmpty)
+    #expect(view.chrome(for: local("w1:p1")) == nil)
+  }
+
+  @MainActor
+  @Test("each pane in a tab spanning machines is started on its own machine")
+  func eachLeafIsStartedOnItsMachine() {
+    // One tree, two machines: the leaf says which machine runs its pane, and the bridge has to
+    // dial that machine's daemon, or a devenv pane is drawn from the laptop's.
+    let (view, started) = tabView()
+    let tree = PaneTree.split(
+      axis: .columns, ratio: 0.5, first: leaf("w1:p1", socket: "/tmp/a.sock"),
+      second: leaf("w1:p2", on: "devenv", socket: "/tmp/b.sock"))
+
+    view.apply(
+      WindowContents(
+        tab: "w1:t1", tree: tree, keyboard: PaneKey(daemon: "devenv", pane: "w1:p2"),
+        machines: [
+          "local": .init(socket: "/tmp/muster/daemon.sock"),
+          "devenv": .init(socket: "/tmp/muster/devenv.sock", remote: true),
+        ]))
+
+    #expect(started.panes == ["local:w1:p1@/tmp/a.sock", "devenv:w1:p2@/tmp/b.sock"])
+    #expect(started.daemonSockets == ["/tmp/muster/daemon.sock", "/tmp/muster/devenv.sock"])
+    #expect(started.remote == [false, true])
+    #expect(view.chrome(for: PaneKey(daemon: "devenv", pane: "w1:p2"))?.isFocused == true)
+  }
+
+  @MainActor
+  @Test("every pane and divider is laid out inside the tab")
+  func layoutFillsTheTab() {
+    let (view, _) = tabView(width: 900, height: 500)
     let tree = PaneTree.split(
       axis: .columns, ratio: 0.5,
       first: leaf("w1:p1"),
       second: .split(axis: .rows, ratio: 0.5, first: leaf("w1:p2"), second: leaf("w1:p3")))
 
-    view.apply(contents(tree), focused: true)
+    view.apply(contents(tree))
     view.layoutSubtreeIfNeeded()
 
     let chromes = view.subviews.compactMap { $0 as? PaneChrome }
@@ -316,13 +348,13 @@ struct RegionViewTests {
     // ordinary thing to do in a window of fifteen, and a wheel that moved the focused pane
     // made it impossible without clicking away from what you were typing in first.
     let recorder = recorder()
-    let (view, _) = region()
+    let (view, _) = tabView()
     let tree = PaneTree.split(
       axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
-    view.apply(contents(tree, keyboard: "w1:p1"), focused: true)
+    view.apply(contents(tree, keyboard: "w1:p1"))
     // The real path does this when the pane's bridge starts; here the surface factory only
     // records, so nothing else would make the view willing to report input.
-    guard let scrolled = view.chrome(for: "w1:p2") else { return }
+    guard let scrolled = view.chrome(for: local("w1:p2")) else { return }
     scrolled.surface.attach(typeable: true)
     let mark = recorder.requests.count
     guard let event = wheel(deltaY: 3) else { return }
@@ -349,11 +381,11 @@ struct RegionViewTests {
     // the keyboard is told about a click in it - which is also the click that moves the
     // keyboard there.
     let recorder = recorder()
-    let (view, _) = region()
+    let (view, _) = tabView()
     let tree = PaneTree.split(
       axis: .columns, ratio: 0.5, first: leaf("w1:p1"), second: leaf("w1:p2"))
-    view.apply(contents(tree, keyboard: "w1:p1"), focused: true)
-    guard let clicked = view.chrome(for: "w1:p2") else { return }
+    view.apply(contents(tree, keyboard: "w1:p1"))
+    guard let clicked = view.chrome(for: local("w1:p2")) else { return }
     clicked.surface.attach(typeable: true)
     let mark = recorder.requests.count
 
@@ -371,30 +403,29 @@ struct RegionViewTests {
   }
 }
 
-@Suite("a region says which daemon its panes come from")
-struct RegionFrameSourceTests {
+@Suite("a tab view says which daemon its panes come from")
+struct TabFrameSourceTests {
   @MainActor
   @Test("the daemon's socket reaches the pane that is about to be started")
   func theDaemonSocketReachesTheBridge() {
     // A bridge has no way to find a daemon for itself, so dropping this value between the view
     // and the bridge's command line is invisible until a pane renders nothing - which is
     // exactly how it was found.
-    let (view, started) = region()
+    let (view, started) = tabView()
 
-    view.apply(contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/daemon.sock"), focused: true)
+    view.apply(contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/daemon.sock"))
 
     #expect(started.daemonSockets == ["/tmp/muster/daemon.sock"])
     #expect(started.remote == [false])
   }
 
   @MainActor
-  @Test("a remote region says so, beside the near end of its forward")
-  func aRemoteRegionSaysSo() {
-    let (view, started) = region()
+  @Test("a remote machine says so, beside the near end of its forward")
+  func aRemoteMachineSaysSo() {
+    let (view, started) = tabView()
 
     view.apply(
-      contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/devenv.sock", remote: true),
-      focused: true)
+      contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/devenv.sock", remote: true))
 
     #expect(started.daemonSockets == ["/tmp/muster/devenv.sock"])
     #expect(started.remote == [true])
@@ -406,7 +437,7 @@ struct RegionFrameSourceTests {
     // The window gives a pane no bridge while its daemon has no socket, because a bridge with
     // nothing to dial renders nothing. The pane's own sockets have not moved when the daemon's
     // arrives, so without this the pane would stay blank until something else about it changed.
-    let (view, started, store) = regionAndStore()
+    let (view, started, store) = tabViewAndStore()
     show(view, contents(leaf("w1:p1"), daemonSocket: nil), in: store)
 
     show(view, contents(leaf("w1:p1"), daemonSocket: "/tmp/muster/daemon.sock"), in: store)
@@ -420,13 +451,13 @@ struct RegionFrameSourceTests {
   func aDaemonSocketLeavingKeepsTheSurface() {
     // A surface holds the pane's history, and its bridge's connection outlives whatever made the
     // view briefly name no socket. The core replaces a bridge that actually died.
-    let (view, started, store) = regionAndStore()
+    let (view, started, store) = tabViewAndStore()
     show(view, contents(leaf("w1:p1")), in: store)
-    let before = view.chrome(for: "w1:p1")
+    let before = view.chrome(for: local("w1:p1"))
 
     show(view, contents(leaf("w1:p1"), daemonSocket: nil), in: store)
 
     #expect(started.panes.count == 1)
-    #expect(view.chrome(for: "w1:p1") === before)
+    #expect(view.chrome(for: local("w1:p1")) === before)
   }
 }

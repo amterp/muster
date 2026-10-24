@@ -8,86 +8,63 @@ import Foundation
 /// where a rendering bug hides, because a wrong frame looks like a rendering problem and is
 /// arithmetic.
 public struct WindowContents: Equatable {
-  public struct Region: Equatable {
-    public let id: String
-
-    /// Which daemon this region's tab lives on. Carried down to every pane in it rather than
-    /// repeated per pane, because a leaf only ever arrives inside the region that names it.
-    public let daemon: String
-    public let tab: String
-
-    /// The pane in this region Muster's keyboard feeds while the region is focused. Nil
-    /// while the daemon has not said what is in this tab.
-    public let keyboardPane: String?
-
-    /// How much of the window's width this region gets, relative to the others. A weight
-    /// rather than a fraction, so laying the strip out is a division by the sum and no
-    /// region needs to know another's business.
-    public let weight: CGFloat
-
-    /// Nil while the daemon has not said how this tab is arranged, which is an ordinary
-    /// moment and a different answer from a tab with no panes: a window told nil leaves its
-    /// surfaces alone, where one told "no panes" would tear down surfaces that are about to
-    /// be described.
-    public let tree: PaneTree?
-
-    /// Whether `tree` is one pane filling the region rather than the tab's whole tree.
-    /// Already resolved by the core, so a window that ignores this renders the right thing.
-    public let zoomed: Bool
-
-    /// Where this region's bridges dial to draw its panes: the daemon's own socket, or for a
+  /// A machine the tab's panes run on, as this window's bridges reach it.
+  public struct Machine: Equatable {
+    /// Where a bridge dials to draw a pane on this machine: the daemon's own socket, or for a
     /// daemon on another machine the local end of the ssh forward to it. Relayed onto the
     /// bridge's command line and never interpreted. Nil for a daemon the core has not reached.
-    public let daemonSocket: String?
+    public let socket: String?
 
     /// Whether that daemon is on another machine. The only difference the shell ever notices
     /// between local and remote, and it only passes it on: a remote bridge asks for a window of
     /// unacknowledged output sized for the link.
     public let remote: Bool
 
-    public init(
-      id: String, daemon: String, tab: String, keyboardPane: String?, weight: CGFloat = 1,
-      tree: PaneTree?, zoomed: Bool, daemonSocket: String? = nil, remote: Bool = false
-    ) {
-      self.id = id
-      self.daemon = daemon
-      self.tab = tab
-      self.keyboardPane = keyboardPane
-      // Defaulted so that a test describing a window it is not about the widths of does not
-      // have to say so. Equal shares are what every region starts at.
-      self.weight = weight
-      self.tree = tree
-      self.zoomed = zoomed
-      self.daemonSocket = daemonSocket
+    public init(socket: String?, remote: Bool = false) {
+      self.socket = socket
       self.remote = remote
     }
-
-    /// The panes this region will be showing once it has applied.
-    ///
-    /// Nil when the daemon has not said how this tab is arranged, on the same terms as
-    /// `tree`: a window told nil leaves what it is showing alone, so nil here means "whatever
-    /// it already had" rather than "none".
-    public var panes: Set<PaneKey>? {
-      tree.map { Set($0.leaves.map { PaneKey(daemon: daemon, pane: $0.paneID) }) }
-    }
   }
 
-  /// In the order they are laid out, side by side. Muster owns no split tree over regions.
-  public let regions: [Region]
+  /// The tab on screen, or nil when this window holds none it may open onto.
+  public let tab: String?
 
-  /// Which region's pane the keyboard feeds. Nil when none does, which is what a window with
-  /// no daemon behind it looks like.
-  public let focusedRegion: String?
+  /// The tab as it is drawn: its whole tree over every machine it spans, or the one pane
+  /// filling it while it is zoomed.
+  ///
+  /// Nil while no machine has said how the tab is arranged, which is an ordinary moment and a
+  /// different answer from a tab with no panes: a window told nil leaves its surfaces alone,
+  /// where one told "no panes" would tear down surfaces that are about to be described.
+  public let tree: PaneTree?
 
-  public init(regions: [Region], focusedRegion: String?) {
-    self.regions = regions
-    self.focusedRegion = focusedRegion
+  /// Whether `tree` is one pane filling the tab rather than its whole tree, which the chrome
+  /// says: a zoomed tab and a tab with one pane are otherwise the same on screen.
+  public let zoomed: Bool
+
+  /// The pane the keyboard feeds. Nil when none does, which is what a window with no daemon
+  /// behind it looks like.
+  public let keyboard: PaneKey?
+
+  /// Every machine a leaf of `tree` can name, by its daemon.
+  public let machines: [String: Machine]
+
+  public init(
+    tab: String?, tree: PaneTree?, zoomed: Bool = false, keyboard: PaneKey?,
+    machines: [String: Machine] = [:]
+  ) {
+    self.tab = tab
+    self.tree = tree
+    self.zoomed = zoomed
+    self.keyboard = keyboard
+    self.machines = machines
   }
 
-  /// The pane the keyboard feeds, if the focused region names one.
-  public var keyboardPane: String? {
-    guard let focusedRegion else { return nil }
-    return regions.first { $0.id == focusedRegion }?.keyboardPane
+  /// The panes this window will be showing once it has applied.
+  ///
+  /// Nil when no machine has said how the tab is arranged, on the same terms as `tree`: nil here
+  /// means "whatever it already had" rather than "none".
+  public var panes: Set<PaneKey>? {
+    tree.map { Set($0.leaves.map(\.key)) }
   }
 }
 
@@ -160,8 +137,6 @@ extension Roster.Numbering {
 ///
 /// Two daemons hand out the same ids, so anything the shell keys by pane alone - which agent
 /// state belongs to which border - would let one machine's `w1:p1` answer for the other's.
-/// Inside a single region the pane id is enough, because a region shows one daemon; this is
-/// for the maps that span them.
 public struct PaneKey: Hashable {
   public let daemon: String
   public let pane: String
@@ -181,12 +156,14 @@ public enum SplitAxis: String, Equatable {
   case rows
 }
 
-/// One region's arrangement.
+/// A tab's arrangement, over every machine it spans.
 public indirect enum PaneTree: Equatable {
   case pane(Leaf)
   case split(axis: SplitAxis, ratio: CGFloat, first: PaneTree, second: PaneTree)
 
   public struct Leaf: Equatable {
+    /// The machine running this pane, as `WindowContents.machines` names it.
+    public let daemon: String
     public let paneID: String
 
     /// Where this pane's bridge reports that it attached, that it is painting, and why it
@@ -213,9 +190,11 @@ public indirect enum PaneTree: Equatable {
     public let bridgeRestarts: UInt32
 
     public init(
-      paneID: String, linkSocketPath: String?, fontSizeOffset: Int32 = 0,
-      bridgeRestarts: UInt32 = 0
+      daemon: String = "local", paneID: String, linkSocketPath: String?,
+      fontSizeOffset: Int32 = 0, bridgeRestarts: UInt32 = 0
     ) {
+      // Defaulted so that a test describing a window on one machine does not have to say which.
+      self.daemon = daemon
       self.paneID = paneID
       self.linkSocketPath = linkSocketPath
       // Defaulted so that a test describing a window it is not about the text size of does not
@@ -223,6 +202,8 @@ public indirect enum PaneTree: Equatable {
       self.fontSizeOffset = fontSizeOffset
       self.bridgeRestarts = bridgeRestarts
     }
+
+    public var key: PaneKey { PaneKey(daemon: daemon, pane: paneID) }
   }
 
   /// Every pane in the tree, in reading order.
@@ -246,7 +227,7 @@ public struct PaneFrames: Equatable {
   }
 
   public struct Divider: Equatable {
-    /// The turns from the region's root down to this split: false takes the first child,
+    /// The turns from the tab's root down to this split: false takes the first child,
     /// true the second. A divider has no id - it is a position in a shape that changes under
     /// it - so this is how a drag names it back to the daemon.
     public let path: [Bool]
@@ -361,22 +342,29 @@ extension PaneTree {
 
 extension WindowContents {
   init(_ changed: Muster_ViewChanged) {
+    let whole = changed.hasTree ? PaneTree(changed.tree) : nil
+    // Resolved here, so a window that draws `tree` paints the one pane filling a zoomed tab. A
+    // zoom on a pane the tree does not hold fills nothing, and the whole tree is drawn.
+    let filling =
+      changed.zoomedPaneID.isEmpty
+      ? nil : whole?.leaves.first { $0.paneID == changed.zoomedPaneID }
+    // Pane ids are unique across machines, so the keyboard's machine is the leaf's.
+    let keyboard = whole?.leaves.first { $0.paneID == changed.keyboardPaneID }
     self.init(
-      regions: changed.regions.map { region in
-        Region(
-          id: region.regionID,
-          daemon: region.daemonID,
-          tab: region.tabID,
-          // Proto3 spells absence as the empty string, and here the two genuinely differ:
-          // no pane named is a region whose tab the daemon has not described yet.
-          keyboardPane: region.paneID.isEmpty ? nil : region.paneID,
-          weight: CGFloat(region.weight),
-          tree: region.hasRoot ? PaneTree(region.root) : nil,
-          zoomed: region.zoomed,
-          daemonSocket: region.daemonSocket.isEmpty ? nil : region.daemonSocket,
-          remote: region.remote)
-      },
-      focusedRegion: changed.focusedRegion.isEmpty ? nil : changed.focusedRegion)
+      tab: changed.tabID.isEmpty ? nil : changed.tabID,
+      tree: filling.map(PaneTree.pane) ?? whole,
+      zoomed: filling != nil,
+      keyboard: keyboard?.key,
+      machines: Dictionary(
+        changed.machines.map { machine in
+          (
+            machine.daemonID,
+            Machine(
+              socket: machine.daemonSocket.isEmpty ? nil : machine.daemonSocket,
+              remote: machine.remote)
+          )
+        },
+        uniquingKeysWith: { first, _ in first }))
   }
 }
 
@@ -385,11 +373,13 @@ extension PaneTree {
   ///
   /// A node with neither arm set cannot happen - the core sets one on every path - and if it
   /// ever does, an empty leaf renders as a gap rather than crashing a window.
-  init(_ node: Muster_ViewNode) {
+  init(_ node: Muster_ViewTree) {
     switch node.node {
-    case .pane(let pane):
+    case .pane(let leaf):
+      let pane = leaf.pane
       self = .pane(
         Leaf(
+          daemon: leaf.daemonID,
           paneID: pane.paneID,
           linkSocketPath: pane.linkSocketPath.isEmpty ? nil : pane.linkSocketPath,
           fontSizeOffset: pane.fontSizeOffset,
@@ -401,7 +391,7 @@ extension PaneTree {
         first: PaneTree(split.first),
         second: PaneTree(split.second))
     case nil:
-      self = .pane(Leaf(paneID: "", linkSocketPath: nil))
+      self = .pane(Leaf(daemon: "", paneID: "", linkSocketPath: nil))
     }
   }
 }

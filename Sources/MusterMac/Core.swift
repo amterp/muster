@@ -1325,19 +1325,6 @@ public enum Core {
     send(request)
   }
 
-  /// Moves the line between a region and the one to its right.
-  ///
-  /// Named by the region on the left, unlike a pane divider: a region has an id that outlives
-  /// a drag, where a divider inside a tab is only a position in a tree the daemon may change.
-  public static func setRegionBoundary(region: String, ratio: CGFloat) {
-    var set = Muster_SetRegionBoundary()
-    set.regionID = region
-    set.ratio = Float(ratio)
-    var request = Muster_Request()
-    request.setRegionBoundary = set
-    send(request)
-  }
-
   // Moving a divider is deliberately not here. It is the one request a drag produces a hundred
   // times a second, so it goes through `SplitRatioSender` - which keeps one in flight and sends
   // the latest position when that returns, rather than blocking the main thread per frame.
@@ -1618,9 +1605,9 @@ public enum Core {
         "view.received",
         cost.fields.merging(
           [
-            "regions": String(contents.regions.count),
-            "panes": String(contents.regions.reduce(0) { $0 + ($1.tree?.leaves.count ?? 0) }),
-            "keyboard": contents.keyboardPane ?? "",
+            "machines": String(contents.machines.count),
+            "panes": String(contents.tree?.leaves.count ?? 0),
+            "keyboard": contents.keyboard?.pane ?? "",
           ]
         ) { $1 })
     case .appearanceChanged(let changed):
