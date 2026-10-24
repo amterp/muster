@@ -540,7 +540,7 @@ enum Doing {
         #[arg(long, value_name = "ID", value_parser = reference)]
         daemon: Option<String>,
 
-        /// Where it starts, or the directory the split came from
+        /// Where it starts, or the directory the split came from (home if that is gone)
         #[arg(long, value_name = "DIR")]
         cwd: Option<String>,
 
@@ -935,7 +935,7 @@ enum WithTab {
         #[arg(long, value_name = "ID", value_parser = reference, group = "somewhere")]
         daemon: Option<String>,
 
-        /// Where its pane starts, or that pane's own directory
+        /// Where its pane starts, or that pane's own directory (home if that is gone)
         #[arg(long, value_name = "DIR")]
         cwd: Option<String>,
 

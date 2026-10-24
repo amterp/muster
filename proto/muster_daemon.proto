@@ -358,7 +358,8 @@ message PaneRequest {
     // The pane's size from birth. Absent: the size of the pane it is placed beside, or 80x24 in
     // a new tab.
     optional Grid grid = 3;
-    // Absent: the current directory of the pane it is placed beside, or the daemon's home.
+    // Absent: the current directory of the pane it is placed beside, or the daemon's home, and
+    // home again when that directory cannot be entered (since 1.8).
     optional string cwd = 4;
     // Added to the pane's environment. MUSTER_SOCKET travels here: it names the window, which
     // the daemon knows nothing about.
@@ -375,6 +376,10 @@ message PaneRequest {
     // none of while another is free, so a callsign means one pane across every machine a window
     // shows. A daemon knows only its own panes; the window sees them all.
     repeated string callsigns_elsewhere = 10;
+    // Since 1.8. `cwd` was taken from another pane rather than named by anybody, so a directory
+    // that cannot be entered gives way to the daemon's home, as a found one does when `cwd` is
+    // absent. A `cwd` someone named is refused instead: they meant that directory.
+    bool cwd_inherited = 11;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.

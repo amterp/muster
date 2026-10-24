@@ -736,6 +736,7 @@ fn make_pane(
     }
     let beside = said(&split.pane_id);
     let mut cwd = said(&split.cwd);
+    let mut cwd_inherited = false;
     // The maker's id, and its name for the tab its hidden helpers share. One this daemon does not
     // hold is refused as a pane to split from is: with no window, nothing can say it exists.
     let maker = match said(&split.maker) {
@@ -759,7 +760,10 @@ fn make_pane(
                 let Some(held) = held.panes.iter().find(|held| &held.pane == pane) else {
                     return Ok(not_held(socket, pane, "made"));
                 };
-                cwd = cwd.or_else(|| said(&held.cwd));
+                if cwd.is_none() {
+                    cwd = said(&held.cwd);
+                    cwd_inherited = cwd.is_some();
+                }
             }
             in_a_tab(split.hidden, maker.as_ref().map(|(_, name)| name.as_str()))
         }
@@ -775,6 +779,7 @@ fn make_pane(
             placement: Some(daemon_proto::Placement { r#where: Some(placement) }),
             grid: None,
             cwd,
+            cwd_inherited,
             env: window.into_iter().collect(),
             command: said(&split.run),
             label: said(&split.name),

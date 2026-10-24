@@ -13,7 +13,8 @@ use std::time::Duration;
 use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Grid, Maker, MoveDestination, Outcome, Refusal, Restarted, Side,
+    BackendChannel, BackendIntent, Directory, Grid, Maker, MoveDestination, Outcome, Refusal,
+    Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -173,6 +174,11 @@ impl DaemonBackend {
     /// Makes a pane, and says which and the callsign its daemon drew it.
     fn create(&self, placement: placement::Where, making: Making) -> Result<Outcome, Refusal> {
         let Making { cwd, run, name, quiet, maker } = making;
+        let (cwd, cwd_inherited) = match cwd {
+            Some(Directory::Named(cwd)) => (Some(cwd), false),
+            Some(Directory::Inherited(cwd)) => (Some(cwd), true),
+            None => (None, false),
+        };
         let hidden = matches!(&placement, placement::Where::NewTab(new_tab) if new_tab.hidden);
         if hidden {
             self.hides_and_quiets("make a hidden pane")?;
@@ -190,6 +196,7 @@ impl DaemonBackend {
                 placement: Some(proto::Placement { r#where: Some(placement) }),
                 grid: None,
                 cwd,
+                cwd_inherited,
                 env: self.environment.clone().into_iter().collect(),
                 command: run,
                 label: name,
@@ -259,7 +266,7 @@ impl DaemonBackend {
 
 /// What a create asks of the pane itself, beyond where it goes.
 struct Making {
-    cwd: Option<String>,
+    cwd: Option<Directory>,
     run: Option<String>,
     name: Option<String>,
     quiet: bool,
@@ -294,6 +301,7 @@ impl BackendChannel for DaemonBackend {
                     side: convert::side(side).into(),
                     ratio,
                 });
+                let cwd = cwd.map(Directory::Named);
                 self.create(placement, Making { cwd, run, name, quiet, maker })
             }
             // A hidden helper goes among its maker's other helpers, in the tab they share, and
@@ -316,6 +324,7 @@ impl BackendChannel for DaemonBackend {
             // first in the tab, and unnamed for the same reason: the window names this part
             // after the rest when the daemon announces it.
             BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker } => {
+                let cwd = cwd.map(Directory::Named);
                 self.create(new_tab(&tab, hidden), Making { cwd, run, name, quiet, maker })
             }
             BackendIntent::ClosePane { pane } => {

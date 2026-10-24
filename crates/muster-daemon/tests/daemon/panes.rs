@@ -185,6 +185,48 @@ fn a_pane_starts_where_asked_or_where_its_neighbour_is_now() {
     assert_eq!(written(&out).trim(), canonical(&wandered).display().to_string());
 }
 
+/// A directory nobody typed does not stop a pane from starting: one beside a pane whose
+/// directory has since been removed starts at home, as a pane restored after a restart does.
+#[test]
+fn a_pane_beside_one_whose_directory_is_gone_starts_at_home() {
+    let daemon = daemon();
+    let home = daemon.root().join("home");
+    let mut control = daemon.connect();
+    let gone = daemon.root().join("gone");
+    std::fs::create_dir_all(&gone).unwrap();
+
+    let mut first = create("p1", in_new_tab("t1"));
+    first.cwd = Some(gone.display().to_string());
+    make(&mut control, first);
+    std::fs::remove_dir(&gone).unwrap();
+
+    let out = daemon.root().join("pwd");
+    let mut second = create("p2", beside("p1", Side::Right));
+    second.command = Some(format!("pwd -P > {}", out.display()));
+    make(&mut control, second);
+    assert_eq!(written(&out).trim(), canonical(&home).display().to_string());
+}
+
+/// A new tab takes the directory of the pane it was made beside, and says so; when that has
+/// gone the tab still opens, at home, and its pane says where it really is.
+#[test]
+fn a_directory_taken_from_another_pane_gives_way_to_home_when_it_is_gone() {
+    let daemon = daemon();
+    let home = daemon.root().join("home");
+    let mut control = daemon.connect();
+    let gone = daemon.root().join("gone");
+
+    let out = daemon.root().join("pwd");
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.cwd = Some(gone.display().to_string());
+    asked.cwd_inherited = true;
+    asked.command = Some(format!("pwd -P > {}", out.display()));
+    make(&mut control, asked);
+    assert_eq!(written(&out).trim(), canonical(&home).display().to_string());
+    let record = snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "p1").unwrap();
+    assert_eq!(record.cwd, home.display().to_string());
+}
+
 #[test]
 fn a_pane_inherits_no_other_panes_descriptors() {
     let daemon = daemon();

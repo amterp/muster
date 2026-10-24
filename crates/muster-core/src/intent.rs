@@ -118,6 +118,17 @@ pub struct Maker {
 }
 
 /// One requested change.
+/// Where a new tab's pane starts, and whether anybody chose it.
+///
+/// The difference decides what a directory that cannot be entered means. One somebody named is
+/// what they wanted, so the tab is refused; one taken from the pane the tab was made beside was
+/// only a guess at what they wanted, and the daemon starts the pane at home instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Directory {
+    Named(String),
+    Inherited(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendIntent {
     /// Splits a pane, putting the new one on the named side of it. The adapter mints the new
@@ -170,7 +181,7 @@ pub enum BackendIntent {
         /// Where its pane starts. Unlike a split, this is resolved before it is sent - a new
         /// tab has nothing to inherit from, and the daemon's own answer is a home directory
         /// nobody asked for.
-        cwd: Option<String>,
+        cwd: Option<Directory>,
         /// What to run in the tab's pane, and what to call it. Both mean what they mean on
         /// [`BackendIntent::SplitPane`], because a tab is the other way to make a pane and a
         /// caller equipping one and not the other would have to race a shell prompt itself.

@@ -256,7 +256,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
             Handled::Reply(reply) | Handled::Snapshot(reply) => reply,
             // Outside the lock: starting a process waits for it to change directory and exec,
             // and a directory on a hung mount would otherwise stall every connection with it.
-            Handled::Start(starting) => {
+            Handled::Start(mut starting) => {
                 let started = starting.start();
                 locked().started(*starting, started)
             }

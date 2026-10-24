@@ -40,7 +40,10 @@ command exits, the pane drops to a shell.
 `--cwd` says where the new pane starts, and a relative path means what it means everywhere else:
 relative to the directory `muster` is running in. `muster pane new --cwd ../other-worktree` from
 one worktree opens a pane in its sibling. With no `--cwd` the pane starts where the pane being
-split is, which is what the chord does.
+split is, which is what the chord does, and `tab new` does the same with the pane it is made
+beside. A directory taken that way that has since been removed starts the pane at home instead,
+while a `--cwd` that cannot be entered is refused, since that directory is the one you asked
+for.
 
 ## Watching what they do
 

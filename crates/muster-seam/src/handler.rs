@@ -21,7 +21,7 @@ use muster_core::input::{
     check_sent_keys, composition_outcome,
 };
 use muster_core::intent::Refusal;
-use muster_core::intent::{BackendIntent, Branch, Maker, Outcome, Side};
+use muster_core::intent::{BackendIntent, Branch, Directory, Maker, Outcome, Side};
 use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
@@ -1282,7 +1282,9 @@ fn open_a_tab(
     hidden: bool,
 ) -> Response {
     let Making { cwd, run, name, quiet, maker } = making;
-    let cwd = cwd.or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)));
+    let cwd = cwd
+        .map(Directory::Named)
+        .or_else(|| from.and_then(|pane| session::cwd_of(daemon, pane)).map(Directory::Inherited));
     let keyboard = if hidden {
         Keyboard::StaysPut
     } else if session::focused_daemon(window).is_none() {

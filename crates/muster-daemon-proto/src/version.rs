@@ -11,7 +11,7 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 7 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 8 };
 
 /// The first minor whose daemon presses the keys a `pane send` names. An older one ignores the
 /// field and would write the send's Return without them, so a client asks before sending any.

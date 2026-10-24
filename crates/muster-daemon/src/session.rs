@@ -1043,6 +1043,9 @@ pub(crate) struct Starting {
     target: Target,
     grid: Grid,
     cwd: PathBuf,
+    /// Where the pane starts instead when `cwd` was found rather than named and cannot be
+    /// entered: the daemon's home. `None` for a directory somebody named, which is refused.
+    home_instead: Option<PathBuf>,
     argv: Vec<String>,
     environment: Vec<(OsString, OsString)>,
 }
@@ -1050,7 +1053,36 @@ pub(crate) struct Starting {
 impl Starting {
     /// Opens the pane's PTY and starts its process. Waits for the process to change directory
     /// and exec, which is why the session is not locked while this runs.
-    pub(crate) fn start(&self) -> std::io::Result<(OwnedFd, Child)> {
+    ///
+    /// A directory nobody named that is gone - a neighbour's, or the one a new tab took from the
+    /// pane it was made beside - is the case a restored pane already meets, and is met the same
+    /// way: the pane starts at home, and `cwd` says so. Asked only once a start has failed, so a
+    /// directory on a hung mount costs no more than the start that found it.
+    pub(crate) fn start(&mut self) -> std::io::Result<(OwnedFd, Child)> {
+        let started = self.start_in_cwd();
+        let Err(error) = &started else { return started };
+        let Some(home) = self.home_instead.take().filter(|home| *home != self.cwd) else {
+            return started;
+        };
+        if self.cwd.is_dir() {
+            return started;
+        }
+        log::warn(
+            "daemon.pane.cwd_gone",
+            fields! {
+                "pane" => self.pane,
+                "cwd" => self.cwd.display(),
+                "error" => error,
+                "impact" => "the pane starts in the home directory instead; nobody named the \
+                             directory, the pane took it from the one it was made beside",
+                "check" => "whether the directory was removed or its mount is gone",
+            },
+        );
+        self.cwd = home;
+        self.start_in_cwd()
+    }
+
+    fn start_in_cwd(&self) -> std::io::Result<(OwnedFd, Child)> {
         let launch = Launch {
             argv: &self.argv,
             environment: &self.environment,
@@ -1397,9 +1429,11 @@ impl Session {
             Some(grid) => grid.map_err(Reply::refused)?,
             None => neighbour.map_or(Grid::FALLBACK, |pane| pane.io.grid()),
         };
-        let cwd = match create.cwd.filter(|cwd| !cwd.is_empty()) {
-            Some(cwd) => PathBuf::from(cwd),
-            None => neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()),
+        let (cwd, named) = match create.cwd.filter(|cwd| !cwd.is_empty()) {
+            Some(cwd) => (PathBuf::from(cwd), !create.cwd_inherited),
+            None => {
+                (neighbour.and_then(Pane::live_cwd).unwrap_or_else(|| self.home.clone()), false)
+            }
         };
 
         let callsign =
@@ -1423,6 +1457,7 @@ impl Session {
             target,
             grid,
             cwd,
+            home_instead: (!named).then(|| self.home.clone()),
             argv,
             environment,
         })
