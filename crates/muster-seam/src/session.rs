@@ -2019,6 +2019,24 @@ impl Session {
 
     /// Every followed daemon's mirror, locked in the map's own order - the order that makes
     /// holding several at once safe (`view`).
+    /// Whether `machine` speaks a protocol that keeps a tab's whole tree, other machines' panes
+    /// included (MIP-8), so a window may write one to it.
+    fn holds_spanning_trees(&self, machine: &DaemonId) -> bool {
+        self.backends
+            .get(machine)
+            .and_then(|backend| backend.follower.connection().control())
+            .is_some_and(|control| {
+                muster_daemon_proto::version::too_old(
+                    machine.as_str(),
+                    control.welcome().protocol.as_ref(),
+                    muster_daemon_proto::version::SPANNING,
+                    "hold a tab spanning machines",
+                    "written",
+                )
+                .is_none()
+            })
+    }
+
     fn mirrors(&self) -> BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> {
         self.backends
             .iter()
@@ -2620,6 +2638,10 @@ pub(crate) fn submit_from(
         (region, source, channel)
     };
 
+    if let Some(outcome) = rearranged_as_tree(window, daemon, intent) {
+        publish("intent");
+        return outcome;
+    }
     let outcome = channel.submit(intent);
     let (refused, unanswered) = refused_or_unanswered(&outcome);
     log::info(
@@ -3154,6 +3176,20 @@ pub(crate) fn equalize(
     pane: &PaneId,
     evenly: Evenly,
 ) -> Result<(), String> {
+    // A tab written as one tree is evened out across every machine in it, in one write to each
+    // part, rather than one machine's part at a time: its parts refuse a divider asked of them.
+    let held_in = {
+        let session = poison::lock(&SESSION, "session");
+        session.backends.get(daemon).and_then(|backend| {
+            poison::lock(&backend.mirror, "mirror").pane(pane).map(|held| held.tab.clone())
+        })
+    };
+    if let Some(tab) = held_in
+        && let Some(evened) =
+            rearrange(window, &tab, &spanning::Change::Even { pane: pane.clone(), evenly })
+    {
+        return evened.map(drop).map_err(|refusal| refusal.to_string());
+    }
     let (tab, dividers) = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
@@ -5847,22 +5883,7 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
     let writes: Vec<(WindowId, TabId, spanning::Write)> = {
         let session = poison::lock(&SESSION, "session");
         let mirrors = session.mirrors();
-        let writable = |machine: &DaemonId| {
-            session
-                .backends
-                .get(machine)
-                .and_then(|backend| backend.follower.connection().control())
-                .is_some_and(|control| {
-                    muster_daemon_proto::version::too_old(
-                        machine.as_str(),
-                        control.welcome().protocol.as_ref(),
-                        muster_daemon_proto::version::SPANNING,
-                        "hold a tab spanning machines",
-                        "written",
-                    )
-                    .is_none()
-                })
-        };
+        let writable = |machine: &DaemonId| session.holds_spanning_trees(machine);
         let mut writes = Vec::new();
         for (window, held) in session.windows.iter() {
             let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
@@ -5908,6 +5929,113 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
             );
         }
     }
+}
+
+/// A change to the arrangement of a tab written as one tree, worked out on that tree and written
+/// to every part of it; `None` for any other request, which goes to its daemon as asked.
+///
+/// Here, on the one path every request takes, so a chord, a drag, a menu and the CLI all reach
+/// it: a part holding another machine's panes refuses a resize, zoom, swap or divider asked of
+/// it alone (MIP-8, section 3).
+fn rearranged_as_tree(
+    window: WindowId,
+    daemon: &DaemonId,
+    intent: &BackendIntent,
+) -> Option<Result<Outcome, Refusal>> {
+    let tab_of = |pane: &PaneId| {
+        let session = poison::lock(&SESSION, "session");
+        let backend = session.backends.get(daemon)?;
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        mirror.pane(pane).map(|held| held.tab.clone())
+    };
+    let (tab, change) = match intent {
+        BackendIntent::ResizePane { pane, direction, fraction } => (
+            tab_of(pane)?,
+            spanning::Change::Resize { pane: pane.clone(), side: *direction, fraction: *fraction },
+        ),
+        BackendIntent::ZoomPane { pane } => {
+            (tab_of(pane)?, spanning::Change::Zoom { pane: pane.clone() })
+        }
+        BackendIntent::SwapPanes { pane, with } => {
+            (tab_of(pane)?, spanning::Change::Swap { pane: pane.clone(), with: with.clone() })
+        }
+        BackendIntent::SetSplitRatio { tab, path, ratio } => {
+            (tab.clone(), spanning::Change::Ratio { path: path.clone(), ratio: *ratio })
+        }
+        _ => return None,
+    };
+    rearrange(window, &tab, &change)
+}
+
+/// `change` made to `tab`'s whole tree and written to every part that can take it, when the tab
+/// is written as one tree (`spanning::written`); `None` when it is not, and each machine
+/// arranges its own part as asked.
+///
+/// Done once some part has taken the write: a part that refused it had moved on, and the
+/// accepted write's own `TabChanged` runs the merge that catches it up.
+fn rearrange(
+    window: WindowId,
+    tab: &TabId,
+    change: &spanning::Change,
+) -> Option<Result<Outcome, Refusal>> {
+    let worked_out = {
+        let session = poison::lock(&SESSION, "session");
+        let mirrors = session.mirrors();
+        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+        let held = session.windows[window].composition.tab(tab)?;
+        if !spanning::written(held, mirror) {
+            return None;
+        }
+        let (parts, settled) =
+            spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
+        spanning::rearrange(&parts, &settled, change)
+    };
+    let writes = match worked_out {
+        Ok(merged) => merged.writes,
+        Err(detail) => {
+            return Some(Err(Refusal::Declined(format!(
+                "{detail}, so the tab {tab} was not rearranged. It spans machines, so its \
+                 arrangement is worked out on its whole tree; `muster window --json` says what \
+                 that tree holds now"
+            ))));
+        }
+    };
+    let mut refused = None;
+    let mut taken = writes.is_empty();
+    for write in writes {
+        let intent = BackendIntent::SetTabTree {
+            tab: tab.clone(),
+            root: write.root,
+            zoomed: write.zoomed,
+            generation: write.generation,
+            based_on: write.based_on,
+        };
+        match submit(window, &write.daemon, &intent, Keyboard::StaysPut) {
+            Ok(_) => taken = true,
+            Err(refusal) => {
+                log::warn(
+                    "tab.layout.rearrange_refused",
+                    fields! {
+                        "daemon" => write.daemon.to_string(),
+                        "tab" => tab.to_string(),
+                        "generation" => write.generation.to_string(),
+                        "detail" => refusal.to_string(),
+                        "impact" => "this machine's copy of the tab keeps its arrangement from \
+                                     before the change until the window catches it up",
+                        "check" => "a refusal naming a newer tree or a pane opened or closed is \
+                                    ordinary, and the next merge catches the copy up; one that \
+                                    repeats for the same tab is a bug in the merge or the \
+                                    daemon's checks, and the daemon's log holds its side",
+                    },
+                );
+                refused.get_or_insert(refusal);
+            }
+        }
+    }
+    Some(match refused {
+        Some(refusal) if !taken => Err(refusal),
+        _ => Ok(Outcome::default()),
+    })
 }
 
 /// Tells every other daemon holding helpers of `maker`, which `daemon` just closed, that it has

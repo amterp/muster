@@ -18,8 +18,9 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
-    PaneText, ReadPane, ReadWindow, RenamePane, RenameTab, Request, Response, RosterChanged,
-    SendToPane, SplitPane, Startup, ViewNode, ZoomPane, event, request, response, view_node,
+    PaneText, ReadPane, ReadWindow, RenamePane, RenameTab, Request, ResizePane, Response,
+    RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ViewNode, ZoomPane, event,
+    request, response, view_node,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
@@ -1768,4 +1769,94 @@ fn a_tab_grouped_before_spanning_trees_is_not_written_to() {
     let machines = a_tab_spanning_two_machines(&["A"], ("", 0), ("", 0));
     assert_eq!(spanning_copy(&machines.laptop), Some(("A".to_string(), 0)));
     assert_eq!(spanning_copy(&machines.devenv), Some(("X".to_string(), 0)));
+}
+
+/// Once a tab's copies hold each other's panes, a daemon refuses a resize, zoom, swap or divider
+/// asked of it alone, so the window works each one out on the whole tree and writes it to both
+/// copies, one generation up (MIP-8, section 3). A divider here is named by the turns down the
+/// whole tree, where the shell will draw it.
+#[test]
+fn each_change_to_a_spanning_tabs_arrangement_is_written_to_both_copies_as_one_tree() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_tab_spanning_two_machines(
+        &["A", "B"],
+        ("[[A/B 0.50]|~X@devenv 0.50]", 1),
+        ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 1),
+    );
+    let both_at = |what: &str, laptop: &str, devenv: &str, generation: u64| {
+        until(
+            what,
+            || {
+                spanning_copy(&machines.laptop) == Some((laptop.to_string(), generation))
+                    && spanning_copy(&machines.devenv) == Some((devenv.to_string(), generation))
+            },
+            || {
+                format!(
+                    "the laptop holds {:?} and the devenv {:?}",
+                    spanning_copy(&machines.laptop),
+                    spanning_copy(&machines.devenv)
+                )
+            },
+        );
+    };
+
+    assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
+        tab_id: SPANNING_TAB.to_string(),
+        path: Vec::new(),
+        ratio: 0.25,
+        ..SetSplitRatio::default()
+    })));
+    both_at(
+        "the divider between the machines to move on both copies",
+        "[[A/B 0.50]|~X@devenv 0.25]",
+        "[[~A@laptop/~B@laptop 0.50]|X 0.25]",
+        2,
+    );
+
+    assert_ok(&answer(request::Payload::ResizePane(ResizePane {
+        pane_id: SPAN_B.to_string(),
+        direction: "right".to_string(),
+        amount: 0.25,
+        ..ResizePane::default()
+    })));
+    both_at(
+        "a resize of the laptop's pane to move the divider between the machines",
+        "[[A/B 0.50]|~X@devenv 0.50]",
+        "[[~A@laptop/~B@laptop 0.50]|X 0.50]",
+        3,
+    );
+
+    assert_ok(&answer(request::Payload::ZoomPane(ZoomPane {
+        pane_id: SPAN_X.to_string(),
+        ..ZoomPane::default()
+    })));
+    both_at(
+        "a zoom on the devenv's pane to be on both copies",
+        "[[A/B 0.50]|~X@devenv 0.50] zoomed X",
+        "[[~A@laptop/~B@laptop 0.50]|X 0.50] zoomed X",
+        4,
+    );
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: SPAN_A.to_string(),
+        onto_pane_id: SPAN_B.to_string(),
+        ..ArrangePane::default()
+    })));
+    both_at(
+        "the laptop's two panes to trade places on both copies",
+        "[[B/A 0.50]|~X@devenv 0.50] zoomed X",
+        "[[~B@laptop/~A@laptop 0.50]|X 0.50] zoomed X",
+        5,
+    );
+
+    assert_ok(&answer(request::Payload::EqualizePanes(EqualizePanes {
+        pane_id: SPAN_A.to_string(),
+        ..EqualizePanes::default()
+    })));
+    both_at(
+        "the three panes to be evened out across both machines, two shares to one",
+        "[[B/A 0.50]|~X@devenv 0.67] zoomed X",
+        "[[~B@laptop/~A@laptop 0.50]|X 0.67] zoomed X",
+        6,
+    );
 }
