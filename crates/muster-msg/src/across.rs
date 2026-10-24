@@ -617,8 +617,10 @@ impl<S: Store> Messaging<S> {
     // ------------------------------------------------------------------------------------------
     // On the asker's machine
 
-    /// Where `join` is answered. A group kept elsewhere is joined through its home, so the
-    /// caller becomes a participant here first.
+    /// Where `join` is answered. A group kept elsewhere is joined through its home, which
+    /// decides: a caller joining it under a name is checked here for what would refuse the name,
+    /// and renamed only once the home has taken it ([`Self::settle_as`]), since this machine's
+    /// copy of the group's policy may be behind.
     pub fn route_join(
         &mut self,
         caller: &Caller,
@@ -644,25 +646,30 @@ impl<S: Store> Messaging<S> {
             Place::Elsewhere { key, machine } => (key, machine),
         };
         self.reachable(&key, &machine)?;
-        let name = match name {
+        let (name, was) = match name {
             Some(name) => {
-                self.become_named(caller, name, presence)?;
-                name.to_string()
+                self.may_be_named(caller, name, presence)?;
+                (name.to_string(), self.pane_to_fold(caller, name, &key, presence))
             }
-            None => self.identify(caller, presence)?,
+            None => (self.identify(caller, presence)?, None),
         };
         self.save()?;
-        // The fold's own join to this group's home is this one.
-        let group = base(&key);
-        let away = &mut self.folded.away;
-        let folded =
-            away.iter().position(|each| each.machine == machine && each.call.group() == group);
-        let was = folded.and_then(|at| match away.remove(at).call {
-            Call::Join { was, .. } => was,
-            _ => None,
-        });
-        let call = Call::Join { name, group, head: self.head_of(&key), was };
+        let call = Call::Join { name, group: base(&key), head: self.head_of(&key), was };
         Ok(Route::Away(Away { machine, call }))
+    }
+
+    /// The pane whose place in the replica `key` a join as `name` takes: the caller's pane, when
+    /// it is a member there under its own name.
+    fn pane_to_fold(
+        &self,
+        caller: &Caller,
+        name: &str,
+        key: &str,
+        presence: &dyn Presence,
+    ) -> Option<String> {
+        let pane = self.made_by_address(&Self::addressed(caller, presence), presence)?;
+        let member = self.groups.get(key).is_some_and(|group| group.members.contains(&pane));
+        (pane != name && member).then_some(pane)
     }
 
     /// Where `post` is answered. A post to a group kept elsewhere is checked here against the
@@ -822,15 +829,34 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Settle {
         let mut applied = Applied::default();
-        let result = self.settled(peer, call, reply, presence, now_ms, &mut applied);
+        let result = self.settled(peer, call, reply, None, presence, now_ms, &mut applied);
         Settle { result, applied }
     }
 
+    /// [`Self::settle`] for the caller's own join routed by [`Self::route_join`]: once the home
+    /// has taken the join, the caller becomes the name it joined as, here, before the answer's
+    /// entries are applied, so a pane folded into the name keeps its place in the group.
+    pub fn settle_as(
+        &mut self,
+        peer: &Peer,
+        call: &Call,
+        reply: Reply,
+        caller: &Caller,
+        presence: &dyn Presence,
+        now_ms: u64,
+    ) -> Settle {
+        let mut applied = Applied::default();
+        let result = self.settled(peer, call, reply, Some(caller), presence, now_ms, &mut applied);
+        Settle { result, applied }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn settled(
         &mut self,
         peer: &Peer,
         call: &Call,
         reply: Reply,
+        caller: Option<&Caller>,
         presence: &dyn Presence,
         now_ms: u64,
         applied: &mut Applied,
@@ -868,6 +894,21 @@ impl<S: Store> Messaging<S> {
             }
             Reply::Joined { seq, caught } => {
                 let Call::Join { name, .. } = call else { return Err(mismatched(call)) };
+                // Renamed before the entries are applied: applying them first would let go of
+                // the folded pane's place and make the name a participant afresh.
+                let renamed = caller.map(|caller| self.become_named(caller, name, presence));
+                // Folding the pane queued a join to this home for this group; this was it.
+                self.folded.away.retain(|away| {
+                    !(away.machine == peer.name && away.call.group() == call.group())
+                });
+                let took_over = match renamed {
+                    None => false,
+                    Some(Ok(took_over)) => took_over,
+                    Some(Err(refusal)) => {
+                        apply(self, caught);
+                        return Err(refusal);
+                    }
+                };
                 // The cursor first, so nothing from before the join counts as unread to it.
                 if let Some(participant) = self.participants.get_mut(name) {
                     participant.cursors.entry(key.clone()).or_insert(seq);
@@ -880,7 +921,7 @@ impl<S: Store> Messaging<S> {
                     name: name.clone(),
                     group: Some(key),
                     created: false,
-                    took_over: false,
+                    took_over,
                     groups: self.memberships(name),
                     tell: Vec::new(),
                 }))

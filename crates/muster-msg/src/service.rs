@@ -746,12 +746,8 @@ impl<S: Store> Messaging<S> {
         name: &str,
         presence: &dyn Presence,
     ) -> Result<bool, Refusal> {
+        self.may_be_named(caller, name, presence)?;
         let caller = &Self::addressed(caller, presence);
-        check_participant(name)?;
-        if name == HUMAN {
-            self.human_here(presence)?;
-        }
-        self.may_become(name, caller, presence)?;
         let took_over = self
             .participants
             .get(name)
@@ -762,6 +758,21 @@ impl<S: Store> Messaging<S> {
             self.absorb(name, &made, caller.at_ms)?;
         }
         Ok(took_over)
+    }
+
+    /// Refuses making the caller `name` for whatever [`Self::become_named`] would refuse it for,
+    /// changing nothing.
+    pub(crate) fn may_be_named(
+        &self,
+        caller: &Caller,
+        name: &str,
+        presence: &dyn Presence,
+    ) -> Result<(), Refusal> {
+        check_participant(name)?;
+        if name == HUMAN {
+            self.human_here(presence)?;
+        }
+        self.may_become(name, &Self::addressed(caller, presence), presence)
     }
 
     pub fn leave(

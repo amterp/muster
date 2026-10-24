@@ -856,7 +856,8 @@ fn joining(
         other => other,
     };
     let joined = joined_by(shared, caller, name, group, route, panes);
-    // A join that renamed the caller did so whether or not the group took it.
+    // A join here that renamed the caller did so even if the group then refused it, and one
+    // refused after appending left its entries for other machines.
     send_folded(shared);
     let joined = match joined {
         Ok(joined) => joined,
@@ -899,7 +900,7 @@ fn joined_by(
     match route {
         Err(refusal) => Err(refused("", &refusal)),
         Ok(Route::Away(away)) => {
-            let (settle, holding) = peer::call_away(shared, &away);
+            let (settle, holding) = peer::call_away_as(shared, &away, caller);
             ring(shared, holding);
             match settle.result {
                 Ok(Settled::Joined(joined)) => Ok(joined),

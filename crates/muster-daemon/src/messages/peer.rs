@@ -22,7 +22,7 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::connection;
-use muster_msg::{Away, Call, Peer, Reach, Refusal, Settle, Settled, Tell, is_machine};
+use muster_msg::{Away, Call, Caller, Peer, Reach, Refusal, Settle, Settled, Tell, is_machine};
 use proto::peer_call::Call as Called;
 use proto::peer_frame::Frame;
 use proto::peer_reply::Reply as Replied;
@@ -572,7 +572,7 @@ fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(Strin
     loop {
         let call = Call::Since { group: group.to_string(), after: head };
         let away = Away { machine: link.peer.name.clone(), call };
-        let (settle, holding) = settle_with(shared, link, &away);
+        let (settle, holding) = settle_with(shared, link, &away, None);
         super::ring(shared, holding);
         reached.extend(settle.applied.reached);
         match (settle.result, settle.applied.more) {
@@ -593,13 +593,27 @@ fn fetch(shared: &Shared, link: &Link, group: &str, mut head: u64) -> Vec<(Strin
 /// Sends a call to the machine it is for, and settles the reply here. A machine with no link
 /// now, or that does not reply in time, refuses it as unreachable, naming it.
 pub(crate) fn call_away(shared: &Shared, away: &Away) -> (Settle, Holding) {
+    call_away_for(shared, away, None)
+}
+
+/// [`call_away`] for `caller`'s own join, which renames it here once the other machine takes it.
+pub(crate) fn call_away_as(shared: &Shared, away: &Away, caller: &Caller) -> (Settle, Holding) {
+    call_away_for(shared, away, Some(caller))
+}
+
+fn call_away_for(shared: &Shared, away: &Away, caller: Option<&Caller>) -> (Settle, Holding) {
     let Some(link) = shared.peers.to(&away.machine) else {
         return (unreachable(away), Holding::default());
     };
-    settle_with(shared, &link, away)
+    settle_with(shared, &link, away, caller)
 }
 
-fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
+fn settle_with(
+    shared: &Shared,
+    link: &Link,
+    away: &Away,
+    caller: Option<&Caller>,
+) -> (Settle, Holding) {
     let posts = matches!(away.call, Call::Post { .. } | Call::Muster { .. });
     let patience = if posts { POSTING } else { CALLING };
     let changes = posts || matches!(away.call, Call::Join { .. } | Call::Leave { .. });
@@ -644,7 +658,12 @@ fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
     let (settle, holding) = {
         let mut messages = shared.messages();
         messages.service.heard_callsigns(&link.peer, said);
-        let settle = messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms());
+        let settle = match caller {
+            Some(caller) => {
+                messages.service.settle_as(&link.peer, &away.call, reply, caller, &panes, now_ms())
+            }
+            None => messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms()),
+        };
         messages.let_go(&settle.applied.ended);
         let holding = messages.hold(&settle.applied.wakes, &settle.applied.answered, &panes);
         (settle, holding)

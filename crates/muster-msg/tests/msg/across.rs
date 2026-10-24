@@ -6,9 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Liveness, MUSTER, Member,
-    Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route,
-    Settled, Tell, Unread, Via, Wake, What,
+    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Joined, Liveness, MUSTER,
+    Member, Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply,
+    Route, Settled, Tell, Unread, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -171,6 +171,17 @@ impl Wire {
         side: Side,
         call: &Call,
     ) -> (Result<Settled, Refusal>, muster_msg::Applied) {
+        self.settle_for(side, call, None)
+    }
+
+    /// [`Self::settle`], settled as `caller`'s own join where one is given, as a daemon settles
+    /// a join it routed.
+    fn settle_for(
+        &mut self,
+        side: Side,
+        call: &Call,
+        caller: Option<&Caller>,
+    ) -> (Result<Settled, Refusal>, muster_msg::Applied) {
         assert!(self.up, "a daemon never calls over a link that is down");
         let now = self.tick();
         let from = side.other().peer();
@@ -185,7 +196,12 @@ impl Wire {
         self.tell(side.other(), &answered.tell);
         let (asker, sessions) = self.split(side);
         asker.heard_callsigns(&side.peer(), said);
-        let settle = asker.settle(&side.peer(), call, answered.reply, sessions, now);
+        let settle = match caller {
+            Some(caller) => {
+                asker.settle_as(&side.peer(), call, answered.reply, caller, sessions, now)
+            }
+            None => asker.settle(&side.peer(), call, answered.reply, sessions, now),
+        };
         let mut applied = settle.applied;
         self.wakes.extend(applied.wakes.drain(..).map(|wake| (side, wake)));
         self.ended.extend(applied.ended.drain(..).map(|ticket| (side, ticket)));
@@ -245,29 +261,43 @@ impl Wire {
     }
 
     fn join(&mut self, side: Side, caller: &Caller, name: Option<&str>, group: &str) -> String {
+        let joined = self.try_join(side, caller, name, group).unwrap();
+        joined.group.unwrap()
+    }
+
+    /// Joins `group` as a daemon does: here, or through the group's home, and then tells the
+    /// homes of the groups a pane was folded out of, whether or not the join was taken.
+    fn try_join(
+        &mut self,
+        side: Side,
+        caller: &Caller,
+        name: Option<&str>,
+        group: &str,
+    ) -> Result<Joined, Refusal> {
         let now = self.tick();
         let (service, sessions) = self.split(side);
-        let mut route = service.route_join(caller, name, Some(group), sessions).unwrap();
+        let mut route = service.route_join(caller, name, Some(group), sessions)?;
         if let Route::Ask { group } = route {
             let found = self.send(side, &Call::Find { group: group.clone() }).unwrap();
             route = if found == Settled::Found(true) {
                 let there = format!("{group}@{}", side.peer().name);
                 let (service, sessions) = self.split(side);
-                service.route_join(caller, name, Some(&there), sessions).unwrap()
+                service.route_join(caller, name, Some(&there), sessions)?
             } else {
                 Route::Here
             };
         }
         let (service, sessions) = self.split(side);
         let joined = match route {
-            Route::Away(away) => match self.send(side, &away.call).unwrap() {
-                Settled::Joined(joined) => joined.group.unwrap(),
-                other => panic!("a join settles as joined: {other:?}"),
+            Route::Away(away) => match self.settle_for(side, &away.call, Some(caller)).0 {
+                Ok(Settled::Joined(joined)) => Ok(joined),
+                Ok(other) => panic!("a join settles as joined: {other:?}"),
+                Err(refusal) => Err(refusal),
             },
             Route::Here => {
-                let joined = service.join(caller, name, Some(group), sessions, now).unwrap();
-                self.tell(side, &joined.tell);
-                joined.group.unwrap()
+                service.join(caller, name, Some(group), sessions, now).inspect(|joined| {
+                    self.tell(side, &joined.tell);
+                })
             }
             Route::Ask { .. } => panic!("asked twice"),
         };
@@ -2074,7 +2104,9 @@ fn a_policy_names_a_member_on_another_machine() {
     laptop.group_new(&builder, "council", Some(council), sessions, now).unwrap();
 
     assert_eq!(wire.join(Side::Devenv, &director, Some("director"), "council"), "council@lap");
+    let now = wire.tick();
     let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.join(&critic, Some("critic"), None, sessions, now).unwrap();
     let route = devenv.route_join(&critic, Some("critic"), Some("council@lap"), sessions);
     let Route::Away(away) = route.unwrap() else { panic!("council is kept on the laptop") };
     assert_eq!(
@@ -2354,4 +2386,59 @@ fn a_join_refused_for_its_save_still_tells_other_machines() {
         members_on(&wire, Side::Devenv, "review@lap"),
         ["builder@lap", "critic", "tracer@lap"]
     );
+}
+
+/// A director on the laptop keeps `review`, open to anyone, and `council`, closed to all but
+/// itself, and adds a devenv pane to `review`. The agent in the pane has read there, so it is the
+/// pane's participant. Returns the agent as it calls from its pane.
+fn devenv_pane_in_a_laptop_group() -> (Wire, Caller) {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p9");
+    let director = session("director");
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    laptop.join(&director, Some("director"), None, sessions, now).unwrap();
+    laptop.group_new(&director, "review", None, sessions, now).unwrap();
+    laptop.group_new(&director, "council", Some(directed(&["director"])), sessions, now).unwrap();
+    let found = wire.found(Side::Laptop, &["p9".to_string()]).unwrap();
+    let now = wire.tick();
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let pane = ["p9".to_string()];
+    let added = laptop.group_members(&director, "review", &pane, &[], &found, sessions, now);
+    wire.tell(Side::Laptop, &added.unwrap().tell);
+    let agent = Caller { pane: Some("p9".to_string()), ..session("tracer") };
+    wire.read(Side::Devenv, &agent, None);
+    (wire, agent)
+}
+
+/// A join under a name that a group kept on another machine refuses leaves the caller as it was:
+/// not renamed, and its pane still holding its place in the groups it is in there.
+#[test]
+fn a_join_a_group_kept_elsewhere_refuses_leaves_the_caller_as_it_was() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    let refused = wire.try_join(Side::Devenv, &agent, Some("tracer"), "council@lap");
+    assert!(matches!(refused, Err(Refusal::NotPermitted { .. })), "{refused:?}");
+
+    assert!(wire.devenv.participant("tracer").is_none(), "the caller was not renamed");
+    let pane = wire.devenv.participant("p9").expect("the pane is still its participant");
+    assert_eq!(pane.inbox, agent.inbox);
+    assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "p9@devenv"]);
+    assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "p9"]);
+}
+
+/// A join through another machine takes the pane's place there and says so when it took over a
+/// name a session that has gone held.
+#[test]
+fn a_join_through_another_machine_says_when_it_took_over_a_name() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    let gone = session("gone");
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.join(&gone, Some("tracer"), None, sessions, now).unwrap();
+    wire.sessions.dead.borrow_mut().insert(gone.inbox.unwrap().socket);
+
+    let joined = wire.try_join(Side::Devenv, &agent, Some("tracer"), "review@lap").unwrap();
+    assert!(joined.took_over, "{joined:?}");
+    assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
+    assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "tracer"]);
 }
