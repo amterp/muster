@@ -320,8 +320,11 @@ To say exactly where, name a side of the other pane:
 sharing the space it had, half each, in whichever tab it is in. That is how a side by side pair
 becomes one above the other, and it is what dropping a pane on another pane's edge asks for.
 
-Both panes have to be on the same machine. A pane is a PTY its daemon owns, so there is no move
-that carries one from a laptop to a devenv - `muster window` says which daemon holds each.
+The two panes may be on different machines. A pane is a PTY its daemon owns, so it never changes
+machine; what a move changes is where it sits, and a tab is one tree over every machine it spans,
+so a devenv pane can go below a laptop pane. A machine running a muster-daemon older than this
+Muster cannot keep such a tree, and a move beside another machine's pane is refused there, saying
+which.
 
 `--pane` is the pane the command is running in when you leave it out, like everywhere else, so an
 agent can ask to be put beside another one without looking up its own name.
@@ -330,11 +333,10 @@ The second destination is a tab, named rather than pointed at through one of its
 
     muster pane move --pane p1w3r0ab2n --tab t1w3r07bsd
 
-**This is the one move that may cross machines**, and it is how a tab comes to hold a laptop pane
-beside a devenv one. The pane does not go anywhere - it is a process and stays on its machine -
-what changes is which tab it is in, and a tab is Muster's own unit rather than a daemon's. Where
-in the tab it lands is not said and not asked: `--onto` is the flag that orders one pane against
-another, and that one needs both in one tree.
+The pane stays on its machine and changes which tab it is in. Where in the tab it lands is not
+said: in a tab spanning machines, or one the pane's machine has no panes in yet, it goes in as a
+column at the right of the tab's tree, and in a tab on its own machine alone it goes beside that
+tab's last pane. `--onto` with a side is the flag that says exactly where.
 
 The third is a tab of its own, which is what pulling one busy agent out of a four-way split means:
 
