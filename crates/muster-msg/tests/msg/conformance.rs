@@ -25,6 +25,10 @@ struct Sessions {
     open: RefCell<BTreeMap<String, bool>>,
     /// What each pane is called, when a step said.
     names: RefCell<BTreeMap<String, String>>,
+    /// Each pane's callsign, when a step gave it one apart from what it is called.
+    callsigns: RefCell<BTreeMap<String, String>>,
+    /// What each pane was called before, when a step said.
+    formerly: RefCell<BTreeMap<String, Vec<String>>>,
     /// What each pane shows as its title, when a step said.
     titles: RefCell<BTreeMap<String, String>>,
     /// Whether a window is attending, which wakes the human.
@@ -61,11 +65,24 @@ impl Presence for Sessions {
     }
 
     fn name_of(&self, pane: &str) -> Option<String> {
-        self.names.borrow().get(pane).cloned()
+        self.callsigns.borrow().get(pane).or(self.names.borrow().get(pane)).cloned()
     }
 
     fn pane_named(&self, name: &str) -> Option<String> {
-        self.names.borrow().iter().find(|(_, called)| *called == name).map(|(pane, _)| pane.clone())
+        let find = |held: &BTreeMap<String, String>| {
+            held.iter().find(|(_, called)| *called == name).map(|(pane, _)| pane.clone())
+        };
+        find(&self.callsigns.borrow()).or_else(|| find(&self.names.borrow()))
+    }
+
+    fn given_name(&self, pane: &str) -> Option<String> {
+        self.names.borrow().get(pane).cloned()
+    }
+
+    fn panes_once_named(&self, name: &str) -> Vec<String> {
+        let formerly = self.formerly.borrow();
+        let once = formerly.iter().filter(|(_, before)| before.iter().any(|was| was == name));
+        once.map(|(pane, _)| pane.clone()).collect()
     }
 
     fn titles(&self) -> Vec<(String, String)> {
@@ -145,6 +162,7 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
         Refusal::WhichParticipant { name, candidates }
         | Refusal::Shadowed { name, candidates }
+        | Refusal::Renamed { name, panes: candidates }
         | Refusal::Titled { name, panes: candidates } => {
             format!("{name} {}", candidates.join(","))
         }
@@ -363,6 +381,8 @@ fn pane(sessions: &Sessions, step: &Value) -> String {
         "closed" => {
             sessions.agents.borrow_mut().remove(&pane);
             sessions.names.borrow_mut().remove(&pane);
+            sessions.callsigns.borrow_mut().remove(&pane);
+            sessions.formerly.borrow_mut().remove(&pane);
             sessions.titles.borrow_mut().remove(&pane);
             sessions.open.borrow_mut().remove(&pane)
         }
@@ -372,11 +392,19 @@ fn pane(sessions: &Sessions, step: &Value) -> String {
     format!("{pane} {}", text("state"))
 }
 
-/// A step's `called`, what its pane goes by from then on, and its `title`, what the pane's
+/// A step's `called`, what its pane goes by from then on, its `callsign`, when it has one apart
+/// from that, its `formerly`, what it was called before, and its `title`, what the pane's
 /// program has written to its title bar.
 fn called(sessions: &Sessions, pane: &str, step: &Value) {
     if let Some(called) = step.get("called").and_then(Value::as_str) {
         sessions.names.borrow_mut().insert(pane.to_string(), called.to_string());
+    }
+    if let Some(callsign) = step.get("callsign").and_then(Value::as_str) {
+        sessions.callsigns.borrow_mut().insert(pane.to_string(), callsign.to_string());
+    }
+    if let Some(formerly) = step.get("formerly").and_then(Value::as_array) {
+        let formerly = formerly.iter().filter_map(Value::as_str).map(str::to_string).collect();
+        sessions.formerly.borrow_mut().insert(pane.to_string(), formerly);
     }
     if let Some(title) = step.get("title").and_then(Value::as_str) {
         sessions.titles.borrow_mut().insert(pane.to_string(), title.to_string());

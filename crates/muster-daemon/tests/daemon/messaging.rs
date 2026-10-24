@@ -384,6 +384,29 @@ fn a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign() {
     expect(&mut control, post_to(&named("a"), &callsign, "for you"), proto::Outcome::Done);
 }
 
+/// A post to the name a pane was made with, after the pane was renamed, is refused naming what
+/// the pane is called now and its id: an agent addressing a peer by its `$MUSTER_PANE_NAME`
+/// learns what to say instead, rather than that nobody has the name.
+#[test]
+fn a_post_to_a_name_from_before_a_rename_says_what_the_pane_is_called_now() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let kelp = proto::pane_request::Create {
+        label: Some("kelp".to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, kelp);
+    let rename =
+        proto::pane_request::Rename { pane: "p1".to_string(), label: Some("🤖 A".to_string()) };
+    expect(&mut control, pane(proto::pane_request::Request::Rename(rename)), proto::Outcome::Done);
+    join(&mut control, &named("a"), "a", "g");
+
+    let refused = expect(&mut control, post_to(&named("a"), "kelp", "hi"), proto::Outcome::Refused);
+    assert_eq!(msg_answer(&refused).refusal, "renamed", "{}", refused.answer.reason);
+    let reason = &refused.answer.reason;
+    assert!(reason.contains("🤖 A") && reason.contains("p1"), "{reason}");
+}
+
 #[test]
 fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let daemon = daemon();

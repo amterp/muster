@@ -251,6 +251,7 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
         }
         Refusal::WhichParticipant { name, candidates }
         | Refusal::Shadowed { name, candidates }
+        | Refusal::Renamed { name, panes: candidates }
         | Refusal::Titled { name, panes: candidates } => {
             refused.name = name;
             refused.candidates = candidates;
@@ -337,6 +338,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "no_such_participant" => Refusal::NoSuchParticipant { name },
         "which_participant" => Refusal::WhichParticipant { name, candidates },
         "shadowed" => Refusal::Shadowed { name, candidates },
+        "renamed" => Refusal::Renamed { name, panes: candidates },
         "titled" => Refusal::Titled { name, panes: candidates },
         "unreachable" => Refusal::Unreachable { group, machine },
         "unanswered" => Refusal::Unanswered { group, machine },
@@ -418,6 +420,7 @@ mod tests {
             Refusal::NoSuchParticipant { name: "a".into() },
             Refusal::WhichParticipant { name: "a".into(), candidates: vec!["a@x".into()] },
             Refusal::Shadowed { name: "a".into(), candidates: vec!["p1".into()] },
+            Refusal::Renamed { name: "kelp".into(), panes: vec!["\"A\" (otter, p1)".into()] },
             Refusal::Titled { name: "BUILD LEAD".into(), panes: vec!["p1".into(), "p2".into()] },
             Refusal::Unreachable { group: "g@x".into(), machine: "x".into() },
             Refusal::Unanswered { group: "g@x".into(), machine: "x".into() },

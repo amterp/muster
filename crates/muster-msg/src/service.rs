@@ -155,6 +155,17 @@ pub trait Presence {
         Vec::new()
     }
 
+    /// The name somebody gave the open pane `pane`, when anyone did.
+    fn given_name(&self, _pane: &str) -> Option<String> {
+        None
+    }
+
+    /// Every open pane that went by `name` before it was renamed: a post to that name is pointed
+    /// at what the pane is called now, rather than reaching it.
+    fn panes_once_named(&self, _name: &str) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Each open pane with a title, and the title: what its program last wrote to the terminal's
     /// title bar. Never an address, only a pointer to one when somebody types it as if it were.
     fn titles(&self) -> Vec<(String, String)> {
@@ -1768,7 +1779,9 @@ impl<S: Store> Messaging<S> {
         // somebody may have named a pane `🤖 A`.
         let pane = self.pane_called(name, found, prefer, presence)?;
         if pane.is_none() {
-            check_addressee(name).map_err(|bad| titled(name, presence).unwrap_or(bad))?;
+            check_addressee(name).map_err(|bad| {
+                renamed(name, presence).or_else(|| titled(name, presence)).unwrap_or(bad)
+            })?;
         }
         self.addressee(pane.as_deref().unwrap_or(name), author, found, group, presence)
     }
@@ -1920,7 +1933,8 @@ impl<S: Store> Messaging<S> {
             .map(|each| each.there.clone())
             .collect();
         match found.as_slice() {
-            [] => Err(Refusal::NoSuchParticipant { name: name.to_string() }),
+            [] => Err(renamed(name, presence)
+                .unwrap_or_else(|| Refusal::NoSuchParticipant { name: name.to_string() })),
             [only] => Ok(only.clone()),
             _ => Err(Refusal::WhichParticipant { name: name.to_string(), candidates: found }),
         }
@@ -3163,6 +3177,25 @@ impl<S: Store> Messaging<S> {
             called_elsewhere: self.called_elsewhere.clone(),
         }
     }
+}
+
+/// The refusal for a name nothing answers to now, when panes here went by it before: it names
+/// each by what it is called now, its callsign and its id, as `muster_core::pane_address` does.
+fn renamed(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
+    let once = presence.panes_once_named(typed);
+    if once.is_empty() {
+        return None;
+    }
+    let panes = once
+        .iter()
+        .map(|pane| {
+            let callsign = presence.name_of(pane);
+            let now = presence.given_name(pane).or_else(|| callsign.clone());
+            let now = now.unwrap_or_else(|| pane.clone());
+            format!("{now:?} ({}, {pane})", callsign.unwrap_or_else(|| now.clone()))
+        })
+        .collect();
+    Some(Refusal::Renamed { name: typed.to_string(), panes })
 }
 
 /// The refusal for a `--to` that is no pane's name and cannot be a participant's, when it is

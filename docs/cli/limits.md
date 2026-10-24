@@ -318,9 +318,10 @@ two callsigns begin alike, so that three letters will say which once completion 
 `$MUSTER_PANE_NAME` is what a pane was called as it was made. A program's environment cannot
 follow a rename, so after one it is out of date; `muster window` says what the pane is called now.
 A command given a name the pane had before is refused, saying what it is called now, rather than
-reaching it: another pane may have taken the name since. `$MUSTER_PANE` holds the pane's id, which
-no rename changes, and its callsign answers through a rename too. `muster msg` reads names its own
-way and does not say this yet.
+reaching it: another pane may have taken the name since. `muster msg post --to` and `group add`
+answer the same way, once no machine linked to this one has an agent by that name either.
+`$MUSTER_PANE` holds the pane's id, which no rename changes, and its callsign answers through a
+rename too.
 
 ## Closing with no --pane closes the pane you are in
 

@@ -114,6 +114,9 @@ a post there reaches only its members, so the same name can mean another agent i
 `group add` is not read this way. A participant whose session has gone, and whose pane has
 closed with it, does not count: it cannot join by that name again while a pane goes by it, so the
 pane is the only agent the name can reach. A daemon draws no pane a callsign somebody here joined by.
+A name nothing answers to now, here or on a linked machine, but that a pane here went by before a
+rename, is refused saying what that pane is called now, its callsign and its id; it never reaches
+the pane, since a name a rename freed is free for another pane to take.
 `group add` takes a pane by its name as `--to` does.
 
 ## A group's policy

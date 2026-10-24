@@ -1212,17 +1212,23 @@ fn finding<T>(
         }
     }
     loop {
-        match act(&found) {
-            Err(Refusal::NoSuchParticipant { name }) if asked.insert(name.clone()) => {
-                let there = whom(shared, &name)?;
-                if there.is_empty() {
-                    return Err(Refusal::NoSuchParticipant { name });
-                }
-                found.extend(there.into_iter().map(|there| Found { name: name.clone(), there }));
-            }
-            Err(refusal) => return Err(refusal),
+        let refusal = match act(&found) {
             Ok(outcome) => return Ok((outcome, found)),
+            Err(refusal) => refusal,
+        };
+        // A name a pane here went by before is asked about too: an agent going by it now on
+        // another machine is what it means, rather than a pointer to the pane renamed here.
+        let (Refusal::NoSuchParticipant { name } | Refusal::Renamed { name, .. }) = &refusal else {
+            return Err(refusal);
+        };
+        if !asked.insert(name.clone()) {
+            return Err(refusal);
         }
+        let there = whom(shared, name)?;
+        if there.is_empty() {
+            return Err(refusal);
+        }
+        found.extend(there.into_iter().map(|there| Found { name: name.clone(), there }));
     }
 }
 
@@ -1608,6 +1614,14 @@ pub(super) fn words(refusal: &Refusal) -> String {
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} could be {}; say which, by one of those", candidates.join(" or "))
         }
+        Refusal::Renamed { name, panes } => format!(
+            "nobody here or on a machine linked to this one is called {name} now: {} called \
+             that before {} now called {}. Post --to what it is called now, its callsign or its \
+             id; $MUSTER_PANE holds a pane's id, which no rename changes",
+            if panes.len() == 1 { "the pane" } else { "the panes" },
+            if panes.len() == 1 { "is" } else { "are" },
+            panes.join(" and "),
+        ),
         Refusal::Shadowed { name, candidates } => format!(
             "{name} could be {}, or the participant here that joined as {name}, which has no \
              open pane to be named by instead. Post --to {} to reach {}, or rename the pane \

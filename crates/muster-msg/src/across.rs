@@ -131,9 +131,10 @@ impl Peer {
                 name: n,
                 candidates: candidates.into_iter().map(name).collect(),
             },
-            Refusal::Shadowed { name: n, candidates } => {
-                Refusal::Shadowed { name: n, candidates: candidates.into_iter().map(name).collect() }
-            }
+            Refusal::Shadowed { name: n, candidates } => Refusal::Shadowed {
+                name: n,
+                candidates: candidates.into_iter().map(name).collect(),
+            },
             Refusal::NotAllowed { addressee, group: g, allowed } => Refusal::NotAllowed {
                 addressee: name(addressee),
                 group: group(g),

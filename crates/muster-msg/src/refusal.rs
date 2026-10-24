@@ -45,6 +45,13 @@ pub enum Refusal {
         name: String,
         candidates: Vec<String>,
     },
+    /// Nothing goes by this name now, and these panes here did before they were renamed: each as
+    /// what it is called now, its callsign and its id. Never followed to the pane, because a
+    /// name a rename freed is free for another to take.
+    Renamed {
+        name: String,
+        panes: Vec<String>,
+    },
     /// Agents the candidates reach go by this name, and so does a participant here with no open
     /// pane, which nothing but the name reaches while a pane goes by it too.
     Shadowed {
@@ -158,6 +165,7 @@ impl Refusal {
             Refusal::Titled { .. } => "titled",
             Refusal::WhichParticipant { .. } => "which_participant",
             Refusal::Shadowed { .. } => "shadowed",
+            Refusal::Renamed { .. } => "renamed",
             Refusal::Unreachable { .. } => "unreachable",
             Refusal::Unchecked { .. } => "unchecked",
             Refusal::Unanswered { .. } => "unanswered",

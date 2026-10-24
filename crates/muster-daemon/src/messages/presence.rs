@@ -88,6 +88,8 @@ pub(crate) struct Panes {
     callsigns: HashMap<String, String>,
     /// The name somebody gave each open pane that has one, by the pane.
     given: HashMap<String, String>,
+    /// The names each open pane was given before its present one, by the pane.
+    former: HashMap<String, Vec<String>>,
     /// What each open pane with a title shows in its title bar, by its name.
     titles: HashMap<String, String>,
     /// Whether a window is attending, which wakes the human.
@@ -150,7 +152,8 @@ impl Panes {
             let title = Some(record.title.clone()).filter(|title| !title.trim().is_empty());
             let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
-            (record.pane.clone(), seen, young, given, callsign, title, maker)
+            let former = record.former_labels.clone();
+            (record.pane.clone(), seen, young, given, callsign, title, maker, former)
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -159,7 +162,7 @@ impl Panes {
             ..Panes::default()
         };
         drop(session);
-        for (pane, seen, young, given, callsign, title, maker) in read {
+        for (pane, seen, young, given, callsign, title, maker, former) in read {
             if let Some(maker) = maker {
                 panes.makers.insert(pane.clone(), maker);
             }
@@ -174,6 +177,9 @@ impl Panes {
             }
             if let Some(title) = title {
                 panes.titles.insert(pane.clone(), title);
+            }
+            if !former.is_empty() {
+                panes.former.insert(pane.clone(), former);
             }
             panes.open.insert(pane, young);
         }
@@ -277,6 +283,21 @@ impl Presence for Panes {
             .collect();
         named.sort();
         named
+    }
+
+    fn given_name(&self, pane: &str) -> Option<String> {
+        self.given.get(pane).cloned()
+    }
+
+    fn panes_once_named(&self, name: &str) -> Vec<String> {
+        let mut once: Vec<String> = self
+            .former
+            .iter()
+            .filter(|(_, former)| former.iter().any(|former| former == name))
+            .map(|(pane, _)| pane.clone())
+            .collect();
+        once.sort();
+        once
     }
 
     fn titles(&self) -> Vec<(String, String)> {
