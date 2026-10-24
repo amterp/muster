@@ -647,6 +647,9 @@ fn settle_with(
                                 follows) or its daemon is stalled",
                 },
             );
+            if let Some(caller) = joining {
+                rename_unanswered(shared, away, caller);
+            }
             return (unanswered(shared, link, away), Holding::default());
         }
         Err(error) => {
@@ -687,6 +690,28 @@ fn settle_with(
         let _ = fetch(shared, link, away.call.group(), next);
     }
     (settle, holding)
+}
+
+/// Renames the caller of a join that went unanswered, when the join takes the place of its pane,
+/// before the refetch that follows (`Messaging::unanswered_join`).
+fn rename_unanswered(shared: &Shared, away: &Away, caller: &Caller) {
+    let panes = Panes::of(shared);
+    let renamed = shared.messages().service.unanswered_join(&away.call, caller, &panes);
+    if let Err(refusal) = renamed {
+        log::warn(
+            "msg.join.unanswered_unrenamed",
+            fields! {
+                "machine" => away.machine,
+                "group" => away.call.group(),
+                "why" => super::words(&refusal),
+                "impact" => "if that machine took the join, its group lists the new name, and \
+                             this machine's copy lets go of the pane's place there until the \
+                             agent joins again",
+                "check" => "the reason: a live session holding the name, or a message store \
+                            that cannot be written",
+            },
+        );
+    }
 }
 
 /// The reply, unless it names what no participant or group here could be called, which is

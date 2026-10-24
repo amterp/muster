@@ -212,6 +212,22 @@ impl Wire {
         (settle.result, applied)
     }
 
+    /// Sends `call` from `side`, and the other machine answers it, but the answer is lost: `side`
+    /// settles nothing, as when a reply never arrives in time.
+    fn answer_unheard(&mut self, side: Side, call: &Call) {
+        let now = self.tick();
+        let from = side.other().peer();
+        let said = self.callsigns(side, call.names());
+        let answered = {
+            let (home, sessions) = self.split(side.other());
+            home.heard_callsigns(&from, said);
+            home.answer(&from, call.clone(), sessions, now)
+        };
+        assert!(matches!(answered.reply, Reply::Joined { .. }), "{:?}", answered.reply);
+        self.wakes.extend(answered.wakes.into_iter().map(|wake| (side.other(), wake)));
+        self.tell(side.other(), &answered.tell);
+    }
+
     /// Sends a home's new entries on to the machines it named. A machine that holds too little
     /// of the group to take them - none of it, when its first member was just added - fetches
     /// what it lacks, as its daemon does.
@@ -2474,4 +2490,35 @@ fn a_rename_while_a_groups_home_is_unreachable_reaches_it_when_the_link_returns(
         assert!(tracer.folds_owed.is_empty(), "asked once: {:?}", tracer.folds_owed);
         assert!(tracer.cursors.contains_key("review@lap"), "the pane's place is the name's");
     }
+}
+
+/// A join that takes a pane's place, whose answer is lost after the home took it, still hands the
+/// name the pane's place: the caller is renamed before the refetch brings the home's entries,
+/// so what it had not read is still unread under the name.
+#[test]
+fn a_join_taking_a_panes_place_whose_answer_is_lost_keeps_the_place() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    wire.post(Side::Laptop, &session("director"), Some("review"), &[], "unread").unwrap();
+    let place = wire.devenv.participant("p9").unwrap().cursors["review@lap"];
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let route = devenv.route_join(&agent, Some("tracer"), Some("review@lap"), sessions);
+    let Route::Away(away) = route.unwrap() else { panic!("review is kept on the laptop") };
+    wire.answer_unheard(Side::Devenv, &away.call);
+
+    // What a daemon does with a change it sent and heard nothing back about.
+    wire.devenv.unanswered("review@lap");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.unanswered_join(&away.call, &agent, sessions).unwrap();
+    let replicas = wire.devenv.replicas_of("lap");
+    let head = replicas.iter().find(|(group, _)| group == "review").unwrap().1;
+    wire.send(Side::Devenv, &Call::Since { group: "review".to_string(), after: head }).unwrap();
+    wire.fold(Side::Devenv);
+
+    assert_eq!(members_on(&wire, Side::Laptop, "review"), ["director", "tracer@devenv"]);
+    assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "tracer"]);
+    assert!(wire.devenv.participant("p9").is_none(), "the pane is the name now");
+    let tracer = wire.devenv.participant("tracer").unwrap();
+    assert_eq!(tracer.cursors["review@lap"], place, "the pane's place");
+    assert!(tracer.folds_owed.is_empty(), "the home confirmed it: {:?}", tracer.folds_owed);
+    assert_eq!(wire.read(Side::Devenv, &agent, None), ["review@lap director@lap: unread"]);
 }

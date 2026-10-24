@@ -889,6 +889,24 @@ impl<S: Store> Messaging<S> {
         Settle { result, applied }
     }
 
+    /// The caller's own join, routed by [`Self::route_join`], went unanswered. One that takes the
+    /// place of the caller's pane is a join the home takes whatever its policy says, so it has
+    /// been taken, or never arrived and is still owed: the caller becomes the name now, before
+    /// the refetch that follows brings the home's entries, so the pane's place in the group
+    /// goes to the name rather than being let go. The home is asked again for this group, as
+    /// for any fold. Any other join may have been refused there, so it renames nothing, and
+    /// joining again settles it.
+    pub fn unanswered_join(
+        &mut self,
+        call: &Call,
+        caller: &Caller,
+        presence: &dyn Presence,
+    ) -> Result<(), Refusal> {
+        let Call::Join { name, was: Some(_), .. } = call else { return Ok(()) };
+        self.become_named(caller, name, presence)?;
+        self.save()
+    }
+
     /// [`Self::settle`] for the caller's own join routed by [`Self::route_join`]: once the home
     /// has taken the join, the caller becomes the name it joined as, here, before the answer's
     /// entries are applied, so a pane folded into the name keeps its place in the group.
