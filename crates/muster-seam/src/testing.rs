@@ -78,6 +78,14 @@ pub fn set_painting_deadline(deadline: Duration) {
     watchdog::set_painting_deadline(deadline);
 }
 
+/// Has the window treat `daemon` as speaking a protocol from before spanning trees (MIP-8), so it
+/// never writes one a tab's whole tree, until the next reset. The suite runs only daemons built
+/// from this commit, and this is how it reaches the arrangement a tab keeps when its machines
+/// are all older.
+pub fn treat_as_before_spanning(daemon: &str) {
+    session::treat_as_before_spanning(daemon);
+}
+
 /// How many callers are watching agent states right now.
 ///
 /// For a test proving that a caller who hangs up is let go. Nothing else reads it: a watch whose

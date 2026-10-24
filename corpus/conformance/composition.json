@@ -3162,7 +3162,7 @@
             "tab": "w1:t1"
           },
           {
-            "do": "setBoundary",
+            "do": "setColumn",
             "region": "r0",
             "ratio": 0.75
           }
@@ -3356,8 +3356,8 @@
       }
     },
     {
-      "name": "a boundary keeps the pair's own width, so nothing else moves",
-      "why": "What makes a drag local. The two weights still sum to what they summed to before, so every other region in the tab keeps exactly the width it had - which is what the person dragging expects and what a rule dividing the whole tab would break. Three machines rather than two, because a pair is the whole tab when there are only two of them and nothing is left to leave alone.",
+      "name": "a line between regions keeps the width of everything after it, so nothing before it moves",
+      "why": "What makes a drag local. A tab whose machines are all too old to hold a spanning tree is drawn as its regions side by side, and the line on a region's right is a split between it and every region after it (MIP-8, section 9). The ratio is the region's share of that whole, the regions after it keep the width they had between them, in proportion, and every line before it stays where it was. Three machines rather than two, because with two the region after the line is the whole of the rest.",
       "given": {
         "steps": [
           {
@@ -3391,8 +3391,8 @@
             "tab": "w1:t1"
           },
           {
-            "do": "setBoundary",
-            "region": "r0",
+            "do": "setColumn",
+            "region": "r1",
             "ratio": 0.25
           }
         ],
@@ -3406,9 +3406,9 @@
         ],
         "focusedRegion": "r0",
         "regions": [
-          "r0 daemon=local tab=w1:t1 weight=0.500",
-          "r1 daemon=devenv tab=w1:t1 weight=1.500",
-          "r2 daemon=builder tab=w1:t1"
+          "r0 daemon=local tab=w1:t1",
+          "r1 daemon=devenv tab=w1:t1 weight=0.500",
+          "r2 daemon=builder tab=w1:t1 weight=1.500"
         ],
         "showing": [],
         "showingTab": "w1:t1",
@@ -3441,7 +3441,7 @@
             "tab": "w1:t1"
           },
           {
-            "do": "setBoundary",
+            "do": "setColumn",
             "region": "r0",
             "ratio": 0.0
           }
@@ -3489,7 +3489,7 @@
             "tab": "w1:t1"
           },
           {
-            "do": "setBoundary",
+            "do": "setColumn",
             "region": "r0",
             "ratio": 1.0
           }
@@ -3537,7 +3537,7 @@
             "tab": "w1:t1"
           },
           {
-            "do": "setBoundary",
+            "do": "setColumn",
             "region": "r1",
             "ratio": 0.25
           }
@@ -3589,7 +3589,7 @@
             "region": "r0"
           },
           {
-            "do": "setBoundary",
+            "do": "setColumn",
             "region": "r0",
             "ratio": 0.25
           }
@@ -6262,9 +6262,10 @@
     },
     {
       "name": "a pane on a machine the window has not reconciled yet keeps its place in the tree",
-      "why": "The devenv came back, and its mirror already holds its part of the tab, but the window has not reconciled what it heard: the tab has no region onto the devenv yet. A mirror moves on before the window reconciles, since a window hears a daemon on one thread and reconciles on another. Until it does, the devenv's part and the panes it holds are not among the tab's parts, so nothing says the devenv holds x, and taking the devenv's silence as its word would drop x from the tree and from the laptop's copy (MIP-8, section 2).",
+      "why": "The devenv came back, and its mirror already holds its part of the tab, but the window has not reconciled what it heard: the tab has no region onto the devenv yet. A mirror moves on before the window reconciles, since a window hears a daemon on one thread and reconciles on another. Until it does, the devenv's part and the panes it holds are not among the tab's parts, so nothing says the devenv holds x, and taking the devenv's silence as its word would drop x from the tree and from the laptop's copy (MIP-8, section 2). The window draws only the panes it can reach meanwhile, so x is in the merged tree its writes hold and not in the tree it draws.",
       "given": {
         "tree": true,
+        "merged": true,
         "worlds": {
           "laptop": {
             "tabs": [
@@ -6349,7 +6350,8 @@
           "laptop/a"
         ],
         "showingTab": "t1",
-        "tree": "columns(a@laptop, x@devenv@0.5)",
+        "merged": "columns(a@laptop, x@devenv@0.5)",
+        "tree": "a@laptop",
         "view": [
           "r0 tab=t1 a"
         ]

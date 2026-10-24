@@ -31,7 +31,7 @@ use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Grid, Maker, MoveDestination, Outcome, Refusal, Side,
+    BackendChannel, BackendIntent, Branch, Grid, Maker, MoveDestination, Outcome, Refusal, Side,
 };
 use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
@@ -850,6 +850,10 @@ struct Backend {
 pub(crate) struct Session {
     backends: BTreeMap<DaemonId, Backend>,
 
+    /// Daemons a test has the window treat as speaking a protocol from before spanning trees,
+    /// since the suite runs only daemons built from this commit (`crate::testing`).
+    before_spanning: BTreeSet<DaemonId>,
+
     /// Nested rather than keyed by a pair, so that finding the pane a keystroke is for costs
     /// two lookups and no allocation - a pair key would have to be built, and building one
     /// means cloning both ids on a path that runs per keystroke.
@@ -1286,6 +1290,10 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 /// Dropping the session is the whole teardown: a `Backend` owns its follower, its ssh
 /// master and its panes' sockets, and dropping one ends the threads behind all three. So this
 /// is the shutdown path that already existed, called deliberately rather than at exit.
+pub(crate) fn treat_as_before_spanning(daemon: &str) {
+    poison::lock(&SESSION, "session").before_spanning.insert(DaemonId::new(daemon));
+}
+
 pub(crate) fn reset() {
     // Before the session is replaced, so an attach still under way sees it belongs to the old one
     // by the time it could land in the new one.
@@ -2022,19 +2030,21 @@ impl Session {
     /// Whether `machine` speaks a protocol that keeps a tab's whole tree, other machines' panes
     /// included (MIP-8), so a window may write one to it.
     fn holds_spanning_trees(&self, machine: &DaemonId) -> bool {
-        self.backends
-            .get(machine)
-            .and_then(|backend| backend.follower.connection().control())
-            .is_some_and(|control| {
-                muster_daemon_proto::version::too_old(
-                    machine.as_str(),
-                    control.welcome().protocol.as_ref(),
-                    muster_daemon_proto::version::SPANNING,
-                    "hold a tab spanning machines",
-                    "written",
-                )
-                .is_none()
-            })
+        !self.before_spanning.contains(machine)
+            && self
+                .backends
+                .get(machine)
+                .and_then(|backend| backend.follower.connection().control())
+                .is_some_and(|control| {
+                    muster_daemon_proto::version::too_old(
+                        machine.as_str(),
+                        control.welcome().protocol.as_ref(),
+                        muster_daemon_proto::version::SPANNING,
+                        "hold a tab spanning machines",
+                        "written",
+                    )
+                    .is_none()
+                })
     }
 
     fn mirrors(&self) -> BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> {
@@ -3132,9 +3142,71 @@ pub(crate) fn walk_focus(window: WindowId, forward: bool) -> Result<Option<PaneK
 pub(crate) fn set_region_boundary(window: WindowId, left: RegionId, ratio: f32) {
     {
         let mut session = poison::lock(&SESSION, "session");
-        session.windows[window].composition.set_boundary(left, ratio);
+        session.windows[window].composition.set_column(left, ratio);
     }
     publish("region_boundary");
+}
+
+/// Puts a divider where a drag or a caller left it, named by the turns down the tab's tree as
+/// this window draws it, and found from there on whichever machines it divides.
+///
+/// A tab written as one tree takes the ratio on every part (`rearrange`). A tab spanning machines
+/// that no window has written is drawn as its parts side by side: the line between two parts is
+/// this window's own region weights, and a line inside a part is that machine's own divider
+/// (MIP-8, section 9). Any other tab is one machine's, and `daemon` is it.
+pub(crate) fn set_split_ratio(
+    window: WindowId,
+    daemon: &DaemonId,
+    tab: &TabId,
+    path: Vec<Branch>,
+    ratio: f32,
+) -> Result<Outcome, Refusal> {
+    if let Some(done) =
+        rearrange(window, tab, &spanning::Change::Ratio { path: path.clone(), ratio })
+    {
+        return done;
+    }
+    let side_by_side = {
+        let session = poison::lock(&SESSION, "session");
+        let mirrors = session.mirrors();
+        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+        session.windows[window]
+            .composition
+            .tab(tab)
+            .filter(|held| spanning::spans(held, mirror))
+            .map(|held| {
+                let (parts, _) = spanning::parts_of(held, mirror, |_| false);
+                spanning::side_by_side_divider(&parts, &path)
+            })
+    };
+    let one_machine = |daemon: &DaemonId, path: Vec<Branch>| {
+        submit(
+            window,
+            daemon,
+            &BackendIntent::SetSplitRatio { tab: tab.clone(), path, ratio },
+            Keyboard::Follows,
+        )
+    };
+    match side_by_side {
+        None => one_machine(daemon, path),
+        Some(Some(spanning::Divider::Within { daemon, path })) => one_machine(&daemon, path),
+        Some(Some(spanning::Divider::Column { left })) => {
+            {
+                let mut session = poison::lock(&SESSION, "session");
+                let composition = &mut session.windows[window].composition;
+                if let Some(region) = composition.region_of(&left, tab) {
+                    composition.set_column(region, ratio);
+                }
+            }
+            publish("split_ratio");
+            Ok(Outcome::default())
+        }
+        Some(None) => Err(Refusal::Declined(format!(
+            "the tab {tab} has no divider at {path:?} as this window draws it, so nothing moved. \
+             A drag that raced a pane closing looks like this; `tabs[].layout` in `muster window \
+             --json` says where the dividers are now"
+        ))),
+    }
 }
 
 /// Moves the keyboard one pane along, in the window's own reading order.
@@ -5947,9 +6019,10 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
 /// A change to the arrangement of a tab written as one tree, worked out on that tree and written
 /// to every part of it; `None` for any other request, which goes to its daemon as asked.
 ///
-/// Here, on the one path every request takes, so a chord, a drag, a menu and the CLI all reach
-/// it: a part holding another machine's panes refuses a resize, zoom, swap or divider asked of
-/// it alone (MIP-8, section 3).
+/// Here, on the one path every request takes, so a chord, a menu and the CLI all reach it: a part
+/// holding another machine's panes refuses a resize, zoom or swap asked of it alone (MIP-8,
+/// section 3). A divider is named in the tree a window draws, so it is found before it gets here
+/// (`set_split_ratio`).
 fn rearranged_as_tree(
     window: WindowId,
     daemon: &DaemonId,
@@ -5971,9 +6044,6 @@ fn rearranged_as_tree(
         }
         BackendIntent::SwapPanes { pane, with } => {
             (tab_of(pane)?, spanning::Change::Swap { pane: pane.clone(), with: with.clone() })
-        }
-        BackendIntent::SetSplitRatio { tab, path, ratio } => {
-            (tab.clone(), spanning::Change::Ratio { path: path.clone(), ratio: *ratio })
         }
         _ => return None,
     };

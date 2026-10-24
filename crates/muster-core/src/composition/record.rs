@@ -620,11 +620,12 @@ impl Composition {
         tab.regions.insert(if before { at } else { at + 1 }, moved);
     }
 
-    /// Moves the line between a region and the one to its right.
+    /// Moves the line between a region and the regions to its right.
     ///
-    /// `ratio` is the named region's share of the two of them together, so the pair keeps
-    /// whatever width it had and only the split between them moves. Everything further along
-    /// the window stays where it is, which is what a drag looks like to the person doing it.
+    /// `ratio` is the named region's share of itself and every region after it, which is what the
+    /// split on its right is in the tab's tree when its parts are drawn side by side
+    /// (`crate::spanning`). Those regions together keep the width they had, each in proportion,
+    /// so only that line moves and every line before it stays where it is.
     ///
     /// Named by the region on the left rather than by an index, unlike a pane divider. A
     /// pane divider genuinely has no name - it is a position in a tree that changes under
@@ -634,30 +635,34 @@ impl Composition {
     /// Clamped, and this is the one place a share is. A pane's ratio is passed to the daemon
     /// untouched because the daemon sizes its own rectangles and will refuse what it cannot
     /// do; nothing sits behind this one. A region dragged to nothing would leave no divider
-    /// to grab and no way back, so neither side goes below a tenth of the pair.
+    /// to grab and no way back, so neither side goes below a tenth.
     ///
-    /// A boundary that does not exist - the last region of a tab, or one that closed while a
-    /// drag was in flight - does nothing. There is nothing for a caller to do about that either.
-    pub fn set_boundary(&mut self, left: RegionId, ratio: f32) {
+    /// A line that does not exist - right of the last region of a tab, or of one that closed
+    /// while a drag was in flight - does nothing. There is nothing for a caller to do about that
+    /// either.
+    pub fn set_column(&mut self, left: RegionId, ratio: f32) {
         if !ratio.is_finite() {
             return;
         }
         let Some(tab) = self.tab_holding_mut(left) else { return };
         let Some(index) = tab.regions.iter().position(|region| region.id == left) else { return };
-        let Some(pair) = tab.regions.get(index..=index + 1) else { return };
-        let total = pair[0].weight + pair[1].weight;
-        if !total.is_finite() || total <= 0.0 {
+        let after: f32 = tab.regions[index + 1..].iter().map(|region| region.weight).sum();
+        let total = tab.regions[index].weight + after;
+        if index + 1 == tab.regions.len() || !total.is_finite() || after <= 0.0 {
             return;
         }
         let ratio = ratio.clamp(Composition::MINIMUM_SHARE, 1.0 - Composition::MINIMUM_SHARE);
         tab.regions[index].weight = total * ratio;
-        tab.regions[index + 1].weight = total * (1.0 - ratio);
+        let scale = total * (1.0 - ratio) / after;
+        for region in &mut tab.regions[index + 1..] {
+            region.weight *= scale;
+        }
     }
 
     /// Puts one region's share back to what it was, without touching its neighbours.
     ///
-    /// The restore path, and the reason it is not `set_boundary`: dragging a divider is about
-    /// a pair and has to leave the rest of the tab alone, where reopening a saved arrangement
+    /// The restore path, and the reason it is not `set_column`: dragging a divider is about
+    /// a line and has to leave the rest of the tab alone, where reopening a saved arrangement
     /// sets every weight in turn and would fight itself if each one redistributed.
     ///
     /// A weight that is not a positive finite number is ignored rather than taken. Zero is a

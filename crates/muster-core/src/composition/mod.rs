@@ -45,5 +45,6 @@ pub use record::{
 };
 pub use saved::{Restorable, Saved, SavedRegion, SavedTab};
 pub use view::{
-    Rect, Step, View, ViewNode, ViewPane, ViewRegion, ViewTree, places_in, zoom_filling,
+    Rect, Step, View, ViewMachine, ViewNode, ViewPane, ViewRegion, ViewTree, places_in,
+    zoom_filling,
 };

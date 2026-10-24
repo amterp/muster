@@ -182,7 +182,9 @@ fn lowest(part: &Part) -> Option<&PaneId> {
     panes_of(&part.copy).into_iter().filter(|pane| part.holds.contains(*pane)).min()
 }
 
-/// Every part as a column, at its region's weight: a tab no window has written a tree for.
+/// Every part as a column, at its region's weight: a tab no window has written a tree for. Zoomed
+/// on the first part's zoomed pane, in region order, so a zoomed tab is still zoomed once it is
+/// written as one tree.
 fn side_by_side(parts: &[Part]) -> Option<(SpanNode, Option<PaneId>)> {
     let (last, rest) = parts.split_last()?;
     let mut tree = spanned(&last.copy, &last.daemon);
@@ -197,7 +199,94 @@ fn side_by_side(parts: &[Part]) -> Option<(SpanNode, Option<PaneId>)> {
         };
         after += part.weight;
     }
-    Some((tree, None))
+    Some((tree, parts.iter().find_map(|part| part.zoomed.clone())))
+}
+
+/// The tree a window draws of `tree`: without the panes `held` says no part of the tab it holds
+/// runs, each split left with one child giving way to that child. A window reaching only some of a
+/// tab's machines, or opened while one was down, draws the panes it can reach (MIP-8, section 7).
+/// `None` when it holds none of them.
+pub fn drawn(tree: &SpanNode, held: &impl Fn(&PaneId) -> bool) -> Option<SpanNode> {
+    match tree {
+        SpanNode::Pane { pane, .. } => held(pane).then(|| tree.clone()),
+        SpanNode::Split { axis, ratio, first, second } => {
+            match (drawn(first, held), drawn(second, held)) {
+                (Some(first), Some(second)) => Some(SpanNode::Split {
+                    axis: *axis,
+                    ratio: *ratio,
+                    first: Box::new(first),
+                    second: Box::new(second),
+                }),
+                (only, None) | (None, only) => only,
+            }
+        }
+    }
+}
+
+/// The way down `tree` to the split a window drew at `path` in [`drawn`]'s tree of it: a split
+/// it did not draw, because one side holds nothing it runs, takes no turn of `path`.
+fn whole_path(
+    tree: &SpanNode,
+    path: &[Branch],
+    held: &impl Fn(&PaneId) -> bool,
+) -> Option<Vec<Branch>> {
+    let SpanNode::Split { first, second, .. } = tree else { return None };
+    let drawing = |node: &SpanNode| node.leaves().into_iter().any(|(pane, _)| held(pane));
+    let (branch, child, rest) = match (drawing(first), drawing(second)) {
+        (true, true) => match path.split_first() {
+            None => return Some(Vec::new()),
+            Some((Branch::First, rest)) => (Branch::First, first, rest),
+            Some((Branch::Second, rest)) => (Branch::Second, second, rest),
+        },
+        (true, false) => (Branch::First, first, path),
+        (false, true) => (Branch::Second, second, path),
+        (false, false) => return None,
+    };
+    let mut way = whole_path(child, rest, held)?;
+    way.insert(0, branch);
+    Some(way)
+}
+
+/// Which line a divider a window drew in a tab no window has written is, by the turns down to it
+/// in that tab's tree, its parts side by side in region order: the column between a part and the
+/// parts after it, which is the window's own region weights, or a split inside one part, which is
+/// that part's own tree. How a tab whose machines are all too old to hold a spanning tree is
+/// arranged (MIP-8, section 9). `None` for a path that names no split there.
+pub fn side_by_side_divider(parts: &[Part], path: &[Branch]) -> Option<Divider> {
+    let within = |part: &Part, path: &[Branch]| {
+        splits_at(&part.copy, path)
+            .then(|| Divider::Within { daemon: part.daemon.clone(), path: path.to_vec() })
+    };
+    let mut rest = path;
+    for (index, part) in parts.iter().enumerate() {
+        if index + 1 == parts.len() {
+            return within(part, rest);
+        }
+        match rest.split_first() {
+            None => return Some(Divider::Column { left: part.daemon.clone() }),
+            Some((Branch::First, inner)) => return within(part, inner),
+            Some((Branch::Second, further)) => rest = further,
+        }
+    }
+    None
+}
+
+fn splits_at(copy: &CopyNode, path: &[Branch]) -> bool {
+    match (copy, path.split_first()) {
+        (CopyNode::Split { .. }, None) => true,
+        (CopyNode::Split { first, .. }, Some((Branch::First, rest))) => splits_at(first, rest),
+        (CopyNode::Split { second, .. }, Some((Branch::Second, rest))) => splits_at(second, rest),
+        _ => false,
+    }
+}
+
+/// A divider in a tab drawn as its parts side by side.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Divider {
+    /// The line between the part on `left` and every part after it.
+    Column { left: DaemonId },
+    /// A split at `path` in the tree of the part on `daemon`.
+    Within { daemon: DaemonId, path: Vec<Branch> },
 }
 
 /// A copy with every leaf naming its machine: its own daemon's for its own panes, and the name
@@ -281,7 +370,7 @@ fn added(tree: SpanNode, pane: &PaneId, part: &Part, named: &BTreeSet<PaneId>) -
 /// on its own would race the window's next write (MIP-8, section 3).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Change {
-    /// The split at `path`, in the tab's whole tree as a window draws it, to `ratio`.
+    /// The split at `path`, in the tab's tree as a window draws it ([`drawn`]), to `ratio`.
     Ratio { path: Vec<Branch>, ratio: f32 },
     /// The divider nearest `pane` toward `side`, by the rule a daemon resizes its own tree by.
     Resize { pane: PaneId, side: Side, fraction: Option<f32> },
@@ -317,7 +406,16 @@ pub fn rearrange(
 ) -> Result<Merged, String> {
     let merged = merge(parts, settled).ok_or("the tab has no part on any machine")?;
     let written = parts.iter().map(|part| part.generation).max().unwrap_or_default();
-    let (tree, zoomed) = changed(&merged.tree, merged.zoomed.as_ref(), change)?;
+    let change = match change {
+        Change::Ratio { path, ratio } => {
+            let held = |pane: &PaneId| parts.iter().any(|part| part.holds.contains(pane));
+            let path = whole_path(&merged.tree, path, &held)
+                .ok_or_else(|| format!("the tab's tree has no split at {path:?}"))?;
+            Change::Ratio { path, ratio: *ratio }
+        }
+        other => other.clone(),
+    };
+    let (tree, zoomed) = changed(&merged.tree, merged.zoomed.as_ref(), &change)?;
     if tree == merged.tree && zoomed == merged.zoomed {
         return Ok(merged);
     }

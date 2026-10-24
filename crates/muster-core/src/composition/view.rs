@@ -39,6 +39,11 @@ pub struct View {
     /// The pane filling the tab, when it is zoomed: the one the keyboard is on, wherever in the
     /// tab it runs, which is how a window draws a zoom.
     pub zoomed: Option<PaneKey>,
+    /// The pane Muster's keyboard feeds.
+    pub keyboard: Option<PaneKey>,
+    /// Every machine holding a part of the tab on screen that this window follows, with where its
+    /// panes' bridges dial, in the order its regions sit.
+    pub machines: Vec<ViewMachine>,
     /// Every pane this window has on screen, named by its daemon.
     ///
     /// Held rather than derived from `regions`, because it is not the same question as the
@@ -85,6 +90,19 @@ pub struct ViewRegion {
     /// another machine the local end of the ssh forward to it. `None` for a daemon this window
     /// has not reached.
     pub daemon_socket: Option<String>,
+    /// Whether the daemon is on another machine, which is where a bridge asks for a window of
+    /// unacknowledged output sized for the link.
+    pub remote: bool,
+}
+
+/// A machine a tab's panes run on, as a window's bridges reach it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewMachine {
+    pub daemon: DaemonId,
+    /// The socket a pane's bridge dials to draw it: the daemon's own, or for a daemon on another
+    /// machine the local end of the ssh forward to it. `None` for a daemon this window has not
+    /// reached.
+    pub socket: Option<String>,
     /// Whether the daemon is on another machine, which is where a bridge asks for a window of
     /// unacknowledged output sized for the link.
     pub remote: bool,
@@ -227,6 +245,8 @@ impl View {
                 focused: None,
                 tree: None,
                 zoomed: None,
+                keyboard: None,
+                machines: Vec::new(),
                 showing: BTreeSet::new(),
             },
         }
@@ -329,29 +349,7 @@ impl View {
             .focused_region()
             .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
         let (tree, zoomed) = if spanning::spans(held, &mirror) {
-            let (parts, settled) = spanning::parts_of(held, &mirror, |_| false);
-            match spanning::merge(&parts, &settled) {
-                Some(merged) => {
-                    let zoomed = merged.zoomed.as_ref().and_then(|zoomed| {
-                        let in_tree =
-                            |key: &PaneKey| {
-                                merged.tree.leaves().into_iter().any(|(pane, daemon)| {
-                                    *pane == key.pane && *daemon == key.daemon
-                                })
-                            };
-                        keyboard.clone().filter(in_tree).or_else(|| {
-                            let (pane, daemon) = merged
-                                .tree
-                                .leaves()
-                                .into_iter()
-                                .find(|(pane, _)| *pane == zoomed)?;
-                            Some(PaneKey::new(daemon, pane))
-                        })
-                    });
-                    (Some(ViewTree::of(&merged.tree, &pane)), zoomed)
-                }
-                None => (None, None),
-            }
+            spanning_tree(held, &mirror, keyboard.as_ref(), &pane)
         } else {
             let one = held.regions().next();
             let layout = one.and_then(|region| Some((region, arranged(region)?)));
@@ -362,12 +360,26 @@ impl View {
                 layout.map(|(region, layout)| ViewTree::own(&layout.root, &region.daemon, &pane));
             (tree, zoomed)
         };
+        let mut machines: Vec<ViewMachine> = Vec::new();
+        for region in held.regions() {
+            if mirror(&region.daemon).is_some()
+                && machines.iter().all(|machine| machine.daemon != region.daemon)
+            {
+                machines.push(ViewMachine {
+                    daemon: region.daemon.clone(),
+                    socket: daemon_socket(&region.daemon),
+                    remote: remote(&region.daemon),
+                });
+            }
+        }
         View {
             tab: Some(tab),
             regions,
             focused: held.focused_region().map(|region| region.id),
             tree,
             zoomed,
+            keyboard,
+            machines,
             showing,
         }
     }
@@ -525,6 +537,46 @@ impl View {
         }
         found
     }
+}
+
+/// A tab spanning machines as a window draws it: the merge of its copies, without the panes no
+/// part this window holds runs, and the pane filling it when it is zoomed.
+fn spanning_tree<'a>(
+    held: &MusterTab,
+    mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+    keyboard: Option<&PaneKey>,
+    pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
+) -> (Option<ViewTree>, Option<PaneKey>) {
+    let (parts, settled) = spanning::parts_of(held, mirror, |_| false);
+    let Some(merged) = spanning::merge(&parts, &settled) else { return (None, None) };
+    let ran = |pane: &PaneId| parts.iter().any(|part| part.holds.contains(pane));
+    let drawn = spanning::drawn(&merged.tree, &ran);
+    let in_tree = |key: &PaneKey| {
+        drawn.as_ref().is_some_and(|drawn| {
+            drawn
+                .leaves()
+                .into_iter()
+                .any(|(pane, daemon)| *pane == key.pane && *daemon == key.daemon)
+        })
+    };
+    // A tab no window has written yet has a zoom per part, and fills with the keyboard's pane only
+    // while the part the keyboard is in is zoomed, as it was drawn before it had one tree.
+    let zoomed = if parts.iter().any(|part| part.generation > 0) {
+        merged.zoomed.as_ref().and_then(|zoomed| {
+            keyboard.cloned().filter(in_tree).or_else(|| {
+                let (pane, daemon) =
+                    merged.tree.leaves().into_iter().find(|(pane, _)| *pane == zoomed)?;
+                Some(PaneKey::new(daemon, pane))
+            })
+        })
+    } else {
+        held.focused_region().and_then(|region| {
+            let layout = mirror(&region.daemon)?.tab(&held.id);
+            Some(PaneKey::new(&region.daemon, &zoom_filling(region, layout)?))
+        })
+    };
+    let zoomed = zoomed.filter(in_tree);
+    (drawn.map(|drawn| ViewTree::of(&drawn, pane)), zoomed)
 }
 
 /// Whether a zoomed region is drawn as the one pane filling it, or kept as its whole tree.

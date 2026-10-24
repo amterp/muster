@@ -717,20 +717,11 @@ fn set_split_ratio(window: WindowId, set: proto::SetSplitRatio) -> Response {
     let Some(daemon) = holder_of(&tab, &set.daemon_id) else {
         return no_such_tab(&tab, "resized");
     };
-    relayed(submit(
-        window,
-        &daemon,
-        &BackendIntent::SetSplitRatio {
-            tab,
-            path: set
-                .path
-                .into_iter()
-                .map(|second| if second { Branch::Second } else { Branch::First })
-                .collect(),
-            ratio: set.ratio,
-        },
-        Keyboard::Follows,
-    ))
+    let path =
+        set.path.into_iter().map(|second| if second { Branch::Second } else { Branch::First });
+    relayed(
+        session::set_split_ratio(window, &daemon, &tab, path.collect(), set.ratio).map(made_or_ok),
+    )
 }
 
 /// Evens out the panes around one, so that nothing has to work out a ratio.
@@ -2133,6 +2124,7 @@ fn laid_out(now: &session::WindowNow) -> (Vec<proto::TabLayout>, Vec<proto::Pane
                 places: places(view),
                 tree: described.tree,
                 zoomed_pane_id: described.zoomed_pane_id,
+                keyboard_pane_id: described.keyboard_pane_id,
             }
         })
         .collect();

@@ -15,6 +15,7 @@ use muster_core::composition::{
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::spanning;
 use serde_json::{Value, json};
 
 #[test]
@@ -76,6 +77,23 @@ fn composition_conformance() {
                 given.get("tree").and_then(Value::as_bool).filter(|asked| *asked).map(|_| {
                     let view = view_of(&composition, given, &worlds, &current, &sizes);
                     view.tree.map_or(Value::Null, |tree| json!(tree.to_string()))
+                }),
+            ),
+            // Only where a case asks: what the copies of the tab on screen merge to, with every
+            // machine writable, which is the tree a window's writes hold. It can name panes the
+            // drawn `tree` leaves out, those on a machine no part this window holds runs.
+            (
+                "merged",
+                given.get("merged").and_then(Value::as_bool).filter(|asked| *asked).map(|_| {
+                    let mirror = |daemon: &DaemonId| worlds.get(current.get(daemon)?);
+                    composition
+                        .showing()
+                        .and_then(|tab| composition.tab(tab))
+                        .and_then(|tab| {
+                            let (parts, settled) = spanning::parts_of(tab, mirror, |_| true);
+                            spanning::merge(&parts, &settled)
+                        })
+                        .map_or(Value::Null, |merged| json!(merged.tree.to_string()))
                 }),
             ),
             // Only where a case names a tab: how that tab is arranged whether or not it is on
@@ -162,7 +180,7 @@ fn act(
         "letGo" => composition.let_go(&TabId::new(text(step, "tab"))),
         // The one drag Muster settles for itself: no daemon knows the other one exists, so
         // nothing upstream can say how a window divides between them.
-        "setBoundary" => composition.set_boundary(region(step)?, ratio(step)),
+        "setColumn" => composition.set_column(region(step)?, ratio(step)),
         // Where a machine joining a tab goes when the split that brought it named a side.
         "placeRegion" => {
             let beside = text(step, "beside");

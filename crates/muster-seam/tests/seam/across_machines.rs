@@ -1771,6 +1771,67 @@ fn a_tab_grouped_before_spanning_trees_is_not_written_to() {
     assert_eq!(spanning_copy(&machines.devenv), Some(("X".to_string(), 0)));
 }
 
+/// A tab whose machines are all too old to hold a spanning tree stays its parts side by side, as
+/// it was drawn before MIP-8, and a divider the shell names in that tree reaches what it divides:
+/// the line between the machines is the window's own region weights, and a line inside the
+/// laptop's part is the laptop's own divider (MIP-8, section 9).
+#[test]
+fn a_divider_in_a_tab_whose_machines_cannot_hold_its_tree_moves_what_it_divides() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::treat_as_before_spanning("laptop");
+    muster::testing::treat_as_before_spanning("devenv");
+    let machines = a_tab_spanning_two_machines(&["A", "B"], ("", 0), ("", 0));
+
+    assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
+        tab_id: SPANNING_TAB.to_string(),
+        path: Vec::new(),
+        ratio: 0.25,
+        ..SetSplitRatio::default()
+    })));
+    until(
+        "the line between the machines to move",
+        || drawn_root_ratio() == Some(0.25),
+        || format!("the tab is drawn split at {:?}", drawn_root_ratio()),
+    );
+
+    // Whichever side the laptop's part was reconciled on, the side holding a split is it.
+    let laptop_first = matches!(
+        drawn_root().and_then(|root| root.first?.node),
+        Some(muster::proto::view_tree::Node::Split(_))
+    );
+    assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
+        tab_id: SPANNING_TAB.to_string(),
+        path: vec![!laptop_first],
+        ratio: 0.75,
+        ..SetSplitRatio::default()
+    })));
+    until(
+        "the laptop's own divider to move",
+        || spanning_copy(&machines.laptop) == Some(("[A/B 0.75]".to_string(), 0)),
+        || format!("the laptop holds {:?}", spanning_copy(&machines.laptop)),
+    );
+    assert_eq!(spanning_copy(&machines.devenv), Some(("X".to_string(), 0)));
+    assert_eq!(drawn_root_ratio(), Some(0.25), "the line between the machines moved back");
+}
+
+/// The split at the root of the spanning tab's tree, as the window draws it.
+fn drawn_root() -> Option<muster::proto::ViewTreeSplit> {
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow { layout: true })).payload
+    else {
+        return None;
+    };
+    let layout = window.layouts.into_iter().find(|layout| layout.tab_id == SPANNING_TAB)?;
+    match layout.tree?.node? {
+        muster::proto::view_tree::Node::Split(split) => Some(*split),
+        muster::proto::view_tree::Node::Pane(_) => None,
+    }
+}
+
+fn drawn_root_ratio() -> Option<f32> {
+    drawn_root().map(|root| root.ratio)
+}
+
 /// Once a tab's copies hold each other's panes, a daemon refuses a resize, zoom, swap or divider
 /// asked of it alone, so the window works each one out on the whole tree and writes it to both
 /// copies, one generation up (MIP-8, section 3). A divider here is named by the turns down the

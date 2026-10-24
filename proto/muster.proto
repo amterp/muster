@@ -1787,6 +1787,9 @@ message TabLayout {
   // The pane filling the tab while it is zoomed, which is the pane the keyboard is on there.
   // Empty when the tab is not zoomed.
   string zoomed_pane_id = 6;
+
+  // The pane the keyboard feeds while this tab is on screen.
+  string keyboard_pane_id = 7;
 }
 
 // A pane's size in cells: the size its program last saw. For a pane on screen that is what it
@@ -2847,6 +2850,29 @@ message ViewChanged {
   // The pane filling the tab while it is zoomed, which is the pane the keyboard is on there.
   // Empty when the tab is not zoomed.
   string zoomed_pane_id = 5;
+
+  // The pane Muster's keyboard feeds. Empty when none does, which is what a window with no
+  // daemon behind it looks like.
+  string keyboard_pane_id = 6;
+
+  // Every machine holding a part of the tab on screen, with where its panes' bridges dial: the
+  // daemon a leaf of `tree` names is one of these.
+  repeated ViewMachine machines = 7;
+}
+
+// A machine a tab's panes run on, as this window's bridges reach it.
+message ViewMachine {
+  string daemon_id = 1;
+
+  // The socket a pane's bridge dials to draw it: the daemon's own, or for a daemon on another
+  // machine the local end of the ssh forward to it. Relayed onto the bridge's command line and
+  // never interpreted. Empty for a daemon this window has not reached.
+  string daemon_socket = 2;
+
+  // Whether the daemon is on another machine. The only difference the shell notices between
+  // local and remote, and it only passes it on: a remote bridge asks for a window of
+  // unacknowledged output sized for the link.
+  bool remote = 3;
 }
 
 // A tab's tree over every machine it spans: a leaf names the machine running its pane.

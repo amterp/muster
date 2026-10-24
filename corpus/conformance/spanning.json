@@ -401,6 +401,92 @@
           "devenv 2<-1 columns(rows(~a@laptop, ~b@laptop@0.5), x@0.6666667)"
         ]
       }
+    },
+    {
+      "name": "a window draws only the panes it can reach",
+      "why": "A window attached only to the devenv holds no part on the laptop, so it has no frames to draw where the laptop's panes go. It draws the devenv's panes in the tab's place and leaves the laptop's out, as a window opened with a machine down leaves that machine's region out today, while every tree it writes keeps the laptop's leaves (MIP-8, sections 7 and 9). The split that held the laptop's pane on one side gives way to its other side.",
+      "given": {
+        "parts": [
+          { "daemon": "devenv", "copy": "[~a@laptop|[x/y 0.50] 0.50]", "generation": 3, "holds": ["x", "y"] }
+        ],
+        "settled": { "devenv": true },
+        "drawn": true
+      },
+      "expect": {
+        "drawn": "rows(x@devenv, y@devenv@0.5)",
+        "tree": "columns(a@laptop, rows(x@devenv, y@devenv@0.5)@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "a divider is named by the turns down the tree the window drew",
+      "why": "The shell names a divider by the way down the tree it drew, which leaves out the laptop's pane here, so the root of what it drew is the devenv's split. The window finds that split in the whole tree, past the split it did not draw, and moves it there, keeping the laptop's leaf where it was.",
+      "given": {
+        "parts": [
+          { "daemon": "devenv", "copy": "[~a@laptop|[x/y 0.50] 0.50]", "generation": 3, "holds": ["x", "y"] }
+        ],
+        "settled": { "devenv": true },
+        "change": "ratio - 0.25"
+      },
+      "expect": {
+        "tree": "columns(a@laptop, rows(x@devenv, y@devenv@0.25)@0.5)",
+        "zoomed": null,
+        "writes": ["devenv 4<-3 columns(~a@laptop, rows(x, y@0.25)@0.5)"]
+      }
+    },
+    {
+      "name": "a tab no window has written keeps the zoom its first part holds",
+      "why": "Each machine recorded a zoom on its own part before a tab had one tree. The tree takes the first zoomed part's, in the order its regions sit, so a zoomed tab is still zoomed when it is first written as one tree.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "zoomed": "b", "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "[x|y 0.50]", "zoomed": "y", "holds": ["x", "y"] }
+        ],
+        "settled": { "laptop": true, "devenv": true }
+      },
+      "expect": {
+        "tree": "columns(columns(a@laptop, b@laptop@0.5), columns(x@devenv, y@devenv@0.5)@0.5)",
+        "zoomed": "b",
+        "writes": []
+      }
+    },
+    {
+      "name": "in a tab drawn side by side, a divider on the line down the right is a column between parts",
+      "why": "A tab whose machines are all too old to hold a spanning tree is drawn as its parts side by side and stays that way, its widths the window's own (MIP-8, section 9). The splits taking the second side from the root are the lines between one part and the parts after it, so the root's is the line on the laptop's right.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "x", "holds": ["x"] },
+          { "daemon": "gpu", "copy": "g", "holds": ["g"] }
+        ],
+        "divider": "second"
+      },
+      "expect": { "divider": "column devenv" }
+    },
+    {
+      "name": "in a tab drawn side by side, a divider inside a part is that part's own",
+      "why": "A turn to the first side leaves the line between the parts and enters one part, so the rest of the way is a path in that part's own tree, which is what its daemon is asked to move.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "x", "holds": ["x"] }
+        ],
+        "divider": "first"
+      },
+      "expect": { "divider": "within laptop -" }
+    },
+    {
+      "name": "in a tab drawn side by side, a path to a pane names no divider",
+      "why": "The devenv's part is one pane, so the way down to it ends at no split, and there is nothing to move.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|b 0.50]", "holds": ["a", "b"] },
+          { "daemon": "devenv", "copy": "x", "holds": ["x"] }
+        ],
+        "divider": "second"
+      },
+      "expect": { "divider": null }
     }
   ]
 }

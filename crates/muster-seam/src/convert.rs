@@ -104,6 +104,20 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
             .as_ref()
             .map(|zoomed| zoomed.pane.to_string())
             .unwrap_or_default(),
+        keyboard_pane_id: view
+            .keyboard
+            .as_ref()
+            .map(|keyboard| keyboard.pane.to_string())
+            .unwrap_or_default(),
+        machines: view
+            .machines
+            .iter()
+            .map(|machine| proto::ViewMachine {
+                daemon_id: machine.daemon.to_string(),
+                daemon_socket: machine.socket.clone().unwrap_or_default(),
+                remote: machine.remote,
+            })
+            .collect(),
     }
 }
 
