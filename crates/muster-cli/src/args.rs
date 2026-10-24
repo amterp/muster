@@ -1161,32 +1161,42 @@ fn closing(name: Option<&str>, window: Option<&str>) -> Result<Option<String>, F
 /// the daemon - rather than ignored: a flag that silently does nothing is one nobody finds out
 /// did nothing.
 fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
-    Ok(match asking {
-        Asking::Send(request) => Asking::Send(Box::new(request.for_window(window))),
+    // What each refusal says instead is what the command does without the flag. Reopening the
+    // window is offered only where that is the command: open or closed, reopening it would not
+    // make any of the others take --window.
+    let instead = match asking {
+        Asking::Send(request) => return Ok(Asking::Send(Box::new(request.for_window(window)))),
         Asking::SendFrom { request, from } => {
-            Asking::SendFrom { request: Box::new(request.for_window(window)), from }
+            return Ok(Asking::SendFrom { request: Box::new(request.for_window(window)), from });
         }
         Asking::Watch { request, timeout } => {
-            Asking::Watch { request: Box::new(request.for_window(window)), timeout }
+            return Ok(Asking::Watch { request: Box::new(request.for_window(window)), timeout });
         }
-        Asking::WatchLayout { watch, read } => Asking::WatchLayout {
-            watch: Box::new(watch.for_window(window)),
-            read: Box::new(read.for_window(window)),
-        },
-        Asking::Print(_)
-        | Asking::Survey { .. }
-        | Asking::MakeWindow(_)
-        | Asking::ReopenWindow(_)
-        | Asking::CloseWindow(_)
-        | Asking::Message(_)
-        | Asking::Install { .. } => {
-            return Err(Failure::Refused(format!(
-                "--window {window} names the window a command is about, and this command is not \
-                 about one window, so nothing was done. `muster window reopen {window}` brings a \
-                 closed window back."
-            )));
+        Asking::WatchLayout { watch, read } => {
+            return Ok(Asking::WatchLayout {
+                watch: Box::new(watch.for_window(window)),
+                read: Box::new(read.for_window(window)),
+            });
         }
-    })
+        Asking::ReopenWindow(_) => format!(
+            "`muster window reopen` takes the window as its argument: `muster window reopen \
+             {window}`"
+        ),
+        Asking::Message(_) => {
+            "`muster msg` reaches an agent by its pane on every machine, whichever window shows it"
+                .to_string()
+        }
+        Asking::Survey { .. } => "`muster window list` lists every window".to_string(),
+        Asking::MakeWindow(_) => {
+            "`muster window new` opens a window rather than acting in one".to_string()
+        }
+        Asking::Print(_) | Asking::CloseWindow(_) | Asking::Install { .. } => {
+            "this command is not about a window".to_string()
+        }
+    };
+    Err(Failure::Refused(format!(
+        "--window {window} names the window a command is about, so nothing was done: {instead}."
+    )))
 }
 
 #[expect(clippy::too_many_lines, reason = "one arm per pane verb, each a request")]

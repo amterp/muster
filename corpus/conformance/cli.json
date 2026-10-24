@@ -2614,7 +2614,40 @@
         ]
       },
       "expect": {
-        "refused": "--window window-2 names the window a command is about, and this command is not about one window, so nothing was done. `muster window reopen window-2` brings a closed window back."
+        "refused": "--window window-2 names the window a command is about, so nothing was done: `muster window list` lists every window."
+      }
+    },
+    {
+      "name": "--window on a message says a message needs no window",
+      "why": "A message reaches its pane on any machine whichever window shows it. The refusal used to say how to reopen a closed window, which sent somebody with the window open looking for the wrong fix (kan a_2mSywBHkP).",
+      "given": {
+        "argv": [
+          "--window",
+          "window-6",
+          "msg",
+          "post",
+          "--to",
+          "otter",
+          "hello"
+        ]
+      },
+      "expect": {
+        "refused": "--window window-6 names the window a command is about, so nothing was done: `muster msg` reaches an agent by its pane on every machine, whichever window shows it."
+      }
+    },
+    {
+      "name": "--window on window reopen says to name the window as its argument",
+      "why": "The one command where reopening is what was meant: the window it names is closed, and reopen takes it as an argument rather than through the flag.",
+      "given": {
+        "argv": [
+          "--window",
+          "window-2",
+          "window",
+          "reopen"
+        ]
+      },
+      "expect": {
+        "refused": "--window window-2 names the window a command is about, so nothing was done: `muster window reopen` takes the window as its argument: `muster window reopen window-2`."
       }
     },
     {
