@@ -349,32 +349,27 @@ struct SidebarTests {
     #expect(rows.map(\.kind) == [.tab(press: 1), .pane(tabPress: 0, press: 0)])
   }
 
-  @Test("a row can only be dropped on a pane row belonging to the same daemon")
-  func aDropStaysOnOneMachine() throws {
-    // The case worth a test rather than a glance: two daemons hand out the same pane ids, so a
-    // rule comparing ids alone calls a cross-machine drop legal and the core then resolves the
-    // dragged pane against the wrong mirror and moves a different agent.
+  @Test("a row can be dropped on a pane row on either machine, and on a caption")
+  func aDropMayCrossMachines() throws {
     let roster = roster([
       tab(
         "local", "w1:t1", place: 1, label: "here", onScreen: true,
         panes: [pane("local", "w1:p1", place: 1), pane("local", "w1:p2", place: 2)]),
       tab(
-        "devenv", "w1:t1", place: 2, label: "there",
-        panes: [pane("devenv", "w1:p1", place: 3)]),
+        "devenv", "w2:t1", place: 2, label: "there",
+        panes: [pane("devenv", "w2:p1", place: 3)]),
     ])
     let rows = SidebarModel.rows(roster: roster, agents: [:])
     let dragged = PaneKey(daemon: "local", pane: "w1:p1")
 
     let sameDaemon = try #require(rows.first { $0.pane == PaneKey(daemon: "local", pane: "w1:p2") })
     let otherDaemon = try #require(
-      rows.first { $0.pane == PaneKey(daemon: "devenv", pane: "w1:p1") })
+      rows.first { $0.pane == PaneKey(daemon: "devenv", pane: "w2:p1") })
     let caption = try #require(rows.first { $0.isTab })
 
     #expect(SidebarModel.canArrange(dragged, onto: sameDaemon))
-    // Same pane id, different machine. This is the one a careless rule gets wrong.
-    #expect(!SidebarModel.canArrange(dragged, onto: otherDaemon))
-    // A caption is a place a pane can go, and the one destination that may cross machines: it
-    // names a tab rather than a pane, and a tab is Muster's grouping rather than a daemon's.
+    // Beside another machine's pane is a place in a tab's tree like any other (MIP-8).
+    #expect(SidebarModel.canArrange(dragged, onto: otherDaemon))
     #expect(SidebarModel.canArrange(dragged, onto: caption))
   }
 

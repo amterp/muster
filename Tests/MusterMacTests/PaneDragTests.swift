@@ -53,13 +53,13 @@ struct PaneDragTests {
     #expect(PaneDrop.overlay(for: .down, in: bounds) == CGRect(x: 0, y: 0, width: 400, height: 100))
   }
 
-  /// A pane is a process its daemon owns, and another window is another process: neither drop
-  /// has a move behind it, so neither lights anything.
-  @Test("a pane drops onto another pane on its machine, in its window, and nowhere else")
+  /// Another window is another process, so a drop from one has no move behind it. Another
+  /// machine's pane is a place in the same tab's tree, so a drop onto one does.
+  @Test("a pane drops onto another pane in its window, on either machine, and nowhere else")
   func whatIsAccepted() {
     #expect(PaneDrop.accepts(laptop, onto: neighbor, fromThisWindow: true))
+    #expect(PaneDrop.accepts(laptop, onto: devenv, fromThisWindow: true))
     #expect(!PaneDrop.accepts(laptop, onto: laptop, fromThisWindow: true))
-    #expect(!PaneDrop.accepts(laptop, onto: devenv, fromThisWindow: true))
     #expect(!PaneDrop.accepts(laptop, onto: neighbor, fromThisWindow: false))
   }
 
@@ -142,6 +142,27 @@ struct PaneDragTests {
     #expect(sent.first?.arrangePane.side == "down")
   }
 
+  @Test("a pane from another machine dropped on an edge is one request naming its machine")
+  func aDropAcrossMachines() {
+    let recorder = recorder()
+    let chrome = chrome(width: 400, height: 300)
+    chrome.onPaneDropped = { dragged, side in
+      Core.arrange(pane: dragged, onto: neighbor, side: side)
+    }
+    let mark = recorder.requests.count
+
+    #expect(chrome.drop(devenv, at: NSPoint(x: 200, y: 10), fromThisWindow: true))
+
+    let sent = recorder.sent(since: mark) {
+      if case .arrangePane = $0.payload { true } else { false }
+    }
+    #expect(sent.count == 1)
+    #expect(sent.first?.arrangePane.daemonID == "devenv")
+    #expect(sent.first?.arrangePane.paneID == "p9")
+    #expect(sent.first?.arrangePane.ontoPaneID == "p2")
+    #expect(sent.first?.arrangePane.side == "down")
+  }
+
   @Test("a drop the pane may not take sends nothing")
   func aRefusedDrop() {
     let recorder = recorder()
@@ -151,7 +172,6 @@ struct PaneDragTests {
     }
     let mark = recorder.requests.count
 
-    #expect(!chrome.drop(devenv, at: NSPoint(x: 200, y: 10), fromThisWindow: true))
     #expect(!chrome.drop(neighbor, at: NSPoint(x: 200, y: 10), fromThisWindow: true))
     #expect(!chrome.drop(laptop, at: NSPoint(x: 200, y: 10), fromThisWindow: false))
 

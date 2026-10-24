@@ -824,18 +824,11 @@ public enum SidebarModel {
   /// Whether dragging one pane onto a row is a gesture Muster can carry out.
   ///
   /// Here rather than in the view so that the rule is testable: a decision inside
-  /// `validateDrop` is a decision no test can reach, and this one has a case that is easy to
-  /// get wrong and impossible to see - two daemons hand out the same pane ids, so a rule
-  /// comparing ids alone would call a cross-machine drop legal.
+  /// `validateDrop` is a decision no test can reach.
   ///
-  /// **A drop on a pane row must be on the same machine.** A pane is a PTY its daemon owns, so
-  /// moving one to another machine would mean killing a process on one host and starting a
-  /// different one on another, which is not what dragging a row looks like it does.
-  ///
-  /// **A drop on a tab caption may cross machines**, and is how a tab comes to hold a laptop
-  /// pane beside a devenv one (MIP-2, stage four). The pane stays where it is; what changes is
-  /// which tab it belongs to, and a tab is a grouping Muster made rather than anything a daemon
-  /// holds. So the two destinations differ in exactly the way the requests behind them do.
+  /// **A drop on a pane row or a tab caption may cross machines.** The pane stays a process on
+  /// its own machine; what changes is where it sits, beside the row's pane or in the caption's
+  /// tab, and a tab is one tree over every machine it spans (MIP-8, section 6).
   ///
   /// A machine's row is not a place a pane can go: it names no tab, and dropping onto a machine
   /// that already holds the pane would mean nothing at all.
@@ -848,8 +841,7 @@ public enum SidebarModel {
     if row.isTab {
       return true
     }
-    guard let target = row.pane, !row.hidden else { return false }
-    return target.daemon == pane.daemon
+    return row.pane != nil && !row.hidden
   }
 
   /// Whether a tab dragged from somewhere may be dropped on this window's list.

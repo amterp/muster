@@ -59,14 +59,14 @@ public enum PaneDrop {
 
   /// Whether a pane may be dropped on this one.
   ///
-  /// Not on itself, which would be a move that goes nowhere. Not from another machine: a pane
-  /// is a process its daemon owns, so it can sit beside another machine's panes only as that
-  /// machine's part of a tab, which is what dropping it on the tab's caption in the agent list
-  /// does. And not from another window, which is another process holding its own panes.
+  /// Not on itself, which would be a move that goes nowhere, and not from another window, which
+  /// is another process holding its own panes. From another machine, yes: the pane stays a
+  /// process on its own machine, and what the drop changes is where it sits in the tab's tree,
+  /// which spans machines (MIP-8, section 6).
   public static func accepts(_ dragged: PaneKey, onto target: PaneKey, fromThisWindow: Bool)
     -> Bool
   {
-    fromThisWindow && dragged != target && dragged.daemon == target.daemon
+    fromThisWindow && dragged != target
   }
 
   /// The grab area, as Ghostty sizes it.
