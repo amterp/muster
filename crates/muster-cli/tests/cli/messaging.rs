@@ -441,12 +441,15 @@ fn a_post_to_agents_in_panes_says_when_each_is_rung() {
         assert_eq!(posted[none], serde_json::json!([]), "{none}: {posted}");
     }
 
+    // Woken already, an idle agent is rung again, since nothing on its way will make it read;
+    // one at work, or with no agent in its pane yet, is left to the wake it has.
     assert_eq!(
         ok(&muster(&daemon, &[&to_all[..], &["more"]].concat())),
         format!(
             "posted #8 to {pair}\n\
-             woke: {p1} (p1, idle, already woken), {p2} (p2, working, already woken), \
-             {p3} (p3, idle, already woken), {p4} (p4, already woken)"
+             woke: {p1} (p1, idle), {p2} (p2, working, already woken), {p4} (p4, already woken)\n\
+             rung once its prompt is empty: {p3} (p3, idle, its prompt holds something typed \
+             and not sent)"
         )
     );
 }
