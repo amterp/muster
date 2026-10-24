@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in dcd2d1f3. A join to a group kept elsewhere checks the rename without changing anything, and renames only once the home answers Joined; took_over now comes from the rename instead of always false.",
+      "created_at_millis": 1792858310827,
+      "id": "c_2nTDtyH2k"
+    }
+  ],
   "created_at_millis": 1791248651425,
   "creator": "Alexander Terp",
   "description": "A join routed to another machine's group renames the caller locally before the home answers, so a refusal from the home leaves the caller's name switched. A join to a group kept here checks the policy first since 2026-10-05. Fixing the routed case means asking the home before renaming; a replica's copy of the policy can be stale, so it cannot decide alone.",
   "id": "a_2cZpJ595h",
-  "position": "Zq",
+  "position": "Yvg",
   "title": "A refused join to a group kept elsewhere still renames the caller",
   "type": "bug",
-  "updated_at_millis": 1792855654676,
+  "updated_at_millis": 1792858310919,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791248651425},
-    {"field":"column","value":"in-progress","at":1792855654676}
+    {"field":"column","value":"in-progress","at":1792855654676},
+    {"field":"column","value":"done","at":1792858310919}
   ]
 }

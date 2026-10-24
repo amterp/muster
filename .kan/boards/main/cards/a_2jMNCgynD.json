@@ -24,6 +24,12 @@
       "body": "Three more from tooling feedback, Claude Code panes on the Mac:\n- 2026-10-16, 0.16.0: an urgent post to a Claude Code worker at work printed `rung once its prompt is empty: \u003cpane\u003e (working)` rather than ringing the running turn, and the wake reached the worker about 13 minutes later. Claude Code's 'Heads up' tip box showed above its prompt throughout.\n- 2026-10-17 18:58 and 2026-10-18 13:45, 0.16.1-dev, after a_2hIfuUkdQ was done: a worker's post arrived while the integrator was mid-turn. The integrator's turn then ended, and the wake rang 15 and 3 minutes later, after the integrator had read the message by hand, so it also rang for a message already read.",
       "created_at_millis": 1792627656290,
       "id": "c_2luRWXgks"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: 0f82dc00 makes the next sighting record what the doorbell judged: msg.group.stalled (warn, once per stall) now carries the deciding rule, the shape of the last rows and of the title (letters as a, digits as #, no text), and still_ms, how long the screen had been unchanged. msg.ring.waits and msg.ring.covered gain the title's shape. No cause found in the code; keep open until a sighting under this build.",
+      "created_at_millis": 1792857627061,
+      "id": "c_2nSw78OfG"
     }
   ],
   "created_at_millis": 1792250932025,
@@ -33,7 +39,7 @@
   "position": "b12",
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1792627656290,
+  "updated_at_millis": 1792857627061,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025}
   ]

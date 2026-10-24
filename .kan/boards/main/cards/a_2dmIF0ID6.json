@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 2e6454be. A stall in a group kept on another machine is posted there through the group's home with the new PeerCall.muster (protocol 1.8); the home checks the group and every addressee, then posts as @muster and replicates. A home older than 1.8 is not asked; the stall stays in the log. Also fixed: a replica's @muster@\u003chome\u003e notice counted as a member's unread message.",
+      "created_at_millis": 1792857626655,
+      "id": "c_2nSw6TIpF"
+    }
+  ],
   "created_at_millis": 1791426126395,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-07 with group-stall detection. When a member's group stalls, the daemon holding that member posts as @muster to whoever is waiting - but only in a group kept on this machine. A post forwarded to a group kept on another machine would have to pass that machine's name check, policy and unread guard, so for those groups the stall is only logged (msg.group.stalled, msg.group.untold). Laptop and devenv groups are the common case for councils, so this is the part of the unlock that matters most across machines.",
   "id": "a_2dmIF0ID6",
-  "position": "Zr",
+  "position": "Yvj",
   "title": "@muster cannot tell posters in a group kept on another machine",
   "type": "enhancement",
-  "updated_at_millis": 1792855546328,
+  "updated_at_millis": 1792857626792,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791426126395},
-    {"field":"column","value":"in-progress","at":1792855546328}
+    {"field":"column","value":"in-progress","at":1792855546328},
+    {"field":"column","value":"done","at":1792857626792}
   ]
 }

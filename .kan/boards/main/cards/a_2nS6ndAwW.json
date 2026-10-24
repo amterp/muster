@@ -5,16 +5,31 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: hit again in the full gate on 8042bdfb. Fix in progress.",
+      "created_at_millis": 1792856237753,
+      "id": "c_2nSLyJVxi"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in c17ebbea. A post that leaves its wake to one a doorbell look has in hand reports that wake's held reason. A wake in hand for its very first look can still print woke; closing that would make the post wait for the look.",
+      "created_at_millis": 1792857626872,
+      "id": "c_2nSw6pXxT"
+    }
+  ],
   "created_at_millis": 1792855654579,
   "creator": "Alexander Terp",
   "description": "Found 2026-10-24 under load: messaging::a_post_to_agents_in_panes_says_when_each_is_rung failed 2 of 12 CLI suite runs, its #8 saying 'woke: \u003cp3\u003e (p3, idle)' where p3's wake is held because its prompt holds a draft. Likely the hold guard added with b76817b6, which leaves a new wake to one in a doorbell look's hands and reports it as woken. Delivery is right; what the post prints is not. Being fixed with the in-hand case staged in a test.",
   "id": "a_2nS6ndAwW",
-  "position": "Zw",
+  "position": "Yvi",
   "title": "A second post can say woke for a wake still held behind a draft",
   "type": "bug",
-  "updated_at_millis": 1792855654579,
+  "updated_at_millis": 1792857626983,
   "history": [
-    {"field":"column","value":"in-progress","at":1792855654579}
+    {"field":"column","value":"in-progress","at":1792855654579},
+    {"field":"column","value":"done","at":1792857626983}
   ]
 }

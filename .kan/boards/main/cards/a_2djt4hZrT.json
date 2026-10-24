@@ -5,17 +5,32 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 10956827. A msg request whose sender walk ends at a harness's shared server is refused with the cause and the remedy, as a report is, and logged once per server as msg.request.shared_server. A nested agent's msg requests still act as the pane (a_2nS-nested card).",
+      "created_at_millis": 1792857626382,
+      "id": "c_2nSw62V6O"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "The nested-agent card mentioned above is a_2nSw5pbpW.",
+      "created_at_millis": 1792857636703,
+      "id": "c_2nSwMgIFu"
+    }
+  ],
   "created_at_millis": 1791420392519,
   "creator": "Alexander Terp",
   "description": "Found 2026-10-07 while fixing GitHub issue #1 part 1. Codex 0.160 runs every session's commands and hooks in one shared `codex app-server --managed-daemon` with the first session's MUSTER_PANE (docs/observations/codex-0.160.0.md). Reports through it are now refused with the cause and the fix, but `muster msg` verbs are not: the daemon does not look at who sent a msg request, so a post or read from pane B's Codex acts as pane A (the issue's \"@human is not in \u003clive-pane\u003e+\u003cgroup\u003e\"). The report attribution walk (crates/muster-daemon/src/attribution.rs, which now stops at a manifest's [server]) could be reused for msg requests. `muster harness install codex` now turns daemon_auto_start off, so this bites only Codex installs set up another way.",
   "id": "a_2djt4hZrT",
-  "position": "Zs",
+  "position": "Yvk",
   "title": "📨 muster msg run under Codex's shared app-server acts as the first session's pane",
   "type": "bug",
-  "updated_at_millis": 1792855546216,
+  "updated_at_millis": 1792857636703,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791420392519},
-    {"field":"column","value":"in-progress","at":1792855546216}
+    {"field":"column","value":"in-progress","at":1792855546216},
+    {"field":"column","value":"done","at":1792857626570}
   ]
 }

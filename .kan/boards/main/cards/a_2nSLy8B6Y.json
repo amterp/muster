@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "typing-a-send-naming",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792856237685,
+  "creator": "Alexander Terp",
+  "description": "Seen once 2026-10-24 in a full ./dev on main (8042bdfb) on the Mac mini at load ~14: the raw reader's file held \"\" after 20 s, so not even the second send's 'after' arrived. Passed 2 of 2 alone. The test is old (cf222f95), but the writer changed today: c784999a marks a keyed Return or Esc before writing it and nudges the reader, and this test's first send has enter: true with an unknown key. Check that path for a stall under contention before reading it as starvation.",
+  "id": "a_2nSLy8B6Y",
+  "position": "b1P",
+  "title": "🎲 typing::a_send_naming_a_key_nobody_knows_writes_nothing_of_itself saw nothing at all for 20 s",
+  "type": "bug",
+  "updated_at_millis": 1792856237685,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792856237685}
+  ]
+}

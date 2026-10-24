@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "daemon-tests-open-a",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792857753933,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-24. following() is defined twice (linked.rs, doorbell.rs), and the same request is written out inline in messaging.rs (five times), claude_code_doorbell.rs and streams.rs. One support::following would replace them.",
+  "id": "a_2nSzPhvkl",
+  "position": "b1i",
+  "title": "Daemon tests open a log-following connection by hand in many places",
+  "type": "chore",
+  "updated_at_millis": 1792857753933,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792857753933}
+  ]
+}
