@@ -18,6 +18,12 @@
       "body": "2026-10-23 re-triage: 1d25a6a4 is in v0.18.0, but this Mac mini still runs Muster 0.16.2-dev, built 2026-10-18 before the fix. The by-hand check waits for an upgrade to 0.18.0 or a tools/install-main build.",
       "created_at_millis": 1792799187384,
       "id": "c_2n4PpasxC"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: this Mac mini now runs 0.18.1-dev (main at 917c09ed, installed with tools/install-main), which carries the fix. The by-hand check can be done now.",
+      "created_at_millis": 1792861375327,
+      "id": "c_2nUVcinfn"
     }
   ],
   "created_at_millis": 1792629852506,
@@ -27,7 +33,7 @@
   "position": "Zv",
   "title": "⌘F does not reliably put the keyboard in the find field, and does not close the bar",
   "type": "bug",
-  "updated_at_millis": 1792799187384,
+  "updated_at_millis": 1792861375327,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852506},
     {"field":"column","value":"in-progress","at":1792632580891}

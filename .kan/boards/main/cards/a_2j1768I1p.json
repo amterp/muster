@@ -24,6 +24,12 @@
       "body": "2026-10-23 re-triage: 73a1352b is in v0.18.0, but this Mac mini still runs Muster 0.16.2-dev, built 2026-10-18 before the fix. The by-hand check waits for an upgrade to 0.18.0 or a tools/install-main build.",
       "created_at_millis": 1792799187460,
       "id": "c_2n4PpiJbp"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: this Mac mini now runs 0.18.1-dev (main at 917c09ed, installed with tools/install-main), which carries the fix. The by-hand check can be done now.",
+      "created_at_millis": 1792861375396,
+      "id": "c_2nUVcpl5S"
     }
   ],
   "created_at_millis": 1792200264041,
@@ -33,7 +39,7 @@
   "position": "a3z",
   "title": "Ctrl+Return does not reach Claude Code in a pane",
   "type": "bug",
-  "updated_at_millis": 1792799187460,
+  "updated_at_millis": 1792861375396,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792200264041},
     {"field":"column","value":"in-progress","at":1792208577265},
