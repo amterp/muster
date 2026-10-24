@@ -353,8 +353,10 @@ post reaches it at work.
 
 That message wakes whoever it is for as any message does, so a director that ended its turn to
 wait hears why no answer is coming. `@muster` is never a member and cannot be addressed, and what
-it posts never counts as a stall itself. It posts only in a group kept on its own machine; a stall
-in a group kept elsewhere is in the log alone. Members waiting on each other with everything read
+it posts never counts as a stall itself. In a group kept on another machine, the daemon that sees
+the member asks the group's machine to post it there, naming the member as that machine does
+(`otter@devenv`); when that machine cannot be asked, or its daemon is older than this one, the
+stall is in the log alone. Members waiting on each other with everything read
 are not watched, since that is also what a finished group looks like.
 
 **A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An

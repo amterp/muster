@@ -2127,6 +2127,19 @@ message PeerCall {
     // Since 1.3. From a group's home: the group is deleted, so the replica goes, and with it
     // what its members here had read and been woken for. Answered with `applied`.
     Forget forget = 19;
+    // Since 1.8. To a group's home, from a machine where a member of it holds it up: Muster's
+    // notice saying so, posted here as `@muster` and held to no policy and no guard. Answered
+    // with `posted`.
+    Muster muster = 20;
+  }
+
+  // `to` is written as the asker writes it, and `body` in this machine's names. `head` is how
+  // far the asker's replica reaches, so the reply can carry what it lacks.
+  message Muster {
+    string group = 1;
+    repeated string to = 2;
+    string body = 3;
+    uint64 head = 4;
   }
 
   message Forget {

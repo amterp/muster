@@ -61,6 +61,17 @@ impl Peer {
         }
     }
 
+    /// A name as this machine writes it, as the peer writes it: [`Self::inward`] turned around.
+    /// This machine's own participants gain the peer's name for it, the peer's lose theirs, and a
+    /// third machine's are left as this machine writes them.
+    pub fn outward(&self, name: &str) -> String {
+        match split_machine(name) {
+            Some((base, machine)) if machine == self.name => base.to_string(),
+            Some(_) => name.to_string(),
+            None => format!("{name}@{}", self.calls_us),
+        }
+    }
+
     /// A member as the machine it is on said it, in this machine's names: its own, and those of
     /// the groups where messages wait on it and of whoever posted them.
     fn member(&self, member: Member) -> Member {
@@ -211,6 +222,15 @@ pub enum Call {
     Whom {
         name: String,
     },
+    /// Muster's notice in a group kept there, from a machine that found one of its own members
+    /// holding the group up: posted as [`MUSTER`] to `to`, held to no policy and no guard, as the
+    /// home's own notices are. `body` is written in the home's names already.
+    Muster {
+        group: String,
+        to: Vec<String>,
+        body: String,
+        head: u64,
+    },
 }
 
 impl Call {
@@ -233,6 +253,7 @@ impl Call {
                 check_participant(author)?;
                 to.iter().try_for_each(|name| check_addressee(name))
             }
+            Call::Muster { to, .. } => to.iter().try_for_each(|name| check_addressee(name)),
             Call::Find { .. } | Call::Since { .. } | Call::Who { .. } | Call::Whom { .. } => Ok(()),
         }
     }
@@ -244,6 +265,7 @@ impl Call {
             Call::Join { name, was, .. } => std::iter::once(name).chain(was).collect(),
             Call::Leave { name, .. } => vec![name],
             Call::Post { author, to, .. } => std::iter::once(author).chain(to).collect(),
+            Call::Muster { to, .. } => to.iter().collect(),
             Call::Find { .. } | Call::Since { .. } | Call::Who { .. } | Call::Whom { .. } => {
                 Vec::new()
             }
@@ -258,6 +280,7 @@ impl Call {
             | Call::Join { group, .. }
             | Call::Leave { group, .. }
             | Call::Post { group, .. }
+            | Call::Muster { group, .. }
             | Call::Since { group, .. }
             | Call::Who { group } => group,
             Call::Whom { .. } => "",
@@ -693,6 +716,33 @@ impl<S: Store> Messaging<S> {
         Ok(Route::Away(Away { machine, call }))
     }
 
+    /// The call that has the home of `key` post Muster's notice `body` to `to`, members as this
+    /// machine writes them: a stall in a replica, judged here, where its member's pane is.
+    /// Nothing for a group kept here, which [`Messaging::post_as_muster`] posts to. `body` is to
+    /// be written in the home's names.
+    pub fn route_muster(
+        &self,
+        key: &str,
+        to: &[String],
+        body: &str,
+    ) -> Result<Option<Away>, Refusal> {
+        check_body(body)?;
+        let group = self.group(key)?;
+        let Some(machine) = group.home.clone() else { return Ok(None) };
+        if let Some(outside) = to.iter().find(|name| !group.members.contains(*name)) {
+            let (name, group) = (outside.clone(), key.to_string());
+            return Err(Refusal::AddresseeNotInGroup { name, group });
+        }
+        self.reachable(key, &machine)?;
+        let call = Call::Muster {
+            group: base(key),
+            to: to.to_vec(),
+            body: body.to_string(),
+            head: self.head_of(key),
+        };
+        Ok(Some(Away { machine, call }))
+    }
+
     /// What `leave` must ask of other machines before it is answered here: each group kept
     /// elsewhere that it leaves.
     pub fn route_leave(
@@ -860,12 +910,16 @@ impl<S: Store> Messaging<S> {
                 }))
             }
             Reply::Posted { seq, reached, caught } => {
-                let Call::Post { author, .. } = call else { return Err(mismatched(call)) };
+                let author = match call {
+                    Call::Post { author, .. } => author.clone(),
+                    Call::Muster { .. } => MUSTER.to_string(),
+                    _ => return Err(mismatched(call)),
+                };
                 let mut all: Vec<(String, Reach)> =
                     reached.into_iter().map(|(name, reach)| (peer.inward(&name), reach)).collect();
                 all.extend(apply(self, caught));
                 Ok(Settled::Posted(Posted {
-                    author: author.clone(),
+                    author,
                     group: key,
                     seq,
                     reached: all,
@@ -1213,6 +1267,10 @@ impl<S: Store> Messaging<S> {
                 let post = Forwarded { author, group, to, body, urgent, cursor, head };
                 self.post_from(peer, post, presence, now_ms, &mut answered)
             }
+            Call::Muster { group, to, body, head } => {
+                let notice = Noticed { group, to, body, head };
+                self.muster_from(peer, notice, presence, now_ms, &mut answered)
+            }
         };
         answered
     }
@@ -1433,6 +1491,41 @@ impl<S: Store> Messaging<S> {
         }
     }
 
+    /// Posts Muster's notice another machine asked for in a group kept here, to members of it.
+    fn muster_from(
+        &mut self,
+        peer: &Peer,
+        notice: Noticed,
+        presence: &dyn Presence,
+        now_ms: u64,
+        answered: &mut Answered,
+    ) -> Reply {
+        let Noticed { group, to, body, head } = notice;
+        let refused = |refusal| Reply::Refused { refusal, caught: None };
+        if !self.kept_here(&group) {
+            return refused(Refusal::NoSuchGroup { group });
+        }
+        let to: Vec<String> = to.iter().map(|name| peer.inward(name)).collect();
+        if let Some(outside) = to.iter().find(|name| !self.groups[&group].members.contains(*name)) {
+            return refused(Refusal::AddresseeNotInGroup { name: outside.clone(), group });
+        }
+        match self.post_as_muster(&group, to, &body, presence, now_ms) {
+            Ok(posted) => {
+                answered.wakes = posted.wakes;
+                answered.answered = posted.answered;
+                answered.tell = posted.tell;
+                answered.unsaved = posted.unsaved;
+                match self.since(&group, head) {
+                    Ok(caught) => {
+                        Reply::Posted { seq: posted.seq, reached: posted.reached, caught }
+                    }
+                    Err(refusal) => refused(refusal),
+                }
+            }
+            Err(refusal) => refused(refusal),
+        }
+    }
+
     /// This machine's own members of `group` - kept here, or replicated from `peer` - with
     /// what each is doing.
     fn members_here(&self, peer: &Peer, group: &str, presence: &dyn Presence) -> Vec<Member> {
@@ -1514,6 +1607,14 @@ pub fn heard(members: &mut [Member], machine: &str, heard: &[Member]) {
             None => member.liveness = Liveness::Gone,
         }
     }
+}
+
+/// A [`Call::Muster`], as the home takes it.
+struct Noticed {
+    group: String,
+    to: Vec<String>,
+    body: String,
+    head: u64,
 }
 
 struct Forwarded {

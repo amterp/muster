@@ -70,6 +70,12 @@ pub(crate) fn is_human(name: &str) -> bool {
     name == HUMAN || split_machine(name).is_some_and(|(base, _)| base == HUMAN)
 }
 
+/// Whether `name` is Muster: this machine's, or another's as `@muster@machine`, which is how a
+/// replica writes what the group's home posted as Muster.
+pub(crate) fn is_muster(name: &str) -> bool {
+    name == MUSTER || split_machine(name).is_some_and(|(base, _)| base == MUSTER)
+}
+
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).
 pub(crate) fn check_group(name: &str) -> Result<(), Refusal> {
     let parts_fit = name.split('+').all(|part| check_participant(part).is_ok());

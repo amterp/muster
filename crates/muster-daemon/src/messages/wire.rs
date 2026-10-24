@@ -23,6 +23,9 @@ pub(super) fn call_to(call: &Call) -> Called {
         Call::Since { group, after } => Called::Since(peer_call::Since { group, after }),
         Call::Who { group } => Called::Who(peer_call::Who { group }),
         Call::Whom { name } => Called::Whom(peer_call::Whom { name }),
+        Call::Muster { group, to, body, head } => {
+            Called::Muster(peer_call::Muster { group, to, body, head })
+        }
     }
 }
 
@@ -49,6 +52,12 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
         Called::Since(since) => Call::Since { group: since.group, after: since.after },
         Called::Who(who) => Call::Who { group: who.group },
         Called::Whom(whom) => Call::Whom { name: whom.name },
+        Called::Muster(muster) => Call::Muster {
+            group: muster.group,
+            to: muster.to,
+            body: muster.body,
+            head: muster.head,
+        },
         Called::Replicate(_) | Called::Carried(_) | Called::Forget(_) => return None,
     })
 }

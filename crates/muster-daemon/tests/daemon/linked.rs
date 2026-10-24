@@ -859,3 +859,36 @@ fn a_maker_closing_on_the_linked_machine_reaches_the_person_once_linked() {
     assert!(told.said.contains(" closed; its helper "), "{told:?}");
     assert!(told.said.contains("--helpers-of p1"), "{told:?}");
 }
+
+/// A member on the far machine that holds up a group kept on the near one is told of where the
+/// group is kept: the far daemon, which sees the member's pane, has the near one post Muster's
+/// notice, and whoever waits there reads it, with the member named as the near machine names it.
+#[test]
+fn a_stall_on_the_far_machine_is_told_in_a_group_kept_on_the_near_one() {
+    let near = daemon();
+    let far = Daemon::start_detecting_with(&[("MUSTER_DAEMON_STALL_MS", "12000")]);
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut far_control, create("p1", in_new_tab("t1")));
+    far.run_agent("p1");
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+
+    assert_eq!(join(&mut near_control, &named("integrator"), "integrator", "crew"), "crew");
+    let in_p1 = msg_request::Caller { pane: Some("p1".to_string()), ..Default::default() };
+    let asked =
+        Asked::Join(msg_request::Join { name: None, group: Some("crew".to_string()), pull: false });
+    expect(&mut far_control, msg(&in_p1, asked), proto::Outcome::Done);
+    let mut far_log = following(&far);
+    expect(
+        &mut near_control,
+        post(&named("integrator"), Some("crew"), &[], "a brief"),
+        proto::Outcome::Done,
+    );
+
+    far_log.logged_until(r#""event":"msg.group.told""#, Duration::from_mins(1));
+    let (messages, _) = read(&mut near_control, &named("integrator"));
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let told = &messages[0];
+    assert!(told.starts_with("crew @muster: "), "{told}");
+    assert!(told.contains("@far (p1@far) has not read #4, from integrator,"), "{told}");
+}

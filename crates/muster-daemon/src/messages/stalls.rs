@@ -24,13 +24,13 @@ use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Activity, Holding, Presence, Ringable, Via};
+use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Settled, Via};
 
 use super::doorbell::Held;
 use super::makers::{self, Makers};
 use super::presence::Panes;
 use super::prompt::{Judged, Unseen};
-use super::{Messages, delivering, now_ms, ring, told};
+use super::{Delivered, Messages, activities_of, delivering, now_ms, peer, ring, told, words};
 use crate::session::Shared;
 
 /// How long a message may wait on a member that is not working before Muster calls its group
@@ -45,6 +45,10 @@ pub(crate) const STALL_AFTER: Duration = Duration::from_mins(2);
 /// for good - a finished Claude Code turn whose last rows looked like its spinner held an
 /// integrator's messages for seven hours - while a turn that long is rare enough to say so.
 pub(crate) const WORKED_AFTER: u64 = 15;
+
+/// The protocol minor from which a group's home posts Muster's notice for a member on another
+/// machine ([`muster_msg::Call::Muster`]).
+const MUSTER_SINCE: u32 = 8;
 
 /// A debug build's [`STALL_AFTER`] in milliseconds, when set, so a test need not wait for it.
 const STALL_AFTER_SAID: &str = "MUSTER_DAEMON_STALL_MS";
@@ -87,6 +91,9 @@ pub(crate) struct Member {
     /// Whom the maker watch tells when it blocks or stops reading, when its pane is a helper's:
     /// its maker (`super::makers`).
     pub(crate) maker: Vec<String>,
+    /// The machine keeping its group, as the link to it knows it, when that is another machine:
+    /// what whoever waits is told is posted there, in its names.
+    pub(crate) home: Option<Peer>,
 }
 
 /// What a look decided.
@@ -406,7 +413,10 @@ fn waiting_on(member: &Member) -> Vec<String> {
 fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: &str) -> Act {
     let held = &member.holding;
     let waited = said_as_time(now_ms.saturating_sub(held.first_at_ms));
-    let shown = |id: &str| shown(called, id);
+    // Posted where the group is kept, so in that machine's names.
+    let written =
+        |name: &str| member.home.as_ref().map_or(name.to_string(), |home| home.outward(name));
+    let shown = |id: &str| shown_written(called, id, written);
     // A member named after its pane has already said which pane it is.
     let pane =
         if held.pane == held.name { String::new() } else { format!(", {}", shown(&held.pane)) };
@@ -429,9 +439,18 @@ pub(super) fn said_as_time(ms: u64) -> String {
 /// A participant or a pane as the CLI shows it: `otter (p29te12q4t)`, the id being what still
 /// reaches it once another pane goes by the name.
 pub(super) fn shown(called: &BTreeMap<String, String>, id: &str) -> String {
+    shown_written(called, id, str::to_string)
+}
+
+/// [`shown`], with each name written by `written`: as another machine writes it, say.
+fn shown_written(
+    called: &BTreeMap<String, String>,
+    id: &str,
+    written: impl Fn(&str) -> String,
+) -> String {
     match called.get(id) {
-        Some(name) if name != id => format!("{name} ({id})"),
-        _ => id.to_string(),
+        Some(name) if name != id => format!("{} ({})", written(name), written(id)),
+        _ => written(id),
     }
 }
 
@@ -542,6 +561,14 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
         }
         let others = described(&messages.service, &panes, &members);
         let called = called(&mut messages, &panes, &members);
+        let homes: Vec<Option<String>> =
+            members.iter().map(|member| messages.service.home_of(&member.holding.group)).collect();
+        // The links' own lock is taken with this one let go.
+        drop(messages);
+        for (member, home) in members.iter_mut().zip(homes) {
+            member.home =
+                home.and_then(|machine| shared.peers.to(&machine)).map(|link| link.peer.clone());
+        }
         (members, others, called)
     };
     let acts = stalls.judge(&members, &called, now_ms());
@@ -575,6 +602,7 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
                     .map(|at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)),
                 zoomed_on: panes.zoomed_on(&holding.pane).map(str::to_string),
                 maker: Vec::new(),
+                home: None,
                 holding,
             }
         })
@@ -705,6 +733,11 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
             ring(shared, holding);
         }
         Act::Tell { group, to, body } => {
+            let home = shared.messages().service.home_of(&group);
+            if let Some(machine) = home {
+                tell_at_home(shared, machine, group, to, body);
+                return;
+            }
             let delivered = delivering(shared, panes, |service| {
                 service.post_as_muster(&group, to.clone(), &body, panes, now_ms())
             });
@@ -712,18 +745,7 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                 Ok(delivered) => {
                     told("msg.group.told", Some(body.len()), &delivered);
                 }
-                Err(reply) => log::warn(
-                    "msg.group.untold",
-                    fields! {
-                        "group" => group,
-                        "to" => to.join(","),
-                        "reason" => reply.reason,
-                        "impact" => "whoever waits on the member was not told why it has not \
-                                     answered; the stall is in this log, and nowhere else",
-                        "check" => "whether the group is kept on another machine, where Muster \
-                                    cannot post to it from here",
-                    },
-                ),
+                Err(reply) => untold(&group, &to, &reply.reason),
             }
         }
         Act::Moving { name, group, held_ms } => {
@@ -733,6 +755,76 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
             );
         }
     }
+}
+
+/// Has `machine`, which keeps `group`, post what whoever waits is told, on a thread of its own:
+/// the call may wait seconds on the link, and the doorbell's thread rings everybody else's
+/// panes meanwhile.
+fn tell_at_home(
+    shared: &Arc<Shared>,
+    machine: String,
+    group: String,
+    to: Vec<String>,
+    body: String,
+) {
+    let Some(link) = shared.peers.to(&machine) else {
+        untold(&group, &to, &format!("no link to {machine}, where {group} is kept, is up"));
+        return;
+    };
+    if link.speaks.minor < MUSTER_SINCE {
+        let speaks = format!("{}.{}", link.speaks.major, link.speaks.minor);
+        let why = format!(
+            "{machine}'s muster-daemon speaks protocol {speaks}, before a group's home posted \
+             Muster's notice for a member elsewhere (1.{MUSTER_SINCE})"
+        );
+        untold(&group, &to, &why);
+        return;
+    }
+    let away = match shared.messages().service.route_muster(&group, &to, &body) {
+        Ok(Some(away)) => away,
+        Ok(None) => {
+            untold(&group, &to, "the group is kept here now; the next stall is told here");
+            return;
+        }
+        Err(refusal) => {
+            untold(&group, &to, &words(&refusal));
+            return;
+        }
+    };
+    let unstarted = format!("no thread could be started to ask {machine}");
+    let (group_said, to_said) = (group.clone(), to.clone());
+    let shared = Arc::clone(shared);
+    let started = std::thread::Builder::new().name("stall-tell".to_string()).spawn(move || {
+        let (settle, holding) = peer::call_away(&shared, &away);
+        let rang = ring(&shared, holding);
+        match settle.result {
+            Ok(Settled::Posted(posted)) => {
+                let activities = activities_of(&shared, &posted, &Panes::of(&shared));
+                told("msg.group.told", Some(body.len()), &Delivered { posted, rang, activities });
+            }
+            Ok(other) => untold(&group, &to, &format!("{machine} answered {other:?}")),
+            Err(refusal) => untold(&group, &to, &words(&refusal)),
+        }
+    });
+    if let Err(error) = started {
+        untold(&group_said, &to_said, &format!("{unstarted}: {error}"));
+    }
+}
+
+/// Logs that whoever waits on a member was not told why it has not answered, and why not.
+fn untold(group: &str, to: &[String], reason: &str) {
+    log::warn(
+        "msg.group.untold",
+        fields! {
+            "group" => group,
+            "to" => to.join(","),
+            "reason" => reason,
+            "impact" => "whoever waits on the member was not told why it has not answered; the \
+                         stall is in this log, and nowhere else",
+            "check" => "the reason: for a group kept on another machine, whether the link to it \
+                        is up and its daemon is as new as this one",
+        },
+    );
 }
 
 #[cfg(test)]
@@ -767,6 +859,7 @@ mod tests {
             zoomed_on: None,
             stopped: None,
             maker: Vec::new(),
+            home: None,
         }
     }
 

@@ -600,8 +600,9 @@ pub(crate) fn call_away(shared: &Shared, away: &Away) -> (Settle, Holding) {
 }
 
 fn settle_with(shared: &Shared, link: &Link, away: &Away) -> (Settle, Holding) {
-    let patience = if matches!(away.call, Call::Post { .. }) { POSTING } else { CALLING };
-    let changes = matches!(away.call, Call::Join { .. } | Call::Leave { .. } | Call::Post { .. });
+    let posts = matches!(away.call, Call::Post { .. } | Call::Muster { .. });
+    let patience = if posts { POSTING } else { CALLING };
+    let changes = posts || matches!(away.call, Call::Join { .. } | Call::Leave { .. });
     let called = callsigns(shared, away.call.names());
     let replied = match link.call(wire::call_to(&away.call), called, patience) {
         Ok((replied, said)) => wire::reply_from(replied)

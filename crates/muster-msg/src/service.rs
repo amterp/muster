@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::across::{Away, Call, Folded, Found, HumanHome, Peer, Tell, base};
 use crate::names::{
-    check_addressee, check_group, check_participant, is_human, split_machine, title_says,
+    check_addressee, check_group, check_participant, is_human, is_muster, split_machine, title_says,
 };
 use crate::{
     Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Log, MUSTER, Policy, Refusal, Saved,
@@ -2385,7 +2385,7 @@ impl<S: Store> Messaging<S> {
     // ------------------------------------------------------------------------------------------
     // Groups
 
-    fn group(&self, name: &str) -> Result<&Group, Refusal> {
+    pub(crate) fn group(&self, name: &str) -> Result<&Group, Refusal> {
         self.groups.get(name).ok_or_else(|| Refusal::NoSuchGroup { group: name.to_string() })
     }
 
@@ -3100,7 +3100,7 @@ impl<S: Store> Messaging<S> {
                         } else {
                             to.contains(&participant.name)
                         };
-                        wakes && author != &participant.name && author != MUSTER
+                        wakes && author != &participant.name && !is_muster(author)
                     })
                     .collect();
                 let Some(first) = waiting.first() else { continue };
@@ -3261,5 +3261,5 @@ fn replaced<T: PartialEq>(held: Option<&T>, given: Option<&T>) -> bool {
 /// Whether `entry` is a message from Muster addressed to members other than `name`.
 fn is_muster_telling_another(entry: &Entry, name: &str) -> bool {
     matches!(&entry.what, What::Message { author, to, .. }
-        if author == MUSTER && !to.is_empty() && !to.iter().any(|to| to == name))
+        if is_muster(author) && !to.is_empty() && !to.iter().any(|to| to == name))
 }

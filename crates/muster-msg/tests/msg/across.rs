@@ -6,9 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Liveness, Member, Memory,
-    Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route, Settled,
-    Tell, Unread, Via, Wake, What,
+    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Liveness, MUSTER, Member,
+    Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply, Route,
+    Settled, Tell, Unread, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -426,6 +426,80 @@ fn a_devenv_agent_joins_a_laptop_group_and_they_wake_each_other() {
     let answered = wire.post(Side::Laptop, &builder, None, &["critic"], "thanks").unwrap();
     assert_eq!(woke(&answered), [("critic@devenv", Reach::Woken)]);
     assert_eq!(wire.read(Side::Devenv, &critic, None), ["review@lap builder@lap: thanks"]);
+}
+
+/// Muster's notice that a member holds a group up is posted where the group is kept: the devenv,
+/// which judged its own member, asks the laptop, which posts it as `@muster`, wakes whoever waits
+/// there, and sends it on to the devenv's copy. The body is in the laptop's names.
+#[test]
+fn a_stall_in_a_group_kept_on_another_machine_is_told_through_its_home() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.post(Side::Laptop, &builder, None, &["critic"], "a brief").unwrap();
+
+    let home = Side::Devenv.peer();
+    let body =
+        format!("{} has not read #4, from {}", home.outward("critic"), home.outward("builder@lap"));
+    assert_eq!(body, "critic@devenv has not read #4, from builder");
+    let to = ["builder@lap".to_string()];
+    let (devenv, _) = wire.split(Side::Devenv);
+    let Some(away) = devenv.route_muster("review@lap", &to, &body).unwrap() else {
+        panic!("a replica's notice is posted by its home");
+    };
+    assert_eq!(away.machine, "lap");
+    wire.wakes.clear();
+    let Settled::Posted(posted) = wire.send(Side::Devenv, &away.call).unwrap() else {
+        panic!("the home posts the notice");
+    };
+    assert_eq!((posted.author.as_str(), posted.group.as_str()), (MUSTER, "review@lap"));
+    assert!(
+        wire.wakes.iter().any(|(side, wake)| *side == Side::Laptop && wake.name == "builder"),
+        "{:?}",
+        wire.wakes
+    );
+    assert_eq!(wire.read(Side::Laptop, &builder, None), [format!("review @muster: {body}")]);
+    let copy = wire.service(Side::Devenv).log("review@lap", 0).unwrap();
+    let last = &copy.last().expect("the devenv holds the notice").what;
+    assert!(matches!(last, What::Message { author, .. } if author == "@muster@lap"), "{last:?}");
+
+    let stranger = ["stranger@lap".to_string()];
+    let (devenv, _) = wire.split(Side::Devenv);
+    let outside = devenv.route_muster("review@lap", &stranger, &body);
+    assert!(matches!(outside, Err(Refusal::AddresseeNotInGroup { .. })), "{outside:?}");
+    let (laptop, _) = wire.split(Side::Laptop);
+    let here = laptop.route_muster("review", &["critic@devenv".to_string()], &body);
+    assert_eq!(here, Ok(None));
+    // The home checks for itself whom a notice is for.
+    let call = Call::Muster {
+        group: "review".to_string(),
+        to: vec!["stranger".to_string()],
+        body,
+        head: 0,
+    };
+    let refused = wire.send(Side::Devenv, &call);
+    assert!(matches!(refused, Err(Refusal::AddresseeNotInGroup { .. })), "{refused:?}");
+}
+
+/// A replica writes what its home posted as Muster as `@muster@lap`, and that is still Muster: a
+/// notice to a member there holds nothing up, so the stall watch on that machine does not take it
+/// for a member's message and tell of it.
+#[test]
+fn musters_notice_in_a_replica_holds_nobody_up() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p2dev");
+    wire.join(Side::Laptop, &session("builder"), Some("builder"), "review");
+    wire.join(Side::Devenv, &in_pane("p2dev"), None, "review");
+    let call = Call::Muster {
+        group: "review".to_string(),
+        to: vec!["p2dev".to_string()],
+        body: "a notice".to_string(),
+        head: 0,
+    };
+    wire.send(Side::Devenv, &call).unwrap();
+    let holding = wire.service(Side::Devenv).holding();
+    assert!(holding.is_empty(), "{holding:?}");
 }
 
 /// An urgent post stays urgent across the link both ways: replicated, it wakes a member on the

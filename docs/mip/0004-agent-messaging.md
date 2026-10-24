@@ -990,8 +990,12 @@ stall.
 
 `@muster` is reserved like `@human`: it is an author and never a participant, is never addressed,
 is held to no policy and no guard, and its messages never count toward a stall, so none of this
-rings anybody in a loop. It posts only where the group is kept; a replica's stall is recorded, and
-`msg.group.untold` says nobody was told.
+rings anybody in a loop. It posts where the group is kept. A replica's stall is judged where the
+member's pane is, and that daemon asks the group's home to post the notice (`PeerCall.muster`,
+protocol 1.8), written in the home's names; a home that cannot be asked, or speaks a protocol
+before 1.8, leaves the stall recorded and `msg.group.untold` saying nobody was told. A replica
+writes its home's notices as from `@muster@<home>`, and that counts as Muster too, so it never
+holds a member up.
 
 **Members waiting on each other with everything read are not watched.** Every member idle with
 nothing unread is also what a finished group looks like, and an expectation of a reply is not
@@ -1269,3 +1273,5 @@ bind.
 - 2026-10-24 A group made again under a deleted group's name numbers on from it rather than from
   #1 (section 8): a pair group with the human, made again between two posts, issued #4 twice.
   A replica refetched over a group made again while its link was down takes the new group.
+- 2026-10-24 Protocol 1.8: a stall in a group kept on another machine is told there, through the
+  group's home (section 16); until then it was only logged.
