@@ -163,7 +163,8 @@ pub(crate) struct Stalls {
     /// When each member was last seen at work, or with its agent still to come, in the host's
     /// milliseconds.
     working: HashMap<String, u64>,
-    /// Since when each member seen at work has been at work at every look.
+    /// Since when each member seen at work has been at work at every look, with something
+    /// waiting on it at each.
     working_since: HashMap<String, u64>,
     /// When this daemon started, in the host's milliseconds. Nothing posted before it has been
     /// waiting on this daemon's watch, so no clock starts earlier: a daemon that restarted, or
@@ -204,6 +205,9 @@ impl Stalls {
     ) -> Vec<Act> {
         let mut acts = Vec::new();
         let mut holding: Vec<(String, String)> = Vec::new();
+        // Only members something waits on are judged, so a member that read and went on working
+        // is never seen at rest here: its run is forgotten rather than carried into a later turn.
+        self.working_since.retain(|name, _| members.iter().any(|m| m.holding.name == *name));
         for member in members {
             let key = (member.holding.name.clone(), member.holding.group.clone());
             let at_work = member.activity == Some(Activity::Working);
@@ -1136,5 +1140,27 @@ mod tests {
             kinds(&stalls.judge(&working, &BTreeMap::new(), worked + AFTER)),
             ["stalled", "tell"]
         );
+    }
+
+    /// A member that read what waited and went on working is no longer judged, so no look finds
+    /// it at rest. Its run of work is still over: the next message to wait on it through a long
+    /// turn says how long that turn has run, not how long since the member was first seen at work.
+    #[test]
+    fn a_run_of_work_ends_once_nothing_waits_on_the_member() {
+        let mut stalls = stalls();
+        let working = Member { activity: Some(Activity::Working), ..worker() };
+        stalls.judge(std::slice::from_ref(&working), &BTreeMap::new(), 1000);
+        stalls.judge(&[], &BTreeMap::new(), 1000 + AFTER);
+
+        let posted = 1000 + 700 * AFTER;
+        let later = Member {
+            holding: Holding { first: 9, first_at_ms: posted, ..worker().holding },
+            ..working
+        };
+        let worked = posted + WORKED_AFTER * AFTER;
+        stalls.judge(std::slice::from_ref(&later), &BTreeMap::new(), posted);
+        let acts = stalls.judge(&[later], &BTreeMap::new(), worked);
+        let Some(Act::Tell { body, .. }) = acts.last() else { panic!("{acts:?}") };
+        assert!(body.contains("it has read as working for 30 minutes without a break"), "{body}");
     }
 }
