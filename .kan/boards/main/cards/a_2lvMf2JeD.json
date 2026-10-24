@@ -6,7 +6,7 @@
     "shell",
     "backend"
   ],
-  "column": "in-progress",
+  "column": "backlog-hi",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -37,21 +37,31 @@
       "body": "2026-10-24: stage 3's first half on main (4400037c..1eed31d4): spanning::rearrange works out resize, swap, zoom, a divider ratio and equalize on a spanning tab's whole tree, and the seam sends each as one SetTabTree per part; the resize rule moved into muster_core::resize, shared with the daemon; every tab's tree is in the view, and muster window --json drops regions[] for tabs[].layout and tabs[].zoomed (question D). Dormant in real use: no window writes a tab made before MIP-8 until the second half. Stage 3 was cut in two because the shell drawing the tree and the migration write must land together (MIP-8, How it lands). Second half in progress. Release-note line: muster window --json no longer has regions[] or tabs[].regions; the tab on screen has layout, its whole tree with the machine on every pane, and zoomed; with --layout, every tab has both.",
       "created_at_millis": 1792851895509,
       "id": "c_2nQX0gDvZ"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: stages 3 and 4 on main. Stage 3 (8042bdfb and the commits before it): the shell draws one tree per tab, muster window --json has tabs[].layout in place of regions[], and the window writes tabs made before MIP-8 as one tree. Stage 4 (ca276b09-equivalents up to 09715e88, plus 3dccac7e and 831435a8): every placement path works out the whole tree, so a devenv pane can go below a laptop pane - Split on Machine (still right only, question C), pane new --daemon with a side, drags onto any pane's edge, row drops, pane move --onto and --tab; agent-list numbering and the chords follow the tree's reading order; AGENTS.md's Not built line is gone; a rearrangement refused as stale is redone once. Not seen in the real app yet (screen locked): by-hand steps in the round report. Stage 5 waits on questions A and B; C is still open for the menu. Release-note lines: see the round report. Moved to backlog-hi with the blocked label until A and B are answered.",
+      "created_at_millis": 1792858737102,
+      "id": "c_2nTOzWm0M"
     }
   ],
   "created_at_millis": 1792629852682,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-20: \"right click split into daemon doesn't allow seamless pane placement like a same daemon pane would\". At triage on 2026-10-21 he asked for the general form and called it high priority: any arrangement of panes in a tab, with the daemon a pane runs on having no effect on where it can go.\n\nToday a tab holds one region per machine, side by side, and each region draws that machine's own split tree (docs/architecture.md: \"The core owns composition\" and \"The arrangement over regions is Muster's\"). So a devenv pane can sit only left or right of the laptop's panes as a whole, never below one laptop pane. Every way of placing a pane follows that rule:\n- The right-click \"Split on Machine\" submenu splits right only, and when that machine already has panes in the tab, the new pane splits one of those rather than the pane clicked (`split_onto` in `crates/muster-seam/src/handler.rs`).\n- Dragging a pane onto another machine's pane is refused (`PaneDrag.accepts` in `Sources/MusterMac/PaneDrag.swift`). Only a drop on the tab's caption in the agent list adds a machine's part.\n- `muster pane new --daemon \u003cmachine\u003e --down` puts the pane in that machine's region, not below the pane it ran from.\n\nThis reverses a recorded decision, so it needs a MIP first. architecture.md rejects an outer split tree over panes because owning one \"would make it a multiplexer\", and holds that the app owns no truth: a daemon's tree is what restores a tab, and a tab holding panes on two machines is written down on both daemons, with only its regions' order and widths kept by Muster. The MIP has to settle where a tree spanning machines is kept, and what it does across a daemon restart, a handoff, a machine unreachable for an hour, a window reopened while one machine is down, a pane closing on one machine, zoom, and `muster window --layout`. CLAUDE.md's \"Not built\" line and architecture.md change with it.",
   "id": "a_2lvMf2JeD",
-  "position": "Zt",
+  "labels": [
+    "blocked"
+  ],
+  "position": "!!!!!!0",
   "title": "Arrange panes from different machines in any split, as if they were on one",
   "type": "feature",
-  "updated_at_millis": 1792851895509,
+  "updated_at_millis": 1792858742518,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852682},
     {"field":"column","value":"in-progress","at":1792632594244},
     {"field":"column","value":"backlog-hi","at":1792799187704},
     {"field":"column","value":"next","at":1792800268684},
-    {"field":"column","value":"in-progress","at":1792848464093}
+    {"field":"column","value":"in-progress","at":1792848464093},
+    {"field":"column","value":"backlog-hi","at":1792858737249}
   ]
 }

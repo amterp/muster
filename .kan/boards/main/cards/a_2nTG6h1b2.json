@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "owed-folds-are",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792858395641,
+  "creator": "Alexander Terp",
+  "description": "From the 2026-10-24 round review (peer.rs refold). Each owed fold is a call_away with CALLING patience on the peer-refetch thread, so a link that comes up and drops again with several owed folds delays the refetch by n timeouts, and replicas stay stale for that long.",
+  "id": "a_2nTG6h1b2",
+  "position": "b1l",
+  "title": "Owed folds are resent one at a time on the link-up thread, ahead of the refetch",
+  "type": "enhancement",
+  "updated_at_millis": 1792858395641,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792858395641}
+  ]
+}

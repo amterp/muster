@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "an-arrival-into-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792858395962,
+  "creator": "Alexander Terp",
+  "description": "From MIP-8 stage 4 (2026-10-24). Placement.InTree leaves the carrier's zoom as it was (MIP-8 section 4), so a pane arriving into a zoomed tab can leave the arriving machine's copy disagreeing about the zoom at the same generation. The next merge settles it by the tie rule. Fixing it properly wants InTree to carry the zoom, a protocol change.",
+  "id": "a_2nTG7DHy6",
+  "position": "b1n",
+  "title": "An arrival into a zoomed spanning tab can leave its machine's copy disagreeing about the zoom",
+  "type": "bug",
+  "updated_at_millis": 1792858395962,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792858395962}
+  ]
+}

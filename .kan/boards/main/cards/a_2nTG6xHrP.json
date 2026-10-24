@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-pane-made-or-moved",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792858395797,
+  "creator": "Alexander Terp",
+  "description": "From MIP-8 stage 4 (2026-10-24). 4cd5b794 redoes a rearrangement every part refused as stale; session::arrive does not get that retry, because an arrival is a create and a retry would have to mint again. Asking again works.",
+  "id": "a_2nTG6xHrP",
+  "position": "b1m",
+  "title": "A pane made or moved into a spanning tab while a newer write lands is refused once",
+  "type": "bug",
+  "updated_at_millis": 1792858395797,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792858395797}
+  ]
+}

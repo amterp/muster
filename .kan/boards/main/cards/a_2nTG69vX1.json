@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "a-return-or-esc-that",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792858395308,
+  "creator": "Alexander Terp",
+  "description": "From the 2026-10-24 round review, read from code (c784999a). Any Return or Esc reaching a pane published blocked starts the working override, which lasts until the screen text changes or the 5 s cap. A key that leaves the dialog in place (a dialog that ignores Return, an Esc that does not close it, a lost Return) reads working and then blocked again after the cap: a second blocked transition, which can raise a second notification or maker notice and satisfies pane wait --until blocked a second time. Right for a lost Return; noise for a dialog that ignores the key.",
+  "id": "a_2nTG69vX1",
+  "position": "b1j",
+  "title": "A Return or Esc that does not close a dialog reads working for 5 s, then blocked again",
+  "type": "bug",
+  "updated_at_millis": 1792858395308,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792858395308}
+  ]
+}
