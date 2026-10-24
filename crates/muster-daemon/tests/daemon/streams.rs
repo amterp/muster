@@ -291,6 +291,11 @@ fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_readin
 fn a_bridge_that_stops_acknowledging_is_behind_after_a_grace_and_the_program_goes_on() {
     let daemon = daemon();
     let mut control = daemon.connect();
+    let mut logging = daemon.connect();
+    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
+        after: None,
+    });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
     let flag = daemon.root().join("go");
     make(
         &mut control,
@@ -298,27 +303,27 @@ fn a_bridge_that_stops_acknowledging_is_behind_after_a_grace_and_the_program_goe
     );
     let mut stream = attached(&daemon, "p1", false);
     raise(&flag);
-    // Timed on the raw frames: parsing them as it went would take long enough to hide the wait.
-    // What is timed is the silence between the last output sent and the notice: the program
-    // waiting for credit that never comes.
-    let (mut last, mut owed) = (None, 0);
-    let held = loop {
+    let mut owed = 0;
+    loop {
         match stream.next_within(muster_harness::PATIENCE) {
             Some(Some(proto::stream_message::Message::Output(bytes))) => {
-                last = Some(std::time::Instant::now());
                 owed += bytes.len() as u64;
             }
-            Some(Some(proto::stream_message::Message::Behind(_))) => {
-                break last.expect("output before falling behind").elapsed();
-            }
+            Some(Some(proto::stream_message::Message::Behind(_))) => break,
             Some(Some(_)) => {}
             Some(None) | None => panic!("never behind"),
         }
-    };
+    }
+    // Timed by the daemon, from the output that filled the window to the notice: a reader here
+    // stamps each frame only when it is scheduled to read it, which shortens the silence it sees.
+    let lines = logging.logged_until("daemon.stream.behind", muster_harness::PATIENCE);
+    let line = lines.iter().find(|line| line.line.contains("daemon.stream.behind")).unwrap();
+    let behind: serde_json::Value = serde_json::from_str(&line.line).expect("a JSON log line");
+    let held: u64 = behind["held_ms"].as_str().and_then(|held| held.parse().ok()).expect("held_ms");
     assert!(
-        held >= std::time::Duration::from_millis(80),
-        "behind {held:?} after the last output: the program should have waited out a grace \
-         for credit first"
+        held >= 100,
+        "behind {held} ms after the window filled: the program should have waited out the \
+         100 ms grace for credit first"
     );
     stream.credit(owed);
     until_text(&mut control, "p1", "flooded");

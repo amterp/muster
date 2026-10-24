@@ -13,7 +13,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -131,6 +131,9 @@ pub(crate) struct Bridge {
     written: Written,
     urgent: Urgent,
     credit: Credit,
+    /// When the window last filled, for how long the program was held before the bridge fell
+    /// behind.
+    full_since: Option<Instant>,
     /// The connection, to end the thread reading it once the pane lets the bridge go. That
     /// thread holds the pane, and a bridge that has stopped sending would keep it forever.
     socket: UnixStream,
@@ -166,9 +169,23 @@ impl Bridge {
     /// Hands the pane's output on, as credit allows.
     pub(crate) fn offer(&mut self, chunk: &[u8]) {
         match self.credit.offer(chunk.len()) {
-            Offer::Send => self.send(stream_message::Message::Output(chunk.to_vec())),
+            Offer::Send => {
+                self.send(stream_message::Message::Output(chunk.to_vec()));
+                if self.credit.is_full() && self.full_since.is_none() {
+                    self.full_since = Some(Instant::now());
+                }
+            }
             Offer::FallBehind => {
                 self.send(stream_message::Message::Behind(stream_message::Behind {}));
+                let held = self.full_since.take().map_or(Duration::ZERO, |since| since.elapsed());
+                log::info(
+                    "daemon.stream.behind",
+                    fields! {
+                        "bridge" => self.id,
+                        "held_ms" => held.as_millis(),
+                        "window" => self.credit.window,
+                    },
+                );
             }
             Offer::Skip => {}
         }
@@ -180,7 +197,11 @@ impl Bridge {
 
     /// True when the acknowledgement caught the bridge up, and it is owed a catch-up.
     pub(crate) fn acknowledge(&mut self, bytes: u64) -> bool {
-        self.credit.acknowledge(bytes)
+        let caught_up = self.credit.acknowledge(bytes);
+        if !self.credit.is_full() {
+            self.full_since = None;
+        }
+        caught_up
     }
 
     /// Sends a composed replay or catch-up, in pieces a frame can carry.
@@ -288,7 +309,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>) {
     };
     let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
     let credit = Credit::new(window(attach.window));
-    let bridge = Bridge { id, frames, written, urgent, credit, socket };
+    let bridge = Bridge { id, frames, written, urgent, credit, full_since: None, socket };
     if let Err(refusal) = io.attach(bridge, grid, attach.takeover) {
         refuse(refusal.frames, refusal.kind, refusal.reason);
         return;
@@ -429,7 +450,8 @@ impl Bridge {
         let id = NEXT_BRIDGE.fetch_add(1, Ordering::Relaxed);
         let written = Written(written);
         let urgent = Urgent::default();
-        (Bridge { id, frames, written, urgent, credit: Credit::new(WINDOW), socket }, received)
+        let credit = Credit::new(WINDOW);
+        (Bridge { id, frames, written, urgent, credit, full_since: None, socket }, received)
     }
 }
 
