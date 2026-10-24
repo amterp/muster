@@ -6,6 +6,14 @@
     "shell"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "From the Codex critique, 2026-10-24, checked against attention.rs: the description undersells what ⌘⇧A already visits. Attention::asking holds blocked, stuck, message, program-notified and done asks, ordered by severity and then oldest first, and a message ask also covers unaddressed posts whose policy rings the human. Build the queue from the existing asks, expanding each group's ask into its waking messages, and decide any change of order explicitly. Also keep read apart from answered: opening a conversation clears its message ask today even when nothing was replied, and a queue of unanswered questions needs that difference.",
+      "created_at_millis": 1792875340614,
+      "id": "c_2naMvNFYY"
+    }
+  ],
   "created_at_millis": 1792874867030,
   "creator": "Alexander Terp",
   "description": "Board B in the Lectern page muster-group-conversation: one list of every message addressed to the human from any group, beside the agents stopped at a dialog, each opening with the messages before it and a message box addressed to its author. It is ⌘⇧A's list made visible: today that chord jumps to the single most urgent thing without showing what else waits. Built on the group conversation view's view model, filtered across groups. The label on screen is \"Needs you\"; code and CLI keep the existing word, asking (focus_asking, read_asking). Not \"Inbox\": a participant's inbox is already the socket it is woken on.",
@@ -14,7 +22,7 @@
   "position": "b1p",
   "title": "Needs you: one queue of everything asking for the human",
   "type": "feature",
-  "updated_at_millis": 1792874867030,
+  "updated_at_millis": 1792875340614,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792874867030}
   ]
