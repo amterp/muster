@@ -109,7 +109,9 @@ linked machine, or a pane and a participant who joined by that name - is refused
 what reaches it alone: a pane, and a participant in a pane, by the pane's id, and an agent on a
 linked machine as `name@machine`. A participant in no pane has nothing but its name, so a pane
 going by the same name is said to shadow it, and renaming that pane is what lets the name reach the
-participant again. A participant whose session has gone, and whose pane has
+participant again. A post that names its `--group` means the one of them in that group, since
+a post there reaches only its members, so the same name can mean another agent in another group;
+`group add` is not read this way. A participant whose session has gone, and whose pane has
 closed with it, does not count: it cannot join by that name again while a pane goes by it, so the
 pane is the only agent the name can reach. A daemon draws no pane a callsign somebody here joined by.
 `group add` takes a pane by its name as `--to` does.

@@ -1435,7 +1435,7 @@ impl<S: Store> Messaging<S> {
         // Told from before the change too, so the machine of a member removed there lets it go.
         let before = self.tell(group, after, None);
         for name in add {
-            let name = self.addressed_as(name, &by, found, Some(group), presence)?;
+            let name = self.addressed_as(name, &by, found, Some(group), None, presence)?;
             if !self.groups[group].members.contains(&name) {
                 self.add_member(group, &name, now_ms)?;
                 changed.added.push(name);
@@ -1729,7 +1729,9 @@ impl<S: Store> Messaging<S> {
         self.by_pane(name)
     }
 
-    /// Who a post's `--to` names, each once, and never its author.
+    /// Who a post's `--to` names, each once, and never its author. With a group named, a name
+    /// that means several agents means the one of them in that group, since a post to it reaches
+    /// only its members.
     pub(crate) fn addressees(
         &mut self,
         author: &str,
@@ -1740,7 +1742,7 @@ impl<S: Store> Messaging<S> {
     ) -> Result<Vec<String>, Refusal> {
         let mut addressees: Vec<String> = Vec::new();
         for name in to {
-            let name = self.addressed_as(name, author, found, group, presence)?;
+            let name = self.addressed_as(name, author, found, group, group, presence)?;
             if name == author {
                 return Err(Refusal::AddressedSelf);
             }
@@ -1752,17 +1754,19 @@ impl<S: Store> Messaging<S> {
     }
 
     /// The participant `name` means where somebody is addressed, by a pane's name as by its id.
+    /// `prefer` is a group whose member the name means when it means several agents.
     fn addressed_as(
         &mut self,
         name: &str,
         author: &str,
         found: &[Found],
         group: Option<&str>,
+        prefer: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
         // A pane's name is matched before the syntax of a participant's name is asked of it:
         // somebody may have named a pane `🤖 A`.
-        let pane = self.pane_called(name, found, presence)?;
+        let pane = self.pane_called(name, found, prefer, presence)?;
         if pane.is_none() {
             check_addressee(name).map_err(|bad| titled(name, presence).unwrap_or(bad))?;
         }
@@ -1774,6 +1778,9 @@ impl<S: Store> Messaging<S> {
     /// name that means somebody else as well - a participant who joined by that name, or
     /// whoever another machine said it means in `found` - is refused, naming each, rather than
     /// reaching whichever is nearest. Nothing, when no pane here goes by `typed`.
+    ///
+    /// Of those, the one member of `prefer` is meant instead, and named by what reaches it,
+    /// which need not be a pane. Nobody else could be sent a post to that group.
     ///
     /// The refusal names each by what reaches it alone, never by `typed` again: a pane here, and
     /// a participant whose pane is open, by the pane's id, and an agent on another machine as
@@ -1788,8 +1795,16 @@ impl<S: Store> Messaging<S> {
         &self,
         typed: &str,
         found: &[Found],
+        prefer: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<Option<String>, Refusal> {
+        /// An agent `typed` could mean: the participant it is, and what reaches it alone, if
+        /// anything does.
+        struct Meaning {
+            participant: String,
+            reached_by: Option<String>,
+        }
+
         let an_id = presence.has_pane(typed)
             || self
                 .participants
@@ -1810,27 +1825,36 @@ impl<S: Store> Messaging<S> {
             return Ok(None);
         };
         let holder = self.by_pane(&pane).unwrap_or_else(|| pane.clone());
-        let mut candidates = vec![pane.clone()];
-        let mut shadowed = false;
-        let open_pane = |known: &Participant| {
-            known.pane.clone().filter(|theirs| presence.has_pane(theirs))
-        };
+        let mut meanings = vec![Meaning { participant: holder.clone(), reached_by: Some(pane) }];
         if let Some(known) = self.participants.get(typed).filter(|_| typed != holder) {
-            match open_pane(known) {
-                Some(theirs) => candidates.push(theirs),
-                None => shadowed = alive(known, presence),
+            let open = known.pane.clone().filter(|theirs| presence.has_pane(theirs));
+            if open.is_some() || alive(known, presence) {
+                meanings.push(Meaning { participant: typed.to_string(), reached_by: open });
             }
         }
-        candidates
-            .extend(found.iter().filter(|each| each.name == typed).map(|each| each.there.clone()));
+        meanings.extend(found.iter().filter(|each| each.name == typed).map(|each| Meaning {
+            participant: each.there.clone(),
+            reached_by: Some(each.there.clone()),
+        }));
+        if let [only] = meanings.as_slice() {
+            return Ok(only.reached_by.clone());
+        }
+        if let Some(members) = prefer.and_then(|group| self.groups.get(group)).map(|g| &g.members)
+            && let [member] = meanings
+                .iter()
+                .filter(|meaning| members.contains(&meaning.participant))
+                .collect::<Vec<_>>()
+                .as_slice()
+        {
+            let reached_by = member.reached_by.as_ref().unwrap_or(&member.participant);
+            return Ok(Some(reached_by.clone()));
+        }
         let name = typed.to_string();
-        if shadowed {
+        let candidates = meanings.iter().filter_map(|meaning| meaning.reached_by.clone()).collect();
+        if meanings.iter().any(|meaning| meaning.reached_by.is_none()) {
             return Err(Refusal::Shadowed { name, candidates });
         }
-        if candidates.len() > 1 {
-            return Err(Refusal::WhichParticipant { name, candidates });
-        }
-        Ok(Some(pane))
+        Err(Refusal::WhichParticipant { name, candidates })
     }
 
     /// The participant `name` means in a post's `--to`: the one holding the pane of that name,
