@@ -590,7 +590,7 @@ impl Composition {
                     .regions
                     .iter()
                     .find(|saved| saved.daemon == region.daemon)
-                    .map(|saved| saved.weight)
+                    .and_then(|saved| saved.weight)
                     .filter(|weight| weight.is_finite() && *weight > 0.0)
                 {
                     region.weight = weight;

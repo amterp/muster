@@ -5074,13 +5074,24 @@ fn reconcile_every_daemon() {
 /// this was half-written would otherwise come back to a file that parses as far as the third
 /// region and stops.
 fn save(session: &mut Session, window: WindowId) {
-    let window = &mut session.windows[window];
-    if !window.is_open() {
+    if !session.windows[window].is_open() || session.windows[window].arrangement.is_none() {
         return;
     }
+    // A tab its daemons keep as one tree has its widths in that tree (MIP-8, section 9).
+    let kept: BTreeSet<TabId> = {
+        let mirrors = session.mirrors();
+        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+        session.windows[window]
+            .composition
+            .tabs()
+            .filter(|tab| spanning::tree_kept(tab, mirror))
+            .map(|tab| tab.id.clone())
+            .collect()
+    };
+    let window = &mut session.windows[window];
     let Some((path, written)) = window.arrangement.as_mut() else { return };
-
-    let mut arrangement = Saved::of(&window.composition, window.presentation, &session.font_sizes);
+    let mut arrangement = Saved::of(&window.composition, window.presentation, &session.font_sizes)
+        .forgetting_weights(|tab| kept.contains(tab));
     if let Some(left) = &window.left {
         arrangement = arrangement.keeping(left, &window.awaiting);
     }
@@ -6051,7 +6062,7 @@ fn rearrange(
         let mirrors = session.mirrors();
         let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
         let held = session.windows[window].composition.tab(tab)?;
-        if !spanning::written(held, mirror) {
+        if !spanning::written(held, mirror, |machine| session.holds_spanning_trees(machine)) {
             return None;
         }
         let (parts, settled) =

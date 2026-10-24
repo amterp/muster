@@ -38,9 +38,9 @@ fn composition_saved_conformance() {
                                 .iter()
                                 .map(|region| {
                                     format!(
-                                        "{}@{:.0}{}",
+                                        "{}@{}{}",
                                         region.daemon,
-                                        region.weight,
+                                        weight(region.weight),
                                         if region.keyboard { "*" } else { "" }
                                     )
                                 })
@@ -90,8 +90,10 @@ fn composition_saved_late_conformance() {
         }
         for tab in &left.tabs {
             for region in tab.regions.iter().filter(|region| late.contains(&region.daemon)) {
-                if let Some(id) = now.open_region(&region.daemon, tab.id.clone()) {
-                    now.set_weight(id, region.weight);
+                if let Some(id) = now.open_region(&region.daemon, tab.id.clone())
+                    && let Some(weight) = region.weight
+                {
+                    now.set_weight(id, weight);
                 }
             }
         }
@@ -119,9 +121,9 @@ fn described(tabs: &[SavedTab]) -> Vec<String> {
                 .iter()
                 .map(|region| {
                     format!(
-                        "{}@{:.0}{}",
+                        "{}@{}{}",
                         region.daemon,
-                        region.weight,
+                        weight(region.weight),
                         if region.keyboard { "*" } else { "" }
                     )
                 })
@@ -144,7 +146,9 @@ fn composition_of(given: &Value, key: &str) -> Result<Composition, CaseError> {
             let id = composition
                 .open_region(&region.daemon, tab.id.clone())
                 .ok_or_else(|| CaseError::new("a region could not be opened"))?;
-            composition.set_weight(id, region.weight);
+            if let Some(weight) = region.weight {
+                composition.set_weight(id, weight);
+            }
             if region.keyboard {
                 composition.focus_region(id);
             }
@@ -417,7 +421,7 @@ fn saved_from(given: &Value, key: &str) -> Result<Saved, CaseError> {
         let id = TabId::new(region["tab"].as_str().unwrap_or_default());
         let held = SavedRegion {
             daemon: DaemonId::new(region["daemon"].as_str().unwrap_or_default()),
-            weight: serde_json::from_value(region["weight"].clone()).unwrap_or(1.0),
+            weight: Some(serde_json::from_value(region["weight"].clone()).unwrap_or(1.0)),
             pane: None,
             keyboard: region["keyboard"].as_bool().unwrap_or_default(),
         };
@@ -448,4 +452,48 @@ fn held(given: &Value) -> Result<BTreeSet<String>, CaseError> {
 
 fn key(daemon: &DaemonId, tab: &TabId) -> String {
     format!("{daemon}/{tab}")
+}
+
+/// A weight as the cases spell one: a whole number, or `-` for a tab whose daemons keep its widths.
+fn weight(weight: Option<f32>) -> String {
+    weight.map_or_else(|| "-".to_string(), |weight| format!("{weight:.0}"))
+}
+
+#[test]
+fn a_tab_its_daemons_keep_as_one_tree_is_written_without_widths() {
+    // Its widths are in the tree each machine keeps (MIP-8, section 9), so a weight written beside
+    // it would be a second answer that went stale at the first drag.
+    let mut composition = Composition::new();
+    for machine in ["local", "devenv"] {
+        composition.attach_daemon(Daemon {
+            id: DaemonId::new(machine),
+            endpoint: Endpoint::Local { socket_path: None },
+        });
+    }
+    for (machine, tab) in [("local", "w1:t1"), ("devenv", "w1:t1"), ("local", "w1:t2")] {
+        let region = composition
+            .open_region(&DaemonId::new(machine), TabId::new(tab))
+            .expect("the daemon was just attached");
+        composition.set_weight(region, 2.0);
+    }
+
+    let text = to_toml(
+        &Saved::of(&composition, Presentation::default(), &FontSizes::default())
+            .forgetting_weights(|tab| tab.as_str() == "w1:t1"),
+    );
+    let read = from_toml(&text).expect("what was written reads back");
+
+    let weights: Vec<(String, Option<f32>)> = read
+        .tabs
+        .iter()
+        .flat_map(|tab| tab.regions.iter().map(move |region| (tab.id.to_string(), region.weight)))
+        .collect();
+    assert_eq!(
+        weights,
+        vec![
+            ("w1:t1".to_string(), None),
+            ("w1:t1".to_string(), None),
+            ("w1:t2".to_string(), Some(2.0)),
+        ]
+    );
 }

@@ -411,7 +411,9 @@ pub(super) fn restore_late_in(session: &mut Session, window: WindowId, daemon: &
             let Some(id) = restored.composition.open_region(daemon, tab.id.clone()) else {
                 continue;
             };
-            restored.composition.set_weight(id, region.weight);
+            if let Some(weight) = region.weight {
+                restored.composition.set_weight(id, weight);
+            }
             if let Some(pane) = &region.pane {
                 restored.composition.set_pane(id, pane.clone());
             }

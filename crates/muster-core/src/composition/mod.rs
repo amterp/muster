@@ -1,4 +1,4 @@
-//! What Muster itself decided: which daemons are attached, and what each region shows.
+//! What Muster itself decided: which daemons are attached, and which tabs a window shows.
 //!
 //! The only thing Muster owns rather than mirrors, and so the only thing worth writing
 //! down: everything else it holds is derived from a daemon and can be asked for again
@@ -12,9 +12,11 @@
 //!
 //! A window holds an ordered list of Muster tabs and shows one of them (MIP-2). A tab holds a
 //! region per machine that has panes in it, which is one region for every tab until somebody
-//! groups two; a region shows that machine's pane tree, which is daemon truth. Muster owns no
-//! outer tree over those, because owning one is what would make it a multiplexer (a non-goal).
-//! Side by side, in this order, is the whole arrangement.
+//! groups two: a region is that machine's part of the tab, and the pane its keyboard was on.
+//! How the tab is arranged is daemon truth, one tree over every machine it spans that each part
+//! keeps a copy of (MIP-8, `crate::spanning`). Muster owns no tree of its own, because owning one
+//! is what would make it a multiplexer (a non-goal); a region's weight arranges only a tab whose
+//! machines are too old to keep that tree.
 //!
 //! One window's worth of tabs, because there is one window. A second window keeps a list of its
 //! own and leaves the daemons where they are - which daemons are attached is not a window's
@@ -22,8 +24,8 @@
 //! no tab may be in two of them.
 //!
 //! `saved` is what that smallness buys: the records write to a few hundred bytes of TOML and
-//! read back, so a window reopens onto the tabs it was showing, in the order and at the
-//! widths somebody put them in. It writes intent and never observation - the tab that was
+//! read back, so a window reopens onto the tabs it was showing, in the order somebody put them
+//! in. It writes intent and never observation - the tab that was
 //! chosen, not what was in it - so what comes back is a wish that gets checked against what
 //! the daemons turn out to hold.
 //!

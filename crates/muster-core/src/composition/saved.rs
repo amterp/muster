@@ -32,7 +32,9 @@ use crate::mirror::backend::{PaneId, TabId};
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedRegion {
     pub daemon: DaemonId,
-    pub weight: f32,
+    /// Its share of the tab's width, for a tab the window arranges by region weights. `None` for
+    /// a tab its daemons keep as one tree (MIP-8), whose widths are in that tree.
+    pub weight: Option<f32>,
     /// The pane this region's keyboard was on. A wish like the rest: the pane may be gone,
     /// and a region restored without it simply starts wherever the tab's tree begins.
     pub pane: Option<PaneId>,
@@ -111,7 +113,7 @@ impl Saved {
                             .regions()
                             .map(|region| SavedRegion {
                                 daemon: region.daemon.clone(),
-                                weight: region.weight,
+                                weight: Some(region.weight),
                                 pane: region.pane.clone(),
                                 keyboard: keyboard == Some(region.id),
                             })
@@ -120,6 +122,19 @@ impl Saved {
                 })
                 .collect(),
         }
+    }
+
+    /// This arrangement without the widths of the tabs `kept` says their daemons keep as one tree:
+    /// the tree holds them, and a weight written beside it would be a second answer that went
+    /// stale with the first drag.
+    #[must_use]
+    pub fn forgetting_weights(mut self, kept: impl Fn(&TabId) -> bool) -> Saved {
+        for tab in self.tabs.iter_mut().filter(|tab| kept(&tab.id)) {
+            for region in &mut tab.regions {
+                region.weight = None;
+            }
+        }
+        self
     }
 
     /// This arrangement, with what `left` had on the daemons in `awaiting` put back where `left`
@@ -386,7 +401,9 @@ fn region_table(tab: &TabId, region: &SavedRegion) -> toml::Value {
     let mut table = toml::Table::new();
     table.insert("tab".to_string(), toml::Value::String(tab.to_string()));
     table.insert("daemon".to_string(), toml::Value::String(region.daemon.to_string()));
-    table.insert("weight".to_string(), toml::Value::Float(f64::from(region.weight)));
+    if let Some(weight) = region.weight {
+        table.insert("weight".to_string(), toml::Value::Float(f64::from(weight)));
+    }
     if let Some(pane) = &region.pane {
         table.insert("pane".to_string(), toml::Value::String(pane.to_string()));
     }
@@ -632,15 +649,14 @@ fn read_region(value: &toml::Value) -> Option<(TabId, SavedRegion)> {
     let region = SavedRegion {
         daemon: DaemonId::new(text(table, "daemon")?),
         keyboard: table.get("keyboard").and_then(toml::Value::as_bool).unwrap_or_default(),
-        // A region with no readable weight takes an equal share rather than none: zero would
-        // be a region the window renders at no width, which nobody can see or grab.
+        // A region with no readable weight takes whatever share it opens with rather than none:
+        // zero would be a region the window renders at no width, which nobody can see or grab.
         // Through serde rather than a cast: the same narrowing, without a lint about it.
         weight: table
             .get("weight")
             .cloned()
             .and_then(|weight| weight.try_into::<f32>().ok())
-            .filter(|weight: &f32| weight.is_finite() && *weight > 0.0)
-            .unwrap_or(1.0),
+            .filter(|weight: &f32| weight.is_finite() && *weight > 0.0),
         pane: text(table, "pane").map(PaneId::new),
     };
     Some((tab, region))

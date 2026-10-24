@@ -133,10 +133,8 @@ fn foreign_machines(copy: &CopyNode) -> Vec<DaemonId> {
 /// dropped only when its machine is settled and does not hold its pane.
 ///
 /// A tab whose copies no window has written - every generation zero - starts from its parts side
-/// by side, at their regions' weights, which is how a window drew it before this. Nothing is
-/// written back for such a tab: until a window sends a spanning tab's every change as a whole
-/// tree, a part holding foreign leaves would refuse the resize, zoom and swap a window still
-/// sends it (MIP-8, "How it lands").
+/// by side, at their regions' weights, which is how a window drew it before this, and is written
+/// to every part that can take it, at generation one (MIP-8, section 9).
 ///
 /// `None` for a tab with no parts.
 pub fn merge(parts: &[Part], settled: &BTreeMap<DaemonId, bool>) -> Option<Merged> {
@@ -157,8 +155,7 @@ pub fn merge(parts: &[Part], settled: &BTreeMap<DaemonId, bool>) -> Option<Merge
         }
     }
     let zoomed = zoomed.filter(|zoomed| named.contains(zoomed));
-    let writes =
-        if written == 0 { Vec::new() } else { writes(parts, &tree, zoomed.as_ref(), written) };
+    let writes = writes(parts, &tree, zoomed.as_ref(), written);
     Some(Merged { tree, zoomed, writes })
 }
 
@@ -382,14 +379,32 @@ pub enum Change {
     Even { pane: PaneId, evenly: Evenly },
 }
 
-/// Whether a tab's arrangement is written as one tree: some part's copy holds another machine's
-/// pane, so the parts refuse a change asked of one machine and every change goes through
-/// [`rearrange`].
-pub fn written<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
+/// Whether a tab's arrangement is the window's to write as one tree, so every change to it goes
+/// through [`rearrange`]: it spans machines, and some part's copy already holds another machine's
+/// pane or some part's machine `speaks` a protocol that holds a spanning tree. A part holding
+/// foreign leaves refuses a change asked of it alone, and one that can hold them is about to be
+/// written them. A tab whose machines are all too old for either keeps its region weights.
+pub fn written<'a>(
+    tab: &MusterTab,
+    mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+    speaks: impl Fn(&DaemonId) -> bool,
+) -> bool {
+    spans(tab, &mirror)
+        && tab.regions().any(|region| {
+            speaks(&region.daemon)
+                || mirror(&region.daemon)
+                    .and_then(|held| held.tab(&tab.id))
+                    .is_some_and(|layout| layout.copy.has_foreign())
+        })
+}
+
+/// Whether the daemons keep a tab's arrangement: some part's copy is one a window has written, so
+/// the window's region weights for it say nothing any more.
+pub fn tree_kept<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>) -> bool {
     tab.regions().any(|region| {
         mirror(&region.daemon)
             .and_then(|held| held.tab(&tab.id))
-            .is_some_and(|layout| layout.copy.has_foreign())
+            .is_some_and(|layout| layout.layout_generation > 0)
     })
 }
 

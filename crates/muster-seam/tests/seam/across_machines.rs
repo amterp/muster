@@ -1746,15 +1746,32 @@ fn a_change_on_one_machine_while_another_stops_keeps_the_stopping_machines_panes
     );
 }
 
-/// A tab grouped across two machines before either kept the whole tree is drawn as it always was,
-/// and nothing is written to it: a part holding a foreign leaf refuses the resize, zoom and swap
-/// a window still sends one machine at a time (MIP-8, "How it lands").
+/// A tab grouped across two machines before either kept the whole tree is written as one, its
+/// parts side by side as the window drew them, so each machine keeps the whole tab from then on
+/// (MIP-8, section 9).
 #[test]
-fn a_tab_grouped_before_spanning_trees_is_not_written_to() {
+fn a_tab_grouped_before_spanning_trees_is_written_as_one_tree() {
     let _turn = muster::testing::fresh_session();
     let machines = a_tab_spanning_two_machines(&["A"], ("", 0), ("", 0));
-    assert_eq!(spanning_copy(&machines.laptop), Some(("A".to_string(), 0)));
-    assert_eq!(spanning_copy(&machines.devenv), Some(("X".to_string(), 0)));
+    // Whichever side the window reconciled the laptop's part on, both copies say the same.
+    let written = |laptop: &str, devenv: &str| {
+        spanning_copy(&machines.laptop) == Some((laptop.to_string(), 1))
+            && spanning_copy(&machines.devenv) == Some((devenv.to_string(), 1))
+    };
+    until(
+        "both copies to hold the tab's whole tree",
+        || {
+            written("[A|~X@devenv 0.50]", "[~A@laptop|X 0.50]")
+                || written("[~X@devenv|A 0.50]", "[X|~A@laptop 0.50]")
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
+    );
 }
 
 /// A tab whose machines are all too old to hold a spanning tree stays its parts side by side, as

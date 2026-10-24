@@ -177,7 +177,7 @@ fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
 
     let region = |daemon: &str, pane: &str, keyboard: bool| saved::SavedRegion {
         daemon: DaemonId::new(daemon),
-        weight: 1.0,
+        weight: Some(1.0),
         pane: Some(PaneId::new(pane)),
         keyboard,
     };

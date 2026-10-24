@@ -2,12 +2,12 @@
   "concept": "spanning.merge",
   "source": "authored",
   "numbers": "f32",
-  "citation": "docs/mip/0008-panes-across-machines.md, section 2 (the merge) and \"How it lands\" (why nothing is written for a tab no window has written yet). No oracle sits above these: what the copies add up to is Muster's own policy, decided in that MIP.",
+  "citation": "docs/mip/0008-panes-across-machines.md, section 2 (the merge) and section 9 (a tab grouped before spanning trees). No oracle sits above these: what the copies add up to is Muster's own policy, decided in that MIP.",
   "why": "What a tab spanning machines looks like when each machine keeps its own copy of the tab's whole tree. Every daemon holding a part of the tab keeps every pane in it, with the other machines' panes as foreign leaves, and no daemon knows the others exist, so only a window sees every copy. These cases pin the four rules that turn the copies into one tree and say which copies to write back.\n\nA tree is written `columns(a@laptop, x@devenv@0.5)`: each pane with the machine running it, and each split's share after its second child. A copy is written as its daemon's test harness writes one, `[a|~x@devenv 0.50]`, where `~x@devenv` is a pane this machine keeps in place without running. A write reads `devenv 2<-1 <copy>`: the machine, the generation it leaves the tab at, the generation it was worked out from, and the copy it sends. The cases with a change pin what a window writes when somebody rearranges such a tab: the change is worked out on the merged tree and every part that can take it is written one generation above the newest copy, since a part holding foreign leaves refuses a change asked of it alone (MIP-8, section 3). A change is written `ratio <turns> <ratio>`, `resize <pane> <side> [fraction]`, `swap <pane> <with>`, `zoom <pane>` or `even <pane> <scope>`.",
   "cases": [
     {
-      "name": "a tab no window has written is its parts side by side, and nothing is written",
-      "why": "Every tab grouped across two machines before this existed: each machine's part holds only its own panes, at generation zero. The window draws it as it always has, the parts as columns in the order its regions sit. Nothing is written back, because a part holding foreign leaves refuses the resize, zoom and swap that a window still sends one machine at a time, and that would break them in every grouped tab until a window sends those as whole trees.",
+      "name": "a tab no window has written is its parts side by side, and is written that way",
+      "why": "Every tab grouped across two machines before this existed: each machine's part holds only its own panes, at generation zero. The window draws it as it always has, the parts as columns in the order its regions sit, and writes that tree to every part at generation one, so from then on each machine keeps the whole tab and every change to it is one tree (MIP-8, section 9).",
       "given": {
         "parts": [
           { "daemon": "laptop", "copy": "[a|b 0.50]", "holds": ["a", "b"], "weight": 1.0 },
@@ -18,12 +18,15 @@
       "expect": {
         "tree": "columns(columns(a@laptop, b@laptop@0.5), x@devenv@0.5)",
         "zoomed": null,
-        "writes": []
+        "writes": [
+          "laptop 1<-0 columns(columns(a, b@0.5), ~x@devenv@0.5)",
+          "devenv 1<-0 columns(columns(~a@laptop, ~b@laptop@0.5), x@0.5)"
+        ]
       }
     },
     {
       "name": "a tab arranged before keeps the widths somebody dragged its parts to",
-      "why": "The weights a window kept for its regions become the ratios of the columns, so a tab where the laptop's part was dragged to two thirds of the width still draws that way. Three parts make two splits: each split's share is its first part's weight over the weight of everything from there on.",
+      "why": "The weights a window kept for its regions become the ratios of the columns, so a tab where the laptop's part was dragged to two thirds of the width still draws that way. Three parts make two splits: each split's share is its first part's weight over the weight of everything from there on. Written that way, the widths move into the tree and stop being the window's.",
       "given": {
         "parts": [
           { "daemon": "laptop", "copy": "a", "holds": ["a"], "weight": 2.0 },
@@ -35,7 +38,11 @@
       "expect": {
         "tree": "columns(a@laptop, columns(x@devenv, g@gpu@0.5)@0.5)",
         "zoomed": null,
-        "writes": []
+        "writes": [
+          "laptop 1<-0 columns(a, columns(~x@devenv, ~g@gpu@0.5)@0.5)",
+          "devenv 1<-0 columns(~a@laptop, columns(x, ~g@gpu@0.5)@0.5)",
+          "gpu 1<-0 columns(~a@laptop, columns(~x@devenv, g@0.5)@0.5)"
+        ]
       }
     },
     {
@@ -448,7 +455,10 @@
       "expect": {
         "tree": "columns(columns(a@laptop, b@laptop@0.5), columns(x@devenv, y@devenv@0.5)@0.5)",
         "zoomed": "b",
-        "writes": []
+        "writes": [
+          "laptop 1<-0 columns(columns(a, b@0.5), columns(~x@devenv, ~y@devenv@0.5)@0.5) zoomed b",
+          "devenv 1<-0 columns(columns(~a@laptop, ~b@laptop@0.5), columns(x, y@0.5)@0.5) zoomed b"
+        ]
       }
     },
     {

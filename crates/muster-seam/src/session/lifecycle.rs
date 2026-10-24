@@ -471,7 +471,9 @@ pub(super) fn reopen_what_was_left(window: WindowId) {
             else {
                 continue;
             };
-            session.windows[window].composition.set_weight(id, region.weight);
+            if let Some(weight) = region.weight {
+                session.windows[window].composition.set_weight(id, weight);
+            }
             if let Some(pane) = &region.pane {
                 session.windows[window].composition.focus_pane(id, pane.clone());
             }
