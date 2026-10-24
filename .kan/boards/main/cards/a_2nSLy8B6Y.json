@@ -1,6 +1,6 @@
 {
   "_v": 3,
-  "alias": "typing-a-send-naming",
+  "alias": "input-sent-to-a-pane",
   "alias_explicit": false,
   "area": [
     "testing"
@@ -12,6 +12,12 @@
       "body": "2026-10-24: a second typing test failed the same way in the gate at aa2ec3fc: typing::a_click_is_reported_only_to_a_program_tracking_the_mouse_and_never_with_shift, its tracking file empty after 20 s; passed 3 of 3 alone. Being looked at against c784999a.",
       "created_at_millis": 1792859533325,
       "id": "c_2nTjhkpfi"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24 investigation: c784999a is ruled out, by code (neither failing test reaches the mark; the nudge is a non-blocking pipe write) and by experiment: typing:: looped with --test-threads 8, three copies at once, 40 runs each - 3/120 and 1/120 as is, 4/120 with c784999a's calls disabled. Eight failures across seven of the module's eighteen tests, all the same: the program reading the pane sees nothing for 20 s. Pattern in five kept daemon logs: the starved pane is always the last one the test made; the harness's input opens 0-5 ms after the read that found that pane's 'ready', so the input lands well under 100 ms after ready, while earlier panes get theirs hundreds of ms later; the program's output file exists and is empty; the log has no warning, restart or flush. The daemon drops typed input only on a restart's flush (Discards::is_stale, pty::flush_input from restart.rs). Leads: (1) a debug line per successful write (pane, seq, byte count, no text) would say whether the bytes left the daemon; (2) what runs between 'echo ready' and the program's first read - a tcsetattr with TCSAFLUSH or a tcflush there (stty, the shell, Ghostty's shell integration) discards pending input, which would fit exactly; (3) pty::queued briefly opens the slave side from the reader. Starvation unlikely: it always hits the pane sent input soonest after ready.",
+      "created_at_millis": 1792860374252,
+      "id": "c_2nU5a56ZT"
     }
   ],
   "created_at_millis": 1792856237685,
@@ -19,9 +25,9 @@
   "description": "Seen once 2026-10-24 in a full ./dev on main (8042bdfb) on the Mac mini at load ~14: the raw reader's file held \"\" after 20 s, so not even the second send's 'after' arrived. Passed 2 of 2 alone. The test is old (cf222f95), but the writer changed today: c784999a marks a keyed Return or Esc before writing it and nudges the reader, and this test's first send has enter: true with an unknown key. Check that path for a stall under contention before reading it as starvation.",
   "id": "a_2nSLy8B6Y",
   "position": "b1P",
-  "title": "🎲 typing::a_send_naming_a_key_nobody_knows_writes_nothing_of_itself saw nothing at all for 20 s",
+  "title": "🎲 Input sent to a pane just after it prints ready is sometimes never read (typing tests, ~3% under load)",
   "type": "bug",
-  "updated_at_millis": 1792859533325,
+  "updated_at_millis": 1792860374252,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792856237685}
   ]
