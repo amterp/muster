@@ -6,7 +6,7 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -25,22 +25,26 @@
       "body": "2026-10-23 re-triage: no commit since stage 2 landed on 2026-10-21, because stage 3 waits on amterp's answer to MIP-8 question D (whether `muster window --json` drops `regions[]` at once; the MIP recommends yes). Stages 4 and 5 wait on questions C, A and B. Moved to backlog-hi with the blocked label until D is answered, so in-progress shows only work that is moving.",
       "created_at_millis": 1792799187535,
       "id": "c_2n4Ppp3KZ"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-23: question D decided, (a): `muster window --json` drops `regions[]` at once, and the release that ships stage 3 says so in its notes. amterp left the choice to an agent, which took the MIP's recommendation (recorded in MIP-8). Stage 3, the shell drawing one tree, is unblocked: blocked label off, moved to next. Stages 4 and 5 still wait on questions C, A and B.",
+      "created_at_millis": 1792800268575,
+      "id": "c_2n4rxRvGu"
     }
   ],
   "created_at_millis": 1792629852682,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-20: \"right click split into daemon doesn't allow seamless pane placement like a same daemon pane would\". At triage on 2026-10-21 he asked for the general form and called it high priority: any arrangement of panes in a tab, with the daemon a pane runs on having no effect on where it can go.\n\nToday a tab holds one region per machine, side by side, and each region draws that machine's own split tree (docs/architecture.md: \"The core owns composition\" and \"The arrangement over regions is Muster's\"). So a devenv pane can sit only left or right of the laptop's panes as a whole, never below one laptop pane. Every way of placing a pane follows that rule:\n- The right-click \"Split on Machine\" submenu splits right only, and when that machine already has panes in the tab, the new pane splits one of those rather than the pane clicked (`split_onto` in `crates/muster-seam/src/handler.rs`).\n- Dragging a pane onto another machine's pane is refused (`PaneDrag.accepts` in `Sources/MusterMac/PaneDrag.swift`). Only a drop on the tab's caption in the agent list adds a machine's part.\n- `muster pane new --daemon \u003cmachine\u003e --down` puts the pane in that machine's region, not below the pane it ran from.\n\nThis reverses a recorded decision, so it needs a MIP first. architecture.md rejects an outer split tree over panes because owning one \"would make it a multiplexer\", and holds that the app owns no truth: a daemon's tree is what restores a tab, and a tab holding panes on two machines is written down on both daemons, with only its regions' order and widths kept by Muster. The MIP has to settle where a tree spanning machines is kept, and what it does across a daemon restart, a handoff, a machine unreachable for an hour, a window reopened while one machine is down, a pane closing on one machine, zoom, and `muster window --layout`. CLAUDE.md's \"Not built\" line and architecture.md change with it.",
   "id": "a_2lvMf2JeD",
-  "labels": [
-    "blocked"
-  ],
-  "position": "!!!!!!0l",
+  "position": "a3",
   "title": "Arrange panes from different machines in any split, as if they were on one",
   "type": "feature",
-  "updated_at_millis": 1792799187704,
+  "updated_at_millis": 1792800268684,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852682},
     {"field":"column","value":"in-progress","at":1792632594244},
-    {"field":"column","value":"backlog-hi","at":1792799187704}
+    {"field":"column","value":"backlog-hi","at":1792799187704},
+    {"field":"column","value":"next","at":1792800268684}
   ]
 }
