@@ -232,7 +232,10 @@ public final class MusterWindow: NSObject {
     // machine with none is a workspace with a pane in it. The same request `muster tab new
     // --daemon <id>` sends.
     sidebar.onMachinePicked = { [weak self] daemon in
-      self?.speaking { Core.createTab(daemonID: daemon) }
+      guard let self else { return }
+      if let why = speaking({ Core.createTab(daemonID: daemon) }) {
+        tell(TabRefusal.create, why)
+      }
     }
     // The same request a message's notification and `muster msg open` send.
     sidebar.onGroupPicked = { [weak self] daemon, group in
@@ -252,17 +255,24 @@ public final class MusterWindow: NSObject {
       sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     }
     sidebar.onPaneArranged = { [weak self] pane, onto in
-      self?.speaking { Core.arrange(pane: pane, onto: onto) }
+      guard let self else { return }
+      if let why = speaking({ Core.arrange(pane: pane, onto: onto) }) {
+        tell(PaneRefusal.move, why)
+      }
     }
     sidebar.onPaneGrouped = { [weak self] pane, tab in
-      self?.speaking { Core.arrange(pane: pane, intoTab: tab) }
+      guard let self else { return }
+      if let why = speaking({ Core.arrange(pane: pane, intoTab: tab) }) {
+        tell(PaneRefusal.move, why)
+      }
     }
     // The same request `muster tab move` and the menu send, naming this window by naming none -
     // and so naming it outright here, since during a drag the window in front is the one the tab
     // is leaving.
     sidebar.onTabReceived = { [weak self] tab in
       Core.info("tab.dropped", ["tab": tab])
-      self?.speaking { Core.moveTab(tab, to: "") }
+      guard let self else { return }
+      if let why = speaking({ Core.moveTab(tab, to: "") }) { tell(TabRefusal.move, why) }
     }
     // Both halves name their subject outright rather than leaving it to whatever has the
     // keyboard: the row somebody double-clicked is very often a pane no region is showing,
@@ -285,6 +295,7 @@ public final class MusterWindow: NSObject {
       }
     }
     surfaces.menu = { [weak self] pane in self?.menu(forPane: pane) }
+    surfaces.refused = { [weak self] in self?.tell($0, $1) }
     applyTitle()
   }
 
@@ -978,23 +989,23 @@ private func described(_ rect: NSRect) -> String {
 // says it did (architecture.md, one action path).
 extension MusterWindow {
   @objc public func splitRight(_ sender: Any?) {
-    Core.split(side: "right")
+    if let why = Core.split(side: "right") { tell(PaneRefusal.split, why) }
   }
 
   @objc public func splitDown(_ sender: Any?) {
-    Core.split(side: "down")
+    if let why = Core.split(side: "down") { tell(PaneRefusal.split, why) }
   }
 
   @objc public func splitLeft(_ sender: Any?) {
-    Core.split(side: "left")
+    if let why = Core.split(side: "left") { tell(PaneRefusal.split, why) }
   }
 
   @objc public func splitUp(_ sender: Any?) {
-    Core.split(side: "up")
+    if let why = Core.split(side: "up") { tell(PaneRefusal.split, why) }
   }
 
   @objc public func newTab(_ sender: Any?) {
-    Core.createTab()
+    if let why = Core.createTab() { tell(TabRefusal.create, why) }
   }
 
   /// Closes the tab the keyboard is in, and every pane in it.
@@ -1002,7 +1013,7 @@ extension MusterWindow {
   /// No confirmation, on the same terms as Close Pane: Muster does not ask before closing a
   /// pane either, and a sheet in front of one of the two would say the other is safe.
   @objc public func closeTab(_ sender: Any?) {
-    Core.closeTab()
+    if let why = Core.closeTab() { tell(TabRefusal.close, why) }
   }
 
   /// Pulls the pane the keyboard is on out of its split and into a tab of its own.
@@ -1010,7 +1021,7 @@ extension MusterWindow {
   /// Which pane that is is the core's, like every other item here. The pane keeps running - this
   /// is one `pane.move`, not a tab made and a pane started and one of them thrown away.
   @objc public func movePaneToNewTab(_ sender: Any?) {
-    Core.movePaneToNewTab()
+    if let why = Core.movePaneToNewTab() { tell(PaneRefusal.moveToNewTab, why) }
   }
 
   /// Names the pane the keyboard is on, having asked what to call it.
@@ -1027,7 +1038,7 @@ extension MusterWindow {
 
   /// Compacts the agent in the pane the keyboard is on. Which pane that is is the core's.
   @objc public func compactAgent(_ sender: Any?) {
-    Core.compactPane()
+    if let why = Core.compactPane() { tell(PaneRefusal.compact, why) }
   }
 
   /// Restarts the agent in the pane the keyboard is on, once asked. The window's own idea of
@@ -1048,7 +1059,14 @@ extension MusterWindow {
 
   /// Shows a request the core refused, whose reason would otherwise reach only stderr.
   func tell(_ heading: String, _ reason: String) {
+    NSSound.beep()
     ConfirmSheet.tell(on: window, heading: heading, body: reason)
+  }
+
+  /// Answers a refused step or adjustment with the platform's beep alone. These are chords held
+  /// down and repeated, and a sheet for each refused repeat would stack up in front of the window.
+  func beepUnless(_ taken: Bool) {
+    if !taken { NSSound.beep() }
   }
 
   /// Names the tab the keyboard's pane is in, having asked what to call it.
@@ -1183,7 +1201,8 @@ extension MusterWindow {
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(
         row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
-        window: name, rename: { [weak self] in self?.rename(tab: $0) })
+        window: name, rename: { [weak self] in self?.rename(tab: $0) },
+        refused: { [weak self] in self?.tell($0, $1) })
     case .group:
       let (daemon, group) = (row.daemon, row.label)
       return ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
@@ -1251,7 +1270,7 @@ extension MusterWindow {
   }
 
   @objc public func closePane(_ sender: Any?) {
-    Core.closePane()
+    if let why = Core.closePane() { tell(PaneRefusal.close, why) }
   }
 
   // Each of the four reports the cell it is resizing by and the region it is resizing inside,
@@ -1259,24 +1278,31 @@ extension MusterWindow {
   // Only a live surface can say how many points a cell is, and only the window can say how
   // wide the region it drew is.
   @objc public func resizePaneLeft(_ sender: Any?) {
-    Core.resize(direction: "left", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize)
+    beepUnless(
+      Core.resize(
+        direction: "left", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize))
   }
 
   @objc public func resizePaneRight(_ sender: Any?) {
-    Core.resize(
-      direction: "right", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize)
+    beepUnless(
+      Core.resize(
+        direction: "right", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize))
   }
 
   @objc public func resizePaneUp(_ sender: Any?) {
-    Core.resize(direction: "up", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize)
+    beepUnless(
+      Core.resize(direction: "up", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize)
+    )
   }
 
   @objc public func resizePaneDown(_ sender: Any?) {
-    Core.resize(direction: "down", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize)
+    beepUnless(
+      Core.resize(
+        direction: "down", cell: keyboardSurface?.cellPointSize, region: keyboardRegionSize))
   }
 
   @objc public func zoomPane(_ sender: Any?) {
-    Core.zoom()
+    beepUnless(Core.zoom())
   }
 
   @objc public func equalizePanes(_ sender: Any?) {
@@ -1314,10 +1340,10 @@ extension MusterWindow {
   // The two the pane's daemon carries out, handed the keystroke that asked when one did: a menu
   // item's action runs inside the key event it was chosen by.
   @objc public func clearScreen(_ sender: Any?) {
-    Core.perform(.clearScreen, key: NSApp.currentEvent)
+    beepUnless(Core.perform(.clearScreen, key: NSApp.currentEvent))
   }
   @objc public func resetTerminal(_ sender: Any?) {
-    Core.perform(.resetTerminal, key: NSApp.currentEvent)
+    beepUnless(Core.perform(.resetTerminal, key: NSApp.currentEvent))
   }
 
   private func performOnSurface(_ action: SurfaceAction) {
@@ -1325,15 +1351,15 @@ extension MusterWindow {
   }
 
   @objc public func increaseFontSize(_ sender: Any?) {
-    Core.adjustFontSize("larger")
+    beepUnless(Core.adjustFontSize("larger"))
   }
 
   @objc public func decreaseFontSize(_ sender: Any?) {
-    Core.adjustFontSize("smaller")
+    beepUnless(Core.adjustFontSize("smaller"))
   }
 
   @objc public func resetFontSize(_ sender: Any?) {
-    Core.adjustFontSize("reset")
+    beepUnless(Core.adjustFontSize("reset"))
   }
 
   @objc public func reloadConfig(_ sender: Any?) {
@@ -1403,11 +1429,11 @@ extension MusterWindow {
   }
 
   @objc public func focusNextTab(_ sender: Any?) {
-    Core.focus(tabStep: "next")
+    beepUnless(Core.focus(tabStep: "next"))
   }
 
   @objc public func focusPreviousTab(_ sender: Any?) {
-    Core.focus(tabStep: "previous")
+    beepUnless(Core.focus(tabStep: "previous"))
   }
 
   /// Presses the numbered chord this item was made for.
@@ -1441,27 +1467,27 @@ extension MusterWindow {
   }
 
   @objc public func focusNextPane(_ sender: Any?) {
-    Core.focus(step: "next")
+    beepUnless(Core.focus(step: "next"))
   }
 
   @objc public func focusPreviousPane(_ sender: Any?) {
-    Core.focus(step: "previous")
+    beepUnless(Core.focus(step: "previous"))
   }
 
   @objc public func focusPaneLeft(_ sender: Any?) {
-    Core.focus(step: "left")
+    beepUnless(Core.focus(step: "left"))
   }
 
   @objc public func focusPaneRight(_ sender: Any?) {
-    Core.focus(step: "right")
+    beepUnless(Core.focus(step: "right"))
   }
 
   @objc public func focusPaneUp(_ sender: Any?) {
-    Core.focus(step: "up")
+    beepUnless(Core.focus(step: "up"))
   }
 
   @objc public func focusPaneDown(_ sender: Any?) {
-    Core.focus(step: "down")
+    beepUnless(Core.focus(step: "down"))
   }
 }
 

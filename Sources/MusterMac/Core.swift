@@ -239,13 +239,14 @@ public enum Core {
 
   /// Hands a tab to another window. An empty tab means the one this window is showing, and an
   /// empty window means this one.
-  public static func moveTab(_ tab: String = "", to window: String) {
+  @discardableResult
+  public static func moveTab(_ tab: String = "", to window: String) -> String? {
     var moved = Muster_MoveTab()
     moved.tabID = tab
     moved.window = window
     var request = Muster_Request()
     request.moveTab = moved
-    send(request)
+    return refusal(send(request))
   }
 
   /// One machine this window is attached to.
@@ -479,10 +480,11 @@ public enum Core {
   /// drag-to-split would say.
   /// `newPaneDaemonID` puts the new pane on another machine, in the split pane's tab; empty
   /// keeps it on the split pane's own.
+  @discardableResult
   public static func split(
     side: String, ratio: Float = 0, daemonID: String = "", paneID: String = "",
     newPaneDaemonID: String = ""
-  ) {
+  ) -> String? {
     var split = Muster_SplitPane()
     split.daemonID = daemonID
     split.paneID = paneID
@@ -495,14 +497,17 @@ public enum Core {
     split.takeFocus = true
     var request = Muster_Request()
     request.splitPane = split
-    send(request)
+    return refusal(send(request))
   }
 
   /// Makes a tab beside a pane, with one pane in it, and shows it.
   ///
   /// An empty cwd means that pane's own directory, which is what somebody pressing the key
   /// mid-task means. The core resolves it, so the CLI and an agent get the same default.
-  public static func createTab(daemonID: String = "", paneID: String = "", cwd: String = "") {
+  @discardableResult
+  public static func createTab(
+    daemonID: String = "", paneID: String = "", cwd: String = ""
+  ) -> String? {
     var create = Muster_CreateTab()
     create.daemonID = daemonID
     create.paneID = paneID
@@ -513,7 +518,7 @@ public enum Core {
     create.takeFocus = true
     var request = Muster_Request()
     request.createTab = create
-    send(request)
+    return refusal(send(request))
   }
 
   /// Calls a pane what somebody wants to call it, and answers why not if it was refused - a name
@@ -536,13 +541,14 @@ public enum Core {
 
   /// Compacts the context of the agent in a pane, at its next idle, empty prompt. No focus: the
   /// CLI's `pane compact` is where one is given.
-  public static func compactPane(daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func compactPane(daemonID: String = "", paneID: String = "") -> String? {
     var compact = Muster_CompactPane()
     compact.daemonID = daemonID
     compact.paneID = paneID
     var request = Muster_Request()
     request.compactPane = compact
-    send(request)
+    return refusal(send(request))
   }
 
   /// Restarts the agent in a pane, in its session, and calls `then` on the main thread with the
@@ -656,11 +662,12 @@ public enum Core {
   /// moves a divider by a share of what it divides, so a distance has nothing to be a share of
   /// until something measures the region. Omitting either means "could not measure", which the
   /// core answers with the daemon's own step rather than a guess.
+  @discardableResult
   public static func resize(
     direction: String, amount: Float = 0, cell: (width: Float, height: Float)? = nil,
     region: (width: Float, height: Float)? = nil,
     daemonID: String = "", paneID: String = ""
-  ) {
+  ) -> Bool {
     var resize = Muster_ResizePane()
     resize.daemonID = daemonID
     resize.paneID = paneID
@@ -672,7 +679,7 @@ public enum Core {
     resize.regionHeight = region?.height ?? 0
     var request = Muster_Request()
     request.resizePane = resize
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// One of Ghostty's binding actions the pane's daemon carries out, on the pane with the
@@ -684,7 +691,8 @@ public enum Core {
 
   /// Asks the keyboard pane's daemon to carry out `action`, handing it the key whose binding
   /// asked for it: on the alternate screen clear_screen leaves that key to the program.
-  public static func perform(_ action: PaneAction, key: NSEvent?) {
+  @discardableResult
+  public static func perform(_ action: PaneAction, key: NSEvent?) -> Bool {
     var perform = Muster_PerformOnPane()
     switch action {
     case .clearScreen: perform.clear = Muster_PerformOnPane.ClearScreen()
@@ -696,17 +704,18 @@ public enum Core {
     }
     var request = Muster_Request()
     request.performOnPane = perform
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// Makes the focused pane fill its tab, or puts it back.
-  public static func zoom(daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func zoom(daemonID: String = "", paneID: String = "") -> Bool {
     var zoom = Muster_ZoomPane()
     zoom.daemonID = daemonID
     zoom.paneID = paneID
     var request = Muster_Request()
     request.zoomPane = zoom
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// Gives every pane in the keyboard's tab the same area, the request `muster pane resize
@@ -959,12 +968,13 @@ public enum Core {
   ///
   /// A direction rather than a size, matching `toggleSidebar`: what a chord means is "one more
   /// than whatever I have", and the shell does not hold what it has.
-  public static func adjustFontSize(_ change: String) {
+  @discardableResult
+  public static func adjustFontSize(_ change: String) -> Bool {
     var adjust = Muster_AdjustFontSize()
     adjust.change = change
     var request = Muster_Request()
     request.adjustFontSize = adjust
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// Reads the config file again, and makes the window match it.
@@ -983,13 +993,14 @@ public enum Core {
     send(request)
   }
 
-  public static func closePane(daemonID: String = "", paneID: String = "") {
+  @discardableResult
+  public static func closePane(daemonID: String = "", paneID: String = "") -> String? {
     var close = Muster_ClosePane()
     close.daemonID = daemonID
     close.paneID = paneID
     var request = Muster_Request()
     request.closePane = close
-    send(request)
+    return refusal(send(request))
   }
 
   /// Reports that nothing is painting a pane any more.
@@ -1128,12 +1139,13 @@ public enum Core {
   ///
   /// A direction rather than a pane, because the shell does not get to decide what is next -
   /// the order is the tab's tree, which is the daemon's.
-  public static func focus(step: String) {
+  @discardableResult
+  public static func focus(step: String) -> Bool {
     var relative = Muster_FocusRelative()
     relative.direction = step
     var request = Muster_Request()
     request.focusRelative = relative
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// Steps the keyboard one tab along: `next` or `previous`.
@@ -1141,12 +1153,13 @@ public enum Core {
   /// The other axis to stepping panes. That one walks what the window is showing; this walks
   /// every tab every attached daemon holds, which is the only keyboard path to a tab no region
   /// has on screen.
-  public static func focus(tabStep: String) {
+  @discardableResult
+  public static func focus(tabStep: String) -> Bool {
     var relative = Muster_FocusTabRelative()
     relative.direction = tabStep
     var request = Muster_Request()
     request.focusTabRelative = relative
-    send(request)
+    return refusal(send(request)) == nil
   }
 
   /// Does what one of ⌘1 to ⌘9 does, counting from one.
@@ -1203,12 +1216,13 @@ public enum Core {
   /// Naming no tab means the keyboard's, which is what a menu item means. Unlike going to a tab,
   /// closing one has a sensible "the one I am already in" - that is exactly what somebody
   /// picking this is asking for.
-  public static func closeTab(tabID: String = "") {
+  @discardableResult
+  public static func closeTab(tabID: String = "") -> String? {
     var close = Muster_CloseTab()
     close.tabID = tabID
     var request = Muster_Request()
     request.closeTab = close
-    send(request)
+    return refusal(send(request))
   }
 
   /// Takes the pane the window's keyboard is on into a tab of its own.
@@ -1216,7 +1230,8 @@ public enum Core {
   /// The same request a drag sends, with the other destination set. Naming no pane means the
   /// keyboard's, which is what a menu item means and what the core reads an empty id as - a drag
   /// says which pane because the row it started on knows, and a menu item has no row.
-  public static func movePaneToNewTab(_ pane: PaneKey? = nil) {
+  @discardableResult
+  public static func movePaneToNewTab(_ pane: PaneKey? = nil) -> String? {
     var arrange = Muster_ArrangePane()
     if let pane {
       arrange.daemonID = pane.daemon
@@ -1225,7 +1240,7 @@ public enum Core {
     arrange.newTab = true
     var request = Muster_Request()
     request.arrangePane = arrange
-    send(request)
+    return refusal(send(request))
   }
 
   /// Puts one pane where another is: dropping a row on a row, or a pane on a pane's side.
@@ -1234,7 +1249,8 @@ public enum Core {
   /// this becomes an exchange or a move into another tab is the core's to decide from where they
   /// are - the shell knows which rows were involved and nothing about the tree they sit in. A
   /// side is a drop on a pane's edge, which says exactly where.
-  public static func arrange(pane: PaneKey, onto: PaneKey, side: DropSide? = nil) {
+  @discardableResult
+  public static func arrange(pane: PaneKey, onto: PaneKey, side: DropSide? = nil) -> String? {
     var arrange = Muster_ArrangePane()
     arrange.daemonID = pane.daemon
     arrange.paneID = pane.pane
@@ -1242,7 +1258,7 @@ public enum Core {
     arrange.side = side?.rawValue ?? ""
     var request = Muster_Request()
     request.arrangePane = arrange
-    send(request)
+    return refusal(send(request))
   }
 
   /// Puts a pane into a tab, which is what dropping its row on a caption means.
@@ -1250,14 +1266,15 @@ public enum Core {
   /// The one arrangement that may cross machines: a tab is Muster's grouping rather than a
   /// daemon's, so a pane joining one from another machine changes which tab it is in and moves
   /// no process anywhere.
-  public static func arrange(pane: PaneKey, intoTab tab: String) {
+  @discardableResult
+  public static func arrange(pane: PaneKey, intoTab tab: String) -> String? {
     var arrange = Muster_ArrangePane()
     arrange.daemonID = pane.daemon
     arrange.paneID = pane.pane
     arrange.tabID = tab
     var request = Muster_Request()
     request.arrangePane = arrange
-    send(request)
+    return refusal(send(request))
   }
 
   /// Brings a named tab on screen, which is what clicking its caption means.

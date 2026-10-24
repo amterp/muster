@@ -391,6 +391,58 @@ struct ContextMenuTests {
     #expect(told == ["The pane was not hidden: this daemon is too old to hide a pane"])
   }
 
+  /// A new tab refused because the directory it would start in is gone was once eight presses of
+  /// cmd+T that did nothing (kan a_2jzGT81IV). Making, moving and ending things say why.
+  @Test("a refused split or new tab hands the window the core's reason, and a taken one does not")
+  func aRefusedSplitOrNewTabIsShown() {
+    _ = seam(
+      RecordingDispatcher { request in
+        switch request.payload {
+        case .splitPane, .createTab:
+          var failure = Muster_Failure()
+          failure.reason = "could not start /bin/zsh in /gone"
+          return .failure(failure)
+        default: return nil
+        }
+      })
+    var told: [String] = []
+    let refused: ContextMenus.Refused = { told.append("\($0): \($1)") }
+
+    choose(
+      "Split Right",
+      in: ContextMenus.pane(
+        laptopPane, surface: nil, machines: ["laptop"], rename: { _ in }, refused: refused))
+    choose(
+      "Close Tab",
+      in: ContextMenus.tab(
+        "t1", firstPane: laptopPane, machines: [], rename: { _ in }, refused: refused))
+    choose(
+      "New Tab",
+      in: ContextMenus.tab(
+        "t1", firstPane: laptopPane, machines: [], rename: { _ in }, refused: refused))
+    #expect(
+      told == [
+        "The pane was not split: could not start /bin/zsh in /gone",
+        "No tab was made: could not start /bin/zsh in /gone",
+      ])
+  }
+
+  /// What the window's menu items and drops act on: the refusal for the ones that make, move or
+  /// end something, and whether it was taken for the ones that only step or adjust.
+  @Test("an action says whether the core refused it")
+  func anActionSaysWhetherItWasRefused() {
+    _ = seam(
+      RecordingDispatcher { request in
+        guard case .arrangePane = request.payload else { return nil }
+        var failure = Muster_Failure()
+        failure.reason = "that pane closed"
+        return .failure(failure)
+      })
+    #expect(Core.arrange(pane: laptopPane, onto: laptopPane) == "that pane closed")
+    #expect(Core.createTab() == nil)
+    #expect(Core.zoom())
+  }
+
   /// A tab rename is asked for from a sheet, which closes before the answer comes: the window
   /// shows the core's reason only if the rename hands it back.
   @Test("a refused tab rename hands back the core's reason")

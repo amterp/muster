@@ -893,6 +893,13 @@ alternatives break the same way: a stream of messages lets a window go on showin
 was fixed, and an add-and-remove protocol lets it disagree about how many there are. The disappearance is also the
 only acknowledgement a fix ever gets.
 
+**A refused action is answered when it is refused, not listed.** A problem is a condition that clears once it stops
+being true, and a new tab the daemon would not make is a moment with nothing left to clear, so it never enters the
+list. The window answers the action itself: the Mac's beep, and a sheet headed with what did not happen over the
+core's reason, for anything that makes, moves or ends a pane or a tab. A chord that steps or adjusts - focus,
+resize, zoom, font size - only beeps, since it is held down and repeated and a sheet per refused repeat would stack
+up. An unanswered request is neither, because the change may have happened.
+
 The run log is not that surface, and mistaking it for one cost a whole evening: a `resize_step` written without its
 unit refused a config file at 18:55, every setting in it went inert, and the window said nothing until somebody
 opened a JSON file the next morning. So a run log entry answers "what happened here" for whoever is debugging, and a

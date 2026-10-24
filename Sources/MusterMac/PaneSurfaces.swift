@@ -75,6 +75,9 @@ public final class PaneSurfaces {
   /// Builds a pane's context menu, handed to each surface with the pane it shows.
   public var menu: (@MainActor (PaneKey) -> NSMenu?)?
 
+  /// Shows a pane dropped on another whose move the core refused.
+  public var refused: ContextMenus.Refused?
+
   public init(parkedIn container: NSView, startPane: @escaping StartPane) {
     self.startPane = startPane
     parking.isHidden = true
@@ -155,7 +158,11 @@ public final class PaneSurfaces {
     chrome.onPointerRequested = pointer
     chrome.surface.onMenu = { [weak self] in self?.menu?(key) }
     chrome.key = key
-    chrome.onPaneDropped = { dragged, side in Core.arrange(pane: dragged, onto: key, side: side) }
+    chrome.onPaneDropped = { [weak self] dragged, side in
+      if let why = Core.arrange(pane: dragged, onto: key, side: side) {
+        self?.refused?(PaneRefusal.move, why)
+      }
+    }
     held[key] = Held(
       chrome: chrome, linkSocketPath: leaf.linkSocketPath, daemonSocket: daemonSocket,
       bridgeRestarts: leaf.bridgeRestarts)

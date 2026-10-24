@@ -294,11 +294,19 @@ public enum PaneRefusal {
   public static let restart = "The agent was not restarted"
   public static let showHelpers = "The helpers were not shown"
   public static let hideHelpers = "The helpers were not hidden"
+  public static let split = "The pane was not split"
+  public static let close = "The pane was not closed"
+  public static let move = "The pane was not moved"
+  public static let moveToNewTab = "The pane was not moved to a new tab"
+  public static let compact = "The agent was not compacted"
 }
 
 /// What a refused tab request did not do, as the heading over the core's reason.
 public enum TabRefusal {
   public static let rename = "The tab was not renamed"
+  public static let create = "No tab was made"
+  public static let close = "The tab was not closed"
+  public static let move = "The tab was not moved"
 }
 
 @MainActor
@@ -326,8 +334,11 @@ public enum ContextMenus {
       case .copy: surface?.copy(nil)
       case .paste: surface?.paste(nil)
       case .splitOnto(let machine):
-        Core.split(
+        if let why = Core.split(
           side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine)
+        {
+          refused(PaneRefusal.split, why)
+        }
       case .action("restart_agent"): restart(pane)
       default:
         perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
@@ -389,7 +400,8 @@ public enum ContextMenus {
   /// directory, as cmd+T from inside the tab would use.
   public static func tab(
     _ tab: String, firstPane: PaneKey?, machines: [String], pasteboard: NSPasteboard = .general,
-    window: String = "", rename: @escaping @MainActor (String) -> Void
+    window: String = "", rename: @escaping @MainActor (String) -> Void,
+    refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab, window: window
@@ -397,10 +409,16 @@ public enum ContextMenus {
       choice in
       switch choice {
       case .action("new_tab"):
-        Core.createTab(daemonID: firstPane?.daemon ?? "", paneID: firstPane?.pane ?? "")
+        if let why = Core.createTab(
+          daemonID: firstPane?.daemon ?? "", paneID: firstPane?.pane ?? "")
+        {
+          refused(TabRefusal.create, why)
+        }
       case .action("rename_tab"): rename(tab)
-      case .action("close_tab"): Core.closeTab(tabID: tab)
-      case .newTabOn(let machine): Core.createTab(daemonID: machine)
+      case .action("close_tab"):
+        if let why = Core.closeTab(tabID: tab) { refused(TabRefusal.close, why) }
+      case .newTabOn(let machine):
+        if let why = Core.createTab(daemonID: machine) { refused(TabRefusal.create, why) }
       case .copyTabID: copy(tab, "tab", to: pasteboard)
       default: unhandled(choice, menu: "tab")
       }
@@ -435,13 +453,21 @@ public enum ContextMenus {
   ) {
     switch choice {
     case .action(let name) where name.hasPrefix("split_"):
-      Core.split(
+      if let why = Core.split(
         side: String(name.dropFirst("split_".count)), daemonID: pane.daemon,
         paneID: pane.pane)
-    case .action("zoom"): Core.zoom(daemonID: pane.daemon, paneID: pane.pane)
-    case .action("move_pane_to_new_tab"): Core.movePaneToNewTab(pane)
+      {
+        refused(PaneRefusal.split, why)
+      }
+    case .action("zoom"):
+      if !Core.zoom(daemonID: pane.daemon, paneID: pane.pane) { NSSound.beep() }
+    case .action("move_pane_to_new_tab"):
+      if let why = Core.movePaneToNewTab(pane) { refused(PaneRefusal.moveToNewTab, why) }
     case .action("rename_pane"): rename(pane)
-    case .action("compact_pane"): Core.compactPane(daemonID: pane.daemon, paneID: pane.pane)
+    case .action("compact_pane"):
+      if let why = Core.compactPane(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.compact, why)
+      }
     case .action("hide_pane"):
       if let why = Core.hidePane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.hide, why)
@@ -462,7 +488,10 @@ public enum ContextMenus {
       if let why = Core.hideHelpers(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.hideHelpers, why)
       }
-    case .action("close_pane"): Core.closePane(daemonID: pane.daemon, paneID: pane.pane)
+    case .action("close_pane"):
+      if let why = Core.closePane(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.close, why)
+      }
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)
     default: unhandled(choice, menu: "pane")
     }

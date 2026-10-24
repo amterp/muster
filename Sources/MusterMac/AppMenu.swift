@@ -319,7 +319,15 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
   @objc private func move(_ sender: NSMenuItem) {
     guard let destination = sender.representedObject as? Destination else { return }
     Core.info("tab.move.picked", ["window": destination.window, "tab": destination.tab])
-    Core.speaking(for: destination.from) { Core.moveTab(destination.tab, to: destination.window) }
+    let refused = Core.speaking(for: destination.from) {
+      Core.moveTab(destination.tab, to: destination.window)
+    }
+    let picker = destination.from.isEmpty ? Windows.inFront : Windows.named(destination.from)
+    if let refused, let window = picker as? MusterWindow {
+      window.tell(TabRefusal.move, refused)
+    } else if refused != nil {
+      NSSound.beep()
+    }
   }
 }
 
