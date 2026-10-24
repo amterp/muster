@@ -2322,7 +2322,7 @@ impl Session {
         }
         let pane = &mut self.panes[index];
         log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
-        pane.record.label = Some(taken);
+        relabel(&mut pane.record, Some(taken));
         let record = pane.record.clone();
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         true
@@ -2706,7 +2706,7 @@ impl Session {
             return taken;
         }
         let record = &mut self.panes[index].record;
-        record.label = rename.label;
+        relabel(record, rename.label);
         let record = record.clone();
         let pane = &mut self.panes[index];
         pane.session_name.named(&record.pane, record.label.as_deref());
@@ -3845,6 +3845,23 @@ fn scrollback(settings: &proto::Settings) -> usize {
 /// The name somebody gave a pane, as its record reads it (`proto::Pane::name`): blank is none.
 fn given_name(label: Option<&str>) -> Option<&str> {
     label.map(str::trim).filter(|label| !label.is_empty())
+}
+
+/// How many names a pane's record remembers it was given before (`Pane.former_labels`).
+const FORMER_LABELS: usize = 8;
+
+/// Gives a pane a new label, remembering the name it had before for whoever still uses it.
+fn relabel(record: &mut proto::Pane, label: Option<String>) {
+    let before = given_name(record.label.as_deref()).map(str::to_string);
+    record.label = label;
+    let now = given_name(record.label.as_deref()).map(str::to_string);
+    record.former_labels.retain(|former| Some(former) != now.as_ref());
+    if let Some(before) = before.filter(|before| Some(before) != now.as_ref()) {
+        record.former_labels.retain(|former| *former != before);
+        record.former_labels.push(before);
+    }
+    let excess = record.former_labels.len().saturating_sub(FORMER_LABELS);
+    record.former_labels.drain(..excess);
 }
 
 /// A pane cannot be named another pane's callsign, which `--pane` and `--to` would reach first.

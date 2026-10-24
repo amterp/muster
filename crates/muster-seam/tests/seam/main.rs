@@ -32,6 +32,7 @@ mod publish_order;
 mod quitting;
 mod reading;
 mod remembered_names;
+mod renamed_away;
 mod reopen;
 mod republish;
 mod respawn;

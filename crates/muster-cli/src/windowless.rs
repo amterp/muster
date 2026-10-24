@@ -176,13 +176,14 @@ fn addressed(typed: &mut [&mut String], snapshot: &daemon_proto::Snapshot) -> Re
             name: pane.name(),
             callsign: pane.callsign.as_deref().filter(|word| !word.is_empty()),
             machine: &machine,
+            former: &pane.former_labels,
         })
         .collect();
     for pane in typed.iter_mut() {
         match pane_address::resolve(pane, &candidates) {
             Address::Pane(id) => **pane = id,
             Address::AsTyped => {}
-            Address::Ambiguous(why) => return Err(Trouble::Refused(why)),
+            Address::Ambiguous(why) | Address::Renamed(why) => return Err(Trouble::Refused(why)),
         }
     }
     Ok(())

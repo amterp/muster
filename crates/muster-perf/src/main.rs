@@ -535,6 +535,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         name: None,
         // Every pane has a callsign, and the row is composed around it.
         callsign: Some("otter".to_string()),
+        former_names: Vec::new(),
         title: Some("first working build".to_string()),
         command: Some("claude".to_string()),
         facts: AgentFacts {

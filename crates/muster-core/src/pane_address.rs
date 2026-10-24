@@ -18,6 +18,9 @@ pub struct Candidate<'a> {
     pub callsign: Option<&'a str>,
     /// The machine holding it, as a window names its daemons (`local`, `devenv`).
     pub machine: &'a str,
+    /// The names it was given before its present one. Only for saying what it is called now to
+    /// somebody using one: a name nobody holds any more reaches nothing.
+    pub former: &'a [String],
 }
 
 /// What typed text turned out to mean.
@@ -31,10 +34,16 @@ pub enum Address {
     AsTyped,
     /// More than one pane answers to it, and why that is refused, in words.
     Ambiguous(String),
+    /// Nothing answers to it now, and a pane that went by it before has been renamed: refused,
+    /// saying what that pane is called now. Not followed to the pane, because a name freed by a
+    /// rename is free for another pane to take, and a script reaching whichever had it last
+    /// would act on a pane it never meant.
+    Renamed(String),
 }
 
 /// What `typed` means among `candidates`: an id first, then a callsign, then a given name, and
-/// then each of those again as `name@machine`.
+/// then each of those again as `name@machine`. Failing all of them, a name a pane was given
+/// before is refused, saying what that pane is called now.
 ///
 /// A name is matched whole before it is split at its last `@`, so a pane somebody called
 /// `me@work` is still reached by that. Exactly as typed: a name is matched with its case, and
@@ -51,10 +60,45 @@ pub fn resolve(typed: &str, candidates: &[Candidate<'_>]) -> Address {
         called = answering(name, candidates, |candidate| candidate.machine == machine);
     }
     match called.as_slice() {
-        [] => Address::AsTyped,
+        [] => renamed(typed, candidates),
         [one] => Address::Pane(one.pane.to_string()),
         several => Address::Ambiguous(ambiguous(typed, several)),
     }
+}
+
+/// What a name nothing answers to now means: the panes that went by it before, if any did.
+fn renamed(typed: &str, candidates: &[Candidate<'_>]) -> Address {
+    let had = |name: &str| {
+        candidates
+            .iter()
+            .filter(move |candidate| candidate.former.iter().any(|former| former == name))
+            .collect::<Vec<_>>()
+    };
+    let mut before = had(typed);
+    if before.is_empty()
+        && let Some((name, machine)) = typed.rsplit_once('@')
+    {
+        before = had(name).into_iter().filter(|candidate| candidate.machine == machine).collect();
+    }
+    if before.is_empty() {
+        return Address::AsTyped;
+    }
+    let each: Vec<String> = before
+        .iter()
+        .map(|candidate| {
+            let now = candidate.name.or(candidate.callsign).unwrap_or(candidate.pane);
+            let callsign = candidate.callsign.unwrap_or(now);
+            format!("{now:?} ({callsign}@{}, {})", candidate.machine, candidate.pane)
+        })
+        .collect();
+    let which = if each.len() == 1 { "the pane" } else { "the panes" };
+    Address::Renamed(format!(
+        "nothing is called {typed:?} now: {which} called that before {} now called {}. Say \
+         what it is called now, its callsign or its id; $MUSTER_PANE holds a pane's id, which no \
+         rename changes",
+        if each.len() == 1 { "is" } else { "are" },
+        each.join(" and "),
+    ))
 }
 
 /// The candidates `filter` keeps that have `name` as their callsign, or failing any, as the

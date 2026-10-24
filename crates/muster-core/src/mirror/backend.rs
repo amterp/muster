@@ -92,6 +92,9 @@ pub struct Pane {
     /// Its callsign (`otter`), which reaches it whatever it is named. No two live panes on one
     /// daemon share one. None from a daemon before callsigns.
     pub callsign: Option<String>,
+    /// The names it was given before its present one, oldest first: what somebody still using an
+    /// old one is answered with. Never its callsign, which survives a rename anyway.
+    pub former_names: Vec<String>,
     /// What the program in the pane last called itself. Volatile status: a restart loses it,
     /// because the process that would set it again is new.
     pub title: Option<String>,

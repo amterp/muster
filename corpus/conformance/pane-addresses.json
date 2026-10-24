@@ -2,7 +2,7 @@
   "concept": "paneAddress.resolve",
   "source": "authored",
   "citation": "kan a_2ditnGlQz",
-  "why": "Every pane has a callsign its daemon drew (`otter`), unique on its machine, and may have a name somebody gave it, which need not be unique; both are taken wherever its id is, the callsign first, and a renamed pane keeps answering to its callsign. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id.",
+  "why": "Every pane has a callsign its daemon drew (`otter`), unique on its machine, and may have a name somebody gave it, which need not be unique; both are taken wherever its id is, the callsign first, and a renamed pane keeps answering to its callsign. An id is unique across machines and never reused; a name is unique only among one daemon's live panes, so two machines can each have one, and `name@machine` then says which. The window and the CLI with no window both read typed text through this, so a pane is reached the same way whichever answers. Text that means no pane goes on as typed, which keeps every refusal for an unknown pane what it was and still reaches a pane made a moment ago by its id - unless a pane went by that name before a rename, when it is refused saying what that pane is called now.",
   "cases": [
     {
       "name": "an id is the pane it names",
@@ -169,6 +169,59 @@
         ]
       },
       "expect": { "address": "as typed" }
+    },
+    {
+      "name": "a name a pane had before a rename is refused, saying what it is called now",
+      "why": "An agent addressing itself by $MUSTER_PANE_NAME, which keeps the name it was started with, was told its pane had closed or came from an older window (kan a_2izzZ0Sag). It is pointed at the pane instead, and not taken there: the old name is free for another pane to take.",
+      "given": {
+        "typed": "kelp",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "🤖 A", "callsign": "otter", "machine": "local", "formerly": ["kelp"] }
+        ]
+      },
+      "expect": {
+        "renamed": "nothing is called \"kelp\" now: the pane called that before is now called \"🤖 A\" (otter@local, p1w3r07bsd). Say what it is called now, its callsign or its id; $MUSTER_PANE holds a pane's id, which no rename changes"
+      }
+    },
+    {
+      "name": "a pane called a name now wins over one that was called it before",
+      "why": "A name freed by a rename can be taken by another pane, and whoever holds it now is who it means.",
+      "given": {
+        "typed": "kelp",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "🤖 A", "callsign": "otter", "machine": "local", "formerly": ["kelp"] },
+          { "pane": "p2w3r07bsd", "name": "kelp", "callsign": "maple", "machine": "local" }
+        ]
+      },
+      "expect": { "address": "p2w3r07bsd" }
+    },
+    {
+      "name": "every pane that went by a name before is named",
+      "why": "Two panes renamed away from one name are both candidates, and only the person typing knows which was meant.",
+      "given": {
+        "typed": "kelp",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "🤖 A", "callsign": "otter", "machine": "local", "formerly": ["kelp"] },
+          { "pane": "p2w3r07bsd", "name": "🤖 B", "callsign": "maple", "machine": "devenv", "formerly": ["old", "kelp"] }
+        ]
+      },
+      "expect": {
+        "renamed": "nothing is called \"kelp\" now: the panes called that before are now called \"🤖 A\" (otter@local, p1w3r07bsd) and \"🤖 B\" (maple@devenv, p2w3r07bsd). Say what it is called now, its callsign or its id; $MUSTER_PANE holds a pane's id, which no rename changes"
+      }
+    },
+    {
+      "name": "a former name with its machine points only at the pane on that machine",
+      "why": "The machine narrows a former name the way it narrows a present one.",
+      "given": {
+        "typed": "kelp@devenv",
+        "panes": [
+          { "pane": "p1w3r07bsd", "name": "🤖 A", "callsign": "otter", "machine": "local", "formerly": ["kelp"] },
+          { "pane": "p2w3r07bsd", "name": "🤖 B", "callsign": "maple", "machine": "devenv", "formerly": ["kelp"] }
+        ]
+      },
+      "expect": {
+        "renamed": "nothing is called \"kelp@devenv\" now: the pane called that before is now called \"🤖 B\" (maple@devenv, p2w3r07bsd). Say what it is called now, its callsign or its id; $MUSTER_PANE holds a pane's id, which no rename changes"
+      }
     },
     {
       "name": "two panes on one machine sharing a given name are refused, naming each by its callsign",

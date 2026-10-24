@@ -1466,6 +1466,12 @@ message Pane {
   // so it is no longer quiet on its maker's behalf, nor watched for it. Set once, never cleared,
   // and written to the state file.
   bool maker_closed = 22;
+  // Since 1.8. The names the pane was given before its present one, oldest first and at most
+  // eight, so a name somebody still holds - `$MUSTER_PANE_NAME` keeps the one the pane was
+  // started with - can be answered with what the pane is called now. Never its callsign, which
+  // it keeps through a rename, nor its present name. Kept while the daemon runs, and never
+  // written to the state file: a restored pane's programs are started under its present name.
+  repeated string former_labels = 23;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

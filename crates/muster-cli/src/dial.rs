@@ -561,7 +561,7 @@ fn holds(window: &muster_proto::Window, subject: Names<'_>) -> bool {
             match pane_address::resolve(typed, &candidates) {
                 Address::AsTyped => candidates.iter().any(|candidate| candidate.pane == typed),
                 // Several of its panes go by the name: the window refuses it, saying which.
-                Address::Pane(_) | Address::Ambiguous(_) => true,
+                Address::Pane(_) | Address::Ambiguous(_) | Address::Renamed(_) => true,
             }
         }
     }
@@ -585,6 +585,9 @@ pub(crate) fn panes_held(window: &muster_proto::Window) -> Vec<Candidate<'_>> {
             name: Some(pane.name.as_str()).filter(|name| !name.is_empty()),
             callsign: Some(pane.callsign.as_str()).filter(|word| !word.is_empty()),
             machine: &pane.daemon_id,
+            // A window's view does not say what its panes were called before; the window itself
+            // answers a name from before a rename, once the request reaches it.
+            former: &[],
         })
         .collect()
 }

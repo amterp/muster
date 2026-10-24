@@ -237,3 +237,25 @@ fn join_as(control: &mut Control, callsigns: &[&str]) {
         expect(control, asked, proto::Outcome::Done);
     }
 }
+
+/// A pane remembers the names it was given before, so somebody still using one - an agent's
+/// `$MUSTER_PANE_NAME` keeps the name it was started with - can be told what it is called now.
+#[test]
+fn a_renamed_pane_remembers_what_it_was_called() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let named =
+        pane_request::Create { label: Some("kelp".to_string()), ..create("p1", in_new_tab("t1")) };
+    make(&mut control, named);
+    let former = |control: &mut Control| {
+        let record = snapshot(control).panes.into_iter().find(|record| record.pane == "p1");
+        record.expect("p1 is held").former_labels
+    };
+
+    assert_eq!(rename(&mut control, "p1", Some("🤖 A")).outcome(), proto::Outcome::Done);
+    assert_eq!(former(&mut control), ["kelp"]);
+    assert_eq!(rename(&mut control, "p1", None).outcome(), proto::Outcome::Done);
+    assert_eq!(former(&mut control), ["kelp", "🤖 A"], "and never its callsign");
+    assert_eq!(rename(&mut control, "p1", Some("kelp")).outcome(), proto::Outcome::Done);
+    assert_eq!(former(&mut control), ["🤖 A"], "not the name it has now");
+}

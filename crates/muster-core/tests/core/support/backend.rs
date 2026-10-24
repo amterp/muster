@@ -156,6 +156,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         cwd: text(given, "cwd"),
         name: optional(given, "name"),
         callsign: optional(given, "callsign"),
+        former_names: Vec::new(),
         title: optional(given, "title"),
         command: optional(given, "command"),
         facts: given.get("facts").map(read_facts).unwrap_or_default(),

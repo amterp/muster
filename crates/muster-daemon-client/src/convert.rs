@@ -151,6 +151,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         cwd: record.cwd,
         name: record.label,
         callsign: record.callsign,
+        former_names: record.former_labels,
         title: Some(record.title).filter(|title| !title.is_empty()),
         command: record.command,
         facts: AgentFacts {
