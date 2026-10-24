@@ -525,3 +525,5 @@ release that ships stage 3 says in its notes that `regions[]` is gone and what r
 - 2026-10-21 Draft.
 - 2026-10-23 Question D decided: drop `regions[]` at once. Stage 3 is unblocked.
 - 2026-10-24 Stage 3 split in two steps; the first, the core and the CLI, landed.
+- 2026-10-24 Stage 3's second step: the shell draws one tree per tab, and spanning tabs made
+  before this are written as one.

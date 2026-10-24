@@ -224,9 +224,10 @@ machine (`--daemon`) needs a window, which is what knows the machine by that nam
 Every other verb needs a window, and says so, except `muster msg`, which asks the daemon (`muster
 docs msg`), and `harness install`, `docs` and `completions`, which ask neither. Arranging,
 resizing, zooming and moving panes, and anything about tabs, is laying out a window's tabs, which
-a window composes from its regions, a tab's parts on several machines included; focus, the
-asking chord, font, the sidebar and reload are about what a window shows; which window holds a
-tab is a window's record; and `muster daemons` marks which daemons that window is using.
+a window composes from each machine's copy of them, a tab's parts on several machines
+included; focus, the asking chord, font, the sidebar and reload are about what a window shows;
+which window holds a tab is a window's record; and `muster daemons` marks which daemons that
+window is using.
 `muster upgrade` needs the app, since only the app knows whether Homebrew installed it.
 
 ## Upgrading

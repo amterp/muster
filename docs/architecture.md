@@ -443,12 +443,13 @@ codegen - a surface that cannot express an action is a missing message, visible 
   answer arrived about a hundred milliseconds before the broadcast of the same change, and the mirror applied answers
   and then recognized each broadcast as one it had seen (`observations/herdr-0.8.0.md`, section 14); with answers
   after their events there is nothing to reconcile.
-- **The core owns composition**: which daemons are attached, which tabs the window holds and in what order, which of
-  them is on screen, and how each divides between the machines holding panes in it. Mixing is at tab granularity: a
-  tab holds a region per machine with panes in it, each rendering that machine's pane tree from daemon truth, side by
-  side. One region for every tab until somebody groups two. Muster does not own an outer split tree over panes - that
-  would make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it
-  lives, and grouping moves which tab it is in rather than the process.
+- **The core owns composition**: which daemons are attached, which tabs the window holds and in what order, and which
+  of them is on screen. A tab's arrangement is one tree over every machine holding panes in it, and that tree is
+  daemon truth: each machine holding part of a tab keeps a copy of the whole tree, the other machines' panes in it as
+  leaves it never runs, and the window merges the copies, draws the result and writes every change it makes back to
+  every part (MIP-8, `crates/muster-core/src/spanning.rs`). Muster keeps no tree of its own over panes - that would
+  make it a multiplexer (non-goal) - and a pane can never move between daemons: the process lives where it lives, and
+  grouping moves which tab it is in rather than the process.
 - **One session per process, and a composition per window.** The core follows each daemon once - one mirror, one
   ssh master - and keeps a composition, chrome and arrangement for every window the process shows. A request names
   its window in `Request.window` and an event names the window it is for in `Event.window`, both empty where the
@@ -471,7 +472,7 @@ codegen - a surface that cannot express an action is a missing message, visible 
   on its own: a caller naming a pane on the devenv has no way to know and no reason to say which machine holds it. So
   a request that names a pane and no daemon finds the daemon from the pane. The empty pane means "the one this
   window's keyboard is on", which is what a keybinding means and what every menu item sends. The one daemon detail the
-  shell is handed is `ViewRegion`'s `daemon_socket`, for the bridge, which streams a pane from the daemon directly.
+  shell is handed is `ViewMachine`'s `daemon_socket`, for the bridge, which streams a pane from the daemon directly.
 - **A pane also has a name to type**, because nobody remembers `p1w3r07bsd`: the name somebody gave it, or else a
   word its daemon drew as it made the pane (`otter`, from `crates/muster-core/src/words.rs`). The daemon draws, and
   not the window, because it knows which words its open panes hold and has to name a pane no window asked for; it
@@ -494,11 +495,10 @@ codegen - a surface that cannot express an action is a missing message, visible 
   daemon's health as it stands when it opens.
 - **Where the keyboard is belongs to the window.** muster-daemon keeps no focus of its own, so which pane Muster's
   keyboard feeds is view-local and nothing another window does can move it. Rendering follows the same rule: the
-  daemon records which pane of a tab is zoomed, but a region fills a zoomed tab with the pane its own keyboard is on,
-  and uses the daemon's zoomed pane only when its keyboard is on none (`zoom_filling` in `composition/view.rs`). A
-  zoomed region holding the keyboard fills the whole tab, its other machines' regions covered rather than closed.
-  Following the daemon there would let another window decide what this one paints, and would leave ⌘2 inside a zoomed
-  tab typing into a pane nobody can see.
+  daemon records which pane of a tab is zoomed, but a window fills a zoomed tab with the pane its own keyboard is on,
+  on whichever machine that pane runs, and uses the daemon's zoomed pane only when its keyboard is on none
+  (`composition/view.rs`). Following the daemon there would let another window decide what this one paints, and would
+  leave ⌘2 inside a zoomed tab typing into a pane nobody can see.
 - **A hidden tab is its daemon's, and no window holds it.** Hiding a pane moves it into a tab of its own that its
   daemon holds as hidden (`muster docs agents`, "Out of sight"), so every pane is still in exactly one tab and
   nothing the daemon restores or hands over changes. No window takes a hidden tab or opens a region onto one
@@ -615,7 +615,7 @@ the window attached raises nothing at all: Muster witnessed no transition there,
 announcing history at launch.
 
 **Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
-pane most likely to have finished unnoticed is the one no region is showing - so a roster travels beside the view:
+pane most likely to have finished unnoticed is the one the window is not showing - so a roster travels beside the view:
 every pane every attached daemon holds, ordered and named for a reader, each row saying whether anything is showing
 it. Order and label are decisions and live in the core, so the sidebar, the CLI and an agent all get the same answer.
 Structure only, like the view: what an agent is doing keeps its own per-pane message, because a roster is stable and
@@ -717,28 +717,27 @@ clicking its row - and the list can be put away, which would leave those panes w
 the third route and cut across both, because a chord reaches a pane whether or not anything is showing it. Tab moves have no
 geometry, because tabs are a list and nothing is to the left of a tab; both directions wrap.
 
-**Within the panes on screen, moving comes in two kinds.** Next and previous walk reading order across every region
-and wrap, so between them they reach every pane - that is the guarantee. The four directions are geometric: the core lays the whole
-window out from the ratios it already publishes plus the region weights, and picks the pane actually in that
-direction, requiring it to overlap the source across the direction of travel. They do not wrap, because reachability
+**Within the panes on screen, moving comes in two kinds.** Next and previous walk the reading order of the tab's
+tree, which crosses machines, and wrap, so between them they reach every pane - that is the guarantee. The four
+directions are geometric: the core lays the tab's one tree out from the ratios it already publishes, and picks the
+pane actually in that direction, requiring it to overlap the source across the direction of travel. They do not wrap, because reachability
 is already covered and predictability is worth more. Asking the daemon was rejected: `BackendChannel::submit` is
 write-only by design, and every future backend would owe us a read to answer a question about an arrangement Muster
 already holds. A tree walk was rejected too - on a perpendicular split it has to pick a child by position in the tree
 rather than by where it is, so in any asymmetric arrangement it lands somewhere the user did not point at.
 
-**The arrangement over regions is Muster's, and only Muster's.** Each region carries a weight and the tab divides
-its width by their sum, so equal shares are what a tab that has never been dragged looks like. A weight per region
-rather than a ratio per boundary, because regions are a list and not a tree - owning a tree over them is what would
-make Muster a multiplexer. There is a line to drag only in a tab holding panes on more than one machine, which is a
-tab somebody has grouped; dragging it moves only that pair's share of itself, so nothing further along the tab moves,
-and it is the one drag that settles in the core rather than being asked of a daemon: no daemon knows the other one
-exists. It is also the one share that is clamped, because nothing sits behind it to
-refuse an impossible one, and a region dragged to nothing would leave no divider to grab.
+**A divider between two machines' panes is a split like any other.** A tab spanning machines is one tree, so the
+line between a laptop pane and a devenv pane is a ratio in it, and dragging it, a resize chord and equalize are each
+worked out on the whole tree and written to every part as one `SetTree`, one generation up: a part holding another
+machine's panes refuses a change asked of it alone, since it would race the window's next write (MIP-8, section 3).
+The shell names a divider by the turns down the tree it drew and no machine, and the core finds what it divides. A tab
+whose machines are all too old to hold that tree keeps the arrangement it had before: its parts side by side at
+weights the window keeps, the line between two parts moving those weights, clamped so a part dragged to nothing still
+leaves a divider to grab (MIP-8, section 9).
 
 **A focus request surfaces the pane it names.** Naming a pane the window is not showing brings its tab on screen
 rather than being refused - a list of panes that cannot be reached is a display, not routing. The tab it left keeps
-its regions, their widths, and which of them the keyboard was in, so switching away and back lands where it was
-left; and switching costs no bridge, because a surface belongs to its pane and is parked rather than torn down.
+the pane its keyboard was on, so switching away and back lands where it was left; and switching costs no bridge, because a surface belongs to its pane and is parked rather than torn down.
 
 ## Input precedence
 
@@ -917,8 +916,8 @@ state - the bridge failed to dial, the socket path had moved, the channel could 
 was found by somebody typing. Both ends of the wait were already known to the core, which binds the socket and runs
 the callback the accept fires, so what was missing was a deadline between them: five seconds, one problem per pane,
 cleared by a bridge that arrives late and by the pane closing. **What keeps the accusation about something is that
-both ends are scoped to what the window is drawing**: a socket is bound for the panes a region shows rather than for
-every pane its tab holds, and the wait is counted only while one is being shown. A pane nothing draws renders
+both ends are scoped to what the window is drawing**: a socket is bound for the panes the tab on screen shows rather
+than for every pane it holds, and the wait is counted only while one is being shown. A pane nothing draws renders
 nothing, so it cannot be swallowing anything - and one drawn again waits a whole deadline from the moment it is
 drawn rather than carrying forward a silence nobody was in a position to notice. A zoomed tab is where that was
 found: a window opening onto one accused the three panes the zoom covered, every launch, as a notification each.
@@ -969,8 +968,7 @@ second, and the seam is entered synchronously - so the window spent whole gestur
 time left to draw what was being dragged. The request is handed over instead (`LatestRequestSender`): one in flight,
 the latest remembered, and what arrived while a request was out goes next. A gesture then runs at whatever the round
 trip allows rather than queueing behind itself, and the position it ends on is always sent, because the remembered
-one is always the last asked for. This is contained to those two rather than made general - the other drag in the
-window moves a region boundary, which is Muster's own composition and never reaches a daemon.
+one is always the last asked for. This is contained to those two rather than made general.
 
 **Input never waits at all.** Every keystroke, click and paste goes to the daemon on the input connection, which is
 never answered: events queue for a writer thread, and a queue full enough to mean the daemon has stopped reading drops
@@ -1077,11 +1075,11 @@ Today the only way to feed an embedded ghostty surface is the command it spawns;
 API. The pane channel is therefore delivered by a bridge subprocess the surface runs. That is a fact about current
 libghostty, not a choice - re-verify on upgrades, and revisit if upstream grows a direct feed.
 
-**A surface belongs to its pane, not to the region showing it.** One per pane per window, held by the shell for as
-long as the pane's daemon holds the pane, and lent to whichever region is showing it. It follows from the line above:
+**A surface belongs to its pane, not to the tab showing it.** One per pane per window, held by the shell for as long
+as the pane's daemon holds the pane, and lent to the tab while it shows it. It follows from the line above:
 a bridge is a surface's command, so a surface torn down when its tab went off screen took the bridge with it, and
 every switch back paid for a new attach and its replay. When Muster ran herdr a remote bridge was also an `ssh` exec,
-measured at 444-561ms a switch against 29-59ms for a local pane. The rule also keeps a pane drawn in two regions from
+measured at 444-561ms a switch against 29-59ms for a local pane. The rule also keeps a pane drawn twice from
 becoming two bridges dialing one pane, which the daemon allows only as a takeover. What it costs is one bridge and one
 stream per pane rather than per pane on screen; the roster is what says a pane has closed, and that is when its
 surface goes.
@@ -1241,8 +1239,10 @@ and because the layer that can honestly answer each is different.
 
 **A tab that spans two machines is written down on both, so no tab depends on a file of Muster's.** A tab holding a
 laptop pane beside a devenv pane is a part on each daemon, and each part carries the tab's one Muster name, so each
-daemon restores its part under that name (MIP-3, section 2). Only the order and widths of the tab's regions are
-Muster's, in the window's arrangement. That closed the weaker tier MIP-2 accepted, where the grouping lived in
+daemon restores its part under that name (MIP-3, section 2). Each part also keeps the tab's whole tree, the other
+machines' panes in it as leaves it carries through every save, restore and handoff, so the tab comes back the shape
+it was (MIP-8). Only the order of a tab's parts is Muster's, in the window's arrangement, and their widths for a tab
+whose machines are too old to keep the tree. That closed the weaker tier MIP-2 accepted, where the grouping lived in
 `~/.muster/state/names.toml` and nowhere else.
 
 Two states it answers either way. **A daemon restarts:** it returns every tab, each pane's name and each pane's
@@ -1327,8 +1327,8 @@ client, or held by a window whose arrangement has gone, or every tab on the firs
 the window that was in front most recently.
 
 But composition is the piece nobody else can save. A daemon's saved state is scoped to itself: it can record that its
-part of a tab carries a name, but not which window shows that tab, where the tab sits in the window's list, or how
-wide each machine's region is, because no daemon knows the windows or the other daemons exist. Muster is the only
+part of a tab carries a name and the tab's whole tree, but not which window shows that tab or where the tab sits in
+the window's list, because no daemon knows the windows exist. Muster is the only
 layer that sees across them, which makes that part of durability genuinely ours - and it follows that restore is
 per-daemon and partial by nature, since after a reboot the local daemon comes back from its own file while the remote
 one never noticed.
