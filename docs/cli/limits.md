@@ -294,15 +294,6 @@ A path is tidied lexically, so `..` steps are worked out without asking the file
 matches what a shell's own `cd ..` does, and differs from `realpath` where a symlink is in the
 way.
 
-## A pane put on another machine goes beside its part of the tab, not above or below it
-
-`muster pane new --pane P --daemon devenv` cannot put the new pane above or below P when P's
-tab has no panes on devenv yet. Devenv joins the tab as a new region beside the one holding P:
-before it for `--left` or `--up`, after it for `--right` or `--down`. A tab is one tree over
-its machines, but a pane made on a machine new to the tab still joins it as that machine's own
-part, side by side with the others. Once devenv has a region in the tab, later panes split
-within it on the side asked for.
-
 ## There is no search
 
 `muster` cannot search a pane. The window can, from `cmd+f`, but that is Ghostty's own search

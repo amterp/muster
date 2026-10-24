@@ -145,16 +145,16 @@ somebody's cursor through all three. Ask with --focus.
 `pane move` is one verb for two outcomes, because the window works out which from where the panes \
 are: onto a pane in the same tab the two trade places, onto a pane in another tab it joins that \
 tab. Add --left, --right, --up or --down and it goes to that side of the pane instead, which is \
-how a side by side pair becomes one above the other. Both have to be on the same machine - a \
-pane is a process, and it lives where it lives.
+how a side by side pair becomes one above the other. The two may be on different machines: a pane \
+is a process and stays on its own, and what changes is where it sits in the tab.
 
 `pane new` and `tab new` also take --daemon, which is a machine's own name as `muster window` \
 prints it beside every pane: local, or whatever a [[daemon]] block in your config calls the \
 machine. On its own it says where rather than what to grow from, and it is the way to reach a \
 machine you have no pane on at all - a devenv the day you attach it, or one whose last pane you \
 closed. A machine with nothing on screen gets a first pane rather than a refusal. Beside --pane, \
-`pane new` puts the new pane on that machine in the named pane's tab: split beside that \
-machine's part of the tab when it has one, and as a new part at the tab's end when it does not.
+`pane new` puts the new pane on that machine beside the named pane, on the side asked for, \
+whichever machine the named pane is on.
 ";
 
 const EXAMPLES: &str = "\
@@ -824,9 +824,8 @@ enum Doing {
 
         /// Put it in this tab, which may be one holding panes on another machine
         //
-        // The one destination that crosses machines, because a tab is Muster's grouping rather
-        // than a daemon's: the pane stays on its own machine and changes which tab it is in.
-        // `--onto` cannot, because two panes in one tree are one machine's.
+        // The one destination that names no pane, so nothing says where in the tab it goes: it
+        // lands as a column at the right of the tab's tree, whatever machines that tree spans.
         #[arg(long, group = "somewhere", value_name = "REF", value_parser = reference)]
         tab: Option<String>,
 

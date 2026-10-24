@@ -70,3 +70,19 @@ pub(crate) fn daemon_of(view: &ViewChanged, pane: &str) -> Option<String> {
         .find(|(_, leaf)| leaf.pane_id == pane)
         .map(|(daemon, _)| daemon.to_owned())
 }
+
+/// A tree as text: `rows(p1@laptop, columns(p2@devenv, p3@laptop))`, without its ratios.
+pub(crate) fn shape(tree: &ViewTree) -> String {
+    match &tree.node {
+        Some(view_tree::Node::Pane(leaf)) => {
+            let pane = leaf.pane.as_ref().map_or("?", |pane| pane.pane_id.as_str());
+            format!("{pane}@{}", leaf.daemon_id)
+        }
+        Some(view_tree::Node::Split(split)) => {
+            let child =
+                |child: &Option<Box<ViewTree>>| child.as_deref().map_or_else(String::new, shape);
+            format!("{}({}, {})", split.axis, child(&split.first), child(&split.second))
+        }
+        None => String::new(),
+    }
+}

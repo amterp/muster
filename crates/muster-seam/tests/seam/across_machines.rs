@@ -719,34 +719,212 @@ fn a_split_onto_another_machine_joins_the_split_panes_tab() {
         "a second split onto the devenv gave the tab a second devenv part"
     );
     assert_eq!(panes(&devenv).len(), elsewhere + 2);
+    // Beside the pane split, not in the devenv's part: the tab is one tree over both machines.
+    let wanted = format!("columns(rows({on_laptop}@laptop, {second}@devenv), {first}@devenv)");
+    until(
+        "the second devenv pane to go below the laptop pane it was split from",
+        || drawn(&tab).as_deref() == Some(wanted.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
 }
 
-/// A machine joining a tab goes on the side the split asked for: left of the split pane's part
-/// puts it first, where the end of the tab was the only place it could go before.
+/// A pane put on another machine to the left of the pane split is drawn to its left, as a split
+/// on one machine would be.
 #[test]
-fn a_split_onto_another_machine_to_the_left_puts_that_machine_first() {
+fn a_split_onto_another_machine_to_the_left_goes_left_of_the_pane_split() {
     let _turn = muster::testing::fresh_session();
     let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
     let on_laptop = pane_on("laptop").expect("the fixture waited for it");
     let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
 
     let joined = made(answer(request::Payload::SplitPane(SplitPane {
-        pane_id: on_laptop,
+        pane_id: on_laptop.clone(),
         new_pane_daemon_id: "devenv".to_string(),
         side: "left".to_string(),
         take_focus: true,
         ..SplitPane::default()
     })));
+    let wanted = format!("columns({joined}@devenv, {on_laptop}@laptop)");
     until(
-        "the devenv to join the laptop's tab on its left",
-        || machines_of(&tab) == ["devenv", "laptop"],
-        || format!("{tab} spans {:?}, and the list holds {:?}", machines_of(&tab), rows()),
+        "the devenv's pane to be drawn left of the laptop's",
+        || drawn(&tab).as_deref() == Some(wanted.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
     );
     until(
         "the keyboard to follow the new pane onto the devenv",
         || keyboard() == Some(("devenv".to_string(), joined.clone())),
         || format!("the keyboard is on {:?}", keyboard()),
     );
+}
+
+/// `muster pane new --daemon devenv --down` from a laptop pane puts the devenv's pane below it:
+/// one tab interleaving two machines, which each machine keeps whole, its own pane and the
+/// other's (MIP-8, section 6). Then the two are moved about as any two panes are: dropped on
+/// another's edge, and traded.
+#[test]
+fn a_pane_made_on_another_machine_goes_below_the_pane_it_was_made_from() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    let below = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "down".to_string(),
+        take_focus: true,
+        ..SplitPane::default()
+    })));
+    let wanted = format!("rows({on_laptop}@laptop, {below}@devenv)");
+    until(
+        "the devenv's pane to be drawn below the laptop's",
+        || drawn(&tab).as_deref() == Some(wanted.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+    until(
+        "both machines to keep the tab whole",
+        || {
+            copy_of(&laptop, &tab) == Some(format!("[{on_laptop}/~{below}@devenv 0.50]"))
+                && copy_of(&devenv, &tab) == Some(format!("[~{on_laptop}@laptop/{below} 0.50]"))
+        },
+        || {
+            format!(
+                "the laptop keeps {:?} and the devenv {:?}",
+                copy_of(&laptop, &tab),
+                copy_of(&devenv, &tab)
+            )
+        },
+    );
+    until(
+        "the keyboard to follow the new pane onto the devenv",
+        || keyboard() == Some(("devenv".to_string(), below.clone())),
+        || format!("the keyboard is on {:?}", keyboard()),
+    );
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        daemon_id: "devenv".to_string(),
+        pane_id: below.clone(),
+        onto_pane_id: on_laptop.clone(),
+        side: "right".to_string(),
+        ..ArrangePane::default()
+    })));
+    let beside = format!("columns({on_laptop}@laptop, {below}@devenv)");
+    until(
+        "the devenv's pane, dropped on the laptop pane's right edge, to go to its right",
+        || drawn(&tab).as_deref() == Some(beside.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: below.clone(),
+        onto_pane_id: on_laptop.clone(),
+        ..ArrangePane::default()
+    })));
+    let traded = format!("columns({below}@devenv, {on_laptop}@laptop)");
+    until(
+        "the two panes to trade places",
+        || drawn(&tab).as_deref() == Some(traded.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+    assert_eq!(tabs(&laptop), 1, "the laptop grew a tab it was not asked for");
+    assert_eq!(tabs(&devenv), 2, "the devenv holds its own tab and its part of the laptop's");
+}
+
+/// A pane dropped on a row on another machine in another tab joins that tab beside the row's
+/// pane, and one moved into a tab by name goes in as a column at the right of the tab's whole
+/// tree, where a second machine's region used to go.
+#[test]
+fn a_pane_moved_into_another_machines_tab_goes_beside_the_pane_or_at_the_right() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    let below = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv.clone(),
+        onto_pane_id: below.clone(),
+        ..ArrangePane::default()
+    })));
+    let joined = format!("rows({on_laptop}@laptop, columns({below}@laptop, {on_devenv}@devenv))");
+    until(
+        "the devenv's pane to join the tab behind the row it was dropped on",
+        || drawn(&tab).as_deref() == Some(joined.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+
+    let other = made(answer(request::Payload::CreateTab(CreateTab {
+        daemon_id: "devenv".to_string(),
+        ..CreateTab::default()
+    })));
+    assert_ok(&answer(request::Payload::ArrangePane(ArrangePane {
+        pane_id: other.clone(),
+        tab_id: tab.clone(),
+        ..ArrangePane::default()
+    })));
+    let column = format!("columns({joined}, {other}@devenv)");
+    until(
+        "the pane put in the tab by name to go in as a column at its right",
+        || drawn(&tab).as_deref() == Some(column.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+}
+
+/// A machine on a daemon from before a tab could span machines keeps a tab the old way: a pane
+/// made there joins the tab as that machine's part, beside the others, and a pane cannot be
+/// dropped beside another machine's.
+#[test]
+fn a_machine_too_old_for_spanning_trees_joins_a_tab_as_a_part_of_its_own() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::treat_as_before_spanning("devenv");
+    let TwoMachines { laptop: _laptop, devenv: _devenv } = a_window_showing_two_machines();
+    let on_laptop = pane_on("laptop").expect("the fixture waited for it");
+    let on_devenv = pane_on("devenv").expect("the fixture waited for it");
+    let tab = tab_holding(&on_laptop).expect("the list says which tab holds each pane");
+
+    let joined = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_laptop.clone(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    let side_by_side = format!("columns({on_laptop}@laptop, {joined}@devenv)");
+    until(
+        "the devenv to join the tab beside the laptop's part",
+        || drawn(&tab).as_deref() == Some(side_by_side.as_str()),
+        || format!("{tab} is drawn as {:?}", drawn(&tab)),
+    );
+
+    let refused = refusal(request::Payload::ArrangePane(ArrangePane {
+        pane_id: on_devenv,
+        onto_pane_id: on_laptop,
+        side: "down".to_string(),
+        ..ArrangePane::default()
+    }));
+    assert!(refused.contains("older than this Muster"), "the refusal said: {refused}");
+}
+
+/// A tab's tree as the window draws it, from the layouts it publishes for every tab.
+fn drawn(tab: &str) -> Option<String> {
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow { layout: true })).payload
+    else {
+        return None;
+    };
+    let layout = window.layouts.into_iter().find(|layout| layout.tab_id == tab)?;
+    Some(crate::view::shape(&layout.tree?))
+}
+
+/// The whole tree a daemon keeps for a tab, other machines' panes included.
+fn copy_of(daemon: &Daemon, tab: &str) -> Option<String> {
+    let snapshot = snapshot(daemon);
+    let held = snapshot.tabs.into_iter().find(|held| held.tab == tab)?;
+    Some(shape(held.root.as_ref()?))
 }
 
 /// A pane put on another machine opens at the text size of the pane that was split, as any split
@@ -1364,10 +1542,21 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
         || format!("the tab says it is on {:?}", machines_of(&laptop_tab)),
     );
     // Waited for rather than read once: the list says the tab is on both machines as soon as the
-    // grouping is written, and the devenv's region opens when that machine's own event lands.
+    // devenv's part opens, and the tree with the column in it lands with that machine's event.
     until(
-        "a tab nobody has arranged to divide itself evenly between its machines, without which \
-         what the equalize below changes would be unreadable",
+        "the devenv's pane to go in as a column at the right, as wide as each pane would be",
+        || machine_share().is_some_and(|share| (share - 2.0 / 3.0).abs() < 1e-4),
+        || format!("the laptop's share of the tab is {:?}", machine_share()),
+    );
+    // Halves, so that what the equalize below changes is readable.
+    assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
+        tab_id: laptop_tab.clone(),
+        path: Vec::new(),
+        ratio: 0.5,
+        ..SetSplitRatio::default()
+    })));
+    until(
+        "the divider between the machines to sit at half",
         || machine_share().is_some_and(|share| (share - 0.5).abs() < 1e-4),
         || format!("the laptop's share of the tab is {:?}", machine_share()),
     );
@@ -1384,8 +1573,6 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
          what was asked for: the laptop's share is {share:?}"
     );
 
-    // Neither daemon was told, and there is nothing either could have been told: this is the
-    // one part of the arrangement that lives only in the window.
     assert_eq!(tabs(&laptop), 1, "the laptop grew a tab it was not asked for");
     assert_eq!(tabs(&devenv), 1, "the devenv grew a tab it was not asked for");
 }

@@ -26,6 +26,7 @@ use muster_core::mirror::backend::{PaneId, TabId};
 use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
+use muster_core::spanning;
 use muster_core::transcript;
 use muster_core::{PaneKey, Until};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
@@ -2258,14 +2259,14 @@ fn split_pane(window: WindowId, split: &proto::SplitPane) -> Response {
     )
 }
 
-/// Puts a new pane on another machine, in the tab holding the pane being split.
+/// Puts a new pane on another machine beside the pane being split, on the side asked for,
+/// whichever machine runs it: the tab is one tree over every machine it spans, so below a laptop
+/// pane is a place a devenv pane can go (MIP-8, section 6).
 ///
-/// A tab holds one region per machine, side by side, so where the new pane can go depends on
-/// whether that machine already has a part of the tab. When it does, the new pane splits the
-/// pane that part is showing, on whichever side was asked for. When it does not, the machine
-/// joins the tab as a new region beside the split pane's: before it for left or up, after it
-/// for right or down. Muster keeps no split tree over regions, so a laptop pane cannot go above
-/// a devenv one (`architecture.md`, the core owns composition).
+/// A tab whose machines cannot keep such a tree, because one runs a daemon from before it, still
+/// grows the old way: the new pane splits the pane that machine's part is showing, or the machine
+/// joins the tab as a part of its own beside the split pane's, before it for left or up and after
+/// it for right or down.
 ///
 /// The split pane's directory goes nowhere. It is a path on the other machine, and the daemon
 /// would start the new pane in a directory that may not exist here.
@@ -2289,25 +2290,30 @@ fn split_onto(
         ));
     };
     let Making { cwd, run, name, quiet, maker } = making;
-    let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
-        BackendIntent::SplitPane {
-            pane,
-            side,
-            ratio: (split.ratio > 0.0).then_some(split.ratio),
+    let ratio = (split.ratio > 0.0).then_some(split.ratio);
+    let from = session::daemon_holding(beside)
+        .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });
+    if session::tree_cannot_place(window, &tab, onto).is_none() {
+        let spot = spanning::Spot::Beside { pane: beside.clone(), side, ratio };
+        let arriving = session::Arriving::Made {
             cwd,
             run,
             name,
             quiet,
             maker,
-        }
+            keyboard,
+            split: from.as_ref(),
+        };
+        return relayed(session::arrive(window, onto, &tab, spot, arriving).map(made_or_ok));
+    }
+    let intent = if let Some(pane) = session::pane_in_part(window, onto, &tab) {
+        BackendIntent::SplitPane { pane, side, ratio, cwd, run, name, quiet, maker }
     } else {
         // Every part of a tab is hidden or not alike, so a part made from a hidden pane is too.
         let hidden = session::tab_is_hidden(&tab);
         BackendIntent::JoinTab { tab, cwd, run, name, quiet, hidden, maker }
     };
-    let split = session::daemon_holding(beside)
-        .map(|daemon| session::Beside { pane: PaneKey::new(&daemon, beside), side });
-    relayed(session::submit_from(window, onto, &intent, keyboard, split.as_ref()).map(made_or_ok))
+    relayed(session::submit_from(window, onto, &intent, keyboard, from.as_ref()).map(made_or_ok))
 }
 
 /// Types text into a pane and presses keys in it, named rather than focused.

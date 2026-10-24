@@ -108,14 +108,13 @@ as soon as it says it holds nothing, so most of the time there is nothing to do;
 how a script says it outright, and how you ask again if a daemon refused.
 
 Beside `--pane`, `--daemon` puts the new pane on that machine in the named pane's tab, which is
-what right-clicking a pane and picking a machine does:
+what right-clicking a pane and picking a machine does, to its right:
 
     muster pane new --pane p1w3r07bsd --daemon devenv --run claude
 
-If the tab already has panes on devenv, the new pane splits the one devenv's region has the
-keyboard on, on the side you asked for. If it has none, devenv joins the tab as a new region
-beside the pane's: to its left for `--left` or `--up`, to its right for `--right` or `--down`,
-because a tab lays its machines side by side and Muster keeps no split tree across them.
+The new pane goes beside the named pane, on the side you asked for, whichever machine that pane
+is on: a tab is one tree over every machine it spans, so `--down` from a laptop pane puts a devenv
+pane below it.
 
 ## Which window
 

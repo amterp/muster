@@ -31,7 +31,8 @@ use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
-    BackendChannel, BackendIntent, Branch, Grid, Maker, MoveDestination, Outcome, Refusal, Side,
+    BackendChannel, BackendIntent, Branch, Grid, InTree, Maker, MoveDestination, Outcome, Refusal,
+    Side,
 };
 use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
@@ -2025,8 +2026,6 @@ impl Session {
         self.view_with(window, &mirrors)
     }
 
-    /// Every followed daemon's mirror, locked in the map's own order - the order that makes
-    /// holding several at once safe (`view`).
     /// Whether `machine` speaks a protocol that keeps a tab's whole tree, other machines' panes
     /// included (MIP-8), so a window may write one to it.
     fn holds_spanning_trees(&self, machine: &DaemonId) -> bool {
@@ -2047,6 +2046,44 @@ impl Session {
                 })
     }
 
+    /// Why a pane `carrier` runs cannot be put into `tab` as a place in its one tree, or `None`
+    /// when it can: the carrier has to answer and keep such a tree, and so does every part of the
+    /// tab that answers. A part whose machine is unreachable does not stand in the way, since only
+    /// the parts that answer are written (MIP-8, section 6).
+    fn tree_cannot_place(
+        &self,
+        window: WindowId,
+        tab: &TabId,
+        carrier: &DaemonId,
+    ) -> Option<String> {
+        let answers = |machine: &DaemonId| {
+            self.backends
+                .get(machine)
+                .is_some_and(|backend| backend.follower.connection().control().is_some())
+        };
+        if !answers(carrier) {
+            return Some(format!(
+                "{carrier} is not answering, and putting one of its panes there needs it to act"
+            ));
+        }
+        let too_old = |machine: &DaemonId| {
+            format!(
+                "{machine} runs a muster-daemon older than this Muster, which cannot keep a tab \
+                 holding another machine's panes; restarting that daemon on this version's build \
+                 lets it"
+            )
+        };
+        if !self.holds_spanning_trees(carrier) {
+            return Some(too_old(carrier));
+        }
+        let held = self.windows[window].composition.tab(tab)?;
+        held.daemons()
+            .find(|machine| answers(machine) && !self.holds_spanning_trees(machine))
+            .map(too_old)
+    }
+
+    /// Every followed daemon's mirror, locked in the map's own order - the order that makes
+    /// holding several at once safe (`view`).
     fn mirrors(&self) -> BTreeMap<&DaemonId, MutexGuard<'_, Mirror>> {
         self.backends
             .iter()
@@ -3410,10 +3447,9 @@ pub(crate) fn step_tab(window: WindowId, direction: TabStep) -> Result<(), Strin
 /// it whichever tab either is in, so it is always a move, and a move within one tab is how a
 /// split changes direction.
 ///
-/// Both ends have to be on the daemon named. The sidebar refuses a drop across daemons before
-/// it gets here and a CLI caller does not, so for that caller this is the first line rather
-/// than the second - and it has to be, because one daemon cannot place a pane beside a pane it
-/// does not hold.
+/// The two panes may be on different machines. Each stays on its own, since a pane is a PTY its
+/// daemon owns; what changes is where it sits in its tab's tree, which is worked out on the whole
+/// tree when the place is beside another machine's pane (MIP-8, section 6).
 pub(crate) fn arrange_pane(
     window: WindowId,
     daemon: &DaemonId,
@@ -3421,7 +3457,7 @@ pub(crate) fn arrange_pane(
     onto: &PaneId,
     side: Option<Side>,
 ) -> Result<(), Refusal> {
-    let intent = {
+    let (from, near, to, cannot_place) = {
         let session = poison::lock(&SESSION, "session");
         let backend = session.backends.get(daemon).ok_or_else(|| {
             Refusal::Declined(format!(
@@ -3430,32 +3466,64 @@ pub(crate) fn arrange_pane(
                  named a daemon this window does not have."
             ))
         })?;
-        let mirror = poison::lock(&backend.mirror, "mirror");
-        let holding = |pane: &PaneId| {
-            mirror.pane(pane).map(|held| held.tab.clone()).ok_or_else(|| {
-                Refusal::Declined(format!(
-                    "{daemon} holds no pane called {pane}, so nothing was rearranged. Either \
-                         it closed while this was in flight, or the two panes are on different \
-                         machines - a pane is a PTY its daemon owns, so there is no move that \
-                         would carry one to the other. `muster window` says which daemon holds \
-                         each."
-                ))
-            })
+        let from = poison::lock(&backend.mirror, "mirror").pane(pane).map(|held| held.tab.clone());
+        let gone = |pane: &PaneId| {
+            Refusal::Declined(format!(
+                "no machine this window follows holds a pane called {pane}, so nothing was \
+                 rearranged. Most likely it closed while this was in flight; `muster window` \
+                 says which daemon holds each pane."
+            ))
         };
-        let (from, to) = (holding(pane)?, holding(onto)?);
-        match side {
-            None if from == to => {
-                BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() }
+        let from = from.ok_or_else(|| gone(pane))?;
+        let (near, to) = session.locate(onto).ok_or_else(|| gone(onto))?;
+        let cannot_place = session.tree_cannot_place(window, &to, daemon);
+        (from, near, to, cannot_place)
+    };
+    let refused_by = |why: String| {
+        Refusal::Declined(format!(
+            "{why}, so {pane} was not put beside {onto}, which is on another machine. Every other \
+             move still works on each machine's own panes."
+        ))
+    };
+    if near != *daemon {
+        let spot = spanning::Spot::Beside {
+            pane: onto.clone(),
+            side: side.unwrap_or(Side::Right),
+            ratio: None,
+        };
+        if from != to {
+            if let Some(why) = cannot_place {
+                return Err(refused_by(why));
             }
-            _ => BackendIntent::MovePane {
-                pane: pane.clone(),
-                to: MoveDestination::Beside {
-                    tab: to,
-                    pane: onto.clone(),
-                    side: side.unwrap_or(Side::Right),
-                },
-            },
+            return arrive(window, daemon, &to, spot, Arriving::Moved { pane: pane.clone() })
+                .map(drop);
         }
+        // Inside one tab nothing has to be made or moved between tabs, so no machine has to act:
+        // the parts that answer are written, whichever machine runs the pane that moved.
+        let change = match side {
+            None => spanning::Change::Swap { pane: pane.clone(), with: onto.clone() },
+            Some(_) => {
+                spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot }
+            }
+        };
+        return rearrange(window, &to, &change)
+            .unwrap_or_else(|| {
+                Err(refused_by(cannot_place.unwrap_or_else(|| {
+                    format!("the tab {to} is not kept as one tree by its machines")
+                })))
+            })
+            .map(drop);
+    }
+    let intent = match side {
+        None if from == to => BackendIntent::SwapPanes { pane: pane.clone(), with: onto.clone() },
+        _ => BackendIntent::MovePane {
+            pane: pane.clone(),
+            to: MoveDestination::Beside {
+                tab: to,
+                pane: onto.clone(),
+                side: side.unwrap_or(Side::Right),
+            },
+        },
     };
     submit(window, daemon, &intent, Keyboard::Follows).map(drop)
 }
@@ -3816,6 +3884,26 @@ pub(crate) fn move_pane_to_tab(
                  `muster window` lists the tabs this one holds."
             )));
         }
+    }
+    // A tab spanning machines, or one this pane's machine is new to, takes it as a column at the
+    // right of its whole tree, where a second machine's region used to go. A tab on this pane's
+    // machine alone is that machine's tree, and its daemon puts the pane beside its last one.
+    let through_tree = {
+        let session = poison::lock(&SESSION, "session");
+        let mirrors = session.mirrors();
+        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+        let held = session.windows[window].composition.tab(tab);
+        let already_in =
+            mirror(daemon).and_then(|held| held.pane(pane)).is_some_and(|held| held.tab == *tab);
+        let spanning = held.is_some_and(|held| {
+            spanning::spans(held, mirror) || !held.daemons().any(|machine| machine == daemon)
+        });
+        drop(mirrors);
+        !already_in && spanning && session.tree_cannot_place(window, tab, daemon).is_none()
+    };
+    if through_tree {
+        let moved = Arriving::Moved { pane: pane.clone() };
+        return arrive(window, daemon, tab, spanning::Spot::Column, moved).map(drop);
     }
     let intent = BackendIntent::MovePane {
         pane: pane.clone(),
@@ -4419,6 +4507,16 @@ pub(crate) fn maker(pane: &PaneId) -> Option<Maker> {
     let held = mirror.pane(pane)?;
     let name = muster_core::roster::pane_name(held).unwrap_or(pane.as_str()).to_string();
     Some(Maker { pane: pane.clone(), name })
+}
+
+/// Why a pane `carrier` runs cannot go into `tab` beside another machine's pane, or `None` when
+/// it can ([`Session::tree_cannot_place`]).
+pub(crate) fn tree_cannot_place(
+    window: WindowId,
+    tab: &TabId,
+    carrier: &DaemonId,
+) -> Option<String> {
+    poison::lock(&SESSION, "session").tree_cannot_place(window, tab, carrier)
 }
 
 /// The tab a pane is in, on whichever machine holds it.
@@ -6043,6 +6141,17 @@ fn rearranged_as_tree(
         BackendIntent::SwapPanes { pane, with } => {
             (tab_of(pane)?, spanning::Change::Swap { pane: pane.clone(), with: with.clone() })
         }
+        // A move inside the tab, so that the daemon's copy never changes shape at the generation
+        // the other parts hold, where the merge's tie between them could undo it.
+        BackendIntent::MovePane { pane, to: MoveDestination::Beside { tab, pane: onto, side } }
+            if tab_of(pane).as_ref() == Some(tab) =>
+        {
+            let at = spanning::Spot::Beside { pane: onto.clone(), side: *side, ratio: None };
+            (
+                tab.clone(),
+                spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at },
+            )
+        }
         _ => return None,
     };
     rearrange(window, &tab, &change)
@@ -6081,6 +6190,16 @@ fn rearrange(
             ))));
         }
     };
+    Some(write_trees(window, tab, writes))
+}
+
+/// Writes each part's copy of a tab's tree, done once some part has taken it: a part that refused
+/// had moved on, and the accepted write's own `TabChanged` runs the merge that catches it up.
+fn write_trees(
+    window: WindowId,
+    tab: &TabId,
+    writes: Vec<spanning::Write>,
+) -> Result<Outcome, Refusal> {
     let mut refused = None;
     let mut taken = writes.is_empty();
     for write in writes {
@@ -6113,10 +6232,96 @@ fn rearrange(
             }
         }
     }
-    Some(match refused {
+    match refused {
         Some(refusal) if !taken => Err(refusal),
         _ => Ok(Outcome::default()),
-    })
+    }
+}
+
+/// How a pane arrives in a tab's tree: made there, or moved in from another tab.
+pub(crate) enum Arriving<'a> {
+    Made {
+        cwd: Option<String>,
+        run: Option<String>,
+        name: Option<String>,
+        quiet: bool,
+        maker: Option<Maker>,
+        keyboard: Keyboard,
+        split: Option<&'a Beside>,
+    },
+    Moved {
+        pane: PaneId,
+    },
+}
+
+/// Puts a pane `daemon` runs into `tab` at `spot`, worked out on the tab's whole tree: the pane's
+/// own machine places it, made or moved in, with the tree as it leaves the tab, and then every
+/// other part that can take it is written the same tree (MIP-8, section 6). Nothing is written
+/// to the others when the pane's machine refuses, so no copy names a pane that was never placed.
+///
+/// For a place only a tree over every machine can say, such as below another machine's pane;
+/// [`Session::tree_cannot_place`] says when the machines involved cannot keep one.
+pub(crate) fn arrive(
+    window: WindowId,
+    daemon: &DaemonId,
+    tab: &TabId,
+    spot: spanning::Spot,
+    arriving: Arriving<'_>,
+) -> Result<Outcome, Refusal> {
+    let (pane, worked_out, hidden) = {
+        let session = poison::lock(&SESSION, "session");
+        let pane = match &arriving {
+            Arriving::Made { .. } => poison::lock(&session.minter, "minter").pane(),
+            Arriving::Moved { pane } => pane.clone(),
+        };
+        let held = session.windows[window].composition.tab(tab).ok_or_else(|| {
+            Refusal::NotThere(format!(
+                "this window holds no tab called {tab}, so nothing was placed in it. Either it \
+                 closed while this was in flight, or the name came from another window - \
+                 `muster window` lists the tabs this one holds."
+            ))
+        })?;
+        let mirrors = session.mirrors();
+        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+        let (parts, settled) =
+            spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
+        let change =
+            spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot };
+        let hidden = mirrors.values().any(|held| held.tab(tab).is_some_and(|part| part.hidden));
+        (pane, spanning::rearrange(&parts, &settled, &change), hidden)
+    };
+    let mut writes = worked_out
+        .map_err(|detail| {
+            Refusal::Declined(format!(
+                "{detail}, so {pane} was not placed in the tab {tab}. Where a pane goes in a tab \
+                 spanning machines is worked out on the tab's whole tree; `muster window --json` \
+                 says what that tree holds now"
+            ))
+        })?
+        .writes;
+    let Some(own) = writes.iter().position(|write| write.daemon == *daemon) else {
+        unreachable!("an arriving pane's machine is always written")
+    };
+    let own = writes.remove(own);
+    let at = InTree {
+        tab: tab.clone(),
+        root: own.root,
+        generation: own.generation,
+        based_on: own.based_on,
+        hidden,
+    };
+    let outcome = match arriving {
+        Arriving::Made { cwd, run, name, quiet, maker, keyboard, split } => {
+            let intent = BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker };
+            submit_from(window, daemon, &intent, keyboard, split)?
+        }
+        Arriving::Moved { pane } => {
+            let intent = BackendIntent::MovePane { pane, to: MoveDestination::InTree(at) };
+            submit(window, daemon, &intent, Keyboard::StaysPut)?
+        }
+    };
+    write_trees(window, tab, writes)?;
+    Ok(outcome)
 }
 
 /// Tells every other daemon holding helpers of `maker`, which `daemon` just closed, that it has
