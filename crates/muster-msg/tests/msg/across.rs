@@ -307,7 +307,7 @@ impl Wire {
     ) -> Result<Posted, Refusal> {
         let now = self.tick();
         let to: Vec<String> = to.iter().map(|name| (*name).to_string()).collect();
-        let found = self.found(side, &to);
+        let found = self.found(side, &to)?;
         let (service, sessions) = self.split(side);
         let draft = Draft { group, to: &to, found: &found, body, urgent };
         match service.route_post(caller, &draft, sessions)? {
@@ -328,9 +328,10 @@ impl Wire {
 
     /// What the other machine says each of `names` means there, as a daemon asks when a name
     /// means nobody here. Asked of every name, which is the same answer for those known here.
-    fn found(&mut self, side: Side, names: &[String]) -> Vec<Found> {
+    /// A name that means several agents there is each of them; one shadowed there is refused.
+    fn found(&mut self, side: Side, names: &[String]) -> Result<Vec<Found>, Refusal> {
         if !self.up {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let mut found = Vec::new();
         for name in names {
@@ -339,11 +340,17 @@ impl Wire {
             if call.check().is_err() {
                 continue;
             }
-            if let Ok(Settled::Named(Some(there))) = self.send(side, &call) {
-                found.push(Found { name: name.clone(), there });
+            let found_as = |there| Found { name: name.clone(), there };
+            match self.send(side, &call) {
+                Ok(Settled::Named(Some(there))) => found.push(found_as(there)),
+                Err(Refusal::WhichParticipant { candidates, .. }) => {
+                    found.extend(candidates.into_iter().map(found_as));
+                }
+                Err(shadowed @ Refusal::Shadowed { .. }) => return Err(shadowed),
+                _ => {}
             }
         }
-        found
+        Ok(found)
     }
 
     /// Opens `pane` on `side`, with an agent in it.
@@ -803,6 +810,31 @@ fn a_name_panes_go_by_on_both_machines_is_refused_naming_each() {
     assert_eq!(woke(&posted), vec![("p1lap", Reach::Woken)]);
 }
 
+/// On the other machine a pane goes by the name a participant in another pane joined by. That
+/// machine names both by their panes' ids rather than answering with the pane, so the post is
+/// refused naming each, and either id with the machine reaches it.
+#[test]
+fn a_name_a_pane_and_a_participant_go_by_on_another_machine_is_refused_naming_each() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Devenv, "p3dev");
+    wire.join(Side::Devenv, &in_pane("p3dev"), Some("review"), "council");
+    wire.pane(Side::Devenv, "p2dev");
+    wire.sessions.names.borrow_mut().insert("p2dev".to_string(), "review".to_string());
+    let builder = session("builder");
+    wire.join(Side::Laptop, &builder, Some("builder"), "crew");
+
+    let refused = wire.post(Side::Laptop, &builder, None, &["review"], "which?").unwrap_err();
+    assert_eq!(
+        refused,
+        Refusal::WhichParticipant {
+            name: "review".to_string(),
+            candidates: vec!["p2dev@devenv".to_string(), "p3dev@devenv".to_string()],
+        }
+    );
+    let posted = wire.post(Side::Laptop, &builder, None, &["p3dev@devenv"], "you").unwrap();
+    assert_eq!(woke(&posted), vec![("review@devenv", Reach::Woken)]);
+}
+
 /// A pane on another machine is still an address once the agent in it has joined under a name
 /// of its own: the other machine answers with that name, and the post reaches it.
 #[test]
@@ -827,7 +859,7 @@ fn a_post_to_a_pane_on_another_machine_reaches_the_name_its_agent_took() {
         ["builder+src@lap builder@lap: report back", "builder+src@lap builder@lap: again"]
     );
 
-    let found = wire.found(Side::Laptop, &["p2dev".to_string()]);
+    let found = wire.found(Side::Laptop, &["p2dev".to_string()]).unwrap();
     let now = wire.tick();
     let (laptop, sessions) = wire.split(Side::Laptop);
     let added = laptop
@@ -1008,7 +1040,7 @@ fn a_devenv_pane_added_to_a_laptop_council_takes_a_name_in_it() {
         laptop.join(&director, Some("director"), None, sessions, now).unwrap();
         let policy = Some(directed(&["director", HUMAN]));
         laptop.group_new(&director, "council", policy, sessions, now).unwrap();
-        let found = wire.found(Side::Laptop, &["p9".to_string()]);
+        let found = wire.found(Side::Laptop, &["p9".to_string()]).unwrap();
         let now = wire.tick();
         let (laptop, sessions) = wire.split(Side::Laptop);
         let added = laptop
@@ -1978,7 +2010,7 @@ fn a_policy_names_a_member_on_another_machine() {
         }
     );
 
-    let found = wire.found(Side::Laptop, &["critic".to_string()]);
+    let found = wire.found(Side::Laptop, &["critic".to_string()]).unwrap();
     let now = wire.tick();
     let (laptop, sessions) = wire.split(Side::Laptop);
     let added = laptop
@@ -2097,7 +2129,7 @@ fn a_maker_on_another_machine_is_told_of_its_helper_there() {
     let mut wire = Wire::new();
     wire.pane(Side::Laptop, "p1lap");
     wire.pane(Side::Devenv, "p2dev");
-    let found = wire.found(Side::Devenv, &["p1lap".to_string()]);
+    let found = wire.found(Side::Devenv, &["p1lap".to_string()]).unwrap();
     let maker = found.first().map(|found| found.there.clone()).expect("the laptop has the pane");
     assert_eq!(maker, "p1lap@lap");
 

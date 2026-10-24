@@ -1195,7 +1195,7 @@ impl<S: Store> Messaging<S> {
                 self.since(&group, after).map_or_else(refused, Reply::Caught)
             }
             Call::Who { group } => Reply::Members(self.members_here(peer, &group, presence)),
-            Call::Whom { name } => Reply::Named(self.whom(&name, presence)),
+            Call::Whom { name } => self.whom(&name, presence).map_or_else(refused, Reply::Named),
             Call::Join { name, group, head, was } => self
                 .join_from(peer, &name, was.as_deref(), &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
@@ -1214,20 +1214,23 @@ impl<S: Store> Messaging<S> {
     /// in the pane of that id, or the pane itself while an agent may start there, or the one in
     /// the pane of that name, or one by that name, as a post's `--to` reads it here. The human
     /// is not asked for: it is homed where the app runs, and every machine names it already.
-    pub fn whom(&self, name: &str, presence: &dyn Presence) -> Option<String> {
+    ///
+    /// A name that means several agents here is refused naming each, as `--to` is here, rather
+    /// than answered with the pane: the asker cannot tell which was meant either.
+    pub fn whom(&self, name: &str, presence: &dyn Presence) -> Result<Option<String>, Refusal> {
         if name == HUMAN {
-            return None;
+            return Ok(None);
         }
         if let Some(holder) = self.by_pane(name) {
-            return Some(holder);
+            return Ok(Some(holder));
         }
         if presence.has_pane(name) {
-            return Some(name.to_string());
+            return Ok(Some(name.to_string()));
         }
-        if let Some(pane) = presence.pane_named(name) {
-            return Some(self.by_pane(&pane).unwrap_or(pane));
+        if let Some(reached) = self.pane_called(name, &[], None, presence)? {
+            return Ok(Some(self.by_pane(&reached).unwrap_or(reached)));
         }
-        self.participants.contains_key(name).then(|| name.to_string())
+        Ok(self.participants.contains_key(name).then(|| name.to_string()))
     }
 
     /// Starts the cursor of `name`, if it is one of this machine's participants, at its join to

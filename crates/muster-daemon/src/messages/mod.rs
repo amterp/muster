@@ -1207,14 +1207,14 @@ fn finding<T>(
     for name in addressed.iter().filter(|name| panes.pane_named(name).is_some()) {
         if asked.insert(name.clone()) {
             found.extend(
-                whom(shared, name).into_iter().map(|there| Found { name: name.clone(), there }),
+                whom(shared, name)?.into_iter().map(|there| Found { name: name.clone(), there }),
             );
         }
     }
     loop {
         match act(&found) {
             Err(Refusal::NoSuchParticipant { name }) if asked.insert(name.clone()) => {
-                let there = whom(shared, &name);
+                let there = whom(shared, &name)?;
                 if there.is_empty() {
                     return Err(Refusal::NoSuchParticipant { name });
                 }
@@ -1227,24 +1227,29 @@ fn finding<T>(
 }
 
 /// Whom `name` means on each machine linked to this one, as this machine writes it: only the
-/// machine it names, for `name@machine`.
-pub(crate) fn whom(shared: &Shared, name: &str) -> Vec<String> {
+/// machine it names, for `name@machine`. A machine where the name means several agents names
+/// each, by what reaches it alone there, so the request is refused naming every one; and one
+/// where it is shadowed refuses the request.
+pub(crate) fn whom(shared: &Shared, name: &str) -> Result<Vec<String>, Refusal> {
     let (base, machines) = match muster_msg::split_machine(name) {
         Some((base, machine)) => (base, vec![machine.to_string()]),
         None => (name, shared.peers.machines()),
     };
     let call = muster_msg::Call::Whom { name: base.to_string() };
     if call.check().is_err() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut found = Vec::new();
     for machine in machines {
         let (settle, _) = peer::call_away(shared, &Away { machine, call: call.clone() });
-        if let Ok(Settled::Named(Some(there))) = settle.result {
-            found.push(there);
+        match settle.result {
+            Ok(Settled::Named(Some(there))) => found.push(there),
+            Err(Refusal::WhichParticipant { candidates, .. }) => found.extend(candidates),
+            Err(shadowed @ Refusal::Shadowed { .. }) => return Err(shadowed),
+            _ => {}
         }
     }
-    found
+    Ok(found)
 }
 
 /// A resume wakes as a post does, and is answered as one.

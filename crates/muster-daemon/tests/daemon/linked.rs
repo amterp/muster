@@ -554,6 +554,38 @@ fn a_name_panes_go_by_on_both_linked_machines_is_refused_naming_each() {
     assert_eq!(reached(&posted)[0].0, "p2@far");
 }
 
+/// A name a pane goes by on the linked machine and a participant in another pane there joined
+/// by means both: the far daemon names each by its pane's id rather than answering with the
+/// pane, and the near one refuses the post naming both, either of which reaches its agent.
+#[test]
+fn a_name_a_pane_and_a_participant_go_by_on_the_linked_machine_is_refused_naming_each() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    make(&mut far_control, create("p3", in_new_tab("t3")));
+    far.run_agent("p3");
+    join(&mut far_control, &in_pane("p3"), "review", "council");
+    let review = proto::pane_request::Create {
+        label: Some("review".to_string()),
+        ..create("p2", in_new_tab("t2"))
+    };
+    make(&mut far_control, review);
+    far.run_agent("p2");
+    let mut near_control = near.connect();
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "crew");
+
+    let refused = near_control.ask(post(&named("builder"), None, &["review"], "which?"));
+    assert_eq!(msg_answer(&refused).refusal, "which_participant", "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("p2@far or p3@far"), "{}", refused.answer.reason);
+    let posted = expect(
+        &mut near_control,
+        post(&named("builder"), None, &["p3@far"], "you"),
+        proto::Outcome::Done,
+    );
+    assert_eq!(reached(&posted)[0].0, "review@far");
+}
+
 /// An agent in a pane on the other machine is shown by its pane's callsign with the machine,
 /// as one here is by its callsign: in the group made for the two, beside its id in an answer,
 /// and in the `from` of what wakes the agent here, whichever machine keeps the group.

@@ -104,10 +104,10 @@ such as Claude Code's `✳`, is not part of what a title says.
 
 A name is read the way `muster pane send --pane` reads one: a pane's id first, then a callsign,
 then a name somebody gave a pane. A given name several panes here share is refused, naming each
-by its callsign. A name that means more than one agent - a pane here and a pane on a
-linked machine, or a pane and a participant who joined by that name - is refused, naming each by
-what reaches it alone: a pane, and a participant in a pane, by the pane's id, and an agent on a
-linked machine as `name@machine`. A participant in no pane has nothing but its name, so a pane
+by its callsign. A name that means more than one agent - a pane here and a pane on a linked
+machine, or a pane and a participant who joined by that name, here or there - is refused, naming
+each by what reaches it alone: a pane, and a participant in a pane, by the pane's id, and an agent
+on a linked machine as `name@machine`. A participant in no pane has nothing but its name, so a pane
 going by the same name is said to shadow it, and renaming that pane is what lets the name reach the
 participant again. A post that names its `--group` means the one of them in that group, since
 a post there reaches only its members, so the same name can mean another agent in another group;

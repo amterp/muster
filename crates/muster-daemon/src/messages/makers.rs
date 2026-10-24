@@ -426,7 +426,7 @@ fn find_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
         if makers.asked_ms.get(maker).is_some_and(|asked| now.saturating_sub(*asked) < again_ms) {
             continue;
         }
-        match super::whom(shared, maker).as_slice() {
+        match super::whom(shared, maker).unwrap_or_default().as_slice() {
             [there] => {
                 makers.asked_ms.remove(maker);
                 makers.there.insert(maker.clone(), there.clone());

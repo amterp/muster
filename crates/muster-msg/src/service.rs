@@ -1791,7 +1791,7 @@ impl<S: Store> Messaging<S> {
     /// it is alive, or its pane is still open. One whose session has gone with its pane can
     /// never come back while this pane goes by the name, since joining by a name another pane
     /// goes by is refused, so the pane is the only agent the name can reach.
-    fn pane_called(
+    pub(crate) fn pane_called(
         &self,
         typed: &str,
         found: &[Found],
