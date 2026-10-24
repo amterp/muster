@@ -259,6 +259,29 @@ struct PaneActionTests {
   }
 
   @MainActor
+  @Test("a divider position the core refuses beeps, once for a run of refusals")
+  func aRefusedDividerBeeps() async {
+    let failure = {
+      var failure = Muster_Failure()
+      failure.reason = "the tab's tree has no split at [First]"
+      return failure
+    }()
+    let recorder = RecordingDispatcher(answering: { _ in .failure(failure) })
+    let sender = SplitRatioSender(dispatcher: recorder)
+    var beeps = 0
+    var answered = 0
+    sender.onRefused = { beeps += 1 }
+    sender.onAnswered = { answered += 1 }
+
+    sender.send(tab: "w1:t1", path: [true], ratio: 0.3)
+    await until("the first position to be answered") { answered >= 1 }
+    sender.send(tab: "w1:t1", path: [true], ratio: 0.4)
+    await until("the second position to be answered") { answered >= 2 }
+
+    #expect(beeps == 1)
+  }
+
+  @MainActor
   @Test("stepping the keyboard asks for a direction, not a pane")
   func steppingIsResolvedByTheCore() {
     // The shell does not get to decide what is next: the order is the tab's tree, which is

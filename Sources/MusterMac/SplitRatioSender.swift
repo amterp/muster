@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Sends divider positions to the core, one at a time, without blocking the drag.
 ///
@@ -11,7 +11,9 @@ import Foundation
 ///
 /// The coalescing that fixes that is `LatestRequestSender`, which a moving window uses too.
 /// What is here is only what a divider does differently, which is nearly nothing: there is no
-/// answer to draw, so a refusal is logged and a success is dropped.
+/// answer to draw, so a success is dropped, and a refusal is logged and answered with the
+/// platform's beep, as a refused chord held down is. The divider goes back to where the daemons
+/// say it is, and without the beep that reads as the drag being ignored.
 ///
 @MainActor
 public final class SplitRatioSender {
@@ -22,13 +24,24 @@ public final class SplitRatioSender {
   /// when the pointer stops, not when the last answer lands.
   public var onAnswered: (@MainActor () -> Void)?
 
+  /// What a refused position sounds like. Once for a run of refusals rather than for each: a
+  /// drag that cannot move its divider sends a position for every few points it travels.
+  public var onRefused: @MainActor () -> Void = { NSSound.beep() }
+  private var refusing = false
+
   public init(dispatcher: Dispatcher = Core.dispatcher) {
     sender = LatestRequestSender(
       what: "set_split_ratio", queue: "muster.split-ratio", dispatcher: dispatcher,
       read: { response in
         readResponse(response).map { _ in () }
       })
-    sender.onAnswer = { [weak self] _ in self?.onAnswered?() }
+    sender.onAnswer = { [weak self] answer in
+      guard let self else { return }
+      let refused = if case .failure = answer { true } else { false }
+      if refused && !refusing { onRefused() }
+      refusing = refused
+      onAnswered?()
+    }
   }
 
   /// Asks for a divider position, and returns without waiting for it. The path is the turns
