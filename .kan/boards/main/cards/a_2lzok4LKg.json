@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: seen again in a full ./dev on main (3450a35c), same signature (Some(0) where Some(4)), passed 2 of 2 alone. Being fixed now: the case gets staged so nothing of the line ever reaches the screen.",
+      "created_at_millis": 1792855546011,
+      "id": "c_2nS3yb5bA"
+    }
+  ],
   "created_at_millis": 1792640465243,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-21 in a full ./dev on main (319119e2) on the Mac mini, load 8.8 against 6 performance cores: muster-cli's without_a_window::with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes failed at without_a_window.rs:660 (a_line_the_agent_took_and_repainted_is_unanswered): pane send --enter --confirm 'working' exited 0 where 4 was expected (left Some(0), right Some(4)). It passed 3 of 3 run alone straight after. The case relies on the fake agent taking 'working' and repainting before --confirm looks, so that nothing of the text shows; under load the look can come before the repaint, see the line still there, then gone, and call it taken. Make the case wait on what it means, or the confirm's look on something the repaint cannot race.",
@@ -13,7 +21,7 @@
   "position": "b1I",
   "title": "🎲 without_a_window's pane send --confirm test takes a repainted line as taken under load",
   "type": "bug",
-  "updated_at_millis": 1792640465243,
+  "updated_at_millis": 1792855546011,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792640465243}
   ]

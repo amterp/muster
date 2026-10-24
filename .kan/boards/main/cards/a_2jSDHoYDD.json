@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 104ac998. Checked from local transcripts and the clear corpus that /clear starts a new session id. The statusline names its session with the new report --context-session (protocol 1.8, Report field 14); a report naming another session forgets context and cost first. pane restart still resumes by the hook's session id.",
+      "created_at_millis": 1792855545253,
+      "id": "c_2nS3xNeJ6"
+    }
+  ],
   "created_at_millis": 1792264850487,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-17 on a pane whose Claude Code had Muster's statusline but not its plugin. After `/clear` the ring stayed half full and `muster window` still said `context_used: 49`, while the statusline itself drew 0%.\n\nAfter `/clear`, Claude Code's statusline JSON holds no `context_window.used_percentage` until the next message (inferred: the statusline's `// 0` drew 0% and the daemon kept 49). `report --from` leaves a null out on purpose, since it means unknown rather than empty, so the daemon keeps the last session's value. Only the plugin's SessionStart hook (matcher `startup|clear`) runs `report --clear`. Even with the plugin, a statusline report that started before the clear and lands after it would leave the same stale value, since no later report carries a context either (read from the code, not seen).\n\nLikely fix: the statusline also sends `--from session-id=/session_id`, and the daemon forgets the context and cost reported under another session id. That needs no hooks and covers `/resume` into another session too. Check first that `/clear` gives the session a new id (believed, not verified), and what changes once the statusline names the session id, since `pane restart` resumes by the id the SessionStart hook reports today.",
   "id": "a_2jSDHoYDD",
-  "position": "b1O",
+  "position": "Yvq",
   "title": "A Claude Code pane keeps its old context ring after /clear",
   "type": "bug",
-  "updated_at_millis": 1792264850487,
+  "updated_at_millis": 1792855545359,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792264850487}
+    {"field":"column","value":"backlog-lo","at":1792264850487},
+    {"field":"column","value":"done","at":1792855545359}
   ]
 }

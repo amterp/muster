@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 764c1c2e. The maker's idle notice says the wait the helper declared on \u003cwhat\u003e ran out after its limit, instead of guessing at an error.",
+      "created_at_millis": 1792855545611,
+      "id": "c_2nS3xxi3B"
+    }
+  ],
   "created_at_millis": 1792636682937,
   "creator": "Alexander Terp",
   "description": "From the declared-wait limit (d8e0a77c, 2026-10-21). When a wait runs out after its 10 minutes, the pane reads idle and the maker watch's idle notice fires with its usual text: 'its turn may have ended on an error, or it stopped without saying so'. It could say what happened instead: the wait it declared on \u003cwhat\u003e ran out after ten minutes with nothing ending it.",
   "id": "a_2lyELZDPy",
-  "position": "b1X",
+  "position": "Yvo",
   "title": "When a declared wait runs out, the maker's notice still guesses the turn ended on an error",
   "type": "enhancement",
-  "updated_at_millis": 1792636682937,
+  "updated_at_millis": 1792855545713,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792636682937}
+    {"field":"column","value":"backlog-lo","at":1792636682937},
+    {"field":"column","value":"done","at":1792855545713}
   ]
 }

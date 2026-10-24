@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 830a38f7 and 23ab4d76. Route inferred from code, not reproduced: most likely the group was deleted between the posts (MIP-4 then said 'free again, from #1'); a lost log file would fit too. The devenv's 2026-10-19 run log (msg.group.deleted, msg.group.forgotten) would settle it. Fix: a deleted group's log becomes one tombstone line with its last number, a group made again numbers on from it, and a replica takes a batch beginning with a creation whatever its number, which also closes a group deleted and made again while the link was down. A peer older than this would refetch such a group without end.",
+      "created_at_millis": 1792855545785,
+      "id": "c_2nS3yENkA"
+    }
+  ],
   "created_at_millis": 1792448884322,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-19 on 0.17.0: devenv daemon, window on the laptop over ssh. An agent in pane `gui` posted twice with `muster msg post --to @human -` and no `--group`, about 16 minutes apart. Both printed `posted #4 to @human+gui`, and both woke the human. Afterwards `muster msg log --group @human+gui` shows #1 gui created the group, #2 gui joined, #3 the human joined, and #4 the second post. The first post is not in the log.\n\nSo the pair group seems to have been made again between the two posts and numbered from 1, which loses the first post and gives `#4` two meanings. Not known: what ended the first group (the human's reply, a read, a daemon restart), and whether only groups with @human do this.\n\nA pair group with the human should keep its history across posts, and a group should never issue a message number twice, even when it is made again under the same name.",
   "id": "a_2khQqZYEW",
-  "position": "Zs",
+  "position": "Yvn",
   "title": "msg post --to @human reissues #4, and the log loses the earlier post",
   "type": "bug",
-  "updated_at_millis": 1792852838065,
+  "updated_at_millis": 1792855545878,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792448884322},
-    {"field":"column","value":"in-progress","at":1792852838065}
+    {"field":"column","value":"in-progress","at":1792852838065},
+    {"field":"column","value":"done","at":1792855545878}
   ]
 }

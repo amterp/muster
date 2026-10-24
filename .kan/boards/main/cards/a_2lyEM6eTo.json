@@ -5,24 +5,31 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "comments": [
     {
       "author": "Alexander Terp",
       "body": "2026-10-21 review: the handoff also drops typed.turn (who started the current turn), so a helper handed over mid-chore - a compaction or rename Muster typed - reads as at real work in the newer daemon, and its idle afterwards can raise a maker notice. And the pending blocked report that has not yet counted (04f7d15f) is not carried either, as that commit says. Carry all three with the pane's facts.",
       "created_at_millis": 1792642640066,
       "id": "c_2m0jJuFRS"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "2026-10-24: on main in 1ea8bd86. A handoff carries the carried mark, who typed the current turn, and a blocked report still waiting for the screen (Handoff.Pane 11-13, Handoff.Detection 32-34). A carried wait's limit starts over in the new daemon, so it can last up to twice the limit across a handoff.",
+      "created_at_millis": 1792855545438,
+      "id": "c_2nS3xf4Gy"
     }
   ],
   "created_at_millis": 1792636683273,
   "creator": "Alexander Terp",
   "description": "From the declared-wait changes (d590527b, 2026-10-21). A Claude Code wait carried through a turn Muster typed is limited to 10 minutes, because no later turn may come to end it. The handoff to a newer daemon does not carry the carried mark, so after an upgrade the wait is taken over as the agent's own and is unlimited again. Carry the mark in the handed-over facts.",
   "id": "a_2lyEM6eTo",
-  "position": "b1Z",
+  "position": "Yvp",
   "title": "A handoff does not carry whether a declared wait was carried, so it becomes unlimited",
   "type": "bug",
-  "updated_at_millis": 1792642640066,
+  "updated_at_millis": 1792855545533,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792636683273}
+    {"field":"column","value":"backlog-lo","at":1792636683273},
+    {"field":"column","value":"done","at":1792855545533}
   ]
 }
