@@ -29,8 +29,8 @@ whole shape, and the window still owns no truth.
 
 This reverses two linked decisions in `docs/architecture.md`: that a tab holds one region per
 machine side by side, and that Muster owns no tree over panes because owning one "would make it a
-multiplexer". Section 10 says what changes in the doctrine. Four questions are for amterp, and
-end this document.
+multiplexer". Section 10 says what changes in the doctrine. Four questions were put to amterp
+and end this document; D is decided, A to C are open.
 
 ## Context / Motivation
 
@@ -509,7 +509,11 @@ Recommendation: (a). A list of regions cannot describe a tab that interleaves ma
 exactly the tabs this makes, (b) would print an answer that is wrong. Its cost: scripts that read
 `regions` break.
 
+Decided 2026-10-23: (a). amterp left the choice to an agent, which took the recommendation. The
+release that ships stage 3 says in its notes that `regions[]` is gone and what replaces it.
+
 ---
 
 ## History
 - 2026-10-21 Draft.
+- 2026-10-23 Question D decided: drop `regions[]` at once. Stage 3 is unblocked.
