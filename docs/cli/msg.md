@@ -105,8 +105,11 @@ such as Claude Code's `✳`, is not part of what a title says.
 A name is read the way `muster pane send --pane` reads one: a pane's id first, then a callsign,
 then a name somebody gave a pane. A given name several panes here share is refused, naming each
 by its callsign. A name that means more than one agent - a pane here and a pane on a
-linked machine, or a pane and a participant who joined by that name - is refused, naming each,
-and its id or `name@machine` says which. A participant whose session has gone, and whose pane has
+linked machine, or a pane and a participant who joined by that name - is refused, naming each by
+what reaches it alone: a pane, and a participant in a pane, by the pane's id, and an agent on a
+linked machine as `name@machine`. A participant in no pane has nothing but its name, so a pane
+going by the same name is said to shadow it, and renaming that pane is what lets the name reach the
+participant again. A participant whose session has gone, and whose pane has
 closed with it, does not count: it cannot join by that name again while a pane goes by it, so the
 pane is the only agent the name can reach. A daemon draws no pane a callsign somebody here joined by.
 `group add` takes a pane by its name as `--to` does.

@@ -40,8 +40,14 @@ pub enum Refusal {
         name: String,
         panes: Vec<String>,
     },
-    /// Members on several machines go by this name; `name@machine` says which.
+    /// Several agents go by this name; each candidate is a name that reaches one of them alone.
     WhichParticipant {
+        name: String,
+        candidates: Vec<String>,
+    },
+    /// Agents the candidates reach go by this name, and so does a participant here with no open
+    /// pane, which nothing but the name reaches while a pane goes by it too.
+    Shadowed {
         name: String,
         candidates: Vec<String>,
     },
@@ -151,6 +157,7 @@ impl Refusal {
             Refusal::NoSuchParticipant { .. } => "no_such_participant",
             Refusal::Titled { .. } => "titled",
             Refusal::WhichParticipant { .. } => "which_participant",
+            Refusal::Shadowed { .. } => "shadowed",
             Refusal::Unreachable { .. } => "unreachable",
             Refusal::Unchecked { .. } => "unchecked",
             Refusal::Unanswered { .. } => "unanswered",

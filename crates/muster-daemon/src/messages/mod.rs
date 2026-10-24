@@ -1603,6 +1603,14 @@ pub(super) fn words(refusal: &Refusal) -> String {
         Refusal::WhichParticipant { name, candidates } => {
             format!("{name} could be {}; say which, by one of those", candidates.join(" or "))
         }
+        Refusal::Shadowed { name, candidates } => format!(
+            "{name} could be {}, or the participant here that joined as {name}, which has no \
+             open pane to be named by instead. Post --to {} to reach {}, or rename the pane \
+             called {name} so that {name} means the participant again",
+            candidates.join(" or "),
+            if candidates.len() == 1 { "it" } else { "one of those" },
+            if candidates.len() == 1 { "that agent" } else { "those agents" },
+        ),
         Refusal::Titled { name, panes } => match panes.as_slice() {
             [pane] => format!(
                 "no pane is called {name:?}, and it cannot be a participant's name, but it is \

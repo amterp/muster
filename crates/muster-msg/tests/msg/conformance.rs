@@ -144,6 +144,7 @@ fn refused(refusal: &Refusal) -> String {
     let detail = match refusal {
         Refusal::BadName { name } | Refusal::NoSuchParticipant { name } => name.clone(),
         Refusal::WhichParticipant { name, candidates }
+        | Refusal::Shadowed { name, candidates }
         | Refusal::Titled { name, panes: candidates } => {
             format!("{name} {}", candidates.join(","))
         }

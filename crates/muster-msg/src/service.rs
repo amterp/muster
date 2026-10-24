@@ -1775,6 +1775,11 @@ impl<S: Store> Messaging<S> {
     /// whoever another machine said it means in `found` - is refused, naming each, rather than
     /// reaching whichever is nearest. Nothing, when no pane here goes by `typed`.
     ///
+    /// The refusal names each by what reaches it alone, never by `typed` again: a pane here, and
+    /// a participant whose pane is open, by the pane's id, and an agent on another machine as
+    /// `found` writes it. A participant with no open pane has nothing but the name, so it is
+    /// refused as shadowed by the pane, which can be renamed.
+    ///
     /// A participant who joined by that name counts only while it could still read a post: while
     /// it is alive, or its pane is still open. One whose session has gone with its pane can
     /// never come back while this pane goes by the name, since joining by a name another pane
@@ -1805,18 +1810,25 @@ impl<S: Store> Messaging<S> {
             return Ok(None);
         };
         let holder = self.by_pane(&pane).unwrap_or_else(|| pane.clone());
-        let mut candidates = vec![holder.clone()];
-        let still_there = |known: &Participant| {
-            alive(known, presence)
-                || known.pane.as_deref().is_some_and(|theirs| presence.has_pane(theirs))
+        let mut candidates = vec![pane.clone()];
+        let mut shadowed = false;
+        let open_pane = |known: &Participant| {
+            known.pane.clone().filter(|theirs| presence.has_pane(theirs))
         };
-        if typed != holder && self.participants.get(typed).is_some_and(still_there) {
-            candidates.push(typed.to_string());
+        if let Some(known) = self.participants.get(typed).filter(|_| typed != holder) {
+            match open_pane(known) {
+                Some(theirs) => candidates.push(theirs),
+                None => shadowed = alive(known, presence),
+            }
         }
         candidates
             .extend(found.iter().filter(|each| each.name == typed).map(|each| each.there.clone()));
+        let name = typed.to_string();
+        if shadowed {
+            return Err(Refusal::Shadowed { name, candidates });
+        }
         if candidates.len() > 1 {
-            return Err(Refusal::WhichParticipant { name: typed.to_string(), candidates });
+            return Err(Refusal::WhichParticipant { name, candidates });
         }
         Ok(Some(pane))
     }

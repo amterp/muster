@@ -353,8 +353,9 @@ fn a_post_to_a_panes_title_is_refused_naming_the_pane() {
 }
 
 /// A pane may be given the name a live agent joined by, since a given name need not be unique.
-/// A post to that name then means both, so it is refused naming each, and the pane's callsign
-/// still reaches it.
+/// A post to that name then means both, so it is refused. The agent joined from no pane, so
+/// nothing but the name reaches it: the refusal names the pane by its id and says the pane
+/// shadows the agent. The pane's callsign still reaches it.
 #[test]
 fn a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign() {
     let daemon = daemon();
@@ -372,7 +373,8 @@ fn a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign() {
 
     let refused =
         expect(&mut control, post_to(&named("a"), "heron", "which?"), proto::Outcome::Refused);
-    assert_eq!(msg_answer(&refused).refusal, "which_participant", "{}", refused.answer.reason);
+    assert_eq!(msg_answer(&refused).refusal, "shadowed", "{}", refused.answer.reason);
+    assert!(refused.answer.reason.contains("p2"), "{}", refused.answer.reason);
     let callsign = snapshot(&mut control)
         .panes
         .into_iter()

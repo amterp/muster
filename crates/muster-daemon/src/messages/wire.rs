@@ -250,6 +250,7 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.existing = existing;
         }
         Refusal::WhichParticipant { name, candidates }
+        | Refusal::Shadowed { name, candidates }
         | Refusal::Titled { name, panes: candidates } => {
             refused.name = name;
             refused.candidates = candidates;
@@ -335,6 +336,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "pair_too_long" => Refusal::PairTooLong { group },
         "no_such_participant" => Refusal::NoSuchParticipant { name },
         "which_participant" => Refusal::WhichParticipant { name, candidates },
+        "shadowed" => Refusal::Shadowed { name, candidates },
         "titled" => Refusal::Titled { name, panes: candidates },
         "unreachable" => Refusal::Unreachable { group, machine },
         "unanswered" => Refusal::Unanswered { group, machine },
@@ -415,6 +417,7 @@ mod tests {
             Refusal::PairTooLong { group: "a+b".into() },
             Refusal::NoSuchParticipant { name: "a".into() },
             Refusal::WhichParticipant { name: "a".into(), candidates: vec!["a@x".into()] },
+            Refusal::Shadowed { name: "a".into(), candidates: vec!["p1".into()] },
             Refusal::Titled { name: "BUILD LEAD".into(), panes: vec!["p1".into(), "p2".into()] },
             Refusal::Unreachable { group: "g@x".into(), machine: "x".into() },
             Refusal::Unanswered { group: "g@x".into(), machine: "x".into() },
