@@ -292,6 +292,7 @@ impl Detection {
         let (concluded_agent, concluded_state) =
             carried.concluded.as_ref().map_or((None, proto::AgentState::Unknown), recorded);
         let report = carried.report.as_ref();
+        let pending = carried.pending.as_ref();
         proto::handoff::Detection {
             agent: carried.agent.as_ref().map(|agent| agent.id().to_string()),
             misses: carried.misses.into(),
@@ -326,6 +327,11 @@ impl Detection {
             working_ms_ago: carried.drift.working_ago.map(millis),
             active_ms_ago: carried.drift.active_ago.iter().copied().map(millis).collect(),
             blocker_ms_ago: carried.blocker_ago.map(millis),
+            pending_agent: pending.map(|pending| pending.agent.id().to_string()),
+            pending_state: pending
+                .map_or(proto::AgentState::Unknown, |pending| agent_state(pending.state))
+                .into(),
+            pending_ms_ago: pending.map_or(0, |pending| millis(pending.ago)),
         }
     }
 
@@ -359,6 +365,12 @@ impl Detection {
             ago: millis(carried.report_ms_ago),
             confirmed: carried.report_confirmed,
         });
+        let pending = carried.pending_agent.as_deref().map(|agent| CarriedReport {
+            agent: Agent::new(agent),
+            state: state_of(carried.pending_state()),
+            ago: millis(carried.pending_ms_ago),
+            confirmed: false,
+        });
         let carried_here = Carried {
             agent: carried.agent.as_deref().map(Agent::new),
             misses: u8::try_from(carried.misses).unwrap_or(u8::MAX),
@@ -375,6 +387,7 @@ impl Detection {
             title_pending: carried.title_pending,
             concluded,
             report,
+            pending,
             output_ago: carried.output_ms_ago.map(millis),
             drift: Drift {
                 rules_idle_ago: carried.rules_idle_ms_ago.map(millis),
@@ -547,6 +560,9 @@ mod tests {
             active_ms_ago: vec![2000, 1000],
             report_confirmed: true,
             blocker_ms_ago: Some(3000),
+            pending_agent: Some("claude".to_string()),
+            pending_state: proto::AgentState::Blocked.into(),
+            pending_ms_ago: 300,
         }
     }
 

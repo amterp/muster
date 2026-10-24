@@ -822,6 +822,12 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
             ago: Duration::from_millis(500),
             confirmed: true,
         }),
+        pending: Some(CarriedReport {
+            agent: claude(),
+            state: State::Blocked,
+            ago: Duration::from_millis(300),
+            confirmed: false,
+        }),
         output_ago: Some(Duration::from_millis(50)),
         drift: Drift {
             rules_idle_ago: Some(Duration::from_secs(40)),
@@ -845,6 +851,10 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
             report: Some(CarriedReport {
                 ago: Duration::from_millis(600),
                 ..carried.report.clone().expect("a report")
+            }),
+            pending: Some(CarriedReport {
+                ago: Duration::from_millis(400),
+                ..carried.pending.clone().expect("a pending report")
             }),
             output_ago: Some(Duration::from_millis(150)),
             drift: Drift {
@@ -984,6 +994,27 @@ fn a_blocked_report_counts_once_the_screen_sits_still() {
         run.until_published(Duration::from_secs(3)).expect("the report counted");
     assert_eq!(publication, reported(State::Blocked));
     assert!(after >= reporting::STILL, "counted after {after:?} of a still screen");
+}
+
+/// A blocked report still waiting when the pane is handed over goes on waiting in the detector
+/// that takes it, and counts once the screen sits still there: its hook does not run again.
+#[test]
+fn a_blocked_report_waiting_for_the_screen_is_handed_over_with_it() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("busy");
+    run.until_published(Duration::from_secs(2));
+    run.report(State::Working);
+    run.tick();
+    run.report(State::Blocked);
+    run.run_for(Duration::from_millis(300), Some("busy"));
+
+    let carried = run.detector.carried(run.now);
+    run.detector = Detector::resumed(SHELL, carried, run.now, 0);
+    let (_, publication) =
+        run.until_published(Duration::from_secs(3)).expect("the report counted after the handoff");
+    assert_eq!(publication, reported(State::Blocked));
 }
 
 /// A blocked report the rules read too counts at once, however much else moves.

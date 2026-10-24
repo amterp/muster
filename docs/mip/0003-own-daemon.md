@@ -746,7 +746,9 @@ prompt with an empty wait, which clears it, unless Muster gave the prompt (above
 on a process. For an agent with no hooks, detection's reading of a
 turn's end (working or waiting on you, then idle) settles the wait instead. A pane whose
 declaration this daemon did not see, handed over or restored, keeps its wait through one more turn
-end, so the wait lasts a turn too long rather than too short.
+end, so the wait lasts a turn too long rather than too short. A handoff carries whether the wait
+was carried through a turn Muster started, and who typed the turn under way, so a carried wait
+stays limited in the newer daemon and a chore's turn is still not the agent's own work.
 
 One wait can still outlive its work: a wait on something that never wakes the agent, a CI run
 elsewhere. Where nothing is known to end it, it lasts 10 minutes at most, the screen's own limit
@@ -805,7 +807,9 @@ report before it goes on counting until the screen has sat still for a second, o
 the prompt, whichever comes first. Claude Code and Codex fire `PermissionRequest` while their
 turn's spinner still runs, before the prompt draws, and for an approval nobody is asked for,
 where no prompt draws at all. Counted at once, each read blocked for up to three seconds: long
-enough for `pane wait --until blocked` to answer, and for a key sent then to be lost.
+enough for `pane wait --until blocked` to answer, and for a key sent then to be lost. A report
+still waiting when the pane is handed to a newer daemon goes on waiting there, since its hook does
+not run again.
 
 A Return or Esc typed into a pane that reads blocked may have answered its dialog, and the screen
 cannot say so until the harness redraws and detection reads it again: up to a tick and a redraw

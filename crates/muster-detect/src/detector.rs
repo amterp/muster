@@ -250,6 +250,7 @@ impl Detector {
             title_pending: self.title_writes_at_change.is_some(),
             concluded: self.last_concluded.clone(),
             report,
+            pending: self.reporting.pending_carried(now),
             output_ago,
             drift: self.reporting.drift(now),
             blocker_ago: self.reporting.blocker_ago(now),
@@ -282,6 +283,7 @@ impl Detector {
         detector.last_concluded = carried.concluded;
         detector.reporting = Reporting::resumed(
             carried.report,
+            carried.pending,
             carried.output_ago,
             carried.drift,
             carried.blocker_ago,
@@ -720,6 +722,8 @@ pub struct Carried {
     pub concluded: Option<Publication>,
     /// The agent's own report.
     pub report: Option<CarriedReport>,
+    /// A blocked report waiting for the screen to sit still before it counts.
+    pub pending: Option<CarriedReport>,
     /// How long ago the pane last produced output, which a working report goes stale from.
     pub output_ago: Option<Duration>,
     /// Where telling that the rules cannot read the screen stands.

@@ -278,3 +278,34 @@ fn a_wait_its_jobs_end_has_no_limit_until_it_is_carried() {
     until_some("the carried wait to run out", || p1.waiting_on().is_none().then_some(()));
     assert!(p1.finished_unseen(), "the turn it held back is finished");
 }
+
+/// A wait carried through a turn Muster typed is still limited in the daemon a pane is handed
+/// to: taken over as the agent's own, it would last until a turn that may never come.
+#[test]
+fn a_carried_wait_is_still_limited_after_a_handoff() {
+    use proto::AgentState::{Idle, Working};
+    let mut p1 = Pane::with_a_short_limit();
+    p1.turn_declaring("the full gate");
+    let compact = proto::pane_request::Compact {
+        pane: "p1".to_string(),
+        focus: Some("keep the work notes".to_string()),
+        then: None,
+    };
+    let asked = p1.control.ask(pane(proto::pane_request::Request::Compact(compact)));
+    assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
+    until_some("the compaction to be typed", || {
+        let heard = std::fs::read_to_string(p1.daemon.root().join("home/fake-agent-heard"));
+        heard.ok().filter(|heard| heard.contains("/compact keep the work notes"))
+    });
+    p1.hook_reports(Working);
+    p1.hook_reports(Idle);
+    assert_eq!(p1.waiting_on(), Some(("the full gate".to_string(), None)), "carried");
+
+    let answer = p1.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    p1.control = p1.daemon.connect();
+    assert_eq!(p1.waiting_on(), Some(("the full gate".to_string(), None)), "handed over");
+    until_some("the carried wait to run out in the new daemon", || {
+        p1.waiting_on().is_none().then_some(())
+    });
+}

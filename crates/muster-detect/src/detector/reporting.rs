@@ -69,6 +69,17 @@ pub(crate) struct SelfReport {
     pub(crate) confirmed: bool,
 }
 
+impl SelfReport {
+    fn carried(&self, now: Instant) -> CarriedReport {
+        CarriedReport {
+            agent: self.agent.clone(),
+            state: self.state,
+            ago: now.duration_since(self.at),
+            confirmed: self.confirmed,
+        }
+    }
+}
+
 /// How far along drift is, for another process to go on from: how long ago each of its spans
 /// began, and the seconds of the last [`DRIFT`] in which the pane produced output.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -297,13 +308,14 @@ impl Reporting {
     /// they had read the report's state is carried, since a report they confirmed lets go on a
     /// still screen where one they never read would not.
     pub(crate) fn carried(&self, now: Instant) -> (Option<CarriedReport>, Option<Duration>) {
-        let report = self.report.as_ref().map(|report| CarriedReport {
-            agent: report.agent.clone(),
-            state: report.state,
-            ago: now.duration_since(report.at),
-            confirmed: report.confirmed,
-        });
+        let report = self.report.as_ref().map(|report| report.carried(now));
         (report, self.last_output_at.map(|at| now.duration_since(at)))
+    }
+
+    /// The blocked report still waiting for the screen to sit still, which goes on waiting in the
+    /// process the pane is handed to: its hook does not run again.
+    pub(crate) fn pending_carried(&self, now: Instant) -> Option<CarriedReport> {
+        self.pending.as_ref().map(|pending| pending.carried(now))
     }
 
     /// Where drift stands, so the process a pane is handed to neither clears `unreadable` while
@@ -326,22 +338,24 @@ impl Reporting {
 
     pub(crate) fn resumed(
         report: Option<CarriedReport>,
+        pending: Option<CarriedReport>,
         output_ago: Option<Duration>,
         drift: Drift,
         blocker_ago: Option<Duration>,
         now: Instant,
     ) -> Reporting {
         let at = |ago: Duration| now.checked_sub(ago);
-        let report = report.and_then(|report| {
+        let resumed = |report: CarriedReport| {
             Some(SelfReport {
                 agent: report.agent,
                 state: report.state,
                 at: at(report.ago)?,
                 confirmed: report.confirmed,
             })
-        });
+        };
         Reporting {
-            report,
+            report: report.and_then(resumed),
+            pending: pending.and_then(resumed),
             last_output_at: output_ago.and_then(at),
             reading: drift.rules_idle_ago.and_then(at).map(|since| (State::Idle, since)),
             unmatched_since: drift.unmatched_ago.and_then(at),

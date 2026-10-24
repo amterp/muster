@@ -31,7 +31,7 @@ use crate::data::Data;
 use crate::descriptors::Sealing;
 use crate::effects::Reported;
 use crate::messages::Need;
-use crate::pane::Turns;
+use crate::pane::{Turns, TypedBy};
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
 use crate::server::Socket;
@@ -328,6 +328,7 @@ fn handed(
     for pane in &handing.panes {
         let name = &pane.record.pane;
         let (replay, grid) = pane.io.replay();
+        let (turn_by, turn_ago) = pane.io.carried_turn(Instant::now());
         fds::send(&link, &[pane.io.master()])
             .map_err(|error| format!("could not send pane {name}'s terminal: {error}"))?;
         let grid = proto::Grid {
@@ -345,6 +346,9 @@ fn handed(
                 replay_length: replay.len() as u64,
                 detection: pane.io.carried_detection(),
                 wait_declared: Some(pane.turns.wait_declared),
+                wait_carried: Some(pane.turns.wait_carried),
+                turn_typed_by: typed_by(turn_by).into(),
+                turn_ms_ago: turn_ago.map(|ago| u32::try_from(ago.as_millis()).unwrap_or(u32::MAX)),
                 reports_turns: pane.turns.reports_turns,
                 session_id: pane.session_id.clone(),
                 oldest_row: pane.io.screen().handed_over_oldest_row(),
@@ -716,6 +720,11 @@ fn adopt_panes(
             height_px: u16::try_from(grid.height_px).unwrap_or(u16::MAX),
         };
         let maker_told = need(pane.maker_told());
+        let turn = (
+            typed(pane.turn_typed_by()),
+            pane.turn_ms_ago
+                .and_then(|ms| Instant::now().checked_sub(Duration::from_millis(ms.into()))),
+        );
         let record = pane.record.unwrap_or_default();
         let resume = resumes.get(&record.pane);
         let adopted = shared.lock().adopt(
@@ -730,13 +739,14 @@ fn adopt_panes(
                     wait_declared: pane.wait_declared.unwrap_or(Turns::default().wait_declared),
                     reports_turns: pane.reports_turns,
                     wait_on_screen: false,
-                    wait_carried: false,
+                    wait_carried: pane.wait_carried.unwrap_or(false),
                     wait_serial: 0,
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,
                 oldest_row: pane.oldest_row,
                 maker_told,
+                turn,
             },
         );
         if let Err(problem) = adopted {
@@ -744,6 +754,24 @@ fn adopt_panes(
         }
     }
     Ok(())
+}
+
+fn typed_by(by: Option<TypedBy>) -> handoff::TypedBy {
+    match by {
+        None => handoff::TypedBy::Nobody,
+        Some(TypedBy::Someone) => handoff::TypedBy::Someone,
+        Some(TypedBy::Doorbell) => handoff::TypedBy::Doorbell,
+        Some(TypedBy::Chore) => handoff::TypedBy::Chore,
+    }
+}
+
+fn typed(by: handoff::TypedBy) -> Option<TypedBy> {
+    match by {
+        handoff::TypedBy::Nobody => None,
+        handoff::TypedBy::Someone => Some(TypedBy::Someone),
+        handoff::TypedBy::Doorbell => Some(TypedBy::Doorbell),
+        handoff::TypedBy::Chore => Some(TypedBy::Chore),
+    }
 }
 
 fn told(need: Option<Need>) -> handoff::Told {

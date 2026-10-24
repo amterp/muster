@@ -1970,6 +1970,25 @@ message Handoff {
     // Since 1.6. What the pane, a helper, has had its maker told it needs and still needs
     // (MIP-7, section 4), so that the new daemon does not tell the maker again.
     Told maker_told = 10;
+    // Since 1.8. Whether the wait the agent declared was carried through a turn Muster typed, a
+    // wake or a compaction, which limits it, since no later turn may come to end it. Absent:
+    // taken as the agent's own, and not limited for that.
+    optional bool wait_carried = 11;
+    // Since 1.8. Who typed what started the agent's current turn, or its last one, and how long
+    // ago that turn started: a turn Muster typed as a chore is not the agent going to work, and
+    // its end raises no maker's notice. Unset: nothing typed it, or a daemon that sends none.
+    TypedBy turn_typed_by = 12;
+    optional uint32 turn_ms_ago = 13;
+  }
+
+  enum TypedBy {
+    TYPED_BY_NOBODY = 0;
+    // A person, or a `pane send`.
+    TYPED_BY_SOMEONE = 1;
+    // The doorbell, for a wake.
+    TYPED_BY_DOORBELL = 2;
+    // A chore of the daemon's own: a rename, a compaction.
+    TYPED_BY_CHORE = 3;
   }
 
   enum Told {
@@ -2031,6 +2050,12 @@ message Handoff {
     // How long ago the rules began reading every screen as a prompt they can see, which sets a
     // working report aside.
     optional uint32 blocker_ms_ago = 31;
+    // Since 1.8. A blocked report the rules have not read, still waiting for the screen to sit
+    // still before it counts, and how long ago it came: the hook that sent it does not run
+    // again. Absent: none was waiting.
+    optional string pending_agent = 32;
+    AgentState pending_state = 33;
+    uint32 pending_ms_ago = 34;
   }
 
   message Ready {}

@@ -575,6 +575,8 @@ pub(crate) struct Resuming<'a> {
     /// The number of the oldest row the replay holds.
     pub(crate) oldest_row: u64,
     pub(crate) maker_told: Option<Need>,
+    /// Who typed what started the agent's turn, and when it started.
+    pub(crate) turn: (Option<TypedBy>, Option<std::time::Instant>),
 }
 
 pub(crate) struct HandedPane {
@@ -3714,6 +3716,8 @@ impl Session {
         pane.session_id = resuming.session_id.map(str::to_string);
         pane.resume = resuming.resume.cloned();
         pane.maker_told = resuming.maker_told;
+        let (by, at) = resuming.turn;
+        pane.io.resume_turn(by, at);
         if let Some(need) = resuming.maker_told {
             self.carried_told.insert(name, need);
         }

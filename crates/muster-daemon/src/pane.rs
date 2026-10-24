@@ -475,6 +475,19 @@ impl PaneIo {
         poison::lock(&self.typed, "daemon.pane.typed").turn
     }
 
+    /// Who typed what started the agent's current turn, and how long ago it started, for the
+    /// daemon the pane is handed to.
+    pub(crate) fn carried_turn(&self, now: Instant) -> (Option<TypedBy>, Option<Duration>) {
+        let typed = poison::lock(&self.typed, "daemon.pane.typed");
+        (typed.turn, typed.turn_at.map(|at| now.saturating_duration_since(at)))
+    }
+
+    /// Goes on from the turn the daemon that handed the pane over said: [`Self::carried_turn`].
+    pub(crate) fn resume_turn(&self, by: Option<TypedBy>, at: Option<Instant>) {
+        let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        (typed.turn, typed.turn_at) = (by, at);
+    }
+
     /// Typed input holding a Return, or a newline, is about to be written.
     pub(crate) fn wrote_line(&self) {
         poison::lock(&self.typed, "daemon.pane.typed").lines += 1;
@@ -1700,6 +1713,25 @@ mod tests {
         io.wrote_input(late, true, Some(TypedBy::Someone));
         assert_eq!(io.typed_just_now(late), Some(TypedBy::Someone));
         assert_eq!(io.typed_just_now(handed + Duration::from_secs(80)), None, "it lapses");
+    }
+
+    /// A turn handed to another daemon is still the one who typed it started there: a chore's
+    /// turn is not the agent going to work, and the prompt hook it fires is the chore's.
+    #[test]
+    fn a_turn_handed_over_is_still_the_one_who_typed_it() {
+        let io = PaneIo::idle(1);
+        let typed = Instant::now();
+        io.wrote_input(typed, true, Some(TypedBy::Chore));
+        let began = typed + Duration::from_millis(300);
+        assert_eq!(io.turn_started(began), Some(TypedBy::Chore));
+
+        let handed = began + Duration::from_secs(2);
+        let (by, ago) = io.carried_turn(handed);
+        let taken = PaneIo::idle(1);
+        taken.resume_turn(by, ago.and_then(|ago| handed.checked_sub(ago)));
+        assert_eq!(taken.turn_typed_by(), Some(TypedBy::Chore));
+        let hooked = handed + Duration::from_millis(200);
+        assert_eq!(taken.prompted_by(hooked), Some(TypedBy::Chore), "nothing typed since");
     }
 
     #[test]
