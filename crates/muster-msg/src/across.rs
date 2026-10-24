@@ -698,6 +698,36 @@ impl<S: Store> Messaging<S> {
         owed
     }
 
+    /// What a join the home took does here before its entries are applied: renames the caller
+    /// that asked for it, if one did, and starts the name's place in the group at the join, so
+    /// nothing from before it counts as unread. Applying the entries first would let go of a
+    /// folded pane's place and make the name a participant afresh. Says whether the name was
+    /// taken over from a session that had gone.
+    fn taken_join(
+        &mut self,
+        peer: &Peer,
+        call: &Call,
+        key: &str,
+        seq: u64,
+        caller: Option<&Caller>,
+        presence: &dyn Presence,
+    ) -> Result<bool, Refusal> {
+        let Call::Join { name, .. } = call else { return Err(mismatched(call)) };
+        let renamed = caller.map(|caller| self.become_named(caller, name, presence));
+        // Folding the pane queued a join to this home for this group; this was it.
+        self.folded
+            .away
+            .retain(|away| !(away.machine == peer.name && away.call.group() == call.group()));
+        let took_over = renamed.transpose()?.unwrap_or(false);
+        if let Some(participant) = self.participants.get_mut(name) {
+            participant.folds_owed.remove(key);
+            participant.cursors.entry(key.to_string()).or_insert(seq);
+            participant.woken.remove(key);
+            participant.rewoken.remove(key);
+        }
+        Ok(took_over)
+    }
+
     /// Where `post` is answered. A post to a group kept elsewhere is checked here against the
     /// replica, then forwarded with its author's cursor, which the home's guard compares with
     /// the log as it appends (MIP-4, section 4).
@@ -926,28 +956,14 @@ impl<S: Store> Messaging<S> {
             }
             Reply::Joined { seq, caught } => {
                 let Call::Join { name, .. } = call else { return Err(mismatched(call)) };
-                // Renamed before the entries are applied: applying them first would let go of
-                // the folded pane's place and make the name a participant afresh.
-                let renamed = caller.map(|caller| self.become_named(caller, name, presence));
-                // Folding the pane queued a join to this home for this group; this was it.
-                self.folded.away.retain(|away| {
-                    !(away.machine == peer.name && away.call.group() == call.group())
-                });
-                let took_over = match renamed {
-                    None => false,
-                    Some(Ok(took_over)) => took_over,
-                    Some(Err(refusal)) => {
+                // Before the entries are applied: see `taken_join`.
+                let took_over = match self.taken_join(peer, call, &key, seq, caller, presence) {
+                    Ok(took_over) => took_over,
+                    Err(refusal) => {
                         apply(self, caught);
                         return Err(refusal);
                     }
                 };
-                // The cursor first, so nothing from before the join counts as unread to it.
-                if let Some(participant) = self.participants.get_mut(name) {
-                    participant.folds_owed.remove(&key);
-                    participant.cursors.entry(key.clone()).or_insert(seq);
-                    participant.woken.remove(&key);
-                    participant.rewoken.remove(&key);
-                }
                 apply(self, caught);
                 self.save()?;
                 Ok(Settled::Joined(Joined {

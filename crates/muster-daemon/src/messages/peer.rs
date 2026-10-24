@@ -623,7 +623,7 @@ fn settle_with(
     shared: &Shared,
     link: &Link,
     away: &Away,
-    caller: Option<&Caller>,
+    joining: Option<&Caller>,
 ) -> (Settle, Holding) {
     let posts = matches!(away.call, Call::Post { .. } | Call::Muster { .. });
     let patience = if posts { POSTING } else { CALLING };
@@ -669,9 +669,9 @@ fn settle_with(
     let (settle, holding) = {
         let mut messages = shared.messages();
         messages.service.heard_callsigns(&link.peer, said);
-        let settle = match caller {
-            Some(caller) => {
-                messages.service.settle_as(&link.peer, &away.call, reply, caller, &panes, now_ms())
+        let settle = match joining {
+            Some(joining) => {
+                messages.service.settle_as(&link.peer, &away.call, reply, joining, &panes, now_ms())
             }
             None => messages.service.settle(&link.peer, &away.call, reply, &panes, now_ms()),
         };
