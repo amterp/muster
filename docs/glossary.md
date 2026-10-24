@@ -85,8 +85,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   wake but the human's (MIP-4, section 8).
 - **quiet** - a pane that raises nothing for the person: no banner and no ask. Its state still shows. Its daemon
   keeps the flag.
-- **region** - the part of a Muster tab that one machine holds, as it sits on screen: that machine's pane tree,
-  and how wide it is. One for every tab until somebody groups two.
+- **region** - the window's record of one machine's part of a Muster tab: which machine, and which of its panes the
+  keyboard was last on there. Where the panes sit is the tab's one tree, which its machines keep (MIP-8); a region's
+  width arranges only a tab whose machines all run a daemon too old to keep that tree.
 - **roster** - every tab the window holds with its panes under it, ordered and labelled by the core, each row saying
   whether the window is showing it. Beside them, the machines - because a machine holding no panes contributes no
   tabs and would otherwise vanish - and, apart, the hidden tabs no window holds. What the view is to the screen,

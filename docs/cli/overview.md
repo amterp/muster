@@ -97,8 +97,8 @@ you were leaving:
 
     muster pane new --daemon devenv --run claude
 
-On a machine already showing panes this splits the one that machine's region has the keyboard
-on. On a machine showing nothing it opens the first pane there, which is the only reason the
+On a machine already showing panes this splits the pane there the keyboard was last on. On a
+machine showing nothing it opens the first pane there, which is the only reason the
 flag exists: a pane's id is already a complete address, so the machine is worth naming only
 when you have no pane on it.
 
