@@ -424,12 +424,13 @@ them answered: each heading is followed by the words `a pane's text` or `a list 
 --watch` refuses outright with two apps listening, and names the sockets;
 `muster pane wait` goes to the app holding the first pane it names.
 
-## A zoom fills the tab only from the part with the keyboard
+## On an older daemon, a zoom fills the tab only from the part with the keyboard
 
-A zoom fills the whole tab, whatever machines its panes are on, and each machine records the zoom
-on its own part. Move the keyboard to another machine's pane while one is zoomed - from the agent
-list, or with `muster pane focus` - and that part comes back beside the zoomed one, which then
-fills only its own part. Moving the keyboard back fills the tab again.
+A zoom fills the whole tab, whatever machines its panes are on, and the pane the keyboard moves to
+fills it next. A tab whose machines all run a muster-daemon older than this Muster is the
+exception: each machine records the zoom on its own part, so moving the keyboard to another
+machine's pane while one is zoomed - from the agent list, or with `muster pane focus` - brings
+that part back beside the zoomed one, which then fills only its own part.
 
 ## A zoom with nothing to zoom still succeeds
 

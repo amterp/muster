@@ -527,3 +527,5 @@ release that ships stage 3 says in its notes that `regions[]` is gone and what r
 - 2026-10-24 Stage 3 split in two steps; the first, the core and the CLI, landed.
 - 2026-10-24 Stage 3's second step: the shell draws one tree per tab, and spanning tabs made
   before this are written as one.
+- 2026-10-24 Stage 4: every placement path works out the tab's whole tree, so a pane goes beside
+  any pane on any machine. Split on Machine still offers one side (question C).

@@ -700,15 +700,19 @@ it goes to, so `ArrangePane` carries that side and the core sends a move whichev
 leaves its place and shares the target's, half each. That is how a split changes direction, and the daemon has
 always been able to do it - what was missing was a request that could say which side.
 
-A drop across daemons is refused in the shell, before it becomes a request. A pane is a PTY its daemon owns, so
-moving one to another machine means killing a process on one host and starting a different one on another - not a
-move, and nothing the core could honestly do with the intent.
+**A drop may cross machines.** A pane is a PTY its daemon owns, so it never changes machine; what a drop changes is
+where it sits, and a tab is one tree over every machine it spans, so beside another machine's pane is a place like any
+other. The core works it out on the tab's whole tree (MIP-8, section 6). A pane already in the tab is a rearrangement,
+written to every part that answers, so panes move around an unreachable machine's panes too. A pane arriving, made
+there or moved in from another tab, needs its own machine to act: that machine places it with the tree as it leaves
+the tab, and only once it has are the other parts written, so no copy names a pane that was never placed. A tab with
+an answering machine on a daemon older than this refuses a drop beside another machine's pane, naming the daemon, and
+a pane made on such a machine joins the tab as that machine's own part, beside the others.
 
-**A drop onto a tab caption is the one that may cross machines**, and it is a third request rather than a loosening
-of the refusal above. It names a tab and nothing inside it, so nothing is ordered and no tree is involved; the pane
-stays on its own machine, and what changes is which Muster tab it belongs to. When that tab has no part on the pane's machine
-yet, the adapter makes one there and binds it as that tab's member - which is how a tab comes to hold a laptop pane
-beside a devenv one (MIP-2, stage four). `muster pane move --tab` is the same request from a script.
+**A drop onto a tab caption names no pane**, so nothing says where in the tab the pane goes: it lands as a column at
+the right of the tab's tree, where a second machine's part went before a tab was one tree. A tab on the pane's own
+machine alone takes it beside its last pane, as its daemon always has. `muster pane move --tab` is the same request
+from a script.
 
 **Moving the keyboard comes in two axes, and the second is what makes the first a guarantee at all.** Panes and
 tabs are different questions: the *relative* pane moves reach everything the window is *showing*, and the tab moves

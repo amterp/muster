@@ -12,9 +12,9 @@ A window holds an ordered list of tabs and shows one of them, the way tabs work 
 A tab holds a tree of panes, and panes are where programs run.
 
 A daemon owns the panes on one machine. One window can show panes from several daemons - a
-laptop beside an SSH devenv - and a tab can hold panes from more than one of them, side by side.
-Those side-by-side parts are the tab's *regions*, one per machine with panes in it, and most tabs
-have exactly one. `muster pane move --tab` is what puts a second machine in a tab.
+laptop beside an SSH devenv - and a tab can hold panes from more than one of them, in one tree: a
+devenv pane can sit below a laptop pane. `muster pane new --daemon` makes a pane on another machine
+in a tab, and `muster pane move` puts one there.
 
 Every tab is in exactly one window. A window lists its own tabs and no others, and `muster tab
 move` hands one to another window. Any command works from any window all the same: one naming a

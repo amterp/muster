@@ -15,7 +15,7 @@ first nine and one to whichever is asking for you, states an agent reports itsel
 a callsign for every pane (`otter`) taken wherever its id is, messages included and through a rename,
 renaming, which names the agent's session in its harness too
 and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
-handle onto another pane's edge, right-click menus on a pane, a tab and an agent row, including a split onto any
+handle onto another pane's edge on either machine, right-click menus on a pane, a tab and an agent row, including a split onto any
 attached machine, hiding a pane from every window with its agent running and bringing it back from a list, an agent's
 helpers made hidden and quiet into one tab of their own, listed under it in the agent list and by `muster window`,
 brought forward and put away together, and telling it when one is blocked, stuck or idle without reporting, on either
@@ -24,7 +24,7 @@ made quiet so that nothing about it interrupts you, a focus history the mouse's 
 you save it, a CLI that drives the window from inside a pane on either machine and presses keys at another agent's
 dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH
 machine in the same window - where one tab can hold a
-laptop pane beside a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
+laptop pane beside or above a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
 Muster taking over an older daemon's panes with their agents still running, a machine whose daemon died shown as
 `unreachable` on every pane and its daemon started again, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
@@ -34,8 +34,6 @@ right-click there, compacting an agent's context when asked or once it is full e
 session from its notice, its menus or the CLI, upgrading Muster through
 Homebrew from its own menu or `muster upgrade`, and installing a harness's adapter through the harness's own plugin
 command, with `muster window` saying whose adapter is not reporting.
-Not built, and worth knowing before you install rather than after: a pane sits beside another machine's panes only as
-that machine's part of the tab, to their left or right - a laptop pane cannot go above a devenv one.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.

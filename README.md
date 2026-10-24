@@ -128,9 +128,8 @@ write instead. `docs/configuration.md` is every key.
 Muster is young, and these are the gaps worth knowing about before you install rather than
 after:
 
-- A pane sits beside another machine's panes only as that machine's part of the tab, to their left
-  or right: a laptop pane cannot go above a devenv one. And a pane dropped on a tab's caption lands where Muster
-  puts it; to choose, drop it on a pane's edge once that tab is on screen.
+- A pane dropped on a tab's caption lands where Muster puts it, as a column at the tab's right; to
+  choose, drop it on a pane's edge once that tab is on screen.
 - Two windows cannot show the same tab. Muster's daemon draws each pane in one window at a time, so a
   tab is in exactly one window and moves between them rather than being shown in both.
 - A pane on its own cannot be dragged to another window; it goes with its tab.
