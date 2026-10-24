@@ -1,0 +1,20 @@
+{
+  "_v": 3,
+  "alias": "leaving-every-group",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792858952959,
+  "creator": "Alexander Terp",
+  "description": "From 2026-10-24 (84f9d3e8's review). An agent that leaves every group while a fold to an unreachable home is still owed drops its participant and its owed fold, so the home keeps listing the pane in that group. Predates the owed-fold work. A fix would have leave send a Leave for the pane to that home. Also narrow: refold reads the owed list before a whole leave runs and sends after it, so the home can list the name while nobody here holds it.",
+  "id": "a_2nTUbb1GU",
+  "position": "b1o",
+  "title": "Leaving every group while a fold is owed leaves the pane listed at the home",
+  "type": "bug",
+  "updated_at_millis": 1792858952959,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792858952959}
+  ]
+}
