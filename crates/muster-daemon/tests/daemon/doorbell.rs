@@ -878,6 +878,59 @@ fn an_urgent_ring_read_before_its_return_is_taken_back_from_the_prompt() {
     assert_eq!(agent.heard(), ["working", "next"], "the ring was sent, or left in the prompt");
 }
 
+/// A ring whose Return the agent never takes, as Claude Code's "Heads up" banner swallows one, is
+/// given up with its text still in the prompt. Once the agent has read what it was rung for, the
+/// ring is taken back, rather than left for the next Return anybody presses to send.
+#[test]
+fn a_ring_given_up_in_a_prompt_is_taken_back_once_its_messages_are_read() {
+    let mut agent = heedless_agent();
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+    let ended = r#""event":"msg.ring.ended""#;
+    // Six Returns, five seconds apart, all swallowed.
+    let logged = logging.logged_until(ended, ANSWER * 10);
+    assert!(logged.iter().any(|line| line.line.contains(ended)), "{logged:?}");
+
+    assert_eq!(agent.read_in_its_pane(), ["integrator: a brief"]);
+    taken_back_before_the_next_line(&mut agent, &mut logging);
+}
+
+/// The same, read while the doorbell is still pressing Return for the ring.
+#[test]
+fn a_ring_whose_return_was_swallowed_is_taken_back_once_its_messages_are_read() {
+    let mut agent = heedless_agent();
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+
+    assert_eq!(agent.read_in_its_pane(), ["integrator: a brief"]);
+    taken_back_before_the_next_line(&mut agent, &mut logging);
+}
+
+/// The fake agent idle in p1, discarding every Return typed into it from now on.
+fn heedless_agent() -> Agent {
+    let agent = Agent::in_a_pane();
+    agent.type_in("heedless", true);
+    until_some("the agent to start discarding Returns", || {
+        agent.heard().iter().any(|line| line == "heedless").then_some(())
+    });
+    agent
+}
+
+/// Waits for the ring to be taken back, then sends a line of its own: what the agent reads says
+/// whether the ring was still in front of it.
+fn taken_back_before_the_next_line(agent: &mut Agent, logging: &mut Control) {
+    let taken_back = r#""event":"msg.ring.taken_back""#;
+    let logged = logging.logged_until(taken_back, Duration::from_secs(20));
+    assert!(logged.iter().any(|line| line.line.contains(taken_back)), "{logged:?}");
+    // A newline, which the agent reads though it discards Returns.
+    agent.type_in("next\n", false);
+    until_some("the agent to read the next line", || {
+        agent.heard().iter().any(|line| line.ends_with("next")).then_some(())
+    });
+    assert_eq!(agent.heard(), ["heedless", "next"], "the ring was sent, or left in the prompt");
+}
+
 /// A ring typed at work, then something typed into the pane before it was seen taken: the ring
 /// is left alone, and the agent still counts as woken, so it is rung once more as it goes idle
 /// with the message unread.

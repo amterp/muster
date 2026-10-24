@@ -24,6 +24,10 @@
 # Its last line is its prompt, `PROBE-PROMPT> `, left for the terminal's echo of what is typed,
 # so a line half typed into it shows there as it would in an agent's prompt.
 #
+# `heedless` discards every Return typed from then on (`stty igncr`), as Claude Code's "Heads up"
+# banner swallows one: what is typed sits in its prompt, Backspace still erases it, and only a line
+# ended with a newline (LF) is read, which puts Returns back.
+#
 # `deaf <seconds>` stops reading for that long, as a harness that has hung stops taking what is
 # typed: its empty prompt painted, and nothing echoed, as a frozen agent in raw mode shows; what is
 # sent meanwhile waits in the terminal, read once it reads again. `stubborn` ignores SIGTERM from
@@ -84,6 +88,7 @@ draft=
 menu=
 placeholder=
 signalled=
+heedless=
 animator=
 case "$1" in
     dialog) state=blocked ;;
@@ -152,6 +157,10 @@ while :; do
         [ "$read_status" -ne 0 ] && continue
     fi
     [ "$read_status" -ne 0 ] && break
+    if [ -n "$heedless" ]; then
+        stty -igncr
+        heedless=
+    fi
     line=$draft$line
     draft=
     placeholder=
@@ -193,6 +202,9 @@ while :; do
             sleep "${line#deaf }"
             stty "$modes" ;;
         stubborn) trap '' TERM ;;
+        heedless)
+            stty igncr
+            heedless=yes ;;
         *animate*) animate ;;
         *still*)
             [ -n "$animator" ] && kill "$animator"

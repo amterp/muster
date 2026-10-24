@@ -2974,6 +2974,12 @@ impl<S: Store> Messaging<S> {
         }
     }
 
+    /// Whether anything in `group` would wake `name` that it has not read: nothing in a paused
+    /// group does.
+    pub fn unread_for(&self, name: &str, group: &str) -> bool {
+        self.notice(name, group).is_some()
+    }
+
     /// Whether `name` was woken for `group` and has not read it since.
     pub fn woken_for(&self, name: &str, group: &str) -> bool {
         self.participants.get(name).is_some_and(|participant| participant.woken.contains(group))

@@ -206,7 +206,10 @@ again, a few times, but only while its prompt holds the ring's own text and noth
 nobody has typed into the pane since the ring. Claude Code keeps what is typed while it is
 starting as its prompt, unsent, and the later Return sends it. If the prompt then holds anything
 else, or somebody types into the pane - even something they take back, since the screen may not
-show it yet - the ring ends, and the next post rings afresh.
+show it yet - the ring ends, and the next post rings afresh. A ring whose Return never reached the
+agent, as behind Claude Code's "Heads up" banner, is erased from a prompt holding it and nothing
+else once the agent has read what it was for, whether Return is still being pressed for it or the
+ring has ended: left, the next Return anybody presses would send it.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.

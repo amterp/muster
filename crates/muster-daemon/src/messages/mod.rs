@@ -81,9 +81,10 @@ pub(crate) struct Messages {
     /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
     /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
     hook_grace: HashMap<String, Instant>,
-    /// Rings given up with their text possibly left unsent in a prompt, by pane: the text, and
-    /// when it was typed. A later ring finding exactly that in the prompt sends it.
-    left: HashMap<String, (String, Instant)>,
+    /// Rings given up with their text possibly left unsent in a prompt, by pane. A later ring
+    /// finding exactly that in the prompt sends it, unless what it was for has been read since,
+    /// when it is taken back.
+    left: HashMap<String, doorbell::Left>,
     /// Why the doorbell's last look held a wake in each pane where one still waits, which a
     /// stall notice says.
     held: HashMap<String, doorbell::Held>,
@@ -459,10 +460,16 @@ fn respond(
             refused_as("", "not_carried", "a link is held by the daemon it is asked of")
         }
         asked => {
+            let read = matches!(asked, Asked::Read(_));
             let (reply, told, telling) = {
                 let mut messages = shared.messages();
                 let reply = messages.answer(caller, asked, panes);
                 messages.appended();
+                // A ring still in a prompt is taken back once what it was for is read, before the
+                // next Return anybody presses sends it.
+                if read && !(messages.left.is_empty() && messages.rung.is_empty()) {
+                    shared.doorbell.nudge();
+                }
                 (reply, messages.take_told(), std::mem::take(&mut messages.telling))
             };
             tell_human(shared, told);
