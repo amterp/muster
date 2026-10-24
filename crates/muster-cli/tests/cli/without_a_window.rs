@@ -655,11 +655,19 @@ fn a_send_into_a_prompt_holding_a_draft_is_refused(here: &Here) {
 
 /// The agent in p2 takes `working` and repaints, so nothing of what it took shows, which exits 4
 /// as the window's answer does: it may have been taken, so sending it again is not safe.
+///
+/// With its echo off, so the line never shows at all. Echoed, it shows until the agent reads it
+/// and repaints, and a confirmation that looks first sees it arrive, which is a right answer to a
+/// different case. Blocked first, so the agent has turned its echo off by the time anything else
+/// is typed.
 fn a_line_the_agent_took_and_repainted_is_unanswered(here: &Here) {
+    here.daemon.type_into("p2", "unechoed");
+    here.daemon.set_agent_state("p2", proto::AgentState::Blocked);
     let ran = here.muster(&["pane", "send", "--pane", "p2", "--enter", "--confirm", "working"]);
     let unknown = refused_with(&ran, 4);
     assert!(unknown.contains("cannot be told from the screen"), "{unknown}");
     here.daemon.until_agent("p2", proto::AgentState::Working);
+    here.daemon.type_into("p2", "echoed");
     here.daemon.set_agent_state("p2", proto::AgentState::Idle);
 }
 

@@ -28,6 +28,9 @@
 # banner swallows one: what is typed sits in its prompt, Backspace still erases it, and only a line
 # ended with a newline (LF) is read, which puts Returns back.
 #
+# `unechoed` turns the terminal's echo off from then on, as the start argument below does, so
+# nothing typed into it shows unless the agent paints it, and `echoed` turns it back on.
+#
 # `deaf <seconds>` stops reading for that long, as a harness that has hung stops taking what is
 # typed: its empty prompt painted, and nothing echoed, as a frozen agent in raw mode shows; what is
 # sent meanwhile waits in the terminal, read once it reads again. `stubborn` ignores SIGTERM from
@@ -205,6 +208,8 @@ while :; do
         heedless)
             stty igncr
             heedless=yes ;;
+        unechoed) stty -echo ;;
+        echoed) stty echo ;;
         *animate*) animate ;;
         *still*)
             [ -n "$animator" ] && kill "$animator"
