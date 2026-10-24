@@ -72,6 +72,12 @@
       "body": "MIP-9 drafted, 2026-10-24: docs/mip/0009-group-conversation.md, status Draft. It records the decisions from the design rounds and stages the work as the banner (no daemon change), the conversation (the core's view of a window gains the conversation, so covered panes count as unseen), then offered answers. Two hard-to-undo choices are flagged in it for amterp's veto: --option as the flag, and msg open answering with a window instead of a pane.",
       "created_at_millis": 1792878037721,
       "id": "c_2nbV5YEuV"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Owner, 2026-10-24: the transcript pane goes, with no compatibility kept (Muster is before version one). MIP-9 updated: the conversation replaces the pane, OpenTranscript and core/transcript.rs are removed in stage 2, muster msg open answers with the window, and muster msg log stays as a command for agents, scripts and terminals.",
+      "created_at_millis": 1792878426221,
+      "id": "c_2nbfCA4Nl"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -81,7 +87,7 @@
   "position": "Zz",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792878037721,
+  "updated_at_millis": 1792878426221,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},

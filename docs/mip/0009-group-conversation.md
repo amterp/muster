@@ -19,7 +19,8 @@ The human reads and answers a group's messages in two views Muster draws itself.
 messages meant for the human stand out, with a message box that posts as `@human`. The **banner**
 shows a message that needs the human while they work in the window, and takes a short reply
 without leaving the pane. Neither is a terminal, and neither is the operating system's
-notification. The transcript pane, `muster msg log --follow`, stays for terminals and scripts.
+notification. They replace the transcript pane, a tab running `muster msg log --follow`, which
+goes; `muster msg log` stays as a command for agents, scripts and terminals.
 
 Both views are models the core builds and the shell draws, as the agent list is. The core decides
 what a conversation holds: which messages fold away, where the unread ones begin, whom a reply
@@ -50,21 +51,21 @@ MIP stands on its own:
   message only completes the name.
 - **Picking an offered answer fills the reply rather than sending it**, so a note can go with it.
 - **Drafts are kept**, so leaving a conversation loses nothing.
-- **The words**: group, conversation, message box, transcript (the pane), banner, and "Needs you"
-  for the queue, which the code and the CLI call the asking list. Nothing is called chat, inbox or
-  drawer: a participant's `inbox` is already the socket it is woken on.
+- **The conversation replaces the transcript pane, which goes.** `muster msg open` shows the
+  conversation and answers with the window, with nothing kept for the old answer. amterp: Muster
+  "is not a big project and it's also not version one, so we 100% do not need to carry technical
+  debts or avoid breaking changes."
+- **The words**: group, conversation, message box, banner, and "Needs you" for the queue, which
+  the code and the CLI call the asking list. Nothing is called chat, inbox or drawer: a
+  participant's `inbox` is already the socket it is woken on.
 
-amterp asked the author to settle what did not need him. Two of those choices are hard to undo,
-so they are flagged here for a veto rather than asked:
+amterp asked the author to settle what did not need him. One of those choices is hard to undo, so
+it is flagged here for a veto rather than asked:
 
 **A. `--option` spells an offered answer** (section 6): `muster msg post --to @human --option
 "Run it now" --option "Skip it"`. Once skills and agents' habits spell it, renaming it breaks
 them. `--answer` reads as the agent answering, and `--choice` says the same as `--option` in more
 letters.
-
-**B. The conversation replaces the transcript pane as where choosing the banner, the sidebar row,
-⌘⇧A or `muster msg open` takes the human.** `muster msg open` then answers with a window rather
-than a pane (section 8), which changes what a script reading its answer gets.
 
 ## Context / Motivation
 
@@ -109,8 +110,8 @@ was or on whatever was chosen.
 
 The conversation has four parts:
 
-- **A header**: the group, the machine that keeps it and how many members it has, with buttons to
-  pause or resume it and to open its transcript in a new tab.
+- **A header**: the group, the machine that keeps it and how many members it has, with a button
+  to pause or resume it.
 - **The thread**, oldest at the top, opened scrolled to the first message the human has not read.
 - **A members column**: each member with its agent state, what it is doing, whether messages wait
   on it unread and why (the reason `muster msg who` already gives, such as "it is at a dialog,
@@ -148,10 +149,10 @@ says which panes are in the group.
 
 ### 2. What the human reads
 
-Showing a conversation is the human reading the group, as going to its transcript is now (MIP-4,
-section 10): the core tells the group's daemon, the daemon moves the human's place to the end of
-the group, and what waited stops asking. It reads when the transcript would: when the
-conversation is in the window that is in front and focused. A second window showing the same
+Showing a conversation is the human reading the group, as going to its transcript pane is today
+(MIP-4, section 10): the core tells the group's daemon, the daemon moves the human's place to the
+end of the group, and what waited stops asking. It reads while the conversation is in the window
+that is in front and focused. A second window showing the same
 group while a different window is in front reads nothing, and reads once it comes to the front.
 While the conversation is in the front, focused window, a message is read as it arrives.
 
@@ -268,11 +269,9 @@ is. The shell draws them and says what the person did.
 whose conversation it shows. While one is shown, the view shows no panes, so the set of panes on
 screen that `View::showing` holds, which `Attention::seen` consults, is empty for that window.
 Covered panes then count as not seen with no new rule: an agent that finishes under a
-conversation is announced and keeps its `done`, and a covered transcript pane reads nothing. Had
-the shell hidden the panes on its own, the core would still count them seen: the finish would go
-unannounced, and the transcript would read messages nobody saw. Reading follows section 2's
-condition, which widens `looking_at_transcript` in `crates/muster-seam/src/session.rs` to cover
-a conversation.
+conversation is announced and keeps its `done`. Had the shell hidden the panes on its own, the
+core would still count them seen, and the finish would go unannounced. Reading follows section
+2's condition, in place of `looking_at_transcript` in `crates/muster-seam/src/session.rs`.
 
 **The core keeps one copy of each open group's log**, shared by every window showing it. It
 fetches the log once with `Log`, as the human, and follows it from its last entry as `muster msg
@@ -310,8 +309,9 @@ Parity follows from the seam:
   that the human is reading.
 - `muster msg post` from a shell is still how the human posts outside a window, and its request is
   the one the message box sends.
-- `muster msg log --group G --follow` is still the transcript, and the conversation's header opens
-  one in a new tab.
+- `muster msg log` stays, for an agent checking whether its post landed and for a script or
+  terminal following a group. A pane running it is an ordinary pane, and reads nothing for the
+  human.
 
 ### 9. Stages
 
@@ -319,14 +319,14 @@ Parity follows from the seam:
    outcomes, Markdown in the core, and the banner's model and events. No daemon change.
 2. **The conversation**, with the view's new state, the shared log, drafts, the members column,
    the sidebar marking a group's members while its conversation is shown, and `Log`'s count of
-   newest entries.
+   newest entries. The transcript pane is removed in this stage.
 3. **Offered answers**: the answers field on a message, `--option`, and both views drawing them.
 
 Each stage is tested as the rest of Muster is (`docs/testing.md`). The thread's rules are
 conformance cases in the core, with no daemon: folds, the unread line, the recipients a reply
 opens with, @ completion and Markdown blocks. The seam's behavior runs headless against a real
-muster-daemon: a pane finishing under a conversation is announced, a covered transcript reads
-nothing, a banner reply leaves the human's place where it was, two windows keep two drafts, and
+muster-daemon: a pane finishing under a conversation is announced, a banner reply leaves the
+human's place where it was, two windows keep two drafts, and
 each send outcome. The drawn views are checked in the contract tier, which has a GUI session, and
 so is Esc during an input method's composition.
 
@@ -352,6 +352,10 @@ takes a placeholder but no prefilled text, so an offered answer could not fill i
 It is kept with the window's saved arrangement because a draft is something the person wrote,
 which that arrangement exists to keep ("intent rather than observation",
 `crates/muster-core/src/composition/saved.rs`), and not on the daemon, which every window shares.
+
+**The transcript pane goes**, because the conversation does everything it did for the human.
+Keeping it would keep a second way of reading a group in the window, with its own rule for when a
+pane counts as reading, for nobody who needs it: `muster msg log` serves terminals and scripts.
 
 **Four send outcomes**, because each simpler scheme loses something: counting every failure as
 unsent sends a reply twice, and counting every finished request as delivered hides a reply the
@@ -384,17 +388,21 @@ the next platform's shell would write them again.
 **Drafts on the daemon.** They would survive the app losing its saved state, and need nothing kept
 in the app. Rejected because every window would share them, which amterp does not want.
 
+**Keeping the transcript pane** beside the conversation, opened from its header or by a flag on
+`muster msg open`. Rejected by amterp: nobody needs it once the conversation exists, and Muster
+keeps no compatibility before version one.
+
 **The conversation as a pane in a tab's tree**, beside terminal panes and arranged with them. Not
 rejected but deferred (Future Directions), because the daemon's tree holds only panes with
 terminals behind them today.
 
 ## Consequences & Trade-offs
 
-- **MIP-4's section 10 changes in one place**: the human reads a group in its conversation, and
-  the transcript pane becomes the terminal's view of it. MIP-4 is a Draft, so it is corrected when
+- **The transcript pane is removed**: the `OpenTranscript` request,
+  `crates/muster-core/src/transcript.rs`, and the rule that a pane following a group's log reads
+  it for the human. MIP-4's section 10 changes with it. MIP-4 is a Draft, so it is corrected when
   stage 2 lands, along with `docs/architecture.md`'s attention routing and `docs/cli/msg.md`.
-- **`muster msg open` answers with a window, not a pane.** A script that took the pane from its
-  answer asks `muster window` instead.
+- **`muster msg open` answers with a window, not a pane**, and no flag keeps the old answer.
 - **The shell gains more SwiftUI.** It hosts SwiftUI in AppKit in one place today; the banner and
   the conversation make that the shell's usual way of drawing anything that is not a terminal.
 - **The core gains a Markdown parser**, a dependency the gate's license check then covers.
