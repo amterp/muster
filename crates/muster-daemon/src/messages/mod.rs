@@ -596,7 +596,7 @@ fn ended_by_handover() -> Reply {
 pub(crate) struct Holding {
     sending: Vec<Wake>,
     ringing: Vec<(Wake, presence::Seen)>,
-    deferred: Vec<(String, msg_answer::Until)>,
+    deferred: Vec<Deferral>,
     /// What waits for the human now, for the windows attending this daemon.
     told: Told,
 }
@@ -616,6 +616,12 @@ struct Deferral {
     until: msg_answer::Until,
     /// What its agent's prompt showed when the doorbell looked to ring it just now, in words.
     held: Option<String>,
+}
+
+impl Deferral {
+    fn until(name: &str, until: msg_answer::Until) -> Deferral {
+        Deferral { name: name.to_string(), until, held: None }
+    }
 }
 
 impl Messages {
@@ -655,6 +661,24 @@ impl Messages {
         self.in_hand.contains(&(name.to_string(), group.to_string()))
             || self.rung.iter().any(|rung| rung.is_for(name, group))
             || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
+    }
+
+    /// A wake that `wake` is left to while a doorbell look has it in hand, told by what held it at
+    /// the look before, which is still recorded: nothing has been rung yet, and the look most
+    /// likely finds the same again. Nothing when no look holds it, when it was rung or handed to
+    /// a command already, or when nothing held it before, which is a look ringing it first.
+    fn held_in_hand(&self, wake: &Wake, pane: &str) -> Option<Deferral> {
+        let (name, group) = (&wake.name, &wake.notice.group);
+        let rung = self.rung.iter().any(|rung| rung.is_for(name, group))
+            || self.commanded.iter().any(|commanded| commanded.is_for(name, group));
+        if rung || !self.in_hand.contains(&(name.clone(), group.clone())) {
+            return None;
+        }
+        let held = self.held.get(pane)?;
+        Some(Deferral {
+            held: Some(held.why().into_owned()),
+            ..Deferral::until(name, msg_answer::Until::Prompt)
+        })
     }
 
     /// Says, on each of `members` here, what waits on it unread and why, in `group` or in every
@@ -711,6 +735,7 @@ impl Messages {
             // second.
             let urgent = doorbell::is_urgent(wake);
             if !urgent && self.delivering(&wake.name, &wake.notice.group) {
+                holding.deferred.extend(self.held_in_hand(wake, pane));
                 continue;
             }
             // A later wake for a group stands for any earlier one still waiting to ring: its
@@ -721,7 +746,7 @@ impl Messages {
             // A pane whose wake command is running is left to the doorbell, which that command
             // nudges as it ends.
             if self.commanding.contains(pane) {
-                holding.deferred.push((wake.name.clone(), msg_answer::Until::Prompt));
+                holding.deferred.push(Deferral::until(&wake.name, msg_answer::Until::Prompt));
                 self.pending.push(wake.clone());
                 continue;
             }
@@ -745,7 +770,7 @@ impl Messages {
                 Some((By::Typing(Now::At(_)), _)) => msg_answer::Until::Prompt,
                 None => msg_answer::Until::Agent,
             };
-            holding.deferred.push((wake.name.clone(), until));
+            holding.deferred.push(Deferral::until(&wake.name, until));
             self.pending.push(wake.clone());
         }
         self.appended();
@@ -756,9 +781,7 @@ impl Messages {
 
 /// Delivers what [`Messages::hold`] sorted, with the service's lock let go.
 fn ring(shared: &Shared, holding: Holding) -> Rang {
-    let Holding { sending, ringing, deferred, told } = holding;
-    let mut deferred: Vec<Deferral> =
-        deferred.into_iter().map(|(name, until)| Deferral { name, until, held: None }).collect();
+    let Holding { sending, ringing, mut deferred, told } = holding;
     tell_human(shared, told);
     let names: Vec<(String, String)> =
         ringing.iter().map(|(wake, _)| (wake.name.clone(), wake.notice.group.clone())).collect();
@@ -2002,5 +2025,54 @@ mod tests {
         let posted = messages.service.post(&a, None, &[], "after", &Panes::default(), 3).unwrap();
         assert!(posted.answered.is_empty(), "{posted:?}");
         assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["b"]);
+    }
+
+    fn pane_wake(name: &str, pane: &str, group: &str) -> Wake {
+        Wake {
+            name: name.to_string(),
+            via: Via::Pane(pane.to_string()),
+            notice: muster_msg::Notice {
+                group: group.to_string(),
+                first: 7,
+                last: 7,
+                count: 1,
+                to_you: 1,
+                urgent: 0,
+                from: vec!["lead".to_string()],
+                again: false,
+            },
+        }
+    }
+
+    /// A post that lands while a doorbell look has the agent's earlier wake in hand is reported
+    /// by what held that wake at the last look - the draft in its prompt - rather than as woken:
+    /// the look has rung nothing yet, and finds the draft again.
+    #[test]
+    fn a_wake_left_to_one_a_look_has_in_hand_is_told_by_what_held_it() {
+        let mut messages = scratch("in-hand");
+        let wake = pane_wake("heron", "p3", "g");
+        messages.in_hand.insert(("heron".to_string(), "g".to_string()));
+        messages.held.insert("p3".to_string(), doorbell::Held::Draft);
+
+        let holding = messages.hold(std::slice::from_ref(&wake), &[], &Panes::default());
+        let deferred: Vec<_> = holding
+            .deferred
+            .iter()
+            .map(|deferral| (deferral.name.as_str(), deferral.until, deferral.held.as_deref()))
+            .collect();
+        assert_eq!(
+            deferred,
+            [(
+                "heron",
+                msg_answer::Until::Prompt,
+                Some("its prompt holds something typed and not sent")
+            )]
+        );
+        assert!(messages.pending.is_empty(), "the wake in hand stands for it");
+
+        // Nothing held it before, so the look is ringing it for the first time.
+        messages.held.clear();
+        let holding = messages.hold(std::slice::from_ref(&wake), &[], &Panes::default());
+        assert!(holding.deferred.is_empty(), "{:?}", holding.deferred);
     }
 }
