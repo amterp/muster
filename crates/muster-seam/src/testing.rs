@@ -86,6 +86,12 @@ pub fn treat_as_before_spanning(daemon: &str) {
     session::treat_as_before_spanning(daemon);
 }
 
+/// Has the window treat its next write of a tab's whole tree to `daemon` as refused, as a part
+/// that moved on or stopped answering in between refuses one, until it is spent or the next reset.
+pub fn refuse_next_tree_write_to(daemon: &str) {
+    session::refuse_next_tree_write_to(daemon);
+}
+
 /// Has the window's next rearrangement of a tab spanning machines read every part's copy one
 /// generation behind what it holds, as a window does when a newer write lands between reading the
 /// copies and writing the change. Every part then refuses the change as worked out from an older

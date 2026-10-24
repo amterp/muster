@@ -860,6 +860,10 @@ pub(crate) struct Session {
     /// writing the change (`crate::testing`).
     stale_reads: u32,
 
+    /// Machines whose next write of a tab's tree a test has the window treat as refused, as a part
+    /// that moved on or went away refuses one (`crate::testing`).
+    refusing_tree_writes: BTreeSet<DaemonId>,
+
     /// Nested rather than keyed by a pair, so that finding the pane a keystroke is for costs
     /// two lookups and no allocation - a pair key would have to be built, and building one
     /// means cloning both ids on a path that runs per keystroke.
@@ -1298,6 +1302,10 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 /// is the shutdown path that already existed, called deliberately rather than at exit.
 pub(crate) fn treat_as_before_spanning(daemon: &str) {
     poison::lock(&SESSION, "session").before_spanning.insert(DaemonId::new(daemon));
+}
+
+pub(crate) fn refuse_next_tree_write_to(daemon: &str) {
+    poison::lock(&SESSION, "session").refusing_tree_writes.insert(DaemonId::new(daemon));
 }
 
 pub(crate) fn read_next_rearrangement_stale() {
@@ -6264,7 +6272,14 @@ fn write_trees(
             generation: write.generation,
             based_on: write.based_on,
         };
-        match submit(window, &write.daemon, &intent, Keyboard::StaysPut) {
+        let refused_by_test =
+            poison::lock(&SESSION, "session").refusing_tree_writes.remove(&write.daemon);
+        let answer = if refused_by_test {
+            Err(Refusal::Declined(format!("a test refused this write to {}", write.daemon)))
+        } else {
+            submit(window, &write.daemon, &intent, Keyboard::StaysPut)
+        };
+        match answer {
             Ok(_) => taken = true,
             Err(refusal) => {
                 log::warn(
@@ -6374,7 +6389,11 @@ pub(crate) fn arrive(
             submit(window, daemon, &intent, Keyboard::StaysPut)?
         }
     };
-    write_trees(window, tab, writes)?;
+    // The pane is placed whatever the other parts answer, so their answer is not this request's:
+    // each refusal is logged as it comes, and the next merge catches that part up from the
+    // pane's own machine, whose copy is now the newest. Answering with a refusal here would tell
+    // a caller a pane it can see was never made, and asking again would make a second one.
+    drop(write_trees(window, tab, writes));
     Ok(outcome)
 }
 

@@ -2058,6 +2058,44 @@ fn a_change_every_part_refuses_as_stale_is_worked_out_again_and_written() {
     );
 }
 
+/// A pane made beside another machine's is made, and said to be, even when that other machine
+/// refuses the tree it is then written: its machine placed it, and the next merge catches the
+/// refusing part up from that machine's copy. Answering with the refusal would have a caller make
+/// the pane a second time.
+#[test]
+fn a_pane_placed_beside_another_machines_is_made_when_that_machine_refuses_the_tree() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_tab_spanning_two_machines(
+        &["A", "B"],
+        ("[[A/B 0.50]|~X@devenv 0.50]", 1),
+        ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 1),
+    );
+
+    muster::testing::refuse_next_tree_write_to("devenv");
+    let below = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: SPAN_X.to_string(),
+        new_pane_daemon_id: "laptop".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    let laptop = format!("[[A/B 0.50]|[~X@devenv/{below} 0.50] 0.50]");
+    let devenv = format!("[[~A@laptop/~B@laptop 0.50]|[X/~{below}@laptop 0.50] 0.50]");
+    until(
+        "the laptop to hold the new pane below the devenv's, and the devenv to be caught up",
+        || {
+            spanning_copy(&machines.laptop) == Some((laptop.clone(), 2))
+                && spanning_copy(&machines.devenv) == Some((devenv.clone(), 2))
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
+    );
+}
+
 /// Once a tab's copies hold each other's panes, a daemon refuses a resize, zoom, swap or divider
 /// asked of it alone, so the window works each one out on the whole tree and writes it to both
 /// copies, one generation up (MIP-8, section 3). A divider here is named by the turns down the
