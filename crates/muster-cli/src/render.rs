@@ -1518,11 +1518,9 @@ fn layout_json(node: &muster_proto::ViewTree) -> Value {
     }
 }
 
-/// Which pane this window's keyboard is on, by way of the region that has it.
+/// Which pane this window's keyboard is on.
 fn keyboard_pane(window: &Window) -> Option<String> {
-    let view = window.view.as_ref()?;
-    let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-    Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+    Some(window.view.as_ref()?.keyboard_pane_id.clone()).filter(|pane| !pane.is_empty())
 }
 
 /// What each pane's agent is doing and since when, by pane.

@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use muster::proto::{
     CreateTab, Event, OpenWindow, ReadWindow, Request, Response, SplitPane, Startup, ViewChanged,
-    ViewNode, ViewRegion, event, request, response, view_node,
+    event, request, response,
 };
 use muster_core::mirror::backend::TabId;
 use muster_daemon_proto::Outcome;
@@ -43,10 +43,10 @@ fn a_window_writes_down_what_it_is_showing() {
 
     until(
         "the window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let first = tab_of_first_region().expect("just waited for it");
+    let first = tab_shown().expect("just waited for it");
 
     // Somewhere to move to, so what is written down is a choice rather than the only thing
     // there was. A new tab is what a person reaches for several times an hour.
@@ -56,10 +56,10 @@ fn a_window_writes_down_what_it_is_showing() {
     })));
     until(
         "the window to move onto the tab it asked for",
-        || tab_of_first_region().is_some_and(|tab| tab != first),
+        || tab_shown().is_some_and(|tab| tab != first),
         || format!("the region still shows {first}"),
     );
-    let second = tab_of_first_region().expect("just waited for it");
+    let second = tab_shown().expect("just waited for it");
 
     let written = std::fs::read_to_string(&state)
         .unwrap_or_else(|e| panic!("the window wrote no arrangement to {}: {e}", state.display()));
@@ -130,11 +130,11 @@ fn a_window_reopens_each_saved_tab_once() {
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let showing = tab_of_first_region().expect("just waited for it");
-    assert_eq!(regions_shown(), 1, "the first window opened more than one region");
+    let showing = tab_shown().expect("just waited for it");
+    assert_eq!(machines_shown(), 1, "the first window opened more than one machine's part");
 
     // Everything the second launch gets, and everything a second process would get: the file
     // the first one wrote on its way out.
@@ -154,13 +154,13 @@ fn a_window_reopens_each_saved_tab_once() {
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
 
     assert_eq!(
-        regions_shown(),
+        machines_shown(),
         1,
-        "the second window drew {} regions for one saved arrangement, so at least one pane \
+        "the second window drew {} machines' parts for one saved arrangement, so at least one pane \
          in it is shown twice",
-        regions_shown()
+        machines_shown()
     );
-    assert_eq!(tab_of_first_region().as_deref(), Some(showing.as_str()));
+    assert_eq!(tab_shown().as_deref(), Some(showing.as_str()));
 
     // And what it writes down says the same, which is what stops a window that has done this
     // once from doing it worse every launch after.
@@ -196,10 +196,10 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let showing = tab_of_first_region().expect("just waited for it");
+    let showing = tab_shown().expect("just waited for it");
 
     turn.relaunch();
     forget_the_view();
@@ -215,18 +215,18 @@ fn an_arrangement_naming_one_tab_twice_opens_it_once() {
     open_a_window(&daemon, &state);
     until(
         "the second window to open onto the tab it was left on",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
     assert_eq!(
-        regions_shown(),
+        machines_shown(),
         1,
-        "the window opened {} regions for a file naming one tab twice, so the pane in it is \
+        "the window opened {} machines' parts for a file naming one tab twice, so the pane in it is \
          drawn twice and one of the two cannot attach",
-        regions_shown()
+        machines_shown()
     );
-    assert_eq!(tab_of_first_region().as_deref(), Some(showing.as_str()));
+    assert_eq!(tab_shown().as_deref(), Some(showing.as_str()));
 
     // And the file is left holding one, so the window heals rather than staying one launch
     // away from doing this again.
@@ -268,10 +268,10 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let theirs = tab_of_first_region().expect("just waited for it");
+    let theirs = tab_shown().expect("just waited for it");
 
     turn.relaunch();
     forget_the_view();
@@ -288,10 +288,10 @@ fn a_window_somebody_asked_for_opens_onto_a_tab_of_its_own() {
 
     until(
         "the window somebody asked for to open onto something",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let ours = tab_of_first_region().expect("just waited for it");
+    let ours = tab_shown().expect("just waited for it");
     assert_ne!(
         ours, theirs,
         "the window opened onto the tab the last one was showing ({theirs}), so on a machine \
@@ -330,10 +330,10 @@ fn two_windows_come_back_each_on_its_own_tabs() {
     open_a_window(&daemon, &first);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let theirs = tab_of_first_region().expect("just waited for it");
+    let theirs = tab_shown().expect("just waited for it");
 
     turn.relaunch();
     forget_the_view();
@@ -342,10 +342,10 @@ fn two_windows_come_back_each_on_its_own_tabs() {
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the second window to open onto a tab of its own",
-        || tab_of_first_region().is_some_and(|tab| tab != theirs),
+        || tab_shown().is_some_and(|tab| tab != theirs),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let ours = tab_of_first_region().expect("just waited for it");
+    let ours = tab_shown().expect("just waited for it");
 
     for (record, own, other) in [(&second, &ours, &theirs), (&first, &theirs, &ours)] {
         turn.relaunch();
@@ -354,7 +354,7 @@ fn two_windows_come_back_each_on_its_own_tabs() {
         open_a_window(&daemon, record);
         until(
             "the window to come back onto its own tab",
-            || tab_of_first_region().as_deref() == Some(own.as_str()),
+            || tab_shown().as_deref() == Some(own.as_str()),
             || format!("the last view the core published: {:?}", latest_view()),
         );
         until("the daemon's first bootstrap to reach the window", bootstrapped, || {
@@ -392,10 +392,10 @@ fn a_window_muster_comes_back_to_still_takes_what_it_was_left() {
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
-    let showing = tab_of_first_region().expect("just waited for it");
+    let showing = tab_shown().expect("just waited for it");
 
     turn.relaunch();
     forget_the_view();
@@ -403,12 +403,12 @@ fn a_window_muster_comes_back_to_still_takes_what_it_was_left() {
     open_a_window(&daemon, &state);
     until(
         "the window to come back onto the tab it was left on",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
     assert_eq!(
-        tab_of_first_region().as_deref(),
+        tab_shown().as_deref(),
         Some(showing.as_str()),
         "a launch with an arrangement to come back to opened somewhere else"
     );
@@ -433,7 +433,7 @@ fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there()
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
@@ -462,18 +462,17 @@ fn a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there()
     open_a_window(&daemon, &state);
     until(
         "the window to come back onto what is left",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
     let view = latest_view().expect("just waited for it");
-    let region = view.regions.first().expect("the window opened a region");
-    let drawn = panes_of_region(region);
+    let drawn = drawn_panes(&view);
     assert!(
-        drawn.contains(&region.pane_id),
-        "the keyboard is on {} and the region is drawing {drawn:?}, so every keystroke goes \
+        drawn.contains(&view.keyboard_pane_id),
+        "the keyboard is on {} and the window is drawing {drawn:?}, so every keystroke goes \
          to a pane that is not there",
-        region.pane_id
+        view.keyboard_pane_id
     );
 }
 
@@ -499,7 +498,7 @@ fn a_restored_window_says_which_panes_it_is_drawing() {
     open_a_window(&daemon, &state);
     until(
         "the first window to open onto a tab",
-        || tab_of_first_region().is_some(),
+        || tab_shown().is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 
@@ -529,11 +528,7 @@ fn a_restored_window_says_which_panes_it_is_drawing() {
     );
 
     let window = read_window();
-    let drawn = window
-        .view
-        .as_ref()
-        .map(|view| view.regions.iter().flat_map(panes_of_region).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let drawn = window.view.as_ref().map(drawn_panes).unwrap_or_default();
     let hidden: Vec<String> = window
         .roster
         .iter()
@@ -576,35 +571,17 @@ fn startup(daemon: &Daemon, state: &std::path::Path) -> Startup {
     }
 }
 
-fn regions_shown() -> usize {
-    latest_view().map_or(0, |view| view.regions.len())
+fn machines_shown() -> usize {
+    latest_view().map_or(0, |view| view.machines.len())
 }
 
-/// Every pane one region is drawing, in no particular order.
-fn panes_of_region(region: &ViewRegion) -> Vec<String> {
-    let mut found = Vec::new();
-    if let Some(root) = &region.root {
-        collect(root, &mut found);
-    }
-    found
-}
-
-fn collect(node: &ViewNode, found: &mut Vec<String>) {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => found.push(pane.pane_id.clone()),
-        Some(view_node::Node::Split(split)) => {
-            for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten() {
-                collect(child, found);
-            }
-        }
-        None => {}
-    }
+/// Every pane the window is drawing, in layout order.
+fn drawn_panes(view: &ViewChanged) -> Vec<String> {
+    crate::view::panes(view).into_iter().map(|pane| pane.pane_id.clone()).collect()
 }
 
 fn panes_on_screen() -> usize {
-    latest_view()
-        .map(|view| view.regions.iter().map(|region| panes_of_region(region).len()).sum())
-        .unwrap_or_default()
+    latest_view().map(|view| drawn_panes(&view).len()).unwrap_or_default()
 }
 
 /// Every pane the daemon holds, in the order it lists them.
@@ -612,13 +589,12 @@ fn daemon_panes(daemon: &Daemon) -> Vec<String> {
     snapshot(&mut daemon.connect()).panes.into_iter().map(|pane| pane.pane).collect()
 }
 
-fn tab_of_first_region() -> Option<String> {
+fn tab_shown() -> Option<String> {
     let view = latest_view()?;
-    let region = view.regions.first()?;
-    // A region with no tree is one the daemon has not described yet, which is not the state
+    // A view with no tree is a tab the daemon has not described yet, which is not the state
     // this is waiting for.
-    region.root.as_ref()?;
-    Some(region.tab_id.clone())
+    view.tree.as_ref()?;
+    Some(view.tab_id.clone())
 }
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);

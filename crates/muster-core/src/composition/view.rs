@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::composition::record::{Composition, DaemonId, MusterTab, PaneKey, Region, RegionId};
+use crate::composition::record::{Composition, DaemonId, MusterTab, PaneKey, Region};
 use crate::mirror::Mirror;
 use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, Tab, TabId};
 use crate::spanning::{self, SpanNode};
@@ -26,15 +26,17 @@ pub struct View {
     /// The Muster tab on screen, or nothing when this window holds none it may open onto.
     ///
     /// One at a time, which is what a window holding an ordered list of tabs means (MIP-2).
-    /// Every region below is a machine's half of this tab.
     pub tab: Option<TabId>,
-    pub regions: Vec<ViewRegion>,
-    /// The region whose pane the keyboard feeds.
-    pub focused: Option<RegionId>,
-    /// The tab's one tree over every machine it spans, merged from each machine's copy
-    /// (`crate::spanning`, MIP-8), a tab on one machine taking its one copy as it is: the whole
-    /// tree, even while the tab is zoomed. Published beside the regions, which are what draws
-    /// the tab.
+    /// The tab's one tree over every machine it spans, as a window draws it: merged from each
+    /// machine's copy (`crate::spanning`, MIP-8) without the panes no part this window holds runs,
+    /// and a tab on one machine taking its one copy as it is. The whole tree, even while the tab is
+    /// zoomed.
+    ///
+    /// `None` while no machine has said how the tab is arranged. A real state rather than a
+    /// failure - a pane moving between tabs is counted in the tab it left until that tab's tree
+    /// changes - and a distinct one from a tab with no panes: a shell told `None` leaves what it
+    /// has alone, where a shell told "no panes" would tear down surfaces that are about to be
+    /// described.
     pub tree: Option<ViewTree>,
     /// The pane filling the tab, when it is zoomed: the one the keyboard is on, wherever in the
     /// tab it runs, which is how a window draws a zoom.
@@ -44,55 +46,19 @@ pub struct View {
     /// Every machine holding a part of the tab on screen that this window follows, with where its
     /// panes' bridges dial, in the order its regions sit.
     pub machines: Vec<ViewMachine>,
+    zoom: Zoom,
     /// Every pane this window has on screen, named by its daemon.
     ///
-    /// Held rather than derived from `regions`, because it is not the same question as the
-    /// trees below and reading it off them got it wrong. A region shows a tab, and a tab on
-    /// screen has its panes on screen; the tree says how they are arranged, and a tree the
-    /// daemon has not published or has just contradicted does not put those panes away. A
-    /// derivation that walked the trees answered "nothing at all" for a region the window was
-    /// still drawing, which is how a pane painting frames came to report itself hidden.
+    /// Held rather than derived from `tree`, because it is not the same question and reading it
+    /// off the tree got it wrong. A tab on screen has its panes on screen; the tree says how they
+    /// are arranged, and a tree the daemon has not published or has just contradicted does not
+    /// put those panes away. A derivation that walked the trees answered "nothing at all" for a
+    /// tab the window was still drawing, which is how a pane painting frames came to report
+    /// itself hidden.
     ///
-    /// A zoom is the one thing that hides a pane without closing its tab, so a zoomed region
-    /// contributes the one pane filling it, and while that region holds the keyboard it is the
-    /// only region contributing anything.
+    /// A zoom is the one thing that hides a pane without closing its tab, so a zoomed tab
+    /// contributes the one pane filling it.
     showing: BTreeSet<PaneKey>,
-}
-
-/// One region, and the tab it is showing.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ViewRegion {
-    pub id: RegionId,
-    pub daemon: DaemonId,
-    pub tab: TabId,
-    /// The pane in this region Muster's keyboard feeds when the region is focused.
-    pub pane: Option<PaneId>,
-    /// How much of the window's width this region gets, relative to the others in the list.
-    ///
-    /// Muster's own answer rather than a daemon's. The arrangement over regions is the one
-    /// part of the layout nothing upstream will ever have an opinion about, because no daemon
-    /// knows the other one exists.
-    pub weight: f32,
-    /// `None` while the daemon has not said how this tab is arranged.
-    ///
-    /// A real state rather than a failure - a pane moving between tabs is counted in the tab
-    /// it left until that tab's tree changes - and a distinct one from an empty region: a
-    /// shell told `None` leaves what it has alone, where a shell told "no panes" would tear
-    /// down surfaces that are about to be described.
-    pub root: Option<ViewNode>,
-    /// Whether `root` is one pane filling the region rather than the tab's whole tree.
-    ///
-    /// The tree is already resolved to the zoomed pane, so a shell that ignores this still
-    /// renders the right thing; what the flag is for is saying so in the chrome, because a
-    /// zoomed tab and a tab with one pane are otherwise indistinguishable on screen.
-    pub zoomed: bool,
-    /// The socket a pane's bridge dials to draw it: the daemon's own, or for a daemon on
-    /// another machine the local end of the ssh forward to it. `None` for a daemon this window
-    /// has not reached.
-    pub daemon_socket: Option<String>,
-    /// Whether the daemon is on another machine, which is where a bridge asks for a window of
-    /// unacknowledged output sized for the link.
-    pub remote: bool,
 }
 
 /// A machine a tab's panes run on, as a window's bridges reach it.
@@ -169,19 +135,6 @@ impl std::fmt::Display for ViewTree {
     }
 }
 
-/// A region's tree, with the panes filled in.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ViewNode {
-    Pane(ViewPane),
-    Split {
-        axis: SplitAxis,
-        /// The first child's share, between 0 and 1.
-        ratio: f32,
-        first: Box<ViewNode>,
-        second: Box<ViewNode>,
-    },
-}
-
 /// One pane, as a window needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewPane {
@@ -218,9 +171,9 @@ impl View {
     /// What one window is showing, given a way to reach each daemon's mirror.
     ///
     /// A closure rather than a map of mirrors, because in a running app each one is behind
-    /// its own lock and the caller is the only thing that knows how to hold them. A region
-    /// whose daemon answers `None` is dropped: it names a daemon nothing is following, so
-    /// there is no tab to render and no honest thing to say about it.
+    /// its own lock and the caller is the only thing that knows how to hold them. A part of the
+    /// tab whose daemon answers `None` is left out: it names a daemon nothing is following, so
+    /// there is nothing to render and no honest thing to say about it.
     ///
     /// `pane` answers everything about one pane that the layout cannot: the socket its bridge
     /// reports on, the size somebody chose, and how many times its bridge has been replaced.
@@ -241,23 +194,23 @@ impl View {
             Some(tab) => View::built(tab, Zoom::Resolved, mirror, daemon_socket, remote, pane),
             None => View {
                 tab: None,
-                regions: Vec::new(),
-                focused: None,
                 tree: None,
                 zoomed: None,
                 keyboard: None,
                 machines: Vec::new(),
+                zoom: Zoom::Resolved,
                 showing: BTreeSet::new(),
             },
         }
     }
 
     /// How any tab this window holds is arranged, whether or not it is on screen: what `of`
-    /// would answer once it was shown, except that a zoomed region keeps its whole tree.
+    /// would answer once it was shown, except that its places are the whole tree's even while it
+    /// is zoomed.
     ///
     /// The tree rather than the zoomed pane, because this answers how the tab is laid out rather
     /// than what is drawn, and a zoom covers that arrangement without changing it - unzooming
-    /// puts it back. `zoomed` and the region's `pane` still say which pane fills it.
+    /// puts it back. `zoomed` still says which pane fills it.
     ///
     /// `None` for a tab this window does not hold. Built on request, for a caller describing the
     /// layout, and never on the path that publishes a view.
@@ -281,70 +234,11 @@ impl View {
         remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
-        let mut showing = BTreeSet::new();
         let tab = held.id.clone();
         let arranged = |region: &Region| {
             let daemon = mirror(&region.daemon)?;
             daemon.tab(&tab).filter(|layout| arranges(daemon, &tab, layout))
         };
-        // A zoom fills the whole tab, whatever machines its parts are on: when the part holding
-        // the keyboard is zoomed, it is the only part drawn. Here because each daemon records a
-        // zoom on its own part and knows nothing of the others. The other parts keep their
-        // weights in composition and come back at them on unzooming, and their panes are off
-        // screen meanwhile, as a covered pane in the zoomed part is.
-        let covering = match zoom {
-            Zoom::Resolved => held
-                .focused_region()
-                .filter(|region| zoom_filling(region, arranged(region)).is_some())
-                .map(|region| region.id),
-            Zoom::Kept => None,
-        };
-        let regions = held
-            .regions()
-            .filter(|region| covering.is_none_or(|covering| covering == region.id))
-            .filter_map(|region| {
-                let held = mirror(&region.daemon)?;
-                let layout = arranged(region);
-                // What this region has on screen, which is the tab it shows rather than the
-                // tree it was last told about. The tree decides the arrangement and a zoom
-                // decides what is covered; neither absence puts a pane away, and reading this
-                // off the tree is what once made four panes painting frames report themselves
-                // hidden.
-                match zoom_filling(region, layout) {
-                    Some(pane) => {
-                        showing.insert(PaneKey::new(&region.daemon, &pane));
-                    }
-                    None => showing.extend(
-                        held.panes_in_tab(&tab).map(|pane| PaneKey::new(&region.daemon, &pane.id)),
-                    ),
-                }
-                Some(ViewRegion {
-                    id: region.id,
-                    daemon: region.daemon.clone(),
-                    tab: tab.clone(),
-                    pane: region.pane.clone(),
-                    weight: region.weight,
-                    root: layout.map(|layout| {
-                        // Resolved here rather than flagged for the shell, so a renderer
-                        // handed a zoomed tab paints the one pane that fills it. Which pane
-                        // that is is `zoom_filling`'s answer.
-                        let zoomed = match zoom {
-                            Zoom::Resolved => {
-                                zoom_filling(region, Some(layout)).map(LayoutNode::Pane)
-                            }
-                            Zoom::Kept => None,
-                        };
-                        build(zoomed.as_ref().unwrap_or(&layout.root), &region.daemon, &pane)
-                    }),
-                    zoomed: layout.is_some_and(|layout| layout.zoomed.is_some()),
-                    daemon_socket: daemon_socket(&region.daemon),
-                    remote: remote(&region.daemon),
-                })
-            })
-            .collect();
-        // What the copies add up to, and nothing written: the seam sends the writes, from the
-        // same merge, and only it knows which machines can take one. A tab on one machine is
-        // its one region's tree, which is already published above.
         let keyboard = held
             .focused_region()
             .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
@@ -360,6 +254,20 @@ impl View {
                 layout.map(|(region, layout)| ViewTree::own(&layout.root, &region.daemon, &pane));
             (tree, zoomed)
         };
+        // What the tab has on screen, which is the panes it holds rather than the tree it was
+        // last told about. The tree decides the arrangement and a zoom decides what is covered;
+        // neither absence puts a pane away, and reading this off the tree is what once made four
+        // panes painting frames report themselves hidden.
+        let showing = match zoomed.as_ref().filter(|_| zoom == Zoom::Resolved) {
+            Some(filling) => BTreeSet::from([filling.clone()]),
+            None => held
+                .regions()
+                .filter_map(|region| Some((&region.daemon, mirror(&region.daemon)?)))
+                .flat_map(|(daemon, held)| {
+                    held.panes_in_tab(&tab).map(move |pane| PaneKey::new(daemon, &pane.id))
+                })
+                .collect(),
+        };
         let mut machines: Vec<ViewMachine> = Vec::new();
         for region in held.regions() {
             if mirror(&region.daemon).is_some()
@@ -372,20 +280,7 @@ impl View {
                 });
             }
         }
-        View {
-            tab: Some(tab),
-            regions,
-            focused: held.focused_region().map(|region| region.id),
-            tree,
-            zoomed,
-            keyboard,
-            machines,
-            showing,
-        }
-    }
-
-    pub fn region(&self, id: RegionId) -> Option<&ViewRegion> {
-        self.regions.iter().find(|region| region.id == id)
+        View { tab: Some(tab), tree, zoomed, keyboard, machines, zoom, showing }
     }
 
     /// Every pane this window has on screen, named by its daemon.
@@ -406,34 +301,24 @@ impl View {
 
     /// Where the keyboard lands after stepping one pane.
     ///
-    /// Reading order across the whole window, not within a region: two regions side by side
-    /// are one thing to a person looking at them, and a step that stopped at a region's edge
-    /// would leave panes no keystroke could reach. It wraps, because a window has no edge to
+    /// Reading order across the tab's whole tree, not within one machine's panes: a laptop pane
+    /// beside a devenv pane is one thing to a person looking at them, and a step that stopped at
+    /// a machine's edge would leave panes no keystroke could reach. It wraps, because a window has no edge to
     /// bump against and a step that silently did nothing is indistinguishable from a dead key.
     ///
     /// Here rather than in the shell because it is a decision, and because the CLI and the
     /// agent-facing API ask for it in the same words. Here rather than on [`Composition`]
     /// because the order is the tab's tree, and composition holds no tree - it is daemon truth
     /// (`architecture.md`, one action path).
-    pub fn step(&self, direction: Step) -> Option<(RegionId, PaneId)> {
+    pub fn step(&self, direction: Step) -> Option<PaneKey> {
         if let Some(axis) = direction.axis() {
             return self.neighbour(axis, direction.towards_start());
         }
-        let order: Vec<(RegionId, PaneId)> = self
-            .regions
-            .iter()
-            .flat_map(|region| {
-                region
-                    .root
-                    .iter()
-                    .flat_map(ViewNode::panes)
-                    .map(|pane| (region.id, pane.id.clone()))
-            })
-            .collect();
-        let at = self.focused.and_then(|focused| {
-            let pane = self.region(focused)?.pane.as_ref()?;
-            order.iter().position(|(region, held)| *region == focused && held == pane)
-        });
+        let order: Vec<PaneKey> = self.places().into_iter().map(|(pane, _)| pane).collect();
+        let at = self
+            .keyboard
+            .as_ref()
+            .and_then(|keyboard| order.iter().position(|pane| pane == keyboard));
         match at {
             Some(at) => {
                 // Only the two ordinal steps reach here; the four directions returned above.
@@ -461,9 +346,8 @@ impl View {
     /// a child by position in the tree rather than by where it actually is, so in any
     /// arrangement that is not symmetric it lands somewhere the user did not point at.
     ///
-    /// The ratios are already here, and after region weights so is the arrangement over
-    /// regions, so the whole window is one normalized space and the honest answer is a
-    /// rectangle comparison. Asking the daemon was the other option and was rejected:
+    /// The ratios are already here, and the tab is one tree over every machine it spans, so the
+    /// whole window is one normalized space and the honest answer is a rectangle comparison. Asking the daemon was the other option and was rejected:
     /// `BackendChannel::submit` is write-only by design, and every future backend would owe
     /// us a read to answer a question about an arrangement Muster is already holding.
     ///
@@ -472,23 +356,19 @@ impl View {
     /// previous already reach every pane and wrap, so this one can afford to be predictable
     /// instead. It does not wrap either - falling off the edge of a window and reappearing on
     /// the other side is disorienting in a way stepping through an order is not.
-    fn neighbour(&self, axis: Axis, towards_start: bool) -> Option<(RegionId, PaneId)> {
+    fn neighbour(&self, axis: Axis, towards_start: bool) -> Option<PaneKey> {
         let places = self.places();
-        let focused = self.focused?;
-        let pane = self.region(focused)?.pane.as_ref()?;
-        let from = places
-            .iter()
-            .find(|(region, held, _)| *region == focused && held == pane)
-            .map(|(_, _, rect)| *rect)?;
+        let keyboard = self.keyboard.as_ref()?;
+        let from = places.iter().find(|(pane, _)| pane == keyboard).map(|(_, rect)| *rect)?;
 
         places
             .iter()
             .enumerate()
-            .filter(|(_, (region, held, _))| !(*region == focused && held == pane))
-            .filter_map(|(index, (region, held, rect))| {
+            .filter(|(_, (pane, _))| pane != keyboard)
+            .filter_map(|(index, (pane, rect))| {
                 let gap = from.gap_to(*rect, axis, towards_start)?;
                 let overlap = from.overlap(*rect, axis.across())?;
-                Some((gap, overlap, index, (*region, held.clone())))
+                Some((gap, overlap, index, pane.clone()))
             })
             // Nearest first; then the one sharing the most edge with where the keyboard was,
             // which is what "straight on" means when two panes are the same distance away.
@@ -503,7 +383,8 @@ impl View {
             .map(|(_, _, _, found)| found)
     }
 
-    /// Where every pane on screen sits, as fractions of the window.
+    /// Where every pane on screen sits, as fractions of the tab, in reading order: the one pane
+    /// filling a zoomed tab while it is drawn that way, and the whole tree otherwise.
     ///
     /// Normalized rather than in points, because the core has no window and needs none: which
     /// pane is to the left of which is the same answer at any size.
@@ -511,31 +392,13 @@ impl View {
     /// Public because `muster window` answers with it, and that is the same question the four
     /// directional moves ask: an agent arranging a window has no eyes, and the shares each pane
     /// ended up with are what tells it whether a resize landed. One answer for both, rather than
-    /// a second walk of the same trees that could disagree with what the keyboard does.
-    pub fn places(&self) -> Vec<(RegionId, PaneId, Rect)> {
-        let total: f32 = self
-            .regions
-            .iter()
-            .map(|region| region.weight.max(0.0))
-            .filter(|w| w.is_finite())
-            .sum();
-        if total <= 0.0 {
-            return Vec::new();
+    /// a second walk of the same tree that could disagree with what the keyboard does.
+    pub fn places(&self) -> Vec<(PaneKey, Rect)> {
+        let whole = Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 };
+        match (self.zoom, &self.zoomed) {
+            (Zoom::Resolved, Some(filling)) => vec![(filling.clone(), whole)],
+            _ => self.tree.as_ref().map(|tree| places_in(tree, whole)).unwrap_or_default(),
         }
-        let mut found = Vec::new();
-        let mut x = 0.0;
-        for region in &self.regions {
-            let weight = if region.weight.is_finite() { region.weight.max(0.0) } else { 0.0 };
-            let width = weight / total;
-            if let Some(root) = &region.root {
-                let rect = Rect { x, y: 0.0, width, height: 1.0 };
-                found.extend(
-                    places_in(root, rect).into_iter().map(|(pane, rect)| (region.id, pane, rect)),
-                );
-            }
-            x += width;
-        }
-        found
     }
 }
 
@@ -579,7 +442,7 @@ fn spanning_tree<'a>(
     (drawn.map(|drawn| ViewTree::of(&drawn, pane)), zoomed)
 }
 
-/// Whether a zoomed region is drawn as the one pane filling it, or kept as its whole tree.
+/// Whether a zoomed tab is placed as the one pane filling it, or kept as its whole tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Zoom {
     Resolved,
@@ -608,7 +471,7 @@ impl Axis {
 /// proportions, and a daemon publishes a tree of ratios rather than rectangles, because cells
 /// on its side would describe a grid that is nobody's window (`architecture.md`, the
 /// vocabulary). `x` and `y` are from the window's top
-/// left, and the region weights are already folded in - so two panes on two machines are
+/// left, and the tab is one tree over every machine it spans - so two panes on two machines are
 /// measured in one space, which is the only way "which of these is wider" has an answer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -655,16 +518,16 @@ impl Rect {
 /// Public for a tree no window holds: with no window answering, `muster window --layout` places
 /// a daemon's panes in their tab with this, so its fractions are the window's own arithmetic
 /// rather than a copy of it.
-pub fn places_in(root: &ViewNode, rect: Rect) -> Vec<(PaneId, Rect)> {
+pub fn places_in(root: &ViewTree, rect: Rect) -> Vec<(PaneKey, Rect)> {
     let mut found = Vec::new();
     place(root, rect, &mut found);
     found
 }
 
-fn place(node: &ViewNode, rect: Rect, found: &mut Vec<(PaneId, Rect)>) {
+fn place(node: &ViewTree, rect: Rect, found: &mut Vec<(PaneKey, Rect)>) {
     match node {
-        ViewNode::Pane(pane) => found.push((pane.id.clone(), rect)),
-        ViewNode::Split { axis, ratio, first, second } => {
+        ViewTree::Pane { daemon, pane } => found.push((PaneKey::new(daemon, &pane.id), rect)),
+        ViewTree::Split { axis, ratio, first, second } => {
             // A ratio is a backend's number and is not this core's to trust. An unusable one
             // splits evenly rather than collapsing a pane to nothing, on the same terms as
             // the shell's own geometry.
@@ -745,25 +608,6 @@ impl Step {
     }
 }
 
-impl ViewNode {
-    /// Every pane in the tree, in reading order.
-    pub fn panes(&self) -> Vec<&ViewPane> {
-        let mut found = Vec::new();
-        self.collect(&mut found);
-        found
-    }
-
-    fn collect<'a>(&'a self, found: &mut Vec<&'a ViewPane>) {
-        match self {
-            ViewNode::Pane(pane) => found.push(pane),
-            ViewNode::Split { first, second, .. } => {
-                first.collect(found);
-                second.collect(found);
-            }
-        }
-    }
-}
-
 /// The one pane filling a region, when its tab is zoomed - and the whole tab, when that region
 /// holds the keyboard (`View::of`).
 ///
@@ -804,54 +648,4 @@ fn arranges(mirror: &Mirror, tab: &TabId, layout: &Tab) -> bool {
     let mut held: Vec<&PaneId> = mirror.panes_in_tab(tab).map(|pane| &pane.id).collect();
     held.sort_unstable();
     arranged == held
-}
-
-fn build(
-    node: &LayoutNode,
-    daemon: &DaemonId,
-    pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
-) -> ViewNode {
-    match node {
-        LayoutNode::Pane(id) => ViewNode::Pane(pane(daemon, id)),
-        LayoutNode::Split { axis, ratio, first, second } => ViewNode::Split {
-            axis: *axis,
-            ratio: *ratio,
-            first: Box::new(build(first, daemon, pane)),
-            second: Box::new(build(second, daemon, pane)),
-        },
-    }
-}
-
-/// A view on one line per region, for the run log and the conformance drivers.
-///
-/// "the view changed" is useless in a log and the shape it changed to is the whole answer,
-/// and a reviewer deciding whether an expectation is right can hold a line in their head
-/// where four screens of nested JSON hold nobody's.
-impl std::fmt::Display for ViewNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ViewNode::Pane(pane) => {
-                write!(f, "{}", pane.id)?;
-                // Marked rather than printed: the path carries a pid and a temporary
-                // directory, so a case asserting one would assert this machine.
-                if pane.link_socket_path.is_some() {
-                    f.write_str("*")?;
-                }
-                // Only when somebody has sized it, so that every case not about text size
-                // reads the way it did - and so that a case that is about it says so in the
-                // one place a reviewer is already looking.
-                if pane.font_size_offset != 0 {
-                    write!(f, "{:+}", pane.font_size_offset)?;
-                }
-                Ok(())
-            }
-            ViewNode::Split { axis, ratio, first, second } => {
-                let axis = match axis {
-                    SplitAxis::Columns => "columns",
-                    SplitAxis::Rows => "rows",
-                };
-                write!(f, "{axis}({first}, {second}@{ratio})")
-            }
-        }
-    }
 }

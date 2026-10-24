@@ -331,9 +331,8 @@ fn until_showing_something() -> String {
 
 fn showing() -> Option<String> {
     let view = latest_view()?;
-    let region = view.regions.first()?;
-    region.root.as_ref()?;
-    Some(region.tab_id.clone())
+    view.tree.as_ref()?;
+    Some(view.tab_id.clone())
 }
 
 /// The tabs this window lists, in its order.

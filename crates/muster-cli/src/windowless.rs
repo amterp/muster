@@ -16,7 +16,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use muster_core::composition::{Rect, ViewNode, ViewPane, places_in};
+use muster_core::composition::{DaemonId, Rect, ViewPane, ViewTree, places_in};
 use muster_core::harnesses;
 use muster_core::mirror::backend::{Adapter, PaneId, SplitAxis};
 use muster_core::names::{Mint, Minter};
@@ -1020,8 +1020,8 @@ fn window_of(snapshot: &daemon_proto::Snapshot, socket: &Path) -> muster_proto::
 /// Every tab's tree, every pane's place in it and every pane's size, for a layout asked of the
 /// daemon with no window.
 ///
-/// Each tab is one part the whole width, because with no window there is no second machine's
-/// part beside it. The places are the window's own arithmetic over that one part
+/// Each tab is the one machine's own panes, because with no window there is no second machine to
+/// merge them with. The places are the window's own arithmetic over that one part
 /// ([`places_in`]), so a frame here means what it means from a window. A daemon too old to say
 /// its panes' sizes leaves them unknown.
 fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot, socket: &Path) {
@@ -1031,7 +1031,7 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
         .iter()
         .map(|tab| {
             let own = tab.root.as_ref().and_then(own_panes);
-            // A zoom on another machine's pane fills nothing here, as in a window's region.
+            // A zoom on another machine's pane fills nothing here, since this draws none of them.
             let zoomed = tab
                 .zoomed
                 .clone()
@@ -1044,18 +1044,17 @@ fn lay_out(window: &mut muster_proto::Window, snapshot: &daemon_proto::Snapshot,
             zoomed_pane_id: zoomed.unwrap_or_default(),
             places: own
                 .as_ref()
-                .and_then(core_node)
+                .and_then(|own| core_node(own, &DaemonId::new(&machine)))
                 .map(|root| {
                     places_in(&root, Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 })
                         .into_iter()
                         .map(|(pane, rect)| muster_proto::PanePlace {
                             daemon_id: machine.clone(),
-                            pane_id: pane.to_string(),
+                            pane_id: pane.pane.to_string(),
                             x: rect.x,
                             y: rect.y,
                             width: rect.width,
                             height: rect.height,
-                            ..muster_proto::PanePlace::default()
                         })
                         .collect()
                 })
@@ -1107,23 +1106,26 @@ fn names(node: &daemon_proto::Node, pane: &str) -> bool {
     }
 }
 
-/// A daemon's tree as the core places one, from [`own_panes`].
-fn core_node(node: &daemon_proto::Node) -> Option<ViewNode> {
+/// A daemon's tree as the core places one, from [`own_panes`], each leaf on `machine`.
+fn core_node(node: &daemon_proto::Node, machine: &DaemonId) -> Option<ViewTree> {
     Some(match node.node.as_ref()? {
-        daemon_proto::node::Node::Pane(pane) => ViewNode::Pane(ViewPane {
-            id: PaneId::new(pane),
-            link_socket_path: None,
-            font_size_offset: 0,
-            bridge_restarts: 0,
-        }),
-        daemon_proto::node::Node::Split(split) => ViewNode::Split {
+        daemon_proto::node::Node::Pane(pane) => ViewTree::Pane {
+            daemon: machine.clone(),
+            pane: ViewPane {
+                id: PaneId::new(pane),
+                link_socket_path: None,
+                font_size_offset: 0,
+                bridge_restarts: 0,
+            },
+        },
+        daemon_proto::node::Node::Split(split) => ViewTree::Split {
             axis: match split.axis() {
                 daemon_proto::Axis::Rows => SplitAxis::Rows,
                 daemon_proto::Axis::Columns | daemon_proto::Axis::Unspecified => SplitAxis::Columns,
             },
             ratio: split.ratio,
-            first: Box::new(core_node(split.first.as_deref()?)?),
-            second: Box::new(core_node(split.second.as_deref()?)?),
+            first: Box::new(core_node(split.first.as_deref()?, machine)?),
+            second: Box::new(core_node(split.second.as_deref()?, machine)?),
         },
         daemon_proto::node::Node::Foreign(_) => return None,
     })

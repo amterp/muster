@@ -163,13 +163,7 @@ fn keyboard() -> (String, String) {
         return (String::new(), String::new());
     };
     let view = window.view.unwrap_or_default();
-    let pane = view
-        .regions
-        .iter()
-        .find(|region| region.region_id == view.focused_region)
-        .map(|region| region.pane_id.clone())
-        .unwrap_or_default();
-    (view.tab_id, pane)
+    (view.tab_id, view.keyboard_pane_id)
 }
 
 fn answer(payload: request::Payload) -> Response {

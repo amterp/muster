@@ -102,7 +102,7 @@ fn a_caller_outside_this_process_can_ask_what_the_window_is_showing() {
     // three panes would otherwise drag somebody's cursor through all three.
     let window = read_window(&socket);
     assert_eq!(
-        window.view.as_ref().and_then(|view| view.regions.first()).map(|r| r.pane_id.clone()),
+        window.view.as_ref().and_then(crate::view::keyboard_pane),
         Some(panes[0].clone()),
         "a split that did not ask for focus took it anyway: {window:?}"
     );
@@ -152,9 +152,9 @@ fn the_answer_carries_what_a_caller_needs(window: &Window) -> Vec<String> {
          answer distinguishes them: {window:?}"
     );
     assert_eq!(
-        window.view.as_ref().and_then(|view| view.regions.first()).map(|r| r.pane_id.clone()),
+        window.view.as_ref().and_then(crate::view::keyboard_pane),
         Some(panes[0].clone()),
-        "the region the window draws should name the pane the keyboard is on, by the name \
+        "the view the window draws should name the pane the keyboard is on, by the name \
          Muster calls it - which is the name a caller would send back: {window:?}"
     );
     assert_eq!(

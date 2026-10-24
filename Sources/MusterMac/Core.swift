@@ -1456,7 +1456,6 @@ public enum Core {
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"
     case .windowFocus: return "window_focus"
-    case .setRegionBoundary: return "set_region_boundary"
     case .readBindings: return "read_bindings"
     case .readAppearance: return "read_appearance"
     case .readWindow: return "read_window"

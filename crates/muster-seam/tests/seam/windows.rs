@@ -13,7 +13,7 @@ use muster::proto::{
     AskForWindow, AskToCloseWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking,
     FocusHistory, FocusPane, FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening,
     ReadWindow, ReattachPane, Request, Response, SplitPane, Startup, StillOpen, ToggleSidebar,
-    ViewNode, WindowFocus, event, request, response, view_node,
+    WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::{self as daemon_proto, AgentState, session_request};
@@ -1534,9 +1534,8 @@ fn machine_showing_in(window: &str) -> Option<String> {
         Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
         _ => None,
     })?;
-    let region = view.regions.first()?;
-    region.root.as_ref()?;
-    Some(region.daemon_id.clone())
+    let (daemon, _) = crate::view::leaves(view.tree.as_ref()?).into_iter().next()?;
+    Some(daemon)
 }
 
 fn showing_in(window: &str) -> Option<String> {
@@ -1545,9 +1544,8 @@ fn showing_in(window: &str) -> Option<String> {
         Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
         _ => None,
     })?;
-    let region = view.regions.first()?;
-    region.root.as_ref()?;
-    Some(region.tab_id.clone())
+    view.tree.as_ref()?;
+    Some(view.tab_id.clone())
 }
 
 /// Every window a view has been sent to.
@@ -1587,8 +1585,7 @@ fn keyboard_in(window: &str) -> Option<String> {
         Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
         _ => None,
     })?;
-    let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-    Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+    crate::view::keyboard_pane(view)
 }
 
 /// Asks for a new bridge for a pane on the test's one machine, as a problem's Reattach does.
@@ -1602,23 +1599,12 @@ fn reattach(pane: &str) -> request::Payload {
 /// How many bridges the last view sent to a window says it has replaced for a pane, or `None`
 /// while that view does not draw the pane.
 fn restarts_in(window: &str, pane: &str) -> Option<u32> {
-    fn find(node: &ViewNode, pane: &str) -> Option<u32> {
-        match &node.node {
-            Some(view_node::Node::Pane(drawn)) => {
-                (drawn.pane_id == pane).then_some(drawn.bridge_restarts)
-            }
-            Some(view_node::Node::Split(split)) => {
-                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane))
-            }
-            None => None,
-        }
-    }
     let events = EVENTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let view = events.iter().rev().find_map(|event| match &event.payload {
         Some(event::Payload::ViewChanged(view)) if event.window == window => Some(view),
         _ => None,
     })?;
-    view.regions.iter().filter_map(|region| region.root.as_ref()).find_map(|root| find(root, pane))
+    crate::view::find_pane(view, pane).map(|drawn| drawn.bridge_restarts)
 }
 
 /// Every pane a window lists.

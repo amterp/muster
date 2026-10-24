@@ -67,9 +67,9 @@ fn a_numbered_chord_lands_on_the_row_carrying_it() {
         || format!("the view still shows {:?}", shown()),
     );
 
-    // Surfaced rather than opened beside: a second region onto the same daemon would be two
-    // copies of one window, and the region count is what tells those apart.
-    assert_eq!(regions(), 1, "reaching a hidden pane opened a region instead of retargeting one");
+    // Surfaced rather than opened beside: a second part onto the same daemon would be two
+    // copies of one window, and the machine count is what tells those apart.
+    assert_eq!(machines(), 1, "reaching a hidden pane opened a second part instead of retargeting");
 
     // And the refusal, in the same breath, because a press past the end is what ⌘9 means in a
     // window of two tabs and it has to do nothing rather than land somewhere.
@@ -469,16 +469,14 @@ fn showing(pane: &str) -> bool {
 
 fn shown() -> Option<String> {
     let view = VIEW.lock().expect("a panicking test poisoned the view");
-    let view = view.as_ref()?;
-    let focused = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-    (!focused.pane_id.is_empty()).then(|| focused.pane_id.clone())
+    crate::view::keyboard_pane(view.as_ref()?)
 }
 
-fn regions() -> usize {
+fn machines() -> usize {
     VIEW.lock()
         .expect("a panicking test poisoned the view")
         .as_ref()
-        .map(|view| view.regions.len())
+        .map(|view| view.machines.len())
         .unwrap_or_default()
 }
 

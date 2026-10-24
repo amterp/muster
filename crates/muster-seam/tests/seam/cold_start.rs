@@ -16,8 +16,7 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    Event, OpenWindow, Request, Response, Startup, ViewChanged, ViewNode, event, request, response,
-    view_node,
+    Event, OpenWindow, Request, Response, Startup, ViewChanged, event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -51,13 +50,13 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
     // `pane.surface.deferred`, and waits for a republish that only a split ever caused.
     let view = latest_view().expect("just waited for it");
 
-    // The keyboard has to be somewhere. A region with no pane is one where every keybinding
+    // The keyboard has to be somewhere. A window keyboarding no pane is one where every keybinding
     // meaning "the focused pane" is refused - so ⌘T on a freshly opened window answered "no
     // pane has this window's keyboard" until somebody clicked, which looks like the window
     // ignoring the key.
     assert!(
-        view.regions.iter().all(|region| !region.pane_id.is_empty()),
-        "a region opened with the keyboard on no pane, so the first keybinding pressed is \
+        !view.keyboard_pane_id.is_empty(),
+        "the window opened with the keyboard on no pane, so the first keybinding pressed is \
          refused: {view:?}"
     );
     let unreachable: Vec<String> = panes(&view)
@@ -74,19 +73,10 @@ fn a_window_opened_on_an_empty_daemon_can_be_typed_into() {
 
 /// Every pane a view shows, with the socket a bridge for it would dial.
 fn panes(view: &ViewChanged) -> Vec<(String, String)> {
-    view.regions.iter().filter_map(|region| region.root.as_ref()).flat_map(leaves).collect()
-}
-
-fn leaves(node: &ViewNode) -> Vec<(String, String)> {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.link_socket_path.clone())]
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
-        }
-        None => Vec::new(),
-    }
+    crate::view::panes(view)
+        .into_iter()
+        .map(|pane| (pane.pane_id.clone(), pane.link_socket_path.clone()))
+        .collect()
 }
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);

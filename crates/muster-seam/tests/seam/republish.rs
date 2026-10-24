@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use muster::proto::{
     AdjustFontSize, Event, FocusPane, OpenWindow, Request, Response, RosterChanged, Startup,
-    ViewChanged, ViewNode, event, request, response, view_node,
+    ViewChanged, event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -105,35 +105,17 @@ fn opened() -> bool {
     else {
         return false;
     };
-    let socket = view
-        .regions
-        .iter()
-        .filter_map(|region| region.root.as_ref())
-        .any(|root| has_socket(root, &pane));
+    let socket =
+        crate::view::find_pane(&view, &pane).is_some_and(|leaf| !leaf.link_socket_path.is_empty());
     let listed = roster.tabs.iter().flat_map(|tab| &tab.panes).any(|row| row.pane_id == pane);
     socket && listed
-}
-
-fn has_socket(node: &ViewNode, pane: &str) -> bool {
-    match &node.node {
-        Some(view_node::Node::Pane(leaf)) => {
-            leaf.pane_id == pane && !leaf.link_socket_path.is_empty()
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).any(|child| has_socket(child, pane))
-        }
-        None => false,
-    }
 }
 
 /// The daemon and pane the keyboard is on, as the published view names them.
 fn keyboard() -> Option<(String, String)> {
     let view = latest_view()?;
-    view.regions
-        .into_iter()
-        .find(|region| region.region_id == view.focused_region)
-        .filter(|region| !region.pane_id.is_empty())
-        .map(|region| (region.daemon_id, region.pane_id))
+    let pane = crate::view::keyboard_pane(&view)?;
+    Some((crate::view::daemon_of(&view, &pane)?, pane))
 }
 
 struct Seen {

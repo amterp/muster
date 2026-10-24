@@ -21,8 +21,8 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AttachPane, ClosePane, CreateTab, Event, FocusPane, OpenWindow, Paste, ReadWindow, Request,
-    Response, RosterChanged, SplitPane, Startup, ViewChanged, ViewNode, WindowFocus, ZoomPane,
-    event, request, response, view_node,
+    Response, RosterChanged, SplitPane, Startup, ViewChanged, ViewTree, WindowFocus, ZoomPane,
+    event, request, response, view_tree,
 };
 use muster_daemon_proto::{AgentState, Side};
 use muster_harness::requests::{
@@ -261,11 +261,7 @@ fn an_emptied_window_refills_itself() {
     // And the window is showing it with the keyboard on it, which is the half a person sees.
     until(
         "the window to show the pane it was given, with the keyboard on it",
-        || {
-            latest_view().is_some_and(|view| {
-                view.regions.first().is_some_and(|region| !region.pane_id.is_empty())
-            })
-        },
+        || latest_view().is_some_and(|view| !view.keyboard_pane_id.is_empty()),
         || format!("the last view the core published: {:?}", latest_view()),
     );
 }
@@ -285,8 +281,7 @@ fn a_new_tab_is_made_and_then_shown() {
     // A window showing something, which every one of these starts from.
     attach(SECOND);
 
-    let before =
-        latest_view().expect("the window is showing something by now").regions[0].tab_id.clone();
+    let before = latest_view().expect("the window is showing something by now").tab_id;
     let tabs_before = tab_count(daemon);
 
     assert_ok(&answer(request::Payload::CreateTab(CreateTab {
@@ -300,18 +295,17 @@ fn a_new_tab_is_made_and_then_shown() {
     })));
 
     let view = latest_view().expect("the window was showing something before it asked");
-    let region = view.regions.first().expect("the window shows a region");
     assert!(
-        region.tab_id != before && !region.pane_id.is_empty(),
+        view.tab_id != before && !view.keyboard_pane_id.is_empty(),
         "the window did not move onto the tab it asked for by the time the request returned; \
          it still shows {before}. The view: {view:?}"
     );
-    // One region, not two: a new tab is somewhere this window goes, not a second copy of the
-    // window beside the first.
+    // One machine's part, not two: a new tab is somewhere this window goes, not a second copy
+    // of the window beside the first.
     assert_eq!(
-        view.regions.len(),
+        view.machines.len(),
         1,
-        "a new tab opened a second region instead of moving the one that asked for it"
+        "a new tab opened a second part instead of moving the one that asked for it"
     );
     assert_eq!(
         tab_count(daemon),
@@ -369,13 +363,13 @@ fn a_pane_no_region_shows_can_still_be_reached() {
         pane_id: elsewhere.clone(),
     })));
 
-    // One region still, retargeted rather than added: switching tabs on the daemon you are
-    // already looking at should not split the window in two.
+    // One machine's part still, retargeted rather than added: switching tabs on the daemon you
+    // are already looking at should not split the window in two.
     until(
-        "the region to be showing the pane that was asked for",
+        "the window to be showing the pane that was asked for",
         || {
             latest_view()
-                .is_some_and(|view| view.regions.len() == 1 && view.regions[0].pane_id == elsewhere)
+                .is_some_and(|view| view.machines.len() == 1 && view.keyboard_pane_id == elsewhere)
         },
         || format!("the last view: {:?}", latest_view()),
     );
@@ -390,14 +384,14 @@ fn a_pane_no_region_shows_can_still_be_reached() {
     // Back where it started, so that what follows is about the tab it was written against.
     // Going back is the same mechanism in reverse and is worth one assertion of its own -
     // a surface that could only move away from where you were would be a trap.
-    let home = before.regions[0].pane_id.clone();
+    let home = before.keyboard_pane_id.clone();
     assert_ok(&answer(request::Payload::FocusPane(FocusPane {
         daemon_id: String::new(),
         pane_id: home.clone(),
     })));
     until(
         "the window to come back to the tab it started on",
-        || latest_view().is_some_and(|view| view.regions[0].pane_id == home),
+        || latest_view().is_some_and(|view| view.keyboard_pane_id == home),
         || format!("the last view: {:?}", latest_view()),
     );
 }
@@ -497,23 +491,15 @@ fn zoom_follows_the_keyboard() {
     );
 }
 
-/// The pane filling the region, when one is - and nothing when the region is showing its tree.
+/// The pane filling the tab, when one is - and nothing when the tab is showing its tree.
 fn zoomed_pane() -> Option<String> {
     zoomed_leaf().map(|pane| pane.pane_id)
 }
 
 /// The same, with everything else a shell is told about that pane.
 fn zoomed_leaf() -> Option<muster::proto::ViewPane> {
-    let region = latest_view()?.regions.into_iter().next()?;
-    if !region.zoomed {
-        return None;
-    }
-    match region.root?.node? {
-        view_node::Node::Pane(pane) => Some(pane),
-        // A zoomed region publishes the one pane, so a split here is the resolution not having
-        // happened at all - which is the bug this is about, and it is not an answer.
-        view_node::Node::Split(_) => None,
-    }
+    let view = latest_view()?;
+    crate::view::find_pane(&view, &view.zoomed_pane_id).cloned()
 }
 
 /// The view the core publishes, and the two directions it moves in: following a split another
@@ -526,17 +512,16 @@ fn the_window_follows_and_drives_the_tree() {
     let daemon = &daemon;
     attach(SECOND);
 
-    // Both panes in one region, because a region shows a tab and both panes are in it. A
-    // second region here would mean attaching a pane opened a second copy of its tab.
+    // Both panes in one tree on one machine, because the tab holds both. A second machine's
+    // part here would mean attaching a pane opened a second copy of its tab.
     until(
         "the tab's tree to settle at two leaves",
         || settled(2).is_some(),
         || format!("the last view the core published: {:?}", latest_view()),
     );
     let view = latest_view().expect("attaching publishes what the window is showing");
-    assert_eq!(view.regions.len(), 1, "one tab, one region: {view:?}");
-    assert_eq!(view.focused_region, view.regions[0].region_id);
-    assert_eq!(view.regions[0].pane_id, SECOND, "the keyboard is on the pane just attached");
+    assert_eq!(view.machines.len(), 1, "one tab, one machine: {view:?}");
+    assert_eq!(view.keyboard_pane_id, SECOND, "the keyboard is on the pane just attached");
 
     // A split made from another client. Nothing here asked Muster for it, which is the
     // point twice over: the view follows the daemon rather than Muster's own record of what
@@ -587,7 +572,7 @@ fn the_window_follows_and_drives_the_tree() {
     let landed = || -> Option<bool> {
         let panes = settled(5)?;
         let made = panes.iter().map(|(id, _)| id).find(|id| !before.contains(*id))?;
-        Some(&latest_view()?.regions.into_iter().next()?.pane_id == made)
+        Some(&latest_view()?.keyboard_pane_id == made)
     };
     assert_eq!(
         landed(),
@@ -624,15 +609,15 @@ fn the_window_follows_and_drives_the_tree() {
     );
 }
 
-/// The published view's one region, once its tree has exactly `leaves` panes and each of
+/// The published view's panes, once its tree has exactly `leaves` panes and each of
 /// them names a socket of its own.
 ///
 /// Everything this file asserts about a tree asks for it this way. A tree another client
 /// changes arrives on its own event, so reading the latest view at an arbitrary instant is
 /// asking what the window looked like mid-blink.
 fn settled(count: usize) -> Option<Vec<(String, String)>> {
-    let root = latest_view()?.regions.into_iter().next()?.root?;
-    let panes = leaves(&root);
+    let tree = latest_view()?.tree?;
+    let panes = leaves(&tree);
     let sockets: BTreeSet<&String> = panes.iter().map(|(_, socket)| socket).collect();
     (panes.len() == count && sockets.len() == count && !sockets.contains(&String::new()))
         .then_some(panes)
@@ -734,11 +719,11 @@ fn latest_state(pane: &str) -> Option<String> {
 /// Which axis a pane's own parent has is the only thing that says a split was spelled right
 /// *and* aimed right: the number of panes says neither.
 fn parent_axis(pane: &str) -> Option<String> {
-    fn walk(node: &ViewNode, pane: &str) -> Option<String> {
-        let Some(view_node::Node::Split(split)) = &node.node else { return None };
+    fn walk(node: &ViewTree, pane: &str) -> Option<String> {
+        let Some(view_tree::Node::Split(split)) = &node.node else { return None };
         for child in split.first.iter().chain(split.second.iter()) {
-            if let Some(view_node::Node::Pane(leaf)) = &child.node
-                && leaf.pane_id == pane
+            if let Some(view_tree::Node::Pane(leaf)) = &child.node
+                && leaf.pane.as_ref().is_some_and(|held| held.pane_id == pane)
             {
                 return Some(split.axis.clone());
             }
@@ -748,20 +733,15 @@ fn parent_axis(pane: &str) -> Option<String> {
         }
         None
     }
-    walk(&latest_view()?.regions.into_iter().next()?.root?, pane)
+    walk(&latest_view()?.tree?, pane)
 }
 
 /// Every pane in a tree, as (id, link socket path), in reading order.
-fn leaves(node: &ViewNode) -> Vec<(String, String)> {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.link_socket_path.clone())]
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
-        }
-        None => Vec::new(),
-    }
+fn leaves(node: &ViewTree) -> Vec<(String, String)> {
+    crate::view::leaf_panes(node)
+        .into_iter()
+        .map(|(_, pane)| (pane.pane_id.clone(), pane.link_socket_path.clone()))
+        .collect()
 }
 
 fn answer(payload: request::Payload) -> Response {

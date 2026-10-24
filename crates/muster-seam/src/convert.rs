@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use muster_core::composition::{DaemonId, View, ViewNode, ViewPane, ViewTree};
+use muster_core::composition::{DaemonId, View, ViewPane, ViewTree};
 use muster_core::config::Rgb;
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
@@ -78,26 +78,10 @@ pub(crate) fn backend_health(heard: &DaemonHealth) -> proto::BackendHealth {
 /// Ids and paths become strings and absence becomes the empty string, which is proto3's own
 /// spelling for a field nobody set. The one place that is not good enough is the tree: a tab
 /// whose arrangement has not arrived is a different answer from a tab with no panes, so
-/// `root` is an absent message rather than an empty one.
+/// `tree` is an absent message rather than an empty one.
 pub(crate) fn view(view: &View) -> proto::ViewChanged {
     proto::ViewChanged {
         tab_id: view.tab.as_ref().map(ToString::to_string).unwrap_or_default(),
-        regions: view
-            .regions
-            .iter()
-            .map(|region| proto::ViewRegion {
-                region_id: region.id.to_string(),
-                daemon_id: region.daemon.to_string(),
-                tab_id: region.tab.to_string(),
-                pane_id: region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
-                weight: region.weight,
-                root: region.root.as_ref().map(node),
-                zoomed: region.zoomed,
-                daemon_socket: region.daemon_socket.clone().unwrap_or_default(),
-                remote: region.remote,
-            })
-            .collect(),
-        focused_region: view.focused.map(|id| id.to_string()).unwrap_or_default(),
         tree: view.tree.as_ref().map(tree),
         zoomed_pane_id: view
             .zoomed
@@ -247,21 +231,6 @@ fn counting(numbering: &Numbering) -> proto::roster_changed::Counting {
 /// that lands somewhere else.
 fn pressed(place: Option<usize>) -> u32 {
     place.and_then(|place| u32::try_from(place).ok()).unwrap_or_default()
-}
-
-fn node(node: &ViewNode) -> proto::ViewNode {
-    let payload = match node {
-        ViewNode::Pane(pane) => proto::view_node::Node::Pane(self::pane(pane)),
-        ViewNode::Split { axis, ratio, first, second } => {
-            proto::view_node::Node::Split(Box::new(proto::ViewSplit {
-                axis: self::axis(*axis),
-                ratio: *ratio,
-                first: Some(Box::new(self::node(first))),
-                second: Some(Box::new(self::node(second))),
-            }))
-        }
-    };
-    proto::ViewNode { node: Some(payload) }
 }
 
 fn pane(pane: &ViewPane) -> proto::ViewPane {

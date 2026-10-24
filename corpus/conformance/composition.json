@@ -158,7 +158,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -245,7 +245,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p3, columns(w1:p1*, w1:p2@0.5)@0.5)"
         ]
       }
     },
@@ -315,7 +315,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 (no tree)"
+          "tab=w1:t1 (no tree)"
         ]
       }
     },
@@ -412,7 +412,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -529,7 +529,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
+          "tab=w1:t1 columns(w1:p1*, w1:p3@0.5)"
         ]
       }
     },
@@ -726,7 +726,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -832,7 +832,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -932,7 +932,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1032,7 +1032,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1128,7 +1128,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -1220,13 +1220,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
     {
       "name": "a zoomed tab shows the pane this window's keyboard is on",
-      "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. Resolving it here rather than flagging it for the shell is what keeps the shell renderable-as-told; the flag survives only so the chrome can say so, because a zoomed tab and a one-pane tab look identical. Which pane fills it is this window's own answer and not the daemon's: herdr's flag sits beside its focused pane, and daemon focus is one value shared with every client, so reading it would let another client decide what this window renders. Here that other client zoomed p2 while this window's keyboard is on p1, and p1 is what fills the region - anything else is somebody typing into a pane they cannot see.",
+      "why": "herdr spells zoom as a flag and keeps publishing every pane at its ordinary unzoomed rect, so a renderer handed the tree paints all of them while the daemon is showing one. The view names the pane filling the tab beside the whole tree, so the shell draws that one pane and the chrome can say the tab is zoomed, because a zoomed tab and a one-pane tab look identical. Which pane fills it is this window's own answer and not the daemon's: herdr's flag sits beside its focused pane, and daemon focus is one value shared with every client, so reading it would let another client decide what this window renders. Here that other client zoomed p2 while this window's keyboard is on p1, and p1 is what fills the region - anything else is somebody typing into a pane they cannot see.",
       "given": {
         "attached": [
           "w1:p1",
@@ -1307,7 +1307,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1* zoomed"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3@0.5)@0.5) zoomed=w1:p1"
         ]
       }
     },
@@ -1397,7 +1397,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
+          "tab=w1:t1 columns(w1:p1*, w1:p2*+2@0.5)"
         ]
       }
     },
@@ -1491,13 +1491,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
+          "tab=w1:t1 columns(w1:p1*-1, w1:p2*@0.5)"
         ]
       }
     },
     {
       "name": "moving the keyboard inside a zoomed tab moves what is on screen",
-      "why": "\u23182 in a zoomed tab used to leave the previous pane filling the region, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
+      "why": "\u23182 in a zoomed tab used to leave the previous pane filling the tab, so the keyboard fed a pane nobody could see. herdr publishes `layout_updated` when a pane appears or goes and never for a focus change (observations/herdr-0.8.0.md section 10), so the cursor its zoom flag sits beside is stale from the moment focus moves - which is why the zoomed pane has to be read off this window's own keyboard rather than off the daemon's. The tab stays zoomed: what moved is which pane fills it, not whether one does.",
       "given": {
         "attached": [
           "w1:p1",
@@ -1584,13 +1584,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p3* zoomed"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3*@0.5)@0.5) zoomed=w1:p3"
         ]
       }
     },
     {
       "name": "a zoom fills the whole tab, whatever machines its parts are on",
-      "why": "A tab holding a laptop part and a devenv part is one tab to the person looking at it, and zooming a pane in it is asking for that pane to fill it, the way it does in a tab on one machine. Each daemon records a zoom on its own part only, so the parts are weighed against each other here: the part holding the keyboard is zoomed, so it is the only part drawn, and the laptop's pane is off screen as a covered pane is. Composition still holds both regions, and arranged still lays out both, because a zoom covers an arrangement without changing it. Before this, the laptop's part stayed beside the zoomed pane.",
+      "why": "A tab holding a laptop part and a devenv part is one tab to the person looking at it, and zooming a pane in it is asking for that pane to fill it, the way it does in a tab on one machine. No window has written this tab as one tree, so each daemon has recorded a zoom on its own part only: the part holding the keyboard is zoomed, so the keyboard's pane fills the tab and the laptop's pane is off screen as a covered pane is. Arranged still lays out every pane, because a zoom covers an arrangement without changing it.",
       "given": {
         "attached": [
           "w1:p1",
@@ -1712,8 +1712,7 @@
       },
       "expect": {
         "arranged": [
-          "r0 tab=w1:t1 w1:p1*",
-          "r1 tab=w1:t1 columns(w1:p2, w1:p3*@0.5) zoomed",
+          "tab=w1:t1 columns(w1:p1@local*, columns(w1:p2@devenv, w1:p3@devenv*@0.5)@0.5) zoomed=w1:p3",
           "w1:p1 at 0.00,0.00 0.50x1.00",
           "w1:p2 at 0.50,0.00 0.25x1.00",
           "w1:p3 at 0.75,0.00 0.25x1.00"
@@ -1733,7 +1732,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r1 tab=w1:t1 w1:p3* zoomed"
+          "tab=w1:t1 columns(w1:p1@local*, columns(w1:p2@devenv, w1:p3@devenv*@0.5)@0.5) zoomed=w1:p3"
         ]
       }
     },
@@ -1881,14 +1880,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1*",
-          "r1 tab=w1:t1 columns(w1:p2, w1:p3*@0.5)"
+          "tab=w1:t1 columns(w1:p1@local*, columns(w1:p2@devenv, w1:p3@devenv*@0.5)@0.5)"
         ]
       }
     },
     {
-      "name": "a zoom on a part without the keyboard covers only that part",
-      "why": "The keyboard can land in another machine's part while one part is zoomed - from the agent list, or muster pane focus - and the pane it feeds has to be on screen. So a zoom fills the tab only from the part holding the keyboard; elsewhere it fills its own part, as it did before a zoom could cross machines, and the part with the keyboard is drawn whole beside it.",
+      "name": "a zoom on a part without the keyboard covers nothing",
+      "why": "Before a tab spanning machines had one tree, each machine recorded a zoom on its own part, and a part zoomed while the keyboard is in another part used to be drawn as its one pane beside the other parts. One tree cannot be drawn with part of it zoomed, so such a tab is drawn whole until the part with the keyboard is the zoomed one, and every pane in it is on screen. Only a tab whose machines are all too old to hold one tree stays this way for longer than a moment: any other is written as one tree, taking the first zoomed part's zoom.",
       "given": {
         "attached": [
           "w1:p1",
@@ -2024,19 +2022,19 @@
           "r1 daemon=devenv tab=w1:t1 pane=w1:p3"
         ],
         "showing": [
+          "devenv/w1:p2",
           "devenv/w1:p3",
           "local/w1:p1"
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1*",
-          "r1 tab=w1:t1 w1:p3* zoomed"
+          "tab=w1:t1 columns(w1:p1@local*, columns(w1:p2@devenv, w1:p3@devenv*@0.5)@0.5)"
         ]
       }
     },
     {
-      "name": "a view spans daemons, in the order the regions sit",
-      "why": "One window showing a laptop and a devenv side by side is the desideratum this whole layer exists for, and the view is where it becomes one answer rather than two. Order matters because it is the only part of the arrangement Muster owns - a view that sorted its regions would silently rearrange somebody's window.",
+      "name": "a view spans daemons, in the order their parts sit",
+      "why": "One window showing a laptop and a devenv side by side is the desideratum this whole layer exists for, and the view is where it becomes one answer rather than two: one tree, the devenv's part first because its region was opened first. Order matters because a tab no window has written as one tree is arranged by Muster alone - a view that sorted its parts would silently rearrange somebody's window.",
       "given": {
         "attached": [
           "w1:p1"
@@ -2077,6 +2075,42 @@
                 "cwd": "/tmp"
               }
             ]
+          },
+          "three more panes": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w2:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w2:p2",
+                    "second": "w2:p3"
+                  }
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w2:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w2:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
           }
         },
         "steps": [
@@ -2112,7 +2146,7 @@
           {
             "do": "reconcile",
             "daemon": "local",
-            "world": "three panes"
+            "world": "three more panes"
           }
         ]
       },
@@ -2125,20 +2159,19 @@
         "focusedRegion": "r0",
         "regions": [
           "r0 daemon=devenv tab=w1:t1 pane=w1:p1",
-          "r1 daemon=local tab=w1:t1 pane=w1:p1"
+          "r1 daemon=local tab=w1:t1 pane=w2:p1"
         ],
         "showing": [
           "devenv/w1:p1",
           "devenv/w1:p2",
           "devenv/w1:p3",
-          "local/w1:p1",
-          "local/w1:p2",
-          "local/w1:p3"
+          "local/w2:p1",
+          "local/w2:p2",
+          "local/w2:p3"
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(columns(w1:p1@devenv*, columns(w1:p2@devenv, w1:p3@devenv@0.5)@0.5), columns(w2:p1@local, columns(w2:p2@local, w2:p3@local@0.5)@0.5)@0.5)"
         ]
       }
     },
@@ -2229,7 +2262,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2325,7 +2358,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
@@ -2416,13 +2449,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
         ]
       }
     },
     {
-      "name": "a step crosses out of one region into the next",
-      "why": "Two regions side by side are one window to the person looking at them, so a step that stopped at a region's edge would leave panes no keystroke could reach - and in the arrangement this product is for, those are the panes on the devenv. Stepping is over the window's reading order, not over one region's.",
+      "name": "a step crosses out of one machine's panes into the next",
+      "why": "A laptop's panes beside a devenv's are one tab to the person looking at them, so a step that stopped at a machine's edge would leave panes no keystroke could reach - and in the arrangement this product is for, those are the panes on the devenv. Stepping is over the tab's reading order, not over one machine's.",
       "given": {
         "attached": [
           "w1:p1"
@@ -2463,6 +2496,42 @@
                 "cwd": "/tmp"
               }
             ]
+          },
+          "three more panes": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w2:p1",
+                  "second": {
+                    "axis": "columns",
+                    "ratio": 0.5,
+                    "first": "w2:p2",
+                    "second": "w2:p3"
+                  }
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w2:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w2:p3",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
           }
         },
         "steps": [
@@ -2498,7 +2567,7 @@
           {
             "do": "reconcile",
             "daemon": "local",
-            "world": "three panes"
+            "world": "three more panes"
           },
           {
             "do": "focusPane",
@@ -2516,24 +2585,23 @@
           "devenv local=/tmp/daemon-devenv.sock",
           "local local=/tmp/daemon-local.sock"
         ],
-        "focusedPane": "w1:p1",
+        "focusedPane": "w2:p1",
         "focusedRegion": "r1",
         "regions": [
           "r0 daemon=devenv tab=w1:t1 pane=w1:p3",
-          "r1 daemon=local tab=w1:t1 pane=w1:p1"
+          "r1 daemon=local tab=w1:t1 pane=w2:p1"
         ],
         "showing": [
           "devenv/w1:p1",
           "devenv/w1:p2",
           "devenv/w1:p3",
-          "local/w1:p1",
-          "local/w1:p2",
-          "local/w1:p3"
+          "local/w2:p1",
+          "local/w2:p2",
+          "local/w2:p3"
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, columns(w1:p2, w1:p3@0.5)@0.5)"
+          "tab=w1:t1 columns(columns(w1:p1@devenv*, columns(w1:p2@devenv, w1:p3@devenv@0.5)@0.5), columns(w2:p1@local, columns(w2:p2@local, w2:p3@local@0.5)@0.5)@0.5)"
         ]
       }
     },
@@ -2682,13 +2750,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 (no tree)"
+          "tab=w1:t1 (no tree)"
         ]
       }
     },
     {
       "name": "a daemon reached over ssh is a daemon like any other",
-      "why": "The whole bet of 'local and remote in one window' is that the transport stops at the adapter and nothing above it can tell the difference. This case is where that stops being an aspiration: an ssh endpoint opens a region, reconciles, holds the keyboard and renders the same way a local one does, and the only line anywhere that differs is the one describing how it is reached. If this case ever needs a branch, the bet was wrong. It carries a second thing worth pinning, because both daemons here hold a pane called w1:p1: the step lands on the other pane of the region it was already in, rather than on the identically named pane in the region before it. Position in the order is a (region, pane) pair, and a step that matched on the pane id alone would jump machines.",
+      "why": "The whole bet of 'local and remote in one window' is that the transport stops at the adapter and nothing above it can tell the difference. This case is where that stops being an aspiration: an ssh endpoint opens a region, reconciles, holds the keyboard and renders the same way a local one does, and the only line anywhere that differs is the one describing how it is reached. If this case ever needs a branch, the bet was wrong. The step lands on the devenv's other pane, the next one in the tab's reading order.",
       "given": {
         "worlds": {
           "two panes": {
@@ -2712,6 +2780,32 @@
               },
               {
                 "id": "w1:p2",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              }
+            ]
+          },
+          "two more panes": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w2:p1",
+                  "second": "w2:p2"
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w2:p1",
+                "agentState": "idle",
+                "cwd": "/tmp"
+              },
+              {
+                "id": "w2:p2",
                 "agentState": "idle",
                 "cwd": "/tmp"
               }
@@ -2754,7 +2848,7 @@
           {
             "do": "reconcile",
             "daemon": "devenv",
-            "world": "two panes"
+            "world": "two more panes"
           },
           {
             "do": "focusRegion",
@@ -2767,7 +2861,9 @@
         ],
         "attached": [
           "w1:p1",
-          "w1:p2"
+          "w1:p2",
+          "w2:p1",
+          "w2:p2"
         ]
       },
       "expect": {
@@ -2775,22 +2871,21 @@
           "devenv ssh=dev@localhost options=-p 2222",
           "local local"
         ],
-        "focusedPane": "w1:p2",
+        "focusedPane": "w2:p2",
         "focusedRegion": "r1",
         "regions": [
           "r0 daemon=local tab=w1:t1 pane=w1:p1",
-          "r1 daemon=devenv tab=w1:t1 pane=w1:p2"
+          "r1 daemon=devenv tab=w1:t1 pane=w2:p2"
         ],
         "showing": [
-          "devenv/w1:p1",
-          "devenv/w1:p2",
+          "devenv/w2:p1",
+          "devenv/w2:p2",
           "local/w1:p1",
           "local/w1:p2"
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)",
-          "r1 tab=w1:t1 columns(w1:p1*, w1:p2*@0.5)"
+          "tab=w1:t1 columns(columns(w1:p1@local*, w1:p2@local*@0.5), columns(w2:p1@devenv*, w2:p2@devenv*@0.5)@0.5)"
         ]
       }
     },
@@ -3089,7 +3184,7 @@
         ],
         "showingTab": "w1:t2",
         "view": [
-          "r1 tab=w1:t2 w1:p9"
+          "tab=w1:t2 w1:p9"
         ]
       }
     },
@@ -3711,7 +3806,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -3816,7 +3911,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -3921,7 +4016,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4026,7 +4121,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4131,7 +4226,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p3@0.5), rows(w1:p2, w1:p4@0.5)@0.5)"
         ]
       }
     },
@@ -4236,7 +4331,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
         ]
       }
     },
@@ -4341,7 +4436,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
+          "tab=w1:t1 columns(rows(w1:p1, w1:p4@0.2), rows(w1:p2, w1:p3@0.8)@0.5)"
         ]
       }
     },
@@ -4446,7 +4541,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -4555,7 +4650,7 @@
         ],
         "showingTab": "w2:t1",
         "view": [
-          "r2 tab=w2:t1 w2:p1"
+          "tab=w2:t1 w2:p1"
         ]
       }
     },
@@ -4623,7 +4718,7 @@
         ],
         "showingTab": "w1:t2",
         "view": [
-          "r0 tab=w1:t2 w1:p9"
+          "tab=w1:t2 w1:p9"
         ]
       }
     },
@@ -4712,7 +4807,7 @@
         ],
         "showingTab": "w1:t2",
         "view": [
-          "r0 tab=w1:t2 w1:p9"
+          "tab=w1:t2 w1:p9"
         ]
       }
     },
@@ -4879,7 +4974,7 @@
         ],
         "showingTab": "w1:t3",
         "view": [
-          "r2 tab=w1:t3 w1:p5"
+          "tab=w1:t3 w1:p5"
         ]
       }
     },
@@ -4971,7 +5066,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -5052,7 +5147,7 @@
       },
       "expect": {
         "arranged": [
-          "r1 tab=w1:t2 columns(w1:p2, rows(w1:p3, w1:p4@0.5)@0.3)",
+          "tab=w1:t2 columns(w1:p2, rows(w1:p3, w1:p4@0.5)@0.3)",
           "w1:p2 at 0.00,0.00 0.30x1.00",
           "w1:p3 at 0.30,0.00 0.70x0.50",
           "w1:p4 at 0.30,0.50 0.70x0.50"
@@ -5071,13 +5166,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
     {
       "name": "a zoomed tab is arranged as its whole tree",
-      "why": "A zoom covers an arrangement without changing it, and unzooming puts it back - so the arrangement of a zoomed tab is its whole tree, where the view on screen is the one pane filling it. The flag and the region's pane still say which pane that is.",
+      "why": "A zoom covers an arrangement without changing it, and unzooming puts it back - so the arrangement of a zoomed tab is its whole tree, where the view on screen is the one pane filling it. The zoomed pane is still named beside it.",
       "given": {
         "attached": [
           "w1:p1",
@@ -5147,7 +5242,7 @@
       },
       "expect": {
         "arranged": [
-          "r0 tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3@0.5)@0.5) zoomed",
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3@0.5)@0.5) zoomed=w1:p1",
           "w1:p1 at 0.00,0.00 0.50x1.00",
           "w1:p2 at 0.50,0.00 0.25x1.00",
           "w1:p3 at 0.75,0.00 0.25x1.00"
@@ -5165,7 +5260,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1* zoomed"
+          "tab=w1:t1 columns(w1:p1*, columns(w1:p2*, w1:p3@0.5)@0.5) zoomed=w1:p1"
         ]
       }
     },
@@ -5269,7 +5364,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -5425,7 +5520,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -5581,7 +5676,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -5791,7 +5886,7 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
@@ -5957,13 +6052,13 @@
         ],
         "showingTab": "w1:t1",
         "view": [
-          "r0 tab=w1:t1 w1:p1"
+          "tab=w1:t1 w1:p1"
         ]
       }
     },
     {
-      "name": "a tab spanning machines publishes one tree merged from each machine's copy, beside its regions",
-      "why": "Each machine keeps the whole tab's tree, the other machine's pane in it as a leaf it never runs (MIP-8). The view merges the copies into one tree naming the machine of every pane and publishes it beside the regions, which still draw the tab: each region is its machine's own panes, with the other machine's leaf left out. Nothing a person sees changes until the shell draws the tree.",
+      "name": "a tab spanning machines publishes one tree merged from each machine's copy",
+      "why": "Each machine keeps the whole tab's tree, the other machine's pane in it as a leaf it never runs (MIP-8). The view merges the copies into one tree naming the machine of every pane, and that tree is what the window draws.",
       "given": {
         "tree": true,
         "worlds": {
@@ -6070,14 +6165,13 @@
         "showingTab": "t1",
         "tree": "columns(rows(a@laptop, x@devenv@0.5), b@laptop@0.5)",
         "view": [
-          "r0 tab=t1 rows(a, b@0.5)",
-          "r1 tab=t1 x"
+          "tab=t1 columns(rows(a@laptop, x@devenv@0.5), b@laptop@0.5)"
         ]
       }
     },
     {
       "name": "a tab grouped before any machine kept a copy of the whole tree publishes its parts side by side",
-      "why": "A tab grouped across two machines before spanning trees existed has nothing but each machine's own panes in each part. Its tree is the parts as columns in the order the regions sit, which is exactly how the window draws it, so the tree a later shell draws looks like the window did before.",
+      "why": "A tab grouped across two machines before spanning trees existed has nothing but each machine's own panes in each part. Its tree is the parts as columns in the order the regions sit, which is exactly how the window drew it before it drew one tree, so nothing moves.",
       "given": {
         "tree": true,
         "worlds": {
@@ -6180,8 +6274,7 @@
         "showingTab": "t1",
         "tree": "columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)",
         "view": [
-          "r0 tab=t1 rows(a, b@0.5)",
-          "r1 tab=t1 x"
+          "tab=t1 columns(rows(a@laptop, b@laptop@0.5), x@devenv@0.5)"
         ]
       }
     },
@@ -6256,7 +6349,7 @@
         "showingTab": "t1",
         "tree": "rows(a@laptop, b@laptop@0.5)",
         "view": [
-          "r0 tab=t1 rows(a, b@0.5)"
+          "tab=t1 rows(a, b@0.5)"
         ]
       }
     },
@@ -6353,7 +6446,7 @@
         "merged": "columns(a@laptop, x@devenv@0.5)",
         "tree": "a@laptop",
         "view": [
-          "r0 tab=t1 a"
+          "tab=t1 a"
         ]
       }
     }

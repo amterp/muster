@@ -697,12 +697,7 @@ fn asked() -> Vec<AttentionChanged> {
 /// Which pane the window's keyboard is on, read off the view.
 fn keyboard() -> Option<String> {
     match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
-        Some(response::Payload::Window(window)) => {
-            let view = window.view?;
-            let region =
-                view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-            Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
-        }
+        Some(response::Payload::Window(window)) => crate::view::keyboard_pane(&window.view?),
         other => panic!("asking what the window is showing answered {other:?}"),
     }
 }

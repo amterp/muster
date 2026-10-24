@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use muster::proto::{
     AttachPane, Attached, Event, KeyDown, KeyEvent, OpenWindow, Request, Response, Startup,
-    ViewChanged, ViewNode, event, request, response, view_node,
+    ViewChanged, ViewTree, event, request, response, view_tree,
 };
 use muster::testing::Turn;
 use muster_daemon_proto::input_event;
@@ -64,12 +64,14 @@ pub(crate) fn restarts(pane: &str) -> Option<u32> {
 }
 
 fn record_panes(view: &ViewChanged) {
-    fn walk(node: &ViewNode, into: &mut BTreeMap<String, u32>) {
+    fn walk(node: &ViewTree, into: &mut BTreeMap<String, u32>) {
         match node.node.as_ref() {
-            Some(view_node::Node::Pane(pane)) => {
-                into.insert(pane.pane_id.clone(), pane.bridge_restarts);
+            Some(view_tree::Node::Pane(leaf)) => {
+                if let Some(pane) = &leaf.pane {
+                    into.insert(pane.pane_id.clone(), pane.bridge_restarts);
+                }
             }
-            Some(view_node::Node::Split(split)) => {
+            Some(view_tree::Node::Split(split)) => {
                 for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten()
                 {
                     walk(child, into);
@@ -80,8 +82,8 @@ fn record_panes(view: &ViewChanged) {
     }
 
     let mut seen = BTreeMap::new();
-    for root in view.regions.iter().filter_map(|region| region.root.as_ref()) {
-        walk(root, &mut seen);
+    if let Some(tree) = &view.tree {
+        walk(tree, &mut seen);
     }
     // An empty view is a window between arrangements, and forgetting every pane because of one
     // would make a lookup fail for a pane that is still there.

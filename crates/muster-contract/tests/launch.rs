@@ -337,7 +337,7 @@ fn a_split_tab_becomes_splits_all_of_them_typeable() {
 
     // The tree, not just the count: three panes arranged flat and three panes nested are the
     // same number and a different window.
-    let tree = of(&records, "view.region").last().and_then(|region| field(region, "tree"));
+    let tree = of(&records, "view.published").last().and_then(|view| field(view, "tree"));
     let tree = tree.unwrap_or_default();
     assert!(
         tree.contains("columns(") && tree.contains("rows("),
@@ -1341,7 +1341,7 @@ fn expect_every_pane_painted(records: &[Value]) {
 
 /// What is still missing before every pane on screen can be seen and typed into, if anything.
 fn unsettled(records: &[Value]) -> Option<String> {
-    let view: Vec<&Value> = of(records, "view.region").collect();
+    let view: Vec<&Value> = of(records, "view.published").collect();
     if view.is_empty() {
         return Some(
             "the core never published a view, so the window was never told anything".into(),

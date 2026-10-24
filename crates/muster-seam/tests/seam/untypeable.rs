@@ -18,8 +18,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use muster::proto::{
-    Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, ViewNode, event,
-    request, response, view_node,
+    Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, event, request,
+    response,
 };
 use muster_core::bridge_link::Report;
 use muster_daemon_proto::{self as daemon_proto, pane_request};
@@ -336,40 +336,21 @@ fn daemon_panes(control: &mut Control) -> Vec<String> {
     snapshot(control).panes.into_iter().map(|pane| pane.pane).collect()
 }
 
-/// The one pane a zoomed region is showing, and the socket a bridge for it would dial.
+/// The one pane a zoomed tab is showing, and the socket a bridge for it would dial.
 ///
-/// `None` while no region is zoomed, and for a zoomed region published as a split - which is
-/// the zoom not having been resolved at all rather than an answer.
+/// `None` while the tab is not zoomed, and while its tree does not hold the pane it is zoomed
+/// on - which is the zoom not having been resolved at all rather than an answer.
 fn filling() -> Option<(String, String)> {
-    let region = latest_view()?.regions.into_iter().next()?;
-    if !region.zoomed {
-        return None;
-    }
-    match region.root?.node? {
-        view_node::Node::Pane(pane) => Some((pane.pane_id, pane.link_socket_path)),
-        view_node::Node::Split(_) => None,
-    }
+    let view = latest_view()?;
+    let pane = crate::view::find_pane(&view, &view.zoomed_pane_id)?;
+    Some((pane.pane_id.clone(), pane.link_socket_path.clone()))
 }
 
 /// How many bridges the last published view has asked for a pane, which is what moves when
 /// somebody asks for one.
 fn restarts(pane_id: &str) -> u32 {
-    fn find(node: &ViewNode, pane_id: &str) -> Option<u32> {
-        match &node.node {
-            Some(view_node::Node::Pane(pane)) => {
-                (pane.pane_id == pane_id).then_some(pane.bridge_restarts)
-            }
-            Some(view_node::Node::Split(split)) => {
-                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane_id))
-            }
-            None => None,
-        }
-    }
     latest_view()
-        .into_iter()
-        .flat_map(|view| view.regions)
-        .filter_map(|region| region.root)
-        .find_map(|root| find(&root, pane_id))
+        .and_then(|view| crate::view::find_pane(&view, pane_id).map(|pane| pane.bridge_restarts))
         .unwrap_or_default()
 }
 
@@ -380,24 +361,11 @@ fn panes() -> Vec<String> {
 
 /// The same, with the socket each one's bridge would dial.
 fn painted_panes() -> Vec<(String, String)> {
-    latest_view()
+    let Some(view) = latest_view() else { return Vec::new() };
+    crate::view::panes(&view)
         .into_iter()
-        .flat_map(|view| view.regions)
-        .filter_map(|region| region.root)
-        .flat_map(|root| leaves(&root))
+        .map(|pane| (pane.pane_id.clone(), pane.link_socket_path.clone()))
         .collect()
-}
-
-fn leaves(node: &ViewNode) -> Vec<(String, String)> {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.link_socket_path.clone())]
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
-        }
-        None => Vec::new(),
-    }
 }
 
 /// Starts recording what the core says, forgetting what it said to the test before.

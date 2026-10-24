@@ -19,8 +19,8 @@ use std::sync::Mutex;
 use muster::proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
     PaneText, ReadPane, ReadWindow, RenamePane, RenameTab, Request, ResizePane, Response,
-    RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ViewNode, ZoomPane, event,
-    request, response, view_node,
+    RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ZoomPane, event, request,
+    response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
@@ -997,16 +997,8 @@ fn pane_on(daemon: &str) -> Option<String> {
 
 /// How far a pane's text is from the configured size, while the window shows it.
 fn font_size_of(pane: &str) -> Option<i32> {
-    fn find(node: &ViewNode, pane: &str) -> Option<i32> {
-        match node.node.as_ref()? {
-            view_node::Node::Pane(held) => (held.pane_id == pane).then_some(held.font_size_offset),
-            view_node::Node::Split(split) => {
-                split.first.iter().chain(split.second.iter()).find_map(|child| find(child, pane))
-            }
-        }
-    }
     let view = VIEW.lock().expect("a panicking reader poisoned the view").clone()?;
-    view.regions.iter().filter_map(|region| region.root.as_ref()).find_map(|root| find(root, pane))
+    crate::view::find_pane(&view, pane).map(|held| held.font_size_offset)
 }
 
 fn put_the_keyboard_on(pane: &str) {
@@ -1059,20 +1051,15 @@ fn panes_on(daemon: &str) -> Vec<String> {
 /// Which machine the window's keyboard is on, and which of its panes.
 fn keyboard() -> Option<(String, String)> {
     let view = VIEW.lock().expect("a panicking reader poisoned the view").clone()?;
-    let region = view.regions.into_iter().find(|region| region.region_id == view.focused_region)?;
-    (!region.pane_id.is_empty()).then_some((region.daemon_id, region.pane_id))
+    let pane = crate::view::keyboard_pane(&view)?;
+    Some((crate::view::daemon_of(&view, &pane)?, pane))
 }
 
-/// The pane filling one machine's region, when one is.
+/// The pane the tab on screen is zoomed on, when there is one and it runs on this machine.
 fn zoomed_on(daemon: &str) -> Option<String> {
-    let region = VIEW
-        .lock()
-        .expect("a panicking reader poisoned the view")
-        .clone()?
-        .regions
-        .into_iter()
-        .find(|region| region.daemon_id == daemon)?;
-    region.zoomed.then_some(region.pane_id)
+    let view = VIEW.lock().expect("a panicking reader poisoned the view").clone()?;
+    let zoomed = Some(view.zoomed_pane_id.clone()).filter(|pane| !pane.is_empty())?;
+    (crate::view::daemon_of(&view, &zoomed)? == daemon).then_some(zoomed)
 }
 
 fn read_pane(pane: &str) -> PaneText {
@@ -1381,20 +1368,20 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
     until(
         "a tab nobody has arranged to divide itself evenly between its machines, without which \
          what the equalize below changes would be unreadable",
-        || weights() == vec![1.0, 1.0],
-        || format!("the regions weigh {:?}", weights()),
+        || machine_share().is_some_and(|share| (share - 0.5).abs() < 1e-4),
+        || format!("the laptop's share of the tab is {:?}", machine_share()),
     );
 
     assert_ok(&answer(request::Payload::EqualizePanes(EqualizePanes {
         pane_id: on_laptop,
         ..EqualizePanes::default()
     })));
-    assert_eq!(
-        weights(),
-        vec![2.0, 1.0],
+    let share = machine_share();
+    assert!(
+        share.is_some_and(|share| (share - 2.0 / 3.0).abs() < 1e-4),
         "the laptop holds two of the tab's three panes and the devenv one, so the parts divide \
          the width two to one - anything else leaves the panes unequal, which is the whole of \
-         what was asked for"
+         what was asked for: the laptop's share is {share:?}"
     );
 
     // Neither daemon was told, and there is nothing either could have been told: this is the
@@ -1403,15 +1390,14 @@ fn evening_out_a_grouped_tab_divides_it_by_what_each_machine_holds() {
     assert_eq!(tabs(&devenv), 1, "the devenv grew a tab it was not asked for");
 }
 
-/// What each machine's part of the tab on screen is worth, left to right.
-fn weights() -> Vec<f32> {
+/// The left machine's share of the tab on screen, which is the ratio of the split at the root
+/// of its tree while the tab is drawn as its machines side by side.
+fn machine_share() -> Option<f32> {
     match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
-        Some(response::Payload::Window(window)) => window
-            .view
-            .into_iter()
-            .flat_map(|view| view.regions)
-            .map(|region| region.weight)
-            .collect(),
+        Some(response::Payload::Window(window)) => match window.view?.tree?.node? {
+            muster::proto::view_tree::Node::Split(split) => Some(split.ratio),
+            muster::proto::view_tree::Node::Pane(_) => None,
+        },
         other => panic!("expected a window, got {other:?}"),
     }
 }

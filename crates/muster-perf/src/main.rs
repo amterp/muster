@@ -226,7 +226,7 @@ fn view_cost() -> Cost {
                     bridge_restarts: 0,
                 },
             );
-            black_box(view.regions.len());
+            black_box(view.tree.is_some());
         }
     })
 }

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use muster::proto::{
     AdjustFontSize, Event, OpenWindow, Request, Response, RosterChanged, Startup, ViewChanged,
-    ViewNode, event, request, response, view_node,
+    event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -85,29 +85,11 @@ fn the_last_view_the_shell_is_sent_is_the_one_the_core_settled_last() {
 /// its bridge, and the roster lists it.
 fn opened() -> bool {
     let (Some(view), Some(roster)) = (latest_view(), latest_roster()) else { return false };
-    let Some(pane) = view.regions.iter().find(|region| !region.pane_id.is_empty()) else {
-        return false;
-    };
-    let socket = view
-        .regions
-        .iter()
-        .filter_map(|region| region.root.as_ref())
-        .any(|root| has_socket(root, &pane.pane_id));
-    let listed =
-        roster.tabs.iter().flat_map(|tab| &tab.panes).any(|row| row.pane_id == pane.pane_id);
+    let Some(pane) = crate::view::keyboard_pane(&view) else { return false };
+    let socket =
+        crate::view::find_pane(&view, &pane).is_some_and(|leaf| !leaf.link_socket_path.is_empty());
+    let listed = roster.tabs.iter().flat_map(|tab| &tab.panes).any(|row| row.pane_id == pane);
     socket && listed
-}
-
-fn has_socket(node: &ViewNode, pane: &str) -> bool {
-    match &node.node {
-        Some(view_node::Node::Pane(leaf)) => {
-            leaf.pane_id == pane && !leaf.link_socket_path.is_empty()
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).any(|child| has_socket(child, pane))
-        }
-        None => false,
-    }
 }
 
 /// Views received, the last of them, and how many were the same as the one before.

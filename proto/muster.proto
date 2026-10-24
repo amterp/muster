@@ -38,7 +38,6 @@ message Request {
     SetSplitRatio set_split_ratio = 12;
     FocusRelative focus_relative = 13;
     WindowFocus window_focus = 14;
-    SetRegionBoundary set_region_boundary = 15;
     OpenWindow open_window = 16;
     CreateTab create_tab = 17;
     BridgeExited bridge_exited = 18;
@@ -126,6 +125,11 @@ message Request {
   // The shell telling the core another window process had changed the record of which window
   // holds each tab. One process writes it now, and needs telling nothing.
   reserved 49;
+
+  // Moving the line between two machines' regions of a tab, which the window kept as weights of
+  // its own. A tab is one tree over every machine it spans now, so that line is a split moved
+  // with SetSplitRatio like any other (docs/mip/0008-panes-across-machines.md).
+  reserved 15;
 }
 
 // This process is going away.
@@ -873,26 +877,6 @@ message AdoptOldState {
   string home = 1;
 }
 
-// Moves the line between two regions of the window.
-//
-// The one piece of layout Muster owns outright rather than mirrors: no daemon knows the
-// other one exists, so nothing upstream will ever answer how a laptop and a devenv divide a
-// window between them.
-//
-// Named by the region on the left, unlike SetSplitRatio, which addresses a pane divider by
-// the turns down to it. That divider genuinely has no name - it is a position in a tree that
-// changes under it - where a region has one, and a request named by an id survives its
-// neighbours closing mid-drag instead of quietly moving a different line.
-message SetRegionBoundary {
-  // The region on the left of the line being moved.
-  string region_id = 1;
-
-  // That region's share of itself and its right neighbour together, between 0 and 1. The
-  // pair keeps whatever width it had, so nothing further along the window moves. Clamped by
-  // the core: a region dragged to nothing would leave no divider to grab and no way back.
-  float ratio = 2;
-}
-
 // Whether this window has the OS's focus.
 //
 // The one input to the vocabulary that no daemon can supply and no core can observe. `done`
@@ -1528,9 +1512,10 @@ message EqualizePanes {
   // the window would spell them: a row of panes sits side by side, which the tree calls a
   // `columns` split.
   //
-  // A tab holding panes on two machines has its parts weighted by how many panes each holds
-  // under `tab`, since equal panes is the point and equal halves would not produce them. That
-  // part of the arrangement is Muster's own and no daemon is told, like SetRegionBoundary.
+  // A tab spanning machines is evened out over its whole tree, every machine's panes alike. One
+  // whose machines are all too old to hold that tree has its parts weighted by how many panes
+  // each holds under `tab`, since equal panes is the point and equal halves would not produce
+  // them; those weights are the window's own and no daemon is told.
   string scope = 3;
 }
 
@@ -1763,16 +1748,16 @@ message Window {
 
 // One tab's arrangement, as it is drawn when the tab is on screen.
 //
-// The regions are ViewChanged's, reused so that a tab in the background and the tab on screen
-// are described in one vocabulary - with one difference: a zoomed region keeps its whole tree
-// here, because this says how the tab is laid out and a zoom covers that without changing it.
-// `zoomed` and the region's `pane_id` still say which pane fills it.
+// In ViewChanged's vocabulary, so that a tab in the background and the tab on screen are
+// described alike - with one difference: `places` keeps a zoomed tab's whole tree, because this
+// says how the tab is laid out and a zoom covers that without changing it. `zoomed_pane_id`
+// still says which pane fills it.
 message TabLayout {
   string tab_id = 1;
-  repeated ViewRegion regions = 2;
 
-  // The region the keyboard is in while this tab is on screen.
-  string focused_region = 3;
+  // A list of regions, one per machine, and which of them the keyboard was in: a tab is one
+  // tree over every machine it spans now, in `tree`.
+  reserved 2, 3;
 
   // Where each pane sits, as fractions of the tab rather than of what the window is drawing -
   // the same numbers Window.places gives the tab on screen, unzoomed.
@@ -1819,15 +1804,15 @@ message OtherWindow {
 //
 // Fractions and never points, on the rule the backend contract already follows: a layout is
 // proportions, and a daemon publishes a tree of ratios rather than rectangles in cells, which
-// would describe a grid that is nobody's window. `x` and `y` are from the top left, and the
-// region weights are folded in - so two panes on two machines are measured in one space, which
-// is what makes "which of these is wider" answerable at all.
+// would describe a grid that is nobody's window. `x` and `y` are from the top left, and the tab
+// is one tree over every machine it spans - so two panes on two machines are measured in one
+// space, which is what makes "which of these is wider" answerable at all.
 //
 // This is the same arithmetic the four directional focus moves are decided by, so a script
 // reading it and a person pressing a chord are looking at one arrangement rather than two.
 message PanePlace {
-  // Which part of the tab it is in. See ViewRegion.region_id.
-  string region_id = 1;
+  // Which machine's region of the tab it was in, when a tab was a list of them.
+  reserved 1;
 
   // Which machine holds it.
   string daemon_id = 2;
@@ -2828,23 +2813,19 @@ message RosterPane {
 // would repaint the tree every time an agent blinked - and because that field already has
 // exactly one writer, which is the property that keeps it correct.
 message ViewChanged {
-  // The Muster tab on screen, or empty when this window holds none it may open onto. Every
-  // region below is one machine's half of it.
+  // The Muster tab on screen, or empty when this window holds none it may open onto.
   string tab_id = 3;
 
-  // In the order they are laid out, one per machine holding panes in the tab on screen.
-  // Muster owns no split tree over regions; side by side, in this order, is the whole
-  // arrangement.
-  repeated ViewRegion regions = 1;
-
-  // Which region's pane the keyboard feeds. Empty when none does, which is what a window
-  // with no daemon behind it looks like.
-  string focused_region = 2;
+  // A list of regions laid out side by side, one per machine holding panes in the tab, and
+  // which of them the keyboard was in. The tab is one tree over every machine it spans now.
+  reserved 1, 2;
 
   // The tab's one tree over every machine it spans, merged from the copy each machine keeps
   // (docs/mip/0008-panes-across-machines.md), and a tab on one machine's own tree: the whole
-  // tree, even while the tab is zoomed. Published beside `regions`, which are what draws the tab.
-  // Absent with no tab on screen, and while no machine has said how the tab is arranged.
+  // tree, even while the tab is zoomed, without the panes on a machine this window does not
+  // reach. Absent with no tab on screen, and while no machine has said how the tab is arranged,
+  // which is an ordinary moment rather than a failure: a shell told this leaves its surfaces
+  // alone, where a shell told the tab is empty would tear down surfaces about to be described.
   ViewTree tree = 4;
 
   // The pane filling the tab while it is zoomed, which is the pane the keyboard is on there.
@@ -2884,88 +2865,25 @@ message ViewTree {
 }
 
 message ViewTreePane {
-  // The machine running the pane, as `ViewRegion.daemon_id` names one.
+  // The machine running the pane, as `ViewMachine.daemon_id` names one.
   string daemon_id = 1;
   ViewPane pane = 2;
 }
 
-// As `ViewSplit`.
 message ViewTreeSplit {
-  string axis = 1;
-  float ratio = 2;
-  ViewTree first = 3;
-  ViewTree second = 4;
-}
-
-// One region, showing one tab's pane tree.
-message ViewRegion {
-  string region_id = 1;
-  string daemon_id = 2;
-
-  // What Muster calls the tab this region shows. See RosterTab.tab_id.
-  string tab_id = 3;
-
-  // The pane in this region the keyboard feeds while the region is focused. Empty when the
-  // daemon has not yet said what is in this tab.
-  string pane_id = 4;
-
-  // How much of the window's width this region gets, relative to the others. A weight rather
-  // than a fraction, so a shell divides by the sum and needs no other region's business - and
-  // so the list stays a list. Every region starts at 1, which is what equal shares are.
-  float weight = 9;
-
-  // Absent while the daemon has not said how this tab is arranged, which is an ordinary
-  // moment rather than a failure - the tree arrives on its own event. Absent and "no panes"
-  // are different answers: a shell told this leaves its surfaces alone, where a shell told
-  // the tab is empty would tear down surfaces that are about to be described.
-  ViewNode root = 5;
-
-  // Whether `root` is one pane filling the region rather than the tab's whole tree. Already
-  // resolved, so a shell that ignores this renders the right thing; it exists so the chrome
-  // can say so, because a zoomed tab and a one-pane tab are otherwise identical on screen.
-  //
-  // The pane filling it is `pane_id` above - the one this window's keyboard feeds. The daemon
-  // records which pane is zoomed, but moving the keyboard inside a zoomed tab moves what fills
-  // it, so which pane fills the region is Muster's answer rather than the daemon's.
-  bool zoomed = 6;
-
-  // Where this region's bridges dial to draw its panes: the daemon's own socket, or for a
-  // daemon on another machine the local end of the ssh forward to it. Relayed onto the bridge's
-  // command line and never interpreted. Empty for a daemon this window has not reached.
-  string daemon_socket = 10;
-
-  // Whether that daemon is on another machine, which is where a bridge asks for a window of
-  // unacknowledged output sized for the link.
-  bool remote = 11;
-
-  reserved 7, 8;
-  reserved "ssh_host", "ssh_control_path";
-}
-
-message ViewNode {
-  oneof node {
-    ViewPane pane = 1;
-    ViewSplit split = 2;
-  }
-}
-
-message ViewSplit {
   // columns (children side by side, first is left) or rows (first is upper). Muster's
   // spelling, not a backend's: herdr said right and down, which describe the moment of
   // splitting rather than how to lay two children out long afterwards.
   string axis = 1;
 
-  // The first child's share of the region, between 0 and 1. Proportions rather than cells,
-  // because the daemon's tree is ratios and the window lays them out at whatever size it has.
+  // The first child's share, between 0 and 1. Proportions rather than cells, because the
+  // daemon's tree is ratios and the window lays them out at whatever size it has.
   float ratio = 2;
-
-  ViewNode first = 3;
-  ViewNode second = 4;
+  ViewTree first = 3;
+  ViewTree second = 4;
 }
 
-// No daemon here, deliberately, though a pane needs one to be named unambiguously: a
-// ViewPane only ever arrives inside the ViewRegion that carries it, so a shell walking the
-// tree already has the answer and repeating it would be a second copy to disagree with.
+// One pane, as a window needs it. Its machine is the `ViewTreePane` holding it.
 message ViewPane {
   // What Muster calls this pane - `p1w3r07bsd` - and what everything else in this schema means
   // by a pane id. Minted by Muster rather than borrowed from the backend, so that a pane can be

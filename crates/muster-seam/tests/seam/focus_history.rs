@@ -196,9 +196,7 @@ fn on_screen() -> Option<String> {
 
 /// Which pane the window's keyboard is on, as the view says it.
 fn keyboard() -> Option<String> {
-    let view = latest_view()?;
-    let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-    Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+    crate::view::keyboard_pane(&latest_view()?)
 }
 
 /// Three tabs, each with the keyboard on its one pane in turn, and the three panes in that order.

@@ -19,8 +19,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use muster::proto::{
-    Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, ViewNode, event,
-    request, response, view_node,
+    Event, OpenWindow, ProblemsChanged, Request, Response, Startup, ViewChanged, ViewPane, event,
+    request, response,
 };
 use muster_core::bridge_link::Report;
 use muster_core::respawn::{Ended, Ending};
@@ -117,40 +117,21 @@ fn shorten_the_deadline() {
 }
 
 fn first_pane() -> Option<String> {
-    let view = latest_view()?;
-    let root = view.regions.first()?.root.as_ref()?;
-    leaves(root).into_iter().next().map(|(pane, _, _)| pane)
+    crate::view::panes(&latest_view()?).first().map(|pane| pane.pane_id.clone())
 }
 
 fn socket_of(pane: &str) -> Option<String> {
-    pane_in_view(pane).map(|(_, socket, _)| socket).filter(|socket| !socket.is_empty())
+    pane_in_view(pane).map(|leaf| leaf.link_socket_path).filter(|socket| !socket.is_empty())
 }
 
 /// How many times the last published view says this pane's bridge has been replaced, or `None`
 /// for a view that does not name the pane.
 fn restarts(pane: &str) -> Option<u32> {
-    pane_in_view(pane).map(|(_, _, restarts)| restarts)
+    pane_in_view(pane).map(|leaf| leaf.bridge_restarts)
 }
 
-fn pane_in_view(pane: &str) -> Option<(String, String, u32)> {
-    latest_view()?
-        .regions
-        .iter()
-        .filter_map(|region| region.root.as_ref())
-        .flat_map(leaves)
-        .find(|(id, _, _)| id == pane)
-}
-
-fn leaves(node: &ViewNode) -> Vec<(String, String, u32)> {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => {
-            vec![(pane.pane_id.clone(), pane.link_socket_path.clone(), pane.bridge_restarts)]
-        }
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
-        }
-        None => Vec::new(),
-    }
+fn pane_in_view(pane: &str) -> Option<ViewPane> {
+    crate::view::find_pane(&latest_view()?, pane).cloned()
 }
 
 /// Throws away what the last test published and listens again. The statics outlive a test where

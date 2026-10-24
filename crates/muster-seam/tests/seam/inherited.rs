@@ -22,8 +22,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    Event, FocusPane, OpenWindow, Request, Response, RosterChanged, Startup, ViewChanged, ViewNode,
-    event, request, response, view_node,
+    Event, FocusPane, OpenWindow, Request, Response, RosterChanged, Startup, ViewChanged, event,
+    request, response,
 };
 use muster_daemon_proto::{self as daemon_proto, pane_request};
 use muster_harness::requests::{beside, create, expect, in_new_tab, make, pane, snapshot};
@@ -56,16 +56,16 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
     // Typeable, for every pane on screen. A pane published without a link socket is one the
     // shell must not spawn a bridge for, so it renders blank and nothing republishes it.
     let view = latest_view().expect("just waited for it");
-    for (region, pane, socket) in view_panes(&view) {
+    for (daemon, pane, socket) in view_panes(&view) {
         assert!(
             !socket.is_empty(),
-            "region {region} shows {pane} with no link socket, so it would paint nothing and \
+            "{daemon} shows {pane} with no link socket, so it would paint nothing and \
              swallow the keyboard"
         );
     }
     assert!(
-        view.regions.iter().any(|region| !region.pane_id.is_empty()),
-        "no region has the keyboard, so the first thing typed goes nowhere: {view:?}"
+        !view.keyboard_pane_id.is_empty(),
+        "no pane has the keyboard, so the first thing typed goes nowhere: {view:?}"
     );
 
     // Findable, for every pane that exists. This is the founding desideratum and the half a
@@ -167,29 +167,15 @@ fn somebody_elses_session(daemon: &Daemon) -> Vec<String> {
     world.panes.into_iter().map(|pane| pane.pane).collect()
 }
 
-/// Every pane the view names, with the region showing it and the socket its bridge reports on.
+/// Every pane the view names, with the machine running it and the socket its bridge reports on.
 fn view_panes(view: &ViewChanged) -> Vec<(String, String, String)> {
-    let mut found = Vec::new();
-    for region in &view.regions {
-        if let Some(root) = &region.root {
-            collect(root, &region.region_id, &mut found);
-        }
-    }
-    found
-}
-
-fn collect(node: &ViewNode, region: &str, into: &mut Vec<(String, String, String)>) {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => {
-            into.push((region.to_string(), pane.pane_id.clone(), pane.link_socket_path.clone()));
-        }
-        Some(view_node::Node::Split(split)) => {
-            for child in [&split.first, &split.second].into_iter().flatten() {
-                collect(child, region, into);
-            }
-        }
-        None => {}
-    }
+    let Some(tree) = &view.tree else { return Vec::new() };
+    crate::view::leaf_panes(tree)
+        .into_iter()
+        .map(|(daemon, pane)| {
+            (daemon.to_owned(), pane.pane_id.clone(), pane.link_socket_path.clone())
+        })
+        .collect()
 }
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);

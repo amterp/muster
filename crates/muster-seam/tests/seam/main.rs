@@ -44,5 +44,6 @@ mod unanswered;
 mod unreachable;
 mod untypeable;
 mod upgrading;
+mod view;
 mod window_frame;
 mod windows;

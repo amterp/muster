@@ -3134,19 +3134,6 @@ pub(crate) fn walk_focus(window: WindowId, forward: bool) -> Result<Option<PaneK
     Ok(went)
 }
 
-/// Moves the line between two regions, and republishes what that made.
-///
-/// No daemon is told, and there is nothing to tell one: how a window divides itself between
-/// a laptop and a devenv is Muster's own arrangement, and neither daemon knows the other
-/// exists. So unlike every other drag in this app, this one settles here.
-pub(crate) fn set_region_boundary(window: WindowId, left: RegionId, ratio: f32) {
-    {
-        let mut session = poison::lock(&SESSION, "session");
-        session.windows[window].composition.set_column(left, ratio);
-    }
-    publish("region_boundary");
-}
-
 /// Puts a divider where a drag or a caller left it, named by the turns down the tab's tree as
 /// this window draws it, and found from there on whichever machines it divides.
 ///
@@ -3211,17 +3198,12 @@ pub(crate) fn set_split_ratio(
 
 /// Moves the keyboard one pane along, in the window's own reading order.
 ///
-/// The order crosses regions, so a step can land on another daemon - which is the point of
-/// showing two of them - and the daemon comes back with the region rather than being assumed
+/// The order crosses machines, so a step can land on another daemon - which is the point of
+/// showing two of them - and the pane comes back with its daemon rather than that being assumed
 /// to be the one the keyboard just left.
 pub(crate) fn step(window: WindowId, direction: Step) -> Result<(), String> {
-    let stepped = {
-        let session = poison::lock(&SESSION, "session");
-        session.view(window).step(direction).and_then(|(region, pane)| {
-            Some((session.windows[window].composition.region(region)?.daemon.clone(), pane))
-        })
-    };
-    let (daemon, pane) = stepped.ok_or_else(|| {
+    let stepped = poison::lock(&SESSION, "session").view(window).step(direction);
+    let PaneKey { daemon, pane } = stepped.ok_or_else(|| {
         "this window is showing no panes to step through, so the keyboard stayed where it \
          was. A window with no daemon behind it looks like this, and so does one whose tabs \
          all closed."
@@ -5388,24 +5370,27 @@ impl Published {
         // changed to is the whole answer - a window rendering the wrong thing and a window
         // rendering nothing are one line apart here (`architecture.md`, the diagnostic log).
         if let Some(message) = view_message {
-            for region in &view.regions {
-                log::info(
-                    "view.region",
-                    fields! {
-                        "cause" => cause,
-                        "window" => name.to_string(),
-                        "region" => region.id.to_string(),
-                        "daemon" => region.daemon.to_string(),
-                        "tab" => region.tab.to_string(),
-                        "keyboard" => region.pane.as_ref().map(ToString::to_string).unwrap_or_default(),
-                        "tree" => match &region.root {
-                            Some(root) => root.to_string(),
-                            None => "(not yet published)".to_string(),
-                        },
-                        "focused" => view.focused == Some(region.id),
+            let key = |key: &PaneKey| format!("{}@{}", key.pane, key.daemon);
+            log::info(
+                "view.published",
+                fields! {
+                    "cause" => cause,
+                    "window" => name.to_string(),
+                    "tab" => view.tab.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    "keyboard" => view.keyboard.as_ref().map(key).unwrap_or_default(),
+                    "zoomed" => view.zoomed.as_ref().map(key).unwrap_or_default(),
+                    "tree" => match &view.tree {
+                        Some(tree) => tree.to_string(),
+                        None => "(not yet published)".to_string(),
                     },
-                );
-            }
+                    "machines" => view
+                        .machines
+                        .iter()
+                        .map(|machine| machine.daemon.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                },
+            );
             ffi::emit(&Event::new(event::Payload::ViewChanged(message)).for_window(name.as_str()));
         }
         if let Some(message) = roster_message {

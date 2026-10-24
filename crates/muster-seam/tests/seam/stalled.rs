@@ -23,7 +23,7 @@ use std::sync::{atomic::AtomicUsize, atomic::Ordering};
 
 use muster::proto::{
     BridgeExited, BridgeStarted, Event, OpenWindow, ReattachPane, Request, Response, Startup,
-    ViewChanged, ViewNode, event, request, response, view_node,
+    ViewChanged, event, request, response,
 };
 use muster_core::bridge_link::Report;
 use muster_harness::{Daemon, until};
@@ -183,60 +183,19 @@ fn report_exited(pane: &Pane, process_alive: bool) {
 /// `None` is a view that does not name the pane at all, which is a different answer from zero.
 fn restarts(pane: &Pane) -> Option<u32> {
     let view = latest_view()?;
-    view.regions
-        .iter()
-        .filter(|region| region.daemon_id == pane.daemon)
-        .filter_map(|region| region.root.as_ref())
-        .find_map(|root| {
-            let mut found = Vec::new();
-            collect(root, &mut found);
-            found.into_iter().find(|(id, _)| id == &pane.pane).map(|(_, restarts)| restarts)
-        })
+    crate::view::find_leaf(&view, &pane.daemon, &pane.pane).map(|leaf| leaf.bridge_restarts)
 }
 
 /// Where the last published view puts this pane's link socket, which is what a bridge dials.
 fn socket_of(pane: &Pane) -> Option<String> {
     let view = latest_view()?;
-    view.regions
-        .iter()
-        .filter(|region| region.daemon_id == pane.daemon)
-        .filter_map(|region| region.root.as_ref())
-        .find_map(|root| find_socket(root, &pane.pane))
-}
-
-fn find_socket(node: &ViewNode, pane: &str) -> Option<String> {
-    match node.node.as_ref() {
-        Some(view_node::Node::Pane(found)) if found.pane_id == pane => {
-            Some(found.link_socket_path.clone())
-        }
-        Some(view_node::Node::Split(split)) => [split.first.as_deref(), split.second.as_deref()]
-            .into_iter()
-            .flatten()
-            .find_map(|child| find_socket(child, pane)),
-        _ => None,
-    }
+    crate::view::find_leaf(&view, &pane.daemon, &pane.pane)
+        .map(|leaf| leaf.link_socket_path.clone())
 }
 
 fn first_pane() -> Option<Pane> {
-    let view = latest_view()?;
-    let region = view.regions.first()?;
-    let mut found = Vec::new();
-    collect(region.root.as_ref()?, &mut found);
-    Some(Pane { daemon: region.daemon_id.clone(), pane: found.first()?.0.clone() })
-}
-
-fn collect(node: &ViewNode, into: &mut Vec<(String, u32)>) {
-    match node.node.as_ref() {
-        Some(view_node::Node::Pane(pane)) => {
-            into.push((pane.pane_id.clone(), pane.bridge_restarts));
-        }
-        Some(view_node::Node::Split(split)) => {
-            for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten() {
-                collect(child, into);
-            }
-        }
-        None => {}
-    }
+    let (daemon, pane) = crate::view::leaves(latest_view()?.tree.as_ref()?).into_iter().next()?;
+    Some(Pane { daemon, pane })
 }
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);

@@ -4,17 +4,17 @@
 //! The window arrangement, not the input method's composition - `composition_arbiter.rs` is
 //! that one (`docs/glossary.md`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use crate::support::backend::{describe_daemon, optional, ratio, read_snapshot, text};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, MusterTab, PaneKey, Region,
-    RegionId, Step, View, ViewPane,
+    RegionId, Step, View, ViewPane, ViewTree,
 };
 use muster_core::mirror::Mirror;
-use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::backend::{PaneId, SplitAxis, TabId};
 use muster_core::spanning;
 use serde_json::{Value, json};
 
@@ -213,10 +213,12 @@ fn act(
                     "a step goes next or previous, and this case says {named:?}"
                 ))
             })?;
-            if let Some((region, pane)) =
-                view_of(composition, given, worlds, current, sizes).step(direction)
+            let stepped = view_of(composition, given, worlds, current, sizes).step(direction);
+            if let Some(key) = stepped
+                && let Some(tab) = composition.showing().cloned()
+                && let Some(region) = composition.region_of(&key.daemon, &tab)
             {
-                composition.focus_pane(region, pane);
+                composition.focus_pane(region, key.pane);
             }
         }
         // One press of a font-size chord, on the pane the keyboard is on - which is what the
@@ -399,31 +401,74 @@ fn describe_view(
     current: &BTreeMap<DaemonId, String>,
     sizes: &FontSizes,
 ) -> Vec<String> {
-    describe_regions_of(&view_of(composition, given, worlds, current, sizes))
+    describe_view_of(&view_of(composition, given, worlds, current, sizes))
 }
 
-fn describe_regions_of(view: &View) -> Vec<String> {
-    view.regions
-        .iter()
-        .map(|region| {
-            let mut described = format!("{} tab={}", region.id, region.tab);
-            match &region.root {
-                // Distinct from a region with no panes, and the corpus says so: a shell
-                // told this leaves its surfaces alone rather than tearing them down.
-                None => described.push_str(" (no tree)"),
-                Some(root) => {
-                    let _ = write!(described, " {root}");
-                    if region.zoomed {
-                        described.push_str(" zoomed");
-                    }
-                }
+/// The tab on screen on one line: `tab=w1:t1 columns(w1:p1*, w1:p2@0.5)`, with `zoomed=w1:p2`
+/// after a zoomed tab's tree. A leaf names its machine only in a tree spanning machines, so the
+/// cases about one machine read as they always have.
+fn describe_view_of(view: &View) -> Vec<String> {
+    let Some(tab) = &view.tab else { return Vec::new() };
+    let mut described = format!("tab={tab}");
+    match &view.tree {
+        // Distinct from a tab with no panes, and the corpus says so: a shell told this leaves
+        // its surfaces alone rather than tearing them down.
+        None if view.machines.is_empty() => return Vec::new(),
+        None => described.push_str(" (no tree)"),
+        Some(tree) => {
+            let _ = write!(described, " {}", tree_line(tree, spans(tree)));
+        }
+    }
+    if let Some(zoomed) = &view.zoomed {
+        let _ = write!(described, " zoomed={}", zoomed.pane);
+    }
+    vec![described]
+}
+
+fn spans(tree: &ViewTree) -> bool {
+    let mut machines = BTreeSet::new();
+    let mut walk = vec![tree];
+    while let Some(node) = walk.pop() {
+        match node {
+            ViewTree::Pane { daemon, .. } => {
+                machines.insert(daemon.clone());
             }
-            described
-        })
-        .collect()
+            ViewTree::Split { first, second, .. } => walk.extend([&**first, &**second]),
+        }
+    }
+    machines.len() > 1
 }
 
-/// How a tab is arranged, as `view` describes regions, then where each of its panes sits as
+/// A tree as the cases spell one: `columns(a, b@0.5)`, each split's share after its second child,
+/// a pane marked `*` once its bridge's socket is bound - the path carries a pid and a temporary
+/// directory, so a case asserting one would assert this machine - and with its text size after it
+/// when somebody has sized it.
+fn tree_line(tree: &ViewTree, spans: bool) -> String {
+    match tree {
+        ViewTree::Pane { daemon, pane } => {
+            let mut line = pane.id.to_string();
+            if spans {
+                let _ = write!(line, "@{daemon}");
+            }
+            if pane.link_socket_path.is_some() {
+                line.push('*');
+            }
+            if pane.font_size_offset != 0 {
+                let _ = write!(line, "{:+}", pane.font_size_offset);
+            }
+            line
+        }
+        ViewTree::Split { axis, ratio, first, second } => {
+            let axis = match axis {
+                SplitAxis::Columns => "columns",
+                SplitAxis::Rows => "rows",
+            };
+            format!("{axis}({}, {}@{ratio})", tree_line(first, spans), tree_line(second, spans))
+        }
+    }
+}
+
+/// How a tab is arranged, as `view` describes the tab on screen, then where each of its panes sits as
 /// fractions of the tab: `w1:p2 at 0.50,0.00 0.50x1.00`.
 fn describe_arranged(
     composition: &Composition,
@@ -436,8 +481,9 @@ fn describe_arranged(
     let Some(view) = built(composition, Some(tab), given, worlds, current, sizes) else {
         return vec![format!("{tab} is not held")];
     };
-    let mut lines = describe_regions_of(&view);
-    lines.extend(view.places().into_iter().map(|(_, pane, rect)| {
+    let mut lines = describe_view_of(&view);
+    lines.extend(view.places().into_iter().map(|(pane, rect)| {
+        let pane = pane.pane;
         format!("{pane} at {:.2},{:.2} {:.2}x{:.2}", rect.x, rect.y, rect.width, rect.height)
     }));
     lines

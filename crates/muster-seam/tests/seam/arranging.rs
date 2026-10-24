@@ -18,8 +18,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, ViewNode, event,
-    request, response, view_node,
+    ArrangePane, Event, OpenWindow, Request, Response, RosterChanged, Startup, ViewTree, event,
+    request, response, view_tree,
 };
 use muster_daemon_proto::Side;
 use muster_harness::requests::{beside, create, in_new_tab, make};
@@ -286,13 +286,15 @@ fn open_window(daemon: &Daemon) {
     );
 }
 
-/// The tree of the region the keyboard is in, written out: `columns(p1,p2)` is p1 left of p2,
+/// The tab's tree, written out: `columns(p1,p2)` is p1 left of p2,
 /// `rows(p2,p1)` is p2 above p1.
 fn shape() -> String {
-    fn written(node: &ViewNode) -> String {
+    fn written(node: &ViewTree) -> String {
         match &node.node {
-            Some(view_node::Node::Pane(pane)) => pane.pane_id.clone(),
-            Some(view_node::Node::Split(split)) => format!(
+            Some(view_tree::Node::Pane(leaf)) => {
+                leaf.pane.as_ref().map(|pane| pane.pane_id.clone()).unwrap_or_default()
+            }
+            Some(view_tree::Node::Split(split)) => format!(
                 "{}({},{})",
                 split.axis,
                 split.first.as_deref().map(written).unwrap_or_default(),
@@ -302,16 +304,9 @@ fn shape() -> String {
         }
     }
     match answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload {
-        Some(response::Payload::Window(window)) => window
-            .view
-            .and_then(|view| {
-                let region = view
-                    .regions
-                    .into_iter()
-                    .find(|region| region.region_id == view.focused_region)?;
-                region.root.as_ref().map(written)
-            })
-            .unwrap_or_default(),
+        Some(response::Payload::Window(window)) => {
+            window.view.and_then(|view| view.tree.as_ref().map(written)).unwrap_or_default()
+        }
         other => panic!("asking what the window is showing answered {other:?}"),
     }
 }
@@ -396,12 +391,7 @@ fn on_screen() -> Vec<String> {
 /// where the keyboard is, and this test is about the second.
 fn keyboard() -> Option<String> {
     match answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload {
-        Some(response::Payload::Window(window)) => {
-            let view = window.view?;
-            let region =
-                view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-            Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
-        }
+        Some(response::Payload::Window(window)) => crate::view::keyboard_pane(&window.view?),
         other => panic!("asking what the window is showing answered {other:?}"),
     }
 }

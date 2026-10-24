@@ -158,12 +158,7 @@ fn keyboard_pane() -> String {
     else {
         return String::new();
     };
-    let view = window.view.unwrap_or_default();
-    view.regions
-        .iter()
-        .find(|region| region.region_id == view.focused_region)
-        .map(|region| region.pane_id.clone())
-        .unwrap_or_default()
+    window.view.unwrap_or_default().keyboard_pane_id
 }
 
 fn failure(response: &Response) -> String {

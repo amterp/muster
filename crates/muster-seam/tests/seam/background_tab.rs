@@ -15,7 +15,7 @@ use std::sync::Mutex;
 
 use muster::proto::{
     CloseTab, CreateTab, Event, OpenWindow, ReadWindow, Request, Response, RosterChanged,
-    SplitPane, Startup, ViewChanged, Window, event, request, response, view_node,
+    SplitPane, Startup, ViewChanged, Window, event, request, response, view_tree,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -178,9 +178,9 @@ fn a_tab_nothing_is_showing_is_described_with_its_panes_sizes() {
         .find(|layout| layout.tab_id == background)
         .unwrap_or_else(|| panic!("the tab behind has no layout: {:?}", window.layouts));
     assert_eq!(window.layouts.len(), 2, "every tab is described, the one on screen too");
-    let root = layout.regions[0].root.as_ref().and_then(|root| root.node.as_ref());
+    let root = layout.tree.as_ref().and_then(|root| root.node.as_ref());
     match root {
-        Some(view_node::Node::Split(split)) => assert_eq!(split.axis, "columns"),
+        Some(view_tree::Node::Split(split)) => assert_eq!(split.axis, "columns"),
         other => panic!("the tab was split right, so its tree is a column split: {other:?}"),
     }
     let mut widths: Vec<f32> = layout.places.iter().map(|place| place.width).collect();
@@ -367,9 +367,7 @@ fn panes_in(tab: &str) -> usize {
 
 /// Which pane the window's keyboard is on, as the view says it.
 fn keyboard() -> Option<String> {
-    let view = latest_view()?;
-    let region = view.regions.iter().find(|region| region.region_id == view.focused_region)?;
-    Some(region.pane_id.clone()).filter(|pane| !pane.is_empty())
+    crate::view::keyboard_pane(&latest_view()?)
 }
 
 static ROSTER: Mutex<Option<RosterChanged>> = Mutex::new(None);

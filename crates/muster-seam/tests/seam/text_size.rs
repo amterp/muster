@@ -13,8 +13,8 @@
 use std::sync::Mutex;
 
 use muster::proto::{
-    AdjustFontSize, Event, OpenWindow, Request, Response, SplitPane, Startup, ViewChanged,
-    ViewNode, event, request, response, view_node,
+    AdjustFontSize, Event, OpenWindow, Request, Response, SplitPane, Startup, ViewChanged, event,
+    request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -124,28 +124,15 @@ fn a_chord_sizes_one_pane_and_a_split_inherits_it() {
 /// size, in the order the tree lays them out.
 fn panes() -> Vec<(String, i32)> {
     let Some(view) = latest_view() else { return Vec::new() };
-    view.regions.iter().filter_map(|region| region.root.as_ref()).flat_map(leaves).collect()
-}
-
-fn leaves(node: &ViewNode) -> Vec<(String, i32)> {
-    match &node.node {
-        Some(view_node::Node::Pane(pane)) => vec![(pane.pane_id.clone(), pane.font_size_offset)],
-        Some(view_node::Node::Split(split)) => {
-            split.first.iter().chain(split.second.iter()).flat_map(|child| leaves(child)).collect()
-        }
-        None => Vec::new(),
-    }
+    crate::view::panes(&view)
+        .into_iter()
+        .map(|pane| (pane.pane_id.clone(), pane.font_size_offset))
+        .collect()
 }
 
 /// The pane this window's keyboard feeds, as the published view names it.
 fn keyboard_pane() -> Option<String> {
-    let view = latest_view()?;
-    let focused = view.focused_region.clone();
-    view.regions
-        .into_iter()
-        .find(|region| region.region_id == focused)
-        .map(|region| region.pane_id)
-        .filter(|pane| !pane.is_empty())
+    crate::view::keyboard_pane(&latest_view()?)
 }
 
 static VIEW: Mutex<Option<ViewChanged>> = Mutex::new(None);

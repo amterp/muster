@@ -341,7 +341,7 @@ fn holder(daemon: &Daemon, tab: &str) -> Option<String> {
 fn showing() -> Option<String> {
     match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => {
-            window.view.and_then(|view| view.regions.first().map(|region| region.tab_id.clone()))
+            window.view.map(|view| view.tab_id).filter(|tab| !tab.is_empty())
         }
         _ => None,
     }

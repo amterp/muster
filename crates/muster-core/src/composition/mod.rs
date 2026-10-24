@@ -44,7 +44,4 @@ pub use record::{
     Composition, Daemon, DaemonId, Endpoint, MusterTab, PaneKey, Region, RegionId, TabKey,
 };
 pub use saved::{Restorable, Saved, SavedRegion, SavedTab};
-pub use view::{
-    Rect, Step, View, ViewMachine, ViewNode, ViewPane, ViewRegion, ViewTree, places_in,
-    zoom_filling,
-};
+pub use view::{Rect, Step, View, ViewMachine, ViewPane, ViewTree, places_in, zoom_filling};

@@ -11,7 +11,7 @@ use muster_core::diagnostics::sink::JsonLinesSink;
 use muster_core::fields;
 
 use muster_core::attention::Asker;
-use muster_core::composition::{DaemonId, FontSizeChange, Frame, RegionId, Step, View};
+use muster_core::composition::{DaemonId, FontSizeChange, Frame, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::equalize::Evenly;
@@ -291,7 +291,6 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             session::window_focused(window, focus.focused);
             Response::ok()
         }
-        request::Payload::SetRegionBoundary(set) => move_region_boundary(window, &set),
         request::Payload::FocusRelative(step) => focus_relative(window, &step.direction),
         request::Payload::FocusTabRelative(step) => step_tab(window, &step.direction),
         request::Payload::FocusPaneAt(at) => focus_pane_at(window, at.place),
@@ -1858,32 +1857,6 @@ fn as_human_in(daemon: &str, group: &str, done: &str, asked: Asked) -> Response 
     relayed(session::ask_as_human(&DaemonId::new(daemon), asked).map(|()| Response::ok()))
 }
 
-/// Moves the line between two regions of the window.
-///
-/// The one arrangement no daemon is asked about, so unlike every other drag this answers
-/// `ok` for a change that has already happened rather than for a request somebody may refuse.
-fn move_region_boundary(window: WindowId, set: &proto::SetRegionBoundary) -> Response {
-    let Some(region) = region_id(&set.region_id) else {
-        return Response::failure(format!(
-            "the core does not know a region called {:?}, so no line moved. A region is named \
-             `r0`, `r1` and so on, and the shell reads these off the view it rendered - so \
-             this is a bug there.",
-            set.region_id
-        ));
-    };
-    session::set_region_boundary(window, region, set.ratio);
-    Response::ok()
-}
-
-/// A region, read back from the way the view spells one.
-///
-/// `r0`, `r1`, and so on - the same rendering the view publishes, parsed here rather than
-/// the seam carrying a number the shell would have to strip the prefix off. Anything else is
-/// a refusal, because a region id the core cannot read is a shell that built one itself.
-fn region_id(named: &str) -> Option<RegionId> {
-    named.strip_prefix('r')?.parse().ok().map(RegionId::new)
-}
-
 /// Asks a daemon for a change, and says what came of it.
 ///
 /// A request that made a pane answers with which, because that is the one fact about what just
@@ -2119,8 +2092,6 @@ fn laid_out(now: &session::WindowNow) -> (Vec<proto::TabLayout>, Vec<proto::Pane
             let described = convert::view(view);
             proto::TabLayout {
                 tab_id: described.tab_id,
-                regions: described.regions,
-                focused_region: described.focused_region,
                 places: places(view),
                 tree: described.tree,
                 zoomed_pane_id: described.zoomed_pane_id,
@@ -2159,22 +2130,16 @@ fn unnumbered(mut tabs: Vec<proto::RosterTab>) -> Vec<proto::RosterTab> {
 }
 
 /// Where each pane on screen sits, for a caller that cannot look at the window.
-///
-/// A region that has since gone is skipped rather than sent with an empty daemon: a place is
-/// only worth anything if it says whose pane it is, and the view answered both a moment ago.
 fn places(view: &View) -> Vec<proto::PanePlace> {
     view.places()
         .into_iter()
-        .filter_map(|(region, pane, rect)| {
-            Some(proto::PanePlace {
-                region_id: region.to_string(),
-                daemon_id: view.region(region)?.daemon.to_string(),
-                pane_id: pane.to_string(),
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-            })
+        .map(|(pane, rect)| proto::PanePlace {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
         })
         .collect()
 }
