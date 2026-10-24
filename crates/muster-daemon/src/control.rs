@@ -346,7 +346,11 @@ fn sender_of(
         Some(Service::Pane(proto::PaneRequest { request: Some(pane_request::Request::Report(_)) }))
     );
     let peer = peer.filter(|_| report)?;
-    attribution::sender(peer, &*shared.detecting.manifests_within(MANIFESTS_PATIENCE)?)
+    let Some(manifests) = shared.detecting.manifests_within(MANIFESTS_PATIENCE) else {
+        attribution::unattributed(peer, MANIFESTS_PATIENCE);
+        return None;
+    };
+    attribution::sender(peer, &manifests)
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

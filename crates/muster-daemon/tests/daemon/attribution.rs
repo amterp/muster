@@ -27,6 +27,17 @@ fn until_reported(daemon: &Daemon, count: usize) -> Vec<String> {
     })
 }
 
+/// Waits for the daemon's first manifest load. Until it lands no sender can be attributed, and a
+/// report is taken from anywhere, so a case about a pane with no agent starts after it; a case
+/// that runs the agent first has already waited, since detecting the agent needs them too.
+fn until_detecting(daemon: &Daemon) {
+    until(
+        "the daemon's first manifest load",
+        || written(&daemon.root().join("daemon.log")).contains("daemon.detect.loaded"),
+        (),
+    );
+}
+
 fn context_of(control: &mut Control, pane: &str) -> Option<f32> {
     snapshot(control)
         .panes
@@ -66,6 +77,7 @@ fn a_pane_with_no_agent_takes_a_report_from_an_agent_process() {
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     until_text(&mut control, "p1", "$");
+    until_detecting(&daemon);
     // In the background, so the pane's foreground stays its shell and no agent is found there.
     let agent = daemon.agent_path();
     daemon.type_into("p1", &format!("{} nested-report --context-used 55 &", agent.display()));
@@ -105,8 +117,39 @@ fn a_pane_with_no_agent_refuses_a_report_through_a_server() {
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     until_text(&mut control, "p1", "$");
+    until_detecting(&daemon);
     let agent = daemon.agent_path();
     daemon.type_into("p1", &format!("{} serve --context-used 55 &", agent.display()));
     assert_eq!(until_reported(&daemon, 1), ["served 1"]);
     assert_eq!(context_of(&mut control, "p1"), None);
+}
+
+/// A report that comes before the daemon's first manifest load cannot be attributed, so it is
+/// taken, even through a server, and the daemon says why once. The load here reads an override
+/// that never ends, as one on a mount that hangs does: a FIFO nobody opens.
+#[test]
+fn a_report_before_the_manifests_load_is_taken_and_says_why() {
+    let home = std::env::temp_dir().join(format!("muster-attribution-{}-hung", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join("agent-detection")).unwrap();
+    let fifo = home.join("agent-detection/claude.toml");
+    let path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    // SAFETY: mkfifo reads a NUL-terminated path the test owns.
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    let daemon = Daemon::start_detecting_with(&[("MUSTER_HOME", home.to_str().unwrap())]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+
+    let agent = daemon.agent_path();
+    daemon.type_into("p1", &format!("{} serve --context-used 55 &", agent.display()));
+    let said = until_reported(&daemon, 1);
+    let log = written(&daemon.root().join("daemon.log"));
+    // Lets the load finish, whatever the verdict.
+    drop(std::fs::OpenOptions::new().write(true).open(&fifo));
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(said, ["served 0"], "a report nothing could attribute was refused");
+    let logged = |event: &str| log.contains(&format!("\"event\":\"{event}\""));
+    assert!(logged("daemon.report.unattributed"), "the daemon did not say why: {log}");
+    assert!(!logged("daemon.detect.loaded"), "the manifests loaded first: {log}");
 }

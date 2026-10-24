@@ -25,7 +25,9 @@
 use std::collections::HashSet;
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -181,6 +183,30 @@ fn first_refusal(pid: u32) -> bool {
         logged.clear();
     }
     logged.insert(pid)
+}
+
+/// Logs a report taken unattributed because the manifests had not loaded after `waited`, once
+/// per daemon: until they do, every report is taken, and one line says why.
+pub(crate) fn unattributed(sender: u32, waited: Duration) {
+    static LOGGED: AtomicBool = AtomicBool::new(false);
+    if LOGGED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    log::warn(
+        "daemon.report.unattributed",
+        fields! {
+            "sender_pid" => sender,
+            "waited_ms" => waited.as_millis(),
+            "why" => "the agent detection manifests had not loaded, so which agent sent the \
+                      report could not be told",
+            "impact" => "until they load, every report is taken as one from the pane's own agent \
+                         would be, so a nested agent's or a shared server's reports can land in \
+                         the pane they name; this is logged once per daemon",
+            "check" => "the daemon.detect.loaded line after this one, whose ms says how long the \
+                        load took; one that never comes is a load reading an override directory \
+                        (~/.muster/agent-detection) on a mount that hangs",
+        },
+    );
 }
 
 /// Logs a report refused because `nearest` sent it, once per process.
@@ -396,7 +422,7 @@ mod tests {
         }
         let each = started.elapsed() / walks;
         println!("one walk up this machine's process tree took {each:?}");
-        assert!(each < std::time::Duration::from_millis(50), "a walk took {each:?}");
+        assert!(each < Duration::from_millis(50), "a walk took {each:?}");
     }
 
     #[test]
