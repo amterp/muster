@@ -855,6 +855,11 @@ pub(crate) struct Session {
     /// since the suite runs only daemons built from this commit (`crate::testing`).
     before_spanning: BTreeSet<DaemonId>,
 
+    /// How many rearrangements a test has asked to read every part's copy one generation behind
+    /// what it holds, as a window does when a newer write lands between reading the copies and
+    /// writing the change (`crate::testing`).
+    stale_reads: u32,
+
     /// Nested rather than keyed by a pair, so that finding the pane a keystroke is for costs
     /// two lookups and no allocation - a pair key would have to be built, and building one
     /// means cloning both ids on a path that runs per keystroke.
@@ -1293,6 +1298,10 @@ static PUBLISHING: Mutex<()> = Mutex::new(());
 /// is the shutdown path that already existed, called deliberately rather than at exit.
 pub(crate) fn treat_as_before_spanning(daemon: &str) {
     poison::lock(&SESSION, "session").before_spanning.insert(DaemonId::new(daemon));
+}
+
+pub(crate) fn read_next_rearrangement_stale() {
+    poison::lock(&SESSION, "session").stale_reads += 1;
 }
 
 pub(crate) fn reset() {
@@ -6168,29 +6177,74 @@ fn rearrange(
     tab: &TabId,
     change: &spanning::Change,
 ) -> Option<Result<Outcome, Refusal>> {
-    let worked_out = {
-        let session = poison::lock(&SESSION, "session");
-        let mirrors = session.mirrors();
-        let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
-        let held = session.windows[window].composition.tab(tab)?;
-        if !spanning::written(held, mirror, |machine| session.holds_spanning_trees(machine)) {
-            return None;
-        }
-        let (parts, settled) =
-            spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
-        spanning::rearrange(&parts, &settled, change)
+    let (writes, read) = match worked_out(window, tab, change)? {
+        Ok(worked_out) => worked_out,
+        Err(refusal) => return Some(Err(refusal)),
     };
-    let writes = match worked_out {
-        Ok(merged) => merged.writes,
-        Err(detail) => {
-            return Some(Err(Refusal::Declined(format!(
-                "{detail}, so the tab {tab} was not rearranged. It spans machines, so its \
-                 arrangement is worked out on its whole tree; `muster window --json` says what \
-                 that tree holds now"
-            ))));
-        }
+    // Every part refused, which is what a part says when a newer write landed after its copy was
+    // read: another window's, or this one's own catch-up as it attached. Merged again from the
+    // copies as they are now and asked once more, so a person pressing a key in that moment gets
+    // the change rather than a refusal they can do nothing with. Only when nothing was taken: a
+    // part that took the change holds it, and the merge carries it to the rest, where doing it
+    // again would step a resize twice or zoom back out.
+    let refusal = match write_trees(window, tab, writes) {
+        Err(refusal) if !matches!(refusal, Refusal::Unanswered { .. }) => refusal,
+        answered => return Some(answered),
     };
+    let Ok((writes, now)) = worked_out(window, tab, change)? else {
+        return Some(Err(refusal));
+    };
+    if now == read {
+        return Some(Err(refusal));
+    }
+    log::info(
+        "tab.layout.rearrange_retried",
+        fields! { "tab" => tab.to_string(), "refused" => refusal.to_string() },
+    );
     Some(write_trees(window, tab, writes))
+}
+
+/// What a part of a tab had said when a change was worked out: its generation and the panes it
+/// holds, which are what a part checks a write against.
+type Read = Vec<(DaemonId, u64, BTreeSet<PaneId>)>;
+
+/// `change` worked out on `tab`'s whole tree as the mirrors hold it now, with what each part had
+/// said; `None` when the tab is not written as one tree ([`rearrange`]).
+fn worked_out(
+    window: WindowId,
+    tab: &TabId,
+    change: &spanning::Change,
+) -> Option<Result<(Vec<spanning::Write>, Read), Refusal>> {
+    let mut session = poison::lock(&SESSION, "session");
+    let stale = session.stale_reads > 0;
+    if stale {
+        session.stale_reads -= 1;
+    }
+    let mirrors = session.mirrors();
+    let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+    let held = session.windows[window].composition.tab(tab)?;
+    if !spanning::written(held, mirror, |machine| session.holds_spanning_trees(machine)) {
+        return None;
+    }
+    let (mut parts, settled) =
+        spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
+    if stale {
+        for part in &mut parts {
+            part.generation = part.generation.saturating_sub(1);
+        }
+    }
+    let read = parts
+        .iter()
+        .map(|part| (part.daemon.clone(), part.generation, part.holds.clone()))
+        .collect();
+    Some(match spanning::rearrange(&parts, &settled, change) {
+        Ok(merged) => Ok((merged.writes, read)),
+        Err(detail) => Err(Refusal::Declined(format!(
+            "{detail}, so the tab {tab} was not rearranged. It spans machines, so its \
+             arrangement is worked out on its whole tree; `muster window --json` says what that \
+             tree holds now"
+        ))),
+    })
 }
 
 /// Writes each part's copy of a tab's tree, done once some part has taken it: a part that refused

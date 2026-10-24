@@ -2022,6 +2022,42 @@ fn drawn_root_ratio() -> Option<f32> {
     drawn_root().map(|root| root.ratio)
 }
 
+/// A change worked out from copies older than the parts hold by the time it is written, as when
+/// the window's own catch-up lands first, is refused by every part. The window merges again from
+/// the copies as they are now and asks once more, so a divider dragged in that moment still moves.
+#[test]
+fn a_change_every_part_refuses_as_stale_is_worked_out_again_and_written() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_tab_spanning_two_machines(
+        &["A", "B"],
+        ("[[A/B 0.50]|~X@devenv 0.50]", 2),
+        ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 2),
+    );
+
+    muster::testing::read_next_rearrangement_stale();
+    assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
+        tab_id: SPANNING_TAB.to_string(),
+        path: Vec::new(),
+        ratio: 0.25,
+        ..SetSplitRatio::default()
+    })));
+    until(
+        "the divider to move on both copies, one generation above what they held",
+        || {
+            spanning_copy(&machines.laptop) == Some(("[[A/B 0.50]|~X@devenv 0.25]".to_string(), 3))
+                && spanning_copy(&machines.devenv)
+                    == Some(("[[~A@laptop/~B@laptop 0.50]|X 0.25]".to_string(), 3))
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
+    );
+}
+
 /// Once a tab's copies hold each other's panes, a daemon refuses a resize, zoom, swap or divider
 /// asked of it alone, so the window works each one out on the whole tree and writes it to both
 /// copies, one generation up (MIP-8, section 3). A divider here is named by the turns down the

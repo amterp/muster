@@ -86,6 +86,14 @@ pub fn treat_as_before_spanning(daemon: &str) {
     session::treat_as_before_spanning(daemon);
 }
 
+/// Has the window's next rearrangement of a tab spanning machines read every part's copy one
+/// generation behind what it holds, as a window does when a newer write lands between reading the
+/// copies and writing the change. Every part then refuses the change as worked out from an older
+/// tree, which is how a test reaches what the window does about that without racing for it.
+pub fn read_next_rearrangement_stale() {
+    session::read_next_rearrangement_stale();
+}
+
 /// How many callers are watching agent states right now.
 ///
 /// For a test proving that a caller who hangs up is let go. Nothing else reads it: a watch whose
