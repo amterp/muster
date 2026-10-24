@@ -231,14 +231,32 @@ fn a_group_made_again_after_a_delete_numbers_on_from_it() {
 }
 
 /// A deleted group's name made again spelled with other letter case numbers on from it too, and
-/// its old log is let go, so a file system that ignores case does not keep the new group's log
-/// under the old name.
+/// its old log moves to the new spelling, so a file system that ignores case does not keep the
+/// new group's log under the old name.
 #[test]
-fn a_deleted_name_made_again_in_other_case_lets_the_old_log_go() {
+fn a_deleted_name_made_again_in_other_case_takes_the_old_log_over() {
     let mut service = Messaging::new(Memory::default());
     service.join(&session("a"), Some("a"), Some("Review"), &Everyone, 1).unwrap();
     service.group_delete(&session("a"), "Review", &Everyone).unwrap();
     service.join(&session("a"), Some("a"), Some("review"), &Everyone, 2).unwrap();
-    assert_eq!(service.store().removed, ["Review"]);
+    assert_eq!(service.store().renamed, [("Review".to_string(), "review".to_string())]);
     assert_eq!(service.log("review", 0).unwrap().first().map(|entry| entry.seq), Some(3));
+}
+
+/// The move comes before the new group's first entry, so a first entry the disk refuses leaves
+/// the number kept there: a restart still numbers the group on from the deleted one.
+#[test]
+fn a_name_made_again_in_other_case_keeps_its_number_through_a_failed_first_entry() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("Review"), &Everyone, 1).unwrap();
+    service.group_delete(&session("a"), "Review", &Everyone).unwrap();
+    service.store_mut().failing_appends = true;
+    let refused = service.join(&session("a"), Some("a"), Some("review"), &Everyone, 2);
+    assert!(matches!(refused, Err(Refusal::Store { .. })), "{refused:?}");
+
+    let store = service.store();
+    let saved = store.saved.clone().expect("the service saved its state");
+    let mut restored = Messaging::restore(Memory::default(), saved, store.logs());
+    restored.join(&session("a"), Some("a"), Some("review"), &Everyone, 3).unwrap();
+    assert_eq!(restored.log("review", 0).unwrap().first().map(|entry| entry.seq), Some(3));
 }

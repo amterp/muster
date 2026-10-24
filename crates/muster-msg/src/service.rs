@@ -2526,13 +2526,14 @@ impl<S: Store> Messaging<S> {
                 existing: existing.clone(),
             });
         }
-        // A name deleted before numbers on from it. Spelled with other letter case, its log is let
-        // go, so that a file system ignoring case keeps the new log under the new name.
+        // A name deleted before numbers on from it. Spelled with other letter case, its log moves
+        // to the new spelling first, so that a file system ignoring case keeps the new log under
+        // the new name, and a first entry that fails to append leaves the number kept on disk.
         let retired = self.retired.keys().find(|old| old.eq_ignore_ascii_case(name)).cloned();
         let mut after = 0;
         if let Some(old) = retired {
             if old != name {
-                self.store.remove(&old).map_err(|error| Refusal::Store { error })?;
+                self.store.rename(&old, name).map_err(|error| Refusal::Store { error })?;
             }
             after = self.retired.remove(&old).unwrap_or(0);
         }

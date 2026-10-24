@@ -229,10 +229,10 @@ impl Store for Files {
         persist::replace(&self.log_of(group), &line).map_err(describe)
     }
 
-    fn remove(&mut self, group: &str) -> Result<(), String> {
-        match std::fs::remove_file(self.log_of(group)) {
+    fn rename(&mut self, from: &str, to: &str) -> Result<(), String> {
+        match std::fs::rename(self.log_of(from), self.log_of(to)) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                Err(format!("{}: {error}", self.log_of(group).display()))
+                Err(format!("{}: {error}", self.log_of(from).display()))
             }
             _ => Ok(()),
         }
@@ -408,6 +408,22 @@ mod tests {
         files.append("g", &message(3, "made again")).unwrap();
         let again = Files::beside(&socket).load().logs.remove("g").unwrap();
         assert_eq!(again, Log { after: 2, entries: vec![message(3, "made again")] });
+    }
+
+    /// A retired name made again spelled with other letter case takes the old log over, number
+    /// and all, under the new spelling, on a file system that ignores case as on one that does
+    /// not.
+    #[test]
+    fn a_retired_log_moves_to_its_name_spelled_another_way() {
+        let socket = scratch("renamed");
+        let mut files = Files::beside(&socket);
+        files.append("Review", &message(1, "gone")).unwrap();
+        files.retire("Review", 1).unwrap();
+        files.rename("Review", "review").unwrap();
+        let mut logs = Files::beside(&socket).load().logs;
+        assert_eq!(logs.remove("review"), Some(Log { after: 1, entries: Vec::new() }));
+        assert!(logs.is_empty(), "the old spelling is left behind: {logs:?}");
+        files.rename("Gone", "gone").unwrap();
     }
 
     /// What is in the store's directory beside the state file, named `state.json.<tag>-...`.

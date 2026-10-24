@@ -12,10 +12,11 @@ pub trait Store {
     /// Forgets a deleted group's log, keeping only `last`, the number of its last entry, so a
     /// group made again under the name numbers on from it and never issues a number twice.
     fn retire(&mut self, group: &str, last: u64) -> Result<(), String>;
-    /// Forgets a log altogether: a retired name made again spelled with other letter case, whose
-    /// new log a file system that ignores case would otherwise keep in the old one's file. A log
-    /// already gone is not an error.
-    fn remove(&mut self, group: &str) -> Result<(), String>;
+    /// Moves a retired name's log, and the number it keeps, to the same name spelled with other
+    /// letter case, which is being made again: a file system that ignores case would otherwise
+    /// keep the new group's log under the old spelling. One step, so the number is kept on disk
+    /// whatever happens next. A log already gone is not an error.
+    fn rename(&mut self, from: &str, to: &str) -> Result<(), String>;
 }
 
 /// A group's log as the store kept it: its entries, numbered on from `after`, the last number a
@@ -64,14 +65,16 @@ pub struct Memory {
     pub saves: usize,
     /// Groups whose log was retired, with the last number each issued, in order.
     pub retired: Vec<(String, u64)>,
-    /// Groups whose log was removed, in order.
-    pub removed: Vec<String>,
-    /// What a disk would hold now: each log as appended, retired and removed.
+    /// Groups whose log was renamed, from and to, in order.
+    pub renamed: Vec<(String, String)>,
+    /// What a disk would hold now: each log as appended, retired and renamed.
     pub kept: BTreeMap<String, Log>,
     /// Set to make every call fail, as a full disk would.
     pub failing: bool,
     /// Set to make only saving the state fail, as a disk filling up between two writes would.
     pub failing_saves: bool,
+    /// Set to make only appends fail, as a disk that fills just after a smaller write would.
+    pub failing_appends: bool,
     /// Set to let this many more appends through and then fail every call, as a disk that fills
     /// partway through a request would.
     pub failing_after: Option<usize>,
@@ -79,7 +82,7 @@ pub struct Memory {
 
 impl Store for Memory {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String> {
-        if self.failing() {
+        if self.failing() || self.failing_appends {
             return Err("the store is failing on purpose".to_string());
         }
         if let Some(left) = &mut self.failing_after {
@@ -108,12 +111,14 @@ impl Store for Memory {
         Ok(())
     }
 
-    fn remove(&mut self, group: &str) -> Result<(), String> {
+    fn rename(&mut self, from: &str, to: &str) -> Result<(), String> {
         if self.failing() {
             return Err("the store is failing on purpose".to_string());
         }
-        self.removed.push(group.to_string());
-        self.kept.remove(group);
+        self.renamed.push((from.to_string(), to.to_string()));
+        if let Some(log) = self.kept.remove(from) {
+            self.kept.insert(to.to_string(), log);
+        }
         Ok(())
     }
 }
