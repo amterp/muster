@@ -48,6 +48,12 @@
       "body": "Codex critique (gpt-6.1-sol, xhigh), 2026-10-24, claims spot-checked against the code. For the MIP: (1) Showing the conversation in place of the panes must change what the core counts as on screen, not only what Swift draws. Attention::seen is window focus plus the visible-pane set (crates/muster-core/src/attention.rs:748), and a transcript somebody is looking at reads new messages for the human (crates/muster-seam/src/session.rs:6563). If only the shell hides the surfaces, a covered terminal finishes unseen and loses its done, and a covered transcript reads messages nobody saw. Publish covered panes as not on screen, and restore real focus on the way back. Both need headless checks; Esc during input-method composition needs a native one. (2) Send has four outcomes, not two: pending, saved (with whom it woke, or nobody live: exit 6), refused, and unknown (a remote post can be appended and still answer unanswered: exit 4). MsgRequest.Post has no idempotency key, so never retry an unknown post automatically, and keep the text on refusal or doubt. (3) Default recipient must be someone who can be addressed: @muster is never a valid addressee (crates/muster-msg/src/names.rs), and an author who left the group is refused. (4) Keep a draft whole: recipients, urgency, picked answer and text, keyed by window and group; a message arriving must not retarget it. (5) Share one history cache per group across windows, fetched incrementally with Log since=N, rather than each window re-reading the log (bodies up to 1 MiB).",
       "created_at_millis": 1792875340270,
       "id": "c_2naMupzJl"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "Owner, 2026-10-24: nothing in this work is answered through a macOS notification. Muster draws its own banner in the window (Swift, SwiftUI), for the reason MIP-3 replaced herdr: \"the more vertically integrated we are, the better an experience we can deliver with Muster.\" The banner card a_2naAacfIB is rewritten to match. Open: whether a message still raises a macOS notification, as a pointer back to Muster only, while Muster is not in front.",
+      "created_at_millis": 1792875606019,
+      "id": "c_2naTpRU7X"
     }
   ],
   "created_at_millis": 1791417434804,
@@ -57,7 +63,7 @@
   "position": "!!!!!!7",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792875340270,
+  "updated_at_millis": 1792875606019,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286}
