@@ -1,10 +1,10 @@
 ---
 mip: 9
 title: A group's conversation and a banner, drawn by Muster for the human
-status: Draft
+status: Accepted
 kind: Product
 created: 2026-10-24
-decided:
+decided: 2026-10-24
 supersedes:
 superseded-by:
 related: 1, 2, 4, 6
@@ -442,3 +442,4 @@ terminals behind them today.
 
 ## History
 - 2026-10-24 Draft
+- 2026-10-24 Accepted by amterp, with `--option` (Decision A) as proposed

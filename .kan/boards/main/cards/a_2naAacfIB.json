@@ -6,7 +6,7 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "author": "Alexander Terp",
@@ -19,6 +19,12 @@
       "body": "Settled 2026-10-24: while Muster is not in front, the macOS notification stays, as a pointer back to Muster only, with no reply in it. This banner is what shows once Muster is in front.",
       "created_at_millis": 1792875736971,
       "id": "c_2naXEfp6H"
+    },
+    {
+      "author": "Alexander Terp",
+      "body": "MIP-9 Accepted 2026-10-24: this is its stage 1 (docs/mip/0009-group-conversation.md, sections 4, 5 and 9). It includes what the banner needs underneath: posting as the human from the window, the four send outcomes, Markdown parsed in the core, and the banner's model and events. No daemon change.",
+      "created_at_millis": 1792878515400,
+      "id": "c_2nbhW0eiE"
     }
   ],
   "created_at_millis": 1792874866507,
@@ -26,11 +32,12 @@
   "description": "A message for the human today raises a macOS notification that says only how many wait and from whom (\"2 messages for you from heron, otter\", MessageNotification.body), so answering even a yes-or-no question means opening the transcript tab. Agreed in the Lectern page muster-group-conversation (2026-10-24) as the part of the group conversation work to ship first: Muster draws a banner of its own in the window, in Swift and SwiftUI, showing the newest message's text with a reply field, and offered answers as buttons once a_2naAat73L lands. The reply posts to that message's author, in that group, as @human. The owner, 2026-10-24: no macOS notification is how the human interacts with messages; \"the more vertically integrated we are, the better an experience we can deliver with Muster, as we learned when we got rid of herdr.\" That gives agents a quick way to ask something small with no new verb: msg post --to @human. Without --group it goes to the one group the agent and the human share, or a new two-member group if they share none, and is refused if they share several. What the daemon tells windows about messages waiting for the human carries counts and authors, not text, so it has to send the newest message's text as well. The comments hold the critique's rules for this banner: freeze the message it shows, leave the read cursor alone on reply, never offer a reply to @muster, keep the text on failure.",
   "id": "a_2naAacfIB",
   "parent": "a_2die8LU6o",
-  "position": "b1R",
+  "position": "Zx",
   "title": "Muster's own banner shows a message and takes a reply",
   "type": "enhancement",
-  "updated_at_millis": 1792875736971,
+  "updated_at_millis": 1792878515499,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792874866507}
+    {"field":"column","value":"backlog-hi","at":1792874866507},
+    {"field":"column","value":"next","at":1792878515499}
   ]
 }
