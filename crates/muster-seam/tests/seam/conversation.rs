@@ -77,6 +77,33 @@ fn showing_a_conversation_reads_the_group_and_follows_it() {
     until_read(&open.daemon, "a message arriving while the conversation is read to be read");
 }
 
+/// A conversation still fetching its log shows the human nothing, so it reads nothing until
+/// the log arrives.
+#[test]
+fn a_conversation_reads_the_group_only_once_its_log_has_arrived() {
+    let first_pages = Arc::new(AtomicUsize::new(0));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let first_pages = Arc::clone(&first_pages);
+        daemon.withholding_answers_where(move |request| {
+            is_a_first_page(request) && first_pages.fetch_add(1, Ordering::SeqCst) == 0
+        })
+    });
+    post(&mut open.control, "a", "@human", "ok to merge?");
+    assert_ok(&answer(focus(true)));
+    show("window-1");
+    until(
+        "the first page to be asked for",
+        || first_pages.load(Ordering::SeqCst) == 1,
+        || "no first page was asked for".to_string(),
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(unread(&mut open.control), 1, "read while the log was still on its way");
+
+    until_loaded("window-1");
+    until_read(&open.daemon, "the group to be read once its log arrived");
+    drop(relay);
+}
+
 #[test]
 fn a_message_arriving_while_the_conversation_is_read_is_read_once() {
     let reads = Arc::new(AtomicUsize::new(0));

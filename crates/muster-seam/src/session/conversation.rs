@@ -107,13 +107,15 @@ impl Following {
 
 impl Session {
     /// Whether the human is reading `group` in its conversation: shown in the window in front,
-    /// while that window is focused (MIP-9, section 2). A second window showing it while another
-    /// is in front reads nothing until it comes to the front.
+    /// while that window is focused (MIP-9, section 2), once its log has arrived. A second
+    /// window showing it while another is in front reads nothing until it comes to the front, and
+    /// a conversation still fetching, or failing to fetch, shows the human no message to read.
     pub(super) fn looking_at_conversation(&self, group: &GroupKey) -> bool {
         let front = &self.windows[self.front];
         front.is_open()
             && self.attention.focused()
             && front.conversation.as_ref().is_some_and(|shown| &shown.group == group)
+            && self.conversations.get(group).is_some_and(|shared| shared.loaded)
     }
 
     /// The open windows showing `group`'s conversation.
@@ -303,6 +305,8 @@ fn follow_log(following: &Following) {
     }
     refresh_members(following);
     announce_group(group, Parts::ALL);
+    // Read for the human if they are looking at it, now that there is something to read.
+    super::human_noticed(&group.daemon, &group.group);
     let mut connection: Option<Control> = None;
     let mut waiting = None;
     loop {
