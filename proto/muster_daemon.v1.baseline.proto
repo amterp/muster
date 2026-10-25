@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.7
+// Version: 1.8
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -364,7 +364,8 @@ message PaneRequest {
     // The pane's size from birth. Absent: the size of the pane it is placed beside, or 80x24 in
     // a new tab.
     optional Grid grid = 3;
-    // Absent: the current directory of the pane it is placed beside, or the daemon's home.
+    // Absent: the current directory of the pane it is placed beside, or the daemon's home, and
+    // home again when that directory cannot be entered (since 1.8).
     optional string cwd = 4;
     // Added to the pane's environment. MUSTER_SOCKET travels here: it names the window, which
     // the daemon knows nothing about.
@@ -381,6 +382,10 @@ message PaneRequest {
     // none of while another is free, so a callsign means one pane across every machine a window
     // shows. A daemon knows only its own panes; the window sees them all.
     repeated string callsigns_elsewhere = 10;
+    // Since 1.8. `cwd` was taken from another pane rather than named by anybody, so a directory
+    // that cannot be entered gives way to the daemon's home, as a found one does when `cwd` is
+    // absent. A `cwd` someone named is refused instead: they meant that directory.
+    bool cwd_inherited = 11;
   }
 
   // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
@@ -483,6 +488,16 @@ message PaneRequest {
     // (AgentFacts.waiting_until_exits). Needs a waiting that is not empty, and a process that has
     // not already exited.
     optional uint32 waiting_until_exits = 13;
+    // Since 1.8. The harness's id for the session this report's context and cost belong to,
+    // which a statusline names: a report naming another session than the last one did forgets
+    // the context and cost reported for that one first, since a new session's statusline says
+    // nothing of its context until its first message. Unlike session_id, it neither names the
+    // pane's session nor changes what a restart resumes.
+    optional string context_session = 14;
+    // Since 1.8. The agent's harness began compacting its context by itself, as Claude Code does
+    // when idle long enough: the turn that compaction shows as is a chore, not the agent going to
+    // work. Needs its agent, and counts only while detection finds that agent in the pane.
+    bool compacting = 15;
   }
 }
 
@@ -754,6 +769,23 @@ message MsgRequest {
     // the group's policy does not let the author, and as `urgent_unsupported` when the group is
     // kept on a machine whose daemon speaks a protocol before 1.3.
     bool urgent = 4;
+    // Since 1.8. Answers the author offers, which make the post a question (MIP-9, section 6):
+    // at most six, each one line of at most 120 bytes, different from the others. Refused as
+    // `answers_unsupported` when the group is kept on a machine whose daemon speaks a protocol
+    // before 1.8, like `answering`.
+    repeated string answers = 5;
+    // Since 1.8. The question this post answers, and which of its answers it picks.
+    optional Answering answering = 6;
+  }
+
+  // A reply's pick of an answer a question offered. Refused as `no_such_question`,
+  // `not_offered`, `not_asked_of` or `already_answered` where the group is kept: a question
+  // takes one answer, from somebody it was asked of.
+  message Answering {
+    // The question's number in the post's group.
+    uint64 question = 1;
+    // The offered answer picked, as the question wrote it.
+    string answer = 2;
   }
 
   // The caller's unread entries, moving its cursor past them.
@@ -767,8 +799,18 @@ message MsgRequest {
     uint64 since = 2;
     // Answered only once there is an entry after `since`, at once if there already is: what
     // `muster msg log --follow` asks again and again. Refused as `ended` by a handover, like
-    // a wait, so the caller asks whichever daemon serves next.
+    // a wait, so the caller asks whichever daemon serves next. Since 1.8, the answer says the
+    // machine a replica is behind, as a log that does not follow does, and a replica's follow
+    // is also answered, with no entries, once that machine changes from what it was when the
+    // follow began: its link dropped or came back.
     bool follow = 3;
+    // Since 1.8. Only the newest this many of the entries asked for, so a long group's history
+    // is fetched newest first, a page at a time: `newest` alone is the latest page, and with
+    // `before` set to the oldest entry a caller holds, the page before it.
+    optional uint32 newest = 4;
+    // Since 1.8. Only entries numbered below this. A follow takes none, and is refused as
+    // `bad_page` if given one: no entry can arrive below a number the log has passed.
+    optional uint64 before = 5;
   }
 
   // A group's rules (MIP-4, section 8). Names are participants' names, `*` for anyone, and
@@ -1005,6 +1047,9 @@ message MsgAnswer {
     // The machine the group is kept on, when this is a replica of it and that machine cannot
     // be reached now: what was posted there since may be missing.
     optional string behind = 3;
+    // Since 1.8. A log asked for its `newest` left out entries it matched, older than the first
+    // of these: there is a page before this one.
+    bool earlier = 4;
   }
 
   message Entry {
@@ -1045,6 +1090,10 @@ message MsgAnswer {
     string body = 3;
     // Since 1.3.
     bool urgent = 4;
+    // Since 1.8.
+    repeated string answers = 5;
+    // Since 1.8.
+    optional MsgRequest.Answering answering = 6;
   }
 
   message Members {
@@ -1108,7 +1157,8 @@ message MsgAnswer {
     // Since 1.6. On a notice to the windows, the message's own words when the one message
     // waiting is Muster's (`@muster`), for a banner to say rather than a count: what Muster says
     // is a sentence or two, written to be read on its own. Empty for anyone else's, whose
-    // messages are any length and are read in the transcript (MIP-4, section 5).
+    // messages are any length and are read in the group's conversation, or fetched from its log
+    // for a banner (MIP-9, sections 1 and 5).
     string said = 10;
   }
 }
@@ -1467,6 +1517,12 @@ message Pane {
   // so it is no longer quiet on its maker's behalf, nor watched for it. Set once, never cleared,
   // and written to the state file.
   bool maker_closed = 22;
+  // Since 1.8. The names the pane was given before its present one, oldest first and at most
+  // eight, so a name somebody still holds - `$MUSTER_PANE_NAME` keeps the one the pane was
+  // started with - can be answered with what the pane is called now. Never its callsign, which
+  // it keeps through a rename, nor its present name. Kept while the daemon runs, and never
+  // written to the state file: a restored pane's programs are started under its present name.
+  repeated string former_labels = 23;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.
@@ -1504,7 +1560,8 @@ enum Adapter {
   // Nothing to say yet: no agent, or one that has not yet ended a turn. A harness that reports
   // only once it is prompted, as Codex does, has not had the chance.
   ADAPTER_UNSAID = 0;
-  // The agent has reported since it came into the pane.
+  // The agent has reported its state, its session or its sub-agents since it came into the pane.
+  // What a statusline alone reports - context, model, cost, the session's name - does not count.
   ADAPTER_REPORTING = 1;
   // The agent ended a turn and had reported nothing: its harness has no adapter installed, or
   // one that is not running.
@@ -1958,6 +2015,25 @@ message Handoff {
     // Since 1.6. What the pane, a helper, has had its maker told it needs and still needs
     // (MIP-7, section 4), so that the new daemon does not tell the maker again.
     Told maker_told = 10;
+    // Since 1.8. Whether the wait the agent declared was carried through a turn Muster typed, a
+    // wake or a compaction, which limits it, since no later turn may come to end it. Absent:
+    // taken as the agent's own, and not limited for that.
+    optional bool wait_carried = 11;
+    // Since 1.8. Who typed what started the agent's current turn, or its last one, and how long
+    // ago that turn started: a turn Muster typed as a chore is not the agent going to work, and
+    // its end raises no maker's notice. Unset: nothing typed it, or a daemon that sends none.
+    TypedBy turn_typed_by = 12;
+    optional uint32 turn_ms_ago = 13;
+  }
+
+  enum TypedBy {
+    TYPED_BY_NOBODY = 0;
+    // A person, or a `pane send`.
+    TYPED_BY_SOMEONE = 1;
+    // The doorbell, for a wake.
+    TYPED_BY_DOORBELL = 2;
+    // A chore of the daemon's own: a rename, a compaction.
+    TYPED_BY_CHORE = 3;
   }
 
   enum Told {
@@ -2019,6 +2095,12 @@ message Handoff {
     // How long ago the rules began reading every screen as a prompt they can see, which sets a
     // working report aside.
     optional uint32 blocker_ms_ago = 31;
+    // Since 1.8. A blocked report the rules have not read, still waiting for the screen to sit
+    // still before it counts, and how long ago it came: the hook that sent it does not run
+    // again. Absent: none was waiting.
+    optional string pending_agent = 32;
+    AgentState pending_state = 33;
+    uint32 pending_ms_ago = 34;
   }
 
   message Ready {}
@@ -2090,6 +2172,19 @@ message PeerCall {
     // Since 1.3. From a group's home: the group is deleted, so the replica goes, and with it
     // what its members here had read and been woken for. Answered with `applied`.
     Forget forget = 19;
+    // Since 1.8. To a group's home, from a machine where a member of it holds it up: Muster's
+    // notice saying so, posted here as `@muster` and held to no policy and no guard. Answered
+    // with `posted`.
+    Muster muster = 20;
+  }
+
+  // `to` is written as the asker writes it, and `body` in this machine's names. `head` is how
+  // far the asker's replica reaches, so the reply can carry what it lacks.
+  message Muster {
+    string group = 1;
+    repeated string to = 2;
+    string body = 3;
+    uint64 head = 4;
   }
 
   message Forget {
@@ -2128,6 +2223,10 @@ message PeerCall {
     uint64 head = 6;
     // Since 1.3.
     bool urgent = 7;
+    // Since 1.8.
+    repeated string answers = 8;
+    // Since 1.8.
+    optional MsgRequest.Answering answering = 9;
   }
 
   message Since {
