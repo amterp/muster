@@ -553,5 +553,6 @@ pub(crate) fn message_box_draft(
             .collect(),
         picked_question: draft.picked.as_ref().map_or(0, |picked| picked.question),
         picked_answer: draft.picked.as_ref().map(|p| p.answer.clone()).unwrap_or_default(),
+        sendable: draft.sends(),
     }
 }

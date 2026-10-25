@@ -21,6 +21,7 @@ final class ConversationRecorder {
     if let answer {
       draft.pickedQuestion = question
       draft.pickedAnswer = "answer \(answer)"
+      draft.sendable = true
     }
     return draft
   }
@@ -31,6 +32,7 @@ final class ConversationRecorder {
     draft.cursor = UInt32(edit.cursor)
     draft.urgent = edit.urgent
     draft.to = edit.to.map { recipient($0) }
+    draft.sendable = !edit.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     return draft
   }
 
@@ -74,6 +76,7 @@ private func openBox(
   changed.draft.text = text
   changed.draft.to = to.map { recipient($0) }
   changed.draft.completions = completions.map { recipient($0) }
+  changed.draft.sendable = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   changed.sent.state = sent
   box.apply(changed)
   return (box, recorder)

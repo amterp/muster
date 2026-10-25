@@ -286,11 +286,9 @@ final class MessageBox: ObservableObject {
     draft.pickedQuestion == 0 ? nil : (draft.pickedQuestion, draft.pickedAnswer)
   }
 
-  /// Words, or an answer picked with nothing written, which is a whole reply.
-  var sendable: Bool {
-    !pending
-      && (picked != nil || !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-  }
+  /// Whether Send posts anything: the core's rule, which counts an answer picked with nothing
+  /// written as a whole reply.
+  var sendable: Bool { !pending && draft.sendable }
 
   /// Picks question #`question`'s answer at `answer`, which fills the reply rather than sending
   /// it (MIP-9, section 6), and puts the keyboard in the box for a note or the send chord

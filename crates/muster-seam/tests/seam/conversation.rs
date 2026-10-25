@@ -380,6 +380,7 @@ fn a_questions_answer_is_picked_into_the_message_box_and_posted_with_it() {
     let to: Vec<&str> = picked.to.iter().map(|to| to.name.as_str()).collect();
     assert_eq!(to, ["a"], "a pick addresses whoever asked");
     assert_eq!((picked.picked_question, picked.picked_answer.as_str()), (question, "Skip it"));
+    assert!(picked.sendable, "an answer picked with no words is a whole reply");
     answer(save_draft("after lunch", 11, &["a"]));
 
     let posted = answer(post_draft());

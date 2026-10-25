@@ -1583,6 +1583,9 @@ message MessageBoxDraft {
   // words, to go with the text; 0 and empty while none is.
   uint64 picked_question = 6;
   string picked_answer = 7;
+  // Whether posting it would send anything: words, or an answer picked with none. The core's
+  // rule, so that the shell's Send and the post agree.
+  bool sendable = 8;
 }
 
 message Recipient {
