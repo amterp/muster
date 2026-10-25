@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "tools-install-main",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1792950462003,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-25 on 0.18.2-dev. install-main was run under `qm run` from a Claude Code session in pane magpie (p2e8hmw6kr). Its detached swap ends with `open \"$app\"`, and the app it opened passed that whole environment on: every muster-bridge (e.g. pid 66521, pane p2ef615veb) carries MUSTER_PANE=p2e8hmw6kr, MUSTER_CALLSIGN=magpie, MUSTER_SOCKET=command-9311.sock (gone), CLAUDECODE=1, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_MESSAGING_SOCKET and its token, and QM_JOB=1a17369b49f-2.\n\nEffects seen: Quartermaster raised an orphan alert, \"4 processes from job 1a17369b49f-2 are still running 2 hours 39 minutes after it ended\", for the live window's bridges, and every new pane's bridge adds to it. Not seen, but likely: any code in the app or a bridge that reads MUSTER_PANE or CLAUDE_CODE_MESSAGING_SOCKET to work out who is asking gets another agent's identity.\n\ntools/run-checkout already clears the environment to what a Dock launch gets, for this reason (its header comment). install-main should do the same for its open. Worth deciding too whether the app should drop inherited MUSTER_*, CLAUDE_* and QM_* at launch, since any `open` from a terminal does this.",
+  "id": "a_2o5tAmWl4",
+  "position": "b1U",
+  "title": "tools/install-main opens the new Muster with the environment of whoever ran it, so the app and every bridge carry another pane's MUSTER_PANE, a Claude Code session's ids and a qm job tag",
+  "type": "bug",
+  "updated_at_millis": 1792950462003,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792950462003}
+  ]
+}
