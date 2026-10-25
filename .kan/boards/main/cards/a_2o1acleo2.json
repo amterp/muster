@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "a-nested-agent-s-msg",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1792940215843,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-10-25 while planning the fix for a_2nSw5pbpW. A claude -p that a pane's agent starts inherits $MUSTER_PANE but has its own $CLAUDE_CODE_MESSAGING_SOCKET. Any msg request it sends reaches adopt for the pane's participant, which replaces that participant's inbox with the nested one and clears what it was woken for, so the pane's own agent stops being rung. A nested join --name or --as strips the pane from the pane's participant altogether. Posts from a nested agent act as the pane by decision (10956827); this side effect of them was not part of that decision. Possibly: a request the walk attributes to a nested agent keeps the pane's identity but never adopts its addresses.",
+  "id": "a_2o1acleo2",
+  "position": "Zq",
+  "title": "A nested agent's msg requests overwrite its pane participant's inbox",
+  "type": "bug",
+  "updated_at_millis": 1792941509689,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792940215843},
+    {"field":"column","value":"in-progress","at":1792941509689}
+  ]
+}

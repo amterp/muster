@@ -5,18 +5,19 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1792857626301,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-24 with a_2djt4hZrT. A claude -p that a pane's agent starts inherits $MUSTER_PANE. With Muster's messaging hooks installed, it runs msg read --if-unread as that pane, takes the pane's unread messages into its own context and marks them read, so the pane's agent never sees them. Reports from such a process are refused (attribution's walk finds the nested agent); msg requests are not, by decision when a_2djt4hZrT was fixed (10956827), because the pane's agent started it and a post from it plausibly speaks for that agent. A read is the case that hurts. Possibly: refuse or skip msg read --if-unread from a nested agent only, or have the hooks skip when the walk finds a nested agent.",
   "id": "a_2nSw5pbpW",
-  "position": "Zu",
+  "position": "YvZ",
   "title": "A nested agent's messaging hooks read the pane's messages",
   "type": "bug",
-  "updated_at_millis": 1792939964490,
+  "updated_at_millis": 1792941509381,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792857626301},
     {"field":"column","value":"next","at":1792860389278},
-    {"field":"column","value":"in-progress","at":1792939964490}
+    {"field":"column","value":"in-progress","at":1792939964490},
+    {"field":"column","value":"done","at":1792941509381}
   ]
 }
