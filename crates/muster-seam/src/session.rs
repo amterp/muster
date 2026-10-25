@@ -72,6 +72,7 @@ pub(crate) mod banners;
 pub(crate) mod conversation;
 pub(crate) mod lifecycle;
 mod other_installs;
+pub(crate) mod posting;
 pub(crate) mod problems;
 mod starting_again;
 

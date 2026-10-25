@@ -131,10 +131,6 @@ impl Log {
         self.entries.values()
     }
 
-    pub fn get(&self, seq: u64) -> Option<&Entry> {
-        self.entries.get(&seq)
-    }
-
     /// The messages held, as [`posting::settles`] reads them.
     pub fn logged(&self) -> impl Iterator<Item = Logged<'_>> {
         self.entries.values().filter_map(|entry| match &entry.what {

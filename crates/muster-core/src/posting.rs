@@ -54,6 +54,10 @@ pub struct Reached {
     pub reach: Reach,
 }
 
+/// What a post the daemon never answered came to once the group's log showed it was kept.
+pub const KEPT_UNANSWERED: &str =
+    "kept, though the daemon never answered; whom it woke is not known";
+
 /// The human's name in every group.
 pub const HUMAN: &str = "@human";
 

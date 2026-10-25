@@ -28,7 +28,7 @@ use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_answer;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::{SESSION, Session, WindowId, answered_as_human, ask_as_human_for, banners, save};
+use super::{SESSION, Session, WindowId, answered_as_human, ask_as_human_for, save};
 use crate::proto::{self, Event, Response, event, response};
 use crate::{convert, ffi};
 
@@ -473,7 +473,7 @@ fn settle(session: &mut Session, group: &GroupKey) -> Vec<WindowId> {
         else {
             continue;
         };
-        let said = "kept, though the daemon never answered; whom it woke is not known".to_string();
+        let said = posting::KEPT_UNANSWERED.to_string();
         let sent = sending.draft.clone();
         window.sending.insert(
             group.clone(),
@@ -755,26 +755,17 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         (draft, after)
     };
     announce(&[window]);
-    let sent = banners::post_as_human(&key, &draft.to, &draft.text, None, draft.urgent, after);
+    let sent =
+        super::posting::post_as_human(&key, &draft.to, &draft.text, None, draft.urgent, after);
     log::info(
         "conversation.posted",
         fields! {
             "daemon" => key.daemon.to_string(),
             "group" => &key.group,
-            "outcome" => match &sent {
-                Sent::Pending { .. } => "pending",
-                Sent::Posted { .. } => "posted",
-                Sent::Refused { .. } => "refused",
-                Sent::Unknown { .. } => "unknown",
-            },
+            "outcome" => super::posting::outcome(&sent),
         },
     );
-    let response = match &sent {
-        Sent::Posted { said, .. } => Response::noted(said.clone()),
-        Sent::Refused { why, .. } => Response::failure(why.clone()),
-        Sent::Unknown { why, .. } => Response::unanswered(why.clone()),
-        Sent::Pending { .. } => Response::ok(),
-    };
+    let response = super::posting::response(&sent);
     let settled = {
         let mut session = poison::lock(&SESSION, "session");
         let Session { conversations, windows, .. } = &mut *session;

@@ -2113,9 +2113,12 @@ mod tests {
         }
     }
 
+    /// The window's core names the human and Muster to tell their messages apart, and depends
+    /// on no daemon crate, so it spells them itself.
     #[test]
-    fn the_human_is_spelled_as_the_service_names_it() {
-        assert_eq!(messaging::HUMAN, muster_msg::HUMAN);
+    fn the_human_and_muster_are_spelled_as_the_service_names_them() {
+        assert_eq!(muster_core::posting::HUMAN, muster_msg::HUMAN);
+        assert_eq!(muster_core::posting::MUSTER, muster_msg::MUSTER);
     }
 
     #[test]

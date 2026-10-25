@@ -24,10 +24,6 @@ pub const RESUME: &str = "resume";
 /// that asks the window rather than the daemon.
 pub const OPEN: &str = "open";
 
-/// What the human is called as a participant: a name no agent's can be, since names do not
-/// start with `@`. The same as `muster_msg::HUMAN`, which muster-daemon's tests hold it to.
-pub const HUMAN: &str = "@human";
-
 /// Every verb, in the order `--help` lists them.
 pub const VERBS: [&str; 12] =
     [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN];

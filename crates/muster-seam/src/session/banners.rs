@@ -11,16 +11,13 @@ use std::sync::Mutex;
 use muster_core::attention::GroupKey;
 use muster_core::banners::Message;
 use muster_core::composition::DaemonId;
-use muster_core::conversation::{Log, What};
+use muster_core::conversation::{Answering, What};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
-use muster_core::intent::Refusal;
-use muster_core::posting::{self, Reached, Sent};
 use muster_daemon_client::convert::messaging;
-use muster_daemon_proto::msg_answer;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::{SESSION, ask_as_human_for};
+use super::{SESSION, ask_as_human_for, posting};
 use crate::proto::{Event, Response, event};
 use crate::{convert, ffi};
 
@@ -94,100 +91,21 @@ pub(crate) fn reply(daemon: &str, group: &str, seq: u64, note: &str) -> Response
         Err(why) => return Response::failure(why),
     };
     announce();
-    let answering =
-        reply.answering.map(|(question, answer)| msg_request::Answering { question, answer });
-    let sent = post_as_human(&key, &reply.to, &reply.body, answering, false, seq);
+    let answering = reply.answering.map(|(question, answer)| Answering { question, answer });
+    let sent = posting::post_as_human(&key, &reply.to, &reply.body, answering.as_ref(), false, seq);
     log::info(
         "banner.replied",
         fields! {
             "daemon" => daemon,
             "group" => group,
             "seq" => seq,
-            "outcome" => match &sent {
-                Sent::Pending { .. } => "pending",
-                Sent::Posted { .. } => "posted",
-                Sent::Refused { .. } => "refused",
-                Sent::Unknown { .. } => "unknown",
-            },
+            "outcome" => posting::outcome(&sent),
         },
     );
-    let response = match &sent {
-        Sent::Posted { said, .. } => Response::noted(said.clone()),
-        Sent::Refused { why, .. } => Response::failure(why.clone()),
-        Sent::Unknown { why, .. } => Response::unanswered(why.clone()),
-        Sent::Pending { .. } => Response::ok(),
-    };
+    let response = posting::response(&sent);
     poison::lock(&SESSION, "session").banners.replied(&key, seq, sent);
     announce();
     response
-}
-
-/// Posts `body` to `to` in `group` as the human, and says what came of it.
-///
-/// An unanswered post may have been kept, and a post carries no key the daemon could refuse a
-/// second copy by, so it is never sent again. The group's log is asked once instead, for the
-/// human's entry after `after` with these recipients and this body.
-pub(crate) fn post_as_human(
-    group: &GroupKey,
-    to: &[String],
-    body: &str,
-    answering: Option<msg_request::Answering>,
-    urgent: bool,
-    after: u64,
-) -> Sent {
-    let post = msg_request::Post {
-        group: Some(group.group.clone()),
-        to: to.to_vec(),
-        body: body.to_string(),
-        urgent,
-        answering,
-        ..Default::default()
-    };
-    match ask_as_human_for(&group.daemon, Asked::Post(post)) {
-        Ok(answer) => match answer.answer {
-            Some(msg_answer::Answer::Posted(posted)) => {
-                let reached: Vec<Reached> = posted.reached.iter().map(messaging::reached).collect();
-                Sent::Posted {
-                    seq: posted.seq,
-                    said: posting::said(&reached),
-                    heard: posting::heard(&reached),
-                }
-            }
-            // A daemon that keeps a post answers it as posted; one that says nothing more was
-            // still done, and only whom it reached is unknown.
-            _ => Sent::Posted {
-                seq: 0,
-                said: "kept; the daemon did not say whom it woke".to_string(),
-                heard: true,
-            },
-        },
-        Err(Refusal::Unanswered { detail, .. }) => match settled(group, to, body, after) {
-            Some(seq) => Sent::Posted {
-                seq,
-                said: "kept, though the daemon never answered; whom it woke is not known"
-                    .to_string(),
-                heard: true,
-            },
-            None => Sent::Unknown {
-                body: body.to_string(),
-                why: format!(
-                    "{detail}. It may have been posted; it was not sent again, since a second \
-                     send could post it twice. Open the conversation to see whether it landed."
-                ),
-            },
-        },
-        Err(refusal) => Sent::Refused { body: body.to_string(), why: refusal.detail().to_string() },
-    }
-}
-
-/// The number of the human's entry that shows an unanswered post was kept, read once from the
-/// group's log.
-fn settled(group: &GroupKey, to: &[String], body: &str, after: u64) -> Option<u64> {
-    let log = msg_request::Log { group: group.group.clone(), since: after, ..Default::default() };
-    let answer = ask_as_human_for(&group.daemon, Asked::Log(log)).ok()?;
-    let mut held = Log::default();
-    held.followed(messaging::log_page(&answer, &group.group).entries);
-    posting::settles(held.logged(), after, to, body)
 }
 
 /// Takes down the banner showing `seq`, without reading its group.
