@@ -510,12 +510,7 @@ fn answering(
             pick.answer
         )));
     };
-    let note = post.body.trim();
-    post.body = if note.is_empty() {
-        format!("Answer: {answer}")
-    } else {
-        format!("Answer: {answer}\n\n{note}")
-    };
+    post.body = posting::answer_body(answer, &post.body);
     post.answering =
         Some(msg_request::Answering { question: pick.question, answer: answer.clone() });
     if post.to.is_empty() {

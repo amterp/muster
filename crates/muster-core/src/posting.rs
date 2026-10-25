@@ -118,6 +118,18 @@ pub fn said(reached: &[Reached]) -> String {
     if parts.is_empty() { "kept for the human".to_string() } else { parts.join("; ") }
 }
 
+/// The body of a reply that picks one of a question's offered answers: the answer first, so
+/// whoever asked reads it with no new parsing, then the note written with it, if any (MIP-9,
+/// section 6). Composed in one place, so no way of replying words it differently.
+pub fn answer_body(answer: &str, note: &str) -> String {
+    let note = note.trim();
+    if note.is_empty() {
+        format!("Answer: {answer}")
+    } else {
+        format!("Answer: {answer}\n\n{note}")
+    }
+}
+
 /// One message in a group's log, as far as [`settles`] needs it.
 #[derive(Debug, Clone, Copy)]
 pub struct Logged<'a> {
@@ -175,6 +187,13 @@ mod tests {
             reached("gone", Reach::Gone),
         ];
         assert_eq!(said(&reached), "woke otter, heron; will ring lynx");
+    }
+
+    #[test]
+    fn a_reply_picking_an_answer_starts_with_it_above_its_note() {
+        assert_eq!(answer_body("Skip it", ""), "Answer: Skip it");
+        assert_eq!(answer_body("Skip it", "  \n"), "Answer: Skip it");
+        assert_eq!(answer_body("Skip it", " after lunch\n"), "Answer: Skip it\n\nafter lunch");
     }
 
     #[test]
