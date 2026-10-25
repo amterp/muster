@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-helper-waiting-on",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792896283950,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-24 running two parallel-work helpers. One declared `report --waiting \"cargo fmt in the background\"` and ended its turn; its background command hung for an hour on a `cat` reading a stdin that never closed. Muster tells a maker when a helper is blocked, stuck, or idle without having reported to it, but `waiting` is none of those, so nothing reached the maker, and `muster window` showed `waiting 57m` to nobody looking. It was found only by reading the pane. Something like a notice to the maker once a helper has waited past a limit (or past a time the helper gave with --waiting) would have caught it within minutes.",
+  "id": "a_2nj9krSRa",
+  "position": "b1q",
+  "title": "A helper waiting on its own job is never noticed to its maker, however long it waits",
+  "type": "enhancement",
+  "updated_at_millis": 1792896283950,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792896283950}
+  ]
+}

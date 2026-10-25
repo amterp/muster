@@ -25,6 +25,12 @@
       "body": "MIP-9 Accepted 2026-10-24: this is its stage 1 (docs/mip/0009-group-conversation.md, sections 4, 5 and 9). It includes what the banner needs underneath: posting as the human from the window, the four send outcomes, Markdown parsed in the core, and the banner's model and events. No daemon change.",
       "author": "Alexander Terp",
       "created_at_millis": 1792878515400
+    },
+    {
+      "id": "c_2njIz4mAi",
+      "body": "Landed on main 2026-10-24 (db8ecb26..59ac8c8b): Markdown in the core, a post's four outcomes, the banners model, the seam's ReplyToBanner/DismissBanner/HoldBanner and BannersChanged, and the SwiftUI banner. Gate green. Stays in progress until ./dev --contract has run its new checks (a banner raised in the app, the reply field and Cmd+Return, Esc during composition, Cmd+Return still reaching a pane).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792896638662
     }
   ],
   "created_at_millis": 1792874866507,
@@ -35,7 +41,7 @@
   "position": "Zu",
   "title": "Muster's own banner shows a message and takes a reply",
   "type": "enhancement",
-  "updated_at_millis": 1792891208956,
+  "updated_at_millis": 1792896638715,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792874866507},
     {"field":"column","value":"next","at":1792878515499},
