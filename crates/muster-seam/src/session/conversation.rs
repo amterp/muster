@@ -217,7 +217,7 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
         fields! { "daemon" => key.daemon.to_string(), "group" => &key.group, "window" => &name },
     );
     if let Some(following) = start {
-        follow(following);
+        follow(&following);
     }
     super::publish("conversation");
     // Read for the human if they are reading it now, which also takes its banner and its ask
@@ -268,13 +268,13 @@ fn forget_unless_shown(session: &mut Session, group: &GroupKey) {
 
 /// Fetches `group`'s log and follows it, off the caller's thread, for as long as a window shows
 /// it.
-fn follow(following: Following) {
+fn follow(following: &Following) {
     let spawned = std::thread::Builder::new().name("muster-conversation".into()).spawn({
         let following = following.clone();
         move || follow_log(&following)
     });
     if let Err(error) = spawned {
-        failed(&following, &format!("no thread could be started to fetch it ({error})"));
+        failed(following, &format!("no thread could be started to fetch it ({error})"));
     }
 }
 
