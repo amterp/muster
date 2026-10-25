@@ -574,6 +574,8 @@ public final class BannerHost {
     hosting.isHidden = !shown
   }
 
+  var isShown: Bool { !hosting.isHidden }
+
   /// Whether a reply field of this stack holds the keyboard. While it is being typed in, what
   /// AppKit calls first responder is a text view inside the hosting view.
   var holdsKeyboard: Bool {

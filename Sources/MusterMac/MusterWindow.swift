@@ -932,6 +932,11 @@ extension MusterWindow: ConversationWindow {
 extension MusterWindow: ShellWindow {
   public var platformWindow: NSWindow { window }
 
+  // Visible as well as main: a window closing or being minimized can still be main for a moment.
+  public var drawsBanners: Bool {
+    banners.isShown && window.isVisible && !window.isMiniaturized
+  }
+
   public func lists(_ pane: PaneKey) -> Bool {
     roster.panes.contains { $0.key == pane }
   }

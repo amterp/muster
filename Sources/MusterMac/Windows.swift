@@ -25,6 +25,9 @@ public protocol ShellWindow: AnyObject {
   /// The panes of the members of the group whose conversation this window shows.
   func apply(memberPanes: Set<PaneKey>)
   func hold(_ held: HeldPaste)
+  /// Whether this window draws the banners for messages to the human now: it is the main window,
+  /// and on screen.
+  var drawsBanners: Bool { get }
   /// Whether this window lists the pane, which decides where a held paste is asked about.
   func lists(_ pane: PaneKey) -> Bool
   func raise()

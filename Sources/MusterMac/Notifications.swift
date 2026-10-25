@@ -94,9 +94,16 @@ public enum MessageNotification {
 
   /// Whether the operating system is asked to show a message at all. While Muster is in front it
   /// draws its own banner, which takes a reply (mip/0009-group-conversation.md, section 5); the
-  /// system's is only a pointer back to Muster for while it is not.
-  public static func posts(appActive: Bool) -> Bool {
-    !appActive
+  /// system's is only a pointer back to Muster for while it is not - or while Muster is in front
+  /// with no window to draw the banner on, every one closed or minimized, when nothing else would
+  /// say a message arrived.
+  public static func posts(appActive: Bool, bannerOnScreen: Bool) -> Bool {
+    !appActive || !bannerOnScreen
+  }
+
+  /// Whether a window draws Muster's own banner now.
+  @MainActor public static var bannerOnScreen: Bool {
+    Windows.all.contains { $0.drawsBanners }
   }
 }
 
@@ -200,7 +207,10 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
       return
     }
 
-    if !group.isEmpty, !MessageNotification.posts(appActive: NSApp.isActive) {
+    if !group.isEmpty,
+      !MessageNotification.posts(
+        appActive: NSApp.isActive, bannerOnScreen: MessageNotification.bannerOnScreen)
+    {
       return
     }
 
@@ -249,13 +259,16 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   /// frontmost" is not the same claim. Somebody reading one agent while fourteen others work
   /// is the ordinary case, and it is the case that suppression would silence.
   ///
-  /// Except a message: asked while Muster is in front, Muster's own banner is already showing it.
+  /// Except a message while a window draws Muster's own banner, which is already showing it.
   nonisolated public func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions {
     let info = notification.request.content.userInfo
-    return info[MessageNotification.groupKey] == nil ? [.banner, .sound] : []
+    guard info[MessageNotification.groupKey] != nil else { return [.banner, .sound] }
+    let bannerOnScreen = await MainActor.run { MessageNotification.bannerOnScreen }
+    return MessageNotification.posts(appActive: true, bannerOnScreen: bannerOnScreen)
+      ? [.banner, .sound] : []
   }
 
   /// Somebody activated a banner, so send them to the pane that raised it.

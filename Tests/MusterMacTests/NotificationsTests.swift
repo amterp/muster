@@ -92,6 +92,17 @@ struct MessageNotificationsTests {
     #expect(MessageNotification.body(count: 1, from: ["@muster"], said: said) == said)
   }
 
+  /// Muster's own banner answers a message while Muster is in front, so the system's stays out of
+  /// its way - unless no window can draw that banner, every one closed or minimized, when the
+  /// system's is the only thing that would say a message arrived.
+  @Test("the system's notification shows when Muster is behind or has no banner on screen")
+  func postsWhenNoBannerCanShowIt() {
+    #expect(MessageNotification.posts(appActive: false, bannerOnScreen: false))
+    #expect(MessageNotification.posts(appActive: false, bannerOnScreen: true))
+    #expect(!MessageNotification.posts(appActive: true, bannerOnScreen: true))
+    #expect(MessageNotification.posts(appActive: true, bannerOnScreen: false))
+  }
+
   @Test("a group's banner is its own, never a pane's")
   func identifierIsTheGroups() {
     // One banner per group, replaced by each message, and a withdrawal has to find it.

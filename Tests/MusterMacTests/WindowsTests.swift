@@ -266,6 +266,7 @@ private final class StandIn: ShellWindow {
   func apply(groups: [SidebarModel.MessageGroup]) { applied.append("groups") }
   func apply(memberPanes: Set<PaneKey>) { applied.append("member panes") }
   func hold(_ held: HeldPaste) { applied.append("paste") }
+  var drawsBanners: Bool { false }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }
   func close() {
