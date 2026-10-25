@@ -7,8 +7,8 @@ use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_muster, split_machine, title_says,
 };
 use crate::{
-    Action, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, Log, MUSTER, Policy, Refusal, Saved,
-    Store, What, default_name, pair_group,
+    Action, Answering, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, LONGEST_ANSWER, Log,
+    MOST_ANSWERS, MUSTER, Policy, Refusal, Saved, Store, What, default_name, pair_group,
 };
 
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
@@ -267,6 +267,20 @@ pub struct Draft<'a> {
     /// To reach its addressees mid-turn, even those woken already, rather than once they are
     /// idle.
     pub urgent: bool,
+    /// Answers its author offers, which make it a question (MIP-9, section 6).
+    pub answers: &'a [String],
+    /// The question it answers, and the answer it picks.
+    pub answering: Option<&'a Answering>,
+}
+
+/// What an author wrote, beside whom it is for and where: what a post appends wherever it came
+/// from.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Content<'a> {
+    pub body: &'a str,
+    pub urgent: bool,
+    pub answers: &'a [String],
+    pub answering: Option<&'a Answering>,
 }
 
 /// Which of a group's entries a log asks for: those after `since` and below `before`, and of
@@ -886,6 +900,7 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
         check_body(draft.body)?;
+        check_answers(draft.answers)?;
         let author = self.acting(caller, presence)?;
         let group = draft.group.map(|group| self.locate(group)).transpose()?;
         let addressees =
@@ -893,9 +908,13 @@ impl<S: Store> Messaging<S> {
         let group = self.resolve_group(&author, &addressees, group.as_deref(), now_ms)?;
         self.here(&group)?;
         let cursor = self.cursor(&author, &group);
-        let body = draft.body;
-        let urgent = draft.urgent;
-        self.post_as(&author, &group, addressees, body, urgent, cursor, None, presence, now_ms)
+        let content = Content {
+            body: draft.body,
+            urgent: draft.urgent,
+            answers: draft.answers,
+            answering: draft.answering,
+        };
+        self.post_as(&author, &group, addressees, &content, cursor, None, presence, now_ms)
     }
 
     /// Appends a post by `author`, who had read `group` up to `cursor`, and reaches whoever it
@@ -909,13 +928,13 @@ impl<S: Store> Messaging<S> {
         author: &str,
         group: &str,
         addressees: Vec<String>,
-        body: &str,
-        urgent: bool,
+        content: &Content<'_>,
         cursor: u64,
         from: Option<&str>,
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
+        let urgent = content.urgent;
         let policy = &self.groups[group].policy;
         if urgent && !policy.urges(author) {
             return Err(Refusal::NotUrgent {
@@ -937,11 +956,16 @@ impl<S: Store> Messaging<S> {
         if unread > 0 {
             return Err(Refusal::Unread { group: group.to_string(), count: unread });
         }
+        if let Some(answering) = content.answering {
+            self.check_answering(group, author, answering)?;
+        }
         let message = What::Message {
             author: author.to_string(),
             to: addressees.clone(),
-            body: body.to_string(),
+            body: content.body.to_string(),
             urgent,
+            answers: content.answers.to_vec(),
+            answering: content.answering.cloned(),
         };
         let seq = self.append(group, message, now_ms)?;
         Ok(self.posted(author, group, seq, addressees, urgent, from, presence, now_ms))
@@ -1017,6 +1041,8 @@ impl<S: Store> Messaging<S> {
             to: to.clone(),
             body: body.to_string(),
             urgent: false,
+            answers: Vec::new(),
+            answering: None,
         };
         let seq = self.append(group, message, now_ms)?;
         Ok(self.posted(MUSTER, group, seq, to, false, None, presence, now_ms))
@@ -2828,6 +2854,61 @@ impl<S: Store> Messaging<S> {
         self.unread_after(name, group, self.cursor(name, group))
     }
 
+    /// Holds a reply to its question (MIP-9, section 6): a message in `group` offering answers,
+    /// asked of `author` - not its own, and addressed to `author` when it names anybody - that
+    /// offered the answer picked, and that nobody has answered yet, since a question takes one
+    /// answer.
+    fn check_answering(
+        &self,
+        group: &str,
+        author: &str,
+        answering: &Answering,
+    ) -> Result<(), Refusal> {
+        let question = answering.question;
+        let log = &self.groups[group].log;
+        let found = log.iter().find_map(|entry| match &entry.what {
+            What::Message { author, to, answers, .. }
+                if entry.seq == question && !answers.is_empty() =>
+            {
+                Some((author, to, answers))
+            }
+            _ => None,
+        });
+        let Some((asker, to, answers)) = found else {
+            return Err(Refusal::NoSuchQuestion { group: group.to_string(), question });
+        };
+        if asker == author || !(to.is_empty() || to.iter().any(|name| name == author)) {
+            let (name, group) = (author.to_string(), group.to_string());
+            return Err(Refusal::NotAskedOf { name, group, question });
+        }
+        if !answers.contains(&answering.answer) {
+            return Err(Refusal::NotOffered {
+                group: group.to_string(),
+                question,
+                answer: answering.answer.clone(),
+                answers: answers.clone(),
+            });
+        }
+        let earlier =
+            log.iter().filter(|entry| entry.seq > question).find_map(|entry| match &entry.what {
+                What::Message { author, answering: Some(earlier), .. }
+                    if earlier.question == question =>
+                {
+                    Some((author, &earlier.answer))
+                }
+                _ => None,
+            });
+        if let Some((by, answer)) = earlier {
+            return Err(Refusal::AlreadyAnswered {
+                group: group.to_string(),
+                question,
+                by: by.clone(),
+                answer: answer.clone(),
+            });
+        }
+        Ok(())
+    }
+
     fn unread_after(&self, name: &str, group: &str, cursor: u64) -> u64 {
         let count = self
             .unread_by_others(name, group, cursor, u64::MAX)
@@ -3346,6 +3427,23 @@ fn titled(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
     }
     panes.sort_unstable();
     Some(Refusal::Titled { name: typed.to_string(), panes })
+}
+
+/// Each answer a question offers is one button, and a reply names the one it picks by its words.
+pub(crate) fn check_answers(answers: &[String]) -> Result<(), Refusal> {
+    if answers.len() > MOST_ANSWERS {
+        return Err(Refusal::TooManyAnswers { count: answers.len() });
+    }
+    for (at, answer) in answers.iter().enumerate() {
+        if answer.len() > LONGEST_ANSWER {
+            return Err(Refusal::AnswerTooLong { answer: answer.clone() });
+        }
+        let repeated = answers[..at].contains(answer);
+        if answer.trim().is_empty() || answer.contains(['\n', '\r']) || repeated {
+            return Err(Refusal::BadAnswer { answer: answer.clone() });
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn check_body(body: &str) -> Result<(), Refusal> {

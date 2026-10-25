@@ -26,6 +26,12 @@ pub enum What {
         /// idle.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         urgent: bool,
+        /// Answers its author offers, which make it a question (MIP-9, section 6).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        answers: Vec<String>,
+        /// The question it answers, and the answer it picks.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        answering: Option<Answering>,
     },
     Created {
         by: String,
@@ -47,6 +53,14 @@ pub enum What {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         policy: Option<Box<Policy>>,
     },
+}
+
+/// A reply's pick: the number of the question in its group, and the answer it offered that the
+/// reply takes, as the question wrote it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Answering {
+    pub question: u64,
+    pub answer: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,5 +116,30 @@ mod tests {
         };
         let line = serde_json::to_string(&recorded).expect("an entry writes");
         assert_eq!(serde_json::from_str::<Entry>(&line).expect("and reads back"), recorded);
+    }
+
+    /// A message written before questions existed reads as one offering no answers, and a
+    /// question and its answer read back as they were written.
+    #[test]
+    fn a_message_reads_with_or_without_answers() {
+        let before = r#"{"seq":3,"at_ms":7,"kind":"message","author":"a","body":"hi"}"#;
+        let read: Entry = serde_json::from_str(before).expect("a message from before reads");
+        let What::Message { answers, answering, .. } = read.what else { panic!("{read:?}") };
+        assert_eq!((answers, answering), (Vec::new(), None));
+
+        let reply = Entry {
+            seq: 5,
+            at_ms: 9,
+            what: What::Message {
+                author: "@human".to_string(),
+                to: vec!["a".to_string()],
+                body: "Answer: Skip it".to_string(),
+                urgent: false,
+                answers: vec!["Again?".to_string(), "No".to_string()],
+                answering: Some(Answering { question: 3, answer: "Skip it".to_string() }),
+            },
+        };
+        let line = serde_json::to_string(&reply).expect("an entry writes");
+        assert_eq!(serde_json::from_str::<Entry>(&line).expect("and reads back"), reply);
     }
 }

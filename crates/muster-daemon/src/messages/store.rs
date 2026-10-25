@@ -341,6 +341,8 @@ mod tests {
                 to: Vec::new(),
                 body: body.to_string(),
                 urgent: false,
+                answers: Vec::new(),
+                answering: None,
             },
         }
     }

@@ -145,6 +145,45 @@ pub enum Refusal {
     GroupExists {
         group: String,
     },
+    /// A question offers more answers than [`crate::MOST_ANSWERS`].
+    TooManyAnswers {
+        count: usize,
+    },
+    /// An offered answer is longer than [`crate::LONGEST_ANSWER`] bytes.
+    AnswerTooLong {
+        answer: String,
+    },
+    /// An offered answer is empty, holds a line break, or repeats another: each is one button,
+    /// and a reply names the one it picks by its words.
+    BadAnswer {
+        answer: String,
+    },
+    /// A reply names a question that is not a message in its group offering answers.
+    NoSuchQuestion {
+        group: String,
+        question: u64,
+    },
+    /// A reply picks an answer its question did not offer; `answers` are those it did.
+    NotOffered {
+        group: String,
+        question: u64,
+        answer: String,
+        answers: Vec<String>,
+    },
+    /// A reply picks an answer to a question not asked of its author: its own, or one addressed
+    /// to others.
+    NotAskedOf {
+        name: String,
+        group: String,
+        question: u64,
+    },
+    /// The question has its answer already: `answer`, picked by `by`.
+    AlreadyAnswered {
+        group: String,
+        question: u64,
+        by: String,
+        answer: String,
+    },
     /// The store could not keep what was asked, so it was not done.
     Store {
         error: String,
@@ -184,6 +223,13 @@ impl Refusal {
             Refusal::NotUrgent { .. } => "not_urgent",
             Refusal::NotPermitted { .. } => "not_permitted",
             Refusal::GroupExists { .. } => "group_exists",
+            Refusal::TooManyAnswers { .. } => "too_many_answers",
+            Refusal::AnswerTooLong { .. } => "answer_too_long",
+            Refusal::BadAnswer { .. } => "bad_answer",
+            Refusal::NoSuchQuestion { .. } => "no_such_question",
+            Refusal::NotOffered { .. } => "not_offered",
+            Refusal::NotAskedOf { .. } => "not_asked_of",
+            Refusal::AlreadyAnswered { .. } => "already_answered",
             Refusal::Store { .. } => "store",
         }
     }

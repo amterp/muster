@@ -333,7 +333,7 @@ fn post(control: &mut Control, from: &str, to: &str, body: &str) -> daemon_proto
         group: Some("g".to_string()),
         to: vec![to.to_string()],
         body: body.to_string(),
-        urgent: false,
+        ..Default::default()
     });
     let posted = control.ask(msg(&named(from), asked));
     match posted.answer.detail {

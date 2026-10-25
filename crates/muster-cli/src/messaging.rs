@@ -301,6 +301,7 @@ pub fn parse(
                 to: to.clone(),
                 body,
                 urgent: *urgent,
+                ..Default::default()
             })
         }
         Verb::Read { group, if_unread: quiet } => {
@@ -1564,6 +1565,7 @@ mod tests {
             to: vec!["builder".to_string(), "@human@lap".to_string()],
             body: "go".to_string(),
             urgent: false,
+            ..Default::default()
         };
         let entry = |seq, what| msg_answer::Entry { seq, at_ms: 0, what: Some(what) };
         let entries = msg_answer::Entries {
@@ -1657,6 +1659,7 @@ mod tests {
             to: vec!["integrator".to_string()],
             body: "done".to_string(),
             urgent: false,
+            ..Default::default()
         };
         let entries = msg_answer::Entries {
             groups: vec![msg_answer::GroupEntries {
@@ -1692,6 +1695,7 @@ mod tests {
             to: vec!["builder".to_string()],
             body: "stop".to_string(),
             urgent: true,
+            ..Default::default()
         };
         let entries = msg_answer::Entries {
             groups: vec![msg_answer::GroupEntries {

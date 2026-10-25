@@ -134,8 +134,6 @@ pub(crate) fn post_as_human(
     urgent: bool,
     after: u64,
 ) -> Sent {
-    // Spelled with the rest defaulted, so a field the daemon's protocol gains does not break it.
-    #[allow(clippy::needless_update, reason = "fields the daemon's protocol may add")]
     let post = msg_request::Post {
         group: Some(group.group.clone()),
         to: to.to_vec(),

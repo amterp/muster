@@ -445,10 +445,7 @@ fn the_human() -> msg_request::Caller {
 
 fn post_to(caller: &msg_request::Caller, to: &str, body: &str) -> Service {
     let to = vec![to.to_string()];
-    msg(
-        caller,
-        Asked::Post(msg_request::Post { to, body: body.to_string(), group: None, urgent: false }),
-    )
+    msg(caller, Asked::Post(msg_request::Post { to, body: body.to_string(), ..Default::default() }))
 }
 
 /// What the next event says waits for the human.
@@ -786,4 +783,59 @@ fn a_log_is_paged_newest_first() {
     let refused =
         expect(&mut control, msg(&named("reader"), Asked::Log(follow)), proto::Outcome::Refused);
     assert_eq!(msg_answer(&refused).refusal, "bad_page");
+}
+
+/// A question keeps the answers it offers, a reply keeps the one it picks, and the log answers
+/// with both; a reply picking an answer its question did not offer is refused in words naming
+/// those it did.
+#[test]
+fn a_question_keeps_its_answers_and_a_reply_its_pick() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+    let question = msg_request::Post {
+        to: vec!["b".to_string()],
+        body: "ship it?".to_string(),
+        answers: vec!["Yes".to_string(), "Not yet".to_string()],
+        ..Default::default()
+    };
+    let asked = expect(&mut control, msg(&named("a"), Asked::Post(question)), DONE);
+    let Some(Answer::Posted(asked)) = &msg_answer(&asked).answer else { panic!("{asked:?}") };
+    expect(&mut control, read(&named("b")), DONE);
+    let reply = |answer: &str| {
+        let post = msg_request::Post {
+            to: vec!["a".to_string()],
+            body: format!("Answer: {answer}"),
+            answering: Some(msg_request::Answering {
+                question: asked.seq,
+                answer: answer.to_string(),
+            }),
+            ..Default::default()
+        };
+        msg(&named("b"), Asked::Post(post))
+    };
+
+    let refused = expect(&mut control, reply("Maybe"), proto::Outcome::Refused);
+    assert_eq!(msg_answer(&refused).refusal, "not_offered");
+    assert!(refused.answer.reason.contains("\"Yes\", \"Not yet\""), "{}", refused.answer.reason);
+    expect(&mut control, reply("Yes"), DONE);
+
+    let logged = expect(&mut control, log_of("g"), DONE);
+    let Some(Answer::Entries(entries)) = &msg_answer(&logged).answer else { panic!() };
+    let said: Vec<_> = entries.groups[0]
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.what {
+            Some(msg_answer::entry::What::Message(message)) => {
+                Some((message.answers.clone(), message.answering.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    let picked = msg_request::Answering { question: asked.seq, answer: "Yes".to_string() };
+    assert_eq!(
+        said,
+        [(vec!["Yes".to_string(), "Not yet".to_string()], None), (Vec::new(), Some(picked))]
+    );
 }

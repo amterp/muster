@@ -6,9 +6,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
-    Action, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Joined, Liveness, MUSTER,
-    Member, Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal, Reply,
-    Route, Settled, Tell, Unread, Via, Wake, What,
+    Action, Answering, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Joined, Liveness,
+    MUSTER, Member, Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal,
+    Reply, Route, Settled, Tell, Unread, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -358,11 +358,21 @@ impl Wire {
         body: &str,
         urgent: bool,
     ) -> Result<Posted, Refusal> {
-        let now = self.tick();
         let to: Vec<String> = to.iter().map(|name| (*name).to_string()).collect();
-        let found = self.found(side, &to)?;
+        self.post_draft(side, caller, Draft { group, to: &to, body, urgent, ..Draft::default() })
+    }
+
+    /// Posts `draft` from `side`, with what the other side says of the names it does not know.
+    fn post_draft(
+        &mut self,
+        side: Side,
+        caller: &Caller,
+        draft: Draft<'_>,
+    ) -> Result<Posted, Refusal> {
+        let now = self.tick();
+        let found = self.found(side, draft.to)?;
+        let draft = Draft { found: &found, ..draft };
         let (service, sessions) = self.split(side);
-        let draft = Draft { group, to: &to, found: &found, body, urgent };
         match service.route_post(caller, &draft, sessions)? {
             Route::Away(away) => match self.send(side, &away.call)? {
                 Settled::Posted(posted) => Ok(posted),
@@ -479,6 +489,62 @@ fn a_devenv_agent_joins_a_laptop_group_and_they_wake_each_other() {
     let answered = wire.post(Side::Laptop, &builder, None, &["critic"], "thanks").unwrap();
     assert_eq!(woke(&answered), [("critic@devenv", Reach::Woken)]);
     assert_eq!(wire.read(Side::Devenv, &critic, None), ["review@lap builder@lap: thanks"]);
+}
+
+/// A question asked on one machine is answered from the other: the reply goes to the group's
+/// home with its pick, the home holds it to the question, and both copies of the log keep it.
+#[test]
+fn a_question_is_answered_from_the_other_machine_and_held_to_it_at_home() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    let (answers, to) = (["Run it".to_string(), "Skip it".to_string()], ["critic".to_string()]);
+    let asking = Draft {
+        group: Some("review"),
+        to: &to,
+        body: "the contract tier?",
+        answers: &answers,
+        ..Draft::default()
+    };
+    let question = wire.post_draft(Side::Laptop, &builder, asking).unwrap().seq;
+    wire.read(Side::Devenv, &critic, None);
+
+    let back = ["builder".to_string()];
+    let (skip, later) = (
+        Answering { question, answer: "Skip it".to_string() },
+        Answering { question, answer: "Later".to_string() },
+    );
+    let reply = Draft {
+        group: Some("review@lap"),
+        to: &back,
+        body: "Answer: Skip it",
+        answering: Some(&skip),
+        ..Draft::default()
+    };
+    let refused =
+        wire.post_draft(Side::Devenv, &critic, Draft { answering: Some(&later), ..reply });
+    assert_eq!(refused.map(|_| ()).unwrap_err().code(), "not_offered");
+    wire.post_draft(Side::Devenv, &critic, reply).unwrap();
+    let again = wire.post_draft(Side::Devenv, &critic, reply).map(|_| ()).unwrap_err();
+    assert_eq!(
+        again,
+        Refusal::AlreadyAnswered {
+            group: "review@lap".to_string(),
+            question,
+            by: "critic".to_string(),
+            answer: "Skip it".to_string(),
+        }
+    );
+
+    for (side, group) in [(Side::Laptop, "review"), (Side::Devenv, "review@lap")] {
+        let log = wire.service(side).log(group, question).unwrap();
+        let answering = log.iter().find_map(|entry| match &entry.what {
+            What::Message { answering, .. } => answering.clone(),
+            _ => None,
+        });
+        assert_eq!(answering, Some(skip.clone()), "{side:?}'s copy: {log:?}");
+    }
 }
 
 /// Muster's notice that a member holds a group up is posted where the group is kept: the devenv,
@@ -1509,6 +1575,8 @@ fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
         to: to.iter().map(ToString::to_string).collect(),
         body: "done".to_string(),
         urgent: false,
+        answers: Vec::new(),
+        answering: None,
         cursor: 99,
         head: 0,
     };
@@ -1566,6 +1634,8 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
             to: Vec::new(),
             body: "x".to_string(),
             urgent: false,
+            answers: Vec::new(),
+            answering: None,
         },
     };
     let caught = |group: &str, author: &str| Caught {

@@ -759,6 +759,23 @@ message MsgRequest {
     // the group's policy does not let the author, and as `urgent_unsupported` when the group is
     // kept on a machine whose daemon speaks a protocol before 1.3.
     bool urgent = 4;
+    // Since 1.8. Answers the author offers, which make the post a question (MIP-9, section 6):
+    // at most six, each one line of at most 120 bytes, different from the others. Refused as
+    // `answers_unsupported` when the group is kept on a machine whose daemon speaks a protocol
+    // before 1.8, like `answering`.
+    repeated string answers = 5;
+    // Since 1.8. The question this post answers, and which of its answers it picks.
+    optional Answering answering = 6;
+  }
+
+  // A reply's pick of an answer a question offered. Refused as `no_such_question`,
+  // `not_offered`, `not_asked_of` or `already_answered` where the group is kept: a question
+  // takes one answer, from somebody it was asked of.
+  message Answering {
+    // The question's number in the post's group.
+    uint64 question = 1;
+    // The offered answer picked, as the question wrote it.
+    string answer = 2;
   }
 
   // The caller's unread entries, moving its cursor past them.
@@ -1060,6 +1077,10 @@ message MsgAnswer {
     string body = 3;
     // Since 1.3.
     bool urgent = 4;
+    // Since 1.8.
+    repeated string answers = 5;
+    // Since 1.8.
+    optional MsgRequest.Answering answering = 6;
   }
 
   message Members {
@@ -2188,6 +2209,10 @@ message PeerCall {
     uint64 head = 6;
     // Since 1.3.
     bool urgent = 7;
+    // Since 1.8.
+    repeated string answers = 8;
+    // Since 1.8.
+    optional MsgRequest.Answering answering = 9;
   }
 
   message Since {

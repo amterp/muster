@@ -38,6 +38,10 @@ pub const HELPERS: u32 = 6;
 /// the request nor the placement, so a client asks before sending either.
 pub const SPANNING: u32 = 7;
 
+/// The first minor whose daemon keeps the answers a question offers and the one a reply picks.
+/// An older one drops both and keeps the message as an ordinary one, so a client asks first.
+pub const ANSWERS: u32 = 8;
+
 /// The first minor whose daemon answers a log a page at a time. An older one drops `newest` and
 /// `before` and answers with the whole log, so a client asks first.
 pub const PAGED_LOG: u32 = 8;

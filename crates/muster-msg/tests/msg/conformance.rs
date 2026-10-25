@@ -8,8 +8,9 @@ use std::fmt::Write as _;
 
 use conformance::{Conformance, fields};
 use muster_msg::{
-    Action, Activity, Caller, Change, Changed, Draft, Inbox, Liveness, Memory, Messaging, Notice,
-    Page, Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via, What,
+    Action, Activity, Answering, Caller, Change, Changed, Draft, Inbox, Liveness, Memory,
+    Messaging, Notice, Page, Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via,
+    What,
 };
 use serde_json::{Value, json};
 
@@ -199,6 +200,17 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NotPermitted { name, group, action, permitted } => {
             format!("{name} {} {group} (only {})", action_word(*action), permitted.join(","))
         }
+        Refusal::TooManyAnswers { count } => count.to_string(),
+        Refusal::AnswerTooLong { answer } => format!("{} bytes", answer.len()),
+        Refusal::BadAnswer { answer } => format!("{answer:?}"),
+        Refusal::NoSuchQuestion { group, question } => format!("{group} #{question}"),
+        Refusal::NotOffered { group, question, answer, answers } => {
+            format!("{group} #{question} {answer:?} (offers {})", answers.join("/"))
+        }
+        Refusal::NotAskedOf { name, group, question } => format!("{name} {group} #{question}"),
+        Refusal::AlreadyAnswered { group, question, by, answer } => {
+            format!("{group} #{question} by {by}: {answer}")
+        }
         Refusal::Store { error } => error.clone(),
         Refusal::AddressedSelf | Refusal::NoGroup | Refusal::EmptyBody => String::new(),
     };
@@ -222,10 +234,18 @@ fn action_word(action: Action) -> &'static str {
 
 fn entry(entry: &muster_msg::Entry) -> String {
     match &entry.what {
-        What::Message { author, to, body, urgent } => {
+        What::Message { author, to, body, urgent, answers, answering } => {
             let to = if to.is_empty() { String::new() } else { format!("->{}", to.join(",")) };
             let urgent = if *urgent { " (urgent)" } else { "" };
-            format!("#{} {author}{to}{urgent}: {body}", entry.seq)
+            let answering = answering.as_ref().map_or(String::new(), |answering| {
+                format!(" (answering #{}: {})", answering.question, answering.answer)
+            });
+            let answers = if answers.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", answers.join("/"))
+            };
+            format!("#{} {author}{to}{urgent}{answering}: {body}{answers}", entry.seq)
         }
         What::Created { by } => format!("#{} created by {by}", entry.seq),
         What::Joined { who } => format!("#{} {who} joined", entry.seq),
@@ -484,6 +504,22 @@ fn waits_for_the_human(service: &Messaging<Memory>) -> String {
 }
 
 /// A step that makes or changes a group, or lists them.
+/// A page of a group's log: after `since`, below `before`, and only the `newest` so many,
+/// marked when entries it matched come before it.
+fn log_step(service: &Messaging<Memory>, step: &Value) -> Result<String, Refusal> {
+    let number = |key: &str| step.get(key).and_then(Value::as_u64);
+    let page = Page {
+        since: number("since").unwrap_or(0),
+        before: number("before"),
+        newest: number("newest").map(|newest| u32::try_from(newest).unwrap()),
+    };
+    let group = step.get("group").and_then(Value::as_str).unwrap_or_default();
+    service.log_page(group, &page).map(|paged| {
+        let earlier = if paged.earlier { "(earlier) " } else { "" };
+        format!("{earlier}{}", list(&paged.entries))
+    })
+}
+
 fn group_step(
     service: &mut Messaging<Memory>,
     sessions: &Sessions,
@@ -616,7 +652,20 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
             let to = strings(step.get("to"));
             let body = text("body").unwrap_or_default();
             let urgent = step.get("urgent").and_then(Value::as_bool).unwrap_or(false);
-            let draft = Draft { group: text("group"), to: &to, body, urgent, ..Draft::default() };
+            let answers = strings(step.get("answers"));
+            let answering = step.get("answering").map(|answering| Answering {
+                question: answering["question"].as_u64().unwrap(),
+                answer: answering["answer"].as_str().unwrap().to_string(),
+            });
+            let draft = Draft {
+                group: text("group"),
+                to: &to,
+                body,
+                urgent,
+                answers: &answers,
+                answering: answering.as_ref(),
+                ..Draft::default()
+            };
             service
                 .post_draft(&who, &draft, sessions, now)
                 .map(|posted| delivered(service, sessions, &posted))
@@ -656,18 +705,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                 .collect::<Vec<_>>()
                 .join(", ")
         }),
-        "log" => {
-            let number = |key: &str| step.get(key).and_then(Value::as_u64);
-            let page = Page {
-                since: number("since").unwrap_or(0),
-                before: number("before"),
-                newest: number("newest").map(|newest| u32::try_from(newest).unwrap()),
-            };
-            service.log_page(text("group").unwrap_or_default(), &page).map(|paged| {
-                let earlier = if paged.earlier { "(earlier) " } else { "" };
-                format!("{earlier}{}", list(&paged.entries))
-            })
-        }
+        "log" => log_step(service, step),
         "group new" | "group set" | "group delete" | "members" | "pause" | "resume" | "groups" => {
             group_step(service, sessions, step, &who, now)
         }

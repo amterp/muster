@@ -405,6 +405,62 @@
       ] }
     },
     {
+      "name": "a question offers answers, and one reply from somebody it was asked of picks one",
+      "why": "Most questions agents put to the human are a choice between a few things, so a post may offer answers, and a reply carries the one it picks as a field as well as in its words, so a view can mark the question answered (MIP-9, section 6). The group's home holds the reply to its question: it names a message there offering answers, it picks one of them, it comes from somebody the question was asked of, and nobody answered first, since a question takes one answer.",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "ship it?", "answers": ["Yes", "Not yet"]},
+        {"session": "b", "do": "read"},
+        {"session": "c", "do": "read"},
+        {"session": "c", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 5, "answer": "Yes"}},
+        {"session": "a", "do": "post", "to": ["b"], "body": "Answer: Yes", "answering": {"question": 5, "answer": "Yes"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Maybe", "answering": {"question": 5, "answer": "Maybe"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 4, "answer": "Yes"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes\n\nafter lunch", "answering": {"question": 5, "answer": "Yes"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Not yet", "answering": {"question": 5, "answer": "Not yet"}},
+        {"do": "log", "group": "g", "since": 4}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:1 from a]",
+        "b read g: #4 c joined | #5 a->b: ship it? [Yes/Not yet]",
+        "c read g: #5 a->b: ship it? [Yes/Not yet]",
+        "refused not_asked_of c g #5",
+        "refused not_asked_of a g #5",
+        "refused not_offered g #5 \"Maybe\" (offers Yes/Not yet)",
+        "refused no_such_question g #4",
+        "b posted #6 to g; woke a [g #6-6 x1 to-you:1 from b]",
+        "refused already_answered g #5 by b: Yes",
+        "#5 a->b: ship it? [Yes/Not yet] | #6 b->a (answering #5: Yes): Answer: Yes\n\nafter lunch"
+      ] }
+    },
+    {
+      "name": "each answer a question offers is one short line of its own",
+      "why": "Each offered answer is drawn as a button, and a reply names the one it picks by its words, so a question offers at most six, each at most 120 bytes, none empty or holding a line break, and none twice (MIP-9, section 6).",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["1", "2", "3", "4", "5", "6", "7"]},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["Yes", " "]},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["Yes", "two\nlines"]},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["Yes", "Yes"]},
+        {"session": "a", "do": "post", "body": "pick", "answers": ["1", "2", "3", "4", "5", "6"]}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "refused too_many_answers 7",
+        "refused answer_too_long 121 bytes",
+        "refused bad_answer \" \"",
+        "refused bad_answer \"two\\nlines\"",
+        "refused bad_answer \"Yes\"",
+        "a posted #3 to g"
+      ] }
+    },
+    {
       "name": "a name must be one a command line and a log can carry",
       "why": "Names appear in commands, notices and file names, so they are letters, digits, dot, underscore and hyphen (MIP-4, section 11 for why they must be unique).",
       "given": { "steps": [

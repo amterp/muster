@@ -8,7 +8,10 @@ use proto::msg_answer;
 use proto::peer_call::{self, Call as Called};
 use proto::peer_reply::{self, Reply as Replied};
 
-use super::{activity_of, entry_of, member_of, policy_from, policy_of, reach_of};
+use super::{
+    activity_of, answering_from, answering_of, entry_of, member_of, policy_from, policy_of,
+    reach_of,
+};
 
 pub(super) fn call_to(call: &Call) -> Called {
     match call.clone() {
@@ -17,8 +20,18 @@ pub(super) fn call_to(call: &Call) -> Called {
             Called::Join(peer_call::Join { name, group, head, was })
         }
         Call::Leave { name, group, head } => Called::Leave(peer_call::Leave { name, group, head }),
-        Call::Post { author, group, to, body, urgent, cursor, head } => {
-            Called::Post(peer_call::Post { author, group, to, body, cursor, head, urgent })
+        Call::Post { author, group, to, body, urgent, answers, answering, cursor, head } => {
+            Called::Post(peer_call::Post {
+                author,
+                group,
+                to,
+                body,
+                cursor,
+                head,
+                urgent,
+                answers,
+                answering: answering.as_ref().map(answering_of),
+            })
         }
         Call::Since { group, after } => Called::Since(peer_call::Since { group, after }),
         Call::Who { group } => Called::Who(peer_call::Who { group }),
@@ -46,6 +59,8 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
             to: post.to,
             body: post.body,
             urgent: post.urgent,
+            answers: post.answers,
+            answering: post.answering.map(answering_from),
             cursor: post.cursor,
             head: post.head,
         },
@@ -88,6 +103,8 @@ fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
             to: message.to,
             body: message.body,
             urgent: message.urgent,
+            answers: message.answers,
+            answering: message.answering.map(answering_from),
         },
         Said::Created(by) => What::Created { by },
         Said::Joined(who) => What::Joined { who },
@@ -235,6 +252,8 @@ pub(super) fn reply_from(replied: Replied) -> Option<Reply> {
     })
 }
 
+// One arm per refusal, as `words` is: split up, it would be as long with the table broken apart.
+#[allow(clippy::too_many_lines)]
 pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
     let mut refused = peer_reply::Refused {
         code: refusal.code().to_string(),
@@ -310,6 +329,31 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.count = count;
         }
         Refusal::BodyTooLarge { bytes } => refused.count = bytes as u64,
+        Refusal::TooManyAnswers { count } => refused.count = count as u64,
+        Refusal::AnswerTooLong { answer } | Refusal::BadAnswer { answer } => {
+            refused.existing = answer;
+        }
+        Refusal::NoSuchQuestion { group, question } => {
+            refused.group = group;
+            refused.count = question;
+        }
+        Refusal::NotOffered { group, question, answer, answers } => {
+            refused.group = group;
+            refused.count = question;
+            refused.existing = answer;
+            refused.candidates = answers;
+        }
+        Refusal::NotAskedOf { name, group, question } => {
+            refused.name = name;
+            refused.group = group;
+            refused.count = question;
+        }
+        Refusal::AlreadyAnswered { group, question, by, answer } => {
+            refused.name = by;
+            refused.group = group;
+            refused.count = question;
+            refused.existing = answer;
+        }
         Refusal::Store { error } => refused.existing = error,
         Refusal::AddressedSelf | Refusal::NoGroup | Refusal::EmptyBody => {}
     }
@@ -374,6 +418,19 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "empty_body" => Refusal::EmptyBody,
         "body_too_large" => {
             Refusal::BodyTooLarge { bytes: usize::try_from(count).unwrap_or(usize::MAX) }
+        }
+        "too_many_answers" => {
+            Refusal::TooManyAnswers { count: usize::try_from(count).unwrap_or(usize::MAX) }
+        }
+        "answer_too_long" => Refusal::AnswerTooLong { answer: existing },
+        "bad_answer" => Refusal::BadAnswer { answer: existing },
+        "no_such_question" => Refusal::NoSuchQuestion { group, question: count },
+        "not_offered" => {
+            Refusal::NotOffered { group, question: count, answer: existing, answers: candidates }
+        }
+        "not_asked_of" => Refusal::NotAskedOf { name, group, question: count },
+        "already_answered" => {
+            Refusal::AlreadyAnswered { group, question: count, by: name, answer: existing }
         }
         "store" => Refusal::Store { error: existing },
         _ => Refusal::Store { error: format!("the other machine refused this: {words}") },
@@ -474,6 +531,23 @@ mod tests {
             Refusal::Unread { group: "g".into(), count: 2 },
             Refusal::EmptyBody,
             Refusal::BodyTooLarge { bytes: 9 },
+            Refusal::TooManyAnswers { count: 7 },
+            Refusal::AnswerTooLong { answer: "a long answer".into() },
+            Refusal::BadAnswer { answer: "Yes".into() },
+            Refusal::NoSuchQuestion { group: "g".into(), question: 4 },
+            Refusal::NotOffered {
+                group: "g".into(),
+                question: 4,
+                answer: "Maybe".into(),
+                answers: vec!["Yes".into(), "No".into()],
+            },
+            Refusal::NotAskedOf { name: "b".into(), group: "g".into(), question: 4 },
+            Refusal::AlreadyAnswered {
+                group: "g".into(),
+                question: 4,
+                by: "@human".into(),
+                answer: "Yes".into(),
+            },
             Refusal::Store { error: "full".into() },
         ];
         for refusal in refusals {
@@ -491,6 +565,24 @@ mod tests {
         }
     }
 
+    /// A forwarded post keeps the answers it offers and the one it picks, which the group's home
+    /// holds the reply to.
+    #[test]
+    fn a_post_crosses_the_link_with_its_answers() {
+        let call = Call::Post {
+            author: "a".into(),
+            group: "g".into(),
+            to: vec!["@human".into()],
+            body: "Answer: Yes".into(),
+            urgent: false,
+            answers: vec!["Again?".into()],
+            answering: Some(muster_msg::Answering { question: 4, answer: "Yes".into() }),
+            cursor: 6,
+            head: 7,
+        };
+        assert_eq!(call_from(call_to(&call)), Some(call));
+    }
+
     #[test]
     fn a_caught_group_crosses_the_link_intact() {
         let caught = Caught {
@@ -506,6 +598,23 @@ mod tests {
                         to: vec!["b".into()],
                         body: "x".into(),
                         urgent: true,
+                        answers: vec!["Yes".into(), "No".into()],
+                        answering: None,
+                    },
+                },
+                Entry {
+                    seq: 7,
+                    at_ms: 12,
+                    what: What::Message {
+                        author: "b".into(),
+                        to: vec!["a".into()],
+                        body: "Answer: Yes".into(),
+                        urgent: false,
+                        answers: Vec::new(),
+                        answering: Some(muster_msg::Answering {
+                            question: 4,
+                            answer: "Yes".into(),
+                        }),
                     },
                 },
                 Entry {

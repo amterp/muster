@@ -20,7 +20,7 @@ pub use across::{
     Answered, Applied, Away, CAUGHT_BYTES, Call, Caught, Folded, Found, HumanHome, Peer, Reply,
     Route, Settle, Settled, Tell, heard,
 };
-pub use entry::{Change, Entry, What};
+pub use entry::{Answering, Change, Entry, What};
 pub use names::{
     HUMAN, LONGEST_GROUP, MUSTER, default_name, is_machine, pair_group, split_machine,
 };
@@ -36,3 +36,8 @@ pub use store::{GroupRecord, Log, Memory, Saved, Store};
 /// The largest message body, in bytes. A daemon frame may be 16 MiB, and a message is meant to
 /// be read by a model, so this leaves room for everything else a frame carries.
 pub const LARGEST_BODY: usize = 1024 * 1024;
+
+/// How many answers a question may offer, and how long each may be in bytes: each is drawn as a
+/// button under the message (MIP-9, section 6).
+pub const MOST_ANSWERS: usize = 6;
+pub const LONGEST_ANSWER: usize = 120;

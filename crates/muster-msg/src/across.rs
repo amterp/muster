@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_machine, split_machine,
 };
-use crate::service::{Draft, Group, check_body};
+use crate::service::{Content, Draft, Group, check_answers, check_body};
 use crate::{
-    Action, AnsweredWait, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER, Member,
-    Messaging, Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake, What,
+    Action, AnsweredWait, Answering, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER,
+    Member, Messaging, Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake,
+    What,
 };
 
 /// Another machine's daemon, as a link to it knows it.
@@ -85,11 +86,13 @@ impl Peer {
 
     fn entry(&self, entry: Entry) -> Entry {
         let what = match entry.what {
-            What::Message { author, to, body, urgent } => What::Message {
+            What::Message { author, to, body, urgent, answers, answering } => What::Message {
                 author: self.inward(&author),
                 to: to.iter().map(|name| self.inward(name)).collect(),
                 body,
                 urgent,
+                answers,
+                answering,
             },
             What::Created { by } => What::Created { by: self.inward(&by) },
             What::Joined { who } => What::Joined { who: self.inward(&who) },
@@ -137,6 +140,18 @@ impl Peer {
                 Refusal::AddresseeNotInGroup { name: name(n), group: group(g) }
             }
             Refusal::Unread { group: g, count } => Refusal::Unread { group: group(g), count },
+            Refusal::NoSuchQuestion { group: g, question } => {
+                Refusal::NoSuchQuestion { group: group(g), question }
+            }
+            Refusal::NotOffered { group: g, question, answer, answers } => {
+                Refusal::NotOffered { group: group(g), question, answer, answers }
+            }
+            Refusal::NotAskedOf { name: n, group: g, question } => {
+                Refusal::NotAskedOf { name: name(n), group: group(g), question }
+            }
+            Refusal::AlreadyAnswered { group: g, question, by, answer } => {
+                Refusal::AlreadyAnswered { group: group(g), question, by: name(by), answer }
+            }
             Refusal::NoSuchParticipant { name: n } => Refusal::NoSuchParticipant { name: name(n) },
             Refusal::WhichParticipant { name: n, candidates } => Refusal::WhichParticipant {
                 name: n,
@@ -207,6 +222,8 @@ pub enum Call {
         to: Vec<String>,
         body: String,
         urgent: bool,
+        answers: Vec<String>,
+        answering: Option<Answering>,
         cursor: u64,
         head: u64,
     },
@@ -742,6 +759,7 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
         check_body(draft.body)?;
+        check_answers(draft.answers)?;
         let author = self.acting(caller, presence)?;
         let group = draft.group.map(|group| self.locate(group)).transpose()?;
         let addressees =
@@ -776,6 +794,8 @@ impl<S: Store> Messaging<S> {
             to: addressees,
             body: draft.body.to_string(),
             urgent: draft.urgent,
+            answers: draft.answers.to_vec(),
+            answering: draft.answering.cloned(),
         };
         Ok(Route::Away(Away { machine, call }))
     }
@@ -1373,8 +1393,9 @@ impl<S: Store> Messaging<S> {
             Call::Leave { name, group, head } => self
                 .leave_from(peer, &name, &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
-            Call::Post { author, group, to, body, urgent, cursor, head } => {
-                let post = Forwarded { author, group, to, body, urgent, cursor, head };
+            Call::Post { author, group, to, body, urgent, answers, answering, cursor, head } => {
+                let post =
+                    Forwarded { author, group, to, body, urgent, answers, answering, cursor, head };
                 self.post_from(peer, post, presence, now_ms, &mut answered)
             }
             Call::Muster { group, to, body, head } => {
@@ -1564,12 +1585,12 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
         answered: &mut Answered,
     ) -> Reply {
-        let Forwarded { author, group, to, body, urgent, cursor, head } = post;
+        let Forwarded { author, group, to, body, urgent, answers, answering, cursor, head } = post;
         let refused = |refusal| Reply::Refused { refusal, caught: None };
         if !self.kept_here(&group) {
             return refused(Refusal::NoSuchGroup { group });
         }
-        if let Err(refusal) = check_body(&body) {
+        if let Err(refusal) = check_body(&body).and_then(|()| check_answers(&answers)) {
             return refused(refusal);
         }
         let author = peer.inward(&author);
@@ -1579,8 +1600,10 @@ impl<S: Store> Messaging<S> {
         }
         let caught = |service: &Self| service.since(&group, head).ok();
         let from = Some(peer.name.as_str());
-        let posting = self
-            .post_as(&author, &group, addressees, &body, urgent, cursor, from, presence, now_ms);
+        let content =
+            Content { body: &body, urgent, answers: &answers, answering: answering.as_ref() };
+        let posting =
+            self.post_as(&author, &group, addressees, &content, cursor, from, presence, now_ms);
         match posting {
             Ok(posted) => {
                 answered.wakes = posted.wakes;
@@ -1733,6 +1756,8 @@ struct Forwarded {
     to: Vec<String>,
     body: String,
     urgent: bool,
+    answers: Vec<String>,
+    answering: Option<Answering>,
     cursor: u64,
     head: u64,
 }

@@ -37,9 +37,9 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
-    Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Found, Inbox,
-    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Page, Paged, Participant, Policy, Presence,
-    Reach, Refusal, Route, Settled, Tell, Via, Wake, What,
+    Action, Activity, AnsweredWait, Answering, Away, Caller, Change, Changed, Draft, Entry, Found,
+    Inbox, LARGEST_BODY, LONGEST_ANSWER, LONGEST_GROUP, Liveness, MOST_ANSWERS, Messaging, Page,
+    Paged, Participant, Policy, Presence, Reach, Refusal, Route, Settled, Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -1147,12 +1147,16 @@ fn posting(
     post: &proto::msg_request::Post,
     panes: &Panes,
 ) -> Reply {
+    let answering = post.answering.clone().map(answering_from);
     let routed = finding(shared, panes, &post.to, |found| {
         let mut messages = shared.messages();
         if messages.handing_over {
             return Ok(None);
         }
-        messages.service.route_post(caller, &draft_of(post, found), panes).map(Some)
+        messages
+            .service
+            .route_post(caller, &draft_of(post, answering.as_ref(), found), panes)
+            .map(Some)
     });
     let (route, found) = match routed {
         Err(refusal) => return refused("", &refusal),
@@ -1160,7 +1164,7 @@ fn posting(
         Ok((Some(route), found)) => (route, found),
     };
     let delivered = if let Route::Away(away) = route {
-        if let Some(refusal) = urgent_unknown_at(shared, post, &away) {
+        if let Some(refusal) = unknown_at(shared, post, &away) {
             return refusal;
         }
         let (settle, holding) = peer::call_away(shared, &away);
@@ -1175,7 +1179,7 @@ fn posting(
         }
     } else {
         let delivered = delivering(shared, panes, |service| {
-            service.post_draft(caller, &draft_of(post, &found), panes, now_ms())
+            service.post_draft(caller, &draft_of(post, answering.as_ref(), &found), panes, now_ms())
         });
         match delivered {
             Ok(delivered) => delivered,
@@ -1190,41 +1194,54 @@ fn posting(
 /// know, so an urgent post sent to it would ring as an ordinary one.
 const URGENT_SINCE: u32 = 3;
 
-/// A refusal for an urgent post bound for a machine whose daemon cannot post one.
-fn urgent_unknown_at(
-    shared: &Shared,
-    post: &proto::msg_request::Post,
-    away: &Away,
-) -> Option<Reply> {
+/// A refusal for a post bound for a machine whose daemon cannot keep all of it.
+fn unknown_at(shared: &Shared, post: &proto::msg_request::Post, away: &Away) -> Option<Reply> {
     let speaks = shared.peers.to(&away.machine)?.speaks;
-    let (code, words) = urgent_unsupported(post.urgent, speaks, away.call.group(), &away.machine)?;
+    let (code, words) = unsupported(post, speaks, away.call.group(), &away.machine)?;
     Some(refused_as("", code, &words))
 }
 
-/// Its own code rather than `not_urgent`, which is a group's policy saying no: this one is
-/// answered by updating a machine, not by asking whoever may.
-fn urgent_unsupported(
-    urgent: bool,
+/// What of `post` a daemon speaking `speaks` would drop without a word: an urgent post would
+/// ring as an ordinary one, and a question would lose its answers. Each has its own code rather
+/// than a policy's, such as `not_urgent`: it is answered by updating a machine, not by asking
+/// whoever may.
+fn unsupported(
+    post: &proto::msg_request::Post,
     speaks: proto::Version,
     group: &str,
     machine: &str,
 ) -> Option<(&'static str, String)> {
-    (urgent && speaks.minor < URGENT_SINCE).then(|| {
+    let kept_on =
+        format!("{group} is kept on {machine}, whose muster-daemon speaks protocol {speaks}");
+    if post.urgent && speaks.minor < URGENT_SINCE {
         let words = format!(
-            "{group} is kept on {machine}, whose muster-daemon speaks protocol {speaks}, which \
-             cannot post urgently. Update Muster there, or post without --urgent"
+            "{kept_on}, which cannot post urgently. Update Muster there, or post without --urgent"
         );
-        ("urgent_unsupported", words)
+        return Some(("urgent_unsupported", words));
+    }
+    let asks = !post.answers.is_empty() || post.answering.is_some();
+    (asks && speaks.minor < proto::version::ANSWERS).then(|| {
+        let words = format!(
+            "{kept_on}, which cannot keep the answers a question offers or a reply picks. \
+             Update Muster there, or post without --option and --answer"
+        );
+        ("answers_unsupported", words)
     })
 }
 
-fn draft_of<'a>(post: &'a proto::msg_request::Post, found: &'a [Found]) -> Draft<'a> {
+fn draft_of<'a>(
+    post: &'a proto::msg_request::Post,
+    answering: Option<&'a Answering>,
+    found: &'a [Found],
+) -> Draft<'a> {
     Draft {
         group: post.group.as_deref(),
         to: &post.to,
         found,
         body: &post.body,
         urgent: post.urgent,
+        answers: &post.answers,
+        answering,
     }
 }
 
@@ -1816,6 +1833,36 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "there is already a group {group}; change its policy with `{}`",
             messaging::command(GROUP, &format!("set {group} --policy <file>"))
         ),
+        Refusal::TooManyAnswers { count } => format!(
+            "this offers {count} answers, over the {MOST_ANSWERS} a question may offer; offer \
+             the likeliest and let a reply say the rest"
+        ),
+        Refusal::AnswerTooLong { answer } => format!(
+            "the answer \"{answer}\" is {} bytes, over the {LONGEST_ANSWER} an offered answer may \
+             be; say the detail in the message and keep the answer short",
+            answer.len()
+        ),
+        Refusal::BadAnswer { answer } => format!(
+            "the answer \"{answer}\" cannot be offered: each is one line, not empty, and different \
+             from the others"
+        ),
+        Refusal::NoSuchQuestion { group, question } => format!(
+            "#{question} in {group} is not a question: no message offering answers has that \
+             number there. `{}` shows it",
+            messaging::command(LOG, &format!("--group {group}"))
+        ),
+        Refusal::NotOffered { group, question, answer, answers } => format!(
+            "#{question} in {group} does not offer \"{answer}\"; it offers {}",
+            answers.iter().map(|answer| format!("\"{answer}\"")).collect::<Vec<_>>().join(", ")
+        ),
+        Refusal::NotAskedOf { name, group, question } => format!(
+            "#{question} in {group} was not asked of {name}, so {name} cannot pick its answer; \
+             post an ordinary reply instead"
+        ),
+        Refusal::AlreadyAnswered { group, question, by, answer } => format!(
+            "#{question} in {group} is answered already: {by} picked \"{answer}\". A question \
+             takes one answer; post an ordinary reply to say more"
+        ),
         Refusal::Store { error } => format!("the daemon could not keep this: {error}"),
     }
 }
@@ -1867,12 +1914,16 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
 pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent } => Said::Message(msg_answer::Message {
-            author: author.clone(),
-            to: to.clone(),
-            body: body.clone(),
-            urgent: *urgent,
-        }),
+        What::Message { author, to, body, urgent, answers, answering } => {
+            Said::Message(msg_answer::Message {
+                author: author.clone(),
+                to: to.clone(),
+                body: body.clone(),
+                urgent: *urgent,
+                answers: answers.clone(),
+                answering: answering.as_ref().map(answering_of),
+            })
+        }
         What::Created { by } => Said::Created(by.clone()),
         What::Joined { who } => Said::Joined(who.clone()),
         What::Left { who } => Said::Left(who.clone()),
@@ -1948,6 +1999,14 @@ pub(super) fn reach_of(reach: Reach) -> msg_answer::Reach {
     }
 }
 
+pub(super) fn answering_of(answering: &Answering) -> proto::msg_request::Answering {
+    proto::msg_request::Answering { question: answering.question, answer: answering.answer.clone() }
+}
+
+pub(super) fn answering_from(answering: proto::msg_request::Answering) -> Answering {
+    Answering { question: answering.question, answer: answering.answer }
+}
+
 pub(super) fn policy_of(policy: &Policy) -> proto::msg_request::Policy {
     let map = |map: &BTreeMap<String, Vec<String>>| {
         map.iter()
@@ -2019,14 +2078,39 @@ mod tests {
     #[test]
     fn an_urgent_post_to_a_machine_too_old_for_it_is_refused_with_its_own_code() {
         let speaking = |minor| proto::Version { major: 1, minor };
-        let (code, words) = urgent_unsupported(true, speaking(2), "review", "devenv").unwrap();
+        let urgent = proto::msg_request::Post { urgent: true, ..Default::default() };
+        let (code, words) = unsupported(&urgent, speaking(2), "review", "devenv").unwrap();
         assert_eq!(code, "urgent_unsupported");
         assert!(
             words.starts_with("review is kept on devenv, whose muster-daemon speaks"),
             "{words}"
         );
-        assert_eq!(urgent_unsupported(true, speaking(3), "review", "devenv"), None);
-        assert_eq!(urgent_unsupported(false, speaking(2), "review", "devenv"), None);
+        assert_eq!(unsupported(&urgent, speaking(3), "review", "devenv"), None);
+        let plain = proto::msg_request::Post::default();
+        assert_eq!(unsupported(&plain, speaking(2), "review", "devenv"), None);
+    }
+
+    /// A question or a reply to one, sent to a daemon that would keep it without its answers,
+    /// is refused rather than kept as an ordinary message.
+    #[test]
+    fn answers_to_a_machine_too_old_for_them_are_refused_with_their_own_code() {
+        let speaking = |minor| proto::Version { major: 1, minor };
+        let question = proto::msg_request::Post {
+            answers: vec!["Yes".to_string(), "No".to_string()],
+            ..Default::default()
+        };
+        let reply = proto::msg_request::Post {
+            answering: Some(proto::msg_request::Answering {
+                question: 4,
+                answer: "Yes".to_string(),
+            }),
+            ..Default::default()
+        };
+        for post in [&question, &reply] {
+            let (code, _) = unsupported(post, speaking(7), "review", "devenv").unwrap();
+            assert_eq!(code, "answers_unsupported");
+            assert_eq!(unsupported(post, speaking(8), "review", "devenv"), None);
+        }
     }
 
     #[test]
