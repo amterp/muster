@@ -122,7 +122,14 @@ final class BannerBoard: ObservableObject {
   }
 
   func dismiss(_ banner: Muster_Banner) {
+    guard Self.dismissable(banner) else { return }
     core.dismiss(banner.daemonID, banner.group, banner.seq)
+  }
+
+  /// Whether the banner can be taken down: not while its reply is on its way, since the banner
+  /// is where that reply's outcome shows, the human's words kept with a refused or unknown one.
+  static func dismissable(_ banner: Muster_Banner) -> Bool {
+    banner.sent.state != .pending
   }
 
   /// Whether a key press is the chord that sends.
@@ -348,10 +355,12 @@ struct BannerCard: View {
       Button("Open") { board.core.open(banner.daemonID, banner.group) }
         .buttonStyle(.link)
         .help("Open the conversation")
-      Button(action: { board.dismiss(banner) }) { Image(systemName: "xmark") }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help("Dismiss, leaving the message unread")
+      if BannerBoard.dismissable(banner) {
+        Button(action: { board.dismiss(banner) }) { Image(systemName: "xmark") }
+          .buttonStyle(.plain)
+          .foregroundStyle(.secondary)
+          .help("Dismiss, leaving the message unread")
+      }
     }
   }
 

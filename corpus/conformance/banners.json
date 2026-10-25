@@ -694,6 +694,46 @@
           { "group": "g", "seq": 3, "unloaded": "2 from otter: the daemon went away", "replyable": false }
         ]
       }
+    },
+    {
+      "name": "a group deleted and made again raises banners from its first message",
+      "why": "A deleted group's log goes with it, so the same name made again numbers its messages from 1. What the human answered or dismissed in the old group says nothing about the new one; held against it, the new group would raise no banner until its numbers passed the old ones, while Muster in front keeps the operating system's notification away too.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 50, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 50, "author": "otter", "body": "last of the old group" },
+          { "dismiss": "g", "seq": 50 },
+          { "notice": "g", "last": 1, "count": 1, "from": ["heron"] },
+          { "fetched": "g", "seq": 1, "author": "heron", "body": "first of the new group" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#50", "g#1"],
+        "stack": [{ "group": "g", "seq": 1, "author": "heron", "replyable": true }]
+      }
+    },
+    {
+      "name": "a banner whose reply is still being sent cannot be dismissed",
+      "why": "The reply may yet be refused, or never answered, and the banner is where that outcome shows with the human's words kept to send again. Dismissed meanwhile, the outcome would have nowhere to go.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "dismiss": "g", "seq": 4 },
+          { "replied": "g", "seq": 4, "body": "yes", "refused": "otter left g" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "to otter",
+          "refused: a reply from this banner is still being sent, so it stays up until the daemon answers; nothing was dismissed"
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "sent": "refused: otter left g (keeps \"yes\")", "replyable": true }
+        ]
+      }
     }
   ]
 }

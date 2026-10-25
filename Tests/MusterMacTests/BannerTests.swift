@@ -122,6 +122,19 @@ struct BannerTests {
   }
 
   @MainActor
+  @Test("a banner whose reply is on its way offers no dismissal")
+  func aPendingReplyIsNotDismissed() {
+    let (board, recorder) = recordedBoard()
+    let pending = aBanner("g", seq: 4, sent: outcome(.pending, said: "", body: "yes"))
+    board.apply(bannerStack(pending))
+
+    #expect(!BannerBoard.dismissable(pending))
+    board.dismiss(pending)
+    #expect(recorder.sent.isEmpty, "the outcome would have nowhere to show")
+    #expect(BannerBoard.dismissable(aBanner("g", seq: 4)))
+  }
+
+  @MainActor
   @Test("picking an answer asks the core, and picking the picked one takes it back")
   func pickingAnAnswerTogglesItThroughTheCore() {
     let (board, recorder) = recordedBoard()

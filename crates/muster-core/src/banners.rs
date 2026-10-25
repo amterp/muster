@@ -231,8 +231,15 @@ impl Banners {
             return None;
         };
         let last = notice.last;
-        if self.settled.get(group).is_some_and(|settled| *settled >= last) {
-            return None;
+        match self.settled.get(group) {
+            // The newest message waiting only moves forward while the group lives, so one
+            // older than a message already answered or dismissed is a group deleted and made
+            // again, whose log started over: what was settled was about the old one.
+            Some(settled) if *settled > last => {
+                self.settled.remove(group);
+            }
+            Some(settled) if *settled == last => return None,
+            _ => {}
         }
         let order = self.raises + 1;
         match self.standing.get_mut(group) {
@@ -435,6 +442,13 @@ impl Banners {
     /// message waiting behind it takes its place.
     pub fn dismiss(&mut self, group: &GroupKey, seq: u64) -> Result<(), String> {
         let standing = self.showing(group, seq)?;
+        // Taken down now, the banner would have nowhere to show a refused or unknown outcome,
+        // and those keep the human's words for them to send again.
+        if matches!(standing.sent, Some(Sent::Pending { .. })) {
+            return Err("a reply from this banner is still being sent, so it stays up until the \
+                        daemon answers; nothing was dismissed"
+                .to_string());
+        }
         standing.held = false;
         standing.picked = None;
         standing.sent = None;
