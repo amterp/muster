@@ -244,3 +244,21 @@ struct BannerTests {
     #expect(runs[2].2 == .stronglyEmphasized)
   }
 }
+
+@Suite("opening a group", .ownsTheSeam)
+@MainActor
+struct OpeningAGroupTests {
+  /// The banner's Open, its folded count, the sidebar's row and the operating system's
+  /// notification all call `Core.openConversation`, so this is what each of them asks for.
+  @Test("opening a group asks the core to show its conversation")
+  func openingShowsTheConversation() {
+    let recorder = recorder()
+
+    Core.openConversation(daemonID: "devenv", group: "review")
+
+    let shown = recorder.requests.compactMap {
+      if case .showConversation(let show) = $0.payload { show } else { nil }
+    }
+    #expect(shown.map { "\($0.daemonID)/\($0.group)" } == ["devenv/review"])
+  }
+}

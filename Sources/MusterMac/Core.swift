@@ -1086,9 +1086,10 @@ public enum Core {
 
   /// Shows a group to the human: its banner's Open Conversation, the folded banners' count, the
   /// sidebar's row and the operating system's notification all come here, so what showing a
-  /// group means changes in one place. Today it opens the group's transcript.
+  /// group means changes in one place. It shows the group's conversation in place of the
+  /// window's panes, as `muster msg open` does.
   public static func openConversation(daemonID: String, group: String) {
-    openTranscript(daemonID: daemonID, group: group)
+    _ = showConversation(daemonID: daemonID, group: group)
   }
 
   /// Shows a group's conversation in place of the window's panes, as `muster msg open` does: nil
@@ -1181,16 +1182,6 @@ public enum Core {
   public static func leaveConversation() {
     var request = Muster_Request()
     request.leaveConversation = Muster_LeaveConversation()
-    send(request)
-  }
-
-  /// Goes to a group's transcript, as choosing a banner about a message for the human does.
-  public static func openTranscript(daemonID: String, group: String) {
-    var open = Muster_OpenTranscript()
-    open.daemonID = daemonID
-    open.group = group
-    var request = Muster_Request()
-    request.openTranscript = open
     send(request)
   }
 
@@ -1338,7 +1329,7 @@ public enum Core {
     send(request)
   }
 
-  /// Goes to what is most urgently asking for somebody: a pane, or the transcript of a group
+  /// Goes to what is most urgently asking for somebody: a pane, or the conversation of a group
   /// where a message waits for the human. False only when nothing was asking: a refusal has
   /// already been logged by `send`, and is not the same answer.
   @discardableResult

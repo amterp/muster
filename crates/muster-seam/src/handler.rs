@@ -1819,8 +1819,8 @@ fn read_asking() -> Response {
 }
 
 /// Goes to what is most urgently asking for somebody, the way clicking its banner does, and
-/// says which: a pane, or the transcript of a group where a message waits for the human. Nothing
-/// asking is an answer naming nothing rather than a refusal: nothing failed.
+/// says which: a pane, or a group where a message waits for the human, whose conversation it
+/// shows. Nothing asking is an answer naming nothing rather than a refusal: nothing failed.
 fn focus_asking(window: WindowId) -> Response {
     let went = match session::most_urgent_asking() {
         Some(Asker::Pane(pane)) => {
@@ -1835,15 +1835,12 @@ fn focus_asking(window: WindowId) -> Response {
             }
         }
         Some(Asker::Group(group)) => {
-            let opened = open_transcript(window, &group.daemon, &group.group);
-            if !matches!(opened.payload, Some(response::Payload::Went(_))) {
+            let daemon = group.daemon.to_string();
+            let opened = session::conversation::show(window, &daemon, &group.group);
+            if !matches!(opened.payload, Some(response::Payload::Opened(_))) {
                 return opened;
             }
-            proto::Asking {
-                daemon_id: group.daemon.to_string(),
-                group: group.group,
-                ..proto::Asking::default()
-            }
+            proto::Asking { daemon_id: daemon, group: group.group, ..proto::Asking::default() }
         }
         None => proto::Asking::default(),
     };

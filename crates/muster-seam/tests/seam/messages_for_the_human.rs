@@ -1,6 +1,6 @@
 //! A message for the human, through a real daemon to the window: it raises exactly one
-//! notification, going to what asked lands on the group's transcript, and chatter between agents
-//! raises nothing (MIP-4, section 10).
+//! notification, going to what asked shows the group's conversation, and chatter between agents
+//! raises nothing (MIP-4, section 10; mip/0009-group-conversation.md, section 1).
 
 use muster::proto::{
     AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged, LeaveGroup, OpenWindow,
@@ -16,10 +16,10 @@ use prost::Message;
 use std::sync::Mutex;
 
 /// The window is open when the message arrives: one banner for it and none for the chatter
-/// before it, and going to what asked opens the group's transcript, which is the human reading
+/// before it, and going to what asked shows the group's conversation, which is the human reading
 /// it, so nothing is left asking.
 #[test]
-fn a_message_for_the_human_notifies_once_and_lands_on_its_transcript() {
+fn a_message_for_the_human_notifies_once_and_lands_on_its_conversation() {
     let _turn = muster::testing::fresh_session();
     muster::ffi::muster_set_event_callback(Some(note));
     ASKED.lock().expect("a panicking test poisoned the log").clear();
@@ -44,32 +44,36 @@ fn a_message_for_the_human_notifies_once_and_lands_on_its_transcript() {
     assert_eq!(asked[0].from, ["a"]);
     assert_eq!(asked[0].pane_id, "", "a message asks by its group, not by a pane");
 
+    // ⌘⇧A is pressed in a focused window, and the conversation reads only while it is.
+    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
     let went = focus_asking();
     assert_eq!(went.group, "g", "went to {went:?}");
     assert_eq!(went.pane_id, "");
-    let transcript = keyboard_pane();
-    assert_eq!(command_of(&mut control, &transcript), "muster msg log --group='g' --follow");
+    assert_eq!(conversation_shown(), ("local".to_string(), "g".to_string()));
     until(
         "going there to take the banner back",
         || asked_of("g").last().is_some_and(|last| last.state.is_empty()),
         || format!("the window asked {:?}", self::asked()),
     );
-    assert!(nothing_waits(&mut control), "the human has read it");
+    // The banner comes down at once, and the daemon hears the read when it is sent.
+    let mut watching = daemon.connect();
+    until(
+        "the daemon to hear the human read it",
+        || nothing_waits(&mut control),
+        || format!("the daemon says {:?} waits", snapshot(&mut watching).human),
+    );
     assert_eq!(focus_asking(), muster::proto::Asking::default(), "something still asks");
 
-    // Somebody reading the transcript is the human reading it: a message then asks nothing,
-    // and is read.
-    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    // The conversation in a focused window is the human reading it: a message then asks
+    // nothing, and is read.
     let before = asked_of("g").len();
     post(&mut control, "a", "@human", "and this");
-    let mut watching = daemon.connect();
     until(
         "the window to read what it is showing",
         || nothing_waits(&mut control),
         || format!("the daemon says {:?} waits", snapshot(&mut watching).human),
     );
     assert_eq!(asked_of("g").len(), before, "asked while looking: {:?}", self::asked());
-    assert_eq!(keyboard_pane(), transcript, "the transcript was found again, not made again");
 }
 
 /// The sidebar's groups: every group the human is in, with what waits there, still listed once
@@ -371,14 +375,25 @@ fn focus_asking() -> muster::proto::Asking {
     }
 }
 
-/// The pane with the keyboard.
-fn keyboard_pane() -> String {
+/// What the window's view says: the pane with the keyboard, and the conversation it shows.
+fn view() -> muster::proto::ViewChanged {
     let Some(response::Payload::Window(window)) =
         answer(request::Payload::ReadWindow(ReadWindow::default())).payload
     else {
-        return String::new();
+        return muster::proto::ViewChanged::default();
     };
-    window.view.unwrap_or_default().keyboard_pane_id
+    window.view.unwrap_or_default()
+}
+
+/// The pane with the keyboard.
+fn keyboard_pane() -> String {
+    view().keyboard_pane_id
+}
+
+/// The daemon and group whose conversation the window shows, both empty when it shows panes.
+fn conversation_shown() -> (String, String) {
+    let view = view();
+    (view.conversation_daemon_id, view.conversation_group)
 }
 
 fn answer(payload: request::Payload) -> Response {
