@@ -368,6 +368,8 @@ impl Banners {
                 ));
             }
         }
+        // Picking the picked answer again takes it back, as in the conversation's message box.
+        let answer = if answer.is_some() && standing.picked == answer { None } else { answer };
         if standing.picked == answer {
             return Ok(false);
         }

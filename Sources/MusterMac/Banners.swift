@@ -100,9 +100,9 @@ final class BannerBoard: ObservableObject {
 
   /// Picks the answer at `index` of the banner's question, or takes the pick back when it is
   /// the one already picked. What is picked is the core's to keep, and comes back in the banner.
+  /// Picks an answer; the core takes back one picked again.
   func pick(_ index: Int, in banner: Muster_Banner) {
-    let again = banner.hasPicked && Int(banner.picked) == index
-    core.pick(banner.daemonID, banner.group, banner.seq, again ? nil : UInt32(index))
+    core.pick(banner.daemonID, banner.group, banner.seq, UInt32(index))
   }
 
   func unpick(_ banner: Muster_Banner) {

@@ -135,7 +135,7 @@ struct BannerTests {
   }
 
   @MainActor
-  @Test("picking an answer asks the core, and picking the picked one takes it back")
+  @Test("picking an answer asks the core, which decides that picking it again takes it back")
   func pickingAnAnswerTogglesItThroughTheCore() {
     let (board, recorder) = recordedBoard()
     let question = aBanner("g", seq: 4, answers: ["Run it now", "Skip it"])
@@ -150,7 +150,7 @@ struct BannerTests {
 
     #expect(
       recorder.sent == [
-        "pick local/g#4 1", "pick local/g#4 none", "pick local/g#4 0", "pick local/g#4 none",
+        "pick local/g#4 1", "pick local/g#4 1", "pick local/g#4 0", "pick local/g#4 none",
       ])
   }
 

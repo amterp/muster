@@ -565,6 +565,24 @@
       }
     },
     {
+      "name": "picking the picked answer again takes it back",
+      "why": "The answer buttons work alike under a banner and in the conversation, where picking the picked answer again takes it back. The core decides it for both, so neither shell keeps its own copy of the rule.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "pick": "g", "seq": 4, "answer": 1 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "replyable": true }
+        ]
+      }
+    },
+    {
       "name": "taking a pick back lets the message waiting behind it take the banner",
       "why": "With nothing written and nothing picked, the banner holds no reply, so it moves on to the newer message as it would have.",
       "given": {
