@@ -224,6 +224,25 @@ fn a_group_the_human_is_not_in_is_refused_naming_those_they_are_in() {
 }
 
 #[test]
+fn choosing_a_pane_that_is_not_there_leaves_the_human_reading() {
+    let _open = Open::built();
+    show("window-1");
+    until_shown("window-1", "g");
+
+    let refused = answer(request::Payload::FocusPane(FocusPane {
+        daemon_id: "local".to_string(),
+        pane_id: "p404".to_string(),
+    }));
+    assert!(
+        matches!(refused.payload, Some(response::Payload::Failure(_))),
+        "going to a pane nobody made answered {refused:?}"
+    );
+    // A leave publishes at once; give one the chance to land before saying none did.
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(view("window-1").conversation_group, "g", "the window still shows the group");
+}
+
+#[test]
 fn choosing_where_to_look_leaves_the_conversation_and_a_tab_an_agent_makes_does_not() {
     let _open = Open::built();
     show("window-1");

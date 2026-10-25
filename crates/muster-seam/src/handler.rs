@@ -142,15 +142,15 @@ fn handle(mut request: Request, origin: Origin) -> Response {
         }
     }
 
-    // Choosing where to look returns a window from a conversation to its panes
-    // (mip/0009-group-conversation.md, section 1), before the choice is carried out, so the
-    // keyboard lands on what was chosen.
-    if leaves_the_conversation(&payload, origin) {
-        session::conversation::leave(resolved.to);
-    }
-
+    let leaves = leaves_the_conversation(&payload, origin);
     let goes_to_a_tab = goes_to_a_tab(&payload);
     let response = route(resolved.to, payload);
+    // Choosing where to look returns a window from a conversation to its panes
+    // (mip/0009-group-conversation.md, section 1), once the choice is carried out: the keyboard
+    // is on what was chosen by then, and a choice that failed leaves the human reading.
+    if leaves && carried_out(&response) {
+        session::conversation::leave(resolved.to);
+    }
     // Somebody looking at one window went to a tab in another, so that window comes forward. A
     // request from a pane in the window it is about raises nothing: a script moving its own window's keyboard must not take
     // the screen from whatever is in front.
@@ -187,6 +187,15 @@ fn leaves_the_conversation(payload: &request::Payload, origin: Origin) -> bool {
 
 fn is_ok(response: &Response) -> bool {
     matches!(response.payload, Some(response::Payload::Ok(_)))
+}
+
+/// Whether a request did what it asked, whatever it answered with: neither refused nor left
+/// unanswered.
+fn carried_out(response: &Response) -> bool {
+    !matches!(
+        response.payload,
+        Some(response::Payload::Failure(_) | response::Payload::Unanswered(_))
+    )
 }
 
 /// Whether a request is about the app rather than any one window, so it names none.
@@ -1814,10 +1823,10 @@ fn read_asking() -> Response {
 fn focus_asking(window: WindowId) -> Response {
     let went = match session::most_urgent_asking() {
         Some(Asker::Pane(pane)) => {
-            session::conversation::leave(window);
             if let Err(refusal) = session::focus(window, &pane.daemon, &pane.pane) {
                 return relayed(Err(refusal));
             }
+            session::conversation::leave(window);
             proto::Asking {
                 daemon_id: pane.daemon.to_string(),
                 pane_id: pane.pane.to_string(),
