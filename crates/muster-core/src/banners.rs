@@ -109,9 +109,25 @@ struct Standing {
     /// Whether the group's daemon still says something waits for the human there. A banner
     /// that is holding a reply outlives the group being read, and goes once it lets go.
     waiting: bool,
+    /// The group's pane participants' callsigns, from the answers its messages were fetched in.
+    called: BTreeMap<String, String>,
 }
 
 impl Standing {
+    /// A banner showing `shown`, raised as the `order`th, naming participants by `called`.
+    fn raised(order: u64, shown: Shown, called: BTreeMap<String, String>) -> Standing {
+        Standing {
+            order,
+            shown,
+            newer: None,
+            held: false,
+            picked: None,
+            sent: None,
+            waiting: true,
+            called,
+        }
+    }
+
     /// Whether the banner is holding a reply the human has not finished with, which keeps it up
     /// and keeps its message in place.
     fn holding(&self) -> bool {
@@ -172,21 +188,13 @@ pub struct Stack {
 pub struct Banners {
     standing: BTreeMap<GroupKey, Standing>,
     settled: BTreeMap<GroupKey, u64>,
-    /// Each group's pane participants' callsigns, from the answers its messages were fetched in.
-    called: BTreeMap<GroupKey, BTreeMap<String, String>>,
     raises: u64,
     allowed: bool,
 }
 
 impl Default for Banners {
     fn default() -> Banners {
-        Banners {
-            standing: BTreeMap::new(),
-            settled: BTreeMap::new(),
-            called: BTreeMap::new(),
-            raises: 0,
-            allowed: true,
-        }
+        Banners { standing: BTreeMap::new(), settled: BTreeMap::new(), raises: 0, allowed: true }
     }
 }
 
@@ -251,15 +259,8 @@ impl Banners {
                     standing.newer = Some(Shown::loading(last, notice));
                 } else if self.allowed {
                     self.raises = order;
-                    *standing = Standing {
-                        order,
-                        shown: Shown::loading(last, notice),
-                        newer: None,
-                        held: false,
-                        picked: None,
-                        sent: None,
-                        waiting: true,
-                    };
+                    let called = std::mem::take(&mut standing.called);
+                    *standing = Standing::raised(order, Shown::loading(last, notice), called);
                 } else {
                     self.standing.remove(group);
                     return None;
@@ -267,18 +268,9 @@ impl Banners {
             }
             None if self.allowed => {
                 self.raises = order;
-                self.standing.insert(
-                    group.clone(),
-                    Standing {
-                        order,
-                        shown: Shown::loading(last, notice),
-                        newer: None,
-                        held: false,
-                        picked: None,
-                        sent: None,
-                        waiting: true,
-                    },
-                );
+                let shown = Shown::loading(last, notice);
+                self.standing
+                    .insert(group.clone(), Standing::raised(order, shown, BTreeMap::new()));
             }
             None => return None,
         }
@@ -295,10 +287,8 @@ impl Banners {
         fetched: Result<Message, String>,
         called: BTreeMap<String, String>,
     ) -> bool {
-        if !called.is_empty() {
-            self.called.entry(group.clone()).or_default().extend(called);
-        }
         let Some(standing) = self.standing.get_mut(group) else { return false };
+        standing.called.extend(called);
         let slot = if matches!(standing.shown, Shown::Loading { seq: s, .. } if s == seq) {
             &mut standing.shown
         } else if let Some(newer @ Shown::Loading { .. }) = &mut standing.newer
@@ -469,7 +459,6 @@ impl Banners {
         let before = self.standing.len();
         self.standing.retain(|group, _| &group.daemon != daemon);
         self.settled.retain(|group, _| &group.daemon != daemon);
-        self.called.retain(|group, _| &group.daemon != daemon);
         before != self.standing.len()
     }
 
@@ -493,12 +482,7 @@ impl Banners {
             fits
         });
         Stack {
-            shown: drawn
-                .into_iter()
-                .map(|(group, standing)| {
-                    banner(group, standing, self.called.get(group).cloned().unwrap_or_default())
-                })
-                .collect(),
+            shown: drawn.into_iter().map(|(group, standing)| banner(group, standing)).collect(),
             folded: folded.len(),
             oldest: folded.last().map(|(group, _)| (*group).clone()),
         }
@@ -538,22 +522,16 @@ impl Banners {
 
     fn promote(&mut self, group: &GroupKey, shown: Shown) {
         self.raises += 1;
-        self.standing.insert(
-            group.clone(),
-            Standing {
-                order: self.raises,
-                shown,
-                newer: None,
-                held: false,
-                picked: None,
-                sent: None,
-                waiting: true,
-            },
-        );
+        let called = self
+            .standing
+            .get_mut(group)
+            .map(|standing| std::mem::take(&mut standing.called))
+            .unwrap_or_default();
+        self.standing.insert(group.clone(), Standing::raised(self.raises, shown, called));
     }
 }
 
-fn banner(group: &GroupKey, standing: &Standing, called: BTreeMap<String, String>) -> Banner {
+fn banner(group: &GroupKey, standing: &Standing) -> Banner {
     let replyable = match &standing.shown {
         Shown::Message(message) => {
             !posting::is_muster(&message.author)
@@ -573,6 +551,6 @@ fn banner(group: &GroupKey, standing: &Standing, called: BTreeMap<String, String
         sent: standing.sent.clone(),
         waiting,
         replyable,
-        called,
+        called: standing.called.clone(),
     }
 }

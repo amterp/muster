@@ -714,6 +714,25 @@
       }
     },
     {
+      "name": "a banner taken down takes the callsigns it was told with it",
+      "why": "A callsign is a pane's, and a pane can be renamed or its participant name reused, so a callsign is only as current as the answer it came in. A banner keeps the ones its messages were fetched with while it stands; once it is dismissed or read they go with it, and the next banner learns them again from its own fetch.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 2, "count": 1, "from": ["p2w3r07bsd"] },
+          { "fetched": "g", "seq": 2, "author": "p2w3r07bsd", "body": "first", "called": { "p2w3r07bsd": "otter" } },
+          { "dismiss": "g", "seq": 2 },
+          { "notice": "g", "last": 3, "count": 2, "from": ["p2w3r07bsd"] },
+          { "fetched": "g", "seq": 3, "error": "the daemon went away" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#2", "g#3"],
+        "stack": [
+          { "group": "g", "seq": 3, "unloaded": "2 from p2w3r07bsd: the daemon went away", "replyable": false }
+        ]
+      }
+    },
+    {
       "name": "a pair group deleted and made again raises a banner for its first message after a dismissal",
       "why": "A pair group is named for its two members and its log has the same shape each time it is made, so the new group's first message has the number the old one's had. The old group's notice went with it, and so did what the human dismissed there; held against the new group, its first message would raise nothing while Muster in front keeps the operating system's notification away too.",
       "given": {
