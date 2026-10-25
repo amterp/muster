@@ -128,16 +128,19 @@ impl Session {
             .collect()
     }
 
-    /// Gives each window showing `group` with no draft for it the one a conversation opens with,
-    /// once there is a log to open it from.
-    fn open_drafts(&mut self, group: &GroupKey) {
+    /// Opens `group`'s message box in each of `windows` showing it with the draft a conversation
+    /// opens with, in place of none or of one the human has done nothing with, once there is a
+    /// log and a policy to open it from. Whoever last wrote to the human, whom it opens
+    /// addressed to, can change while the conversation is not shown.
+    fn refresh_openings(&mut self, group: &GroupKey, windows: &[WindowId]) {
         let Some(shared) = self.conversations.get(group).filter(|shared| shared.loaded) else {
             return;
         };
         let opening = draft::opening(&shared.group);
-        for window in self.windows.values_mut() {
+        for &id in windows {
+            let window = &mut self.windows[id];
             let shows = window.conversation.as_ref().is_some_and(|shown| &shown.group == group);
-            if shows && !window.drafts.contains_key(group) {
+            if shows && window.drafts.get(group).is_none_or(Draft::untouched) {
                 window.drafts.insert(group.clone(), opening.clone());
             }
         }
@@ -208,7 +211,7 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
             session.conversations.insert(key.clone(), Shared { generation, ..Shared::default() });
             Following { group: key.clone(), generation }
         });
-        session.open_drafts(&key);
+        session.refresh_openings(&key, &[window]);
         let name = session.windows[window].name.to_string();
         (key, name, start)
     };
@@ -293,6 +296,11 @@ fn follow_log(following: &Following) {
         }
     }
     refresh_policy(following);
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        let windows = session.showing(group);
+        session.refresh_openings(group, &windows);
+    }
     refresh_members(following);
     announce_group(group, Parts::ALL);
     let mut connection: Option<Control> = None;
@@ -415,7 +423,6 @@ fn first_page(following: &Following) -> Result<(), String> {
         shared.group.log.page(held.entries, held.earlier);
         shared.loaded = true;
         shared.failed = None;
-        session.open_drafts(group);
     }
     log::info(
         "conversation.fetched",

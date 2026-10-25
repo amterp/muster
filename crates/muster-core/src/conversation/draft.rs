@@ -29,6 +29,16 @@ impl Draft {
         !self.text.trim().is_empty() || self.picked.is_some()
     }
 
+    /// Whether the human has done nothing with it since it opened: no words, no answer picked,
+    /// not made urgent, and addressed as it opened. Such a draft is the conversation's, and
+    /// opening the conversation again opens it afresh.
+    pub fn untouched(&self) -> bool {
+        self.text.trim().is_empty()
+            && self.picked.is_none()
+            && !self.urgent
+            && self.addressed == Addressed::Opening
+    }
+
     /// The body a post of it carries: the text, or the picked answer first and the text as its
     /// note, as every reply that picks an answer is written.
     pub fn body(&self) -> String {
@@ -238,4 +248,21 @@ fn addressable(group: &Group) -> impl Iterator<Item = (String, String)> + '_ {
         .flatten()
         .filter(|member| !posting::is_human(&member.name) && !posting::is_muster(&member.name))
         .map(|member| (member.name.clone(), group.shown(&member.name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_draft_is_untouched_until_the_human_writes_picks_marks_or_addresses_it() {
+        let opened = Draft { to: vec!["otter".to_string()], ..Draft::default() };
+        assert!(opened.untouched());
+        assert!(Draft { text: " \n".to_string(), ..opened.clone() }.untouched());
+        assert!(!Draft { text: "ok".to_string(), ..opened.clone() }.untouched());
+        assert!(!Draft { urgent: true, ..opened.clone() }.untouched());
+        assert!(!Draft { addressed: Addressed::Chosen, ..opened.clone() }.untouched());
+        let picked = Answering { question: 4, answer: "Skip it".to_string() };
+        assert!(!Draft { picked: Some(picked), ..opened }.untouched());
+    }
 }

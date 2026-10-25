@@ -475,6 +475,54 @@ fn a_post_the_daemon_refuses_keeps_its_draft() {
     );
 }
 
+/// The box opens addressed to whoever last wrote to the human (MIP-9, section 3), and that can
+/// change while the conversation is not shown: a box the human never touched opens afresh.
+#[test]
+fn a_reopened_conversation_addresses_whoever_wrote_to_the_human_last() {
+    let mut open = Open::built();
+    post(&mut open.control, "a", "@human", "first");
+    show("window-1");
+    until_loaded("window-1");
+    until_addressed("window-1", &["a"]);
+    answer(leave());
+
+    post(&mut open.control, "b", "@human", "and a question of mine");
+    show("window-1");
+    until_addressed("window-1", &["b"]);
+}
+
+/// An unaddressed post wakes the human when the group's policy rings them for its author, so
+/// the first opening waits for the policy before choosing whom to address.
+#[test]
+fn the_first_opening_counts_whom_the_policy_rings_the_human_for() {
+    let mut open = Open::built();
+    let groups = control_answer(&mut open.control, Asked::Groups(msg_request::Groups {}));
+    let Some(Answer::Groups(groups)) = groups.answer else { panic!("no groups: {groups:?}") };
+    let mut policy = groups
+        .groups
+        .into_iter()
+        .find(|group| group.name == "g")
+        .and_then(|group| group.policy)
+        .expect("g has a policy");
+    policy.ring.insert("b".to_string(), msg_request::Names { names: vec!["@human".to_string()] });
+    let set =
+        Asked::GroupSet(msg_request::GroupSet { group: "g".to_string(), policy: Some(policy) });
+    expect(&mut open.control, msg(&the_human(), set), daemon_proto::Outcome::Done);
+    post(&mut open.control, "a", "@human", "addressed to you");
+    let read = Asked::Read(msg_request::Read { group: Some("g".to_string()) });
+    open.control.ask(msg(&named("b"), read));
+    let unaddressed = Asked::Post(msg_request::Post {
+        group: Some("g".to_string()),
+        body: "rung for you by the policy".to_string(),
+        ..Default::default()
+    });
+    expect(&mut open.control, msg(&named("b"), unaddressed), daemon_proto::Outcome::Done);
+
+    show("window-1");
+    until_loaded("window-1");
+    until_addressed("window-1", &["b"]);
+}
+
 /// With an answer picked, the post's body is composed from the pick and the note. A refusal
 /// keeps the note the human wrote, not that body, so sending again does not write the answer
 /// twice.
@@ -973,6 +1021,27 @@ fn post_draft() -> request::Payload {
         daemon_id: "local".to_string(),
         group: "g".to_string(),
     })
+}
+
+/// What the daemon answered the human's `asked`.
+fn control_answer(control: &mut Control, asked: Asked) -> daemon_proto::MsgAnswer {
+    let answered = control.ask(msg(&the_human(), asked));
+    match answered.answer.detail {
+        Some(daemon_proto::answer::Detail::Msg(answer)) => answer,
+        other => panic!("answered {other:?}: {}", answered.answer.reason),
+    }
+}
+
+fn until_addressed(window: &str, to: &[&str]) {
+    until(
+        "the message box to be addressed",
+        || {
+            message_box(window).draft.is_some_and(|draft| {
+                draft.to.iter().map(|to| to.name.as_str()).collect::<Vec<_>>() == to
+            })
+        },
+        || format!("{window} was told {:?}", message_box(window)),
+    );
 }
 
 fn until_sent(window: &str, state: post_outcome::State) {
