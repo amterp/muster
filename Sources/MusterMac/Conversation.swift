@@ -114,7 +114,8 @@ final class ConversationMembers: ObservableObject {
   @Published private(set) var agents: [PaneKey: PaneAgent] = [:]
   /// The roster's line for each member's pane: what its agent says it is doing.
   @Published private(set) var subtitles: [PaneKey: String] = [:]
-  private var panes: Set<PaneKey> = []
+  /// The members' panes, which the sidebar marks.
+  private(set) var panes: Set<PaneKey> = []
 
   func apply(
     _ changed: Muster_ConversationMembersChanged, agents: [PaneKey: PaneAgent], roster: Roster

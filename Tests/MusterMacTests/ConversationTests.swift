@@ -222,6 +222,7 @@ struct ConversationTests {
     let p2 = PaneKey(daemon: "local", pane: "p2")
     members.apply(changed, agents: [p1: "working", p2: "idle"], roster: Roster(tabs: []))
     #expect(members.agents == [p1: "working"])
+    #expect(members.panes == [p1], "the sidebar marks the panes of members, and only theirs")
 
     members.apply(pane: p2, agent: "blocked")
     #expect(members.agents[p2] == nil, "an agent outside the group was kept")

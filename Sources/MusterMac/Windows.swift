@@ -22,8 +22,6 @@ public protocol ShellWindow: AnyObject {
   func apply(bindings: [Core.Binding])
   func apply(problems: [Problem])
   func apply(groups: [SidebarModel.MessageGroup])
-  /// The panes of the members of the group whose conversation this window shows.
-  func apply(memberPanes: Set<PaneKey>)
   func hold(_ held: HeldPaste)
   /// Whether this window draws the banners for messages to the human now: it is the main window,
   /// and on screen.

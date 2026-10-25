@@ -800,12 +800,6 @@ public final class MusterWindow: NSObject {
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
   }
 
-  public func apply(memberPanes: Set<PaneKey>) {
-    guard memberPanes != sidebar.conversationMembers else { return }
-    sidebar.conversationMembers = memberPanes
-    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
-  }
-
   /// Everything wrong with the window, for the roster to say properly and the title to count.
   ///
   /// Both, because the roster is the only one that can carry a sentence and it is not always on
@@ -922,6 +916,12 @@ extension MusterWindow: ConversationWindow {
 
   func apply(conversationMembers changed: Muster_ConversationMembersChanged) {
     conversation.members.apply(changed, agents: agents, roster: roster)
+    // The sidebar marks the members' panes while the conversation shows (MIP-9, section 1).
+    // Sent empty when the window leaves it, which takes the marks down.
+    let panes = conversation.members.panes
+    guard panes != sidebar.conversationMembers else { return }
+    sidebar.conversationMembers = panes
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
   }
 
   func apply(messageBox changed: Muster_MessageBoxChanged) {

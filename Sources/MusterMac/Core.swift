@@ -1944,15 +1944,7 @@ public enum Core {
         "conversation.received",
         cost.fields.merging(["group": changed.group, "rows": String(changed.rows.count)]) { $1 })
     case .conversationMembersChanged(let changed):
-      let shown = window(for: event)
-      (shown as? ConversationWindow)?.apply(conversationMembers: changed)
-      // The sidebar marks the members' panes while the conversation shows (MIP-9, section 1).
-      // Sent empty when the window leaves it, which takes the marks down.
-      shown?.apply(
-        memberPanes: Set(
-          changed.members.filter { !$0.paneID.isEmpty }.map {
-            PaneKey(daemon: $0.daemonID, pane: $0.paneID)
-          }))
+      (window(for: event) as? ConversationWindow)?.apply(conversationMembers: changed)
     case .messageBoxChanged(let changed):
       (window(for: event) as? ConversationWindow)?.apply(messageBox: changed)
     case .shutWindow:
