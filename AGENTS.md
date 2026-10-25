@@ -30,7 +30,8 @@ Muster taking over an older daemon's panes with their agents still running, a ma
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
 both, a group held up on a member noticed and told why once, a message for you shown in Muster's own banner with
 its Markdown drawn and answered from it without leaving your pane, or raising a notification that brings Muster
-forward while it is behind, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a
+forward while it is behind, a group's conversation drawn in place of the panes with what was for you standing out,
+what each member is doing and why it has not read, and a message box that posts as you, left with Esc, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a
 right-click there, compacting an agent's context when asked or once it is full enough, restarting an agent in its
 session from its notice, its menus or the CLI, upgrading Muster through
 Homebrew from its own menu or `muster upgrade`, and installing a harness's adapter through the harness's own plugin

@@ -11,8 +11,8 @@ import SwiftUI
 // that the bar is opened, closed and stepped by Muster's own keymap, follows the keyboard
 // between panes, and closes on one escape where Ghostty's takes two.
 //
-// **This is the only file in `Sources/` that imports SwiftUI, and here is what that cost** -
-// worth reading before deciding a second one should. The hosting view's layer background has
+// **This was the first file in `Sources/` to import SwiftUI, and here is what that cost** -
+// worth reading before hosting another SwiftUI view. The hosting view's layer background has
 // to be forced clear, because a GPU surface sits underneath it. And the bar puts the keyboard in
 // its own field through AppKit, by finding the field among the hosting view's subviews, because
 // `@FocusState` did not reliably take it from a pane's surface: cmd+f often left the keyboard in

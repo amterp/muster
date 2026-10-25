@@ -3,9 +3,9 @@ import SwiftUI
 
 // The banners Muster draws for messages to the human (mip/0009-group-conversation.md, section 5).
 // What stands, what each shows and what a reply came to are the core's (`banners.rs`); this file
-// draws its last word and says what the person did. The second file in `Sources/` to import
-// SwiftUI, on the terms `FindBar.swift` sets out: the hosting view's layer is forced clear, and
-// the view is sized to its content so the panes around it keep their clicks.
+// draws its last word and says what the person did. Hosted in SwiftUI on the terms
+// `FindBar.swift` sets out: the hosting view's layer is forced clear, and the view is sized to
+// its content so the panes around it keep their clicks.
 
 /// The banners the core last sent, and the reply being written in each.
 ///
