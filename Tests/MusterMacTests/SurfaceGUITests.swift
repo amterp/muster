@@ -633,6 +633,73 @@ extension SurfaceGUITests {
   }
 }
 
+extension SurfaceGUITests {
+  /// A question's answers in the conversation are reached from the message box with Tab, and
+  /// Return picks the one holding the keyboard, which asks the core and gives the keyboard back
+  /// to the box for a note or the send chord.
+  @MainActor
+  @Test("Tab from the message box reaches the newest question's answers, and Return picks one")
+  func tabReachesAQuestionsAnswersInTheConversation() async throws {
+    let (window, _, host, recorder) = conversationWindow()
+    host.thread.apply(conversationWithAQuestion(44))
+    let review = ConversationGroup(daemon: "local", group: "review")
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    let field = try #require(window.firstResponder as? MessageBoxTextView)
+
+    window.sendEvent(press("\t", keyCode: 0x30, flags: [], in: window))
+    try await answered("Tab to move the keyboard to the first answer") {
+      await polled(within: .milliseconds(250)) {
+        guard let responder = window.firstResponder as? NSView, let hosting = host.hosting
+        else { return false }
+        return responder !== field && responder.isDescendant(of: hosting)
+      }
+    }
+    #expect(field.string.isEmpty, "Tab wrote itself into the message box")
+    window.sendEvent(press("\r", keyCode: 0x24, flags: [], in: window))
+
+    #expect(recorder.picks.map(\.question) == [44])
+    #expect(recorder.picks.map(\.answer) == [0])
+    try await answered("the keyboard to go back to the message box") { host.holdsKeyboard }
+  }
+
+  /// A digit typed in the message box is text, never a pick, since a reply may start with "1.".
+  @MainActor
+  @Test("a digit typed in the message box is text, with a question in the thread")
+  func aDigitInTheMessageBoxIsText() async throws {
+    let (window, _, host, recorder) = conversationWindow()
+    host.thread.apply(conversationWithAQuestion(44))
+    let review = ConversationGroup(daemon: "local", group: "review")
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    let field = try #require(window.firstResponder as? MessageBoxTextView)
+
+    window.sendEvent(press("1", keyCode: 0x12, flags: [], in: window))
+    window.sendEvent(press(".", keyCode: 0x2F, flags: [], in: window))
+
+    #expect(field.string == "1.")
+    #expect(recorder.picks.isEmpty, "a digit picked an answer")
+    #expect(host.holdsKeyboard)
+  }
+}
+
+/// The conversation `review` holding question #`seq`, which the human may answer.
+private func conversationWithAQuestion(_ seq: UInt64) -> Muster_ConversationChanged {
+  var changed = Muster_ConversationChanged()
+  changed.daemonID = "local"
+  changed.group = "review"
+  var row = Muster_ConversationRow()
+  row.message.seq = seq
+  row.message.author = "otter"
+  row.message.authorName = "otter"
+  row.message.answers = ["Run it now", "Skip it"]
+  row.message.answerable = true
+  changed.rows = [row]
+  return changed
+}
+
 /// A window holding a tab and a conversation over it, as `MusterWindow` lays them out, with the
 /// conversation's requests recorded and the window's key presses offered to it first.
 @MainActor
