@@ -94,6 +94,15 @@ struct MessageBoxField: NSViewRepresentable {
       }
       applied = box.revision
     }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+      guard let field = notification.object as? MessageBoxTextView, !field.taking,
+        !field.hasMarkedText()
+      else { return }
+      if let answer = box.moved(text: field.string, cursor: field.scalarCursor) {
+        field.take(answer)
+      }
+    }
   }
 }
 
@@ -106,6 +115,10 @@ final class MessageBoxTextView: NSTextView {
   private let history = UndoManager()
 
   override var undoManager: UndoManager? { history }
+
+  /// Whether the field is showing a draft of the core's, whose text and cursor it sets one after
+  /// the other: the cursor AppKit leaves in between is nobody's move.
+  private(set) var taking = false
 
   /// The cursor, in Unicode scalar values.
   var scalarCursor: Int {
@@ -120,6 +133,8 @@ final class MessageBoxTextView: NSTextView {
   /// Undoing the rewrite itself was the alternative, but undoing an @name taken as a recipient
   /// would put the name back as text beside the recipient, for the core to take again.
   func take(_ draft: Muster_MessageBoxDraft) {
+    taking = true
+    defer { taking = false }
     let cursor = ScalarOffsets.utf16(beforeScalars: Int(draft.cursor), in: draft.text)
     if string != draft.text {
       string = draft.text

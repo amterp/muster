@@ -254,6 +254,41 @@ struct ConversationTests {
     #expect(ScalarOffsets.utf16(beforeScalars: 99, in: text) == text.utf16.count)
   }
 
+  @Test("moving the cursor asks the core what it completes now")
+  func aMovedCursorIsSent() {
+    let (box, recorder) = openBox(text: "@ot hi @he")
+    var answered = Muster_MessageBoxDraft()
+    answered.text = "@ot hi @he"
+    answered.cursor = 3
+    answered.completions = [recipient("otter")]
+    recorder.answer = { _ in answered }
+
+    let answer = box.moved(text: "@ot hi @he", cursor: 3)
+
+    #expect(recorder.edits.map(\.cursor) == [3])
+    #expect(answer?.cursor == 3)
+    #expect(box.draft.completions.map(\.name) == ["otter"], "the stale completions are gone")
+    #expect(box.moved(text: "@ot hi @he", cursor: 3) == nil, "the core has that cursor already")
+    #expect(box.moved(text: "@ot hi @her", cursor: 11) == nil, "an edit is sent as an edit")
+    #expect(recorder.edits.count == 1)
+  }
+
+  @Test("the field tells the box of a cursor moved, and not of one it set itself")
+  func theFieldSendsAMovedCursor() {
+    let (box, recorder) = openBox(text: "@ot hi")
+    let coordinator = MessageBoxField.Coordinator(box: box)
+    let field = MessageBoxTextView(frame: .zero)
+    field.box = box
+    field.delegate = coordinator
+    field.take(box.draft)
+    #expect(recorder.edits.isEmpty, "showing the core's draft is not a move")
+
+    field.setSelectedRange(NSRange(location: 3, length: 0))
+
+    #expect(recorder.edits.map(\.cursor) == [3])
+    withExtendedLifetime(coordinator) {}
+  }
+
   @Test("the message box undoes what was typed, and forgets it when the core rewrites the text")
   func undoForgetsWhatTheCoreRewrote() {
     let field = MessageBoxTextView(frame: .zero)

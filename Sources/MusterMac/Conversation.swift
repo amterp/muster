@@ -199,6 +199,16 @@ final class MessageBox: ObservableObject {
     save(edit(text: text, cursor: cursor), fromField: true)
   }
 
+  /// The cursor moved without the text changing, so what it completes may have: the arrows or
+  /// a click. Nothing is sent while the field's text differs from the core's draft, since that
+  /// is an edit, which `edited` sends, and nothing when the cursor is already where the core
+  /// has it, as after the field shows one of its answers.
+  @discardableResult
+  func moved(text: String, cursor: Int) -> Muster_MessageBoxDraft? {
+    guard text == draft.text, cursor != Int(draft.cursor) else { return nil }
+    return save(edit(text: text, cursor: cursor), fromField: true)
+  }
+
   /// Backspace straight after the last recipient, which turns it back into text.
   @discardableResult
   func unaddress(text: String) -> Muster_MessageBoxDraft? {
