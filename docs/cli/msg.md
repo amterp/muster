@@ -464,7 +464,8 @@ The group's machine holds a reply to its question: #Q has to be a message there 
 asked of you (not your own, and addressed to you if it names anybody), offering the answer you
 pick, and not answered yet, since a question takes one answer. Each is refused in words saying
 which, as `no_such_question`, `not_asked_of`, `not_offered` or `already_answered` in `--json`. A
-reply that picks an answer cannot offer answers of its own.
+reply that picks an answer cannot offer answers of its own either (`answer_offers_answers`): the
+next question is a post of its own.
 
 ## Waiting
 
