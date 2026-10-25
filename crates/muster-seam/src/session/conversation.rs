@@ -313,11 +313,14 @@ fn follow_log(following: &Following) {
     super::human_noticed(&group.daemon, &group.group);
     let mut connection: Option<Control> = None;
     let mut waiting = None;
+    let mut telling = Coalesce::default();
     loop {
         if !shown(following) {
             return;
         }
-        if members_moved(following) {
+        if telling.ready(Instant::now()) {
+            tell(following, &mut telling);
+        } else if members_moved(following) {
             refresh_members(following);
             announce_group(group, Parts::MEMBERS);
         }
@@ -340,14 +343,18 @@ fn follow_log(following: &Following) {
             waiting = connection.as_ref().map(|opened| opened.as_human(Asked::Log(log)));
         }
         let Some(pending) = waiting.take() else { continue };
-        match pending.poll(SLICE) {
+        match pending.poll(telling.wait(Instant::now())) {
             None => waiting = Some(pending),
             Some(Err(ended)) => {
                 connection = None;
                 again(group, &ended.to_string());
             }
             Some(Ok(answer)) => match answered_as_human(answer) {
-                Ok(answer) => arrived(following, &answer),
+                Ok(answer) => {
+                    if let Some(changed_group) = arrived(following, &answer) {
+                        telling.arrived(changed_group);
+                    }
+                }
                 Err(Refusal::NotThere(why)) => return gone(following, &why),
                 Err(refusal) => again(group, refusal.detail()),
             },
@@ -465,8 +472,9 @@ fn first_page(following: &Following) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// Entries that followed the last one held.
-fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
+/// Entries that followed the last one held, kept for the shell to be told of (`tell`). Says
+/// whether any arrived, and if so whether one changed the group.
+fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) -> Option<bool> {
     let group = &following.group;
     let held = messaging::log_page(answer, &group.group);
     let changed_group = held.entries.iter().any(|entry| !matches!(entry.what, What::Message(_)));
@@ -474,24 +482,72 @@ fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
     // `human_noticed` reads it while they look. A message that wakes nobody asks for nothing.
     let settled = {
         let mut session = poison::lock(&SESSION, "session");
-        let Some(shared) = following.shared(&mut session) else { return };
+        let shared = following.shared(&mut session)?;
         shared.group.called.extend(answer.called.clone());
         shared.group.log.behind = held.behind;
         shared.group.log.seen(held.last);
         let new = shared.group.log.followed(held.entries);
         if new.is_empty() {
-            return;
+            return None;
         }
         settle(&mut session, group)
     };
-    if changed_group {
-        refresh_policy(following);
-    }
-    refresh_members(following);
     for window in settled {
         save_soon(window);
     }
-    announce_group(group, Parts::ALL);
+    Some(changed_group)
+}
+
+/// Tells the shell what arrived since it was last told: who is in the group and why each has
+/// not read, asked again, the group's policy too when a change to the group arrived, and every
+/// part of the conversation.
+fn tell(following: &Following, telling: &mut Coalesce) {
+    if telling.changed_group {
+        refresh_policy(following);
+    }
+    refresh_members(following);
+    announce_group(&following.group, Parts::ALL);
+    telling.told(Instant::now());
+}
+
+/// When to tell the shell of entries that arrived: at once for the first after a quiet
+/// [`SLICE`], then at most once a slice while they keep coming. Each telling asks the daemon who
+/// is in the group and rebuilds the whole thread, so a chatty group would otherwise cost a round
+/// trip and a thread's worth of event per message.
+#[derive(Debug, Default)]
+struct Coalesce {
+    /// When the shell was last told.
+    told: Option<Instant>,
+    /// Entries arrived since.
+    due: bool,
+    /// One of them changed the group, so its policy is asked again too.
+    changed_group: bool,
+}
+
+impl Coalesce {
+    fn arrived(&mut self, changed_group: bool) {
+        self.due = true;
+        self.changed_group |= changed_group;
+    }
+
+    /// Whether what arrived is to be told at `now`.
+    fn ready(&self, now: Instant) -> bool {
+        self.due && self.told.is_none_or(|told| now.duration_since(told) >= SLICE)
+    }
+
+    fn told(&mut self, now: Instant) {
+        self.told = Some(now);
+        self.due = false;
+        self.changed_group = false;
+    }
+
+    /// How long the follow may wait for more before what arrived is due to be told.
+    fn wait(&self, now: Instant) -> Duration {
+        match self.told {
+            Some(told) if self.due => (told + SLICE).saturating_duration_since(now),
+            _ => SLICE,
+        }
+    }
 }
 
 /// Settles each window's unknown post to `group` that the log now shows was kept: its draft
@@ -1126,4 +1182,49 @@ fn utc_offset_s() -> i32 {
         (!libc::localtime_r(&raw const now, &raw mut local).is_null()).then_some(local)
     };
     local.and_then(|local| i32::try_from(local.tm_gmtoff).ok()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_first_arrival_after_a_quiet_slice_is_told_at_once() {
+        let start = Instant::now();
+        let mut telling = Coalesce::default();
+        assert!(!telling.ready(start), "nothing arrived");
+        telling.arrived(false);
+        assert!(telling.ready(start));
+        telling.told(start);
+        let later = start + SLICE * 2;
+        telling.arrived(false);
+        assert!(telling.ready(later), "a slice after the last telling");
+    }
+
+    #[test]
+    fn arrivals_within_a_slice_are_told_once_it_has_passed() {
+        let start = Instant::now();
+        let mut telling = Coalesce::default();
+        telling.arrived(true);
+        telling.told(start);
+        assert!(!telling.changed_group, "told, policy and all");
+
+        let soon = start + SLICE / 5;
+        telling.arrived(false);
+        telling.arrived(true);
+        assert!(!telling.ready(soon));
+        assert_eq!(telling.wait(soon), SLICE / 5 * 4, "waits only until the slice ends");
+        assert!(telling.ready(start + SLICE));
+        assert!(telling.changed_group, "a change to the group within the slice is kept");
+    }
+
+    #[test]
+    fn with_nothing_due_the_follow_waits_a_whole_slice() {
+        let start = Instant::now();
+        let mut telling = Coalesce::default();
+        assert_eq!(telling.wait(start), SLICE);
+        telling.arrived(false);
+        telling.told(start);
+        assert_eq!(telling.wait(start + SLICE / 2), SLICE);
+    }
 }
