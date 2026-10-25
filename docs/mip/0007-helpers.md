@@ -181,7 +181,9 @@ ran out with nothing ending it is idle for a known reason, and the notice says t
 naming the wait (added 2026-10-24). A helper that posts its report
 and then goes idle is not reported, and a compaction or a rename Muster typed at it is not going
 to work: on 2026-10-17 helpers compacted at their maker's request went idle afterwards and their
-maker was told, six times in one evening. MIP-4 section 16 already
+maker was told, six times in one evening. Nor is a compaction its harness starts by itself while
+idle: on 2026-10-24 two idle helpers' Claude Code compacted about an hour after their last turn,
+and each maker was told (added 2026-10-25). MIP-4 section 16 already
 has a daemon tell a group once, and say why, when the group is held up on a member; this does the
 same for a helper and sends it to the maker, the agent that can act on it. The maker can answer
 the dialog with `muster pane send --key`, or bring the helper forward and ask the person.
@@ -337,3 +339,5 @@ Each stage leaves helpers in a state somebody can use.
   helper going to work, and a maker at work is told of a need once it can hear it, if the need
   still holds. Makers were told a helper went idle unreported after its compaction, and told of
   plan dialogs they had answered two minutes before.
+- 2026-10-25 Section 4 amended: a compaction a helper's harness starts by itself while idle is not
+  the helper going to work either.

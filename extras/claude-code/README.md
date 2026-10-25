@@ -50,7 +50,10 @@ count sub-agents, and `SessionStart` forgets the last session's facts when a new
 `/clear` runs. `SessionStart` also reports the session's id, however the session started, which is
 what lets the pane come back running this session after a daemon restart or a reboot
 (`docs/configuration.md`, `resume_agents`). The report reads the id from the hook's own input, so
-the hook needs no JSON tool.
+the hook needs no JSON tool. `PreCompact` for a compaction Claude Code starts by itself (`auto`)
+says the turn it shows as is not the agent going to work: an idle Claude Code compacts on its own
+before its prompt cache expires, and a helper doing that is not reported to its maker as having
+gone idle without posting.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
 a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.

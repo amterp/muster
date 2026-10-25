@@ -1985,6 +1985,10 @@ impl Session {
         if let Some(why) = session_id.as_deref().and_then(|id| facts::session_id(id).err()) {
             return Reply::refused(why);
         }
+        if report.compacting && agent.is_empty() {
+            return Reply::refused("a compaction needs the name of the agent reporting it");
+        }
+        let harness_compacts = report.compacting && self.harness_compacting(index, &agent);
         let cleared = report.clear;
         let new_session =
             self.context_session(index, &agent, cleared, report.context_session.take());
@@ -2045,12 +2049,24 @@ impl Session {
             self.panes[index].io.report_state(agent, state);
             return Reply::done();
         }
+        let session_changed = renamed || identified || compacting || harness_compacts;
         // Said again, a wait outlasts one more turn, which is a change even in the same words.
-        if facts_changed || heard || says_waiting || renamed || identified || compacting {
+        if facts_changed || heard || says_waiting || session_changed {
             Reply::done()
         } else {
             Reply::already()
         }
+    }
+
+    /// Notes that the agent's harness began compacting its context by itself, when `agent` is the
+    /// one detection finds in the pane, and says whether it did.
+    fn harness_compacting(&self, index: usize, agent: &str) -> bool {
+        let pane = &self.panes[index];
+        let ours = pane.record.agent.as_deref() == Some(agent);
+        if ours {
+            pane.io.compacting_by_itself(std::time::Instant::now());
+        }
+        ours
     }
 
     /// Notes the session a report says its context belongs to, saying whether that is another

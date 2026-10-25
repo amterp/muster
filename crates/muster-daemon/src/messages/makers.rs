@@ -70,6 +70,9 @@ pub(crate) struct Helper {
     /// Whether its agent's turn, at work now or ended last, is one Muster typed as a chore of its
     /// own: a compaction or a rename, which is not the helper going to work.
     pub(crate) chores_turn: bool,
+    /// Which of its agent's turns that is, counted since the daemon started: a turn can be found to
+    /// be a chore after it was taken for work.
+    pub(crate) turn: u64,
     /// What the wait it declared was on, when that wait ran out with nothing ending it and it
     /// has not gone to work since.
     pub(crate) ran_out: Option<String>,
@@ -118,6 +121,10 @@ struct Watch {
     /// waiting on its own work, through any dialog, to the look that sees it idle.
     worked_since_ms: Option<u64>,
     at_work: bool,
+    /// The agent's turn its current stretch began on, and when the stretch before it began: what a
+    /// stretch found to have begun on a chore goes back to.
+    stretch_turn: Option<u64>,
+    worked_before_ms: Option<u64>,
     /// When a look first saw it at a dialog while it was not at work: where its stretch began if
     /// it goes to work next, which a look the load delayed can see after the dialog. One that
     /// goes idle next was a dialog at its idle prompt, a folder's trust or a picker, and no work.
@@ -197,10 +204,19 @@ impl Makers {
                 }
             });
             match helper.activity {
-                Some(Activity::Working) if helper.chores_turn => {}
+                Some(Activity::Working) if helper.chores_turn => {
+                    // Found a chore after a look took it for work, as a compaction the harness
+                    // started by itself is when the screen shows it before the harness says so.
+                    if watch.at_work && watch.stretch_turn == Some(helper.turn) {
+                        watch.at_work = false;
+                        watch.worked_since_ms = watch.worked_before_ms;
+                    }
+                }
                 Some(Activity::Working | Activity::Waiting) => {
                     if !watch.at_work {
+                        watch.worked_before_ms = watch.worked_since_ms;
                         watch.worked_since_ms = Some(watch.dialog_since_ms.unwrap_or(now_ms));
+                        watch.stretch_turn = Some(helper.turn);
                     }
                     watch.at_work = true;
                     watch.dialog_since_ms = None;
@@ -495,6 +511,7 @@ fn helpers(
             to,
             activity: seen.activity,
             chores_turn: seen.io.turn_typed_by() == Some(TypedBy::Chore),
+            turn: seen.io.turn_serial(),
             ran_out: seen.ran_out.clone(),
             stopped: seen.stopped.clone(),
         });
@@ -614,6 +631,7 @@ mod tests {
             to: "p1".to_string(),
             activity: Some(activity),
             chores_turn: false,
+            turn: 1,
             ran_out: None,
             stopped: None,
             last_post_ms: None,
@@ -818,6 +836,32 @@ mod tests {
         makers.judge(&[posted(Activity::Idle, false)], &called, 80_000);
         let tells = makers.judge(&[posted(Activity::Idle, false)], &called, 90_000);
         assert_eq!(needs(&tells), [Need::Unreported], "the follow-up was work");
+    }
+
+    /// A turn the helper's harness started by itself, compacting while idle, is found to be a chore
+    /// only once the harness says so, which can come after a look has seen the turn as work. That
+    /// stretch is taken back, so idle after it is not told of; a later turn is work again.
+    #[test]
+    fn a_turn_found_to_be_a_chore_after_it_was_taken_for_work_is_not_work() {
+        let called = called();
+        let mut makers = makers();
+        let on = |turn, activity, chores_turn| Helper {
+            last_post_ms: Some(5_000),
+            chores_turn,
+            turn,
+            ..maple(activity)
+        };
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        makers.judge(&[on(1, Activity::Idle, false)], &called, 10_000);
+        makers.judge(&[on(2, Activity::Working, false)], &called, 20_000);
+        makers.judge(&[on(2, Activity::Working, true)], &called, 21_000);
+        makers.judge(&[on(2, Activity::Idle, true)], &called, 40_000);
+        assert!(makers.judge(&[on(2, Activity::Idle, true)], &called, 70_000).is_empty());
+
+        makers.judge(&[on(3, Activity::Working, false)], &called, 80_000);
+        makers.judge(&[on(3, Activity::Idle, false)], &called, 90_000);
+        let tells = makers.judge(&[on(3, Activity::Idle, false)], &called, 120_000);
+        assert_eq!(needs(&tells), [Need::Unreported], "the next turn was work");
     }
 
     /// The person is told every helper a closed maker left running, and how to bring them back.

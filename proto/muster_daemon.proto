@@ -488,6 +488,10 @@ message PaneRequest {
     // nothing of its context until its first message. Unlike session_id, it neither names the
     // pane's session nor changes what a restart resumes.
     optional string context_session = 14;
+    // Since 1.8. The agent's harness began compacting its context by itself, as Claude Code does
+    // when idle long enough: the turn that compaction shows as is a chore, not the agent going to
+    // work. Needs its agent, and counts only while detection finds that agent in the pane.
+    bool compacting = 15;
   }
 }
 

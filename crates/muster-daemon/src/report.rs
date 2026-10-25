@@ -43,7 +43,7 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--context-session ID] [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
-    [--session-id ID]] [--from FLAG=POINTER]...\n\n\
+    [--session-id ID] [--compacting]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
@@ -64,6 +64,8 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     session the pane's own name otherwise. It needs --agent, as --state does. --session-id is \
     the harness's id for its session, which the daemon names it by to reach it through the \
     harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
+    --compacting says the agent's harness began compacting its context by itself, so the turn it \
+    shows as is not the agent going to work; it needs --agent too. \
     --from fills a flag from the JSON object on stdin, which a harness hands its hooks and \
     statusline: --from context-used=/context_window/used_percentage reads that JSON pointer, a \
     number or text, as --context-used's value. A value missing or null leaves the flag out, and \
@@ -264,6 +266,7 @@ fn parse(
                 );
             }
             "--clear" => report.clear = true,
+            "--compacting" => report.compacting = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
             "--agent" => report.agent = value("--agent")?,
@@ -291,6 +294,9 @@ fn parse(
     }
     if report.session_id.is_some() && report.agent.is_empty() {
         return Err("--session-id needs --agent, naming the agent that is reporting".to_string());
+    }
+    if report.compacting && report.agent.is_empty() {
+        return Err("--compacting needs --agent, naming the agent that is reporting".to_string());
     }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(

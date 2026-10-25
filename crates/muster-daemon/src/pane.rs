@@ -212,6 +212,11 @@ struct Typed {
     turn: Option<TypedBy>,
     /// When that turn started.
     turn_at: Option<Instant>,
+    /// How many turns have started, which tells one from the next.
+    turns: u64,
+    /// When the agent's harness said it began compacting its context by itself, for a turn that
+    /// starts soon after with nothing typed to take as a chore.
+    compacting: Option<Instant>,
     /// Until when a wake the doorbell handed the harness by command, with nothing typed, may
     /// still start the agent's turn: Codex takes one from `codex queue` up to ten seconds later.
     commanded_until: Option<Instant>,
@@ -444,10 +449,41 @@ impl PaneIo {
     pub(crate) fn turn_started(&self, now: Instant) -> Option<TypedBy> {
         let by = self.typed_just_now(now);
         let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        let compacting = typed
+            .compacting
+            .take()
+            .is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
+        let by = match by {
+            None if compacting => Some(TypedBy::Chore),
+            by => by,
+        };
         typed.turn = by;
         typed.turn_at = Some(now);
+        typed.turns += 1;
         typed.commanded_until = None;
         by
+    }
+
+    /// Notes that the agent's harness began compacting its context by itself, as Claude Code does
+    /// when idle long enough. That turn is a chore, not the agent going to work, and the harness
+    /// may say so before the screen shows the turn begin or after: a turn nothing typed started
+    /// that began a moment ago is it, and otherwise the next turn to start with nothing typed is.
+    /// A moment is [`TYPED_TURN`], the bound that pairs typed input with the turn it starts. A turn
+    /// that began longer ago, or that somebody typed, is one the compaction came in the middle of.
+    pub(crate) fn compacting_by_itself(&self, now: Instant) {
+        let mut typed = poison::lock(&self.typed, "daemon.pane.typed");
+        let just_began =
+            typed.turn_at.is_some_and(|at| now.saturating_duration_since(at) < TYPED_TURN);
+        if typed.turn.is_none() && just_began {
+            typed.turn = Some(TypedBy::Chore);
+        }
+        // Kept either way: the turn that began a moment ago may have been another, already over.
+        typed.compacting = Some(now);
+    }
+
+    /// How many turns the agent has started, which tells its current or last turn from the next.
+    pub(crate) fn turn_serial(&self) -> u64 {
+        poison::lock(&self.typed, "daemon.pane.typed").turns
     }
 
     /// Who gave the prompt an agent's hook reports now: the turn it starts, if the screen showed
@@ -1679,6 +1715,39 @@ mod tests {
         assert_eq!(io.typed_just_now(rung + TYPED_TURN), None, "the pointer kept it open");
         io.wrote_input(soon, true, Some(TypedBy::Someone));
         assert_eq!(io.typed_just_now(soon), Some(TypedBy::Someone));
+    }
+
+    /// A compaction the harness started by itself is a chore, whether it says so before the screen
+    /// shows the turn begin or after, and on a loaded machine either can lag by seconds. A turn
+    /// somebody typed, one begun long before, or one starting after the mark has lapsed is not it.
+    #[test]
+    fn a_compaction_the_harness_started_by_itself_is_a_chore() {
+        let io = PaneIo::idle(1);
+        let said = Instant::now();
+        io.compacting_by_itself(said);
+        let began = said + Duration::from_secs(8);
+        assert_eq!(io.turn_started(began), Some(TypedBy::Chore), "said first");
+        assert_eq!(io.turn_serial(), 1);
+
+        let next = began + Duration::from_mins(1);
+        assert_eq!(io.turn_started(next), None, "the mark is used up");
+        io.compacting_by_itself(next + Duration::from_secs(8));
+        assert_eq!(io.turn_typed_by(), Some(TypedBy::Chore), "the turn shown first");
+
+        let long_after = next + Duration::from_mins(2);
+        io.turn_started(long_after);
+        io.compacting_by_itself(long_after + TYPED_TURN);
+        assert_eq!(io.turn_typed_by(), None, "a compaction in the middle of a turn");
+
+        let typed = long_after + Duration::from_mins(5);
+        io.wrote_input(typed, true, Some(TypedBy::Someone));
+        io.compacting_by_itself(typed);
+        assert_eq!(io.turn_started(typed + Duration::from_secs(1)), Some(TypedBy::Someone));
+
+        let lapsed = typed + Duration::from_mins(10);
+        io.compacting_by_itself(lapsed);
+        assert_eq!(io.turn_started(lapsed + TYPED_TURN), None, "the mark lapsed");
+        assert_eq!(io.turn_serial(), 5);
     }
 
     /// A prompt hook reporting a turn the screen already showed begin is that turn's, whatever

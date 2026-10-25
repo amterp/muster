@@ -39,6 +39,7 @@ const CLAUDE_CODE: Harness = Harness {
         ("PostToolUseFailure", "[report][--agent][claude][--state][working]"),
         ("PermissionRequest", "[report][--agent][claude][--state][blocked]"),
         ("Notification", "[report][--agent][claude][--state][blocked]"),
+        ("PreCompact", "[report][--agent][claude][--compacting]"),
         ("Stop", "[report][--agent][claude][--state][idle]"),
         ("StopFailure", "[report][--agent][claude][--state][idle]"),
     ],

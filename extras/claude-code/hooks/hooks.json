@@ -99,6 +99,17 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --compacting >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
