@@ -501,6 +501,15 @@ group's conversation, as `open` does.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 
+An agent can tell the human something two ways, and they reach the person differently. A post
+that wakes the human raises the banner or the notification above, and waits unread in the group's
+conversation until they open it. Text an agent leaves in its own pane is seen only when somebody
+looks at that pane: Muster may notify that the agent is done (`[notifications]` in
+`~/.muster/config.toml`), but never with what it wrote. The human's reply is a post to the agent,
+which wakes it as any post does (Being woken, above) in its own session, so that session holds
+the question and the answer both. Which way an agent should use is for your own skills to say,
+since Muster imposes no workflow.
+
 `open` is the one msg verb that asks the window rather than the daemon, since only a window shows
 a group's conversation: it shows the conversation in place of the window's panes and prints the
 window's name, and with no window open it exits 3. While the conversation is in the window in
