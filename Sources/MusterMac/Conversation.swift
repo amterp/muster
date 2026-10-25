@@ -99,8 +99,14 @@ final class ConversationThread: ObservableObject {
     return nil
   }
 
+  /// Counts the times a group came on screen, so the thread opens each one on its unread line:
+  /// the hosted view, and what it remembers, outlives leaving the conversation.
+  private(set) var opening = 0
+
   func apply(_ changed: Muster_ConversationChanged) {
+    let before = group
     shown = changed
+    if let group, group != before { opening += 1 }
   }
 }
 
@@ -611,8 +617,9 @@ struct ConversationThreadView: View {
   let box: MessageBox
   let requests: @MainActor () -> ConversationRequests?
 
-  /// The group whose first rows this thread has scrolled to, so it does that once per group.
-  @State private var scrolledFor: ConversationGroup?
+  /// The opening whose first rows this thread has scrolled to, so it does that once each time a
+  /// group comes on screen.
+  @State private var scrolledFor: Int?
   /// Whether the end of the thread is on screen, which is when a new message scrolls to it.
   @State private var atEnd = true
   /// The row that was first when "Load earlier" was chosen, to stay on once the page lands.
@@ -652,6 +659,8 @@ struct ConversationThreadView: View {
       .onChange(of: rows.map(\.id)) { before, after in
         scroll(proxy, from: before, to: after)
       }
+      // A group left and shown again can come back with the rows it had, which changes no id.
+      .onChange(of: thread.opening) { _, _ in scroll(proxy, from: [], to: rows.map(\.id)) }
       .onChange(of: thread.answerFocus) { _, wanted in
         guard let wanted else { return }
         thread.answerFocus = nil
@@ -668,9 +677,9 @@ struct ConversationThreadView: View {
   /// messages only while the end is on screen, and keeps the reader's place when an earlier page
   /// lands above it (mine).
   private func scroll(_ proxy: ScrollViewProxy, from before: [String], to after: [String]) {
-    guard let group = thread.group, !after.isEmpty else { return }
-    if scrolledFor != group {
-      scrolledFor = group
+    guard thread.group != nil, !after.isEmpty else { return }
+    if scrolledFor != thread.opening {
+      scrolledFor = thread.opening
       proxy.scrollTo(after.contains("unread") ? "unread" : "end", anchor: .top)
       return
     }

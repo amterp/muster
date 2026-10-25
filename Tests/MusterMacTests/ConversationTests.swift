@@ -468,6 +468,23 @@ struct ConversationTests {
     withExtendedLifetime(coordinator) {}
   }
 
+  @Test("a group shown again after leaving opens afresh, on its unread line")
+  func aGroupShownAgainOpensAfresh() {
+    let thread = ConversationThread()
+    var review = Muster_ConversationChanged()
+    review.daemonID = "local"
+    review.group = "review"
+    thread.apply(review)
+    let first = thread.opening
+    thread.apply(review)
+    #expect(thread.opening == first, "a new row in the same showing is not a new opening")
+
+    thread.apply(Muster_ConversationChanged())
+    thread.apply(review)
+
+    #expect(thread.opening == first + 1)
+  }
+
   @Test("the window's view says which conversation it shows")
   func theViewNamesTheConversation() {
     var changed = Muster_ViewChanged()
