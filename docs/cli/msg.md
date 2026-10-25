@@ -521,7 +521,11 @@ group kept on a devenv as `review@devenv`. A pane running `log --follow` is an o
 reads nothing for the human.
 
 The human posts from a conversation's message box, or with `muster msg post` from any shell of
-their own, which sends the same request.
+their own, which sends the same request. A question in the conversation draws its answers as
+buttons while it is asked of the human and unanswered. Tab from the message box reaches the newest
+one's, and Space or Return picks one, which fills the box as the banner's pick fills its reply:
+⌘↩ posts the answer with anything written. An answered question says who answered it and with
+which answer.
 
 The window lists the groups you are in under its tabs. Right-clicking one offers Leave Group,
 which is `muster msg leave --group G` and takes the group off the list, and Delete Group, which
