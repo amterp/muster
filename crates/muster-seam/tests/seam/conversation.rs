@@ -588,6 +588,78 @@ fn the_members_column_says_why_an_agent_has_not_read_and_where_it_is() {
 }
 
 #[test]
+fn what_the_daemon_wakes_the_human_for_is_what_the_thread_leaves_unfolded() {
+    // The thread decides which unaddressed messages woke the human from the group's policy, as
+    // the daemon does when it tells the window what waits; a fold that disagreed would hide a
+    // message the daemon raised for the human, and nothing would say so.
+    let mut open = Open::built();
+    let mut ring = std::collections::HashMap::new();
+    ring.insert("director".to_string(), names(&["@human"]));
+    ring.insert("*".to_string(), names(&["director"]));
+    let policy = msg_request::Policy {
+        ring,
+        allow: std::collections::HashMap::from([("*".to_string(), names(&["*"]))]),
+        membership: vec!["*".to_string()],
+        ..msg_request::Policy::default()
+    };
+    let made =
+        Asked::GroupNew(msg_request::GroupNew { group: "crew".to_string(), policy: Some(policy) });
+    expect(&mut open.control, msg(&named("director"), made), daemon_proto::Outcome::Done);
+    for (caller, name) in [(the_human(), "@human"), (named("a"), "a"), (named("b"), "b")] {
+        let join = Asked::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("crew".to_string()),
+            pull: false,
+        });
+        expect(&mut open.control, msg(&caller, join), daemon_proto::Outcome::Done);
+    }
+    // Every run of agents' messages between the director's is two or more long, so each folds
+    // unless the thread thinks it woke the human.
+    for author in ["director", "a", "b", "director", "a", "b", "a", "director"] {
+        let read = Asked::Read(msg_request::Read { group: Some("crew".to_string()) });
+        open.control.ask(msg(&named(author), read));
+        let asked = Asked::Post(msg_request::Post {
+            group: Some("crew".to_string()),
+            body: format!("from {author}"),
+            ..Default::default()
+        });
+        expect(&mut open.control, msg(&named(author), asked), daemon_proto::Outcome::Done);
+    }
+    let notice = snapshot(&mut open.control)
+        .human
+        .into_iter()
+        .find(|notice| notice.group == "crew")
+        .expect("the daemon says what waits for the human in crew");
+    until_listed("crew");
+
+    let shown = answer_in(
+        "window-1",
+        request::Payload::ShowConversation(ShowConversation {
+            daemon_id: String::new(),
+            group: "crew".to_string(),
+        }),
+    );
+    assert!(matches!(shown.payload, Some(response::Payload::Opened(_))), "{shown:?}");
+    let rows = until_rows(|rows| {
+        rows.iter().filter(|row| kind(row) == "message").count() as u64 >= notice.count
+            && rows.iter().any(|row| kind(row) == "fold")
+    });
+    let unfolded: Vec<u64> = rows
+        .iter()
+        .filter_map(|row| match &row.kind {
+            Some(conversation_row::Kind::Message(message)) => Some(message.seq),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        (unfolded.len() as u64, unfolded.first().copied(), unfolded.last().copied()),
+        (notice.count, Some(notice.first), Some(notice.last)),
+        "the daemon woke the human for {notice:?}, and the thread left {unfolded:?} unfolded"
+    );
+}
+
+#[test]
 fn pausing_from_the_header_marks_the_group_paused() {
     let _open = Open::built();
     show("window-1");
@@ -904,6 +976,10 @@ fn group_of_three(control: &mut Control) {
         });
         expect(control, msg(&caller, join), daemon_proto::Outcome::Done);
     }
+}
+
+fn names(names: &[&str]) -> msg_request::Names {
+    msg_request::Names { names: names.iter().map(ToString::to_string).collect() }
 }
 
 fn in_pane(pane: &str) -> msg_request::Caller {
