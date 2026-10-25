@@ -2,6 +2,7 @@
 //! notification, going to what asked shows the group's conversation, and chatter between agents
 //! raises nothing (MIP-4, section 10; mip/0009-group-conversation.md, section 1).
 
+use crate::group_messages::{group_of_three, msg, named, post, posted, the_human};
 use muster::proto::{
     AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged, LeaveGroup, OpenWindow,
     ReadWindow, Request, Response, Startup, WindowFocus, event, request, response,
@@ -9,7 +10,6 @@ use muster::proto::{
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{self, Answer};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
-use muster_daemon_proto::request::Service;
 use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
 use muster_harness::{Control, Daemon, until};
 use prost::Message;
@@ -31,7 +31,7 @@ fn a_message_for_the_human_notifies_once_and_lands_on_its_conversation() {
     group_of_three(&mut control);
 
     post(&mut control, "a", "b", "the lexer is yours");
-    let posted = post(&mut control, "a", "@human", "need input");
+    let posted = posted(&mut control, &named("a"), "@human", "need input", &[]);
     assert_eq!(reached(&posted), [("@human".to_string(), msg_answer::Reach::Woken)]);
     until(
         "the message to ask for the human",
@@ -200,7 +200,7 @@ fn a_message_sent_while_no_window_was_open_notifies_when_one_opens() {
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
     group_of_three(&mut control);
-    let posted = post(&mut control, "a", "@human", "while you were out");
+    let posted = posted(&mut control, &named("a"), "@human", "while you were out", &[]);
     assert_eq!(reached(&posted), [("@human".to_string(), msg_answer::Reach::Waiting)]);
 
     open_window(&daemon);
@@ -253,18 +253,6 @@ fn show_conversation(daemon: &str) -> request::Payload {
     })
 }
 
-/// The human, `a` and `b` in group `g`.
-fn group_of_three(control: &mut Control) {
-    for (caller, name) in [(the_human(), "@human"), (named("a"), "a"), (named("b"), "b")] {
-        let join = Asked::Join(msg_request::Join {
-            name: Some(name.to_string()),
-            group: Some("g".to_string()),
-            pull: false,
-        });
-        expect(control, msg(&caller, join), daemon_proto::Outcome::Done);
-    }
-}
-
 fn open_window(daemon: &Daemon) {
     open_window_with(&daemon.muster_config());
 }
@@ -284,32 +272,6 @@ fn open_window_with(config: &std::path::Path) {
         || !keyboard_pane().is_empty(),
         || "the window shows nothing".to_string(),
     );
-}
-
-fn the_human() -> msg_request::Caller {
-    msg_request::Caller::default()
-}
-
-fn named(name: &str) -> msg_request::Caller {
-    msg_request::Caller { as_name: Some(name.to_string()), ..msg_request::Caller::default() }
-}
-
-fn msg(caller: &msg_request::Caller, asked: Asked) -> Service {
-    Service::Msg(daemon_proto::MsgRequest { caller: Some(caller.clone()), request: Some(asked) })
-}
-
-fn post(control: &mut Control, from: &str, to: &str, body: &str) -> daemon_proto::MsgAnswer {
-    let asked = Asked::Post(msg_request::Post {
-        group: Some("g".to_string()),
-        to: vec![to.to_string()],
-        body: body.to_string(),
-        ..Default::default()
-    });
-    let posted = control.ask(msg(&named(from), asked));
-    match posted.answer.detail {
-        Some(daemon_proto::answer::Detail::Msg(answer)) => answer,
-        other => panic!("a post answered with {other:?}: {}", posted.answer.reason),
-    }
 }
 
 fn reached(posted: &daemon_proto::MsgAnswer) -> Vec<(String, msg_answer::Reach)> {

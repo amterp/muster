@@ -3,6 +3,9 @@
 //! shows and reads nothing, a dismissal reads nothing, reading the group elsewhere takes it down,
 //! and a reply the daemon refuses or never answers stays in it.
 
+use crate::group_messages::{
+    entries, group_of_three, log, msg, named, post, posted, the_human, unread,
+};
 use muster::proto::{
     BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, PickBannerAnswer, ReplyToBanner,
     Request, Response, Startup, event, markdown_block, post_outcome, request, response,
@@ -11,7 +14,7 @@ use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{Answer, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::request::Service;
-use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
+use muster_harness::requests::{create, expect, in_new_tab, make, until_text};
 use muster_harness::{Control, Daemon, until};
 use prost::Message;
 use std::sync::Mutex;
@@ -266,64 +269,15 @@ fn banners() -> BannersChanged {
     BANNERS.lock().expect("a panicking test poisoned the log").clone().unwrap_or_default()
 }
 
-/// How many messages wait for the human in `g`, as the daemon says.
-fn unread(control: &mut Control) -> u64 {
-    snapshot(control).human.iter().find(|notice| notice.group == "g").map_or(0, |n| n.count)
-}
-
-/// Every message in `g`: author, recipients, body.
-fn entries(control: &mut Control) -> Vec<(String, Vec<String>, String)> {
-    let log = Asked::Log(msg_request::Log { group: "g".to_string(), ..Default::default() });
-    let logged = expect(control, msg(&named("b"), log), daemon_proto::Outcome::Done);
-    let Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
-        answer: Some(Answer::Entries(entries)),
-        ..
-    })) = logged.answer.detail
-    else {
-        panic!("a log answered {:?}", logged.answer);
-    };
-    entries
-        .groups
-        .into_iter()
-        .flat_map(|group| group.entries)
-        .filter_map(|entry| match entry.what {
-            Some(What::Message(message)) => Some((message.author, message.to, message.body)),
-            _ => None,
-        })
-        .collect()
-}
-
 fn last_entry(control: &mut Control) -> (String, Vec<String>, String) {
     entries(control).pop().expect("the group holds a message")
 }
 
 /// The answer the last message in `g` picks, if it picks one.
 fn last_answering(control: &mut Control) -> Option<msg_request::Answering> {
-    let log = Asked::Log(msg_request::Log { group: "g".to_string(), ..Default::default() });
-    let logged = expect(control, msg(&named("b"), log), daemon_proto::Outcome::Done);
-    let Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
-        answer: Some(Answer::Entries(entries)),
-        ..
-    })) = logged.answer.detail
-    else {
-        panic!("a log answered {:?}", logged.answer);
-    };
-    let last = entries.groups.into_iter().flat_map(|group| group.entries).last()?;
-    match last.what {
+    match log(control).pop()?.what {
         Some(What::Message(message)) => message.answering,
         _ => None,
-    }
-}
-
-/// The human, `a` and `b` in group `g`.
-fn group_of_three(control: &mut Control) {
-    for (caller, name) in [(the_human(), "@human"), (named("a"), "a"), (named("b"), "b")] {
-        let join = Asked::Join(msg_request::Join {
-            name: Some(name.to_string()),
-            group: Some("g".to_string()),
-            pull: false,
-        });
-        expect(control, msg(&caller, join), daemon_proto::Outcome::Done);
     }
 }
 
@@ -339,46 +293,11 @@ fn open_window_with(config: &std::path::Path) {
     }
 }
 
-fn the_human() -> msg_request::Caller {
-    msg_request::Caller::default()
-}
-
-fn named(name: &str) -> msg_request::Caller {
-    msg_request::Caller { as_name: Some(name.to_string()), ..msg_request::Caller::default() }
-}
-
-fn msg(caller: &msg_request::Caller, asked: Asked) -> Service {
-    Service::Msg(daemon_proto::MsgRequest { caller: Some(caller.clone()), request: Some(asked) })
-}
-
-/// Posts as `from` to `to` in `g`, having read what waits there first as an agent does, and
-/// returns the message's number.
-fn post(control: &mut Control, from: &str, to: &str, body: &str) -> u64 {
-    post_offering(control, from, to, body, &[])
-}
-
 /// Asks the human a question as `from`, offering `answers`, and returns its number.
 fn ask(control: &mut Control, from: &str, body: &str, answers: &[&str]) -> u64 {
-    post_offering(control, from, "@human", body, answers)
-}
-
-fn post_offering(control: &mut Control, from: &str, to: &str, body: &str, answers: &[&str]) -> u64 {
-    let read = Asked::Read(msg_request::Read { group: Some("g".to_string()) });
-    control.ask(msg(&named(from), read));
-    let asked = Asked::Post(msg_request::Post {
-        group: Some("g".to_string()),
-        to: vec![to.to_string()],
-        body: body.to_string(),
-        answers: answers.iter().map(ToString::to_string).collect(),
-        ..Default::default()
-    });
-    let posted = control.ask(msg(&named(from), asked));
-    match posted.answer.detail {
-        Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
-            answer: Some(Answer::Posted(posted)),
-            ..
-        })) => posted.seq,
-        other => panic!("a post answered with {other:?}: {}", posted.answer.reason),
+    match posted(control, &named(from), "@human", body, answers).answer {
+        Some(Answer::Posted(posted)) => posted.seq,
+        other => panic!("a question answered with {other:?}"),
     }
 }
 

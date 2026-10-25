@@ -16,6 +16,7 @@ mod daemon_census;
 mod dispatch;
 mod effects;
 mod focus_history;
+mod group_messages;
 mod handing_over;
 mod hiding;
 mod holding;
