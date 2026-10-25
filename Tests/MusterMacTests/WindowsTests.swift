@@ -81,6 +81,30 @@ struct WindowsTests {
     #expect(second.applied == ["view", "problems"])
   }
 
+  @Test("a conversation's events reach the window they name")
+  func conversationEventsReachTheirWindow() {
+    Windows.forgetAll()
+    defer { Windows.forgetAll() }
+    let first = StandIn("window-1")
+    let second = StandIn("window-2")
+    Windows.register(first)
+    Windows.register(second)
+
+    for payload: Muster_Event.OneOf_Payload in [
+      .conversationChanged(Muster_ConversationChanged()),
+      .conversationMembersChanged(Muster_ConversationMembersChanged()),
+      .messageBoxChanged(Muster_MessageBoxChanged()),
+    ] {
+      var event = Muster_Event()
+      event.payload = payload
+      event.window = "window-2"
+      Core.deliver(event)
+    }
+
+    #expect(first.applied.isEmpty)
+    #expect(second.applied == ["conversation", "members", "message box"])
+  }
+
   @Test("a view for a window this process does not have reaches no window")
   func aViewForNoWindowIsDropped() {
     Windows.forgetAll()
@@ -247,4 +271,10 @@ private final class StandIn: ShellWindow {
     applied.append("close")
     if closes { Windows.remove(self) }
   }
+}
+
+extension StandIn: ConversationWindow {
+  func apply(conversation: Muster_ConversationChanged) { applied.append("conversation") }
+  func apply(conversationMembers: Muster_ConversationMembersChanged) { applied.append("members") }
+  func apply(messageBox: Muster_MessageBoxChanged) { applied.append("message box") }
 }

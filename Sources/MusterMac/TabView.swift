@@ -23,6 +23,10 @@ public final class TabView: NSView {
   private var tree: PaneTree?
   private var tab: String?
 
+  /// Whether a group's conversation is drawn in place of the tab. Its panes stay where they
+  /// are, undrawn, and the keyboard is left to the conversation until it goes.
+  public private(set) var covered = false
+
   /// What fills the tab when it has no panes. Behind them rather than beside them, so a pane
   /// drawn over it hides it.
   private var empty: NSView?
@@ -80,6 +84,13 @@ public final class TabView: NSView {
   public func apply(_ contents: WindowContents) {
     let sameTab = contents.tab == tab
     tab = contents.tab
+    covered = contents.conversation != nil
+    isHidden = covered
+    // Before a tree that is not described yet returns early, so a tab covered meanwhile stops
+    // drawing at once.
+    for key in showing {
+      chrome(for: key)?.surface.apply(covered: covered)
+    }
     guard let tree = contents.tree else {
       if !sameTab {
         self.tree = nil
@@ -135,8 +146,9 @@ public final class TabView: NSView {
   private func apply(keyboard: PaneKey?) {
     for key in showing {
       chrome(for: key)?.apply(focused: key == keyboard)
+      chrome(for: key)?.surface.apply(covered: covered)
     }
-    guard let keyboard, let chrome = chrome(for: keyboard), let window else { return }
+    guard !covered, let keyboard, let chrome = chrome(for: keyboard), let window else { return }
     if window.firstResponder !== chrome.surface {
       window.makeFirstResponder(chrome.surface)
     }

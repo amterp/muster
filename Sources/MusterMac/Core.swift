@@ -1091,6 +1091,92 @@ public enum Core {
     openTranscript(daemonID: daemonID, group: group)
   }
 
+  /// Shows a group's conversation in place of the window's panes, as `muster msg open` does: nil
+  /// once shown, or the core's reason.
+  public static func showConversation(daemonID: String, group: String) -> String? {
+    var show = Muster_ShowConversation()
+    show.daemonID = daemonID
+    show.group = group
+    var request = Muster_Request()
+    request.showConversation = show
+    return refusal(send(request))
+  }
+
+  static func openFold(_ group: ConversationGroup, first: UInt64) {
+    var open = Muster_OpenFold()
+    open.daemonID = group.daemon
+    open.group = group.group
+    open.first = first
+    var request = Muster_Request()
+    request.openFold = open
+    send(request)
+  }
+
+  static func showWholeMessage(_ group: ConversationGroup, seq: UInt64) {
+    var whole = Muster_ShowWholeMessage()
+    whole.daemonID = group.daemon
+    whole.group = group.group
+    whole.seq = seq
+    var request = Muster_Request()
+    request.showWholeMessage = whole
+    send(request)
+  }
+
+  /// Hands the core the message box as the person left it, and answers with the draft as the
+  /// core keeps it, which the box shows in place of its own. Nil when the core did not answer.
+  static func saveDraft(_ group: ConversationGroup, _ edit: DraftEdit) -> Muster_MessageBoxDraft? {
+    var save = Muster_SaveDraft()
+    save.daemonID = group.daemon
+    save.group = group.group
+    save.text = edit.text
+    save.cursor = UInt32(clamping: edit.cursor)
+    save.to = edit.to
+    save.urgent = edit.urgent
+    save.unaddress = edit.unaddress
+    save.complete = edit.complete
+    var request = Muster_Request()
+    request.saveDraft = save
+    guard case .draft(let draft) = send(request) else { return nil }
+    return draft
+  }
+
+  /// Posts the window's draft for the group as the human.
+  ///
+  /// Off the main thread, like `replyToBanner`: the answer waits on the daemon keeping the post.
+  /// What came of it reaches the message box as the core's next word about it. Names its window
+  /// outright, since the sending thread is not the one a window speaks on.
+  static func postFromConversation(_ group: ConversationGroup, window: String) {
+    var post = Muster_PostFromConversation()
+    post.daemonID = group.daemon
+    post.group = group.group
+    var request = Muster_Request()
+    request.postFromConversation = post
+    request.window = window
+    let (sent, dispatcher) = (request, self.dispatcher)
+    DispatchQueue.global(qos: .userInitiated).async {
+      _ = send(sent, through: dispatcher)
+    }
+  }
+
+  static func loadEarlier(_ group: ConversationGroup) {
+    var earlier = Muster_LoadEarlier()
+    earlier.daemonID = group.daemon
+    earlier.group = group.group
+    var request = Muster_Request()
+    request.loadEarlier = earlier
+    send(request)
+  }
+
+  static func pauseGroup(_ group: ConversationGroup, paused: Bool) {
+    var pause = Muster_PauseGroup()
+    pause.daemonID = group.daemon
+    pause.group = group.group
+    pause.paused = paused
+    var request = Muster_Request()
+    request.pauseGroup = pause
+    send(request)
+  }
+
   /// Returns the window from a group's conversation to its panes, with the keyboard where it was.
   public static func leaveConversation() {
     var request = Muster_Request()
@@ -1833,9 +1919,16 @@ public enum Core {
     case .bannersChanged(let changed):
       BannerBoard.shared.apply(changed)
       info("banners.received", ["shown": String(changed.shown.count)])
-    case .conversationChanged, .conversationMembersChanged, .messageBoxChanged:
-      // Not drawn by this shell yet: a group is read in its transcript.
-      break
+    case .conversationChanged(let changed):
+      let cost = ApplyCost()
+      (window(for: event) as? ConversationWindow)?.apply(conversation: changed)
+      info(
+        "conversation.received",
+        cost.fields.merging(["group": changed.group, "rows": String(changed.rows.count)]) { $1 })
+    case .conversationMembersChanged(let changed):
+      (window(for: event) as? ConversationWindow)?.apply(conversationMembers: changed)
+    case .messageBoxChanged(let changed):
+      (window(for: event) as? ConversationWindow)?.apply(messageBox: changed)
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.

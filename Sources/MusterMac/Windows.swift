@@ -30,6 +30,15 @@ public protocol ShellWindow: AnyObject {
   func close()
 }
 
+/// A window that can show a group's conversation in place of its panes. Apart from `ShellWindow`
+/// because the seam's generated types are internal to this module.
+@MainActor
+protocol ConversationWindow: AnyObject {
+  func apply(conversation: Muster_ConversationChanged)
+  func apply(conversationMembers: Muster_ConversationMembersChanged)
+  func apply(messageBox: Muster_MessageBoxChanged)
+}
+
 /// Every window this process has open, by the name the core gave each (mip/0006-one-process.md).
 ///
 /// Holds them, rather than only knowing of them: a window is closed by taking it out of here,

@@ -48,15 +48,20 @@ public struct WindowContents: Equatable {
   /// Every machine a leaf of `tree` can name, by its daemon.
   public let machines: [String: Machine]
 
+  /// The group whose conversation is drawn in place of the tab, which stays underneath with
+  /// the keyboard where it was. Nil while the window shows its panes.
+  public let conversation: ConversationGroup?
+
   public init(
     tab: String?, tree: PaneTree?, zoomed: Bool = false, keyboard: PaneKey?,
-    machines: [String: Machine] = [:]
+    machines: [String: Machine] = [:], conversation: ConversationGroup? = nil
   ) {
     self.tab = tab
     self.tree = tree
     self.zoomed = zoomed
     self.keyboard = keyboard
     self.machines = machines
+    self.conversation = conversation
   }
 
   /// The panes this window will be showing once it has applied.
@@ -364,7 +369,10 @@ extension WindowContents {
               remote: machine.remote)
           )
         },
-        uniquingKeysWith: { first, _ in first }))
+        uniquingKeysWith: { first, _ in first }),
+      conversation: changed.conversationGroup.isEmpty
+        ? nil
+        : ConversationGroup(daemon: changed.conversationDaemonID, group: changed.conversationGroup))
   }
 }
 

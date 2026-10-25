@@ -26,9 +26,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   private var windowIsVisible = true
   /// Whether this pane is parked: held off screen in a tab no region is showing.
   private var parked = false
+  /// Whether this pane is in the tab on screen under a group's conversation, which hides it.
+  private var covered = false
 
   /// Whether libghostty should draw this surface: its window can be seen, and it is in it.
-  private var seen: Bool { windowIsVisible && !parked }
+  private var seen: Bool { windowIsVisible && !parked && !covered }
 
   /// Whether this view has a pane to type into. A bare `muster` does not - it is the
   /// renderer check - and a view that sent keystrokes anyway would fill the log with
@@ -665,6 +667,14 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   public func apply(parked: Bool) {
     let before = seen
     self.parked = parked
+    if seen != before { surface?.setOcclusion(visible: seen) }
+  }
+
+  /// A covered pane is in the tab on screen, hidden under a group's conversation, so it is
+  /// drawn for nobody as a parked one would be.
+  public func apply(covered: Bool) {
+    let before = seen
+    self.covered = covered
     if seen != before { surface?.setOcclusion(visible: seen) }
   }
 

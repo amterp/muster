@@ -131,6 +131,10 @@ public final class MusterWindow: NSObject {
   /// The banners for messages to the human, drawn over the panes while this is the main window.
   let banners = BannerHost()
 
+  /// A group's conversation, drawn in place of the panes while the view names one.
+  private(set) lazy var conversation = ConversationHost(
+    requests: .core(window: { [weak self] in self?.name ?? "" }))
+
   /// Where the window is when it is not full-screen, which is the only rectangle worth writing
   /// down. macOS reports a full-screen window's frame as the whole display, so a window that
   /// went full-screen and quit would otherwise come back the size of somebody's monitor with no
@@ -189,6 +193,12 @@ public final class MusterWindow: NSObject {
     }
     // Not through `focusBack` and `focusForward`, which beep at either end of the history: a
     // mouse button there does nothing, as a browser's does.
+    // The conversation's own chords, Escape to leave above all, wherever in it the keyboard is
+    // and before any view of it sees them; with no conversation shown it takes nothing.
+    keyboard.onKeyDown = { [weak self] event in
+      guard let self else { return false }
+      return speaking { conversation.handles(event) }
+    }
     keyboard.onHistoryButton = { [weak self] forward in
       Core.debug(
         BoundAction.event, BoundAction.record(mouse: forward ? "focus_forward" : "focus_back"))
@@ -222,6 +232,7 @@ public final class MusterWindow: NSObject {
       window.makeFirstResponder(surface)
     }
     BannerBoard.shared.take(bindings: bindings)
+    conversation.take(bindings: bindings)
     surfaces.window(key: window.isKeyWindow)
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
@@ -382,15 +393,37 @@ public final class MusterWindow: NSObject {
 
     keyboardPane = contents.keyboard?.pane
     keyboardKey = contents.keyboard
+    apply(conversation: contents.conversation)
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     zoomed = contents.zoomed
     empty.apply(showing: contents.tab != nil)
     applyTitle()
   }
 
+  /// Draws a group's conversation in place of the panes, or takes it down. The tab applied just
+  /// before this hid its panes and left the keyboard for it, or put the keyboard back.
+  private func apply(conversation group: ConversationGroup?) {
+    let before = conversation.shown
+    guard group != before else { return }
+    // The hidden pane keeps the keyboard until the message box takes it, a moment later; nothing
+    // typed in between may reach a pane nobody can see.
+    if group != nil, let responder = window.firstResponder as? NSView,
+      responder.isDescendant(of: tabView)
+    {
+      window.makeFirstResponder(nil)
+    }
+    conversation.show(group) { split.attach(conversation: $0) }
+    if let group {
+      Core.info("conversation.shown", ["daemon": group.daemon, "group": group.group])
+    } else if let before {
+      Core.info("conversation.left", ["daemon": before.daemon, "group": before.group])
+    }
+  }
+
   public func apply(pane: PaneKey, agent: PaneAgent) {
     let rangBefore = agents[pane]?.rang ?? false
     agents[pane] = agent
+    conversation.members.apply(pane: pane, agent: agent)
     // Whether or not it is on screen. A pane parked off screen keeps its border
     // painted, so the tab somebody switches back to is right on its first frame rather than
     // on the agent's next transition.
@@ -425,6 +458,7 @@ public final class MusterWindow: NSObject {
     // tabs would hold fifteen tabs' worth of bridges until it quit.
     surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+    conversation.members.apply(roster: roster)
     applyBadges()
   }
 
@@ -565,6 +599,7 @@ public final class MusterWindow: NSObject {
     // Rebinding the nine onto another modifier moves which release ends a two-stage chord, and
     // a stale answer here is a gesture that either never ends or ends on the wrong key.
     chordModifiers = NumberedChord.modifiers(bindings)
+    conversation.take(bindings: bindings)
   }
 
   /// Every divider on screen.
@@ -795,7 +830,9 @@ public final class MusterWindow: NSObject {
 /// being looked at. An app can be frontmost with this window behind its own settings sheet,
 /// and the agent that finished underneath was no more seen than if the app were hidden.
 extension MusterWindow: NSMenuItemValidation {
-  /// Greys out Send Message unless a banner's reply field holds the keyboard.
+  /// Greys out Send Message unless a banner's reply field or the message box holds the keyboard,
+  /// Leave Conversation unless a conversation is shown, and every action about the keyboard's
+  /// pane while one covers it.
   ///
   /// Greys out Select Pane Asking while nothing asks, so the menu says there is nowhere to go
   /// before anybody tries, and Compact Agent while the keyboard's pane has no agent its daemon
@@ -809,20 +846,60 @@ extension MusterWindow: NSMenuItemValidation {
     if item.action == #selector(quietPane(_:)) {
       item.state = keyboard?.quiet == true ? .on : .off
     }
-    return Self.isAvailable(item.action, keyboard: keyboard, replying: banners.holdsKeyboard)
+    return Self.isAvailable(
+      item.action, keyboard: keyboard,
+      replying: banners.holdsKeyboard || conversation.holdsKeyboard,
+      covered: conversation.shown != nil)
   }
 
   /// `keyboard` is the roster's row for the pane the keyboard is on, if the roster has one.
+  /// `covered` is a conversation drawn in place of the panes.
   static func isAvailable(
-    _ action: Selector?, keyboard: Roster.Pane? = nil, replying: Bool = false
+    _ action: Selector?, keyboard: Roster.Pane? = nil, replying: Bool = false,
+    covered: Bool = false
   ) -> Bool {
-    switch action {
+    // The pane they would act on is out of sight under the conversation, and closing, clearing or
+    // restarting something nobody can see is not a thing to do by accident (mine).
+    if covered, let action, aboutTheKeyboardsPane.contains(action) { return false }
+    return switch action {
     case #selector(sendMessage(_:)): replying
+    case #selector(leaveConversation(_:)): covered
     case #selector(focusPaneAsking(_:)): Core.anythingAsking
     case #selector(compactAgent(_:)): keyboard?.compactable ?? false
     case #selector(restartAgent(_:)): !(keyboard?.resumesAs.isEmpty ?? true)
     default: true
     }
+  }
+}
+
+extension MusterWindow {
+  /// The actions that act on the pane the keyboard is on, rather than choosing where to look or
+  /// making something new.
+  static let aboutTheKeyboardsPane: Set<Selector> = [
+    #selector(renamePane(_:)), #selector(compactAgent(_:)), #selector(restartAgent(_:)),
+    #selector(movePaneToNewTab(_:)), #selector(hidePane(_:)), #selector(quietPane(_:)),
+    #selector(closePane(_:)), #selector(resizePaneLeft(_:)), #selector(resizePaneRight(_:)),
+    #selector(resizePaneUp(_:)), #selector(resizePaneDown(_:)), #selector(zoomPane(_:)),
+    #selector(equalizePanes(_:)), #selector(find(_:)), #selector(findNext(_:)),
+    #selector(findPrevious(_:)), #selector(scrollToTop(_:)), #selector(scrollToBottom(_:)),
+    #selector(scrollPageUp(_:)), #selector(scrollPageDown(_:)),
+    #selector(jumpToPreviousPrompt(_:)), #selector(jumpToNextPrompt(_:)),
+    #selector(clearScreen(_:)), #selector(resetTerminal(_:)), #selector(increaseFontSize(_:)),
+    #selector(decreaseFontSize(_:)), #selector(resetFontSize(_:)),
+  ]
+}
+
+extension MusterWindow: ConversationWindow {
+  func apply(conversation changed: Muster_ConversationChanged) {
+    conversation.thread.apply(changed)
+  }
+
+  func apply(conversationMembers changed: Muster_ConversationMembersChanged) {
+    conversation.members.apply(changed, agents: agents, roster: roster)
+  }
+
+  func apply(messageBox changed: Muster_MessageBoxChanged) {
+    conversation.box.apply(changed)
   }
 }
 
@@ -1093,7 +1170,11 @@ extension MusterWindow {
   /// Sends the reply in the banner whose field holds the keyboard. The field matches the chord
   /// itself; this is the menu item, for somebody who picks it with the pointer.
   @objc public func sendMessage(_ sender: Any?) {
-    banners.sendFocused()
+    if conversation.holdsKeyboard {
+      conversation.box.send()
+    } else {
+      banners.sendFocused()
+    }
   }
 
   /// Returns this window from a group's conversation to its panes. The conversation matches the
@@ -1504,6 +1585,7 @@ extension MusterWindow {
 final class WindowLayout: NSView {
   private var sidebar: NSView?
   private var strip: NSView?
+  private weak var banners: NSView?
   private let edge = SidebarEdgeView()
 
   /// How wide the core says the list is. Mirrored like `sidebarShown`: a drag asks for a width
@@ -1552,12 +1634,27 @@ final class WindowLayout: NSView {
   /// their height is whatever SwiftUI says the stack needs.
   func attach(banners: NSView) {
     guard let strip else { return }
+    self.banners = banners
     banners.translatesAutoresizingMaskIntoConstraints = false
     addSubview(banners)
     NSLayoutConstraint.activate([
       banners.topAnchor.constraint(equalTo: strip.topAnchor, constant: 8),
       banners.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -8),
       banners.bottomAnchor.constraint(lessThanOrEqualTo: strip.bottomAnchor, constant: -8),
+    ])
+  }
+
+  /// A group's conversation, in place of the panes: over the whole of the tab's frame, and under
+  /// the banners, which still stand over it for other groups.
+  func attach(conversation: NSView) {
+    guard let strip else { return }
+    conversation.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(conversation, positioned: .below, relativeTo: banners)
+    NSLayoutConstraint.activate([
+      conversation.topAnchor.constraint(equalTo: strip.topAnchor),
+      conversation.bottomAnchor.constraint(equalTo: strip.bottomAnchor),
+      conversation.leadingAnchor.constraint(equalTo: strip.leadingAnchor),
+      conversation.trailingAnchor.constraint(equalTo: strip.trailingAnchor),
     ])
   }
 

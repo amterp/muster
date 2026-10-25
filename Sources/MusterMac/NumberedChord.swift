@@ -71,6 +71,10 @@ public final class KeyboardWindow: NSWindow {
   /// Called with `true` for the forward button and `false` for back, as each is pressed.
   public var onHistoryButton: ((Bool) -> Void)?
 
+  /// Offered every key press before any view, and the press goes no further when it answers
+  /// true: what a chord means in a whole view of Muster's, wherever in it the keyboard is.
+  public var onKeyDown: ((NSEvent) -> Bool)?
+
   public override func flagsChanged(with event: NSEvent) {
     super.flagsChanged(with: event)
     onModifiersChanged?(event.modifierFlags)
@@ -82,6 +86,7 @@ public final class KeyboardWindow: NSWindow {
   ///
   /// On the press, and the release is swallowed with it, so no view sees half a click.
   public override func sendEvent(_ event: NSEvent) {
+    if event.type == .keyDown, onKeyDown?(event) == true { return }
     guard let forward = Self.historyDirection(for: event) else {
       super.sendEvent(event)
       return

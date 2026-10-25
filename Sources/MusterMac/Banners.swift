@@ -127,10 +127,7 @@ final class BannerBoard: ObservableObject {
 
   /// Whether a key press is the chord that sends.
   func sends(key: String, modifiers: NSEvent.ModifierFlags) -> Bool {
-    guard let chord = sendChord, !chord.key.isEmpty else { return false }
-    let wanted = menuModifiers(chord.modifiers)
-    let pressed = modifiers.intersection([.shift, .control, .option, .command])
-    return menuKeyEquivalent(forKeyNamed: chord.key) == key && pressed == wanted
+    sendChord?.matches(key: key, modifiers: modifiers) ?? false
   }
 
   /// A reply that woke somebody says so for a moment and comes down; one nobody live heard
@@ -174,6 +171,11 @@ enum BannerTime {
     let time = format(date, "HH:mm:ss", zone)
     return calendar.isDate(date, inSameDayAs: now)
       ? time : "\(format(date, "yyyy-MM-dd", zone)) \(time)"
+  }
+
+  /// The time of day alone, for a thread whose dividers say the day.
+  static func timeOfDay(atMs: UInt64, zone: TimeZone = .current) -> String {
+    format(Date(timeIntervalSince1970: TimeInterval(atMs) / 1000), "HH:mm:ss", zone)
   }
 
   static func exact(atMs: UInt64, zone: TimeZone = .current) -> String {
@@ -571,14 +573,9 @@ public final class BannerHost {
   /// composition of its own drops it, and then the field's marked text replaced with nothing in
   /// case it kept none. False when nothing was being composed.
   func endComposition() -> Bool {
-    guard let field = hosting.window?.firstResponder as? NSTextView,
-      field.isDescendant(of: hosting), field.hasMarkedText()
+    guard let field = hosting.window?.firstResponder as? NSTextView, field.isDescendant(of: hosting)
     else { return false }
-    field.inputContext?.discardMarkedText()
-    if field.hasMarkedText() {
-      field.insertText("", replacementRange: field.markedRange())
-    }
-    return true
+    return field.endComposition()
   }
 
   /// Sends the reply in the banner whose field holds the keyboard: the menu's Send Message.
