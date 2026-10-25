@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use muster_core::attention::GroupKey;
@@ -73,6 +74,34 @@ pub(crate) struct Shared {
     failed: Option<String>,
     /// A member's pane changed, so why it has not read may have too: `Who` is asked again.
     members_moved: bool,
+    /// Which fetch of the group's log this is. A log let go and shown again at once is fetched
+    /// afresh, and the thread still following the one before must leave the new one alone.
+    generation: u64,
+}
+
+/// One follow thread's group: the log of one generation, which the thread fetches, follows and
+/// writes into, and which it ends with.
+#[derive(Debug, Clone)]
+struct Following {
+    group: GroupKey,
+    generation: u64,
+}
+
+impl Following {
+    /// The group's log while it is still the generation this thread fetched.
+    fn shared<'a>(&self, session: &'a mut Session) -> Option<&'a mut Shared> {
+        session
+            .conversations
+            .get_mut(&self.group)
+            .filter(|shared| shared.generation == self.generation)
+    }
+
+    /// Whoever follows the group's log now, if any window shows it.
+    fn now(group: &GroupKey) -> Option<Following> {
+        let session = poison::lock(&SESSION, "session");
+        let generation = session.conversations.get(group)?.generation;
+        Some(Following { group: group.clone(), generation })
+    }
 }
 
 impl Session {
@@ -159,10 +188,12 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
                 forget_unless_shown(&mut session, &left);
             }
         }
-        let start = !session.conversations.contains_key(&key);
-        if start {
-            session.conversations.insert(key.clone(), Shared::default());
-        }
+        let start = (!session.conversations.contains_key(&key)).then(|| {
+            static GENERATIONS: AtomicU64 = AtomicU64::new(0);
+            let generation = GENERATIONS.fetch_add(1, Ordering::Relaxed);
+            session.conversations.insert(key.clone(), Shared { generation, ..Shared::default() });
+            Following { group: key.clone(), generation }
+        });
         session.open_drafts(&key);
         (session.windows[window].name.to_string(), start)
     };
@@ -170,8 +201,8 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
         "conversation.shown",
         fields! { "daemon" => key.daemon.to_string(), "group" => &key.group, "window" => &name },
     );
-    if start {
-        follow(&key);
+    if let Some(following) = start {
+        follow(following);
     }
     super::publish("conversation");
     // Read for the human if they are reading it now, which also takes its banner and its ask
@@ -211,40 +242,41 @@ fn forget_unless_shown(session: &mut Session, group: &GroupKey) {
 
 /// Fetches `group`'s log and follows it, off the caller's thread, for as long as a window shows
 /// it.
-fn follow(group: &GroupKey) {
+fn follow(following: Following) {
     let spawned = std::thread::Builder::new().name("muster-conversation".into()).spawn({
-        let group = group.clone();
-        move || following(&group)
+        let following = following.clone();
+        move || follow_log(&following)
     });
     if let Err(error) = spawned {
-        failed(group, &format!("no thread could be started to fetch it ({error})"));
+        failed(&following, &format!("no thread could be started to fetch it ({error})"));
     }
 }
 
-fn following(group: &GroupKey) {
+fn follow_log(following: &Following) {
+    let group = &following.group;
     loop {
-        if !shown(group) {
+        if !shown(following) {
             return;
         }
-        match first_page(group) {
+        match first_page(following) {
             Ok(()) => break,
             Err(why) => {
-                failed(group, &why);
+                failed(following, &why);
                 std::thread::sleep(RETRY);
             }
         }
     }
-    refresh_policy(group);
-    refresh_members(group);
+    refresh_policy(following);
+    refresh_members(following);
     announce_group(group, Parts::ALL);
     let mut connection: Option<Control> = None;
     let mut waiting = None;
     loop {
-        if !shown(group) {
+        if !shown(following) {
             return;
         }
-        if members_moved(group) {
-            refresh_members(group);
+        if members_moved(following) {
+            refresh_members(following);
             announce_group(group, Parts::MEMBERS);
         }
         if waiting.is_none() {
@@ -259,7 +291,7 @@ fn following(group: &GroupKey) {
             }
             let log = msg_request::Log {
                 group: group.group.clone(),
-                since: head(group),
+                since: head(following),
                 follow: true,
                 ..Default::default()
             };
@@ -273,7 +305,7 @@ fn following(group: &GroupKey) {
                 again(group, &ended.to_string());
             }
             Some(Ok(answer)) => match answered_as_human(answer) {
-                Ok(answer) => arrived(group, &answer),
+                Ok(answer) => arrived(following, &answer),
                 Err(refusal) => again(group, refusal.detail()),
             },
         }
@@ -291,25 +323,22 @@ fn connect(group: &GroupKey) -> Result<Control, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Whether some open window still shows `group`. Its log is let go once none does, including
-/// once the last window showing it closed.
-fn shown(group: &GroupKey) -> bool {
+/// Whether some open window still shows the group, in the log this thread fetched. Its log is
+/// let go once none does, including once the last window showing it closed.
+fn shown(following: &Following) -> bool {
     let mut session = poison::lock(&SESSION, "session");
-    forget_unless_shown(&mut session, group);
-    session.conversations.contains_key(group)
+    forget_unless_shown(&mut session, &following.group);
+    following.shared(&mut session).is_some()
 }
 
-fn head(group: &GroupKey) -> u64 {
-    let session = poison::lock(&SESSION, "session");
-    session.conversations.get(group).map_or(0, |shared| shared.group.log.head())
+fn head(following: &Following) -> u64 {
+    let mut session = poison::lock(&SESSION, "session");
+    following.shared(&mut session).map_or(0, |shared| shared.group.log.head())
 }
 
-fn members_moved(group: &GroupKey) -> bool {
+fn members_moved(following: &Following) -> bool {
     let mut session = poison::lock(&SESSION, "session");
-    session
-        .conversations
-        .get_mut(group)
-        .is_some_and(|shared| std::mem::take(&mut shared.members_moved))
+    following.shared(&mut session).is_some_and(|shared| std::mem::take(&mut shared.members_moved))
 }
 
 /// A follow that could not be answered: the daemon went, or a handover ended it. Asked again from
@@ -322,7 +351,8 @@ fn again(group: &GroupKey, why: &str) {
     std::thread::sleep(RETRY);
 }
 
-fn failed(group: &GroupKey, why: &str) {
+fn failed(following: &Following, why: &str) {
+    let group = &following.group;
     log::warn(
         "conversation.fetch_failed",
         fields! {
@@ -334,7 +364,7 @@ fn failed(group: &GroupKey, why: &str) {
             "check" => "whether `muster msg log --group` answers for that group on that daemon",
         },
     );
-    if let Some(shared) = poison::lock(&SESSION, "session").conversations.get_mut(group) {
+    if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
         shared.failed = Some(why.to_string());
     }
     announce_group(group, Parts::ALL);
@@ -342,7 +372,8 @@ fn failed(group: &GroupKey, why: &str) {
 
 /// The newest page of the group's log. A daemon before 1.8 does not page, and answers the whole
 /// log: what a window showing a group kept there gets (MIP-9, section 7).
-fn first_page(group: &GroupKey) -> Result<(), String> {
+fn first_page(following: &Following) -> Result<(), String> {
+    let group = &following.group;
     let log =
         msg_request::Log { group: group.group.clone(), newest: Some(PAGE), ..Default::default() };
     let answer = ask_as_human_for(&group.daemon, Asked::Log(log))
@@ -351,7 +382,7 @@ fn first_page(group: &GroupKey) -> Result<(), String> {
     let count = held.entries.len();
     {
         let mut session = poison::lock(&SESSION, "session");
-        let Some(shared) = session.conversations.get_mut(group) else { return Ok(()) };
+        let Some(shared) = following.shared(&mut session) else { return Ok(()) };
         shared.group.called.extend(answer.called.clone());
         shared.group.log.behind = held.behind;
         shared.group.log.page(held.entries, held.earlier);
@@ -372,12 +403,13 @@ fn first_page(group: &GroupKey) -> Result<(), String> {
 }
 
 /// Entries that followed the last one held.
-fn arrived(group: &GroupKey, answer: &muster_daemon_proto::MsgAnswer) {
+fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
+    let group = &following.group;
     let held = entries(answer, &group.group);
     let changed_group = held.entries.iter().any(|entry| !matches!(entry.what, What::Message(_)));
     let (looking, settled) = {
         let mut session = poison::lock(&SESSION, "session");
-        let Some(shared) = session.conversations.get_mut(group) else { return };
+        let Some(shared) = following.shared(&mut session) else { return };
         shared.group.called.extend(answer.called.clone());
         shared.group.log.behind = held.behind;
         let new = shared.group.log.followed(held.entries);
@@ -391,9 +423,9 @@ fn arrived(group: &GroupKey, answer: &muster_daemon_proto::MsgAnswer) {
         poison::lock(&SESSION, "session").read_as_human(group);
     }
     if changed_group {
-        refresh_policy(group);
+        refresh_policy(following);
     }
-    refresh_members(group);
+    refresh_members(following);
     for window in settled {
         save_soon(window);
     }
@@ -447,7 +479,8 @@ fn clear_if_unchanged(window: &mut super::Window, group: &GroupKey, sent: &Draft
 
 /// Asks the group's daemon for its policy, which says whom an unaddressed post wakes and whether
 /// the group is paused.
-fn refresh_policy(group: &GroupKey) {
+fn refresh_policy(following: &Following) {
+    let group = &following.group;
     let answer = match ask_as_human_for(&group.daemon, Asked::Groups(msg_request::Groups {})) {
         Ok(answer) => answer,
         Err(refusal) => {
@@ -475,13 +508,14 @@ fn refresh_policy(group: &GroupKey) {
         ring: policy.ring.into_iter().map(|(author, names)| (author, names.names)).collect(),
         paused: policy.paused,
     };
-    if let Some(shared) = poison::lock(&SESSION, "session").conversations.get_mut(group) {
+    if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
         shared.group.policy = Some(policy);
     }
 }
 
 /// Asks the group's daemon who is in it, and why each member has not read what waits on it.
-fn refresh_members(group: &GroupKey) {
+fn refresh_members(following: &Following) {
+    let group = &following.group;
     let who = msg_request::Who { group: Some(group.group.clone()) };
     let answer = match ask_as_human_for(&group.daemon, Asked::Who(who)) {
         Ok(answer) => answer,
@@ -505,7 +539,7 @@ fn refresh_members(group: &GroupKey) {
         .iter()
         .map(|member| member.pane.as_deref().and_then(|pane| pane_of(&session, group, pane)))
         .collect();
-    let Some(shared) = session.conversations.get_mut(group) else { return };
+    let Some(shared) = following.shared(&mut session) else { return };
     shared.group.called.extend(called);
     let members = listed
         .members
@@ -643,8 +677,8 @@ pub(crate) fn pause(daemon: &str, group: &str, paused: bool) -> Response {
     if let Err(refusal) = ask_as_human_for(&key.daemon, asked) {
         return refused(&refusal);
     }
-    if shown(&key) {
-        refresh_policy(&key);
+    if let Some(following) = Following::now(&key) {
+        refresh_policy(&following);
         announce_group(&key, Parts::ALL);
     }
     Response::ok()

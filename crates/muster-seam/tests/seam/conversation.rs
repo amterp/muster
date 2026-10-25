@@ -125,6 +125,41 @@ fn two_windows_on_one_group_share_one_fetch() {
 }
 
 #[test]
+fn leaving_and_showing_a_group_again_at_once_leaves_one_follow() {
+    let follows = Arc::new(AtomicUsize::new(0));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let follows = Arc::clone(&follows);
+        daemon.withholding_answers_where(move |request| {
+            if is_a_follow(request) {
+                follows.fetch_add(1, Ordering::SeqCst);
+            }
+            false
+        })
+    });
+    show("window-1");
+    until_loaded("window-1");
+    until_follows(&follows, 1);
+
+    // Within one of the follow's waits, so the thread following the first log is still in one.
+    answer(leave());
+    show("window-1");
+    until_loaded("window-1");
+    until_follows(&follows, 2);
+    // Longer than the follow's wait, so a thread still following the old log has looked again.
+    std::thread::sleep(Duration::from_millis(600));
+    let seq = post(&mut open.control, "a", "b", "after showing it again");
+    until_rows(|rows| rows.iter().any(|row| is_message(row, seq)));
+    std::thread::sleep(Duration::from_millis(600));
+
+    assert_eq!(
+        follows.load(Ordering::SeqCst),
+        3,
+        "one follow for each log, and one more once the post arrived: a second thread follows too"
+    );
+    drop(relay);
+}
+
+#[test]
 fn choosing_where_to_look_leaves_the_conversation_and_a_tab_an_agent_makes_does_not() {
     let _open = Open::built();
     show("window-1");
@@ -635,6 +670,22 @@ fn is_a_log_read_by_the_human(request: &daemon_proto::Request) -> bool {
             request: Some(Asked::Log(log)),
         })) if caller.as_name.is_none() && !log.follow && log.newest.is_none()
     )
+}
+
+fn is_a_follow(request: &daemon_proto::Request) -> bool {
+    matches!(
+        &request.service,
+        Some(Service::Msg(daemon_proto::MsgRequest { request: Some(Asked::Log(log)), .. }))
+            if log.follow
+    )
+}
+
+fn until_follows(follows: &AtomicUsize, count: usize) {
+    until(
+        "the conversation to follow the group's log",
+        || follows.load(Ordering::SeqCst) >= count,
+        || format!("the daemon was asked to follow {} times", follows.load(Ordering::SeqCst)),
+    );
 }
 
 fn is_a_post_by_the_human(request: &daemon_proto::Request) -> bool {
