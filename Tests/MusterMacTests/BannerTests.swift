@@ -25,12 +25,14 @@ final class BannerRecorder {
       reply: { [self] in sent.append("reply \($0)/\($1)#\($2): \($3)") },
       dismiss: { [self] in sent.append("dismiss \($0)/\($1)#\($2)") },
       hold: { [self] in sent.append("hold \($0)/\($1)#\($2) \($3)") },
+      pick: { [self] in sent.append("pick \($0)/\($1)#\($2) \($3.map(String.init) ?? "none")") },
       open: { [self] in sent.append("open \($0)/\($1)") })
   }
 }
 
 func aBanner(
-  _ group: String, seq: UInt64, author: String = "otter", sent: Muster_PostOutcome? = nil
+  _ group: String, seq: UInt64, author: String = "otter", sent: Muster_PostOutcome? = nil,
+  answers: [String] = [], picked: UInt32? = nil
 ) -> Muster_Banner {
   var banner = Muster_Banner()
   banner.daemonID = "local"
@@ -38,6 +40,8 @@ func aBanner(
   banner.seq = seq
   banner.author = author
   banner.replyable = true
+  banner.answers = answers
+  if let picked { banner.picked = picked }
   if let sent { banner.sent = sent }
   return banner
 }
@@ -115,6 +119,42 @@ struct BannerTests {
     }
 
     #expect(recorder.sent == ["dismiss local/g#4"])
+  }
+
+  @MainActor
+  @Test("picking an answer asks the core, and picking the picked one takes it back")
+  func pickingAnAnswerTogglesItThroughTheCore() {
+    let (board, recorder) = recordedBoard()
+    let question = aBanner("g", seq: 4, answers: ["Run it now", "Skip it"])
+    board.apply(bannerStack(question))
+
+    board.pick(1, in: question)
+    let picked = aBanner("g", seq: 4, answers: ["Run it now", "Skip it"], picked: 1)
+    board.apply(bannerStack(picked))
+    board.pick(1, in: picked)
+    board.pick(0, in: picked)
+    board.unpick(picked)
+
+    #expect(
+      recorder.sent == [
+        "pick local/g#4 1", "pick local/g#4 none", "pick local/g#4 0", "pick local/g#4 none",
+      ])
+  }
+
+  @MainActor
+  @Test("an answer picked with nothing written is a whole reply")
+  func aPickedAnswerSendsWithNothingWritten() {
+    let (board, recorder) = recordedBoard()
+    let unpicked = aBanner("g", seq: 4, answers: ["Run it now", "Skip it"])
+    board.apply(bannerStack(unpicked))
+    board.send(unpicked)
+    #expect(recorder.sent.isEmpty, "nothing written and nothing picked is no reply")
+
+    let picked = aBanner("g", seq: 4, answers: ["Run it now", "Skip it"], picked: 0)
+    board.apply(bannerStack(picked))
+    board.send(picked)
+
+    #expect(recorder.sent == ["reply local/g#4: "])
   }
 
   @MainActor

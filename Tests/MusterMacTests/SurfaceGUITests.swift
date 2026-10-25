@@ -403,6 +403,36 @@ extension SurfaceGUITests {
     #expect(recorder.sent.last == "reply local/g#4: yes")
   }
 
+  /// A question's answers are reached from the reply field with Tab and picked with Return,
+  /// whatever the system's keyboard navigation setting; a digit typed in the field is text, since
+  /// a reply may start with "1.".
+  @MainActor
+  @Test("Tab reaches a question's answers, Return picks one, and a digit is only text")
+  func answersAreReachedWithTabAndDigitsAreText() async throws {
+    let (window, host, recorder) = bannerWindow(answers: ["Run it now", "Skip it"])
+    let editor = try #require(replyEditor(in: host.hosting))
+    window.makeFirstResponder(editor)
+
+    editor.insertText("1. yes", replacementRange: NSRange(location: NSNotFound, length: 0))
+    try await answered("the field's words to reach the board") {
+      await polled(within: .milliseconds(250)) {
+        host.board.reply(for: aBanner("g", seq: 4)) == "1. yes"
+      }
+    }
+    #expect(!recorder.sent.contains { $0.hasPrefix("pick") }, "a digit picked an answer")
+
+    window.sendEvent(press("\t", keyCode: 0x30, flags: [], in: window))
+    try await answered("Tab to move the keyboard to the first answer") {
+      await polled(within: .milliseconds(250)) {
+        window.firstResponder !== editor && host.holdsKeyboard
+      }
+    }
+    #expect(editor.string == "1. yes", "Tab wrote itself into the reply")
+    window.sendEvent(press("\r", keyCode: 0x24, flags: [], in: window))
+
+    #expect(recorder.sent.last == "pick local/g#4 0")
+  }
+
   /// Esc ends an input method's composition before it means anything to the banner: somebody
   /// typing Japanese into a reply presses Esc to drop a candidate, not to leave.
   @MainActor
@@ -453,14 +483,14 @@ extension SurfaceGUITests {
   }
 }
 
-/// A window showing one banner from `otter` in `g`, its requests recorded.
+/// A window showing one banner from `otter` in `g`, offering `answers`, its requests recorded.
 @MainActor
-private func bannerWindow() -> (NSWindow, BannerHost, BannerRecorder) {
+private func bannerWindow(answers: [String] = []) -> (NSWindow, BannerHost, BannerRecorder) {
   let (board, recorder) = recordedBoard()
   board.take(bindings: [
     Core.Binding(action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true)
   ])
-  board.apply(bannerStack(aBanner("g", seq: 4)))
+  board.apply(bannerStack(aBanner("g", seq: 4, answers: answers)))
   let host = BannerHost(board: board)
   let window = NSWindow(
     contentRect: NSRect(x: 0, y: 0, width: 500, height: 400), styleMask: [.titled],

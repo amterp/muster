@@ -1152,6 +1152,20 @@ public enum Core {
     send(request)
   }
 
+  /// Picks one of the answers the question in a banner offers, by its place from 0, or with
+  /// `nil` takes the pick back. Sends nothing: the pick goes with the banner's reply.
+  public static func pickBannerAnswer(daemonID: String, group: String, seq: UInt64, answer: UInt32?)
+  {
+    var pick = Muster_PickBannerAnswer()
+    pick.daemonID = daemonID
+    pick.group = group
+    pick.seq = seq
+    if let answer { pick.answer = answer }
+    var request = Muster_Request()
+    request.pickBannerAnswer = pick
+    send(request)
+  }
+
   /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
   /// from their own shell. Says whether the daemon did; its refusal is in the run log.
   @discardableResult

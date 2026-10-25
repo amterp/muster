@@ -98,9 +98,22 @@ final class BannerBoard: ObservableObject {
     }
   }
 
+  /// Picks the answer at `index` of the banner's question, or takes the pick back when it is
+  /// the one already picked. What is picked is the core's to keep, and comes back in the banner.
+  func pick(_ index: Int, in banner: Muster_Banner) {
+    let again = banner.hasPicked && Int(banner.picked) == index
+    core.pick(banner.daemonID, banner.group, banner.seq, again ? nil : UInt32(index))
+  }
+
+  func unpick(_ banner: Muster_Banner) {
+    core.pick(banner.daemonID, banner.group, banner.seq, nil)
+  }
+
+  /// A reply is its words, or an answer picked with nothing written, which is a whole reply.
   func send(_ banner: Muster_Banner) {
     let body = reply(for: banner)
-    guard banner.replyable, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    let written = !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    guard banner.replyable, written || banner.hasPicked else {
       return
     }
     Core.info(
@@ -140,12 +153,14 @@ struct BannerRequests {
   var reply: @MainActor (String, String, UInt64, String) -> Void
   var dismiss: @MainActor (String, String, UInt64) -> Void
   var hold: @MainActor (String, String, UInt64, Bool) -> Void
+  var pick: @MainActor (String, String, UInt64, UInt32?) -> Void
   var open: @MainActor (String, String) -> Void
 
   static let core = BannerRequests(
     reply: { Core.replyToBanner(daemonID: $0, group: $1, seq: $2, body: $3) },
     dismiss: { Core.dismissBanner(daemonID: $0, group: $1, seq: $2) },
     hold: { Core.holdBanner(daemonID: $0, group: $1, seq: $2, held: $3) },
+    pick: { Core.pickBannerAnswer(daemonID: $0, group: $1, seq: $2, answer: $3) },
     open: { Core.openConversation(daemonID: $0, group: $1) })
 }
 
@@ -252,24 +267,43 @@ struct BannerStackView: View {
   }
 }
 
+/// What holds the keyboard inside a banner: its reply field, or one of its question's answers.
+enum BannerFocus: Hashable {
+  case reply
+  case answer(Int)
+}
+
 struct BannerCard: View {
   let banner: Muster_Banner
   @ObservedObject var board: BannerBoard
   let onLeave: () -> Void
+  @FocusState private var focus: BannerFocus?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       header
       content
+      if !banner.answers.isEmpty, banner.sent.state != .posted {
+        BannerAnswers(banner: banner, board: board, focus: $focus, onLeave: onLeave)
+      }
       if !banner.waitingAuthor.isEmpty {
         Text("\(banner.waitingAuthor) wrote since\(banner.waitingUrgent ? " - urgent" : "")")
           .font(.caption)
           .foregroundStyle(banner.waitingUrgent ? .red : .secondary)
       }
       if banner.replyable || banner.sent.state == .refused || banner.sent.state == .unknown {
-        BannerReplyField(banner: banner, board: board, onLeave: onLeave)
+        BannerReplyField(banner: banner, board: board, focus: $focus, onLeave: onLeave)
       }
       outcome
+    }
+    .onChange(of: focus) { _, focus in
+      // The menu's Send Message sends from whichever banner holds the keyboard, answer or field.
+      let key = BannerBoard.key(daemon: banner.daemonID, group: banner.group)
+      if focus != nil {
+        board.focused = key
+      } else if board.focused == key {
+        board.focused = nil
+      }
     }
     .padding(10)
     .background(.background)
@@ -341,16 +375,83 @@ struct BannerCard: View {
   }
 }
 
+/// The answers a question offers, one button each (mip/0009-group-conversation.md, section 6).
+/// Picking one fills the reply rather than sending it. Tab reaches them from the reply field
+/// whatever the system's keyboard navigation setting, since a question is answered from the
+/// keyboard as often as with the pointer; no digit picks one, since a reply may start with "1.".
+struct BannerAnswers: View {
+  let banner: Muster_Banner
+  @ObservedObject var board: BannerBoard
+  var focus: FocusState<BannerFocus?>.Binding
+  let onLeave: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      ForEach(Array(banner.answers.enumerated()), id: \.offset) { index, answer in
+        let picked = banner.hasPicked && Int(banner.picked) == index
+        Button(action: { board.pick(index, in: banner) }) {
+          HStack(spacing: 6) {
+            Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+              .foregroundStyle(picked ? Color.accentColor : .secondary)
+            Text(answer).frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+        .focusable()
+        .focused(focus, equals: .answer(index))
+        .disabled(!banner.replyable)
+        .help(picked ? "Take this answer back" : "Pick this answer; send it with or without a note")
+        .onKeyPress(keys: [.space, .return], phases: .down) { _ in
+          board.pick(index, in: banner)
+          return .handled
+        }
+        .onKeyPress(keys: [.tab], phases: .down) { press in
+          let back = press.modifiers.contains(.shift)
+          let next = back ? index - 1 : index + 1
+          focus.wrappedValue = banner.answers.indices.contains(next) ? .answer(next) : .reply
+          return .handled
+        }
+        .onExitCommand { onLeave() }
+      }
+    }
+  }
+}
+
 /// Where the human writes a reply. Sends on the core's `send_message` chord, matched here rather
 /// than by the menu so the chord still reaches a pane when this field is not holding the keyboard.
 struct BannerReplyField: View {
   let banner: Muster_Banner
   @ObservedObject var board: BannerBoard
+  var focus: FocusState<BannerFocus?>.Binding
   let onLeave: () -> Void
-  @FocusState private var editing: Bool
+
+  /// The answer picked from the banner's question, shown beside what is written.
+  private var picked: String? {
+    guard banner.hasPicked, banner.answers.indices.contains(Int(banner.picked)) else { return nil }
+    return banner.answers[Int(banner.picked)]
+  }
 
   var body: some View {
     let text = Binding(get: { board.reply(for: banner) }, set: { board.setReply($0, for: banner) })
+    VStack(alignment: .leading, spacing: 4) {
+      if let picked {
+        HStack(spacing: 4) {
+          Text("Answer: \(picked)").bold()
+          Button(action: { board.unpick(banner) }) { Image(systemName: "xmark.circle.fill") }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(banner.sent.state == .pending)
+            .help("Take the answer back")
+        }
+        .font(.callout)
+      }
+      field(text)
+    }
+  }
+
+  private func field(_ text: Binding<String>) -> some View {
     HStack(alignment: .bottom, spacing: 6) {
       TextEditor(text: text)
         .font(.body)
@@ -362,14 +463,22 @@ struct BannerReplyField: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topLeading) {
           if text.wrappedValue.isEmpty {
-            Text("Reply to \(banner.author)")
-              .foregroundStyle(.tertiary)
-              .padding(.horizontal, 9)
-              .padding(.vertical, 4)
-              .allowsHitTesting(false)
+            Text(
+              picked == nil ? "Reply to \(banner.author)" : "Add a note, or send the answer alone"
+            )
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .allowsHitTesting(false)
           }
         }
         .onKeyPress(phases: .down) { press in
+          if press.key == .tab, !press.modifiers.contains(.shift), !banner.answers.isEmpty,
+            banner.replyable
+          {
+            focus.wrappedValue = .answer(0)
+            return .handled
+          }
           let flags = BannerReplyField.flags(press.modifiers)
           guard board.sends(key: String(press.key.character), modifiers: flags) else {
             return .ignored
@@ -381,19 +490,12 @@ struct BannerReplyField: View {
         // runs only for an Esc nothing else wanted.
         .onExitCommand { onLeave() }
         .disabled(banner.sent.state == .pending)
-        .focused($editing)
-        .onChange(of: editing) { _, editing in
-          let key = BannerBoard.key(daemon: banner.daemonID, group: banner.group)
-          if editing {
-            board.focused = key
-          } else if board.focused == key {
-            board.focused = nil
-          }
-        }
+        .focused(focus, equals: .reply)
+      let sendable = !text.wrappedValue.isEmpty || picked != nil
       Button(action: { board.send(banner) }) { Image(systemName: "paperplane.fill") }
         .buttonStyle(.plain)
-        .foregroundStyle(text.wrappedValue.isEmpty ? .tertiary : .primary)
-        .disabled(!banner.replyable || text.wrappedValue.isEmpty)
+        .foregroundStyle(sendable ? .primary : .tertiary)
+        .disabled(!banner.replyable || !sendable)
         .help("Send (\(BannerReplyField.chord(board.sendChord)))")
     }
   }
