@@ -127,7 +127,7 @@ by name - all of it the same requests the keyboard sends, because there is one p
 core and this is the other door into it.
 
     muster window
-    muster pane new --down --run claude --name "🤖 A"
+    muster pane new --down --run claude
     muster msg post --to otter --file brief.md
     muster pane wait --pane otter --until idle,blocked
     muster tab focus t1w3r07bsd

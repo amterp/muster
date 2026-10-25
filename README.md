@@ -87,7 +87,7 @@ has to be told which window it belongs to.
 
     muster window
     muster window --layout
-    muster pane new --down --run claude --name "🤖 reviewer"
+    muster pane new --down --run claude
     muster pane send --pane p1w3r07bsd "read AGENTS.md and wait" --enter
     muster pane wait --pane p1w3r07bsd --until idle,blocked
     muster pane read --pane p1w3r07bsd

@@ -4,20 +4,16 @@ An agent in a Muster pane can make panes, start agents in them, and tell them wh
 needs nothing but `$MUSTER_PANE`, `$MUSTER_SOCKET` and `$MUSTER_DAEMON_SOCKET`, which Muster
 already set.
 
-Make a pane below this one, running an agent, called something a person can pick out:
+Make a pane below this one, running an agent:
 
-    A=$(muster pane new --down --run claude --name '🤖 A')
-
-The agent's session is called what the pane is called, too, where its harness allows it - Claude
-Code and Codex do, through `/rename` - and a session renamed in its harness renames the pane
-(`muster docs harnesses`).
+    A=$(muster pane new --down --run claude)
 
 `pane new` prints the callsign of the pane it made - `otter` - once the window has heard of it,
 which is what makes the next line possible, and what to tell another agent or the person to call
 it. `--json` adds its id, `{"pane": "p1w3r0ab2n", "callsign": "otter"}`, which a script that
 holds on to the pane after it closes should keep:
 
-    B=$(muster pane new --down --run claude --name '🤖 B')
+    B=$(muster pane new --down --run claude)
     muster msg post --to "$A" --file parser-brief.md
     muster msg post --to "$B" 'read AGENTS.md, then write the tests'
 
@@ -350,7 +346,7 @@ arranging the window rather than going somewhere.
 Panes are not the only unit. A tab is the other way to make one, and the way to put work somewhere
 that does not belong in this tab at all:
 
-    C=$(muster tab new --run claude --name '🤖 C')
+    C=$(muster tab new --run claude)
 
 It prints the pane it made, not the tab, because the pane is what the next line needs. The tab is
 made behind the one on screen, listed in the agent list, and the keyboard stays
@@ -383,7 +379,7 @@ both.
 An agent that runs helpers it talks to over `muster msg` can keep them out of the window, and out
 of the notifications:
 
-    W=$(muster pane new --hidden --quiet --run claude --name '🤖 worker')
+    W=$(muster pane new --hidden --quiet --run claude)
 
 `--hidden` makes the pane in a tab of its own that no window shows, on the machine of the pane it
 was split from. Nothing draws it, and its agent runs as any other does: `pane send`, `pane read`,
@@ -430,7 +426,7 @@ pane's row offers Show Pane.
 
 An agent that starts agents for its own work makes each one its helper:
 
-    W=$(muster pane new --helper --run claude --name '🤖 worker')
+    W=$(muster pane new --helper --run claude)
 
 `--helper` makes the new pane a helper of the pane the command runs in, its maker, and the pane's
 daemon keeps that on its record for good, beside hidden and quiet. A helper is made hidden and
