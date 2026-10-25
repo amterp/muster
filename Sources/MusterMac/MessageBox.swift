@@ -155,6 +155,9 @@ final class MessageBoxTextView: NSTextView {
       return
     }
     if !box.draft.completions.isEmpty, completes(event, in: box) { return }
+    // Tab reaches the newest question's answers (MIP-9, section 6); with none it is text.
+    let plain = event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty
+    if event.keyCode == 0x30, plain, box.tabToAnswers() { return }
     super.keyDown(with: event)
   }
 

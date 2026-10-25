@@ -79,6 +79,17 @@ private func openBox(
   return (box, recorder)
 }
 
+private func question(
+  _ seq: UInt64, answerable: Bool = true, answeredBy: String = ""
+) -> Muster_ConversationRow {
+  var row = Muster_ConversationRow()
+  row.message.seq = seq
+  row.message.answers = ["Run it now", "Skip it"]
+  row.message.answerable = answerable
+  row.message.answeredBy = answeredBy
+  return row
+}
+
 @MainActor
 private func undoItem() -> NSMenuItem {
   NSMenuItem(title: "Undo", action: #selector(TextUndo.undo(_:)), keyEquivalent: "")
@@ -313,6 +324,51 @@ struct ConversationTests {
     #expect(picks.allSatisfy { $0.question == 44 })
     #expect(picks.first?.hasAnswer == true && picks.first?.answer == 2)
     #expect(picks.last?.hasAnswer == false, "taking the pick back names no answer")
+  }
+
+  @Test("Tab reaches the newest question the human may answer, and is text with none")
+  func tabReachesTheNewestQuestion() {
+    let host = ConversationHost(requests: ConversationRecorder().requests)
+    var changed = Muster_ConversationChanged()
+    changed.daemonID = "local"
+    changed.group = "review"
+    var plain = Muster_ConversationRow()
+    plain.message.seq = 45
+    changed.rows = [
+      question(40), question(42), question(43, answeredBy: "otter"),
+      question(44, answerable: false), plain,
+    ]
+    host.thread.apply(changed)
+
+    #expect(host.thread.newestQuestion == 42, "answered, unanswerable and plain rows are skipped")
+    #expect(host.box.tabToAnswers())
+    #expect(host.thread.answerFocus == AnswerFocus(question: 42, index: 0))
+
+    changed.rows = [question(43, answeredBy: "otter")]
+    host.thread.apply(changed)
+    host.thread.answerFocus = nil
+    #expect(!host.box.tabToAnswers(), "Tab is text with no question to answer")
+    #expect(host.thread.answerFocus == nil)
+  }
+
+  @Test("the send chord on an answer's button sends the box; in the field the field takes it")
+  func theSendChordOffTheField() {
+    let leave = Core.Binding(
+      action: "leave_conversation", key: "Escape", modifiers: [], inTextField: true)
+    let send = Core.Binding(
+      action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true)
+    #expect(
+      ConversationKeys.meaning(
+        key: "\r", modifiers: .command, leave: leave, composing: false, send: send,
+        inField: false) == .send)
+    #expect(
+      ConversationKeys.meaning(
+        key: "\r", modifiers: .command, leave: leave, composing: false, send: send,
+        inField: true) == .pass)
+    #expect(
+      ConversationKeys.meaning(
+        key: "\u{1B}", modifiers: [], leave: leave, composing: false, send: send,
+        inField: false) == .leave)
   }
 
   @Test("nothing is picked while a post is on its way")

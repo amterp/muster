@@ -79,9 +79,24 @@ struct ConversationRequests {
 @MainActor
 final class ConversationThread: ObservableObject {
   @Published private(set) var shown = Muster_ConversationChanged()
+  /// An answer asked to take the keyboard, for the thread to give it to; the thread clears it.
+  @Published var answerFocus: AnswerFocus?
 
   var group: ConversationGroup? {
     shown.group.isEmpty ? nil : ConversationGroup(daemon: shown.daemonID, group: shown.group)
+  }
+
+  /// The latest question the human may answer, which Tab from the message box reaches; older
+  /// ones take a click.
+  var newestQuestion: UInt64? {
+    for row in shown.rows.reversed() {
+      if case .message(let message) = row.kind, message.answerable, message.answeredBy.isEmpty,
+        !message.answers.isEmpty
+      {
+        return message.seq
+      }
+    }
+    return nil
   }
 
   func apply(_ changed: Muster_ConversationChanged) {
@@ -184,6 +199,8 @@ final class MessageBox: ObservableObject {
   var requests: ConversationRequests
   /// Puts the keyboard in the field, for Reply.
   var onFocus: () -> Void = {}
+  /// Gives the keyboard to the newest question's answers, if there is one to answer.
+  var tabToAnswers: () -> Bool = { false }
 
   init(requests: ConversationRequests) {
     self.requests = requests
@@ -334,15 +351,22 @@ enum ConversationKeys {
     /// Ends the input method's composition in the message box, and nothing else (MIP-9,
     /// section 7): somebody typing Japanese presses Escape to drop a candidate, not to leave.
     case endComposition
+    /// Sends the message box: the send chord pressed with the keyboard elsewhere in the
+    /// conversation, on an answer's button say. The box's field matches it itself.
+    case send
     /// Not the conversation's: on to whatever holds the keyboard.
     case pass
   }
 
   static func meaning(
-    key: String, modifiers: NSEvent.ModifierFlags, leave chord: Core.Binding?, composing: Bool
+    key: String, modifiers: NSEvent.ModifierFlags, leave chord: Core.Binding?, composing: Bool,
+    send: Core.Binding? = nil, inField: Bool = false
   ) -> Meaning {
-    guard chord?.matches(key: key, modifiers: modifiers) == true else { return .pass }
-    return composing ? .endComposition : .leave
+    if chord?.matches(key: key, modifiers: modifiers) == true {
+      return composing ? .endComposition : .leave
+    }
+    if !inField, send?.matches(key: key, modifiers: modifiers) == true { return .send }
+    return .pass
   }
 }
 
@@ -395,6 +419,7 @@ final class ConversationHost {
     self.requests = requests
     box = MessageBox(requests: requests)
     box.onFocus = { [weak self] in self?.takeKeyboard() }
+    box.tabToAnswers = { [weak self] in self?.focusNewestQuestion() ?? false }
   }
 
   func take(bindings: [Core.Binding]) {
@@ -465,16 +490,28 @@ final class ConversationHost {
     let composing = field?.hasMarkedText() ?? false
     switch ConversationKeys.meaning(
       key: event.charactersIgnoringModifiers ?? "", modifiers: event.modifierFlags,
-      leave: leaveChord, composing: composing)
+      leave: leaveChord, composing: composing, send: box.sendChord,
+      inField: responder is MessageBoxTextView)
     {
     case .leave:
       requests.leave()
       return true
     case .endComposition:
       return field?.endComposition() ?? false
+    case .send:
+      box.send()
+      return true
     case .pass:
       return false
     }
+  }
+
+  /// Gives the keyboard to the first answer of the newest question the human may answer: Tab
+  /// in the message box. False when there is none, and Tab is text.
+  func focusNewestQuestion() -> Bool {
+    guard let question = thread.newestQuestion else { return false }
+    thread.answerFocus = AnswerFocus(question: question, index: 0)
+    return true
   }
 }
 
@@ -615,6 +652,14 @@ struct ConversationThreadView: View {
       }
       .onChange(of: rows.map(\.id)) { before, after in
         scroll(proxy, from: before, to: after)
+      }
+      .onChange(of: thread.answerFocus) { _, wanted in
+        guard let wanted else { return }
+        thread.answerFocus = nil
+        proxy.scrollTo("m:\(wanted.question)")
+        // A row scrolled to this turn may not be drawn yet, and an undrawn button cannot take
+        // the keyboard.
+        DispatchQueue.main.async { answerFocus = wanted }
       }
       .onAppear { scroll(proxy, from: [], to: rows.map(\.id)) }
     }
