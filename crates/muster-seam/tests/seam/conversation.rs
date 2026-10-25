@@ -5,8 +5,9 @@
 //! outcomes.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use muster::proto::{
     ConversationChanged, ConversationMembersChanged, CreateTab, Event, FocusPane,
@@ -19,7 +20,7 @@ use muster_daemon_proto::msg_answer::{Answer, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::request::Service;
 use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
-use muster_harness::{Control, Daemon, until};
+use muster_harness::{Control, Daemon, Relay, until};
 use prost::Message;
 
 #[test]
@@ -270,6 +271,72 @@ fn a_post_whose_answer_never_came_is_found_in_the_log_and_not_sent_twice() {
 }
 
 #[test]
+fn words_written_while_a_post_is_on_its_way_stay_once_it_is_kept() {
+    let (_open, relay) = Open::relayed(|daemon| {
+        daemon.delaying_answers_where(is_a_post_by_the_human, Duration::from_millis(1500))
+    });
+    show("window-1");
+    until_loaded("window-1");
+    answer(save_draft("ship it", 7, &["a"]));
+
+    let posting = std::thread::spawn(|| answer(post_draft()));
+    until_sent("window-1", post_outcome::State::Pending);
+    answer(save_draft("and the docs", 12, &["a"]));
+    assert_ok(&posting.join().expect("the post's thread"));
+
+    until(
+        "the post to be kept, with what was written since still in the box",
+        || {
+            let told = message_box("window-1");
+            told.sent.is_some_and(|sent| sent.state() == post_outcome::State::Posted)
+                && told.draft.is_some_and(|draft| draft.text == "and the docs")
+        },
+        || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+    drop(relay);
+}
+
+#[test]
+fn words_written_while_a_post_went_unanswered_stay_once_the_log_settles_it() {
+    // Up to twenty seconds: the client's whole patience for the post, and again for the read
+    // that looks for it in the log, both withheld so that only the follow can settle it.
+    let reads_withheld = Arc::new(AtomicBool::new(false));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let reads_withheld = Arc::clone(&reads_withheld);
+        daemon.withholding_answers_where(move |request| {
+            is_a_post_by_the_human(request)
+                || (reads_withheld.load(Ordering::SeqCst) && is_a_log_read_by_the_human(request))
+        })
+    });
+    show("window-1");
+    until_loaded("window-1");
+    reads_withheld.store(true, Ordering::SeqCst);
+    answer(save_draft("yes", 3, &["a"]));
+
+    let posting = std::thread::spawn(|| answer(post_draft()));
+    until_sent("window-1", post_outcome::State::Pending);
+    answer(save_draft("no, wait", 8, &["a"]));
+    let unanswered = posting.join().expect("the post's thread");
+    assert!(
+        !matches!(unanswered.payload, Some(response::Payload::Ok(_))),
+        "a post with no answer and no log to find it in answered {unanswered:?}"
+    );
+    // Something new in the log has the conversation look for the post again.
+    post(&mut open.control, "b", "@human", "and another thing");
+
+    until(
+        "the post to settle as kept, with what was written since still in the box",
+        || {
+            let told = message_box("window-1");
+            told.sent.is_some_and(|sent| sent.state() == post_outcome::State::Posted)
+                && told.draft.is_some_and(|draft| draft.text == "no, wait")
+        },
+        || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+    drop(relay);
+}
+
+#[test]
 fn two_windows_keep_two_drafts_and_a_draft_survives_a_relaunch() {
     let open = Open::built();
     open_second_window(&open.daemon);
@@ -385,6 +452,19 @@ impl Open {
         Open { turn, daemon, control }
     }
 
+    /// The same, with the window reaching the daemon through a relay made from it.
+    fn relayed(relay: impl FnOnce(&Daemon) -> Relay) -> (Open, Relay) {
+        let turn = fresh();
+        let daemon = Daemon::start_built();
+        let mut control = daemon.connect();
+        make(&mut control, create("p1", in_new_tab("t1")));
+        until_text(&mut control, "p1", "$");
+        let relay = relay(&daemon);
+        start_window(&relay.muster_config(), &daemon.root().join("windows/window-1.toml"));
+        group_of_three(&mut control);
+        (Open { turn, daemon, control }, relay)
+    }
+
     /// With an agent in its pane whose state a test can set.
     fn detecting() -> Open {
         let turn = fresh();
@@ -470,6 +550,14 @@ fn post_draft() -> request::Payload {
     })
 }
 
+fn until_sent(window: &str, state: post_outcome::State) {
+    until(
+        "the message box to say where its post stands",
+        || message_box(window).sent.is_some_and(|sent| sent.state() == state),
+        || format!("{window} was told {:?}", message_box(window)),
+    );
+}
+
 fn until_shown(window: &str, group: &str) {
     until(
         "the view to say which conversation the window shows",
@@ -534,6 +622,18 @@ fn is_a_first_page(request: &daemon_proto::Request) -> bool {
             caller: Some(caller),
             request: Some(Asked::Log(log)),
         })) if caller.as_name.is_none() && log.newest.is_some() && log.before.is_none()
+    )
+}
+
+/// A read of the log as the human that is neither a page nor a follow: how a post that was never
+/// answered is looked for.
+fn is_a_log_read_by_the_human(request: &daemon_proto::Request) -> bool {
+    matches!(
+        &request.service,
+        Some(Service::Msg(daemon_proto::MsgRequest {
+            caller: Some(caller),
+            request: Some(Asked::Log(log)),
+        })) if caller.as_name.is_none() && !log.follow && log.newest.is_none()
     )
 }
 

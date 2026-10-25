@@ -57,7 +57,8 @@ pub(crate) struct Shown {
 #[derive(Debug, Clone)]
 pub(crate) struct Sending {
     sent: Sent,
-    to: Vec<String>,
+    /// The draft as it was sent, which a kept post clears only while the box still holds it.
+    draft: Draft,
     /// The last entry the conversation held when it was sent.
     after: u64,
 }
@@ -410,26 +411,38 @@ fn settle(session: &mut Session, group: &GroupKey) -> Vec<WindowId> {
         let Some(sending) = window.sending.get(group) else { continue };
         let Sent::Unknown { body, .. } = &sending.sent else { continue };
         let Some(seq) =
-            posting::settles(shared.group.log.logged(), sending.after, &sending.to, body)
+            posting::settles(shared.group.log.logged(), sending.after, &sending.draft.to, body)
         else {
             continue;
         };
         let said = "kept, though the daemon never answered; whom it woke is not known".to_string();
+        let sent = sending.draft.clone();
         window.sending.insert(
             group.clone(),
             Sending {
                 sent: Sent::Posted { seq, said: said.clone(), heard: true },
-                to: Vec::new(),
+                draft: sent.clone(),
                 after: seq,
             },
         );
-        window.drafts.insert(group.clone(), opening.clone());
+        clear_if_unchanged(window, group, &sent, &opening);
         if let Some(shown) = window.conversation.as_mut().filter(|shown| &shown.group == group) {
             shown.posted = Some((seq, said));
         }
         settled.push(id);
     }
     settled
+}
+
+/// Puts the opening draft in place of the one a kept post was sent from, unless the human has
+/// written something else in the box since: that is theirs, and was never sent.
+fn clear_if_unchanged(window: &mut super::Window, group: &GroupKey, sent: &Draft, opening: &Draft) {
+    let unchanged = window.drafts.get(group).is_none_or(|held| {
+        held.text == sent.text && held.to == sent.to && held.urgent == sent.urgent
+    });
+    if unchanged {
+        window.drafts.insert(group.clone(), opening.clone());
+    }
 }
 
 /// Asks the group's daemon for its policy, which says whom an unaddressed post wakes and whether
@@ -729,7 +742,7 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
             key.clone(),
             Sending {
                 sent: Sent::Pending { body: draft.text.clone() },
-                to: draft.to.clone(),
+                draft: draft.clone(),
                 after,
             },
         );
@@ -763,12 +776,12 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         let group = conversations.get(&key).map_or(&unheard, |shared| &shared.group);
         let held = &mut windows[window];
         if let Sent::Posted { seq, said, .. } = &sent {
-            held.drafts.insert(key.clone(), draft::opening(group));
+            clear_if_unchanged(held, &key, &draft, &draft::opening(group));
             if let Some(shown) = held.conversation.as_mut().filter(|shown| shown.group == key) {
                 shown.posted = Some((*seq, said.clone()));
             }
         }
-        held.sending.insert(key.clone(), Sending { sent, to: draft.to, after });
+        held.sending.insert(key.clone(), Sending { sent, draft, after });
     }
     save_soon(window);
     announce(&[window]);
