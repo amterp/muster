@@ -101,15 +101,30 @@ struct MessageBoxField: NSViewRepresentable {
 final class MessageBoxTextView: NSTextView {
   weak var box: MessageBox?
 
+  /// What Undo takes back: the field's own, not the window's, so that it can be forgotten
+  /// whenever the core rewrites the text.
+  private let history = UndoManager()
+
+  override var undoManager: UndoManager? { history }
+
   /// The cursor, in Unicode scalar values.
   var scalarCursor: Int {
     ScalarOffsets.scalars(beforeUTF16: selectedRange().location, in: string)
   }
 
   /// Shows a draft as the core keeps it, unless the field already does.
+  ///
+  /// A rewrite of the core's - a completion, an @name taken as a recipient, a post clearing the
+  /// box - forgets what Undo could take back (mine). Setting the text is not an edit Undo
+  /// records, so what it had recorded would replay against text that is no longer there.
+  /// Undoing the rewrite itself was the alternative, but undoing an @name taken as a recipient
+  /// would put the name back as text beside the recipient, for the core to take again.
   func take(_ draft: Muster_MessageBoxDraft) {
     let cursor = ScalarOffsets.utf16(beforeScalars: Int(draft.cursor), in: draft.text)
-    if string != draft.text { string = draft.text }
+    if string != draft.text {
+      string = draft.text
+      history.removeAllActions()
+    }
     if selectedRange() != NSRange(location: cursor, length: 0) {
       setSelectedRange(NSRange(location: cursor, length: 0))
     }
@@ -144,6 +159,19 @@ final class MessageBoxTextView: NSTextView {
       return true
     default:
       return false
+    }
+  }
+
+  // The Edit menu's Undo and Redo walk the responder chain, which reaches the window's undo
+  // manager unless something before it answers.
+  @objc func undo(_ sender: Any?) { history.undo() }
+  @objc func redo(_ sender: Any?) { history.redo() }
+
+  override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+    switch item.action {
+    case #selector(undo(_:)): history.canUndo
+    case #selector(redo(_:)): history.canRedo
+    default: super.validateUserInterfaceItem(item)
     }
   }
 

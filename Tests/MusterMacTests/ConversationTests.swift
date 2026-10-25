@@ -64,6 +64,11 @@ private func openBox(
   return (box, recorder)
 }
 
+@MainActor
+private func menuItem(_ action: String) -> NSMenuItem {
+  NSMenuItem(title: action, action: Selector((action)), keyEquivalent: "")
+}
+
 private func member(
   _ name: String, liveness: Muster_ConversationMember.Liveness = .alive, pane: String = "",
   unread: (first: UInt64, from: String, why: String)? = nil
@@ -247,6 +252,25 @@ struct ConversationTests {
     #expect(ScalarOffsets.utf16(beforeScalars: 4, in: text) == 5)
     #expect(ScalarOffsets.scalars(beforeUTF16: text.utf16.count, in: text) == 5)
     #expect(ScalarOffsets.utf16(beforeScalars: 99, in: text) == text.utf16.count)
+  }
+
+  @Test("the message box undoes what was typed, and forgets it when the core rewrites the text")
+  func undoForgetsWhatTheCoreRewrote() {
+    let field = MessageBoxTextView(frame: .zero)
+    field.allowsUndo = true
+    field.insertText("hi", replacementRange: NSRange(location: 0, length: 0))
+    field.breakUndoCoalescing()
+    #expect(field.undoManager?.canUndo == true)
+    #expect(field.validateUserInterfaceItem(menuItem("undo:")))
+
+    var rewritten = Muster_MessageBoxDraft()
+    rewritten.text = "hi there"
+    rewritten.cursor = 8
+    field.take(rewritten)
+
+    #expect(field.undoManager?.canUndo == false, "Undo would replay against the old text")
+    #expect(!field.validateUserInterfaceItem(menuItem("undo:")))
+    #expect(field.string == "hi there")
   }
 
   @Test("the window's view says which conversation it shows")
