@@ -472,8 +472,9 @@ fn first_page(following: &Following) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// Entries that followed the last one held, kept for the shell to be told of (`tell`). Says
-/// whether any arrived, and if so whether one changed the group.
+/// Entries that followed the last one held, kept for the shell to be told of (`tell`), or the
+/// machine the group's replica is behind changing, which the follow says with no entries. Says
+/// whether anything is to be told, and if so whether an entry changed the group.
 fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) -> Option<bool> {
     let group = &following.group;
     let held = messaging::log_page(answer, &group.group);
@@ -484,11 +485,12 @@ fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) -> Op
         let mut session = poison::lock(&SESSION, "session");
         let shared = following.shared(&mut session)?;
         shared.group.called.extend(answer.called.clone());
+        let moved = shared.group.log.behind != held.behind;
         shared.group.log.behind = held.behind;
         shared.group.log.seen(held.last);
         let new = shared.group.log.followed(held.entries);
         if new.is_empty() {
-            return None;
+            return moved.then_some(false);
         }
         settle(&mut session, group)
     };

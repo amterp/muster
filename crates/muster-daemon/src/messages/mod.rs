@@ -568,8 +568,10 @@ fn group_entries(group: String, paged: &Paged, behind: Option<String>) -> msg_an
 }
 
 /// Answers a follow of a log once its group has an entry after `since`, at once if it already
-/// does. It is woken by whatever may have appended, and looks up every [`LOOK_UP`] to see
-/// whether its caller has gone.
+/// does, or once the machine its replica is behind changes from what it was when the follow
+/// began: a link dropping or coming back is said with no entries. It is woken by whatever may
+/// have appended, and looks up every [`LOOK_UP`] to see whether its caller has gone and whether
+/// the link moved, which wakes nothing.
 fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -> bool) -> Reply {
     if log.before.is_some() {
         return refused_as(
@@ -578,16 +580,19 @@ fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -
             "a follow waits for entries after `since`, so it takes no `before`",
         );
     }
+    let behind_now = |messages: &Messages| messages.service.behind(&log.group).map(str::to_string);
+    let began = behind_now(&shared.messages());
     loop {
         let woken = {
             let mut messages = shared.messages();
             if messages.handing_over {
                 return ended_by_handover();
             }
+            let behind = behind_now(&messages);
             match messages.service.log_page(&log.group, &page_of(&log)) {
                 Err(refusal) => return refused("", &refusal),
-                Ok(paged) if !paged.entries.is_empty() => {
-                    let groups = vec![group_entries(log.group, &paged, None)];
+                Ok(paged) if !paged.entries.is_empty() || behind != began => {
+                    let groups = vec![group_entries(log.group, &paged, behind)];
                     return answered(
                         String::new(),
                         Answer::Entries(msg_answer::Entries { groups }),
@@ -607,6 +612,7 @@ fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -
                 Err(RecvTimeoutError::Timeout) if hung_up() => {
                     return refused_as("", "timed_out", "the caller hung up");
                 }
+                Err(RecvTimeoutError::Timeout) if behind_now(&shared.messages()) != began => break,
                 Err(RecvTimeoutError::Timeout) => {}
             }
         }

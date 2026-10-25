@@ -288,6 +288,63 @@ fn a_cut_link_refuses_posts_across_at_once_and_local_groups_still_post() {
     assert_eq!(caught_up, [format!("{there} builder@{host}: while you were away")]);
 }
 
+/// A follow of a replica's log answers when the link to the group's home goes down, with no
+/// entries and the machine it may be behind, so whoever shows the log can say so while nothing
+/// arrives. The link coming back is said the same way.
+#[test]
+fn a_follow_of_a_replica_says_when_its_home_goes_and_comes_back() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    let there = join(&mut far_control, &named("critic"), "critic", "review");
+    let host = there.trim_start_matches("review@").to_string();
+    // Past every entry the replica holds, so only the link moving answers it.
+    let follow = || {
+        let log = msg_request::Log {
+            group: there.clone(),
+            since: 1_000,
+            follow: true,
+            ..msg_request::Log::default()
+        };
+        let mut waiting = far.connect();
+        let caller = named("critic");
+        let (tell, answered) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let answered = waiting.ask(msg(&caller, Asked::Log(log)));
+            let Some(proto::answer::Detail::Msg(answer)) = answered.answer.detail else {
+                panic!("a follow answered with {:?}", answered.answer.reason);
+            };
+            let Some(Answer::Entries(entries)) = answer.answer else {
+                panic!("a follow answered with {answer:?}");
+            };
+            let group = entries.groups.into_iter().next().expect("the followed group");
+            let _ = tell.send((group.entries.len(), group.behind));
+        });
+        answered
+    };
+    let answer = |waiting: std::sync::mpsc::Receiver<(usize, Option<String>)>| {
+        waiting
+            .recv_timeout(LINKING)
+            .unwrap_or_else(|_| panic!("the follow did not answer within {LINKING:?}"))
+    };
+
+    let waiting = follow();
+    std::thread::sleep(Duration::from_millis(200));
+    cut(holding, &mut near_log, &mut far_log, 1);
+    assert_eq!(
+        answer(waiting),
+        (0, Some(host.clone())),
+        "answered with no entries, saying it is behind"
+    );
+
+    let waiting = follow();
+    std::thread::sleep(Duration::from_millis(200));
+    let _holding = link(&near, &far, &mut near_log, 2);
+    assert_eq!(answer(waiting), (0, None), "answered once the link is back");
+}
+
 /// A link whose far end has stopped answering without closing - a laptop asleep, its ssh
 /// connection to the devenv stalled rather than dropped - refuses a change to a group kept there
 /// as unanswered once its patience runs out, rather than at once as a cut link does: the change

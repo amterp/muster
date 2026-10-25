@@ -789,7 +789,10 @@ message MsgRequest {
     uint64 since = 2;
     // Answered only once there is an entry after `since`, at once if there already is: what
     // `muster msg log --follow` asks again and again. Refused as `ended` by a handover, like
-    // a wait, so the caller asks whichever daemon serves next.
+    // a wait, so the caller asks whichever daemon serves next. Since 1.8, the answer says the
+    // machine a replica is behind, as a log that does not follow does, and a replica's follow
+    // is also answered, with no entries, once that machine changes from what it was when the
+    // follow began: its link dropped or came back.
     bool follow = 3;
     // Since 1.8. Only the newest this many of the entries asked for, so a long group's history
     // is fetched newest first, a page at a time: `newest` alone is the latest page, and with
