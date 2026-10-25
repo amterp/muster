@@ -90,6 +90,12 @@
       "body": "Started 2026-10-24 with the banner (a_2naAacfIB) and, beside it, Log taking a count of newest entries for paged history, which needs no window. The conversation view itself follows once the banner lands.",
       "author": "Alexander Terp",
       "created_at_millis": 1792891209446
+    },
+    {
+      "id": "c_2nk4NuDsh",
+      "body": "Paged Log landed on main 2026-10-24 (304ecc4f): Log.newest and before, GroupEntries.earlier, msg log --last and --before. The conversation's model, seam and CLI are being built on it now.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792898460740
     }
   ],
   "created_at_millis": 1791417434804,
@@ -99,7 +105,7 @@
   "position": "a0",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792891209447,
+  "updated_at_millis": 1792898460740,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},

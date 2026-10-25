@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-daemon-messaging",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792898460934,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-24: messaging::a_pane_named_what_a_live_agent_joined_by_is_reached_by_its_callsign in the daemon suite failed once out of four runs of messaging:: on a heavily loaded machine, and passed alone and in the other three. The panic was not captured. The change being tested did not touch callsigns. A flake is a bug here: rerun it under load (several copies at once, or beside a build) and capture what it asserted.",
+  "id": "a_2nk4O8Qx6",
+  "position": "b1R",
+  "title": "A daemon messaging test failed once in four under load: a pane named what a live agent joined by is reached by its callsign",
+  "type": "bug",
+  "updated_at_millis": 1792898460934,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792898460934}
+  ]
+}

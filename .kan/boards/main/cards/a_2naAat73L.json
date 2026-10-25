@@ -28,6 +28,12 @@
       "body": "Started 2026-10-24: the daemon and CLI half first (answers on a message, --option, the reply's answer field, msg read and log printing them, Since 1.8 since 1.8 is unreleased). Drawing them as buttons follows once the banner and the conversation exist.",
       "author": "Alexander Terp",
       "created_at_millis": 1792891209288
+    },
+    {
+      "id": "c_2nk4NfeFL",
+      "body": "Daemon and CLI half landed on main 2026-10-24 (21f794c5, ae30d03d, d966f4d2): answers and answering on a message (Since 1.8), seven refusals, answers_unsupported for an older keeper, msg post --option and --answer Q:N, read and log printing the list. Gate green. The banner's buttons are being built now; the conversation's wait for the conversation.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792898460595
     }
   ],
   "created_at_millis": 1792874866674,
@@ -38,7 +44,7 @@
   "position": "Zt",
   "title": "An agent can offer answers to a question it posts",
   "type": "feature",
-  "updated_at_millis": 1792891209346,
+  "updated_at_millis": 1792898460645,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792874866674},
     {"field":"column","value":"in-progress","at":1792891209187}
