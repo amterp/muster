@@ -249,11 +249,14 @@ struct BannerStackView: View {
   @ObservedObject var board: BannerBoard
   /// Gives the keyboard back to the pane it came from.
   let onLeave: () -> Void
+  /// Ends an input method's composition in the reply field holding the keyboard, if there is one.
+  let endComposition: () -> Bool
 
   var body: some View {
     VStack(alignment: .trailing, spacing: 8) {
       ForEach(board.banners, id: \.identity) { banner in
-        BannerCard(banner: banner, board: board, onLeave: onLeave)
+        BannerCard(
+          banner: banner, board: board, onLeave: onLeave, endComposition: endComposition)
       }
       if board.folded > 0, let oldest = board.oldest {
         Button("\(board.folded) more - open the oldest") {
@@ -277,6 +280,7 @@ struct BannerCard: View {
   let banner: Muster_Banner
   @ObservedObject var board: BannerBoard
   let onLeave: () -> Void
+  let endComposition: () -> Bool
   @FocusState private var focus: BannerFocus?
 
   var body: some View {
@@ -292,7 +296,9 @@ struct BannerCard: View {
           .foregroundStyle(banner.waitingUrgent ? .red : .secondary)
       }
       if banner.replyable || banner.sent.state == .refused || banner.sent.state == .unknown {
-        BannerReplyField(banner: banner, board: board, focus: $focus, onLeave: onLeave)
+        BannerReplyField(
+          banner: banner, board: board, focus: $focus, onLeave: onLeave,
+          endComposition: endComposition)
       }
       outcome
     }
@@ -426,6 +432,7 @@ struct BannerReplyField: View {
   @ObservedObject var board: BannerBoard
   var focus: FocusState<BannerFocus?>.Binding
   let onLeave: () -> Void
+  let endComposition: () -> Bool
 
   /// The answer picked from the banner's question, shown beside what is written.
   private var picked: String? {
@@ -473,6 +480,10 @@ struct BannerReplyField: View {
           }
         }
         .onKeyPress(phases: .down) { press in
+          // Esc while composing ends the composition and nothing else (MIP-9, section 7). Done
+          // here rather than left to the input method, since one that does not take Esc - a
+          // dead key's accent waiting for its letter, or none at all - would strand it.
+          if press.key == .escape, endComposition() { return .handled }
           if press.key == .tab, !press.modifiers.contains(.shift), !banner.answers.isEmpty,
             banner.replyable
           {
@@ -486,8 +497,8 @@ struct BannerReplyField: View {
           board.send(banner)
           return .handled
         }
-        // An input method that is composing takes Esc first and ends the composition, so this
-        // runs only for an Esc nothing else wanted.
+        // Only an Esc with nothing being composed reaches this: the key press above took the
+        // others.
         .onExitCommand { onLeave() }
         .disabled(banner.sent.state == .pending)
         .focused(focus, equals: .reply)
@@ -529,7 +540,9 @@ public final class BannerHost {
   let board: BannerBoard
   private(set) lazy var hosting: NSHostingView<BannerStackView> = {
     let view = NSHostingView(
-      rootView: BannerStackView(board: board, onLeave: { [weak self] in self?.onLeave?() }))
+      rootView: BannerStackView(
+        board: board, onLeave: { [weak self] in self?.onLeave?() },
+        endComposition: { [weak self] in self?.endComposition() ?? false }))
     view.sizingOptions = [.intrinsicContentSize]
     view.layer?.backgroundColor = .clear
     return view
@@ -551,6 +564,21 @@ public final class BannerHost {
   var holdsKeyboard: Bool {
     guard let responder = hosting.window?.firstResponder as? NSView else { return false }
     return responder.isDescendant(of: hosting)
+  }
+
+  /// Ends an input method's composition in the reply field holding the keyboard, discarding what
+  /// was being composed, as Esc does in a composing input method: told first, so one that keeps a
+  /// composition of its own drops it, and then the field's marked text replaced with nothing in
+  /// case it kept none. False when nothing was being composed.
+  func endComposition() -> Bool {
+    guard let field = hosting.window?.firstResponder as? NSTextView,
+      field.isDescendant(of: hosting), field.hasMarkedText()
+    else { return false }
+    field.inputContext?.discardMarkedText()
+    if field.hasMarkedText() {
+      field.insertText("", replacementRange: field.markedRange())
+    }
+    return true
   }
 
   /// Sends the reply in the banner whose field holds the keyboard: the menu's Send Message.
