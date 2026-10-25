@@ -78,6 +78,8 @@ pub(crate) struct Shared {
     /// Which fetch of the group's log this is. A log let go and shown again at once is fetched
     /// afresh, and the thread still following the one before must leave the new one alone.
     generation: u64,
+    /// The group is gone, so nothing follows it: showing it again asks afresh.
+    ended: bool,
 }
 
 /// One follow thread's group: the log of one generation, which the thread fetches, follows and
@@ -207,7 +209,8 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
                 forget_unless_shown(&mut session, &left);
             }
         }
-        let start = (!session.conversations.contains_key(&key)).then(|| {
+        let following = session.conversations.get(&key).is_some_and(|shared| !shared.ended);
+        let start = (!following).then(|| {
             static GENERATIONS: AtomicU64 = AtomicU64::new(0);
             let generation = GENERATIONS.fetch_add(1, Ordering::Relaxed);
             session.conversations.insert(key.clone(), Shared { generation, ..Shared::default() });
@@ -291,8 +294,9 @@ fn follow_log(following: &Following) {
         }
         match first_page(following) {
             Ok(()) => break,
-            Err(why) => {
-                failed(following, &why);
+            Err(Refusal::NotThere(why)) => return gone(following, &why),
+            Err(refusal) => {
+                failed(following, refusal.detail());
                 std::thread::sleep(RETRY);
             }
         }
@@ -344,6 +348,7 @@ fn follow_log(following: &Following) {
             }
             Some(Ok(answer)) => match answered_as_human(answer) {
                 Ok(answer) => arrived(following, &answer),
+                Err(Refusal::NotThere(why)) => return gone(following, &why),
                 Err(refusal) => again(group, refusal.detail()),
             },
         }
@@ -408,14 +413,28 @@ fn failed(following: &Following, why: &str) {
     announce_group(group, Parts::ALL);
 }
 
+/// A group deleted, or left from somewhere else, while a window shows it: it is said in the
+/// conversation, and nothing asks after it again until it is shown again.
+fn gone(following: &Following, why: &str) {
+    let group = &following.group;
+    log::info(
+        "conversation.gone",
+        fields! { "daemon" => group.daemon.to_string(), "group" => &group.group, "why" => why },
+    );
+    if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
+        shared.failed = Some(format!("{why}; the group is gone, so nothing more arrives here"));
+        shared.ended = true;
+    }
+    announce_group(group, Parts::ALL);
+}
+
 /// The newest page of the group's log. A daemon before 1.8 does not page, and answers the whole
 /// log: what a window showing a group kept there gets (MIP-9, section 7).
-fn first_page(following: &Following) -> Result<(), String> {
+fn first_page(following: &Following) -> Result<(), Refusal> {
     let group = &following.group;
     let log =
         msg_request::Log { group: group.group.clone(), newest: Some(PAGE), ..Default::default() };
-    let answer = answer_as_human(&group.daemon, Asked::Log(log))
-        .map_err(|refusal| refusal.detail().to_string())?;
+    let answer = answer_as_human(&group.daemon, Asked::Log(log))?;
     let held = messaging::log_page(&answer, &group.group);
     let count = held.entries.len();
     let settled = {

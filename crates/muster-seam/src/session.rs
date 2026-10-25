@@ -4321,6 +4321,13 @@ pub(crate) fn answered_as_human(
             Some(muster_daemon_proto::answer::Detail::Msg(msg)) if msg.refusal == "unanswered" => {
                 Err(Refusal::Unanswered { detail: answer.reason, made: None })
             }
+            // The window holds a group the human is no longer in: deleted, or left from
+            // somewhere else.
+            Some(muster_daemon_proto::answer::Detail::Msg(msg))
+                if msg.refusal == "no_such_group" || msg.refusal == "not_a_member" =>
+            {
+                Err(Refusal::NotThere(answer.reason))
+            }
             _ => Err(Refusal::Declined(answer.reason)),
         },
     }

@@ -550,6 +550,36 @@ fn the_first_opening_counts_whom_the_policy_rings_the_human_for() {
     until_addressed("window-1", &["b"]);
 }
 
+/// A group deleted while a window shows it is said to be gone there, and not asked after again.
+#[test]
+fn a_group_deleted_while_shown_is_said_to_be_gone() {
+    let follows = Arc::new(AtomicUsize::new(0));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let follows = Arc::clone(&follows);
+        daemon.withholding_answers_where(move |request| {
+            if is_a_follow(request) {
+                follows.fetch_add(1, Ordering::SeqCst);
+            }
+            false
+        })
+    });
+    show("window-1");
+    until_loaded("window-1");
+    until_follows(&follows, 1);
+
+    let delete = Asked::GroupDelete(msg_request::GroupDelete { group: "g".to_string() });
+    expect(&mut open.control, msg(&named("a"), delete), daemon_proto::Outcome::Done);
+    until(
+        "the conversation to say the group is gone",
+        || conversation("window-1").failed.contains("the group is gone"),
+        || format!("window-1 was told {:?}", conversation("window-1")),
+    );
+    let asked = follows.load(Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(follows.load(Ordering::SeqCst), asked, "a gone group was asked after again");
+    drop(relay);
+}
+
 /// With an answer picked, the post's body is composed from the pick and the note. A refusal
 /// keeps the note the human wrote, not that body, so sending again does not write the answer
 /// twice.
