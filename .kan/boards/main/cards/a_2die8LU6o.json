@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "id": "c_2j17K3Fbd",
@@ -102,20 +102,27 @@
       "body": "The conversation's model, seam and CLI landed on main 2026-10-24 (00c6da05..1690c93b): the conversation as part of a window's view (covered panes unseen), one shared log per group paged newest first, the thread, the members column, the message box and drafts kept with the arrangement, msg open answering with the window and window --json naming the conversation. Gate green. Next: the SwiftUI drawing, then the transcript pane's removal and routing every way of opening a group to the conversation.",
       "author": "Alexander Terp",
       "created_at_millis": 1792901887132
+    },
+    {
+      "id": "c_2nnoOmwhZ",
+      "body": "Stage 2 done 2026-10-25: the conversation drawn in place of the panes (d7b24476 and its neighbors), every way of opening a group showing it, the transcript pane removed (976d11bb), the sidebar marking members' panes, and the review's fixes (c1c08af6..840fe346). Gate green; ./dev --contract green at b4dfcbb8 with the conversation's launch check and 15 GUI checks. Offered answers in the conversation continue on a_2naAat73L.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792907379362
     }
   ],
   "created_at_millis": 1791417434804,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-07: \"GUI for following groups\". Clarified 2026-10-07: following a group today means a tab running `muster msg log --follow`, which is \"a very plain text file. It's really hard to parse ... not really easy to understand and follow. It's not really a GUI either for contributing back to the discussion in a way that others can see. Like you still have to talk to the agents directly. There's no way for me to kind of like talk in the group and have that be broadcast through muster.\" \"It's a pretty big feature ... might require some design input.\"\n\nAnd a related wish, same day: \"if you have agents that work together in a group, it would be nice in the UI to have some sort of way to see what groups are active and which panes are involved in which groups, like some sort of visualization.\"\n\nSo two parts: a group conversation view that reads well (authors, addressees, urgency, joins and leaves) with a place for the human to post into the group; and an overview of active groups and which panes are in each. Needs a MIP: native AppKit view over a core view-model versus a richer terminal view, and how membership shows on panes and agent-list rows.",
   "id": "a_2die8LU6o",
-  "position": "a0",
+  "position": "Yvc",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792901887133,
+  "updated_at_millis": 1792907379491,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},
     {"field":"column","value":"next","at":1792875895263},
-    {"field":"column","value":"backlog-hi","at":1792878515604}
+    {"field":"column","value":"backlog-hi","at":1792878515604},
+    {"field":"column","value":"done","at":1792907379491}
   ]
 }
