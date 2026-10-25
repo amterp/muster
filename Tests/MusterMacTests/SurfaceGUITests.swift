@@ -494,6 +494,106 @@ extension SurfaceGUITests {
 }
 
 /// A window showing one banner from `otter` in `g`, offering `answers`, its requests recorded.
+extension SurfaceGUITests {
+  /// A group's conversation in a real window, over a real tab: the tab's panes go out of sight
+  /// and the keyboard into the message box, Escape asks to leave, and the view that follows puts
+  /// the keyboard back on the pane it was on. The window's own order is followed - the tab
+  /// applies, then the conversation shows or goes - as `MusterWindow.apply` does.
+  @MainActor
+  @Test("a conversation is drawn in place of the panes, and Escape gives the pane its keyboard")
+  func aConversationCoversThePanesAndEscapeLeaves() async throws {
+    let (window, tab, host, recorder) = conversationWindow()
+    let pane = PaneKey(daemon: "local", pane: "p1")
+    let tree = PaneTree.pane(.init(daemon: "local", paneID: "p1", linkSocketPath: nil))
+    tab.apply(WindowContents(tab: "t1", tree: tree, keyboard: pane))
+    let surface = try #require(tab.chrome(for: pane)?.surface)
+    #expect(window.firstResponder === surface)
+
+    let review = ConversationGroup(daemon: "local", group: "review")
+    tab.apply(WindowContents(tab: "t1", tree: tree, keyboard: pane, conversation: review))
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    #expect(tab.isHidden, "the panes are still drawn under the conversation")
+
+    window.sendEvent(press("\u{1B}", keyCode: 0x35, flags: [], in: window))
+    #expect(recorder.sent == ["leave"], "Escape did not ask to leave")
+
+    tab.apply(WindowContents(tab: "t1", tree: tree, keyboard: pane))
+    host.show(nil) { _ in }
+    #expect(!tab.isHidden)
+    #expect(window.firstResponder === surface, "the keyboard is not back on the pane it was on")
+  }
+
+  /// The message box takes the keyboard, and the core's `send_message` chord posts from it.
+  @MainActor
+  @Test("the message box takes the keyboard and posts on ⌘↩")
+  func theMessageBoxPostsOnTheChord() async throws {
+    let (window, _, host, recorder) = conversationWindow()
+    let review = ConversationGroup(daemon: "local", group: "review")
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    let field = try #require(window.firstResponder as? MessageBoxTextView)
+
+    field.insertText("yes", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(recorder.edits.last?.text == "yes", "the edit never reached the core")
+    window.sendEvent(press("\r", keyCode: 0x24, flags: .command, in: window))
+
+    #expect(recorder.sent.last == "post review")
+  }
+
+  /// Escape ends an input method's composition in the message box before it means leaving.
+  @MainActor
+  @Test("Escape while composing in the message box ends the composition and stays")
+  func escapeWhileComposingInTheBoxStays() async throws {
+    let (window, _, host, recorder) = conversationWindow()
+    let review = ConversationGroup(daemon: "local", group: "review")
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    let field = try #require(window.firstResponder as? MessageBoxTextView)
+    field.setMarkedText(
+      "か", selectedRange: NSRange(location: 1, length: 0),
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(field.hasMarkedText())
+
+    window.sendEvent(press("\u{1B}", keyCode: 0x35, flags: [], in: window))
+
+    #expect(!field.hasMarkedText(), "the composition is still open")
+    #expect(!recorder.sent.contains("leave"), "Escape during a composition left the conversation")
+    #expect(host.holdsKeyboard)
+  }
+}
+
+/// A window holding a tab and a conversation over it, as `MusterWindow` lays them out, with the
+/// conversation's requests recorded and the window's key presses offered to it first.
+@MainActor
+private func conversationWindow() -> (
+  KeyboardWindow, TabView, ConversationHost, ConversationRecorder
+) {
+  let recorder = ConversationRecorder()
+  let window = KeyboardWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.titled],
+    backing: .buffered, defer: false)
+  let content = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+  window.contentView = content
+  let surfaces = PaneSurfaces(parkedIn: content) { _, _, _ in }
+  let tab = TabView(frame: content.bounds, surfaces: surfaces)
+  content.addSubview(tab)
+  let host = ConversationHost(requests: recorder.requests)
+  host.take(bindings: [
+    Core.Binding(action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true),
+    Core.Binding(action: "leave_conversation", key: "Escape", modifiers: [], inTextField: true),
+  ])
+  var opened = Muster_MessageBoxChanged()
+  opened.daemonID = "local"
+  opened.group = "review"
+  host.box.apply(opened)
+  window.onKeyDown = { host.handles($0) }
+  return (window, tab, host, recorder)
+}
+
 @MainActor
 private func bannerWindow(answers: [String] = []) -> (NSWindow, BannerHost, BannerRecorder) {
   let (board, recorder) = recordedBoard()

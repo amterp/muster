@@ -652,6 +652,95 @@ fn a_message_for_the_human_raises_musters_own_banner() {
 
 #[test]
 #[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_group_conversation_is_drawn_in_place_of_the_panes() {
+    // `muster msg open` puts a group's conversation in place of the real app's panes, with the
+    // thread drawn from the group's log, and choosing a tab returns the window to its panes with
+    // the keyboard on the pane (mip/0009-group-conversation.md, sections 1 and 7). The seam's
+    // suite proves the core's half against a daemon with no app, and the shell's GUI checks prove
+    // the drawing in a window of their own; this proves they meet in the app a person runs.
+    let scratch = Scratch::new("conversation");
+    scratch.write_config(SHELL_CONFIG);
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_ready();
+
+    let socket = proto::install::socket_path(&scratch.muster_home());
+    let mut control = muster_harness::Control::connect(&socket);
+    let caller = |name: Option<&str>| msg_request::Caller {
+        as_name: name.map(str::to_string),
+        ..msg_request::Caller::default()
+    };
+    let ask = |caller: msg_request::Caller, asked: msg_request::Request| {
+        Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) })
+    };
+    for (who, name) in [(None, "@human"), (Some("otter"), "otter")] {
+        let join = msg_request::Request::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("review".to_string()),
+            pull: false,
+        });
+        expect(&mut control, ask(caller(who), join), proto::Outcome::Done);
+    }
+    let post = msg_request::Request::Post(msg_request::Post {
+        group: Some("review".to_string()),
+        to: vec!["@human".to_string()],
+        body: "is the **contract** tier green?".to_string(),
+        ..Default::default()
+    });
+    expect(&mut control, ask(caller(Some("otter")), post), proto::Outcome::Done);
+    app.until_event("groups.received", "the window never heard that the human is in review");
+
+    let opened: Value =
+        serde_json::from_str(&muster(&scratch, &["msg", "open", "--group", "review", "--json"]))
+            .expect("`muster msg open --json` answers JSON");
+    let window = opened["window"].as_str().expect("msg open names the window").to_string();
+    app.until_event("conversation.shown", "the window was never told to show the conversation");
+    let described: Value =
+        serde_json::from_str(&muster(&scratch, &["--window", &window, "window", "--json"]))
+            .expect("`muster window --json` answers JSON");
+    assert_eq!(
+        described["conversation"]["group"].as_str(),
+        Some("review"),
+        "the window does not say it shows review's conversation: {described}"
+    );
+
+    let held = snapshot(&mut control);
+    let [pane] = held.panes.as_slice() else {
+        panic!("a cold start should leave one pane, and left {:?}", held.panes);
+    };
+    let [tab] = tabs_of(&scratch, &window).try_into().unwrap_or_else(|tabs: Vec<String>| {
+        panic!("a cold start should leave one tab, and left {tabs:?}")
+    });
+    muster(&scratch, &["--window", &window, "tab", "focus", &tab]);
+    app.until_event("conversation.left", "choosing a tab did not take the conversation down");
+    let records = app.stop();
+
+    assert!(
+        of(&records, "conversation.received").any(|record| {
+            field(record, "group").as_deref() == Some("review")
+                && field(record, "rows").and_then(|rows| rows.parse::<u32>().ok()) > Some(0)
+        }),
+        "the shell was never sent review's thread with anything in it: {}",
+        events_seen(&records)
+    );
+    let left = records
+        .iter()
+        .position(|record| event(record) == "conversation.left")
+        .expect("conversation.left was waited for");
+    let keyboard = records[left..]
+        .iter()
+        .rev()
+        .find(|record| event(record) == "view.received")
+        .and_then(|record| field(record, "keyboard"));
+    assert_eq!(
+        keyboard.as_deref(),
+        Some(pane.pane.as_str()),
+        "the panes came back with the keyboard somewhere other than the pane that had it"
+    );
+    expect_no_daemon_left(&scratch);
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
 fn a_refused_config_opens_the_roster_it_would_have_had_nowhere_to_appear_in() {
     // A window that comes back with the roster closed still shows what is wrong with it.
     //

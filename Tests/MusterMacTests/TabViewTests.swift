@@ -99,6 +99,30 @@ struct TabViewTests {
   }
 
   @MainActor
+  @Test("a conversation hides the tab and leaves its panes where they are")
+  func aConversationCoversTheTab() {
+    // Covered, not parked: the panes stay in the tab with their surfaces, so the conversation
+    // going away puts back exactly what was there, starting nothing.
+    let (view, started) = tabView()
+    let tree = leaf("w1:p1", socket: "/tmp/a.sock")
+    view.apply(contents(tree, keyboard: "w1:p1"))
+    let before = view.chrome(for: local("w1:p1"))
+
+    view.apply(
+      WindowContents(
+        tab: "w1:t1", tree: tree, keyboard: local("w1:p1"),
+        machines: ["local": .init(socket: "/tmp/a.sock")],
+        conversation: ConversationGroup(daemon: "local", group: "review")))
+    #expect(view.isHidden && view.covered)
+    #expect(view.chrome(for: local("w1:p1")) === before, "a covered pane lost its surface")
+
+    view.apply(contents(tree, keyboard: "w1:p1"))
+    #expect(!view.isHidden && !view.covered)
+    #expect(view.chrome(for: local("w1:p1")) === before)
+    #expect(started.panes == ["local:w1:p1@/tmp/a.sock"], "a pane started twice")
+  }
+
+  @MainActor
   @Test("a pane the tree no longer names leaves the tab, and keeps its bridge")
   func departedPanesAreParked() {
     // Parked rather than torn down, which is the whole of a_2HzbwzO32. A remote pane's bridge
