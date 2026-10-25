@@ -132,6 +132,9 @@ struct Watch {
     /// What it needs, and since when.
     need: Option<(Need, u64)>,
     told: bool,
+    /// The stretch of work, by when it began, that its maker was told it went idle unreported
+    /// after: a chore turn between leaves the same stretch, which is not told of twice.
+    told_unreported_for: Option<u64>,
     /// Whether its need is due and waits for its maker to be free.
     held: bool,
 }
@@ -233,7 +236,9 @@ impl Makers {
             let need = need(helper, watch.worked_since_ms);
             if watch.need.map(|(was, _)| was) != need {
                 watch.need = need.map(|need| (need, now_ms));
-                watch.told = false;
+                watch.told = need == Some(Need::Unreported)
+                    && watch.worked_since_ms.is_some()
+                    && watch.told_unreported_for == watch.worked_since_ms;
                 watch.held = false;
             }
             let Some((need, since_ms)) = watch.need else { continue };
@@ -250,6 +255,9 @@ impl Makers {
             }
             watch.told = true;
             watch.held = false;
+            if need == Need::Unreported {
+                watch.told_unreported_for = watch.worked_since_ms;
+            }
             let worked_ms = now_ms.saturating_sub(watch.worked_since_ms.unwrap_or(now_ms));
             tells.push(Tell {
                 maker: helper.maker.clone(),
@@ -862,6 +870,30 @@ mod tests {
         makers.judge(&[on(3, Activity::Idle, false)], &called, 90_000);
         let tells = makers.judge(&[on(3, Activity::Idle, false)], &called, 120_000);
         assert_eq!(needs(&tells), [Need::Unreported], "the next turn was work");
+    }
+
+    /// A helper whose maker was told it went idle without posting is not told again for the same
+    /// stretch of work after a chore turn, whether the chore was known from the start, as a
+    /// compaction Muster typed is, or found after a look took it for work.
+    #[test]
+    fn a_chore_turn_does_not_tell_the_maker_again_of_a_stretch_it_was_told_of() {
+        let called = called();
+        for found_late in [false, true] {
+            let mut makers = makers();
+            let on = |turn, activity, chores_turn| Helper { chores_turn, turn, ..maple(activity) };
+            makers.judge(&[on(1, Activity::Working, false)], &called, 0);
+            makers.judge(&[on(1, Activity::Idle, false)], &called, 10_000);
+            let told = makers.judge(&[on(1, Activity::Idle, false)], &called, 30_000);
+            assert_eq!(needs(&told), [Need::Unreported]);
+
+            if found_late {
+                makers.judge(&[on(2, Activity::Working, false)], &called, 40_000);
+            }
+            makers.judge(&[on(2, Activity::Working, true)], &called, 41_000);
+            makers.judge(&[on(2, Activity::Idle, true)], &called, 50_000);
+            let again = makers.judge(&[on(2, Activity::Idle, true)], &called, 80_000);
+            assert!(again.is_empty(), "told again (found late: {found_late}): {again:?}");
+        }
     }
 
     /// The person is told every helper a closed maker left running, and how to bring them back.
