@@ -406,7 +406,7 @@
     },
     {
       "name": "a question offers answers, and one reply from somebody it was asked of picks one",
-      "why": "Most questions agents put to the human are a choice between a few things, so a post may offer answers, and a reply carries the one it picks as a field as well as in its words, so a view can mark the question answered (MIP-9, section 6). The group's home holds the reply to its question: it names a message there offering answers, it picks one of them, it comes from somebody the question was asked of, and nobody answered first, since a question takes one answer.",
+      "why": "Most questions agents put to the human are a choice between a few things, so a post may offer answers, and a reply carries the one it picks as a field as well as in its words, so a view can mark the question answered (MIP-9, section 6). The group's home holds the reply to its question: it names a message there offering answers, it picks one of them, it comes from somebody the question was asked of, and nobody answered first, since a question takes one answer. A reply that picks an answer offers none of its own: it is an answer, and the next question is a post of its own.",
       "given": { "steps": [
         {"session": "a", "do": "join", "name": "a", "group": "g"},
         {"session": "b", "do": "join", "name": "b", "group": "g"},
@@ -418,6 +418,7 @@
         {"session": "a", "do": "post", "to": ["b"], "body": "Answer: Yes", "answering": {"question": 5, "answer": "Yes"}},
         {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Maybe", "answering": {"question": 5, "answer": "Maybe"}},
         {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 4, "answer": "Yes"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 5, "answer": "Yes"}, "answers": ["Now", "Later"]},
         {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes\n\nafter lunch", "answering": {"question": 5, "answer": "Yes"}},
         {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Not yet", "answering": {"question": 5, "answer": "Not yet"}},
         {"do": "log", "group": "g", "since": 4}
@@ -433,6 +434,7 @@
         "refused not_asked_of a g #5",
         "refused not_offered g #5 \"Maybe\" (offers Yes/Not yet)",
         "refused no_such_question g #4",
+        "refused answer_offers_answers",
         "b posted #6 to g; woke a [g #6-6 x1 to-you:1 from b]",
         "refused already_answered g #5 by b: Yes",
         "#5 a->b: ship it? [Yes/Not yet] | #6 b->a (answering #5: Yes): Answer: Yes\n\nafter lunch"

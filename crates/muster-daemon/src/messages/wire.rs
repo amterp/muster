@@ -355,7 +355,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.existing = answer;
         }
         Refusal::Store { error } => refused.existing = error,
-        Refusal::AddressedSelf | Refusal::NoGroup | Refusal::EmptyBody => {}
+        Refusal::AddressedSelf
+        | Refusal::NoGroup
+        | Refusal::EmptyBody
+        | Refusal::AnswerOffersAnswers => {}
     }
     refused
 }
@@ -424,6 +427,7 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         }
         "answer_too_long" => Refusal::AnswerTooLong { answer: existing },
         "bad_answer" => Refusal::BadAnswer { answer: existing },
+        "answer_offers_answers" => Refusal::AnswerOffersAnswers,
         "no_such_question" => Refusal::NoSuchQuestion { group, question: count },
         "not_offered" => {
             Refusal::NotOffered { group, question: count, answer: existing, answers: candidates }
@@ -534,6 +538,7 @@ mod tests {
             Refusal::TooManyAnswers { count: 7 },
             Refusal::AnswerTooLong { answer: "a long answer".into() },
             Refusal::BadAnswer { answer: "Yes".into() },
+            Refusal::AnswerOffersAnswers,
             Refusal::NoSuchQuestion { group: "g".into(), question: 4 },
             Refusal::NotOffered {
                 group: "g".into(),

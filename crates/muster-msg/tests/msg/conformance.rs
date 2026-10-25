@@ -212,7 +212,10 @@ fn refused(refusal: &Refusal) -> String {
             format!("{group} #{question} by {by}: {answer}")
         }
         Refusal::Store { error } => error.clone(),
-        Refusal::AddressedSelf | Refusal::NoGroup | Refusal::EmptyBody => String::new(),
+        Refusal::AddressedSelf
+        | Refusal::NoGroup
+        | Refusal::EmptyBody
+        | Refusal::AnswerOffersAnswers => String::new(),
     };
     format!("refused {} {detail}", refusal.code()).trim_end().to_string()
 }

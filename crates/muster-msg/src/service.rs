@@ -957,6 +957,9 @@ impl<S: Store> Messaging<S> {
             return Err(Refusal::Unread { group: group.to_string(), count: unread });
         }
         if let Some(answering) = content.answering {
+            if !content.answers.is_empty() {
+                return Err(Refusal::AnswerOffersAnswers);
+            }
             self.check_answering(group, author, answering)?;
         }
         let message = What::Message {

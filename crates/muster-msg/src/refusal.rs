@@ -158,6 +158,9 @@ pub enum Refusal {
     BadAnswer {
         answer: String,
     },
+    /// A reply that picks a question's answer offers answers of its own: it is an answer, and a
+    /// question is a post of its own.
+    AnswerOffersAnswers,
     /// A reply names a question that is not a message in its group offering answers.
     NoSuchQuestion {
         group: String,
@@ -226,6 +229,7 @@ impl Refusal {
             Refusal::TooManyAnswers { .. } => "too_many_answers",
             Refusal::AnswerTooLong { .. } => "answer_too_long",
             Refusal::BadAnswer { .. } => "bad_answer",
+            Refusal::AnswerOffersAnswers => "answer_offers_answers",
             Refusal::NoSuchQuestion { .. } => "no_such_question",
             Refusal::NotOffered { .. } => "not_offered",
             Refusal::NotAskedOf { .. } => "not_asked_of",

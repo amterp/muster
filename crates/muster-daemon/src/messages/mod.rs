@@ -1846,6 +1846,9 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "the answer \"{answer}\" cannot be offered: each is one line, not empty, and different \
              from the others"
         ),
+        Refusal::AnswerOffersAnswers => "an answer offers no answers of its own; post the next \
+                                         question as a message of its own"
+            .to_string(),
         Refusal::NoSuchQuestion { group, question } => format!(
             "#{question} in {group} is not a question: no message offering answers has that \
              number there. `{}` shows it",
