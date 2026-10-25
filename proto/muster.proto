@@ -2504,8 +2504,6 @@ message Banner {
   repeated string answers = 17;
   // Which of them the human picked, from 0, to go with the reply.
   optional uint32 picked = 18;
-  // The author's participant name, which a reply is addressed to.
-  string author_name = 19;
 }
 
 // Where a post the human sent stands (mip/0009-group-conversation.md, section 4).

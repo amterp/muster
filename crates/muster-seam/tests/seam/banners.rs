@@ -69,7 +69,7 @@ fn a_banner_names_an_agent_in_a_pane_by_its_callsign() {
     let asked = posted(&mut control, &in_pane("p1"), "@human", "can you look?", &[]);
     let Some(Answer::Posted(asked)) = asked.answer else { panic!("not posted: {asked:?}") };
     let banner = until_banner(|banner| banner.seq == asked.seq);
-    assert_eq!((banner.author.as_str(), banner.author_name.as_str()), (callsign.as_str(), "p1"));
+    assert_eq!(banner.author, callsign);
 }
 
 #[test]
