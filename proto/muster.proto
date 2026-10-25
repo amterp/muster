@@ -99,6 +99,7 @@ message Request {
     DismissBanner dismiss_banner = 81;
     HoldBanner hold_banner = 82;
     PickBannerAnswer pick_banner_answer = 83;
+    PickConversationAnswer pick_conversation_answer = 84;
     PauseGroup pause_group = 92;
     LoadEarlier load_earlier = 93;
     SaveDraft save_draft = 94;
@@ -1520,6 +1521,19 @@ message PostFromConversation {
   string group = 2;
 }
 
+// Picks one of the answers a question in the thread offers, for the window's message box to send
+// with its words, or with `answer` absent takes the pick back (mip/0009-group-conversation.md,
+// section 6). Picking addresses the box to the question's author, and picking the picked answer
+// again takes it back. Answered with the draft, as SaveDraft is; nothing is sent.
+message PickConversationAnswer {
+  string daemon_id = 1;
+  string group = 2;
+  // The question's number in its group.
+  uint64 question = 3;
+  // Which of its answers, from 0.
+  optional uint32 answer = 4;
+}
+
 // The message box as the shell holds it after the person changed it: the whole draft, every
 // time. Answered with the draft as the core keeps it, which the shell takes in place of its own:
 // a leading @name may have become a recipient, Backspace may have turned one back into text, and
@@ -1565,6 +1579,10 @@ message MessageBoxDraft {
   uint32 cursor = 4;
   // What the @name at the cursor may complete to.
   repeated Recipient completions = 5;
+  // The answer picked from a question in the thread, by the question's number and the answer's
+  // words, to go with the text; 0 and empty while none is.
+  uint64 picked_question = 6;
+  string picked_answer = 7;
 }
 
 message Recipient {
@@ -2592,6 +2610,17 @@ message ConversationMessage {
   bool from_muster = 14;
   // Whom it woke, under a post this window sent: "woke otter", or that nobody live heard it.
   string said = 15;
+  // The answers it offers, which make it a question (section 6), drawn as buttons while
+  // `answerable`.
+  repeated string answers = 16;
+  // Who answered it, as the conversation names them, and with which answer; empty while
+  // nobody has.
+  string answered_by = 17;
+  string answered_with = 18;
+  // The question it answers, when it is a reply that picked one; 0 when it answers none.
+  uint64 answering = 19;
+  // Whether the human may pick one of its answers now: asked of them, and not answered yet.
+  bool answerable = 20;
 }
 
 message ConversationMember {

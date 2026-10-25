@@ -36,6 +36,9 @@ fn main() {
     // A pane's state change is that common event, and most panes have no session to resume, so
     // the resume is boxed rather than the state change: absent, it costs a pointer.
     config.boxed("PaneStateChanged.resume");
+    // A thread is mostly messages, but its dividers, merged changes and folds are rows too, and
+    // a message row carries its body and its answers: boxed, the small rows stay small.
+    config.boxed("ConversationRow.kind.message");
     config.message_attribute(
         "Banner",
         "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",

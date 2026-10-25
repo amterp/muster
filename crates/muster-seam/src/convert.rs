@@ -462,7 +462,7 @@ fn conversation_row(row: &Row, posted: Option<&(u64, String)>) -> proto::Convers
             from_ms: *from_ms,
             to_ms: *to_ms,
         }),
-        Row::Message(message) => Kind::Message(conversation_message(message, posted)),
+        Row::Message(message) => Kind::Message(Box::new(conversation_message(message, posted))),
         Row::Unread => Kind::Unread(true),
     };
     proto::ConversationRow { kind: Some(kind) }
@@ -499,6 +499,11 @@ fn conversation_message(
             .filter(|(seq, _)| *seq == message.seq)
             .map(|(_, said)| said.clone())
             .unwrap_or_default(),
+        answers: message.answers.clone(),
+        answered_by: message.answered.as_ref().map(|a| a.by.clone()).unwrap_or_default(),
+        answered_with: message.answered.as_ref().map(|a| a.answer.clone()).unwrap_or_default(),
+        answering: message.answering.unwrap_or(0),
+        answerable: message.answerable,
     }
 }
 
@@ -546,5 +551,7 @@ pub(crate) fn message_box_draft(
                 shown: completion.shown.clone(),
             })
             .collect(),
+        picked_question: draft.picked.as_ref().map_or(0, |picked| picked.question),
+        picked_answer: draft.picked.as_ref().map(|p| p.answer.clone()).unwrap_or_default(),
     }
 }

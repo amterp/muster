@@ -400,6 +400,13 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::PostFromConversation(post) => {
             session::conversation::post(window, &post.daemon_id, &post.group)
         }
+        request::Payload::PickConversationAnswer(pick) => session::conversation::pick(
+            window,
+            &pick.daemon_id,
+            &pick.group,
+            pick.question,
+            pick.answer,
+        ),
         request::Payload::SaveDraft(saved) => session::conversation::save_draft(
             window,
             &saved.daemon_id,

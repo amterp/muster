@@ -467,10 +467,15 @@ fn settle(session: &mut Session, group: &GroupKey) -> Vec<WindowId> {
     for id in session.windows.ids() {
         let window = &mut session.windows[id];
         let Some(sending) = window.sending.get(group) else { continue };
-        let Sent::Unknown { text, .. } = &sending.sent else { continue };
-        let Some(seq) =
-            posting::settles(shared.group.log.logged(), sending.after, &sending.draft.to, text)
-        else {
+        if !matches!(sending.sent, Sent::Unknown { .. }) {
+            continue;
+        }
+        let Some(seq) = posting::settles(
+            shared.group.log.logged(),
+            sending.after,
+            &sending.draft.to,
+            &sending.draft.body(),
+        ) else {
             continue;
         };
         let said = posting::KEPT_UNANSWERED.to_string();
@@ -496,7 +501,10 @@ fn settle(session: &mut Session, group: &GroupKey) -> Vec<WindowId> {
 /// written something else in the box since: that is theirs, and was never sent.
 fn clear_if_unchanged(window: &mut super::Window, group: &GroupKey, sent: &Draft, opening: &Draft) {
     let unchanged = window.drafts.get(group).is_none_or(|held| {
-        held.text == sent.text && held.to == sent.to && held.urgent == sent.urgent
+        held.text == sent.text
+            && held.to == sent.to
+            && held.urgent == sent.urgent
+            && held.picked == sent.picked
     });
     if unchanged {
         window.drafts.insert(group.clone(), opening.clone());
@@ -727,6 +735,42 @@ pub(crate) fn save_draft(window: WindowId, daemon: &str, group: &str, edit: Edit
     Response { payload: Some(response::Payload::Draft(answer)) }
 }
 
+/// Picks answer `answer` of question `question` for `window`'s message box in `group`, or takes
+/// the pick back, and answers with the draft (MIP-9, section 6). Nothing is sent.
+pub(crate) fn pick(
+    window: WindowId,
+    daemon: &str,
+    group: &str,
+    question: u64,
+    answer: Option<u32>,
+) -> Response {
+    let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
+    let answer = answer.map(|answer| usize::try_from(answer).unwrap_or(usize::MAX));
+    let answered = {
+        let mut session = poison::lock(&SESSION, "session");
+        let Session { conversations, windows, .. } = &mut *session;
+        let unheard = Group::default();
+        let group = conversations.get(&key).map_or(&unheard, |shared| &shared.group);
+        let before =
+            windows[window].drafts.get(&key).cloned().unwrap_or_else(|| draft::opening(group));
+        let picked = match draft::pick(&before, question, answer, group) {
+            Ok(picked) => picked,
+            Err(why) => return Response::failure(why),
+        };
+        let cursor = picked.text.chars().count();
+        let answered = convert::message_box_draft(&picked, cursor, &[], group);
+        let held = &mut windows[window];
+        held.drafts.insert(key.clone(), picked);
+        if held.conversation.as_ref().is_some_and(|shown| shown.group == key) {
+            let told = message_box(held, group);
+            held.message_box_sent = Some(told);
+        }
+        answered
+    };
+    save_soon(window);
+    Response { payload: Some(response::Payload::Draft(answered)) }
+}
+
 /// Posts `window`'s draft for `group` as the human (MIP-9, sections 3 and 4).
 pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
@@ -734,9 +778,10 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         let mut session = poison::lock(&SESSION, "session");
         let after = session.conversations.get(&key).map_or(0, |shared| shared.group.log.head());
         let held = &mut session.windows[window];
-        let Some(draft) = held.drafts.get(&key).filter(|draft| !draft.text.trim().is_empty())
-        else {
-            return Response::failure("the message box is empty, so nothing was posted");
+        let Some(draft) = held.drafts.get(&key).filter(|draft| draft.sends()) else {
+            return Response::failure(
+                "the message box is empty and no answer is picked, so nothing was posted",
+            );
         };
         if matches!(held.sending.get(&key), Some(Sending { sent: Sent::Pending { .. }, .. })) {
             return Response::failure(
@@ -755,8 +800,14 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         (draft, after)
     };
     announce(&[window]);
-    let sent =
-        super::posting::post_as_human(&key, &draft.to, &draft.text, None, draft.urgent, after);
+    let sent = super::posting::post_as_human(
+        &key,
+        &draft.to,
+        &draft.body(),
+        draft.picked.as_ref(),
+        draft.urgent,
+        after,
+    );
     log::info(
         "conversation.posted",
         fields! {

@@ -10,15 +10,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::group_messages::{
-    entries, group_of_three, in_pane, msg, named, post, the_human, unread,
+    entries, group_of_three, in_pane, log, msg, named, post, posted, the_human, unread,
 };
 use muster::proto::{
     ConversationChanged, ConversationMembersChanged, CreateTab, Event, FocusPane,
     LeaveConversation, LoadEarlier, MessageBoxChanged, OpenWindow, PauseGroup,
-    PostFromConversation, Quitting, Request, Response, SaveDraft, ShowConversation, Startup,
-    ViewChanged, WindowFocus, conversation_row, event, post_outcome, request, response,
+    PickConversationAnswer, PostFromConversation, Quitting, Request, Response, SaveDraft,
+    ShowConversation, Startup, ViewChanged, WindowFocus, conversation_row, event, post_outcome,
+    request, response,
 };
 use muster_daemon_proto as daemon_proto;
+use muster_daemon_proto::msg_answer::{Answer, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::request::Service;
 use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
@@ -349,6 +351,99 @@ fn a_post_from_the_message_box_is_kept_and_its_draft_clears() {
             let told = message_box("window-1");
             told.sent.is_some_and(|sent| sent.state() == post_outcome::State::Posted)
                 && told.draft.is_some_and(|draft| draft.text.is_empty())
+        },
+        || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+}
+
+/// A question's answers are drawn under it; picking one fills the message box, addressed to the
+/// question's author, and the post is the answer with the note under it, carrying `answering`,
+/// after which the question says the human answered it and offers nothing more.
+#[test]
+fn a_questions_answer_is_picked_into_the_message_box_and_posted_with_it() {
+    let mut open = Open::built();
+    let question = ask(&mut open.control, "run the contract tier?", &["Run it now", "Skip it"]);
+    show("window-1");
+    until_loaded("window-1");
+    until(
+        "the question's row to offer its answers",
+        || {
+            row("window-1", question)
+                .is_some_and(|row| row.answers == ["Run it now", "Skip it"] && row.answerable)
+        },
+        || format!("the row is {:?}", row("window-1", question)),
+    );
+
+    let Some(response::Payload::Draft(picked)) = answer(pick(question, Some(1))).payload else {
+        panic!("a pick answered with no draft");
+    };
+    let to: Vec<&str> = picked.to.iter().map(|to| to.name.as_str()).collect();
+    assert_eq!(to, ["a"], "a pick addresses whoever asked");
+    assert_eq!((picked.picked_question, picked.picked_answer.as_str()), (question, "Skip it"));
+    answer(save_draft("after lunch", 11, &["a"]));
+
+    let posted = answer(post_draft());
+    assert!(
+        matches!(posted.payload, Some(response::Payload::Ok(_))),
+        "the post answered {posted:?}"
+    );
+    let (author, to, body) = entries(&mut open.control).pop().expect("the post is in the log");
+    assert_eq!(
+        (author.as_str(), to.as_slice(), body.as_str()),
+        ("@human", &["a".to_string()][..], "Answer: Skip it\n\nafter lunch")
+    );
+    let answering = match log(&mut open.control).pop().and_then(|entry| entry.what) {
+        Some(What::Message(message)) => message.answering,
+        _ => None,
+    };
+    assert_eq!(
+        answering,
+        Some(msg_request::Answering { question, answer: "Skip it".to_string() }),
+        "named as the post's field, so every view can mark the question answered"
+    );
+    until(
+        "the question's row to say the human answered it",
+        || {
+            row("window-1", question).is_some_and(|row| {
+                (row.answered_by.as_str(), row.answered_with.as_str()) == ("you", "Skip it")
+                    && !row.answerable
+            })
+        },
+        || format!("the row is {:?}", row("window-1", question)),
+    );
+}
+
+/// The draft keeps its pick whole, so a relaunch brings the answer back with the words.
+#[test]
+fn a_picked_answer_survives_a_relaunch() {
+    let mut open = Open::built();
+    let question = ask(&mut open.control, "ok to merge?", &["Merge", "Hold off"]);
+    show("window-1");
+    until_loaded("window-1");
+    until(
+        "the question's row",
+        || row("window-1", question).is_some_and(|row| row.answerable),
+        || format!("the row is {:?}", row("window-1", question)),
+    );
+    answer(pick(question, Some(0)));
+    let arrangement = open.daemon.root().join("windows/window-1.toml");
+    until(
+        "the pick to be written down",
+        || std::fs::read_to_string(&arrangement).is_ok_and(|text| text.contains("Merge")),
+        || std::fs::read_to_string(&arrangement).unwrap_or_default(),
+    );
+
+    open.turn.relaunch();
+    muster::ffi::muster_set_event_callback(Some(note));
+    forget_events();
+    start_window(&open.daemon.muster_config(), &arrangement);
+    show("window-1");
+    until(
+        "the pick to come back with the window",
+        || {
+            message_box("window-1").draft.is_some_and(|draft| {
+                (draft.picked_question, draft.picked_answer.as_str()) == (question, "Merge")
+            })
         },
         || format!("window-1 was told {:?}", message_box("window-1")),
     );
@@ -816,6 +911,31 @@ fn draft_edit(text: &str, cursor: u32, to: &[&str]) -> SaveDraft {
         to: to.iter().map(ToString::to_string).collect(),
         ..SaveDraft::default()
     }
+}
+
+fn pick(question: u64, answer: Option<u32>) -> request::Payload {
+    request::Payload::PickConversationAnswer(PickConversationAnswer {
+        daemon_id: "local".to_string(),
+        group: "g".to_string(),
+        question,
+        answer,
+    })
+}
+
+/// Asks the human a question as `a`, offering `answers`, and returns its number.
+fn ask(control: &mut Control, body: &str, answers: &[&str]) -> u64 {
+    match posted(control, &named("a"), "@human", body, answers).answer {
+        Some(Answer::Posted(posted)) => posted.seq,
+        other => panic!("a question answered with {other:?}"),
+    }
+}
+
+/// Message `seq`'s row in the conversation `window` was last told of.
+fn row(window: &str, seq: u64) -> Option<muster::proto::ConversationMessage> {
+    conversation(window).rows.into_iter().find_map(|row| match row.kind {
+        Some(conversation_row::Kind::Message(message)) if message.seq == seq => Some(*message),
+        _ => None,
+    })
 }
 
 fn post_draft() -> request::Payload {

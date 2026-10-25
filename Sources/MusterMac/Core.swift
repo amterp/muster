@@ -1605,6 +1605,7 @@ public enum Core {
     case .dismissBanner: return "dismiss_banner"
     case .holdBanner: return "hold_banner"
     case .pickBannerAnswer: return "pick_banner_answer"
+    case .pickConversationAnswer: return "pick_conversation_answer"
     case .showConversation: return "show_conversation"
     case .leaveConversation: return "leave_conversation"
     case .openFold: return "open_fold"
