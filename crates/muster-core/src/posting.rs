@@ -57,9 +57,21 @@ pub struct Reached {
 /// The human's name in every group.
 pub const HUMAN: &str = "@human";
 
+/// Muster's own name, for what it says in a group. Never an addressee.
+pub const MUSTER: &str = "@muster";
+
 /// Whether `name` is the human, on this machine or, as `@human@laptop`, on another.
 pub fn is_human(name: &str) -> bool {
-    name.strip_prefix(HUMAN).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+    is_named(name, HUMAN)
+}
+
+/// Whether `name` is Muster, on this machine or another.
+pub fn is_muster(name: &str) -> bool {
+    is_named(name, MUSTER)
+}
+
+fn is_named(name: &str, base: &str) -> bool {
+    name.strip_prefix(base).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
 }
 
 /// Whether a live participant heard the post: one was woken or will be rung, was already woken,

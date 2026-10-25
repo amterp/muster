@@ -168,7 +168,7 @@ impl Default for Notifications {
 }
 
 impl Notifications {
-    fn allows(self, alert: Alert) -> bool {
+    pub fn allows(self, alert: Alert) -> bool {
         !self.muted
             && match alert {
                 Alert::Blocked => self.blocked,

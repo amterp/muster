@@ -1,0 +1,490 @@
+{
+  "concept": "banners",
+  "source": "authored",
+  "citation": "MIP-9, section 5 (docs/mip/0009-group-conversation.md), and the rules an adversarial review set on kan a_2naAacfIB: the banner holds the message it shows, a reply never reads the group, @muster takes no reply, and a reply that failed keeps its words. Holding a banner while the human writes, and saying what waits behind it, are the implementation's own reading of 'a reply goes to that author whatever arrives since'.",
+  "why": "The banner is where the human answers agents without leaving their pane. A reply that went to the wrong author, a reply that read somebody else's question away, or a banner that vanished with the human's words in it are each worse than having no banner, and none of them shows up as a crash.",
+  "cases": [
+    {
+      "name": "a message for the human raises a banner once it is fetched",
+      "why": "The daemon's notice carries only the newest message's number, so the core fetches that entry and draws nothing until it has it, rather than an empty banner that fills a moment later.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "can you run the contract tier?" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [{ "group": "g", "seq": 4, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "a banner is not drawn while its message is still being fetched",
+      "why": "Same reason: nothing about the message is known yet but its number.",
+      "given": { "steps": [{ "notice": "g", "last": 4, "count": 1, "from": ["otter"] }] },
+      "expect": { "fetch": ["g#4"], "stack": [] }
+    },
+    {
+      "name": "the group's next message replaces its banner",
+      "why": "One banner per group, showing the newest message, so a busy group does not bury the window in banners.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "first" },
+          { "notice": "g", "last": 6, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 6, "author": "heron", "body": "second" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#6"],
+        "stack": [{ "group": "g", "seq": 6, "author": "heron", "replyable": true }]
+      }
+    },
+    {
+      "name": "the same notice again fetches nothing",
+      "why": "A daemon reconnecting says what waits again; that is not news, and must not fetch or replace anything.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "hi" },
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [{ "group": "g", "seq": 4, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "a banner the human is writing in is not replaced, and says who wrote since",
+      "why": "A reply goes to the author of the message the human was answering, whatever arrives meanwhile, so the banner keeps that message. The newer one waits behind it and the banner says who wrote it and that it is urgent, so somebody typing is not blind to it.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "hold": "g", "seq": 4, "held": true },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "stop, it breaks the build", "urgent": true }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [
+          {
+            "group": "g",
+            "seq": 4,
+            "author": "otter",
+            "held": true,
+            "waiting": "#5 from heron, urgent",
+            "replyable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "a reply goes to the author the banner shows",
+      "why": "The banner froze otter's message, so the reply is otter's even though heron wrote since.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "hold": "g", "seq": 4, "held": true },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "me too" },
+          { "reply": "g", "seq": 4, "body": "yes" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "said": ["to otter"],
+        "stack": [
+          {
+            "group": "g",
+            "seq": 4,
+            "author": "otter",
+            "held": true,
+            "sent": "pending: yes",
+            "waiting": "#5 from heron",
+            "replyable": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "letting go of a held banner shows the message that waited",
+      "why": "Clearing the reply field is the human done with otter's message for now; heron's newer message then takes the banner.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "hold": "g", "seq": 4, "held": true },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "me too" },
+          { "hold": "g", "seq": 4, "held": false }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [{ "group": "g", "seq": 5, "author": "heron", "replyable": true }]
+      }
+    },
+    {
+      "name": "a posted reply answers the banner and says whom it woke",
+      "why": "Section 4's posted outcome: the banner says whom the reply reached. It takes no second reply, and the group stays unread, since a reply never reads.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "replied": "g", "seq": 4, "posted": 7, "said": "woke otter" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["to otter"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "sent": "posted #7: woke otter", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a posted reply lets the message that waited behind it through",
+      "why": "Once otter's question is answered, heron's newer message is what needs the human.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "hold": "g", "seq": 4, "held": true },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "me too" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "replied": "g", "seq": 4, "posted": 7, "said": "woke otter" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "said": ["to otter"],
+        "stack": [{ "group": "g", "seq": 5, "author": "heron", "replyable": true }]
+      }
+    },
+    {
+      "name": "a refused reply stays in the banner with its words",
+      "why": "Section 4: a refused post leaves the text, and says why in the daemon's words, which name what would let it through.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "replied": "g", "seq": 4, "body": "yes", "refused": "otter left g" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["to otter"],
+        "stack": [
+          {
+            "group": "g",
+            "seq": 4,
+            "author": "otter",
+            "sent": "refused: otter left g (keeps \"yes\")",
+            "replyable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "a reply whose outcome is unknown stays in the banner",
+      "why": "The daemon took the post and never answered, so it may have been kept. The words stay, marked as perhaps sent, and nothing sends them again on its own.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "replied": "g", "seq": 4, "body": "yes", "unknown": "local did not answer" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["to otter"],
+        "stack": [
+          {
+            "group": "g",
+            "seq": 4,
+            "author": "otter",
+            "sent": "unknown: local did not answer (keeps \"yes\")",
+            "replyable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "a reply cannot be sent twice while one is pending",
+      "why": "A second press of send while the first is in flight would post the reply twice.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "reply": "g", "seq": 4, "body": "yes" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["to otter", "refused: a reply from this banner is still being sent; it was not sent again"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "sent": "pending: yes", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "an empty reply is refused",
+      "why": "Nothing to post; the daemon would refuse it in words about the CLI.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "  " }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["refused: the reply is empty, so nothing was sent"],
+        "stack": [{ "group": "g", "seq": 4, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "a reply to a banner that moved on is refused",
+      "why": "An action names the message the human was looking at. If the banner has since shown a newer one, a reply would land on an author the human did not choose.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "first" },
+          { "notice": "g", "last": 6, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 6, "author": "heron", "body": "second" },
+          { "reply": "g", "seq": 4, "body": "yes" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#6"],
+        "said": ["refused: the banner for g now shows message #6, not #4; nothing was done"],
+        "stack": [{ "group": "g", "seq": 6, "author": "heron", "replyable": true }]
+      }
+    },
+    {
+      "name": "Muster's own message takes no reply",
+      "why": "@muster is never an addressee, so its banner shows what Muster said and offers no reply field, and a reply sent anyway is refused.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["@muster"] },
+          { "fetched": "g", "seq": 4, "author": "@muster", "body": "otter closed with its helpers running" },
+          { "reply": "g", "seq": 4, "body": "ok" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["refused: @muster is Muster itself, which nobody can address, so nothing was sent"],
+        "stack": [{ "group": "g", "seq": 4, "author": "@muster", "replyable": false }]
+      }
+    },
+    {
+      "name": "dismissing a banner takes it down and a newer message raises it again",
+      "why": "Dismissing does not read the group, so it stays unread; the dismissed message does not come back, and the group's next one does.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "first" },
+          { "dismiss": "g", "seq": 4 },
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter"] },
+          { "fetched": "g", "seq": 5, "author": "otter", "body": "second" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [{ "group": "g", "seq": 5, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "reading the group elsewhere takes its banner down",
+      "why": "The human read it in another window or from a shell; a banner for what they already read would ask twice.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "first" },
+          { "notice": "g", "last": 4, "count": 0 }
+        ]
+      },
+      "expect": { "fetch": ["g#4"], "stack": [] }
+    },
+    {
+      "name": "reading the group elsewhere leaves a banner holding a refused reply",
+      "why": "The words the human wrote are still only in the banner; taking it down would lose them.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ok to merge?" },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "replied": "g", "seq": 4, "body": "yes", "refused": "otter left g" },
+          { "notice": "g", "last": 4, "count": 0 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": ["to otter"],
+        "stack": [
+          {
+            "group": "g",
+            "seq": 4,
+            "author": "otter",
+            "sent": "refused: otter left g (keeps \"yes\")",
+            "replyable": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "somebody already reading the group raises nothing",
+      "why": "A message arriving where the human is reading is read as it lands; a banner over it would announce what is on screen.",
+      "given": { "steps": [{ "notice": "g", "last": 4, "count": 1, "from": ["otter"], "looking": true }] },
+      "expect": { "stack": [] }
+    },
+    {
+      "name": "a banner whose message could not be fetched says what the notice said and takes no reply",
+      "why": "The human still learns something waits, from whom; but its author is only the notice's guess, so no reply is offered.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 4, "error": "local did not answer" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [{ "group": "g", "seq": 4, "unloaded": "2 from otter, heron: local did not answer", "replyable": false }]
+      }
+    },
+    {
+      "name": "banners stack newest first and fold past three",
+      "why": "Three banners is as many as fit beside the panes; the rest fold into a count that opens the oldest, the one that has waited longest.",
+      "given": {
+        "steps": [
+          { "notice": "a", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "a", "seq": 1, "author": "x", "body": "a" },
+          { "notice": "b", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "b", "seq": 1, "author": "x", "body": "b" },
+          { "notice": "c", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "c", "seq": 1, "author": "x", "body": "c" },
+          { "notice": "devenv/d", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "devenv/d", "seq": 1, "author": "x", "body": "d" }
+        ]
+      },
+      "expect": {
+        "fetch": ["a#1", "b#1", "c#1", "devenv/d#1"],
+        "stack": [
+          { "group": "devenv/d", "seq": 1, "author": "x", "replyable": true },
+          { "group": "c", "seq": 1, "author": "x", "replyable": true },
+          { "group": "b", "seq": 1, "author": "x", "replyable": true }
+        ],
+        "folded": 1,
+        "oldest": "a"
+      }
+    },
+    {
+      "name": "a banner holding a reply is never folded away",
+      "why": "Newer banners would push it past three, and the words the human was writing would go out of reach with it. It stays among the three, and the newest of the rest fill what is left.",
+      "given": {
+        "steps": [
+          { "notice": "a", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "a", "seq": 1, "author": "x", "body": "a" },
+          { "hold": "a", "seq": 1, "held": true },
+          { "notice": "b", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "b", "seq": 1, "author": "x", "body": "b" },
+          { "notice": "c", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "c", "seq": 1, "author": "x", "body": "c" },
+          { "notice": "d", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "d", "seq": 1, "author": "x", "body": "d" }
+        ]
+      },
+      "expect": {
+        "fetch": ["a#1", "b#1", "c#1", "d#1"],
+        "stack": [
+          { "group": "d", "seq": 1, "author": "x", "replyable": true },
+          { "group": "c", "seq": 1, "author": "x", "replyable": true },
+          { "group": "a", "seq": 1, "author": "x", "held": true, "replyable": true }
+        ],
+        "folded": 1,
+        "oldest": "b"
+      }
+    },
+    {
+      "name": "a group's next message moves its banner to the top",
+      "why": "Newest on top is by message, so a group that spoke again is the freshest thing in the stack.",
+      "given": {
+        "steps": [
+          { "notice": "a", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "a", "seq": 1, "author": "x", "body": "a" },
+          { "notice": "b", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "b", "seq": 1, "author": "x", "body": "b" },
+          { "notice": "a", "last": 2, "count": 2, "from": ["x"] },
+          { "fetched": "a", "seq": 2, "author": "x", "body": "a again" }
+        ]
+      },
+      "expect": {
+        "fetch": ["a#1", "b#1", "a#2"],
+        "stack": [
+          { "group": "a", "seq": 2, "author": "x", "replyable": true },
+          { "group": "b", "seq": 1, "author": "x", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "notifications for messages turned off raise no banner and take down the idle ones",
+      "why": "`[notifications] messages = false` and mute take Muster's banner away as they take the operating system's; a banner holding the human's words stays, so nothing they wrote is lost.",
+      "given": {
+        "steps": [
+          { "notice": "a", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "a", "seq": 1, "author": "x", "body": "a" },
+          { "notice": "b", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "b", "seq": 1, "author": "x", "body": "b" },
+          { "hold": "b", "seq": 1, "held": true },
+          { "notifying": false },
+          { "notice": "c", "last": 1, "count": 1, "from": ["x"] }
+        ]
+      },
+      "expect": {
+        "fetch": ["a#1", "b#1"],
+        "stack": [{ "group": "b", "seq": 1, "author": "x", "held": true, "replyable": true }]
+      }
+    },
+    {
+      "name": "a long message shows its first lines and says there is more",
+      "why": "A body runs to 1 MiB; the banner shows the first eight lines and the conversation shows the rest.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "- 1\n- 2\n- 3\n- 4\n- 5\n- 6\n- 7\n- 8\n- 9" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [{ "group": "g", "seq": 4, "author": "otter", "more": true, "replyable": true }]
+      }
+    },
+    {
+      "name": "a daemon detached takes its banners with it",
+      "why": "A banner whose group is on a daemon the window no longer holds has nowhere to send a reply.",
+      "given": {
+        "steps": [
+          { "notice": "devenv/g", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "devenv/g", "seq": 1, "author": "x", "body": "a" },
+          { "notice": "h", "last": 1, "count": 1, "from": ["x"] },
+          { "fetched": "h", "seq": 1, "author": "x", "body": "b" },
+          { "detach": "devenv" }
+        ]
+      },
+      "expect": {
+        "fetch": ["devenv/g#1", "h#1"],
+        "stack": [{ "group": "h", "seq": 1, "author": "x", "replyable": true }]
+      }
+    }
+  ]
+}

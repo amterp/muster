@@ -2,6 +2,7 @@
 
 mod agent_state;
 mod attention;
+mod banners;
 mod bindings;
 mod change_consequences;
 mod chord;

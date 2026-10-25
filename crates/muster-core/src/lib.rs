@@ -7,6 +7,7 @@
 
 pub mod agent_state;
 pub mod attention;
+pub mod banners;
 pub mod bridge_link;
 pub mod callsigns;
 pub mod composition;
