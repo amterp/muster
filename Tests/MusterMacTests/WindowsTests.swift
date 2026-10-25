@@ -102,7 +102,7 @@ struct WindowsTests {
     }
 
     #expect(first.applied.isEmpty)
-    #expect(second.applied == ["conversation", "members", "message box"])
+    #expect(second.applied == ["conversation", "members", "member panes", "message box"])
   }
 
   @Test("a view for a window this process does not have reaches no window")
@@ -264,6 +264,7 @@ private final class StandIn: ShellWindow {
   func apply(bindings: [Core.Binding]) { applied.append("bindings") }
   func apply(problems: [Problem]) { applied.append("problems") }
   func apply(groups: [SidebarModel.MessageGroup]) { applied.append("groups") }
+  func apply(memberPanes: Set<PaneKey>) { applied.append("member panes") }
   func hold(_ held: HeldPaste) { applied.append("paste") }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }

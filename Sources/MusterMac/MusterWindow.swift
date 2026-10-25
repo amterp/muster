@@ -800,6 +800,12 @@ public final class MusterWindow: NSObject {
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
   }
 
+  public func apply(memberPanes: Set<PaneKey>) {
+    guard memberPanes != sidebar.conversationMembers else { return }
+    sidebar.conversationMembers = memberPanes
+    sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+  }
+
   /// Everything wrong with the window, for the roster to say properly and the title to count.
   ///
   /// Both, because the roster is the only one that can carry a sentence and it is not always on

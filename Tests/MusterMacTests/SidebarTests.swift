@@ -667,6 +667,36 @@ struct SidebarTests {
     #expect(SidebarModel.accessories(of: rows[0]) == [.quiet])
   }
 
+  /// While a window shows a group's conversation, the list says which panes are in the group:
+  /// on screen or hidden, and on a machine that cannot be reached, since being a member is not
+  /// something the agent is doing.
+  @Test("the panes of a shown conversation's members are marked, and no others")
+  func conversationMembersAreMarked() {
+    let hiddenTab = tab(
+      "local", "w1:t9", place: 0, panes: [pane("local", "w1:p9", place: 0, press: 0)])
+    let base = roster([
+      tab("local", panes: [pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)])
+    ])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering, hidden: [hiddenTab])
+    let members: Set<PaneKey> = [
+      PaneKey(daemon: "local", pane: "w1:p1"), PaneKey(daemon: "local", pane: "w1:p9"),
+    ]
+    let agents: [PaneKey: PaneAgent] = [PaneKey(daemon: "local", pane: "w1:p9"): "unreachable"]
+    let rows = SidebarModel.rows(roster: roster, agents: agents, members: members)
+
+    let marked = rows.filter(\.member).map(\.label)
+    #expect(marked == ["w1:p1", "w1:p9"])
+    let byLabel = Dictionary(rows.map { ($0.label, $0) }, uniquingKeysWith: { first, _ in first })
+    #expect(byLabel["w1:p1"].map(SidebarModel.accessories(of:)) == [.member])
+    #expect(byLabel["w1:p9"].map(SidebarModel.accessories(of:)) == [.member])
+    #expect(byLabel["w1:p2"].map(SidebarModel.accessories(of:)) == [])
+    #expect(SidebarModel.details(of: byLabel["w1:p1"]!).contains("in the conversation shown"))
+    #expect(
+      SidebarModel.rows(roster: roster, agents: agents).allSatisfy { !$0.member },
+      "a window showing its panes marks nothing")
+  }
+
   @Test("a group says which machine keeps it while more than one is attached")
   func aGroupCarriesItsMachinesMark() {
     let rows = SidebarModel.rows(

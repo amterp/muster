@@ -433,6 +433,10 @@ public enum SidebarModel {
     /// its maker, and one more under a helper of its own.
     public var depth = 0
 
+    /// Whether this pane's agent is a member of the group whose conversation the window shows,
+    /// so the list says which panes are in the group (mip/0009-group-conversation.md, section 1).
+    public var member = false
+
     public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
 
     /// Whether picking this row means something.
@@ -528,7 +532,8 @@ public enum SidebarModel {
   /// which keeps the panes somebody hid by hand, and carry no presses, as no hidden pane does.
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
-    groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = []
+    groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = [],
+    members: Set<PaneKey> = []
   ) -> [Row] {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
@@ -559,7 +564,8 @@ public enum SidebarModel {
           givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
           hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
           machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
-          hidden: true, callsign: pane.callsign, besideCallsign: pane.besideCallsign, depth: depth))
+          hidden: true, callsign: pane.callsign, besideCallsign: pane.besideCallsign, depth: depth,
+          member: members.contains(pane.key)))
       appendHelpers(of: pane, tab: tab, depth: depth)
     }
     func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
@@ -608,7 +614,8 @@ public enum SidebarModel {
             reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon),
             isSecondPress: tab.armed,
-            quiet: pane.quiet, callsign: pane.callsign, besideCallsign: pane.besideCallsign))
+            quiet: pane.quiet, callsign: pane.callsign, besideCallsign: pane.besideCallsign,
+            member: members.contains(pane.key)))
         appendHelpers(of: pane, tab: tab.id, depth: 0)
       }
     }
@@ -715,6 +722,8 @@ public enum SidebarModel {
     case context(Float)
     /// Nothing about the pane is raised for the person.
     case quiet
+    /// The pane's agent is in the group whose conversation the window shows.
+    case member
     /// How many panes a folded Hidden caption is over.
     case hiddenPanes(Int)
     /// Whether the Hidden caption is folded, as the chevron a click on it turns.
@@ -738,6 +747,7 @@ public enum SidebarModel {
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
+    if row.member { marks.append(.member) }
     if row.quiet { marks.append(.quiet) }
     // The rest are about the agent as it is now, which nobody can say for a pane whose machine
     // cannot be reached: a context ring on a rebooted devenv's agent reads as an agent alive.
@@ -818,6 +828,7 @@ public enum SidebarModel {
     if !agent.model.isEmpty { lines.append(agent.model) }
     if let cost = agent.costUSD { lines.append(String(format: "$%.2f so far", cost)) }
     if agent.rang { lines.append("the bell rang") }
+    if row.member { lines.append("in the conversation shown") }
     return lines.joined(separator: "\n")
   }
 
@@ -1035,6 +1046,10 @@ public final class SidebarView: NSView {
   /// The human's groups, drawn under the tabs on the next `apply(roster:agents:keyboard:)`.
   public var groups: [SidebarModel.MessageGroup] = []
 
+  /// The panes of the members of the group whose conversation the window shows, empty while it
+  /// shows its panes. Marked on the next `apply(roster:agents:keyboard:)`, like `groups`.
+  public var conversationMembers: Set<PaneKey> = []
+
   /// Whether the Hidden caption is folded, as the core's presentation last said. Drawn on the
   /// next `apply(roster:agents:keyboard:)`, like `groups`.
   public var hiddenCollapsed = false
@@ -1244,7 +1259,7 @@ public final class SidebarView: NSView {
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
     let fresh = SidebarModel.rows(
       roster: roster, agents: agents, keyboard: keyboard, groups: groups,
-      hiddenCollapsed: hiddenCollapsed, helpersOpen: helpersOpen)
+      hiddenCollapsed: hiddenCollapsed, helpersOpen: helpersOpen, members: conversationMembers)
     let previous = rows
     rows = fresh
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
@@ -1710,6 +1725,10 @@ final class SidebarRowView: NSView {
       return ContextRing(used: used)
     case .quiet:
       return symbol("bell.slash", tint: .tertiaryLabelColor, saying: "quiet")
+    case .member:
+      return symbol(
+        "bubble.left.and.bubble.right", tint: .secondaryLabelColor,
+        saying: "in the conversation shown")
     case .hiddenPanes(let count):
       return CountBadge(
         count: count, saying: count == 1 ? "1 hidden pane" : "\(count) hidden panes")
