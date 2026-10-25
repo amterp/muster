@@ -70,6 +70,12 @@ fn a_banner_names_an_agent_in_a_pane_by_its_callsign() {
     let Some(Answer::Posted(asked)) = asked.answer else { panic!("not posted: {asked:?}") };
     let banner = until_banner(|banner| banner.seq == asked.seq);
     assert_eq!(banner.author, callsign);
+
+    let replied = answer(reply(asked.seq, "on it"));
+    let Some(response::Payload::Ok(ok)) = &replied.payload else {
+        panic!("the reply answered {replied:?}");
+    };
+    assert_eq!(ok.note, format!("woke {callsign}"), "whom it woke, named as the banner names them");
 }
 
 #[test]

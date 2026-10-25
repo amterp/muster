@@ -43,9 +43,10 @@ pub(crate) fn post_as_human(
         Ok(answer) => match answer.answer {
             Some(msg_answer::Answer::Posted(posted)) => {
                 let reached: Vec<Reached> = posted.reached.iter().map(messaging::reached).collect();
+                let called = answer.called.into_iter().collect();
                 Sent::Posted {
                     seq: posted.seq,
-                    said: posting::said(&reached),
+                    said: posting::said(&reached, &called),
                     heard: posting::heard(&reached),
                 }
             }

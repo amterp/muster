@@ -107,8 +107,8 @@ pub fn heard(reached: &[Reached]) -> bool {
 }
 
 /// Whom a post reached, in the words a window shows under it: "woke otter", or that nobody live
-/// heard it.
-pub fn said(reached: &[Reached]) -> String {
+/// heard it. Each participant is named as [`shown`] names them, by `called`.
+pub fn said(reached: &[Reached], called: &std::collections::BTreeMap<String, String>) -> String {
     if !heard(reached) {
         return "nobody live heard it".to_string();
     }
@@ -116,7 +116,7 @@ pub fn said(reached: &[Reached]) -> String {
         reached
             .iter()
             .filter(|reached| wanted.contains(&reached.reach))
-            .map(|reached| reached.name.as_str())
+            .map(|reached| shown(&reached.name, called))
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -178,6 +178,8 @@ pub fn settles<'a>(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     fn reached(name: &str, reach: Reach) -> Reached {
@@ -188,7 +190,7 @@ mod tests {
     fn a_post_waiting_on_agents_alone_is_heard_by_nobody_but_one_for_the_human_is_heard() {
         let unheard = [reached("a", Reach::Waiting), reached("b", Reach::Gone)];
         assert!(!heard(&unheard));
-        assert_eq!(said(&unheard), "nobody live heard it");
+        assert_eq!(said(&unheard, &BTreeMap::new()), "nobody live heard it");
         assert!(heard(&[reached("@human", Reach::Waiting)]));
         assert!(!heard(&[reached("c", Reach::NoAgent), reached("d", Reach::NoDoorbell)]));
         assert!(heard(&[reached("@human@laptop", Reach::Waiting)]));
@@ -196,14 +198,15 @@ mod tests {
     }
 
     #[test]
-    fn whom_a_post_reached_is_said_by_how() {
+    fn whom_a_post_reached_is_said_by_how_and_by_callsign() {
+        let called = BTreeMap::from([("p2w3r07bsd".to_string(), "heron".to_string())]);
         let reached = [
             reached("otter", Reach::Woken),
-            reached("heron", Reach::AlreadyWoken),
+            reached("p2w3r07bsd", Reach::AlreadyWoken),
             reached("lynx", Reach::Deferred),
             reached("gone", Reach::Gone),
         ];
-        assert_eq!(said(&reached), "woke otter, heron; will ring lynx");
+        assert_eq!(said(&reached, &called), "woke otter, heron; will ring lynx");
     }
 
     #[test]
