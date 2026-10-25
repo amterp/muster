@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2lwpEys5T",
@@ -24,18 +24,25 @@
       "body": "2026-10-24: this Mac mini now runs 0.18.1-dev (main at 917c09ed, installed with tools/install-main), which carries the fix. The by-hand check can be done now.",
       "author": "Alexander Terp",
       "created_at_millis": 1792861375327
+    },
+    {
+      "id": "c_2o4xEobmM",
+      "body": "2026-10-25: confirmed by hand by the owner on 0.18.1-dev: cmd+f works a lot better.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792948234901
     }
   ],
   "created_at_millis": 1792629852506,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-20: \"CMD f search works poorly\", explained at triage on 2026-10-21: the trouble is where the keyboard lands.\n\n- Often after ⌘F the field never takes focus, so what he types goes to the pane (Claude Code's prompt, or the shell) instead of the search.\n- Sometimes the bar's up or down arrow button has the focus, so typing does nothing.\n- A second ⌘F does not close the bar. He wants ⌘F to toggle it. Today that is deliberate: a second ⌘F refocuses the field and selects its text, as in Ghostty (the `.musterFindFocus` handler in `Sources/MusterMac/FindBar.swift`). Esc already closes in two presses when the field holds text, the first giving the pane the keyboard back.\n\nWanted: one reliable flow. ⌘F opens the bar with the cursor in the field; typing searches; Return and Shift+Return walk the matches, and ⌘G and ⇧⌘G do the same from anywhere; ⌘F again or Esc closes the bar and gives the keyboard back to the pane. Check every step on a first open and a reopen, over a laptop pane and a devenv pane, and after the bar has followed the keyboard to another pane.\n\nWhere to look: `MusterWindow.find` shows the bar, then posts `.musterFindFocus`, which the SwiftUI view turns into its `@FocusState` one main-queue hop later; the first open relies on `.onAppear` instead. If the pane's surface is still first responder when the field asks for focus, or the view is not in the window yet, the field would not take it, and AppKit could hand the keyboard to the next view in its key view loop, one of the arrow buttons. Both guesses are unconfirmed. The bar is ported from Ghostty's `SurfaceSearchOverlay`, so compare how Ghostty's app moves the keyboard into its field.",
   "id": "a_2lvMekPwh",
-  "position": "Zv",
+  "position": "YvT",
   "title": "⌘F does not reliably put the keyboard in the find field, and does not close the bar",
   "type": "bug",
-  "updated_at_millis": 1792861375327,
+  "updated_at_millis": 1792948234901,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852506},
-    {"field":"column","value":"in-progress","at":1792632580891}
+    {"field":"column","value":"in-progress","at":1792632580891},
+    {"field":"column","value":"done","at":1792948234662}
   ]
 }
