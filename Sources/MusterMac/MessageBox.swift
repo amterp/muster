@@ -161,13 +161,16 @@ final class MessageBoxTextView: NSTextView {
     super.keyDown(with: event)
   }
 
-  /// Tab or Return takes the highlighted completion, and the arrows move between them, while
-  /// any are offered (mine). Otherwise both are text, and the arrows move the cursor.
+  /// Tab takes the highlighted completion, and the arrows move between them, while any are
+  /// offered (mine). Return stays a new line, as the configuration's docs promise for both of
+  /// Muster's text fields: a name being typed is offered completions on every keystroke, so
+  /// Return taking one would make a new line after an @word impossible to type. Otherwise Tab
+  /// goes on to a question's answers or is text, and the arrows move the cursor.
   private func completes(_ event: NSEvent, in box: MessageBox) -> Bool {
     let plain = event.modifierFlags.intersection([.shift, .control, .option, .command]).isEmpty
     guard plain else { return false }
     switch event.keyCode {
-    case 0x30, 0x24:  // Tab, Return
+    case 0x30:  // Tab
       if let answer = box.completeHighlighted(text: string, cursor: scalarCursor) {
         take(answer)
       }

@@ -197,7 +197,7 @@ final class MessageBox: ObservableObject {
   @Published private(set) var group: ConversationGroup?
   @Published private(set) var draft = Muster_MessageBoxDraft()
   @Published private(set) var sent = Muster_PostOutcome()
-  /// The completion Tab or Return takes.
+  /// The completion Tab takes.
   @Published private(set) var highlighted = 0
   private(set) var revision = 0
 
