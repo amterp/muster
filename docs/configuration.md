@@ -275,11 +275,12 @@ bytes on `cmd+k` before `clear_screen` shipped there goes on sending them, where
 would throw away everything else in the file for a collision nobody in it made. A `[keymap]`
 line gives the action a chord back.
 
-**`send_message` is `cmd+return`, and belongs to a text field rather than to the menu.** It
-sends the reply written in a banner for a message, or what is written in a conversation's message
-box. The field holding the keyboard matches the chord itself, so it is not a menu key equivalent:
-with no such field holding the keyboard, `cmd+return` reaches the pane like any chord Muster
-leaves alone. Return in either writes a new line.
+**`send_message` is `cmd+return`, and belongs to a text field rather than to the menu.** It sends
+the reply written in a banner for a message, or what is written in a conversation's message box. The
+banner's field, or a conversation, matches the chord itself while it holds the keyboard, so it is
+not a menu key equivalent. While a conversation is shown, `cmd+return` sends its message box
+wherever the keyboard is, an answer's button or nowhere in particular included; with neither, it
+reaches the pane like any chord Muster leaves alone. Return in either writes a new line.
 
 **`leave_conversation` is `escape`, and belongs to the conversation the same way.** It returns a
 window showing a group's conversation to its panes, with the keyboard where it was. The

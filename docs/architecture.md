@@ -608,20 +608,22 @@ seam's `session/posting.rs`: one request, one way of settling an unanswered post
 Both name a participant by one rule (`posting::shown`): "you", "Muster", an agent in a pane by its callsign from the
 daemon's answers, anybody else by name.
 
-**A window can show a group's conversation in place of its panes** (MIP-9, sections 1, 2 and 7). The core's view of
-the window names the group, and while it does the view has no panes on screen, so attention counts every covered pane
-unseen with no rule of its own: an agent that finishes under a conversation is announced and keeps its `done`. The tab
-and the keyboard stay where they were underneath, and choosing where to look - a pane, a tab, a numbered chord, the
-focus history, or a tab made from the window - returns to them; a tab or pane an agent makes through the command socket
-does not. The core keeps one copy of each shown group's log, fetched newest first a page at a time as the human and
-followed on a connection of its own, since a follow holds its connection until an entry arrives. It builds the thread
-from it (`conversation/`): folded runs between agents, merged membership rows, the unread line, a long body cut at 40
-lines, and the message box's draft and whom it addresses. A question's row carries its answers, and who answered it
-once somebody has; the draft keeps an answer picked from one, whole, by the question's number and the answer's words,
-and a post of it is the answer with the words as a note, carrying `answering`. A conversation in the window in front,
-while that window is focused, is the human reading the group. Its header and rows, its members column and its message
-box travel as three events, because they change at different paces and typing must never send the thread again: a draft
-edit is answered with the draft instead, and a member's agent state is its pane's own event. The shell marks the
+**A window can show a group's conversation in place of its panes** (MIP-9, sections 1, 2 and 7). The core's view of the
+window names the group, and while it does the view has no panes on screen, so attention counts every covered pane unseen
+with no rule of its own: an agent that finishes under a conversation is announced and keeps its `done`. The tab and the
+keyboard stay where they were underneath, and choosing where to look - a pane, a tab, a numbered chord, the focus
+history, or a tab made from the window - returns to them; a tab or pane an agent makes through the command socket does
+not. The core keeps one copy of each shown group's log, fetched newest first a page at a time as the human and followed
+on a connection of its own, since a follow holds its connection until an entry arrives. It builds the thread from it
+(`conversation/`): folded runs between agents, merged membership rows, the unread line, a long body cut at 40 lines, and
+the message box's draft and whom it addresses. A question's row carries its answers, and who answered it once somebody
+has; the draft keeps an answer picked from one, whole, by the question's number and the answer's words, and a post of it
+is the answer with the words as a note, carrying `answering`. A conversation in the window in front, while that window
+is focused, is the human reading the group, once its first page has arrived: one still fetching, or failing to, has
+shown them nothing. A box the human has not touched opens afresh each time the conversation is shown, addressed to
+whoever last wrote to them, since that can change while it is not shown. Its header and rows, its members column and its
+message box travel as three events, because they change at different paces and typing must never send the thread again:
+a draft edit is answered with the draft instead, and a member's agent state is its pane's own event. The shell marks the
 sidebar rows of the members' panes from the members column's event.
 
 **A quiet pane asks for nobody.** Quiet is a flag on the pane that its daemon keeps, set when the pane is made or
