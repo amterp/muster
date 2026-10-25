@@ -153,7 +153,7 @@ pub enum Verb {
         if_unread: bool,
     },
 
-    /// Print a group's transcript, moving nothing
+    /// Print a group's log, moving nothing
     #[command(name = LOG)]
     Log {
         #[arg(long, value_name = "GROUP")]
@@ -529,8 +529,8 @@ fn answering(
 }
 
 /// Prints a group's log, then each entry as it lands, until the reader goes away. Each batch is
-/// flushed as it is written: the reader is a person watching a transcript, or a pipe acting on
-/// each line.
+/// flushed as it is written: the reader is a person watching the log, or a pipe acting on each
+/// line.
 pub fn follow(
     messaging: &Messaging,
     environment: &BTreeMap<String, String>,
@@ -1748,7 +1748,7 @@ mod tests {
     }
 
     /// The human is shown by the name the app set, beside the address an agent writes in `--to`,
-    /// wherever a transcript names it; nobody else changes.
+    /// wherever `read` or `log` prints it; nobody else changes.
     #[test]
     fn the_human_is_shown_by_name_beside_its_address() {
         let message = msg_answer::Message {

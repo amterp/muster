@@ -705,11 +705,11 @@ As built in stage 3, under Decision 1 (a):
 - **Registering is attending.** A window subscribes to the daemon on its own machine as
   attending, and never to one over ssh. While one attends, a message that wakes the human counts
   as waking them; otherwise the post says the human is notified when a window opens.
-- **What waits is state.** A wake of the human is not coalesced, since a person reading the
-  transcript moves no cursor and a batch would never end. Each one updates what waits for the
-  human in its group - the unread messages that would wake them, how many were addressed to
-  them, who wrote them - which the daemon sends every window as an event and carries in its
-  snapshot. So a window that opens after the post is told, with nothing queued, and the next
+- **What waits is state.** A wake of the human is not coalesced: each replaces its group's banner
+  (MIP-9), so the human sees the newest whether or not they read the one before. Each one updates
+  what waits for the human in its group - the unread messages that would wake them, how many were
+  addressed to them, who wrote them - which the daemon sends every window as an event and carries
+  in its snapshot. So a window that opens after the post is told, with nothing queued, and the next
   launch notifies.
 - **One banner per group.** It names who wrote, is replaced by each new message, and asks
   after a blocked agent and before a program's notification. Several windows raise one between

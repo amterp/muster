@@ -1168,7 +1168,7 @@ impl<S: Store> Messaging<S> {
     /// When an agent in `author_pane` last posted to `reader`, in the milliseconds of the
     /// group's home: a message in a group holding both, addressed to the reader or to nobody in
     /// particular, which reaches every member it rings. `reader` is a pane here, or somebody on
-    /// another machine as this machine writes them. Read from the transcripts, so a host that
+    /// another machine as this machine writes them. Read from the groups' logs, so a host that
     /// restarted still knows.
     pub fn last_post(&self, author_pane: &str, reader: &str) -> Option<u64> {
         let authors = self.in_pane(author_pane);
@@ -1263,7 +1263,7 @@ impl<S: Store> Messaging<S> {
         Ok(read)
     }
 
-    /// The transcript, moving nothing.
+    /// The group's log, moving nothing.
     pub fn log(&self, group: &str, since: u64) -> Result<Vec<Entry>, Refusal> {
         self.log_page(group, &Page::since(since)).map(|paged| paged.entries)
     }

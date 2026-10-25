@@ -1393,8 +1393,8 @@ fn a_devenv_post_in_a_laptop_group_tells_the_laptops_windows() {
     assert_eq!(told_the_human(&wire), [(Side::Laptop, "review")]);
 }
 
-/// The guard does not hold the human's post, on the laptop or at a home elsewhere: a person
-/// reads the transcript as it arrives.
+/// The guard does not hold the human's post, on the laptop or at a home elsewhere: a person is
+/// not a model, and reads in a window the daemon cannot see.
 #[test]
 fn the_human_is_exempt_from_the_guard_across_the_link() {
     let mut wire = Wire::new();
