@@ -9,7 +9,7 @@
   "blocked_by": [
     "a_2naAacfIB"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "id": "c_2naMvB1wL",
@@ -22,6 +22,12 @@
       "body": "Owner, 2026-10-24: the banner is Muster's own, drawn in the window, not a macOS notification. So the Apple limitation in the previous comment no longer applies: Muster's banner draws offered answers as buttons that fill its reply field, as the conversation does.",
       "author": "Alexander Terp",
       "created_at_millis": 1792875605920
+    },
+    {
+      "id": "c_2nh1k0X34",
+      "body": "Started 2026-10-24: the daemon and CLI half first (answers on a message, --option, the reply's answer field, msg read and log printing them, Since 1.8 since 1.8 is unreleased). Drawing them as buttons follows once the banner and the conversation exist.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792891209288
     }
   ],
   "created_at_millis": 1792874866674,
@@ -29,11 +35,12 @@
   "description": "Most questions agents put to the human are a choice between two or three things. Agreed in the Lectern page muster-group-conversation (2026-10-24): a post carries answers the agent offers (something like msg post --option \"Run it now\" --option \"Skip it\"; the spelling is open). The conversation view draws them as buttons, and the banner can offer them as its actions. Picking one fills the human's reply rather than sending it, so a note can go with it, and writing without picking stays an ordinary reply. The reply carries the choice twice: as text at the top of its body, which an agent reads with no new parsing, and as a field naming the question and the option, so Muster can show the question as answered. Digits must not pick an answer inside the message box, since a reply may start with \"1.\". Open: whether a question may take several answers, as Claude Code's multi-select does. Needs a field on a message, so a daemon protocol minor.",
   "id": "a_2naAat73L",
   "parent": "a_2die8LU6o",
-  "position": "b1S",
+  "position": "Zt",
   "title": "An agent can offer answers to a question it posts",
   "type": "feature",
-  "updated_at_millis": 1792890499923,
+  "updated_at_millis": 1792891209346,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792874866674}
+    {"field":"column","value":"backlog-hi","at":1792874866674},
+    {"field":"column","value":"in-progress","at":1792891209187}
   ]
 }

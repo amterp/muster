@@ -84,6 +84,12 @@
       "body": "MIP-9 Accepted by amterp, 2026-10-24, with --option as proposed. This card's MIP step is done and it stays the parent of the stages: stage 1, Muster's own banner, is a_2naAacfIB, now in next; stage 2, the conversation, is this card; stage 3, offered answers, is a_2naAat73L.",
       "author": "Alexander Terp",
       "created_at_millis": 1792878515331
+    },
+    {
+      "id": "c_2nh1kGkfz",
+      "body": "Started 2026-10-24 with the banner (a_2naAacfIB) and, beside it, Log taking a count of newest entries for paged history, which needs no window. The conversation view itself follows once the banner lands.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792891209446
     }
   ],
   "created_at_millis": 1791417434804,
@@ -93,7 +99,7 @@
   "position": "a0",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792878515604,
+  "updated_at_millis": 1792891209447,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},
