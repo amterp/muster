@@ -72,6 +72,7 @@ fn take(
                 step.get("urgent").and_then(Value::as_bool).unwrap_or(false),
                 0,
                 text(step, "body").unwrap_or_default(),
+                strings(step, "answers"),
             )),
         };
         banners.fetched(&key(group), seq, result);
@@ -79,10 +80,22 @@ fn take(
         let held = step.get("held").and_then(Value::as_bool).unwrap_or(true);
         let seq = seq().ok_or_else(|| CaseError::new("`hold` needs `seq`"))?;
         answer(banners.hold(&key(group), seq, held).map(|_| String::new()));
+    } else if let Some(group) = text(step, "pick") {
+        let seq = seq().ok_or_else(|| CaseError::new("`pick` needs `seq`"))?;
+        // Counted from 1, as a question's answers are printed; none takes the pick back.
+        let picked = number(step, "answer").map(|answer| usize::try_from(answer - 1).unwrap());
+        answer(banners.pick(&key(group), seq, picked).map(|_| String::new()));
     } else if let Some(group) = text(step, "reply") {
         let seq = seq().ok_or_else(|| CaseError::new("`reply` needs `seq`"))?;
         let body = text(step, "body").unwrap_or_default();
-        answer(banners.reply(&key(group), seq, body).map(|to| format!("to {}", to.join(", "))));
+        answer(banners.reply(&key(group), seq, body).map(|reply| match reply.answering {
+            None => format!("to {}", reply.to.join(", ")),
+            Some((question, answer)) => format!(
+                "to {}, answering #{question} with {answer}: {:?}",
+                reply.to.join(", "),
+                reply.body
+            ),
+        }));
     } else if let Some(group) = text(step, "replied") {
         let seq = seq().ok_or_else(|| CaseError::new("`replied` needs `seq`"))?;
         let body = text(step, "body").unwrap_or_default().to_string();
@@ -123,6 +136,12 @@ fn banner_json(banner: &Banner) -> Value {
             }
             if message.more {
                 fields.insert("more".into(), json!(true));
+            }
+            if !message.answers.is_empty() {
+                fields.insert("answers".into(), json!(message.answers.join(" / ")));
+            }
+            if let Some(picked) = banner.picked {
+                fields.insert("picked".into(), json!(message.answers[picked]));
             }
         }
         Shown::Unloaded { from, count, why, .. } => {

@@ -485,6 +485,177 @@
         "fetch": ["devenv/g#1", "h#1"],
         "stack": [{ "group": "h", "seq": 1, "author": "x", "replyable": true }]
       }
+    },
+    {
+      "name": "a question's banner offers its answers, and picking one fills the reply rather than sending it",
+      "why": "MIP-9, section 6: answers are buttons under the message, and picking one fills the reply so a note can go with it. Nothing is sent until the human sends.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 2 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Skip it", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "a picked answer starts the reply, with no note needed",
+      "why": "The reply carries the pick twice: its body starts with the answer, for the agent to read with no new parsing, and the post names the question and the answer, for a view to mark it answered. A pick alone is a whole reply.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 2 },
+          { "reply": "g", "seq": 4, "body": "" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "to otter, answering #4 with Skip it: \"Answer: Skip it\""
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Skip it", "sent": "pending: ", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a note written with a picked answer goes below it",
+      "why": "Picking fills the reply rather than sending it precisely so a note can go with the answer.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "reply": "g", "seq": 4, "body": "after lunch" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "to otter, answering #4 with Run it now: \"Answer: Run it now\\n\\nafter lunch\""
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "sent": "pending: after lunch", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a picked answer holds the banner as writing does",
+      "why": "A pick is half of a reply to the message shown, so a newer message waits behind the banner rather than replacing it and taking the pick with it.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "also this" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "waiting": "#5 from heron", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "taking a pick back lets the message waiting behind it take the banner",
+      "why": "With nothing written and nothing picked, the banner holds no reply, so it moves on to the newer message as it would have.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter", "heron"] },
+          { "fetched": "g", "seq": 5, "author": "heron", "body": "also this" },
+          { "pick": "g", "seq": 4 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [
+          { "group": "g", "seq": 5, "author": "heron", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "a refused reply keeps the answer picked and the note, not the body made from them",
+      "why": "Section 4 leaves a refused reply's words with the human; with a pick, those are the note and the pick, so the field gets back what the human wrote rather than `Answer: ...` above it.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "reply": "g", "seq": 4, "body": "after lunch" },
+          { "replied": "g", "seq": 4, "body": "Answer: Run it now\n\nafter lunch", "refused": "#4 in g is answered already: heron picked \"Skip it\"" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "to otter, answering #4 with Run it now: \"Answer: Run it now\\n\\nafter lunch\""
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "sent": "refused: #4 in g is answered already: heron picked \"Skip it\" (keeps \"after lunch\")", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "a posted reply takes the pick away",
+      "why": "A question takes one answer, and once the reply is posted it has it: the banner says whom the reply reached and takes no more.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 2 },
+          { "reply": "g", "seq": 4, "body": "" },
+          { "replied": "g", "seq": 4, "posted": 7, "said": "woke otter" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "to otter, answering #4 with Skip it: \"Answer: Skip it\""
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "sent": "posted #7: woke otter", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a pick names an answer the banner's message offers, while the banner can still take one",
+      "why": "An action from a banner must land on the message the human saw; an answer the question does not offer, a banner that has moved on, and a reply already on its way are each refused, and an empty reply with nothing picked is still empty.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
+          { "pick": "g", "seq": 4, "answer": 3 },
+          { "pick": "g", "seq": 3, "answer": 1 },
+          { "reply": "g", "seq": 4, "body": "" },
+          { "pick": "g", "seq": 4, "answer": 1 },
+          { "reply": "g", "seq": 4, "body": "" },
+          { "pick": "g", "seq": 4, "answer": 2 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "said": [
+          "refused: the message the banner for g shows offers 2 answers, so answer 3 is none of them; nothing was picked",
+          "refused: the banner for g now shows message #4, not #3; nothing was done",
+          "refused: the reply is empty, so nothing was sent",
+          "to otter, answering #4 with Run it now: \"Answer: Run it now\"",
+          "refused: a reply from this banner is still being sent, so its answer cannot change now"
+        ],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "sent": "pending: ", "replyable": false }
+        ]
+      }
     }
   ]
 }

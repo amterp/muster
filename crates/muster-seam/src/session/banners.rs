@@ -73,7 +73,8 @@ fn fetch_message(group: &GroupKey, seq: u64) -> Result<Message, String> {
     let at_ms = entry.at_ms;
     match entry.what {
         Some(What::Message(message)) => {
-            Ok(Message::new(seq, message.author, message.to, message.urgent, at_ms, &message.body))
+            let msg_answer::Message { author, to, urgent, body, answers, .. } = message;
+            Ok(Message::new(seq, author, to, urgent, at_ms, &body, answers))
         }
         _ => Err(format!("entry #{seq} in the group's log is not a message")),
     }
@@ -87,16 +88,19 @@ fn entries(answer: muster_daemon_proto::MsgAnswer) -> impl Iterator<Item = msg_a
     groups.into_iter().flat_map(|group| group.entries)
 }
 
-/// Replies to the message the banner for `group` shows, as the human, to its author.
-pub(crate) fn reply(daemon: &str, group: &str, seq: u64, body: &str) -> Response {
+/// Replies to the message the banner for `group` shows, as the human, to its author: `note`, and
+/// the answer picked in the banner, if any.
+pub(crate) fn reply(daemon: &str, group: &str, seq: u64, note: &str) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
-    let to = poison::lock(&SESSION, "session").banners.reply(&key, seq, body);
-    let to = match to {
-        Ok(to) => to,
+    let reply = poison::lock(&SESSION, "session").banners.reply(&key, seq, note);
+    let reply = match reply {
+        Ok(reply) => reply,
         Err(why) => return Response::failure(why),
     };
     announce();
-    let sent = post_as_human(&key, &to, body, false, seq);
+    let answering =
+        reply.answering.map(|(question, answer)| msg_request::Answering { question, answer });
+    let sent = post_as_human(&key, &reply.to, &reply.body, answering, false, seq);
     log::info(
         "banner.replied",
         fields! {
@@ -131,6 +135,7 @@ pub(crate) fn post_as_human(
     group: &GroupKey,
     to: &[String],
     body: &str,
+    answering: Option<msg_request::Answering>,
     urgent: bool,
     after: u64,
 ) -> Sent {
@@ -139,6 +144,7 @@ pub(crate) fn post_as_human(
         to: to.to_vec(),
         body: body.to_string(),
         urgent,
+        answering,
         ..Default::default()
     };
     match ask_as_human_for(&group.daemon, Asked::Post(post)) {

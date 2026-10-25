@@ -7,9 +7,10 @@
 //! earlier question from somebody else that the human never saw.
 //!
 //! A banner holds the message it shows - its number and its author - so a reply goes to that
-//! author whatever arrives since. While the human is writing a reply, or one they sent is
-//! pending, refused or unknown, the banner is not replaced: the newer message waits behind it,
-//! and the banner says who wrote it, until the reply is done with.
+//! author whatever arrives since. While the human is writing a reply or has picked one of the
+//! answers a question offers, or a reply they sent is pending, refused or unknown, the banner is
+//! not replaced: the newer message waits behind it, and the banner says who wrote it, until the
+//! reply is done with.
 //!
 //! Pure: the daemon's notices, the entries fetched for them, and what the human did go in, and
 //! the stack the shell draws comes out.
@@ -39,6 +40,8 @@ pub struct Message {
     pub body: Vec<Block>,
     /// Whether the body went on past them.
     pub more: bool,
+    /// The answers it offers, which make it a question (MIP-9, section 6).
+    pub answers: Vec<String>,
 }
 
 impl Message {
@@ -50,9 +53,10 @@ impl Message {
         urgent: bool,
         at_ms: u64,
         body: &str,
+        answers: Vec<String>,
     ) -> Message {
         let (body, more) = markdown::leading(&markdown::parse(body), LINES);
-        Message { seq, author, to, urgent, at_ms, body, more }
+        Message { seq, author, to, urgent, at_ms, body, more, answers }
     }
 }
 
@@ -99,6 +103,8 @@ struct Standing {
     newer: Option<Shown>,
     /// The human is writing a reply.
     held: bool,
+    /// Which of the message's answers the human picked, to send with the reply.
+    picked: Option<usize>,
     sent: Option<Sent>,
     /// Whether the group's daemon still says something waits for the human there. A banner
     /// that is holding a reply outlives the group being read, and goes once it lets go.
@@ -110,6 +116,7 @@ impl Standing {
     /// and keeps its message in place.
     fn holding(&self) -> bool {
         self.held
+            || self.picked.is_some()
             || matches!(
                 self.sent,
                 Some(Sent::Pending { .. } | Sent::Refused { .. } | Sent::Unknown { .. })
@@ -123,11 +130,23 @@ pub struct Banner {
     pub group: GroupKey,
     pub shown: Shown,
     pub held: bool,
+    /// Which of the shown message's answers the human picked.
+    pub picked: Option<usize>,
     pub sent: Option<Sent>,
     /// A newer message waiting behind this banner while it holds a reply.
     pub waiting: Option<Message>,
     /// Whether the banner takes a reply now.
     pub replyable: bool,
+}
+
+/// A reply from a banner, ready to post: to the author it shows, with the body composed from the
+/// human's note and the answer they picked, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reply {
+    pub to: Vec<String>,
+    pub body: String,
+    /// The question's number and the picked answer's words, for the post's `answering`.
+    pub answering: Option<(u64, String)>,
 }
 
 /// The banners to draw: at most [`SHOWN`], newest first, and how many more are folded away,
@@ -215,6 +234,7 @@ impl Banners {
                         shown: Shown::loading(last, notice),
                         newer: None,
                         held: false,
+                        picked: None,
                         sent: None,
                         waiting: true,
                     };
@@ -232,6 +252,7 @@ impl Banners {
                         shown: Shown::loading(last, notice),
                         newer: None,
                         held: false,
+                        picked: None,
                         sent: None,
                         waiting: true,
                     },
@@ -281,9 +302,57 @@ impl Banners {
         Ok(true)
     }
 
-    /// The human sent `body` from the banner showing `seq`: whom it goes to, or why it cannot be
-    /// sent. The banner then says it is pending until [`Banners::replied`].
-    pub fn reply(&mut self, group: &GroupKey, seq: u64, body: &str) -> Result<Vec<String>, String> {
+    /// The human picked the answer numbered `answer` (from 0) of the question the banner showing
+    /// `seq` asks, or with `None` took their pick back. A pick is sent with the reply, not on its
+    /// own, so the human can add a note; it holds the banner as writing does.
+    pub fn pick(
+        &mut self,
+        group: &GroupKey,
+        seq: u64,
+        answer: Option<usize>,
+    ) -> Result<bool, String> {
+        let standing = self.showing(group, seq)?;
+        match &standing.sent {
+            Some(Sent::Pending { .. }) => {
+                return Err("a reply from this banner is still being sent, so its answer cannot \
+                            change now"
+                    .to_string());
+            }
+            Some(Sent::Posted { .. }) => {
+                return Err(
+                    "this banner's reply was sent already, so nothing was picked".to_string()
+                );
+            }
+            _ => {}
+        }
+        if let Some(answer) = answer {
+            let offered = match &standing.shown {
+                Shown::Message(message) => message.answers.len(),
+                _ => 0,
+            };
+            if answer >= offered {
+                return Err(format!(
+                    "the message the banner for {} shows offers {offered} answers, so answer {} \
+                     is none of them; nothing was picked",
+                    group.group,
+                    answer + 1
+                ));
+            }
+        }
+        if standing.picked == answer {
+            return Ok(false);
+        }
+        standing.picked = answer;
+        if answer.is_none() {
+            self.let_go(group);
+        }
+        Ok(true)
+    }
+
+    /// The human sent `note` from the banner showing `seq`: the reply to post, or why it cannot
+    /// be sent. With an answer picked, the body starts with it and the note may be empty. The
+    /// banner then says it is pending until [`Banners::replied`].
+    pub fn reply(&mut self, group: &GroupKey, seq: u64, note: &str) -> Result<Reply, String> {
         let standing = self.showing(group, seq)?;
         let Shown::Message(message) = &standing.shown else {
             return Err(format!(
@@ -298,7 +367,8 @@ impl Banners {
                 message.author
             ));
         }
-        if body.trim().is_empty() {
+        let picked = standing.picked.and_then(|answer| message.answers.get(answer));
+        if note.trim().is_empty() && picked.is_none() {
             return Err("the reply is empty, so nothing was sent".to_string());
         }
         if matches!(standing.sent, Some(Sent::Pending { .. })) {
@@ -306,20 +376,32 @@ impl Banners {
                 "a reply from this banner is still being sent; it was not sent again".to_string()
             );
         }
-        let to = vec![message.author.clone()];
-        standing.sent = Some(Sent::Pending { body: body.to_string() });
-        Ok(to)
+        let reply = Reply {
+            to: vec![message.author.clone()],
+            body: picked
+                .map_or_else(|| note.to_string(), |answer| posting::answer_body(answer, note)),
+            answering: picked.map(|answer| (seq, answer.clone())),
+        };
+        standing.sent = Some(Sent::Pending { body: note.to_string() });
+        Ok(reply)
     }
 
     /// What the reply sent from the banner showing `seq` came to. A posted one answers the
     /// message, so the banner says whom it reached until a dismiss or the group's next message;
-    /// a refused or unknown one stays in the banner with the words the human wrote.
+    /// a refused or unknown one stays in the banner with the words the human wrote and the
+    /// answer they picked, not the body composed from them.
     pub fn replied(&mut self, group: &GroupKey, seq: u64, sent: Sent) -> bool {
         let Ok(standing) = self.showing(group, seq) else { return false };
+        let note = standing.sent.as_ref().and_then(Sent::body).unwrap_or_default().to_string();
         let posted = matches!(sent, Sent::Posted { .. });
-        standing.sent = Some(sent);
+        standing.sent = Some(match sent {
+            Sent::Refused { why, .. } => Sent::Refused { body: note, why },
+            Sent::Unknown { why, .. } => Sent::Unknown { body: note, why },
+            other => other,
+        });
         if posted {
             standing.held = false;
+            standing.picked = None;
             let settled = self.settled.entry(group.clone()).or_insert(seq);
             *settled = (*settled).max(seq);
             self.let_go(group);
@@ -332,6 +414,7 @@ impl Banners {
     pub fn dismiss(&mut self, group: &GroupKey, seq: u64) -> Result<(), String> {
         let standing = self.showing(group, seq)?;
         standing.held = false;
+        standing.picked = None;
         standing.sent = None;
         let settled = self.settled.entry(group.clone()).or_insert(seq);
         *settled = (*settled).max(seq);
@@ -420,6 +503,7 @@ impl Banners {
                 shown,
                 newer: None,
                 held: false,
+                picked: None,
                 sent: None,
                 waiting: true,
             },
@@ -443,6 +527,7 @@ fn banner(group: &GroupKey, standing: &Standing) -> Banner {
         group: group.clone(),
         shown: standing.shown.clone(),
         held: standing.held,
+        picked: standing.picked,
         sent: standing.sent.clone(),
         waiting,
         replyable,
