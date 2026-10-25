@@ -14,16 +14,19 @@ use muster_daemon_proto::msg_request::{self, Request as Asked};
 use super::answer_as_human;
 use crate::proto::Response;
 
-/// Posts `text` to `to` in `group` as the human, answering a question when `answering` says
-/// which, and says what came of it.
+/// Posts `body` to `to` in `group` as the human, answering a question when `answering` says
+/// which, and says what came of it. `typed` is what the human wrote, which a refused or unknown
+/// post keeps for them: with an answer picked, the body is composed from it and is not theirs to
+/// edit.
 ///
 /// An unanswered post may have been kept, and a post carries no key the daemon could refuse a
 /// second copy by, so it is never sent again. The group's log is asked once instead, for the
-/// human's entry after `after` with these recipients and these words.
+/// human's entry after `after` with these recipients and this body.
 pub(crate) fn post_as_human(
     group: &GroupKey,
     to: &[String],
-    text: &str,
+    typed: &str,
+    body: &str,
     answering: Option<&Answering>,
     urgent: bool,
     after: u64,
@@ -31,7 +34,7 @@ pub(crate) fn post_as_human(
     let post = msg_request::Post {
         group: Some(group.group.clone()),
         to: to.to_vec(),
-        body: text.to_string(),
+        body: body.to_string(),
         urgent,
         answering: answering.map(|answering| msg_request::Answering {
             question: answering.question,
@@ -58,30 +61,32 @@ pub(crate) fn post_as_human(
                 heard: true,
             },
         },
-        Err(Refusal::Unanswered { detail, .. }) => match settled(group, to, text, after) {
+        Err(Refusal::Unanswered { detail, .. }) => match settled(group, to, body, after) {
             Some(seq) => {
                 Sent::Posted { seq, said: posting::KEPT_UNANSWERED.to_string(), heard: true }
             }
             None => Sent::Unknown {
-                text: text.to_string(),
+                text: typed.to_string(),
                 why: format!(
                     "{detail}. It may have been posted; it was not sent again, since a second \
                      send could post it twice. Open the conversation to see whether it landed."
                 ),
             },
         },
-        Err(refusal) => Sent::Refused { text: text.to_string(), why: refusal.detail().to_string() },
+        Err(refusal) => {
+            Sent::Refused { text: typed.to_string(), why: refusal.detail().to_string() }
+        }
     }
 }
 
 /// The number of the human's entry that shows an unanswered post was kept, read once from the
 /// group's log.
-fn settled(group: &GroupKey, to: &[String], text: &str, after: u64) -> Option<u64> {
+fn settled(group: &GroupKey, to: &[String], body: &str, after: u64) -> Option<u64> {
     let log = msg_request::Log { group: group.group.clone(), since: after, ..Default::default() };
     let answer = answer_as_human(&group.daemon, Asked::Log(log)).ok()?;
     let mut held = Log::default();
     held.followed(messaging::log_page(&answer, &group.group).entries);
-    posting::settles(held.logged(), after, to, text)
+    posting::settles(held.logged(), after, to, body)
 }
 
 /// How a request that posted answers the shell: whom it woke, the daemon's refusal, or that it

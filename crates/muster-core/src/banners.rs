@@ -408,16 +408,11 @@ impl Banners {
     /// What the reply sent from the banner showing `seq` came to. A posted one answers the
     /// message, so the banner says whom it reached until a dismiss or the group's next message;
     /// a refused or unknown one stays in the banner with the words the human wrote and the
-    /// answer they picked, not the body composed from them.
+    /// answer they picked.
     pub fn replied(&mut self, group: &GroupKey, seq: u64, sent: Sent) -> bool {
         let Ok(standing) = self.showing(group, seq) else { return false };
-        let note = standing.sent.as_ref().and_then(Sent::text).unwrap_or_default().to_string();
         let posted = matches!(sent, Sent::Posted { .. });
-        standing.sent = Some(match sent {
-            Sent::Refused { why, .. } => Sent::Refused { text: note, why },
-            Sent::Unknown { why, .. } => Sent::Unknown { text: note, why },
-            other => other,
-        });
+        standing.sent = Some(sent);
         if posted {
             standing.held = false;
             standing.picked = None;

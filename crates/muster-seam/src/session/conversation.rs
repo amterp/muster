@@ -803,6 +803,7 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
     let sent = super::posting::post_as_human(
         &key,
         &draft.to,
+        &draft.text,
         &draft.body(),
         draft.picked.as_ref(),
         draft.urgent,

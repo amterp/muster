@@ -109,7 +109,8 @@ pub(crate) fn reply(daemon: &str, group: &str, seq: u64, note: &str) -> Response
     };
     announce();
     let answering = reply.answering.map(|(question, answer)| Answering { question, answer });
-    let sent = posting::post_as_human(&key, &reply.to, &reply.body, answering.as_ref(), false, seq);
+    let sent =
+        posting::post_as_human(&key, &reply.to, note, &reply.body, answering.as_ref(), false, seq);
     log::info(
         "banner.replied",
         fields! {

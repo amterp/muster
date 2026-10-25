@@ -603,15 +603,15 @@
       }
     },
     {
-      "name": "a refused reply keeps the answer picked and the note, not the body made from them",
-      "why": "Section 4 leaves a refused reply's words with the human; with a pick, those are the note and the pick, so the field gets back what the human wrote rather than `Answer: ...` above it.",
+      "name": "a refused reply keeps the answer picked beside the note the human wrote",
+      "why": "Section 4 leaves a refused reply's words with the human; with a pick, those are the note and the pick. The post keeps what the human wrote apart from the body composed from it, so the field gets back the note, with the pick still made, rather than `Answer: ...` above it.",
       "given": {
         "steps": [
           { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
           { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"] },
           { "pick": "g", "seq": 4, "answer": 1 },
           { "reply": "g", "seq": 4, "body": "after lunch" },
-          { "replied": "g", "seq": 4, "body": "Answer: Run it now\n\nafter lunch", "refused": "#4 in g is answered already: heron picked \"Skip it\"" }
+          { "replied": "g", "seq": 4, "body": "after lunch", "refused": "#4 in g is answered already: heron picked \"Skip it\"" }
         ]
       },
       "expect": {

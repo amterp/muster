@@ -475,6 +475,35 @@ fn a_post_the_daemon_refuses_keeps_its_draft() {
     );
 }
 
+/// With an answer picked, the post's body is composed from the pick and the note. A refusal
+/// keeps the note the human wrote, not that body, so sending again does not write the answer
+/// twice.
+#[test]
+fn a_refused_post_with_an_answer_picked_keeps_the_words_typed() {
+    let mut open = Open::built();
+    let question = ask(&mut open.control, "run the contract tier?", &["Run it now", "Skip it"]);
+    show("window-1");
+    until_loaded("window-1");
+    until(
+        "the question's row to offer its answers",
+        || row("window-1", question).is_some_and(|row| row.answerable),
+        || format!("the row is {:?}", row("window-1", question)),
+    );
+    answer(pick(question, Some(1)));
+    answer(save_draft("after lunch", 11, &["a"]));
+    let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
+    expect(&mut open.control, msg(&named("a"), leave), daemon_proto::Outcome::Done);
+
+    let refused = answer(post_draft());
+    assert!(
+        matches!(refused.payload, Some(response::Payload::Failure(_))),
+        "a post to an author who left answered {refused:?}"
+    );
+    until_sent("window-1", post_outcome::State::Refused);
+    let sent = message_box("window-1").sent.expect("the box says where its post stands");
+    assert_eq!(sent.body, "after lunch");
+}
+
 #[test]
 fn a_post_whose_answer_never_came_is_found_in_the_log_and_not_sent_twice() {
     // Takes the client's whole patience, ten seconds, because an answer the window has stopped
