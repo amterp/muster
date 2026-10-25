@@ -567,14 +567,16 @@ extension SurfaceGUITests {
 }
 
 extension SurfaceGUITests {
-  /// Undo and Redo in the message box, through the responder chain from the field holding the
-  /// keyboard, which is where the Edit menu's nil-targeted items go. Driven with
-  /// `tryToPerform` rather than through the menu bar, since a test process cannot count on a key
-  /// window for AppKit to start the chain from.
+  /// Undo and Redo in the message box, as the Edit menu's items carry them out, on the text view
+  /// holding the window's keyboard. The test names that view, since a test process cannot count
+  /// on a key window.
   @MainActor
   @Test("the message box undoes and redoes what was typed, as the Edit menu asks")
   func theMessageBoxUndoesWhatWasTyped() async throws {
     let (window, _, host, recorder) = conversationWindow()
+    let editing = EditMenu.editedText
+    defer { EditMenu.editedText = editing }
+    EditMenu.editedText = { window.firstResponder as? NSTextView }
     let review = ConversationGroup(daemon: "local", group: "review")
     host.show(review) { window.contentView?.addSubview($0) }
     host.hosting?.frame = window.contentView?.bounds ?? .zero
@@ -589,19 +591,23 @@ extension SurfaceGUITests {
       await polled(within: .milliseconds(250)) { field.undoManager?.canUndo == true }
     }
 
-    #expect(field.tryToPerform(Selector(("undo:")), with: nil))
+    TextUndo.shared.undo(nil)
     #expect(field.string == "")
     #expect(recorder.edits.last?.text == "", "the core still holds the undone words")
-    #expect(field.tryToPerform(Selector(("redo:")), with: nil))
+    TextUndo.shared.redo(nil)
     #expect(field.string == "yes")
+    #expect(recorder.edits.last?.text == "yes")
   }
 
-  /// Undo in a banner's reply, which SwiftUI draws as a `TextEditor` and which keeps the
-  /// window's undo history.
+  /// Undo in a banner's reply, which SwiftUI draws as a `TextEditor`, as the Edit menu's item
+  /// carries it out.
   @MainActor
   @Test("a banner's reply undoes what was typed, as the Edit menu asks")
   func aBannerReplyUndoesWhatWasTyped() async throws {
     let (window, host, _) = bannerWindow()
+    let editing = EditMenu.editedText
+    defer { EditMenu.editedText = editing }
+    EditMenu.editedText = { window.firstResponder as? NSTextView }
     let editor = try #require(replyEditor(in: host.hosting))
     window.makeFirstResponder(editor)
     #expect(editor.allowsUndo)
@@ -614,7 +620,11 @@ extension SurfaceGUITests {
       }
     }
 
-    #expect(editor.tryToPerform(Selector(("undo:")), with: nil))
+    try await answered("the typing to be something Undo can take back") {
+      await polled(within: .milliseconds(250)) { editor.undoManager?.canUndo == true }
+    }
+    TextUndo.shared.undo(nil)
+    #expect(editor.string.isEmpty, "the undo took nothing back")
     try await answered("the undone words to leave the board") {
       await polled(within: .milliseconds(250)) {
         host.board.reply(for: aBanner("g", seq: 4)).isEmpty

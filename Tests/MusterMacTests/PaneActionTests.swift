@@ -547,18 +547,19 @@ struct AppMenuTests {
   }
 
   @MainActor
-  @Test("the Edit menu's items go through the responder chain, not to a target")
+  @Test("the Edit menu's items go through the responder chain, but Undo and Redo to the field")
   func editItemsWalkTheChain() {
     // A target here would be whichever object built the menu, and the selection belongs to
     // the focused surface or the text field being typed in. Nil is what makes AppKit walk
-    // down to it.
+    // down to it. Undo and Redo are the exception: the chain's own undo is the window's.
     let menu = AppMenu.build(target: NSApp, bindings: AppMenuTests.published)
     let edit = menu.items.compactMap(\.submenu).first { $0.title == "Edit" }
 
     let titles = ["Undo", "Redo", "Cut", "Copy", "Paste"]
     let items = edit?.items.filter { titles.contains($0.title) } ?? []
     #expect(items.map(\.title) == titles)
-    #expect(items.allSatisfy { $0.target == nil })
+    #expect(items.prefix(2).allSatisfy { $0.target === TextUndo.shared })
+    #expect(items.dropFirst(2).allSatisfy { $0.target == nil })
   }
 
   @MainActor
@@ -585,10 +586,11 @@ struct AppMenuTests {
     #expect(EditMenu.takes(try press("z", [.command, .option]), editing: false))
 
     let app = NSApplication.shared
-    let (before, help, editing) = (app.mainMenu, app.helpMenu, EditMenu.editing)
-    defer { (app.mainMenu, app.helpMenu, EditMenu.editing) = (before, help, editing) }
+    let (before, help, editing) = (app.mainMenu, app.helpMenu, EditMenu.editedText)
+    defer { (app.mainMenu, app.helpMenu, EditMenu.editedText) = (before, help, editing) }
     AppMenu.install(target: NSObject(), bindings: [])
-    EditMenu.editing = { true }
+    let field = NSTextView()
+    EditMenu.editedText = { field }
     #expect(app.mainMenu?.performKeyEquivalent(with: try press("z", .command)) == true)
   }
 

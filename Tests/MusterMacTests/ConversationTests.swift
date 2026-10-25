@@ -65,8 +65,8 @@ private func openBox(
 }
 
 @MainActor
-private func menuItem(_ action: String) -> NSMenuItem {
-  NSMenuItem(title: action, action: Selector((action)), keyEquivalent: "")
+private func undoItem() -> NSMenuItem {
+  NSMenuItem(title: "Undo", action: #selector(TextUndo.undo(_:)), keyEquivalent: "")
 }
 
 private func member(
@@ -293,10 +293,13 @@ struct ConversationTests {
   func undoForgetsWhatTheCoreRewrote() {
     let field = MessageBoxTextView(frame: .zero)
     field.allowsUndo = true
+    let editing = EditMenu.editedText
+    defer { EditMenu.editedText = editing }
+    EditMenu.editedText = { field }
     field.insertText("hi", replacementRange: NSRange(location: 0, length: 0))
     field.breakUndoCoalescing()
     #expect(field.undoManager?.canUndo == true)
-    #expect(field.validateUserInterfaceItem(menuItem("undo:")))
+    #expect(TextUndo.shared.validateMenuItem(undoItem()))
 
     var rewritten = Muster_MessageBoxDraft()
     rewritten.text = "hi there"
@@ -304,8 +307,37 @@ struct ConversationTests {
     field.take(rewritten)
 
     #expect(field.undoManager?.canUndo == false, "Undo would replay against the old text")
-    #expect(!field.validateUserInterfaceItem(menuItem("undo:")))
+    #expect(!TextUndo.shared.validateMenuItem(undoItem()))
     #expect(field.string == "hi there")
+  }
+
+  @Test("Undo in the message box tells the core, as typing does")
+  func undoTellsTheCore() {
+    let (box, recorder) = openBox()
+    let coordinator = MessageBoxField.Coordinator(box: box)
+    let field = MessageBoxTextView(frame: .zero)
+    field.allowsUndo = true
+    field.box = box
+    field.delegate = coordinator
+    let editing = EditMenu.editedText
+    defer { EditMenu.editedText = editing }
+    EditMenu.editedText = { field }
+    field.insertText("yes", replacementRange: NSRange(location: 0, length: 0))
+    field.breakUndoCoalescing()
+    #expect(recorder.edits.last?.text == "yes")
+    let typed = recorder.edits.count
+
+    TextUndo.shared.undo(nil)
+
+    #expect(field.string == "")
+    #expect(recorder.edits.last?.text == "", "the core still holds the undone words")
+    #expect(recorder.edits.count == typed + 1, "the undo was told once")
+
+    TextUndo.shared.redo(nil)
+
+    #expect(field.string == "yes")
+    #expect(recorder.edits.last?.text == "yes")
+    withExtendedLifetime(coordinator) {}
   }
 
   @Test("the window's view says which conversation it shows")

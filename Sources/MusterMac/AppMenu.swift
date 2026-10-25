@@ -108,9 +108,14 @@ public enum AppMenu {
     let editMenu = EditMenu(title: "Edit")
     // nil target: AppKit walks the responder chain, which lands on the focused surface, or on
     // the text field holding the keyboard.
-    editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+    // Undo and Redo name their target: see `TextUndo`.
+    let undo = editMenu.addItem(
+      withTitle: "Undo", action: #selector(TextUndo.undo(_:)), keyEquivalent: "z")
+    undo.target = TextUndo.shared
     // An uppercase key equivalent is AppKit's spelling of shift held.
-    editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    let redo = editMenu.addItem(
+      withTitle: "Redo", action: #selector(TextUndo.redo(_:)), keyEquivalent: "Z")
+    redo.target = TextUndo.shared
     editMenu.addItem(.separator())
     editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -214,14 +219,15 @@ class LoggedMenu: NSMenu {
 /// were.
 @MainActor
 final class EditMenu: LoggedMenu {
-  /// Whether a text field holds the keyboard. Settable so a test can say without one.
-  static var editing: () -> Bool = {
-    MusterWindow.textBeingEdited(by: NSApp.keyWindow?.firstResponder) != nil
+  /// The text being typed in, or nil while no text field holds the keyboard. Settable so a test
+  /// can say without a key window.
+  static var editedText: () -> NSTextView? = {
+    MusterWindow.textBeingEdited(by: NSApp.keyWindow?.firstResponder) as? NSTextView
   }
 
   // AppKit offers key equivalents on the main thread, though NSMenu does not say so.
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
-    let editing = MainActor.assumeIsolated { EditMenu.editing() }
+    let editing = MainActor.assumeIsolated { EditMenu.editedText() != nil }
     guard EditMenu.takes(event, editing: editing) else { return false }
     return super.performKeyEquivalent(with: event)
   }
@@ -237,6 +243,43 @@ final class EditMenu: LoggedMenu {
     let held = event.modifierFlags.intersection([.shift, .control, .option, .command])
     switch (key, held) {
     case ("z", [.command]), ("z", [.command, .shift]), ("x", [.command]): return true
+    default: return false
+    }
+  }
+}
+
+/// Undo and Redo in the text field holding the keyboard.
+///
+/// Not left to the responder chain, where AppKit's own `undo:` is the window's: it undoes with
+/// the window's undo manager, which need not be the one a text view recorded its typing with -
+/// the message box keeps its own, and SwiftUI may hand a `TextEditor` another. And an undo
+/// changes a text view's text without telling its delegate, so the core never heard that the
+/// message box's words were taken back and a banner's reply kept the undone words. So this asks
+/// the text view for the undo manager it recorded with, and tells the text view's delegate
+/// afterwards, as typing would have.
+@MainActor
+final class TextUndo: NSObject, NSMenuItemValidation {
+  static let shared = TextUndo()
+
+  @objc func undo(_ sender: Any?) {
+    guard let text = EditMenu.editedText(), let history = text.undoManager, history.canUndo
+    else { return }
+    history.undo()
+    text.didChangeText()
+  }
+
+  @objc func redo(_ sender: Any?) {
+    guard let text = EditMenu.editedText(), let history = text.undoManager, history.canRedo
+    else { return }
+    history.redo()
+    text.didChangeText()
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    let history = EditMenu.editedText()?.undoManager
+    switch item.action {
+    case #selector(undo(_:)): return history?.canUndo ?? false
+    case #selector(redo(_:)): return history?.canRedo ?? false
     default: return false
     }
   }

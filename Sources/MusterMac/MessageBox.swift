@@ -89,7 +89,10 @@ struct MessageBoxField: NSViewRepresentable {
       guard let field = notification.object as? MessageBoxTextView, !field.hasMarkedText() else {
         return
       }
-      if let answer = box.edited(text: field.string, cursor: field.scalarCursor) {
+      // An undo is announced by the Edit menu, and may be by AppKit too: once is enough.
+      let cursor = field.scalarCursor
+      if field.string == box.draft.text, cursor == Int(box.draft.cursor) { return }
+      if let answer = box.edited(text: field.string, cursor: cursor) {
         field.take(answer)
       }
       applied = box.revision
@@ -174,19 +177,6 @@ final class MessageBoxTextView: NSTextView {
       return true
     default:
       return false
-    }
-  }
-
-  // The Edit menu's Undo and Redo walk the responder chain, which reaches the window's undo
-  // manager unless something before it answers.
-  @objc func undo(_ sender: Any?) { history.undo() }
-  @objc func redo(_ sender: Any?) { history.redo() }
-
-  override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
-    switch item.action {
-    case #selector(undo(_:)): history.canUndo
-    case #selector(redo(_:)): history.canRedo
-    default: super.validateUserInterfaceItem(item)
     }
   }
 
