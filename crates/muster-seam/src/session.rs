@@ -1078,7 +1078,7 @@ pub(crate) struct Window {
 
     /// The group whose conversation this window shows in place of its panes, and how it reads
     /// it (`conversation`).
-    conversation: Option<conversation::Shown>,
+    conversation: Option<conversation::Showing>,
 
     /// The message box's draft for each group, whole, kept with the arrangement so leaving a
     /// conversation or quitting loses nothing. A window's own: typing in one window never
@@ -4256,12 +4256,12 @@ pub(crate) fn ask_as_human(
     daemon: &DaemonId,
     request: muster_daemon_proto::msg_request::Request,
 ) -> Result<(), Refusal> {
-    ask_as_human_for(daemon, request).map(|_| ())
+    answer_as_human(daemon, request).map(|_| ())
 }
 
 /// [`ask_as_human`], answered with what the daemon's messaging said: whom a post reached, the
 /// entries a log holds.
-pub(crate) fn ask_as_human_for(
+pub(crate) fn answer_as_human(
     daemon: &DaemonId,
     request: muster_daemon_proto::msg_request::Request,
 ) -> Result<muster_daemon_proto::MsgAnswer, Refusal> {

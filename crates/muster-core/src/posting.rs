@@ -10,23 +10,23 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sent {
     /// Sent, with no answer yet.
-    Pending { body: String },
+    Pending { text: String },
     /// The daemon kept it as `seq`. `said` is whom it reached, in words; `heard` is whether any
     /// live participant did, which is the CLI's exit 6 when it is false.
     Posted { seq: u64, said: String, heard: bool },
     /// The daemon said no, in its own words.
-    Refused { body: String, why: String },
+    Refused { text: String, why: String },
     /// The daemon took the request and never answered, so it may have been kept.
-    Unknown { body: String, why: String },
+    Unknown { text: String, why: String },
 }
 
 impl Sent {
     /// The words of a post that is still the human's to send again or edit: a pending, refused
     /// or unknown one.
-    pub fn body(&self) -> Option<&str> {
+    pub fn text(&self) -> Option<&str> {
         match self {
-            Sent::Pending { body } | Sent::Refused { body, .. } | Sent::Unknown { body, .. } => {
-                Some(body)
+            Sent::Pending { text } | Sent::Refused { text, .. } | Sent::Unknown { text, .. } => {
+                Some(text)
             }
             Sent::Posted { .. } => None,
         }

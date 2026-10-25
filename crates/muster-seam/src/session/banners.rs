@@ -17,7 +17,7 @@ use muster_core::fields;
 use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::{SESSION, ask_as_human_for, posting};
+use super::{SESSION, answer_as_human, posting};
 use crate::proto::{Event, Response, event};
 use crate::{convert, ffi};
 
@@ -68,7 +68,7 @@ fn fetch_message(group: &GroupKey, seq: u64) -> Result<Message, String> {
         before: Some(seq + 1),
         ..Default::default()
     };
-    let answer = ask_as_human_for(&group.daemon, Asked::Log(log))
+    let answer = answer_as_human(&group.daemon, Asked::Log(log))
         .map_err(|refusal| refusal.detail().to_string())?;
     let entry = messaging::log_page(&answer, &group.group)
         .entries

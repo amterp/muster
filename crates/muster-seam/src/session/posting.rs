@@ -11,7 +11,7 @@ use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_answer;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::ask_as_human_for;
+use super::answer_as_human;
 use crate::proto::Response;
 
 /// Posts `text` to `to` in `group` as the human, answering a question when `answering` says
@@ -39,7 +39,7 @@ pub(crate) fn post_as_human(
         }),
         ..Default::default()
     };
-    match ask_as_human_for(&group.daemon, Asked::Post(post)) {
+    match answer_as_human(&group.daemon, Asked::Post(post)) {
         Ok(answer) => match answer.answer {
             Some(msg_answer::Answer::Posted(posted)) => {
                 let reached: Vec<Reached> = posted.reached.iter().map(messaging::reached).collect();
@@ -62,14 +62,14 @@ pub(crate) fn post_as_human(
                 Sent::Posted { seq, said: posting::KEPT_UNANSWERED.to_string(), heard: true }
             }
             None => Sent::Unknown {
-                body: text.to_string(),
+                text: text.to_string(),
                 why: format!(
                     "{detail}. It may have been posted; it was not sent again, since a second \
                      send could post it twice. Open the conversation to see whether it landed."
                 ),
             },
         },
-        Err(refusal) => Sent::Refused { body: text.to_string(), why: refusal.detail().to_string() },
+        Err(refusal) => Sent::Refused { text: text.to_string(), why: refusal.detail().to_string() },
     }
 }
 
@@ -77,7 +77,7 @@ pub(crate) fn post_as_human(
 /// group's log.
 fn settled(group: &GroupKey, to: &[String], text: &str, after: u64) -> Option<u64> {
     let log = msg_request::Log { group: group.group.clone(), since: after, ..Default::default() };
-    let answer = ask_as_human_for(&group.daemon, Asked::Log(log)).ok()?;
+    let answer = answer_as_human(&group.daemon, Asked::Log(log)).ok()?;
     let mut held = Log::default();
     held.followed(messaging::log_page(&answer, &group.group).entries);
     posting::settles(held.logged(), after, to, text)

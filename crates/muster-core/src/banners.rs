@@ -382,7 +382,7 @@ impl Banners {
                 .map_or_else(|| note.to_string(), |answer| posting::answer_body(answer, note)),
             answering: picked.map(|answer| (seq, answer.clone())),
         };
-        standing.sent = Some(Sent::Pending { body: note.to_string() });
+        standing.sent = Some(Sent::Pending { text: note.to_string() });
         Ok(reply)
     }
 
@@ -392,11 +392,11 @@ impl Banners {
     /// answer they picked, not the body composed from them.
     pub fn replied(&mut self, group: &GroupKey, seq: u64, sent: Sent) -> bool {
         let Ok(standing) = self.showing(group, seq) else { return false };
-        let note = standing.sent.as_ref().and_then(Sent::body).unwrap_or_default().to_string();
+        let note = standing.sent.as_ref().and_then(Sent::text).unwrap_or_default().to_string();
         let posted = matches!(sent, Sent::Posted { .. });
         standing.sent = Some(match sent {
-            Sent::Refused { why, .. } => Sent::Refused { body: note, why },
-            Sent::Unknown { why, .. } => Sent::Unknown { body: note, why },
+            Sent::Refused { why, .. } => Sent::Refused { text: note, why },
+            Sent::Unknown { why, .. } => Sent::Unknown { text: note, why },
             other => other,
         });
         if posted {

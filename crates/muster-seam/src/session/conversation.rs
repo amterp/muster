@@ -16,7 +16,7 @@ use muster_core::attention::GroupKey;
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::conversation::{self, Named};
 use muster_core::conversation::{
-    Draft, Edit, Group, Member, Reading, Unread, What, draft, members, thread,
+    Draft, Edit, Group, Member, ThreadView, Unread, What, draft, members, thread,
 };
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -28,7 +28,7 @@ use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_answer;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::{SESSION, Session, WindowId, answered_as_human, ask_as_human_for, save};
+use super::{SESSION, Session, WindowId, answer_as_human, answered_as_human, save};
 use crate::proto::{self, Event, Response, event, response};
 use crate::{convert, ffi};
 
@@ -46,11 +46,11 @@ const RETRY: Duration = Duration::from_secs(1);
 /// the arrangement is one file.
 const DRAFT_QUIET: Duration = Duration::from_secs(1);
 
-/// One window's reading of the conversation it shows.
+/// One window's view of the conversation it shows.
 #[derive(Debug, Clone)]
-pub(crate) struct Shown {
+pub(crate) struct Showing {
     pub(crate) group: GroupKey,
-    reading: Reading,
+    view: ThreadView,
     /// The window's last post here that was kept, and whom it woke, said under it.
     posted: Option<(u64, String)>,
 }
@@ -193,9 +193,9 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
             notice.filter(|notice| notice.count > 0 && notice.first > 0).map(|notice| notice.first);
         let shows = session.windows[window].conversation.as_ref().map(|shown| shown.group.clone());
         if shows.as_ref() != Some(&key) {
-            session.windows[window].conversation = Some(Shown {
+            session.windows[window].conversation = Some(Showing {
                 group: key.clone(),
-                reading: Reading { unread_from, ..Reading::default() },
+                view: ThreadView { unread_from, ..ThreadView::default() },
                 posted: None,
             });
             if let Some(left) = shows {
@@ -402,7 +402,7 @@ fn first_page(following: &Following) -> Result<(), String> {
     let group = &following.group;
     let log =
         msg_request::Log { group: group.group.clone(), newest: Some(PAGE), ..Default::default() };
-    let answer = ask_as_human_for(&group.daemon, Asked::Log(log))
+    let answer = answer_as_human(&group.daemon, Asked::Log(log))
         .map_err(|refusal| refusal.detail().to_string())?;
     let held = messaging::log_page(&answer, &group.group);
     let count = held.entries.len();
@@ -467,9 +467,9 @@ fn settle(session: &mut Session, group: &GroupKey) -> Vec<WindowId> {
     for id in session.windows.ids() {
         let window = &mut session.windows[id];
         let Some(sending) = window.sending.get(group) else { continue };
-        let Sent::Unknown { body, .. } = &sending.sent else { continue };
+        let Sent::Unknown { text, .. } = &sending.sent else { continue };
         let Some(seq) =
-            posting::settles(shared.group.log.logged(), sending.after, &sending.draft.to, body)
+            posting::settles(shared.group.log.logged(), sending.after, &sending.draft.to, text)
         else {
             continue;
         };
@@ -507,7 +507,7 @@ fn clear_if_unchanged(window: &mut super::Window, group: &GroupKey, sent: &Draft
 /// the group is paused.
 fn refresh_policy(following: &Following) {
     let group = &following.group;
-    let answer = match ask_as_human_for(&group.daemon, Asked::Groups(msg_request::Groups {})) {
+    let answer = match answer_as_human(&group.daemon, Asked::Groups(msg_request::Groups {})) {
         Ok(answer) => answer,
         Err(refusal) => {
             log::info(
@@ -540,7 +540,7 @@ fn refresh_policy(following: &Following) {
 fn refresh_members(following: &Following) {
     let group = &following.group;
     let who = msg_request::Who { group: Some(group.group.clone()) };
-    let answer = match ask_as_human_for(&group.daemon, Asked::Who(who)) {
+    let answer = match answer_as_human(&group.daemon, Asked::Who(who)) {
         Ok(answer) => answer,
         Err(refusal) => {
             log::info(
@@ -625,7 +625,7 @@ pub(crate) fn load_earlier(daemon: &str, group: &str) -> Response {
         before,
         ..Default::default()
     };
-    let answer = match ask_as_human_for(&key.daemon, Asked::Log(log)) {
+    let answer = match answer_as_human(&key.daemon, Asked::Log(log)) {
         Ok(answer) => answer,
         Err(refusal) => return refused(&refusal),
     };
@@ -646,7 +646,7 @@ pub(crate) fn pause(daemon: &str, group: &str, paused: bool) -> Response {
     } else {
         Asked::Resume(msg_request::Resume { group: key.group.clone() })
     };
-    if let Err(refusal) = ask_as_human_for(&key.daemon, asked) {
+    if let Err(refusal) = answer_as_human(&key.daemon, asked) {
         return refused(&refusal);
     }
     if let Some(following) = Following::now(&key) {
@@ -665,29 +665,29 @@ fn refused(refusal: &Refusal) -> Response {
 
 /// Opens the fold whose first message is `first`, for `window` until it leaves.
 pub(crate) fn open_fold(window: WindowId, daemon: &str, group: &str, first: u64) -> Response {
-    reading(window, daemon, group, |reading| {
-        reading.open_folds.insert(first);
+    viewing(window, daemon, group, |view| {
+        view.open_folds.insert(first);
     })
 }
 
 /// Shows message `seq` whole in `window`.
 pub(crate) fn show_whole(window: WindowId, daemon: &str, group: &str, seq: u64) -> Response {
-    reading(window, daemon, group, |reading| {
-        reading.whole.insert(seq);
+    viewing(window, daemon, group, |view| {
+        view.whole.insert(seq);
     })
 }
 
-fn reading(
+fn viewing(
     window: WindowId,
     daemon: &str,
     group: &str,
-    change: impl FnOnce(&mut Reading),
+    change: impl FnOnce(&mut ThreadView),
 ) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
     {
         let mut session = poison::lock(&SESSION, "session");
         match session.windows[window].conversation.as_mut() {
-            Some(shown) if shown.group == key => change(&mut shown.reading),
+            Some(shown) if shown.group == key => change(&mut shown.view),
             _ => {
                 return Response::failure(format!(
                     "this window is not showing {group}'s conversation, so nothing in it was \
@@ -747,7 +747,7 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         held.sending.insert(
             key.clone(),
             Sending {
-                sent: Sent::Pending { body: draft.text.clone() },
+                sent: Sent::Pending { text: draft.text.clone() },
                 draft: draft.clone(),
                 after,
             },
@@ -940,10 +940,10 @@ fn announce_parts(windows: &[WindowId], parts: Parts) {
     }
 }
 
-fn conversation(shown: &Shown, shared: &Shared) -> proto::ConversationChanged {
+fn conversation(shown: &Showing, shared: &Shared) -> proto::ConversationChanged {
     let group = &shared.group;
-    let reading = Reading { utc_offset_s: utc_offset_s(), ..shown.reading.clone() };
-    let rows = thread::rows(group, &reading);
+    let view = ThreadView { utc_offset_s: utc_offset_s(), ..shown.view.clone() };
+    let rows = thread::rows(group, &view);
     let mut changed = convert::conversation(
         &shown.group,
         &members::header(&shown.group, group),

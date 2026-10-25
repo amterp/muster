@@ -313,10 +313,10 @@ fn banner(banner: &Banner) -> proto::Banner {
 pub(crate) fn sent(sent: &Sent) -> proto::PostOutcome {
     use proto::post_outcome::State;
     let (state, said, heard, body) = match sent {
-        Sent::Pending { body } => (State::Pending, "", false, body.as_str()),
+        Sent::Pending { text } => (State::Pending, "", false, text.as_str()),
         Sent::Posted { said, heard, .. } => (State::Posted, said.as_str(), *heard, ""),
-        Sent::Refused { body, why } => (State::Refused, why.as_str(), false, body.as_str()),
-        Sent::Unknown { body, why } => (State::Unknown, why.as_str(), false, body.as_str()),
+        Sent::Refused { text, why } => (State::Refused, why.as_str(), false, text.as_str()),
+        Sent::Unknown { text, why } => (State::Unknown, why.as_str(), false, text.as_str()),
     };
     proto::PostOutcome {
         state: state.into(),

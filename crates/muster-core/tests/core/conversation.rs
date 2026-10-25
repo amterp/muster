@@ -10,8 +10,8 @@ use conformance::{CaseError, Conformance, fields, strings};
 use muster_core::attention::GroupKey;
 use muster_core::composition::PaneKey;
 use muster_core::conversation::{
-    Addressed, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Reading, Row,
-    What, draft, members, thread,
+    Addressed, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Row,
+    ThreadView, What, draft, members, thread,
 };
 use serde_json::{Value, json};
 
@@ -20,7 +20,7 @@ fn conversation_conformance() {
     let corpus = Conformance::load("conversation.json");
     let ran = corpus.run(|given| {
         let group = group(given)?;
-        let reading = Reading {
+        let reading = ThreadView {
             unread_from: given.get("unread_from").and_then(Value::as_u64),
             open_folds: numbers(given, "open"),
             whole: numbers(given, "whole"),

@@ -107,9 +107,9 @@ fn take(
             let said = text(step, "said").unwrap_or_default().to_string();
             Sent::Posted { seq: posted, said, heard }
         } else if let Some(why) = text(step, "refused") {
-            Sent::Refused { body, why: why.to_string() }
+            Sent::Refused { text: body, why: why.to_string() }
         } else if let Some(why) = text(step, "unknown") {
-            Sent::Unknown { body, why: why.to_string() }
+            Sent::Unknown { text: body, why: why.to_string() }
         } else {
             return Err(CaseError::new("`replied` needs `posted`, `refused` or `unknown`"));
         };
@@ -162,11 +162,11 @@ fn banner_json(banner: &Banner) -> Value {
     }
     if let Some(sent) = &banner.sent {
         let sent = match sent {
-            Sent::Pending { body } => format!("pending: {body}"),
+            Sent::Pending { text } => format!("pending: {text}"),
             Sent::Posted { seq, said, heard: true } => format!("posted #{seq}: {said}"),
             Sent::Posted { seq, said, heard: false } => format!("posted #{seq}, unheard: {said}"),
-            Sent::Refused { body, why } => format!("refused: {why} (keeps {body:?})"),
-            Sent::Unknown { body, why } => format!("unknown: {why} (keeps {body:?})"),
+            Sent::Refused { text, why } => format!("refused: {why} (keeps {text:?})"),
+            Sent::Unknown { text, why } => format!("unknown: {why} (keeps {text:?})"),
         };
         fields.insert("sent".into(), json!(sent));
     }

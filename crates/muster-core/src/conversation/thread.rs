@@ -1,4 +1,4 @@
-//! The thread a window shows: rows built from the shared log for that window's reading of it.
+//! The thread a window shows: rows built from the shared log for that window's view of it.
 //!
 //! Built so the human finds what was for them without reading the rest (MIP-9, section 1).
 //! Messages that woke nobody but agents fold into one line when two or more run together;
@@ -20,9 +20,10 @@ use crate::posting;
 /// How many lines of a message the thread shows before "Show all". A body runs to 1 MiB.
 pub const LINES: usize = 40;
 
-/// How one window reads the thread.
+/// How one window shows the thread: which folds and long messages it opened, and where the
+/// unread messages began.
 #[derive(Debug, Clone, Default)]
-pub struct Reading {
+pub struct ThreadView {
     /// The first message that waited for the human when the conversation opened.
     pub unread_from: Option<u64>,
     /// The folds opened, each by its first message's number.
@@ -80,22 +81,22 @@ pub struct MessageRow {
     pub from_muster: bool,
 }
 
-/// The rows of `group`'s thread as a window reading it this way shows them.
-pub fn rows(group: &Group, reading: &Reading) -> Vec<Row> {
+/// The rows of `group`'s thread as a window with this view of it shows them.
+pub fn rows(group: &Group, view: &ThreadView) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut day = None;
     let mut run: Vec<&Entry> = Vec::new();
     let mut changes: Vec<&Entry> = Vec::new();
     let mut unread_marked = false;
     for entry in group.log.entries() {
-        let date = date(entry.at_ms, reading.utc_offset_s);
+        let date = date(entry.at_ms, view.utc_offset_s);
         let new_day = day.as_ref() != Some(&date);
         let unread_here =
-            !unread_marked && reading.unread_from.is_some_and(|first| entry.seq >= first);
+            !unread_marked && view.unread_from.is_some_and(|first| entry.seq >= first);
         let foldable = matches!(&entry.what, What::Message(message) if folds(group, message));
         let is_change = !matches!(entry.what, What::Message(_));
         if new_day || unread_here || !foldable {
-            flush_run(group, reading, &mut run, &mut rows);
+            flush_run(group, view, &mut run, &mut rows);
         }
         if new_day || unread_here || !is_change {
             flush_changes(group, &mut changes, &mut rows);
@@ -110,11 +111,11 @@ pub fn rows(group: &Group, reading: &Reading) -> Vec<Row> {
         }
         match &entry.what {
             What::Message(_) if foldable => run.push(entry),
-            What::Message(message) => rows.push(message_row(group, reading, entry, message)),
+            What::Message(message) => rows.push(message_row(group, view, entry, message)),
             _ => changes.push(entry),
         }
     }
-    flush_run(group, reading, &mut run, &mut rows);
+    flush_run(group, view, &mut run, &mut rows);
     flush_changes(group, &mut changes, &mut rows);
     rows
 }
@@ -131,9 +132,9 @@ fn date(at_ms: u64, utc_offset_s: i32) -> String {
     clock::format_date(at.saturating_add(i64::from(utc_offset_s) * 1000))
 }
 
-fn flush_run(group: &Group, reading: &Reading, run: &mut Vec<&Entry>, rows: &mut Vec<Row>) {
+fn flush_run(group: &Group, view: &ThreadView, run: &mut Vec<&Entry>, rows: &mut Vec<Row>) {
     let (Some(first), Some(last)) = (run.first(), run.last()) else { return };
-    if run.len() >= 2 && !reading.open_folds.contains(&first.seq) {
+    if run.len() >= 2 && !view.open_folds.contains(&first.seq) {
         rows.push(Row::Folded {
             first: first.seq,
             count: run.len(),
@@ -143,15 +144,15 @@ fn flush_run(group: &Group, reading: &Reading, run: &mut Vec<&Entry>, rows: &mut
     } else {
         for entry in run.iter() {
             if let What::Message(message) = &entry.what {
-                rows.push(message_row(group, reading, entry, message));
+                rows.push(message_row(group, view, entry, message));
             }
         }
     }
     run.clear();
 }
 
-fn message_row(group: &Group, reading: &Reading, entry: &Entry, message: &Message) -> Row {
-    let (blocks, more) = if reading.whole.contains(&entry.seq) {
+fn message_row(group: &Group, view: &ThreadView, entry: &Entry, message: &Message) -> Row {
+    let (blocks, more) = if view.whole.contains(&entry.seq) {
         (message.blocks.clone(), false)
     } else {
         markdown::leading(&message.blocks, LINES)
