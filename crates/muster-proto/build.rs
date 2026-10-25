@@ -36,5 +36,9 @@ fn main() {
     // A pane's state change is that common event, and most panes have no session to resume, so
     // the resume is boxed rather than the state change: absent, it costs a pointer.
     config.boxed("PaneStateChanged.resume");
+    config.message_attribute(
+        "Banner",
+        "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
+    );
     config.compile_fds(descriptors).expect("the schema generates");
 }

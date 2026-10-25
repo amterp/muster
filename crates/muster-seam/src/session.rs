@@ -16,7 +16,7 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use muster_core::AgentState;
 use muster_core::attention::{
-    Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
+    Alert, Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
 };
 use muster_core::composition::{
     Composition, Daemon, DaemonId, Endpoint, FontSizeChange, FontSizes, Frame, HeldWindow,
@@ -61,7 +61,7 @@ use muster_ssh::{Forward, Reverse, State as TunnelState, Tunnel, remote_environm
 use crate::bridge_link::{PaneLink, Reports};
 use crate::holding::Holding;
 use crate::proto::{
-    AskingChanged, AttentionChanged, ClipboardWrite, Event, GroupsChanged,
+    AskingChanged, AttentionChanged, BannersChanged, ClipboardWrite, Event, GroupsChanged,
     MessageGroup as GroupMessage, Names, PaneTypeable, PasteHeld, PresentationChanged, RaiseWindow,
     ReopenWindow, Request, RosterChanged, ShutWindow, ViewChanged, event, request,
 };
@@ -69,6 +69,7 @@ use crate::watch::{self, Seen};
 use crate::{command, convert, ffi, watchdog};
 
 pub(crate) mod attaching;
+pub(crate) mod banners;
 pub(crate) mod lifecycle;
 mod other_installs;
 pub(crate) mod problems;
@@ -121,8 +122,10 @@ pub(crate) fn set_daemon_settings(settings: DaemonSettings) {
 pub(crate) fn set_notifications(notifications: Notifications) {
     let stale = {
         let mut session = poison::lock(&SESSION, "session");
+        session.banners.notifying(notifications.allows(Alert::Message));
         session.attention.notifying(notifications)
     };
+    banners::announce();
     for asker in &stale {
         match asker {
             Asker::Pane(pane) => announce_attention(pane, Attend::Withdrawn),
@@ -923,6 +926,11 @@ pub(crate) struct Session {
     /// The human's groups as the shell was last told them, so it is told only of a change.
     groups_sent: Vec<MessageGroup>,
 
+    /// The banners for messages to the human (`banners`), and what the shell was last told of
+    /// them.
+    banners: muster_core::banners::Banners,
+    banners_sent: BannersChanged,
+
     /// How big each pane's text is, for the panes somebody has sized.
     ///
     /// Beside the chrome rather than inside it, because it is not one answer about the window.
@@ -1365,6 +1373,7 @@ impl Session {
         if self.unreachable_since.remove(daemon).is_some() {
             self.attention.reachable(daemon, true);
         }
+        self.banners.detached(daemon);
         self.backends.remove(daemon)
     }
 
@@ -4250,6 +4259,15 @@ pub(crate) fn ask_as_human(
     daemon: &DaemonId,
     request: muster_daemon_proto::msg_request::Request,
 ) -> Result<(), Refusal> {
+    ask_as_human_for(daemon, request).map(|_| ())
+}
+
+/// [`ask_as_human`], answered with what the daemon's messaging said: whom a post reached, the
+/// entries a log holds.
+pub(crate) fn ask_as_human_for(
+    daemon: &DaemonId,
+    request: muster_daemon_proto::msg_request::Request,
+) -> Result<muster_daemon_proto::MsgAnswer, Refusal> {
     let pending = {
         let session = poison::lock(&SESSION, "session");
         let Some(backend) = session.backends.get(daemon) else {
@@ -4275,7 +4293,12 @@ pub(crate) fn ask_as_human(
         made: None,
     })?;
     match answer.outcome() {
-        muster_daemon_proto::Outcome::Done | muster_daemon_proto::Outcome::AlreadySo => Ok(()),
+        muster_daemon_proto::Outcome::Done | muster_daemon_proto::Outcome::AlreadySo => {
+            Ok(match answer.detail {
+                Some(muster_daemon_proto::answer::Detail::Msg(msg)) => msg,
+                _ => muster_daemon_proto::MsgAnswer::default(),
+            })
+        }
         _ => Err(Refusal::Declined(answer.reason)),
     }
 }
@@ -5477,6 +5500,7 @@ fn publish(cause: &str) {
     }
     read_what_is_looked_at();
     announce_asking();
+    banners::announce();
 }
 
 /// One window's part of a publish, settled under the lock and sent after it.
@@ -6564,11 +6588,17 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
         if looking {
             session.read_as_human(&key);
         }
-        session.attention.messaged(&key, notice, looking)
+        let fetch = session.banners.noticed(&key, notice.as_ref(), looking);
+        (session.attention.messaged(&key, notice, looking), fetch)
     };
+    let (attend, fetch) = attend;
     if let Some(attend) = attend {
         announce_message(&key, attend);
     }
+    if let Some(seq) = fetch {
+        banners::fetch(&key, seq);
+    }
+    banners::announce();
 }
 
 /// Groups whose transcript somebody has just come to look at, while a message there waits for
@@ -6592,6 +6622,7 @@ fn read_what_is_looked_at() {
                 continue;
             }
             session.read_as_human(&key);
+            session.banners.noticed(&key, None, true);
             if let Some(attend) = session.attention.messaged(&key, None, true) {
                 withdrawn.push((key, attend));
             }

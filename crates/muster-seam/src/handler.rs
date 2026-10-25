@@ -161,6 +161,9 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::AskForWindow(_)
             | request::Payload::ClaimApp(_)
             | request::Payload::AdoptOldState(_)
+            | request::Payload::ReplyToBanner(_)
+            | request::Payload::DismissBanner(_)
+            | request::Payload::HoldBanner(_)
     )
 }
 
@@ -335,6 +338,15 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             "deleted",
             Asked::GroupDelete(msg_request::GroupDelete { group: delete.group.clone() }),
         ),
+        request::Payload::ReplyToBanner(reply) => {
+            session::banners::reply(&reply.daemon_id, &reply.group, reply.seq, &reply.body)
+        }
+        request::Payload::DismissBanner(dismiss) => {
+            session::banners::dismiss(&dismiss.daemon_id, &dismiss.group, dismiss.seq)
+        }
+        request::Payload::HoldBanner(hold) => {
+            session::banners::hold(&hold.daemon_id, &hold.group, hold.seq, hold.held)
+        }
         request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),
         request::Payload::SetSplitRatio(set) => set_split_ratio(window, set),
@@ -2168,6 +2180,7 @@ fn bindings_message() -> proto::Bindings {
                     })
                     .map(|(name, _)| name.to_string())
                     .collect(),
+                in_text_field: action.in_text_field(),
             })
             .collect(),
     }

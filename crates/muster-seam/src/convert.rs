@@ -8,10 +8,13 @@
 
 use std::collections::BTreeMap;
 
+use muster_core::banners::{Banner, Shown, Stack};
 use muster_core::composition::{DaemonId, View, ViewPane, ViewTree};
 use muster_core::config::Rgb;
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
+use muster_core::markdown::Block;
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
+use muster_core::posting::Sent;
 use muster_core::roster::{Numbering, Roster, RosterTab, machine_color};
 
 use crate::proto;
@@ -247,6 +250,102 @@ fn axis(axis: SplitAxis) -> String {
         SplitAxis::Columns => "columns".to_string(),
         SplitAxis::Rows => "rows".to_string(),
     }
+}
+
+/// The banners to draw, for the shell.
+pub(crate) fn banners(stack: &Stack) -> proto::BannersChanged {
+    proto::BannersChanged {
+        shown: stack.shown.iter().map(banner).collect(),
+        folded: u32::try_from(stack.folded).unwrap_or(u32::MAX),
+        oldest_daemon_id: stack.oldest.as_ref().map(|g| g.daemon.to_string()).unwrap_or_default(),
+        oldest_group: stack.oldest.as_ref().map(|g| g.group.clone()).unwrap_or_default(),
+    }
+}
+
+fn banner(banner: &Banner) -> proto::Banner {
+    let mut drawn = proto::Banner {
+        daemon_id: banner.group.daemon.to_string(),
+        group: banner.group.group.clone(),
+        seq: banner.shown.seq(),
+        replyable: banner.replyable,
+        held: banner.held,
+        sent: banner.sent.as_ref().map(sent),
+        ..proto::Banner::default()
+    };
+    match &banner.shown {
+        Shown::Message(message) => {
+            drawn.author.clone_from(&message.author);
+            drawn.urgent = message.urgent;
+            drawn.at_ms = message.at_ms;
+            drawn.body = markdown(&message.body);
+            drawn.more = message.more;
+        }
+        Shown::Unloaded { from, count, why, .. } => {
+            drawn.from.clone_from(from);
+            drawn.count = *count;
+            drawn.unloaded.clone_from(why);
+        }
+        // Never drawn: the core's stack leaves out a banner still fetching its message.
+        Shown::Loading { .. } => {}
+    }
+    if let Some(waiting) = &banner.waiting {
+        drawn.waiting_author.clone_from(&waiting.author);
+        drawn.waiting_urgent = waiting.urgent;
+    }
+    drawn
+}
+
+fn sent(sent: &Sent) -> proto::PostOutcome {
+    use proto::post_outcome::State;
+    let (state, said, heard, body) = match sent {
+        Sent::Pending { body } => (State::Pending, "", false, body.as_str()),
+        Sent::Posted { said, heard, .. } => (State::Posted, said.as_str(), *heard, ""),
+        Sent::Refused { body, why } => (State::Refused, why.as_str(), false, body.as_str()),
+        Sent::Unknown { body, why } => (State::Unknown, why.as_str(), false, body.as_str()),
+    };
+    proto::PostOutcome {
+        state: state.into(),
+        said: said.to_string(),
+        heard,
+        body: body.to_string(),
+    }
+}
+
+/// A message's Markdown, as the core parsed it.
+pub(crate) fn markdown(blocks: &[Block]) -> Vec<proto::MarkdownBlock> {
+    use proto::markdown_block::Kind;
+    blocks
+        .iter()
+        .map(|block| proto::MarkdownBlock {
+            kind: Some(match block {
+                Block::Paragraph(runs) => Kind::Paragraph(proto::MarkdownParagraph {
+                    runs: runs
+                        .iter()
+                        .map(|run| proto::MarkdownRun {
+                            text: run.text.clone(),
+                            emphasis: run.emphasis,
+                            strong: run.strong,
+                            code: run.code,
+                            link: run.link.clone().unwrap_or_default(),
+                        })
+                        .collect(),
+                }),
+                Block::List(list) => Kind::List(proto::MarkdownList {
+                    numbered: list.start.is_some(),
+                    start: list.start.unwrap_or_default(),
+                    items: list
+                        .items
+                        .iter()
+                        .map(|item| proto::MarkdownItem { blocks: markdown(item) })
+                        .collect(),
+                }),
+                Block::Code(code) => Kind::Code(proto::MarkdownCode {
+                    language: code.language.clone(),
+                    text: code.text.clone(),
+                }),
+            }),
+        })
+        .collect()
 }
 
 pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {

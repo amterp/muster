@@ -96,6 +96,9 @@ message Request {
     SetHiddenCollapsed set_hidden_collapsed = 77;
     ShowHelpers show_helpers = 78;
     HideHelpers hide_helpers = 79;
+    ReplyToBanner reply_to_banner = 80;
+    DismissBanner dismiss_banner = 81;
+    HoldBanner hold_banner = 82;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1424,6 +1427,41 @@ message DeleteGroup {
   string group = 2;
 }
 
+// Replies to the message a banner shows, as the human, to that message's author: the banner holds
+// the message, so whatever the group has said since, the reply goes where the human was looking
+// (mip/0009-group-conversation.md, section 5). `seq` is the message's number as the banner showed
+// it; a banner that has moved on to a newer message refuses, and nothing is sent. It does not
+// read the group.
+//
+// Answered once the daemon has, with the post's outcome (section 4): Ok noting whom it reached,
+// a Failure in the daemon's words, or Unanswered, when the post may have been kept. An unanswered
+// post is never sent again on its own; the core asks the group's log once whether it was kept.
+// BannersChanged says each step as well.
+message ReplyToBanner {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 seq = 3;
+  string body = 4;
+}
+
+// Takes down the banner showing message `seq`, without reading its group: the message stays
+// unread, and the group's next message raises a banner again.
+message DismissBanner {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 seq = 3;
+}
+
+// Says whether the human is writing a reply in the banner showing message `seq`. While they are,
+// the group's next message waits behind the banner rather than replacing it, so the reply keeps
+// the author it was written to.
+message HoldBanner {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 seq = 3;
+  bool held = 4;
+}
+
 // Puts the keyboard on the pane at a given place in the window's pane order.
 //
 // The place is the roster's `place`, counting from one across every attached daemon and every
@@ -1883,6 +1921,11 @@ message Binding {
   // shift, control, alt, super. Absent rather than false, and never the side bits: a chord is
   // the same chord whichever command key supplied it.
   repeated string modifiers = 3;
+
+  // The action belongs to whichever text field of Muster's holds the keyboard, which matches
+  // the chord itself: it gets no menu key equivalent, since a menu takes a chord before any
+  // view, and this chord has to reach a pane whenever no such field is there.
+  bool in_text_field = 4;
 }
 
 message Ok {
@@ -2281,6 +2324,105 @@ message MessageGroup {
   uint64 to_you = 4;
 }
 
+// The banners Muster draws for messages to the human (mip/0009-group-conversation.md, section 5):
+// at most three, newest first, and how many more are folded into a count that opens the oldest.
+// About the whole app, whole each time, and sent only when it changed. The shell draws them in the
+// window in front.
+message BannersChanged {
+  repeated Banner shown = 1;
+  uint32 folded = 2;
+  string oldest_daemon_id = 3;
+  string oldest_group = 4;
+}
+
+message Banner {
+  string daemon_id = 1;
+  string group = 2;
+  // The message's number in its group, which every request about this banner names.
+  uint64 seq = 3;
+  string author = 4;
+  bool urgent = 5;
+  // When the daemon kept it, in milliseconds since the Unix epoch.
+  uint64 at_ms = 6;
+  // The message's first lines, parsed, and whether it goes on past them.
+  repeated MarkdownBlock body = 7;
+  bool more = 8;
+  // Whether it takes a reply now: not from @muster, not while one is pending or after one was
+  // posted, and not when its message could not be fetched.
+  bool replyable = 9;
+  // The human is writing a reply in it.
+  bool held = 10;
+  // What a reply sent from it came to, when one was sent.
+  PostOutcome sent = 11;
+  // Set when the message could not be fetched: why, and the notice's count and authors, which
+  // the banner says instead of the message.
+  string unloaded = 12;
+  uint64 count = 13;
+  repeated string from = 14;
+  // A newer message waiting behind this banner while it holds a reply. Empty author when none.
+  string waiting_author = 15;
+  bool waiting_urgent = 16;
+}
+
+// Where a post the human sent stands (mip/0009-group-conversation.md, section 4).
+message PostOutcome {
+  enum State {
+    STATE_NONE = 0;
+    STATE_PENDING = 1;
+    STATE_POSTED = 2;
+    STATE_REFUSED = 3;
+    STATE_UNKNOWN = 4;
+  }
+  State state = 1;
+  // Posted: whom it reached, "woke otter" or "nobody live heard it". Refused: the daemon's words.
+  // Unknown: why the answer never came.
+  string said = 2;
+  // Posted: whether any live participant heard it.
+  bool heard = 3;
+  // Pending, refused and unknown: the words sent, which stay the human's.
+  string body = 4;
+}
+
+// A block of a message's Markdown, parsed in the core so that every shell draws the same thing
+// (mip/0009-group-conversation.md, section 7).
+message MarkdownBlock {
+  oneof kind {
+    MarkdownParagraph paragraph = 1;
+    MarkdownList list = 2;
+    MarkdownCode code = 3;
+  }
+}
+
+message MarkdownParagraph {
+  repeated MarkdownRun runs = 1;
+}
+
+// Text in one style. A hard line break is a newline inside it.
+message MarkdownRun {
+  string text = 1;
+  bool emphasis = 2;
+  bool strong = 3;
+  bool code = 4;
+  // Empty when the run is not a link.
+  string link = 5;
+}
+
+// A bulleted list, or a numbered one counting from `start` when `numbered`.
+message MarkdownList {
+  bool numbered = 1;
+  uint64 start = 2;
+  repeated MarkdownItem items = 3;
+}
+
+message MarkdownItem {
+  repeated MarkdownBlock blocks = 1;
+}
+
+message MarkdownCode {
+  string language = 1;
+  string text = 2;
+}
+
 // What the core tells the shell without being asked.
 //
 // Delivered through the callback registered at startup, from whichever thread noticed.
@@ -2304,6 +2446,7 @@ message Event {
     ShutWindow shut_window = 15;
     GroupsChanged groups_changed = 16;
     AskingChanged asking_changed = 20;
+    BannersChanged banners_changed = 21;
   }
 
   // The window this event is for, by its name, or empty for one about the whole app: what the

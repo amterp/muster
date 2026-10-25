@@ -164,6 +164,12 @@ pub enum Action {
     /// walking matches usually has the keyboard in the pane rather than in the bar.
     FindNext,
     FindPrevious,
+    /// Sends what is written in the text field holding the keyboard: a reply in a banner for a
+    /// message (mip/0009-group-conversation.md, section 3).
+    ///
+    /// Belongs to that field rather than to the window ([`Action::in_text_field`]), so its chord
+    /// reaches a pane whenever no such field holds the keyboard.
+    SendMessage,
     Zoom,
     /// Gives every pane in the tab the same area, Ghostty's `equalize_splits`. The divider-moving
     /// verb that earns a chord where a single divider does not: evening five panes by dragging is
@@ -201,7 +207,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 63] = [
+    pub const ALL: [Action; 64] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -246,6 +252,7 @@ impl Action {
         Action::Find,
         Action::FindNext,
         Action::FindPrevious,
+        Action::SendMessage,
         Action::Zoom,
         Action::EqualizePanes,
         Action::ScrollToTop,
@@ -266,6 +273,14 @@ impl Action {
         Action::QuitAndCloseSessions,
         Action::UpgradeMuster,
     ];
+
+    /// Whether the action belongs to a text field of Muster's rather than to the window: the
+    /// field that holds the keyboard matches its chord, and the shell makes it no menu key
+    /// equivalent. A menu gets a chord before any view does, enabled or not, so one would take
+    /// the chord from a pane even when no such field is there to use it.
+    pub fn in_text_field(self) -> bool {
+        matches!(self, Action::SendMessage)
+    }
 
     /// The name a config file, a log line and the seam all spell it with.
     pub fn as_str(self) -> &'static str {
@@ -312,6 +327,7 @@ impl Action {
             Action::Find => "find",
             Action::FindNext => "find_next",
             Action::FindPrevious => "find_previous",
+            Action::SendMessage => "send_message",
             Action::Zoom => "zoom",
             Action::EqualizePanes => "equalize_panes",
             Action::ScrollToTop => "scroll_to_top",
@@ -438,6 +454,10 @@ impl Action {
             Action::Find => Some(Chord::new(Key::KeyF, command)),
             Action::FindNext => Some(Chord::new(Key::KeyG, command)),
             Action::FindPrevious => Some(Chord::new(Key::KeyG, shifted)),
+            // Send in Mail and Messages, and nothing else in Muster is on it. A command chord
+            // normally never reaches a pane, but this one does whenever no text field of
+            // Muster's holds the keyboard, since the shell gives it no menu key equivalent.
+            Action::SendMessage => Some(Chord::new(Key::Enter, command)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
             // Ghostty's macOS chord, beside its resize chords on ⌘⌃.
             Action::EqualizePanes => {

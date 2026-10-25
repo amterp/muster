@@ -267,9 +267,9 @@
         ]
       },
       "expect": {
-        "actions": 63,
-        "bound": 51,
-        "distinct_chords": 51
+        "actions": 64,
+        "bound": 52,
+        "distinct_chords": 52
       }
     },
     {
@@ -287,6 +287,20 @@
           "find=super+KeyF",
           "find_next=super+KeyG",
           "find_previous=shift+super+KeyG"
+        ]
+      }
+    },
+    {
+      "name": "sending a message is the chord Mail and Messages send with",
+      "why": "⌘↩ sends in every Mac application that sends anything, and nothing else of Muster's is on it. It belongs to the text field holding the keyboard rather than to the window, so the shell makes it no menu key equivalent and the chord still reaches a pane whenever no such field is there (mip/0009-group-conversation.md, section 3).",
+      "given": {
+        "actions": [
+          "send_message"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "send_message=super+Enter"
         ]
       }
     },

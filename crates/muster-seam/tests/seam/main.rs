@@ -6,6 +6,7 @@ mod arranging;
 mod asking;
 mod attach;
 mod background_tab;
+mod banners;
 mod closed_windows;
 mod cold_start;
 mod command;

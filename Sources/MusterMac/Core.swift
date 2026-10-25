@@ -1446,6 +1446,9 @@ public enum Core {
     case .stillOpen: return "still_open"
     case .leaveGroup: return "leave_group"
     case .deleteGroup: return "delete_group"
+    case .replyToBanner: return "reply_to_banner"
+    case .dismissBanner: return "dismiss_banner"
+    case .holdBanner: return "hold_banner"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"
@@ -1739,6 +1742,8 @@ public enum Core {
       for window in windows(for: event) {
         window.apply(groups: messageGroups)
       }
+    case .bannersChanged:
+      break
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.
