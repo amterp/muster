@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1792857753780,
   "creator": "Alexander Terp",
   "description": "Found and verified 2026-10-24. After a pane is folded into a name and its daemon restarts, refetching the group replays Joined { pane }; cursor_from_join then calls make_addressed(pane), which creates the pane's participant again, holding the same pane as the name. by_pane returns whichever name sorts first, and pane ids sort before most names, so the pane can win. Happens on main after any fold followed by a restart.",
   "id": "a_2nSzPRLjM",
-  "position": "a3",
+  "position": "Zt",
   "title": "A copy of a group refetched from scratch remakes a folded pane's participant",
   "type": "bug",
-  "updated_at_millis": 1792860389085,
+  "updated_at_millis": 1792939964636,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792857753780},
-    {"field":"column","value":"next","at":1792860389085}
+    {"field":"column","value":"next","at":1792860389085},
+    {"field":"column","value":"in-progress","at":1792939964636}
   ]
 }
