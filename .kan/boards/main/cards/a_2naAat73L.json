@@ -34,6 +34,12 @@
       "body": "Daemon and CLI half landed on main 2026-10-24 (21f794c5, ae30d03d, d966f4d2): answers and answering on a message (Since 1.8), seven refusals, answers_unsupported for an older keeper, msg post --option and --answer Q:N, read and log printing the list. Gate green. The banner's buttons are being built now; the conversation's wait for the conversation.",
       "author": "Alexander Terp",
       "created_at_millis": 1792898460595
+    },
+    {
+      "id": "c_2nlIPu7Ll",
+      "body": "The banner's half landed on main 2026-10-24 (efe581c2..d2af4080): a question's answers drawn as buttons, a pick that fills the reply and holds the banner, the body composed once in the core (posting::answer_body), and the banner fetching only the entry it shows. Contract tier green. The conversation's half remains.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792901383429
     }
   ],
   "created_at_millis": 1792874866674,
@@ -44,7 +50,7 @@
   "position": "Zt",
   "title": "An agent can offer answers to a question it posts",
   "type": "feature",
-  "updated_at_millis": 1792898460645,
+  "updated_at_millis": 1792901383486,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792874866674},
     {"field":"column","value":"in-progress","at":1792891209187}

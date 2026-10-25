@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "esc-in-a-banner-s",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792900793699,
+  "creator": "Alexander Terp",
+  "description": "Muster's banner (MIP-9) takes Esc itself while its reply field holds marked text: it discards the composition and keeps the keyboard in the reply, so a composition no input method ends (a dead key's accent, or marked text with no input method taking Esc) is never stranded. The cost: SwiftUI's onKeyPress sees Esc before the text view hands it to the input context, so an input method that handles Esc in steps (Kotoeri reverts a conversion before dropping it) never gets the key, and one Esc drops the whole composition. MIP-9 section 7 says to leave an input method's composition alone. A better shape gives the input context first refusal (NSTextInputContext.handleEvent on the current event) and discards only a composition it left unchanged, but that needs a real input method to test, which the contract tier does not drive today. Stage 2's message box will meet the same question.",
+  "id": "a_2nl34eRpJ",
+  "position": "b1r",
+  "title": "Esc in a banner's reply discards an input method's composition at once, rather than letting the input method step back",
+  "type": "enhancement",
+  "updated_at_millis": 1792900793699,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792900793699}
+  ]
+}
