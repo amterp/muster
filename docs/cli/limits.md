@@ -470,7 +470,7 @@ never reports its context, and Muster cannot tell that apart from one that has n
 such a wait is not refused: it says on stderr that the pane has not said its context, and goes on
 waiting for whatever else it was asked, its `--until` states or its `--timeout`.
 
-## A nested agent's reports are refused only when it runs apart
+## A nested agent's reports and reads are refused only when it runs apart
 
 Every process started in a pane inherits `$MUSTER_PANE`, so an agent that the pane's agent starts -
 a `claude -p` from Claude Code's Bash tool, a `codex exec`, an agent in a tmux server started
@@ -484,6 +484,14 @@ that agent's own reports read as a nested agent's. It cannot tell a nested agent
 group from the pane's own, and takes its reports as before; nor can it tell anything about a
 sender it cannot see, so it takes those too. `env -u MUSTER_DAEMON` in front of the nested command
 keeps its hooks quiet whatever Muster can tell.
+
+Muster tells a nested agent's `muster msg` apart the same way, and refuses only its reading. Its
+posts are the pane's, since it speaks for the agent that started it. Its `read` and `wait` are
+refused, because its messaging hooks run them after every tool call and around each turn: taken,
+they would hand the pane's messages to the nested session and mark them read, and its wait would
+take the pane's agent's wake. The hooks treat the refusal as nothing to read. One that names whom
+it reads as with `--as` is taken, and `env -u MUSTER_PANE` in front of the nested command makes it
+a session of its own.
 
 Codex's shared app-server is refused whatever it reports. With its default settings, Codex 0.160
 runs the commands and hooks of every Codex session on the machine in one `codex app-server` process,

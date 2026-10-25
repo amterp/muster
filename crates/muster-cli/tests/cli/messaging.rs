@@ -626,6 +626,59 @@ fn a_msg_request_through_an_agents_server_is_refused_and_says_what_to_do() {
     assert!(posted.starts_with("posted #4 to "), "{posted}");
 }
 
+/// An agent nested in a pane, as a `claude -p` that the pane's agent started is, inherits the
+/// pane's environment. It posts as the pane, since it speaks for the agent that started it, but
+/// its messaging hooks' reads and waits are refused: taken, they would hand the pane's messages to
+/// the nested session and mark them read, and the pane's own agent would never see them.
+#[test]
+fn a_nested_agent_posts_as_its_pane_but_does_not_read_or_wait_for_it() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    daemon.run_agent("p1");
+    daemon.run_agent("p2");
+    let home = daemon.root().join("home");
+    let nested = |line: &str, count: usize| {
+        let cli = env!("CARGO_BIN_EXE_muster");
+        daemon.type_into("p1", &format!("nested-run {cli} {line}"));
+        let reported = until_some(&format!("{count} commands from the nested agent"), || {
+            let reported = std::fs::read_to_string(home.join("fake-agent-reported")).ok()?;
+            let lines: Vec<String> = reported.lines().map(str::to_string).collect();
+            (lines.len() >= count).then_some(lines)
+        });
+        let said = std::fs::read_to_string(home.join("fake-agent-nested-said")).unwrap_or_default();
+        (reported[count - 1].clone(), said)
+    };
+    let in_pane = |pane: &str, arguments: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_muster"))
+            .args(arguments)
+            .env_clear()
+            .env("HOME", std::env::temp_dir())
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .env("MUSTER_PANE", pane)
+            .stdin(Stdio::null())
+            .output()
+            .expect("the muster binary runs")
+    };
+    let p2 = words(&daemon)["p2"].clone();
+    let p1 = words(&daemon)["p1"].clone();
+
+    let (status, said) = nested(&format!("msg post --to {p2} from-the-nested-agent"), 1);
+    assert_eq!(status, "nested 0", "the nested agent's post was refused: {said}");
+    assert!(ok(&in_pane("p2", &["msg", "read"])).contains("from-the-nested-agent"));
+    ok(&in_pane("p2", &["msg", "post", "--to", &p1, "for-the-pane"]));
+
+    for (count, line) in [(2, "msg read --if-unread"), (3, "msg wait --due --timeout 1")] {
+        let (status, said) = nested(line, count);
+        assert_eq!(status, "nested 1", "`{line}` from the nested agent was taken: {said}");
+        assert!(said.contains("outside the process group the pane's own agent runs in"), "{said}");
+        assert!(said.contains("env -u MUSTER_PANE"), "{said}");
+    }
+    let read = ok(&in_pane("p1", &["msg", "read"]));
+    assert!(read.contains("for-the-pane"), "the pane's agent lost its message: {read}");
+}
+
 /// A msg request that comes before the daemon's first manifest load cannot be attributed, so it
 /// is taken even through a server, and the daemon says why once, as it does for a report. The load
 /// here reads an override that never ends, as one on a mount that hangs does: a FIFO nobody opens.

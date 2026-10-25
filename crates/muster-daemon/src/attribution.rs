@@ -22,9 +22,11 @@
 //! that session runs: walking past it would find that session's agent and file every other
 //! session's reports under its pane (`docs/observations/codex-0.160.0.md`, section 1).
 //!
-//! A `muster msg` request names its pane the same way, and is walked too when it names one. Only
-//! a server refuses it: a nested agent the pane's agent started speaks for that agent, and its
-//! messages are the pane's, where its reports would overwrite the pane's own agent's state.
+//! A `muster msg` request names its pane the same way, and is walked too when it names one. A
+//! server refuses it. A nested agent the pane's agent started speaks for that agent, so its posts
+//! are the pane's, where its reports would overwrite the pane's own agent's state; but it does not
+//! read for that agent, so its reads and waits are refused, since its messaging hooks would take
+//! the pane's messages and wakes.
 
 use std::collections::HashSet;
 use std::os::fd::AsRawFd;
@@ -295,6 +297,30 @@ pub(crate) fn refused_through_server(pane: &str, server: &Server) {
                          read off their screens, and an agent's own `report --waiting` fails; \
                          this is logged once per server",
             "check" => server.remedy,
+        },
+    );
+}
+
+/// Logs a `muster msg` read or wait refused because `nearest`, an agent nested in the pane, sent
+/// it, once per process.
+pub(crate) fn request_from_nested(pane: &str, own: &str, nearest: &Nearest) {
+    if !first_refusal(nearest.pid, Asked::Request) {
+        return;
+    }
+    log::warn(
+        "msg.request.nested_agent",
+        fields! {
+            "pane" => pane,
+            "agent" => own,
+            "sender_agent" => nearest.agent,
+            "sender_pid" => nearest.pid,
+            "why" => "a msg read or wait came from an agent process outside the process group \
+                      the pane's own agent runs in, which a pane's environment passed on to it",
+            "impact" => "its reads and waits are refused while it runs, so the pane's own agent \
+                         keeps its messages unread and its wakes; its posts are still the pane's; \
+                         this is logged once per process",
+            "check" => "what the pane's agent started: a `claude -p`, `codex exec` or \
+                        `opencode run` from its shell whose messaging hooks run `muster msg`",
         },
     );
 }

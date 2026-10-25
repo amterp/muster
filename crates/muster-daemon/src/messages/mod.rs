@@ -412,6 +412,20 @@ pub(crate) fn through_server(
     refused_as("", "shared_server", &server.refusal(crate::attribution::Asked::Request))
 }
 
+/// Refuses a read or a wait from `nearest`, an agent nested in `pane`, which runs `own`: taken,
+/// it would hand the messages of the pane's agent to the nested one, and mark them read.
+pub(crate) fn from_nested(pane: &str, own: &str, nearest: &crate::attribution::Nearest) -> Reply {
+    crate::attribution::request_from_nested(pane, own, nearest);
+    let reason = format!(
+        "pane {pane} runs {own}, and this request came from another {} (pid {}), outside the \
+         process group the pane's own agent runs in. It inherited the pane's environment, so a \
+         read or a wait would take the messages of the pane's agent; it may still post as the \
+         pane. `env -u MUSTER_PANE` in front of the nested command makes it a session of its own",
+        nearest.agent, nearest.pid
+    );
+    refused_as("", "nested_agent", &reason)
+}
+
 /// The answer, saying what each participant named after its pane is called, for it to be shown
 /// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one. An
 /// answer carried from another machine already says what that machine calls its names.

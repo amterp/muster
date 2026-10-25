@@ -567,7 +567,9 @@ nobody live.
 A verb run in a pane acts as that pane's agent, which `$MUSTER_PANE` names. One run under a
 harness's server that runs every session's commands, as Codex's shared app-server does, carries
 the environment of whichever session started the server, so it is refused, naming the server and
-what to do (`muster docs limits`).
+what to do (`muster docs limits`). An agent the pane's agent started, such as a `claude -p` from
+its shell, posts as the pane too, but its `read` and `wait` are refused, so its messaging hooks
+leave the pane's messages to the pane's own agent.
 
 ## Across machines
 

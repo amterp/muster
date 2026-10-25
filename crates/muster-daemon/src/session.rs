@@ -1927,11 +1927,7 @@ impl Session {
             }
             crate::attribution::Sender::Agent(nearest) => nearest,
         };
-        let pane = &self.panes[self.pane_index(&report.pane)?];
-        let own = pane.record.agent.as_deref()?;
-        if pane.io.agent_group()? == sender.group {
-            return None;
-        }
+        let own = self.nested_in(&report.pane, sender)?;
         crate::attribution::refused(&report.pane, own, sender);
         Some(Reply::refused(format!(
             "pane {} runs {own}, and this report came from another {} (pid {}), outside the \
@@ -1939,6 +1935,20 @@ impl Session {
              and its reports are not the pane's",
             report.pane, sender.agent, sender.pid
         )))
+    }
+
+    /// The agent `pane` runs, when `sender` is another agent than it: one running outside the
+    /// process group the pane's agent was found in, which the pane's environment passed on to.
+    /// None for the pane's own agent, and for a pane that is not here, has no agent identified,
+    /// or has no group known for it.
+    pub(crate) fn nested_in(
+        &self,
+        pane: &str,
+        sender: &crate::attribution::Nearest,
+    ) -> Option<&str> {
+        let pane = &self.panes[self.pane_index(pane)?];
+        let own = pane.record.agent.as_deref()?;
+        (pane.io.agent_group()? != sender.group).then_some(own)
     }
 
     /// Facts the agent in a pane states about itself.

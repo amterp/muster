@@ -240,7 +240,11 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 Some(attribution::Sender::Server(server)) => {
                     messages::through_server(&request, server)
                 }
-                _ => messages::handle(shared, request, &|| hung_up(&stream)),
+                Some(attribution::Sender::Agent(nearest)) => {
+                    nested_receiving(shared, &request, nearest)
+                        .unwrap_or_else(|| messages::handle(shared, request, &|| hung_up(&stream)))
+                }
+                None => messages::handle(shared, request, &|| hung_up(&stream)),
             }),
             Some(service) => {
                 let mut session = locked();
@@ -372,6 +376,26 @@ fn attributed(service: Option<&Service>) -> Option<attribution::Asked> {
             .map(|_| attribution::Asked::Request),
         _ => None,
     }
+}
+
+/// A refusal for a msg request that reads or waits for the messages of the pane it names, sent
+/// by an agent other than the pane's own: a nested one, such as a `claude -p` the pane's agent
+/// started, whose messaging hooks would otherwise take the pane's agent's messages. Its posts
+/// speak for the pane's agent, and are taken, as is a read that names whom it reads as with
+/// `--as`.
+fn nested_receiving(
+    shared: &Shared,
+    request: &proto::MsgRequest,
+    nearest: &attribution::Nearest,
+) -> Option<Reply> {
+    use proto::msg_request::Request;
+    let caller = request.caller.as_ref().filter(|caller| caller.as_name.is_none())?;
+    if !matches!(request.request, Some(Request::Read(_) | Request::Wait(_))) {
+        return None;
+    }
+    let pane = caller.pane.as_deref().filter(|pane| !pane.is_empty())?;
+    let own = shared.lock().nested_in(pane, nearest)?.to_string();
+    Some(messages::from_nested(pane, &own, nearest))
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is
