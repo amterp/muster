@@ -227,12 +227,18 @@ public final class MusterWindow: NSObject {
     tabView.attach(empty: empty)
     split.attach(banners: banners.hosting)
     banners.show(window.isMainWindow)
+    banners.onLink = { [weak self] url, daemon, group in
+      self?.open(messageLink: url, daemon: daemon, group: group)
+    }
     banners.onLeave = { [weak self] in
       guard let self, let surface = keyboardChrome()?.surface else { return }
       window.makeFirstResponder(surface)
     }
     BannerBoard.shared.take(bindings: bindings)
     conversation.take(bindings: bindings)
+    conversation.onLink = { [weak self] url, group in
+      self?.open(messageLink: url, daemon: group.daemon, group: group.group)
+    }
     surfaces.window(key: window.isKeyWindow)
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
@@ -646,7 +652,22 @@ public final class MusterWindow: NSObject {
   /// A web link in a devenv pane opens here like one in a laptop pane: the browser is on this
   /// machine, and the address means the same from either.
   private func open(_ link: OpenedLink, onThisMachine: Bool, daemon: String) {
-    switch LinkPolicy.decide(link, onThisMachine: onThisMachine) {
+    open(
+      LinkPolicy.decide(link, onThisMachine: onThisMachine), daemon: daemon,
+      saying: "A program in this pane linked some text to this address, which the screen does "
+        + "not show.")
+  }
+
+  /// Opens a link in a message, in a banner or a conversation, if `LinkPolicy` allows it.
+  func open(messageLink url: URL, daemon: String, group: String) {
+    open(
+      LinkPolicy.decide(messageLink: url, group: group), daemon: daemon,
+      saying: "A message in \(group) linked some text to this address, which the message does "
+        + "not show.")
+  }
+
+  private func open(_ decision: LinkPolicy.Decision, daemon: String, saying why: String) {
+    switch decision {
     case .open(let url):
       NSWorkspace.shared.open(url)
     case .confirm(let url):
@@ -655,8 +676,7 @@ public final class MusterWindow: NSObject {
         .map { FileManager.default.displayName(atPath: $0.path) } ?? "whichever app handles it"
       ConfirmSheet.ask(
         on: window, question: "Open this link?",
-        body: "A program in this pane linked some text to this address, which the screen does "
-          + "not show. It opens in \(handler).",
+        body: "\(why) It opens in \(handler).",
         confirm: "Open Link", preview: url.absoluteString,
         then: { NSWorkspace.shared.open(url) })
     case .refuse(let reason):
@@ -667,7 +687,7 @@ public final class MusterWindow: NSObject {
         [
           "daemon": daemon,
           "reason": reason,
-          "impact": "a cmd-clicked link in this pane did not open",
+          "impact": "a link did not open",
           "check": "whether the link is a path on another machine, or a file that would run "
             + "code; copy it and open it by hand if it is what you meant",
         ])

@@ -62,6 +62,25 @@ public enum LinkPolicy {
     }
   }
 
+  /// A link in a message an agent posted: in a banner or a conversation.
+  ///
+  /// Always judged as a hyperlink, whose target the text does not show: an agent writes the text
+  /// and the target alike, and `[Run it now](file:///tmp/x.command)` reads as anything it likes.
+  /// A path names a file on this Mac only in a group kept here; one copied from another machine
+  /// (`review@devenv`) has messages written there (mine).
+  public static func decide(messageLink url: URL, group: String) -> Decision {
+    decide(
+      OpenedLink(kind: .hyperlink, url: url.absoluteString),
+      onThisMachine: !keptElsewhere(group))
+  }
+
+  /// Whether a group's name says it is kept on another machine: something, an @, and a machine,
+  /// the daemon's own rule (`muster_msg::split_machine`), so `@human+otter` is kept here.
+  static func keptElsewhere(_ group: String) -> Bool {
+    guard let at = group.lastIndex(of: "@") else { return false }
+    return at != group.startIndex && group.index(after: at) != group.endIndex
+  }
+
   private static let elsewhere = Decision.refuse(
     "the path is on the machine the pane runs on, not on this Mac")
 

@@ -253,12 +253,21 @@ struct BannerStackView: View {
   let onLeave: () -> Void
   /// Ends an input method's composition in the reply field holding the keyboard, if there is one.
   let endComposition: () -> Bool
+  /// Opens a link in a banner's message, by the window's link policy, with its daemon and group.
+  let onLink: (URL, String, String) -> Void
 
   var body: some View {
     VStack(alignment: .trailing, spacing: 8) {
       ForEach(board.banners, id: \.identity) { banner in
         BannerCard(
-          banner: banner, board: board, onLeave: onLeave, endComposition: endComposition)
+          banner: banner, board: board, onLeave: onLeave, endComposition: endComposition
+        )
+        .environment(
+          \.openURL,
+          OpenURLAction { url in
+            onLink(url, banner.daemonID, banner.group)
+            return .handled
+          })
       }
       if board.folded > 0, let oldest = board.oldest {
         Button("\(board.folded) more - open the oldest") {
@@ -544,7 +553,8 @@ public final class BannerHost {
     let view = NSHostingView(
       rootView: BannerStackView(
         board: board, onLeave: { [weak self] in self?.onLeave?() },
-        endComposition: { [weak self] in self?.endComposition() ?? false }))
+        endComposition: { [weak self] in self?.endComposition() ?? false },
+        onLink: { [weak self] url, daemon, group in self?.onLink?(url, daemon, group) }))
     view.sizingOptions = [.intrinsicContentSize]
     view.layer?.backgroundColor = .clear
     return view
@@ -552,6 +562,9 @@ public final class BannerHost {
 
   /// Gives the keyboard back to the window's pane.
   var onLeave: (() -> Void)?
+
+  /// Opens a link in a banner's message, with its daemon and group, by the window's link policy.
+  var onLink: ((URL, String, String) -> Void)?
 
   init(board: BannerBoard = .shared) {
     self.board = board

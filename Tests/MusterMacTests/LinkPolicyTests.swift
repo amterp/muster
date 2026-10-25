@@ -86,4 +86,34 @@ struct LinkPolicyTests {
   func aBareHyperlinkIsRefused() {
     #expect(decide("/etc/hosts", .hyperlink) == .refuse("the hyperlink's target has no scheme"))
   }
+
+  @Test("a message's link that would run something is refused, whatever its text says")
+  func aMessagesRunnableLinkIsRefused() throws {
+    let script = FileManager.default.temporaryDirectory
+      .appendingPathComponent("muster-link-\(UUID().uuidString).command")
+    try "#!/bin/sh\n".write(to: script, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: script) }
+    #expect(
+      LinkPolicy.decide(messageLink: script, group: "review")
+        == .refuse("opening the file could run code"))
+  }
+
+  @Test("a message's web link opens, and another application's scheme asks first")
+  func aMessagesLinkIsAHyperlink() throws {
+    let web = try #require(URL(string: "https://example.com/pr/42"))
+    #expect(LinkPolicy.decide(messageLink: web, group: "review") == .open(web))
+    let other = try #require(URL(string: "vscode://open?file=/etc/hosts"))
+    #expect(
+      LinkPolicy.decide(messageLink: other, group: "review") == .confirm(other),
+      "an agent wrote both the text and the target, so the target is shown first")
+  }
+
+  @Test("a path in a message is on this Mac only in a group kept here")
+  func aMessagesPathIsWhereItsGroupIsKept() throws {
+    let path = try #require(URL(string: "file:///etc/hosts"))
+    #expect(LinkPolicy.decide(messageLink: path, group: "review@devenv") != .open(path))
+    #expect(!LinkPolicy.keptElsewhere("@human+otter"), "a pair group with the human is kept here")
+    #expect(LinkPolicy.keptElsewhere("@human+otter@devenv"))
+    #expect(!LinkPolicy.keptElsewhere("review"))
+  }
 }

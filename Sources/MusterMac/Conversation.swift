@@ -346,6 +346,8 @@ final class ConversationHost {
   /// The group on screen, or nil while the window shows its panes.
   private(set) var shown: ConversationGroup?
   private var leaveChord: Core.Binding?
+  /// Opens a link in a message, by the window's link policy.
+  var onLink: (URL, ConversationGroup) -> Void = { _, _ in }
 
   init(requests: ConversationRequests) {
     self.requests = requests
@@ -376,7 +378,8 @@ final class ConversationHost {
     let view = NSHostingView(
       rootView: ConversationView(
         thread: thread, members: members, box: box, requests: { [weak self] in self?.requests },
-        leaveChord: { [weak self] in self?.leaveChord }))
+        leaveChord: { [weak self] in self?.leaveChord },
+        onLink: { [weak self] url, group in self?.onLink(url, group) }))
     attach(view)
     hosting = view
     return view
@@ -442,6 +445,7 @@ struct ConversationView: View {
   /// Read when used rather than held, so the host can hand the view new ones.
   let requests: @MainActor () -> ConversationRequests?
   let leaveChord: @MainActor () -> Core.Binding?
+  let onLink: @MainActor (URL, ConversationGroup) -> Void
 
   var body: some View {
     VStack(spacing: 0) {
@@ -459,6 +463,14 @@ struct ConversationView: View {
       }
     }
     .background(Color(nsColor: .textBackgroundColor))
+    // Every link an agent writes, through the policy the terminal's links follow, rather than
+    // opened as whatever scheme it names.
+    .environment(
+      \.openURL,
+      OpenURLAction { url in
+        if let group = thread.group { onLink(url, group) }
+        return .handled
+      })
   }
 }
 
