@@ -679,6 +679,61 @@ fn a_nested_agent_posts_as_its_pane_but_does_not_read_or_wait_for_it() {
     assert!(read.contains("for-the-pane"), "the pane's agent lost its message: {read}");
 }
 
+/// A nested `claude -p` has an inbox of its own, which a request taken as the pane would give the
+/// pane's participant in place of its own: a wake sent there ends with the nested session. So its
+/// posts carry the pane alone, and one naming another participant, as `join --name` does, is a
+/// session of its own and leaves the pane where it was.
+#[test]
+fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
+    use proto::msg_answer::Answer;
+    use proto::msg_request::{Caller, Request, Who};
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    daemon.run_agent("p1");
+    daemon.run_agent("p2");
+    let home = daemon.root().join("home");
+    let inbox = daemon.root().join("nested.inbox.sock");
+    let _listener = std::os::unix::net::UnixListener::bind(&inbox).unwrap();
+    let nested = |line: &str, count: usize| {
+        let cli = env!("CARGO_BIN_EXE_muster");
+        let with_inbox = format!("/usr/bin/env CLAUDE_CODE_MESSAGING_SOCKET={}", inbox.display());
+        daemon.type_into("p1", &format!("nested-run {with_inbox} {cli} {line}"));
+        let reported = until_some(&format!("{count} commands from the nested agent"), || {
+            let reported = std::fs::read_to_string(home.join("fake-agent-reported")).ok()?;
+            let lines: Vec<String> = reported.lines().map(str::to_string).collect();
+            (lines.len() >= count).then_some(lines)
+        });
+        let said = std::fs::read_to_string(home.join("fake-agent-nested-said")).unwrap_or_default();
+        assert_eq!(reported[count - 1], "nested 0", "`{line}` was refused: {said}");
+    };
+    let addresses = |control: &mut muster_harness::Control| {
+        let who = proto::request::Service::Msg(proto::MsgRequest {
+            caller: Some(Caller { as_name: Some("reader".into()), ..Caller::default() }),
+            request: Some(Request::Who(Who { group: None })),
+        });
+        let asked = expect(control, who, proto::Outcome::Done);
+        let Some(proto::answer::Detail::Msg(answer)) = &asked.answer.detail else { panic!() };
+        let Some(Answer::Members(members)) = &answer.answer else { panic!() };
+        members
+            .members
+            .iter()
+            .map(|member| (member.name.clone(), (member.pane.clone(), member.inbox.clone())))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let p2 = words(&daemon)["p2"].clone();
+    let socket = Some(inbox.display().to_string());
+
+    nested(&format!("msg post --to {p2} from-the-nested-agent"), 1);
+    assert_eq!(addresses(&mut control)["p1"], (Some("p1".to_string()), None), "after a post");
+
+    nested("msg join --name helper --group g", 2);
+    let after = addresses(&mut control);
+    assert_eq!(after["p1"], (Some("p1".to_string()), None), "the pane moved to the nested name");
+    assert_eq!(after["helper"], (None, socket), "the nested session is not its own");
+}
+
 /// A msg request that comes before the daemon's first manifest load cannot be attributed, so it
 /// is taken even through a server, and the daemon says why once, as it does for a report. The load
 /// here reads an override that never ends, as one on a mount that hangs does: a FIFO nobody opens.

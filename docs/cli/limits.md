@@ -489,9 +489,12 @@ Muster tells a nested agent's `muster msg` apart the same way, and refuses only 
 posts are the pane's, since it speaks for the agent that started it. Its `read` and `wait` are
 refused, because its messaging hooks run them after every tool call and around each turn: taken,
 they would hand the pane's messages to the nested session and mark them read, and its wait would
-take the pane's agent's wake. The hooks treat the refusal as nothing to read. One that names whom
-it reads as with `--as` is taken, and `env -u MUSTER_PANE` in front of the nested command makes it
-a session of its own.
+take the pane's agent's wake. The hooks treat the refusal as nothing to read. What it is taken for
+gives the pane none of its own addresses: a nested `claude -p` has an inbox of its own, and a wake
+sent there would end with it. One that names another participant, with `--as` or `join --name`, is
+a session of its own, reached through its own inbox, and leaves the pane where it was; so its read
+as that name is taken. `env -u MUSTER_PANE` in front of the nested command makes it a session of
+its own whatever it runs.
 
 Codex's shared app-server is refused whatever it reports. With its default settings, Codex 0.160
 runs the commands and hooks of every Codex session on the machine in one `codex app-server` process,

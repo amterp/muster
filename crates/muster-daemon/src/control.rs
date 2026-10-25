@@ -241,8 +241,10 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                     messages::through_server(&request, server)
                 }
                 Some(attribution::Sender::Agent(nearest)) => {
-                    nested_receiving(shared, &request, nearest)
-                        .unwrap_or_else(|| messages::handle(shared, request, &|| hung_up(&stream)))
+                    match from_agent(shared, request, nearest) {
+                        Ok(request) => messages::handle(shared, request, &|| hung_up(&stream)),
+                        Err(refused) => refused,
+                    }
                 }
                 None => messages::handle(shared, request, &|| hung_up(&stream)),
             }),
@@ -378,24 +380,29 @@ fn attributed(service: Option<&Service>) -> Option<attribution::Asked> {
     }
 }
 
-/// A refusal for a msg request that reads or waits for the messages of the pane it names, sent
-/// by an agent other than the pane's own: a nested one, such as a `claude -p` the pane's agent
-/// started, whose messaging hooks would otherwise take the pane's agent's messages. Its posts
-/// speak for the pane's agent, and are taken, as is a read that names whom it reads as with
-/// `--as`.
-fn nested_receiving(
+/// A msg request from `nearest`, as the daemon takes it. Sent by an agent nested in the pane it
+/// names, such as a `claude -p` the pane's agent started, a read or a wait as the pane is refused,
+/// since the nested agent's messaging hooks would take the pane's agent's messages, and anything
+/// else is narrowed to the addresses that are its to give ([`messages::as_nested`]). Any other
+/// request is taken as it came.
+fn from_agent(
     shared: &Shared,
-    request: &proto::MsgRequest,
+    request: proto::MsgRequest,
     nearest: &attribution::Nearest,
-) -> Option<Reply> {
+) -> Result<proto::MsgRequest, Reply> {
     use proto::msg_request::Request;
-    let caller = request.caller.as_ref().filter(|caller| caller.as_name.is_none())?;
-    if !matches!(request.request, Some(Request::Read(_) | Request::Wait(_))) {
-        return None;
+    let Some(caller) = request.caller.as_ref() else { return Ok(request) };
+    let Some(pane) = caller.pane.clone().filter(|pane| !pane.is_empty()) else {
+        return Ok(request);
+    };
+    let Some(own) = shared.lock().nested_in(&pane, nearest).map(str::to_string) else {
+        return Ok(request);
+    };
+    let receives = matches!(request.request, Some(Request::Read(_) | Request::Wait(_)));
+    if receives && caller.as_name.is_none() {
+        return Err(messages::from_nested(&pane, &own, nearest));
     }
-    let pane = caller.pane.as_deref().filter(|pane| !pane.is_empty())?;
-    let own = shared.lock().nested_in(pane, nearest)?.to_string();
-    Some(messages::from_nested(pane, &own, nearest))
+    Ok(messages::as_nested(request))
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

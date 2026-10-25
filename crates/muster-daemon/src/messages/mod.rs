@@ -426,6 +426,23 @@ pub(crate) fn from_nested(pane: &str, own: &str, nearest: &crate::attribution::N
     refused_as("", "nested_agent", &reason)
 }
 
+/// A request from an agent nested in the pane its caller names, as the daemon takes it. One that
+/// acts as the pane speaks for the pane's agent and carries the pane alone: the nested session's
+/// own inbox would replace the pane's participant's, and a wake sent there ends with the nested
+/// session. One that names another participant, with `--as` or `join --name`, is the nested
+/// session's own and carries its inbox without the pane, which would otherwise move to that name.
+pub(crate) fn as_nested(mut request: proto::MsgRequest) -> proto::MsgRequest {
+    let joins_as = matches!(&request.request, Some(Asked::Join(join)) if join.name.is_some());
+    if let Some(caller) = request.caller.as_mut() {
+        if caller.as_name.is_some() || joins_as {
+            caller.pane = None;
+        } else {
+            caller.inbox = None;
+        }
+    }
+    request
+}
+
 /// The answer, saying what each participant named after its pane is called, for it to be shown
 /// by: `otter` rather than `p29te12q4t` alone. After the request, which may have made one. An
 /// answer carried from another machine already says what that machine calls its names.
@@ -2233,5 +2250,42 @@ mod tests {
         messages.held.clear();
         let holding = messages.hold(std::slice::from_ref(&wake), &[], &Panes::default());
         assert!(holding.deferred.is_empty(), "{:?}", holding.deferred);
+    }
+
+    /// A nested agent acting as its pane gives the pane none of its own addresses, and one naming
+    /// another participant is a session of its own, without the pane. Codex's `codex exec` has no
+    /// inbox, and acts as the pane as it came.
+    #[test]
+    fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
+        use proto::msg_request::{self as asked, Caller as Called, Join, Post};
+        let inbox = asked::Inbox { socket: "/tmp/nested.sock".to_string(), inode: 7 };
+        let nested = |as_name: Option<&str>, inbox: Option<asked::Inbox>, request| {
+            let caller = Called {
+                as_name: as_name.map(str::to_string),
+                inbox,
+                pane: Some("p1".to_string()),
+                directory: None,
+            };
+            let taken =
+                as_nested(proto::MsgRequest { caller: Some(caller), request: Some(request) });
+            let caller = taken.caller.unwrap();
+            (caller.pane, caller.inbox.map(|inbox| inbox.socket))
+        };
+        let post = || Asked::Post(Post { body: "hi".to_string(), ..Post::default() });
+        let join = |name: Option<&str>| {
+            Asked::Join(Join {
+                name: name.map(str::to_string),
+                group: Some("g".into()),
+                pull: false,
+            })
+        };
+        let pane = (Some("p1".to_string()), None);
+        let own = (None, Some("/tmp/nested.sock".to_string()));
+
+        assert_eq!(nested(None, Some(inbox.clone()), post()), pane, "a post as the pane");
+        assert_eq!(nested(None, Some(inbox.clone()), join(None)), pane, "a join as the pane");
+        assert_eq!(nested(None, Some(inbox.clone()), join(Some("helper"))), own, "join --name");
+        assert_eq!(nested(Some("helper"), Some(inbox), post()), own, "--as");
+        assert_eq!(nested(None, None, post()), pane, "codex exec");
     }
 }
