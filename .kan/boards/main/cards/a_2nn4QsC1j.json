@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-doorbell-test-read",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1792905612468,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-25 in the full gate at 840fe346, load 13.5: doorbell::a_post_while_its_agent_restarts_waits_for_the_resumed_agent failed at crates/muster-daemon/tests/daemon/doorbell.rs:1286, the post answered Woken (p1 idle) where the test expects Deferred, then a harness request went unanswered for 20 s. It passed alone in 12 s. The commits being gated touched the conversation's seam, not the doorbell. Likely the restart had not begun when the post arrived on a starved machine; check what the test waits for before posting.",
+  "id": "a_2nn4QsC1j",
+  "position": "b1S",
+  "title": "A doorbell test read a post as woken where it waits for the resumed agent, once under load",
+  "type": "bug",
+  "updated_at_millis": 1792905612468,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792905612468}
+  ]
+}

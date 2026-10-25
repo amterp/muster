@@ -24,6 +24,12 @@
       "body": "2026-10-24 23:20: a third test failed the same way in the gate at fd904260, at load 10.8: terminal::clear_screen_on_the_alternate_screen_sends_the_program_the_key, its heard file empty after 20 s. Passed alone. The commits being gated touched messaging and the banner, not a pane's input.",
       "author": "Alexander Terp",
       "created_at_millis": 1792901043785
+    },
+    {
+      "id": "c_2nnAGeRJn",
+      "body": "2026-10-25: a fourth, in the seam suite at 840fe346, load 15.7: pane_focus::a_daemon_that_comes_back_tells_the_pane_again_that_it_has_focus timed out with the program having heard \"\" where it expected the focus report ESC [ I. Passed 3 of 3 alone. Same shape as the others: input sent to a pane is never read while the machine is starved.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792905836727
     }
   ],
   "created_at_millis": 1792856237685,
@@ -36,7 +42,7 @@
   ],
   "title": "🎲 Input sent to a pane just after it prints ready is sometimes never read (typing tests, ~3% under load)",
   "type": "bug",
-  "updated_at_millis": 1792901043785,
+  "updated_at_millis": 1792905836727,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792856237685},
     {"field":"column","value":"next","at":1792860389186}

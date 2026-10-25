@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2nn4B95Pe",
+      "body": "Sharper, 2026-10-25: 764c1c2e (main, 10-24 09:57) already ends a declared wait after 10 minutes and tells the maker. The running Muster was 0.18.1-dev, installed at 10-24 12:02, after that commit, and the daemon answered as 0.18.1-dev. Yet the helper's wait, declared with `\"$MUSTER_DAEMON\" report --waiting \"cargo fmt in the background\"` at about 20:35, showed in muster window as `waiting 53m` and `waiting 57m`, and no notice reached its maker. So either that build predates 764c1c2e after all, or the 10-minute end does not fire in some case (the helper's turn had ended; one background shell was still running). Check which commit tools/install-main built, then reproduce: declare a wait, end the turn, leave a background job hanging.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792905602672
+    }
+  ],
   "created_at_millis": 1792896283950,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-24 running two parallel-work helpers. One declared `report --waiting \"cargo fmt in the background\"` and ended its turn; its background command hung for an hour on a `cat` reading a stdin that never closed. Muster tells a maker when a helper is blocked, stuck, or idle without having reported to it, but `waiting` is none of those, so nothing reached the maker, and `muster window` showed `waiting 57m` to nobody looking. It was found only by reading the pane. Something like a notice to the maker once a helper has waited past a limit (or past a time the helper gave with --waiting) would have caught it within minutes.",
@@ -13,7 +21,7 @@
   "position": "b1q",
   "title": "A helper waiting on its own job is never noticed to its maker, however long it waits",
   "type": "enhancement",
-  "updated_at_millis": 1792896283950,
+  "updated_at_millis": 1792905602672,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792896283950}
   ]
