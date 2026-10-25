@@ -66,14 +66,20 @@ pub fn split_machine(name: &str) -> Option<(&str, &str)> {
 
 /// Whether `name` is the human: this machine's, or another's as `@human@machine`. There is
 /// one person, homed where the app runs, so a policy's `@human` means the human on any machine.
-pub(crate) fn is_human(name: &str) -> bool {
+pub fn is_human(name: &str) -> bool {
     name == HUMAN || split_machine(name).is_some_and(|(base, _)| base == HUMAN)
 }
 
 /// Whether `name` is Muster: this machine's, or another's as `@muster@machine`, which is how a
 /// replica writes what the group's home posted as Muster.
-pub(crate) fn is_muster(name: &str) -> bool {
+pub fn is_muster(name: &str) -> bool {
     name == MUSTER || split_machine(name).is_some_and(|(base, _)| base == MUSTER)
+}
+
+/// Whether a question `asker` asked of `to` may be answered by `name`: it is addressed to them,
+/// or to nobody, and they did not ask it.
+pub fn asked_of(asker: &str, to: &[String], name: &str) -> bool {
+    asker != name && (to.is_empty() || to.iter().any(|addressee| addressee == name))
 }
 
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).

@@ -1,0 +1,54 @@
+{
+  "concept": "names.participant",
+  "source": "authored",
+  "citation": "MIP-4, sections 6, 10 and 11 (docs/mip/0004-agent-messaging.md); MIP-9, section 6 (docs/mip/0009-group-conversation.md)",
+  "why": "The daemon and the window's core each read participants' and groups' names: which machine a name is kept on, whether it is the human or Muster, and whom a question is asked of. The core depends on no daemon crate, so it spells these rules itself; both are run against these cases, so a rule cannot come apart between them unseen.",
+  "cases": [
+    {
+      "name": "a name with nothing after its last @ names no machine",
+      "why": "Both halves must be there: `@human+p2` is a pair group with the human, kept here, and `a@` and `@b` name nobody on any machine.",
+      "given": { "names": ["@human+p2", "a@", "@b", "@human", "review"] },
+      "expect": {
+        "split": [null, null, null, null, null],
+        "human": [false, false, false, true, false],
+        "muster": [false, false, false, false, false]
+      }
+    },
+    {
+      "name": "a name kept on another machine splits at its last @",
+      "why": "`review@devenv` is the group `review` on `devenv`, and `@human@laptop` the human on `laptop`. A name splits at its last @, so `@human@laptop@x` is something on `x` whose own name is `@human@laptop`, which is not the human.",
+      "given": { "names": ["review@devenv", "@human@laptop", "@muster@devenv", "@human@laptop@x"] },
+      "expect": {
+        "split": [["review", "devenv"], ["@human", "laptop"], ["@muster", "devenv"], ["@human@laptop", "x"]],
+        "human": [false, true, false, false],
+        "muster": [false, false, true, false]
+      }
+    },
+    {
+      "name": "the human and Muster are named exactly",
+      "why": "A name that starts like the human's is somebody else's, and so is one with an @ and no machine after it.",
+      "given": { "names": ["@humane", "@human@", "@musterx", "@muster@"] },
+      "expect": {
+        "split": [null, null, null, null],
+        "human": [false, false, false, false],
+        "muster": [false, false, false, false]
+      }
+    },
+    {
+      "name": "a question is asked of the human when it names them or nobody",
+      "why": "A question addressed to the human, or to nobody, may be answered by the human; one addressed to others only may not, nor one the human asked. The human is named as the group's home names them: `@human` there, or `@human@laptop` in a group kept on another machine.",
+      "given": {
+        "questions": [
+          { "asker": "a", "to": ["@human"], "human": "@human" },
+          { "asker": "a", "to": [], "human": "@human" },
+          { "asker": "a", "to": ["b"], "human": "@human" },
+          { "asker": "a", "to": ["b", "@human"], "human": "@human" },
+          { "asker": "@human", "to": [], "human": "@human" },
+          { "asker": "a", "to": ["@human@laptop"], "human": "@human@laptop" },
+          { "asker": "@human@laptop", "to": [], "human": "@human@laptop" }
+        ]
+      },
+      "expect": { "asked": [true, true, false, true, false, true, false] }
+    }
+  ]
+}

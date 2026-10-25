@@ -22,7 +22,8 @@ pub use across::{
 };
 pub use entry::{Answering, Change, Entry, What};
 pub use names::{
-    HUMAN, LONGEST_GROUP, MUSTER, default_name, is_machine, pair_group, split_machine,
+    HUMAN, LONGEST_GROUP, MUSTER, asked_of, default_name, is_human, is_machine, is_muster,
+    pair_group, split_machine,
 };
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};

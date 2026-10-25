@@ -31,6 +31,15 @@ pub fn split_machine(name: &str) -> Option<(&str, &str)> {
     (!base.is_empty() && !machine.is_empty()).then_some((base, machine))
 }
 
+/// Whether a question `asker` asked of `to` is the human's to answer: addressed to them, or to
+/// nobody, and asked by somebody else, never Muster. The daemon holds a reply to the same rule
+/// (`muster_msg::asked_of`), and corpus/conformance/participant-names.json runs both.
+pub fn asked_of_human(asker: &str, to: &[String]) -> bool {
+    !posting::is_human(asker)
+        && !posting::is_muster(asker)
+        && (to.is_empty() || to.iter().any(|to| posting::is_human(to)))
+}
+
 /// Which of the groups the human is in a name asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Named {
@@ -95,14 +104,10 @@ impl Group {
         !posting::is_muster(name) && !posting::is_human(name) && self.is_member(name)
     }
 
-    /// Whether the human may pick one of the answers `message` offers: it offers some, it is
-    /// from an agent, and it was asked of the human - addressed to them, or to nobody. The
-    /// daemon holds a reply to the same rule (`muster_msg`'s `not_asked_of`).
+    /// Whether the human may pick one of the answers `message` offers: it offers some, and it
+    /// was asked of the human ([`asked_of_human`]).
     pub fn asks_human(&self, message: &Message) -> bool {
-        !message.answers.is_empty()
-            && !posting::is_human(&message.author)
-            && !posting::is_muster(&message.author)
-            && (message.to.is_empty() || message.to.iter().any(|to| posting::is_human(to)))
+        !message.answers.is_empty() && asked_of_human(&message.author, &message.to)
     }
 
     /// Each question answered so far, by its number: who answered it and with what. The first

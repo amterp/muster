@@ -2880,7 +2880,7 @@ impl<S: Store> Messaging<S> {
         let Some((asker, to, answers)) = found else {
             return Err(Refusal::NoSuchQuestion { group: group.to_string(), question });
         };
-        if asker == author || !(to.is_empty() || to.iter().any(|name| name == author)) {
+        if !crate::names::asked_of(asker, to, author) {
             let (name, group) = (author.to_string(), group.to_string());
             return Err(Refusal::NotAskedOf { name, group, question });
         }

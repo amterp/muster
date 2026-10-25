@@ -22,6 +22,7 @@ mod names;
 mod pane_address;
 mod pane_input;
 mod pane_painting;
+mod participant_names;
 mod poison;
 mod problems;
 mod reconnect;

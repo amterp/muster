@@ -116,4 +116,14 @@ struct LinkPolicyTests {
     #expect(LinkPolicy.keptElsewhere("@human+otter@devenv"))
     #expect(!LinkPolicy.keptElsewhere("review"))
   }
+
+  /// The daemon's and the core's reading of the same names is in
+  /// corpus/conformance/participant-names.json, which the shell's drivers do not load.
+  @Test("a group is kept elsewhere only when something follows its last @, and precedes it")
+  func aGroupIsKeptWhereItsNameSays() {
+    let kept = ["@human+p2", "a@", "@b", "@human", "review"].filter(LinkPolicy.keptElsewhere)
+    #expect(kept.isEmpty)
+    let elsewhere = ["review@devenv", "@human@laptop", "@human@laptop@x"]
+    #expect(elsewhere.allSatisfy(LinkPolicy.keptElsewhere))
+  }
 }

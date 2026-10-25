@@ -88,7 +88,7 @@ pub fn is_muster(name: &str) -> bool {
 }
 
 fn is_named(name: &str, base: &str) -> bool {
-    name.strip_prefix(base).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+    name == base || crate::conversation::split_machine(name).is_some_and(|(own, _)| own == base)
 }
 
 /// Whether a live participant heard the post: one was woken or will be rung, was already woken,
