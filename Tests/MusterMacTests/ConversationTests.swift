@@ -375,6 +375,21 @@ struct ConversationTests {
         inField: false) == .leave)
   }
 
+  @Test("Send gives the core the field's words first, if it has not heard them")
+  func sendCatchesTheCoreUp() {
+    let (box, recorder) = openBox(text: "on i")
+    box.fieldContents = { ("on it", 5) }
+
+    box.send()
+
+    #expect(recorder.edits.last?.text == "on it")
+    #expect(recorder.sent.last == "post review")
+    #expect(recorder.edits.count == 1)
+
+    box.send()
+    #expect(recorder.edits.count == 1, "a core that has the words is not told them again")
+  }
+
   @Test("nothing is picked while a post is on its way")
   func noPickWhilePending() {
     let (box, recorder) = openBox(sent: .pending)

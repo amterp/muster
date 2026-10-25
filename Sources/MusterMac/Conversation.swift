@@ -208,6 +208,8 @@ final class MessageBox: ObservableObject {
   var onFocus: () -> Void = {}
   /// Gives the keyboard to the newest question's answers, if there is one to answer.
   var tabToAnswers: () -> Bool = { false }
+  /// What the field holds now, with its cursor in scalars; nil while it is composing or absent.
+  var fieldContents: () -> (text: String, cursor: Int)? = { nil }
 
   init(requests: ConversationRequests) {
     self.requests = requests
@@ -316,6 +318,12 @@ final class MessageBox: ObservableObject {
   }
 
   func send() {
+    // The core posts its own copy of the draft, which hears of the field's text on each change.
+    // An input method that commits its composition without changing the text would leave that
+    // copy a composition behind, so the field's words go first.
+    if let field = fieldContents(), field.text != draft.text {
+      edited(text: field.text, cursor: field.cursor)
+    }
     guard let group, sendable else { return }
     Core.info("conversation.send", ["daemon": group.daemon, "group": group.group])
     requests.post(group)
@@ -425,6 +433,12 @@ final class ConversationHost {
     box = MessageBox(requests: requests)
     box.onFocus = { [weak self] in self?.takeKeyboard() }
     box.tabToAnswers = { [weak self] in self?.focusNewestQuestion() ?? false }
+    box.fieldContents = { [weak self] in
+      guard let hosting = self?.hosting, let field = Self.field(in: hosting),
+        !field.hasMarkedText()
+      else { return nil }
+      return (field.string, field.scalarCursor)
+    }
   }
 
   func take(bindings: [Core.Binding]) {
