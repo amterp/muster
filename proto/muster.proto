@@ -2453,6 +2453,8 @@ message Banner {
   string group = 2;
   // The message's number in its group, which every request about this banner names.
   uint64 seq = 3;
+  // The author as the conversation names them: an agent in a pane by its callsign. Every name
+  // the banner shows is named so.
   string author = 4;
   bool urgent = 5;
   // When the daemon kept it, in milliseconds since the Unix epoch.
@@ -2480,6 +2482,8 @@ message Banner {
   repeated string answers = 17;
   // Which of them the human picked, from 0, to go with the reply.
   optional uint32 picked = 18;
+  // The author's participant name, which a reply is addressed to.
+  string author_name = 19;
 }
 
 // Where a post the human sent stands (mip/0009-group-conversation.md, section 4).

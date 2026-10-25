@@ -137,6 +137,15 @@ pub struct Banner {
     pub waiting: Option<Message>,
     /// Whether the banner takes a reply now.
     pub replyable: bool,
+    /// Each pane participant's callsign, by its participant name, as the group's daemon said.
+    pub called: BTreeMap<String, String>,
+}
+
+impl Banner {
+    /// What the banner calls a participant, as the conversation calls them.
+    pub fn named(&self, name: &str) -> String {
+        posting::shown(name, &self.called)
+    }
 }
 
 /// A reply from a banner, ready to post: to the author it shows, with the body composed from the
@@ -163,13 +172,21 @@ pub struct Stack {
 pub struct Banners {
     standing: BTreeMap<GroupKey, Standing>,
     settled: BTreeMap<GroupKey, u64>,
+    /// Each group's pane participants' callsigns, from the answers its messages were fetched in.
+    called: BTreeMap<GroupKey, BTreeMap<String, String>>,
     raises: u64,
     allowed: bool,
 }
 
 impl Default for Banners {
     fn default() -> Banners {
-        Banners { standing: BTreeMap::new(), settled: BTreeMap::new(), raises: 0, allowed: true }
+        Banners {
+            standing: BTreeMap::new(),
+            settled: BTreeMap::new(),
+            called: BTreeMap::new(),
+            raises: 0,
+            allowed: true,
+        }
     }
 }
 
@@ -263,14 +280,19 @@ impl Banners {
         Some(last)
     }
 
-    /// The message numbered `seq` in `group`, fetched for a banner, or why it could not be.
-    /// Returns whether anything drawn changed.
+    /// The message numbered `seq` in `group`, fetched for a banner, or why it could not be, with
+    /// the callsigns of the pane participants the daemon's answer named. Returns whether anything
+    /// drawn changed.
     pub fn fetched(
         &mut self,
         group: &GroupKey,
         seq: u64,
         fetched: Result<Message, String>,
+        called: BTreeMap<String, String>,
     ) -> bool {
+        if !called.is_empty() {
+            self.called.entry(group.clone()).or_default().extend(called);
+        }
         let Some(standing) = self.standing.get_mut(group) else { return false };
         let slot = if matches!(standing.shown, Shown::Loading { seq: s, .. } if s == seq) {
             &mut standing.shown
@@ -433,6 +455,7 @@ impl Banners {
         let before = self.standing.len();
         self.standing.retain(|group, _| &group.daemon != daemon);
         self.settled.retain(|group, _| &group.daemon != daemon);
+        self.called.retain(|group, _| &group.daemon != daemon);
         before != self.standing.len()
     }
 
@@ -456,7 +479,12 @@ impl Banners {
             fits
         });
         Stack {
-            shown: drawn.into_iter().map(|(group, standing)| banner(group, standing)).collect(),
+            shown: drawn
+                .into_iter()
+                .map(|(group, standing)| {
+                    banner(group, standing, self.called.get(group).cloned().unwrap_or_default())
+                })
+                .collect(),
             folded: folded.len(),
             oldest: folded.last().map(|(group, _)| (*group).clone()),
         }
@@ -511,7 +539,7 @@ impl Banners {
     }
 }
 
-fn banner(group: &GroupKey, standing: &Standing) -> Banner {
+fn banner(group: &GroupKey, standing: &Standing, called: BTreeMap<String, String>) -> Banner {
     let replyable = match &standing.shown {
         Shown::Message(message) => {
             !posting::is_muster(&message.author)
@@ -531,5 +559,6 @@ fn banner(group: &GroupKey, standing: &Standing) -> Banner {
         sent: standing.sent.clone(),
         waiting,
         replyable,
+        called,
     }
 }

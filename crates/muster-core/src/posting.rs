@@ -64,6 +64,19 @@ pub const HUMAN: &str = "@human";
 /// Muster's own name, for what it says in a group. Never an addressee.
 pub const MUSTER: &str = "@muster";
 
+/// What a window calls a participant: "you" for the human, "Muster" for `@muster`, an agent in a
+/// pane by its pane's callsign when `called` gives one (MIP-9, section 1), and anybody else by
+/// their name. The banner and the conversation both name participants this way.
+pub fn shown(name: &str, called: &std::collections::BTreeMap<String, String>) -> String {
+    if is_human(name) {
+        "you".to_string()
+    } else if is_muster(name) {
+        "Muster".to_string()
+    } else {
+        called.get(name).cloned().unwrap_or_else(|| name.to_string())
+    }
+}
+
 /// Whether `name` is the human, on this machine or, as `@human@laptop`, on another.
 pub fn is_human(name: &str) -> bool {
     is_named(name, HUMAN)

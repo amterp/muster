@@ -283,7 +283,7 @@
       "expect": {
         "fetch": ["g#4"],
         "said": ["refused: @muster is Muster itself, which nobody can address, so nothing was sent"],
-        "stack": [{ "group": "g", "seq": 4, "author": "@muster", "replyable": false }]
+        "stack": [{ "group": "g", "seq": 4, "author": "Muster", "replyable": false }]
       }
     },
     {
@@ -654,6 +654,44 @@
         ],
         "stack": [
           { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "sent": "pending: ", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a banner names an agent in a pane by its callsign, and replies to its participant name",
+      "why": "The conversation calls an agent that never joined under a name by its pane's callsign, `otter`, not its pane id. A banner that said `p2w3r07bsd` for the same agent would be two names for one author (MIP-9, section 1). The reply still goes to the participant name, which is what the daemon addresses.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["p2w3r07bsd"] },
+          { "fetched": "g", "seq": 4, "author": "p2w3r07bsd", "body": "run it?", "called": { "p2w3r07bsd": "otter", "p3x4r07bsd": "heron" } },
+          { "reply": "g", "seq": 4, "body": "yes" },
+          { "notice": "g", "last": 5, "count": 2, "from": ["p2w3r07bsd", "p3x4r07bsd"] },
+          { "fetched": "g", "seq": 5, "author": "p3x4r07bsd", "body": "also this" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "said": ["to p2w3r07bsd"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "sent": "pending: yes", "waiting": "#5 from heron", "replyable": false }
+        ]
+      }
+    },
+    {
+      "name": "a banner whose message could not be fetched names its authors by the callsigns it knows",
+      "why": "The notice names authors as the daemon does, by participant name. The callsigns an earlier answer gave for the group still name them, so the banner says `otter` here as it did on the message before.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 2, "count": 1, "from": ["p2w3r07bsd"] },
+          { "fetched": "g", "seq": 2, "author": "p2w3r07bsd", "body": "first", "called": { "p2w3r07bsd": "otter" } },
+          { "notice": "g", "last": 3, "count": 2, "from": ["p2w3r07bsd"] },
+          { "fetched": "g", "seq": 3, "error": "the daemon went away" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#2", "g#3"],
+        "stack": [
+          { "group": "g", "seq": 3, "unloaded": "2 from otter: the daemon went away", "replyable": false }
         ]
       }
     }

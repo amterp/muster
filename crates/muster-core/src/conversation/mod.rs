@@ -80,13 +80,7 @@ impl Group {
     /// What a participant is called in the conversation: "you" for the human, "Muster" for
     /// `@muster`, and a pane's callsign rather than its id.
     pub fn shown(&self, name: &str) -> String {
-        if posting::is_human(name) {
-            "you".to_string()
-        } else if posting::is_muster(name) {
-            "Muster".to_string()
-        } else {
-            self.called.get(name).cloned().unwrap_or_else(|| name.to_string())
-        }
+        posting::shown(name, &self.called)
     }
 
     /// Whether `name` is in the group now. Counted as yes until `Who` has answered, so a

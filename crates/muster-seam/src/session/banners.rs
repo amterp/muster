@@ -6,12 +6,13 @@
 //! Banners are about the whole app, like the attention they come from: one stack, which the shell
 //! draws in the window in front.
 
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use muster_core::attention::GroupKey;
 use muster_core::banners::Message;
 use muster_core::composition::DaemonId;
-use muster_core::conversation::{Answering, What};
+use muster_core::conversation::{Answering, Entry, What};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_client::convert::messaging;
@@ -27,7 +28,7 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
     let spawned = std::thread::Builder::new().name("muster-banner-fetch".into()).spawn({
         let group = group.clone();
         move || {
-            let fetched = fetch_message(&group, seq);
+            let (fetched, called) = fetch_message(&group, seq);
             if let Err(why) = &fetched {
                 log::warn(
                     "banner.fetch_failed",
@@ -43,7 +44,8 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
                     },
                 );
             }
-            let changed = poison::lock(&SESSION, "session").banners.fetched(&group, seq, fetched);
+            let changed =
+                poison::lock(&SESSION, "session").banners.fetched(&group, seq, fetched, called);
             if changed {
                 announce();
             }
@@ -51,14 +53,24 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
     });
     if let Err(error) = spawned {
         let why = format!("no thread could be started to fetch it ({error})");
-        let changed = poison::lock(&SESSION, "session").banners.fetched(group, seq, Err(why));
+        let changed = poison::lock(&SESSION, "session").banners.fetched(
+            group,
+            seq,
+            Err(why),
+            BTreeMap::new(),
+        );
         if changed {
             announce();
         }
     }
 }
 
-fn fetch_message(group: &GroupKey, seq: u64) -> Result<Message, String> {
+/// The message, and the callsign of each pane participant the daemon's answer named, by which the
+/// banner names its author as the conversation does.
+fn fetch_message(
+    group: &GroupKey,
+    seq: u64,
+) -> (Result<Message, String>, BTreeMap<String, String>) {
     // Bounded above too, so the answer is the one entry rather than everything after it. A
     // daemon before 1.8 drops `before` and answers with the rest of the log, which `find` below
     // still reads the entry out of.
@@ -68,17 +80,22 @@ fn fetch_message(group: &GroupKey, seq: u64) -> Result<Message, String> {
         before: Some(seq + 1),
         ..Default::default()
     };
-    let answer = answer_as_human(&group.daemon, Asked::Log(log))
-        .map_err(|refusal| refusal.detail().to_string())?;
+    let answer = match answer_as_human(&group.daemon, Asked::Log(log)) {
+        Ok(answer) => answer,
+        Err(refusal) => return (Err(refusal.detail().to_string()), BTreeMap::new()),
+    };
     let entry = messaging::log_page(&answer, &group.group)
         .entries
         .into_iter()
-        .find(|entry| entry.seq == seq)
-        .ok_or_else(|| format!("the group's log holds no message #{seq}"))?;
-    match &entry.what {
-        What::Message(message) => Ok(Message::of(seq, entry.at_ms, message)),
-        _ => Err(format!("entry #{seq} in the group's log is not a message")),
-    }
+        .find(|entry| entry.seq == seq);
+    let message = match entry {
+        Some(Entry { at_ms, what: What::Message(message), .. }) => {
+            Ok(Message::of(seq, at_ms, &message))
+        }
+        Some(_) => Err(format!("entry #{seq} in the group's log is not a message")),
+        None => Err(format!("the group's log holds no message #{seq}")),
+    };
+    (message, answer.called.into_iter().collect())
 }
 
 /// Replies to the message the banner for `group` shows, as the human, to its author: `note`, and

@@ -287,7 +287,8 @@ fn banner(banner: &Banner) -> proto::Banner {
     };
     match &banner.shown {
         Shown::Message(message) => {
-            drawn.author.clone_from(&message.author);
+            drawn.author = banner.named(&message.author);
+            drawn.author_name.clone_from(&message.author);
             drawn.urgent = message.urgent;
             drawn.at_ms = message.at_ms;
             drawn.body = markdown(&message.body);
@@ -296,7 +297,7 @@ fn banner(banner: &Banner) -> proto::Banner {
             drawn.picked = banner.picked.and_then(|picked| u32::try_from(picked).ok());
         }
         Shown::Unloaded { from, count, why, .. } => {
-            drawn.from.clone_from(from);
+            drawn.from = from.iter().map(|name| banner.named(name)).collect();
             drawn.count = *count;
             drawn.unloaded.clone_from(why);
         }
@@ -304,7 +305,7 @@ fn banner(banner: &Banner) -> proto::Banner {
         Shown::Loading { .. } => {}
     }
     if let Some(waiting) = &banner.waiting {
-        drawn.waiting_author.clone_from(&waiting.author);
+        drawn.waiting_author = banner.named(&waiting.author);
         drawn.waiting_urgent = waiting.urgent;
     }
     drawn

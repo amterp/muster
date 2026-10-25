@@ -78,7 +78,17 @@ fn take(
             };
             Ok(Message::of(seq, 0, &message))
         };
-        banners.fetched(&key(group), seq, result);
+        let called = step
+            .get("called")
+            .and_then(Value::as_object)
+            .map(|called| {
+                called
+                    .iter()
+                    .filter_map(|(name, word)| Some((name.clone(), word.as_str()?.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        banners.fetched(&key(group), seq, result, called);
     } else if let Some(group) = text(step, "hold") {
         let held = step.get("held").and_then(Value::as_bool).unwrap_or(true);
         let seq = seq().ok_or_else(|| CaseError::new("`hold` needs `seq`"))?;
@@ -133,7 +143,7 @@ fn banner_json(banner: &Banner) -> Value {
     fields.insert("seq".into(), json!(banner.shown.seq()));
     match &banner.shown {
         Shown::Message(message) => {
-            fields.insert("author".into(), json!(message.author));
+            fields.insert("author".into(), json!(banner.named(&message.author)));
             if message.urgent {
                 fields.insert("urgent".into(), json!(true));
             }
@@ -150,7 +160,10 @@ fn banner_json(banner: &Banner) -> Value {
         Shown::Unloaded { from, count, why, .. } => {
             fields.insert(
                 "unloaded".into(),
-                json!(format!("{count} from {}: {why}", from.join(", "))),
+                json!(format!(
+                    "{count} from {}: {why}",
+                    from.iter().map(|name| banner.named(name)).collect::<Vec<_>>().join(", ")
+                )),
             );
         }
         Shown::Loading { .. } => {
@@ -174,7 +187,7 @@ fn banner_json(banner: &Banner) -> Value {
         let urgent = if waiting.urgent { ", urgent" } else { "" };
         fields.insert(
             "waiting".into(),
-            json!(format!("#{} from {}{urgent}", waiting.seq, waiting.author)),
+            json!(format!("#{} from {}{urgent}", waiting.seq, banner.named(&waiting.author))),
         );
     }
     fields.insert("replyable".into(), json!(banner.replyable));

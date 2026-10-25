@@ -4,7 +4,7 @@
 //! and a reply the daemon refuses or never answers stays in it.
 
 use crate::group_messages::{
-    entries, group_of_three, log, msg, named, post, posted, the_human, unread,
+    entries, group_of_three, in_pane, log, msg, named, post, posted, the_human, unread,
 };
 use muster::proto::{
     BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, PickBannerAnswer, ReplyToBanner,
@@ -14,7 +14,7 @@ use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{Answer, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::request::Service;
-use muster_harness::requests::{create, expect, in_new_tab, make, until_text};
+use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
 use muster_harness::{Control, Daemon, until};
 use prost::Message;
 use std::sync::Mutex;
@@ -38,6 +38,38 @@ fn a_message_for_the_human_raises_a_banner_showing_it_and_the_next_replaces_it()
     let banner = until_banner(|banner| banner.seq == second);
     assert_eq!(banner.author, "b", "one banner per group, showing its newest message");
     assert_eq!(banners().shown.len(), 1);
+}
+
+/// An agent in a pane that never joined under a name is the pane's participant, named by its
+/// id; the banner calls it by the pane's callsign, as the conversation does, and keeps the
+/// participant name a reply goes to.
+#[test]
+fn a_banner_names_an_agent_in_a_pane_by_its_callsign() {
+    let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    BANNERS.lock().expect("a panicking test poisoned the log").take();
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    open_window_with(&daemon.muster_config());
+    group_of_three(&mut control);
+    let join = Asked::Join(msg_request::Join {
+        group: Some("g".to_string()),
+        ..msg_request::Join::default()
+    });
+    expect(&mut control, msg(&in_pane("p1"), join), daemon_proto::Outcome::Done);
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "p1")
+        .and_then(|pane| pane.callsign)
+        .expect("the daemon drew p1 a callsign");
+
+    let asked = posted(&mut control, &in_pane("p1"), "@human", "can you look?", &[]);
+    let Some(Answer::Posted(asked)) = asked.answer else { panic!("not posted: {asked:?}") };
+    let banner = until_banner(|banner| banner.seq == asked.seq);
+    assert_eq!((banner.author.as_str(), banner.author_name.as_str()), (callsign.as_str(), "p1"));
 }
 
 #[test]
