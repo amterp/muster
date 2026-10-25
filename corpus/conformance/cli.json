@@ -196,6 +196,75 @@
       }
     },
     {
+      "name": "an answer names its question's group",
+      "why": "A question's number is its place in one group's log, so `--answer 4:1` without `--group` would name a different message in every group (MIP-9, section 6).",
+      "given": {
+        "argv": [
+          "msg",
+          "post",
+          "--answer",
+          "4:1"
+        ]
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
+      "name": "an answer is a question's number and an answer's, counted from 1",
+      "why": "`read` and `log` number a question's answers from 1, so `--answer` takes them as they are printed; a zero or a missing half names no answer.",
+      "given": {
+        "argv": [
+          "msg",
+          "post",
+          "--group",
+          "review",
+          "--answer",
+          "4:0"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
+      "name": "a reply picking an answer offers none of its own",
+      "why": "A post either asks a question or answers one; offering answers while picking one would leave a view unsure which buttons to draw.",
+      "given": {
+        "argv": [
+          "msg",
+          "post",
+          "--group",
+          "review",
+          "--answer",
+          "4:1",
+          "--option",
+          "Yes"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a followed log takes no page before",
+      "why": "A follow prints each entry as it lands after where it began, and none can land below a number the log has passed, so `--before` with `--follow` could print nothing more.",
+      "given": {
+        "argv": [
+          "msg",
+          "log",
+          "--group",
+          "review",
+          "--before",
+          "40",
+          "--follow"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
       "name": "an empty machine is refused rather than read as the one the keyboard is on",
       "why": "`--daemon \"$HOST\"` with HOST unset would otherwise put the pane on whichever machine the keyboard is on, the same mistake an empty pane makes, so the same rule refuses it.",
       "given": {

@@ -105,6 +105,42 @@ fn two_agents_post_read_and_are_held_to_the_guard() {
     assert_eq!(bodies, ["the parser is in", "done"]);
 }
 
+/// A question offers answers with `--option`, `read` numbers them, and `--answer` posts the
+/// reply that picks one, to whoever asked; a second pick is refused, and a page of the log ends
+/// on the reply.
+#[test]
+fn a_question_is_offered_read_and_answered_from_the_command_line() {
+    let daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "review"]));
+    ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "review"]));
+    let asked = ["msg", "--as", "a", "post", "--to", "b", "--option", "Run it now"];
+    let asked = [&asked[..], &["--option", "Skip it", "run the contract tier?"]].concat();
+    assert_eq!(unheard(&muster(&daemon, &asked)).lines().next(), Some("posted #4 to review"));
+
+    assert_eq!(
+        ok(&muster(&daemon, &["msg", "--as", "b", "read"])),
+        "--- review #4 | a -> b ---\nrun the contract tier?\n\n\
+         Answers (reply with `muster msg post --group review --answer 4:N`):\n\
+         1. Run it now\n2. Skip it\n--- end review #4 | a ---"
+    );
+    let reply =
+        ["msg", "--as", "b", "post", "--group", "review", "--answer", "4:2", "after", "lunch"];
+    assert_eq!(unheard(&muster(&daemon, &reply)).lines().next(), Some("posted #5 to review"));
+    let again =
+        muster(&daemon, &["msg", "--as", "b", "post", "--group", "review", "--answer", "4:1"]);
+    assert_eq!(again.status.code(), Some(1));
+    assert!(complained(&again).contains("answered already"), "{}", complained(&again));
+
+    let page = ok(&muster(&daemon, &["msg", "--json", "log", "--group", "review", "--last", "1"]));
+    let page: Value = serde_json::from_str(&page).unwrap();
+    let group = &page["groups"][0];
+    assert_eq!(group["earlier"], true);
+    let reply = &group["entries"][0];
+    assert_eq!(reply["to"], serde_json::json!(["a"]));
+    assert_eq!(reply["body"], "Answer: Skip it\n\nafter lunch");
+    assert_eq!(reply["answering"], serde_json::json!({"question": 4, "answer": "Skip it"}));
+}
+
 /// `--if-unread` is for a hook after every tool call, whose output the model is handed: a join
 /// or a leave is nothing to interrupt it with.
 #[test]

@@ -129,6 +129,13 @@ pub enum Verb {
         /// Reach agents in panes while they work, not once they are idle
         #[arg(long)]
         urgent: bool,
+        /// An answer to offer, which makes the post a question; repeat it for each, at most six
+        #[arg(long = "option", value_name = "ANSWER", conflicts_with = "answer")]
+        options: Vec<String>,
+        /// Answer question Q in --group with its Nth offered answer, as `read` and `log` number
+        /// them; the message, if any, goes with it as a note. --to defaults to who asked
+        #[arg(long, value_name = "Q:N", requires = "group", value_parser = pick)]
+        answer: Option<Pick>,
         /// The message, or `-` to read it from stdin
         #[arg(value_name = "TEXT", num_args = 0.., trailing_var_arg = true)]
         text: Vec<String>,
@@ -152,6 +159,12 @@ pub enum Verb {
         /// Only entries after this number
         #[arg(long, value_name = "N", default_value_t = 0)]
         since: u64,
+        /// Only the newest this many entries; with --follow, then each as it lands
+        #[arg(long, value_name = "COUNT", value_parser = clap::value_parser!(u32).range(1..))]
+        last: Option<u32>,
+        /// Only entries before this number, for the page before the oldest one printed
+        #[arg(long, value_name = "N", conflicts_with = "follow")]
+        before: Option<u64>,
         /// Keep printing entries as they land, until interrupted; with --json, one line each
         #[arg(long)]
         follow: bool,
@@ -252,6 +265,28 @@ pub struct Messaging {
     pub if_unread: bool,
     /// A log to keep printing as it grows, rather than answer once.
     pub follow: bool,
+    /// The offered answer a post picks, looked up in its question when the request is sent.
+    pub answer: Option<Pick>,
+}
+
+/// A reply's pick as `--answer` spells it: the question's number, and which of its offered
+/// answers, counted from 1 as `read` and `log` number them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pick {
+    pub question: u64,
+    pub answer: usize,
+}
+
+fn pick(text: &str) -> Result<Pick, String> {
+    let parsed = text.split_once(':').and_then(|(question, answer)| {
+        Some(Pick { question: question.parse().ok()?, answer: answer.parse().ok()? })
+    });
+    match parsed {
+        Some(pick) if pick.answer > 0 => Ok(pick),
+        _ => Err(format!(
+            "`{text}` is not a question's number and an answer's, such as `44:1` for #44's first"
+        )),
+    }
 }
 
 /// Turns a command line into a request, reading nothing: the caller's identity is what its
@@ -275,20 +310,22 @@ pub fn parse(
     let mut policy_from = None;
     let mut if_unread = false;
     let mut follow = false;
+    let mut answer = None;
     let asked = match verb {
         Verb::Join { name, group, pull } => {
             Asked::Join(msg_request::Join { name: name.clone(), group: group.clone(), pull: *pull })
         }
         Verb::Leave { group } => Asked::Leave(msg_request::Leave { group: group.clone() }),
         Verb::Who { group } => Asked::Who(msg_request::Who { group: group.clone() }),
-        Verb::Post { group, to, file, urgent, text } => {
+        Verb::Post { group, to, file, urgent, options, answer: pick, text } => {
+            answer = *pick;
             let body = if let Some(file) = file {
                 body_from = Some(TextSource::File(crate::args::file_to_read(file, here)?));
                 String::new()
             } else if text == &["-"] {
                 body_from = Some(TextSource::Stdin);
                 String::new()
-            } else if text.is_empty() {
+            } else if text.is_empty() && answer.is_none() {
                 return Err(Failure::Refused(format!(
                     "`{}` needs a message: as text, as `-` to read stdin, or with --file.",
                     spelling::command(POST, "")
@@ -301,6 +338,7 @@ pub fn parse(
                 to: to.clone(),
                 body,
                 urgent: *urgent,
+                answers: options.clone(),
                 ..Default::default()
             })
         }
@@ -308,13 +346,14 @@ pub fn parse(
             if_unread = *quiet;
             Asked::Read(msg_request::Read { group: group.clone() })
         }
-        Verb::Log { group, since, follow: following } => {
+        Verb::Log { group, since, last, before, follow: following } => {
             follow = *following;
             Asked::Log(msg_request::Log {
                 group: group.clone(),
                 since: *since,
                 follow: false,
-                ..Default::default()
+                newest: *last,
+                before: *before,
             })
         }
         Verb::Wait { group, timeout, due } => Asked::Wait(msg_request::Wait {
@@ -355,7 +394,7 @@ pub fn parse(
         Verb::Open { .. } => unreachable!("`msg open` asks the window, and args sends it there"),
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
-    Ok(Messaging { request, body_from, policy_from, if_unread, follow })
+    Ok(Messaging { request, body_from, policy_from, if_unread, follow, answer })
 }
 
 /// Sends the request to this machine's daemon and renders its answer.
@@ -406,8 +445,83 @@ pub fn run(
         }
     }
     let socket = daemon::socket_or_refusal(environment)?;
+    if let Some(pick) = messaging.answer
+        && let Some(Asked::Post(post)) = messaging.request.request.as_mut()
+    {
+        let question =
+            question(&socket, messaging.request.caller.as_ref(), post, pick, environment, json)?;
+        answering(post, pick, &question)?;
+    }
     let answer = ask(&socket, &messaging.request, Some(MayStart { environment, json }))?;
     render(&messaging.request, &answer, messaging.if_unread, json)
+}
+
+/// The question `pick` names in `post`'s group, which `--answer` makes `post` reply to.
+fn question(
+    socket: &Path,
+    caller: Option<&msg_request::Caller>,
+    post: &msg_request::Post,
+    pick: Pick,
+    environment: &BTreeMap<String, String>,
+    json: bool,
+) -> Result<msg_answer::Message, Trouble> {
+    let group = post.group.clone().unwrap_or_default();
+    let log = msg_request::Log {
+        group: group.clone(),
+        since: pick.question.saturating_sub(1),
+        before: Some(pick.question + 1),
+        ..Default::default()
+    };
+    let request = proto::MsgRequest { caller: caller.cloned(), request: Some(Asked::Log(log)) };
+    let answer = ask(socket, &request, Some(MayStart { environment, json }))?;
+    let Some((entries, _)) = render_entries(&answer)? else {
+        unreachable!("a log answers with entries or is refused")
+    };
+    let found = entries.groups.into_iter().flat_map(|group| group.entries).find_map(|entry| {
+        match entry.what {
+            Some(What::Message(message)) if entry.seq == pick.question => Some(message),
+            _ => None,
+        }
+    });
+    found.filter(|message| !message.answers.is_empty()).ok_or_else(|| {
+        Trouble::Refused(format!(
+            "#{} in {group} is not a question: no message offering answers has that number \
+             there, so nothing was posted. `{}` shows it.",
+            pick.question,
+            spelling::command(LOG, &format!("--group {group}"))
+        ))
+    })
+}
+
+/// Makes `post` the reply picking `pick` from `question`: the pick as a field, and its words at
+/// the top of the body, above whatever note was written, for an agent to read with no new
+/// parsing (MIP-9, section 6). Addressed to whoever asked, unless --to says otherwise.
+fn answering(
+    post: &mut msg_request::Post,
+    pick: Pick,
+    question: &msg_answer::Message,
+) -> Result<(), Trouble> {
+    let Some(answer) = question.answers.get(pick.answer - 1) else {
+        return Err(Trouble::Refused(format!(
+            "#{} offers {} answers, so --answer {}:{} names none of them, and nothing was posted.",
+            pick.question,
+            question.answers.len(),
+            pick.question,
+            pick.answer
+        )));
+    };
+    let note = post.body.trim();
+    post.body = if note.is_empty() {
+        format!("Answer: {answer}")
+    } else {
+        format!("Answer: {answer}\n\n{note}")
+    };
+    post.answering =
+        Some(msg_request::Answering { question: pick.question, answer: answer.clone() });
+    if post.to.is_empty() {
+        post.to = vec![question.author.clone()];
+    }
+    Ok(())
 }
 
 /// Prints a group's log, then each entry as it lands, until the reader goes away. Each batch is
@@ -434,6 +548,7 @@ pub fn follow(
             log.since = last.seq;
         }
         log.follow = true;
+        log.newest = None;
         let text = if json {
             let lines: Vec<String> = entries
                 .groups
@@ -633,6 +748,9 @@ fn blocks(request: &proto::MsgRequest) -> bool {
 /// request it does not know as though messaging were missing altogether.
 fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
     match &request.request {
+        Some(Asked::Log(log)) if log.newest.is_some() || log.before.is_some() => {
+            Some(("send a log a page at a time", proto::version::PAGED_LOG))
+        }
         Some(Asked::Log(log)) if log.follow => Some(("follow a log", 1)),
         Some(Asked::Wait(wait)) if wait.due => Some(("answer a wait only when a wake is due", 1)),
         Some(Asked::Join(join)) if join.pull => Some(("take a participant's hooks fetching", 1)),
@@ -644,6 +762,9 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
             | Asked::Pause(_)
             | Asked::Resume(_),
         ) if !says_who_may_urge(request) => Some(("keep groups with a policy", 1)),
+        Some(Asked::Post(post)) if !post.answers.is_empty() || post.answering.is_some() => {
+            Some(("keep the answers a question offers or a reply picks", proto::version::ANSWERS))
+        }
         Some(Asked::Post(post)) if post.urgent => Some(("post urgently", 3)),
         Some(Asked::GroupNew(_) | Asked::GroupSet(_)) => {
             Some(("keep a policy saying who may post urgently", 3))
@@ -1188,6 +1309,7 @@ fn entries_text(
                     "group": group.group,
                     "entries": entries,
                     "behind": group.behind,
+                    "earlier": group.earlier,
                 })
             })
             .collect();
@@ -1210,11 +1332,15 @@ fn entries_text(
                         format!(" -> {}", to.join(", "))
                     };
                     let urgent = if message.urgent { ", urgent" } else { "" };
+                    let answering = message.answering.as_ref().map_or(String::new(), |answering| {
+                        format!(", answering #{}", answering.question)
+                    });
                     let author = shown.name(&message.author);
-                    let head = format!("--- {name} #{seq} | {author}{to}{urgent} ---");
+                    let head = format!("--- {name} #{seq} | {author}{to}{urgent}{answering} ---");
                     format!(
-                        "{head}\n{}\n--- end {name} #{seq} | {author} ---",
+                        "{head}\n{}{}\n--- end {name} #{seq} | {author} ---",
                         message.body.trim_end_matches('\n'),
+                        answers_text(name, seq, &message.answers),
                     )
                 }
                 Some(What::Created(by)) => {
@@ -1238,6 +1364,21 @@ fn entries_text(
     if blocks.is_empty() && say_when_empty {
         blocks.push("nothing unread".to_string());
     }
+    // A page that left earlier entries out is full, so its length is the count to ask again for.
+    for group in &entries.groups {
+        if let (true, Some(first)) = (group.earlier, group.entries.first()) {
+            let page = format!(
+                "--group {} --before {} --last {}",
+                group.group,
+                first.seq,
+                group.entries.len()
+            );
+            blocks.push(format!(
+                "earlier entries are not shown: `{}` prints the page before",
+                spelling::command(LOG, &page)
+            ));
+        }
+    }
     // A replica whose home cannot be reached may lack what was posted there since.
     for group in &entries.groups {
         if let Some(machine) = &group.behind {
@@ -1248,6 +1389,20 @@ fn entries_text(
         }
     }
     blocks.join("\n")
+}
+
+/// A question's offered answers, numbered as `--answer` counts them, with the command that
+/// picks one, so an agent reading it in a terminal can answer.
+fn answers_text(group: &str, seq: u64, answers: &[String]) -> String {
+    if answers.is_empty() {
+        return String::new();
+    }
+    let reply = spelling::command(POST, &format!("--group {group} --answer {seq}:N"));
+    let mut text = format!("\n\nAnswers (reply with `{reply}`):");
+    for (at, answer) in answers.iter().enumerate() {
+        let _ = write!(text, "\n{}. {answer}", at + 1);
+    }
+    text
 }
 
 fn change_text(changed: &msg_answer::entry::Changed) -> &'static str {
@@ -1269,6 +1424,15 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
             value["body"] = message.body.clone().into();
             if message.urgent {
                 value["urgent"] = true.into();
+            }
+            if !message.answers.is_empty() {
+                value["answers"] = message.answers.clone().into();
+            }
+            if let Some(answering) = &message.answering {
+                value["answering"] = serde_json::json!({
+                    "question": answering.question,
+                    "answer": answering.answer,
+                });
             }
         }
         Some(What::Created(by)) => value["created"] = by.clone().into(),
@@ -1478,6 +1642,29 @@ mod tests {
         assert_eq!(needs_minor(&post(true)).map(|(_, minor)| minor), Some(3));
         assert_eq!(needs_minor(&new(None)).map(|(_, minor)| minor), Some(1));
         assert_eq!(needs_minor(&new(Some(vec![]))).map(|(_, minor)| minor), Some(3));
+    }
+
+    /// A daemon before 1.8 would keep a question without its answers and answer a page with the
+    /// whole log.
+    #[test]
+    fn answers_and_a_paged_log_are_asked_of_1_8_or_later_only() {
+        let asked = |request| proto::MsgRequest { caller: None, request: Some(request) };
+        let question = asked(Asked::Post(msg_request::Post {
+            urgent: true,
+            answers: vec!["Yes".to_string()],
+            ..Default::default()
+        }));
+        let reply = asked(Asked::Post(msg_request::Post {
+            answering: Some(msg_request::Answering::default()),
+            ..Default::default()
+        }));
+        let log = |newest, follow| {
+            asked(Asked::Log(msg_request::Log { newest, follow, ..Default::default() }))
+        };
+        for request in [&question, &reply, &log(Some(5), true)] {
+            assert_eq!(needs_minor(request).map(|(_, minor)| minor), Some(8), "{request:?}");
+        }
+        assert_eq!(needs_minor(&log(None, false)), None);
     }
 
     #[test]
@@ -1713,6 +1900,109 @@ mod tests {
             entries_text(&entries, true, false, &Shown::default()),
             "--- review #4 | director -> builder, urgent ---\nstop\n--- end review #4 | director ---"
         );
+    }
+
+    /// A question prints its answers after the body, numbered as `--answer` counts them, with
+    /// the command that picks one; a reply says which question it answers.
+    #[test]
+    fn a_question_prints_its_answers_and_a_reply_what_it_answers() {
+        let question = msg_answer::Message {
+            author: "builder".to_string(),
+            to: vec!["@human".to_string()],
+            body: "run the contract tier?".to_string(),
+            answers: vec!["Run it now".to_string(), "Skip it".to_string()],
+            ..Default::default()
+        };
+        let reply = msg_answer::Message {
+            author: "@human".to_string(),
+            to: vec!["builder".to_string()],
+            body: "Answer: Skip it".to_string(),
+            answering: Some(msg_request::Answering { question: 4, answer: "Skip it".to_string() }),
+            ..Default::default()
+        };
+        let entry =
+            |seq, message| msg_answer::Entry { seq, at_ms: 0, what: Some(What::Message(message)) };
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review".to_string(),
+                entries: vec![entry(4, question), entry(5, reply)],
+                ..Default::default()
+            }],
+        };
+        assert_eq!(
+            entries_text(&entries, true, false, &Shown::default()),
+            "--- review #4 | builder -> @human ---\n\
+             run the contract tier?\n\
+             \n\
+             Answers (reply with `muster msg post --group review --answer 4:N`):\n\
+             1. Run it now\n\
+             2. Skip it\n\
+             --- end review #4 | builder ---\n\
+             --- review #5 | @human -> builder, answering #4 ---\n\
+             Answer: Skip it\n\
+             --- end review #5 | @human ---"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&entries_text(&entries, true, true, &Shown::default())).unwrap();
+        let logged = &json["groups"][0]["entries"];
+        assert_eq!(logged[0]["answers"], serde_json::json!(["Run it now", "Skip it"]));
+        assert_eq!(logged[1]["answering"], serde_json::json!({"question": 4, "answer": "Skip it"}));
+    }
+
+    /// A page that left earlier entries out names the command for the page before it.
+    #[test]
+    fn a_page_of_a_log_says_how_to_ask_for_the_one_before() {
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review".to_string(),
+                entries: vec![msg_answer::Entry {
+                    seq: 41,
+                    at_ms: 0,
+                    what: Some(What::Joined("critic".to_string())),
+                }],
+                earlier: true,
+                ..Default::default()
+            }],
+        };
+        assert_eq!(
+            entries_text(&entries, false, false, &Shown::default()),
+            "--- review #41 | critic joined ---\n\
+             earlier entries are not shown: `muster msg log --group review --before 41 --last 1` \
+             prints the page before"
+        );
+    }
+
+    /// The answer a reply picks goes at the top of its body, above any note, and as a field; it
+    /// goes to whoever asked unless the reply names somebody.
+    #[test]
+    fn an_answer_is_the_top_of_the_reply_and_a_field_naming_it() {
+        let question = msg_answer::Message {
+            author: "builder".to_string(),
+            answers: vec!["Run it now".to_string(), "Skip it".to_string()],
+            ..Default::default()
+        };
+        let skip = Pick { question: 4, answer: 2 };
+        let mut post =
+            msg_request::Post { body: " after lunch\n".to_string(), ..Default::default() };
+        answering(&mut post, skip, &question).unwrap();
+        assert_eq!(post.body, "Answer: Skip it\n\nafter lunch");
+        assert_eq!(post.to, ["builder"]);
+        let picked = msg_request::Answering { question: 4, answer: "Skip it".to_string() };
+        assert_eq!(post.answering, Some(picked));
+
+        let mut bare = msg_request::Post { to: vec!["critic".to_string()], ..Default::default() };
+        answering(&mut bare, Pick { question: 4, answer: 1 }, &question).unwrap();
+        assert_eq!(
+            (bare.body.as_str(), bare.to.as_slice()),
+            ("Answer: Run it now", &["critic".to_string()][..])
+        );
+
+        let beyond = answering(&mut bare, Pick { question: 4, answer: 3 }, &question);
+        assert!(matches!(beyond, Err(Trouble::Refused(_))), "{beyond:?}");
+        assert_eq!(pick("44:2"), Ok(Pick { question: 44, answer: 2 }));
+        for wrong in ["44", "44:0", "a:1", "44:"] {
+            assert!(pick(wrong).is_err(), "{wrong}");
+        }
     }
 
     #[test]
