@@ -82,6 +82,21 @@ pub struct Saved {
     /// rendering nothing. The pruning happens while the window runs, where a daemon that is
     /// actually answering can say which panes it still holds.
     pub font_sizes: FontSizes,
+
+    /// The message box's draft for each group with one, so leaving a conversation, quitting and
+    /// an upgrade lose nothing the person wrote (MIP-9, section 3). Kept here rather than on the
+    /// daemon, which every window shares: each window's message box is its own.
+    pub drafts: Vec<SavedDraft>,
+}
+
+/// A message box's draft for one group, whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedDraft {
+    pub daemon: DaemonId,
+    pub group: String,
+    pub text: String,
+    pub to: Vec<String>,
+    pub urgent: bool,
 }
 
 /// What survives a check against what the daemons actually hold.
@@ -101,6 +116,7 @@ impl Saved {
         Saved {
             presentation,
             font_sizes: font_sizes.clone(),
+            drafts: Vec::new(),
             daemons: composition.daemons().cloned().collect(),
             showing: composition.showing().cloned(),
             tabs: composition
@@ -323,6 +339,10 @@ pub fn to_toml(saved: &Saved) -> String {
     if let Some(showing) = &saved.showing {
         root.insert("showing".to_string(), toml::Value::String(showing.to_string()));
     }
+    let drafts: Vec<toml::Value> = saved.drafts.iter().map(draft_table).collect();
+    if !drafts.is_empty() {
+        root.insert("draft".to_string(), toml::Value::Array(drafts));
+    }
 
     // Written even when it matches the default, unlike the keys above that are absent when
     // they have nothing to say. This is a file somebody opens to find out what a window is
@@ -397,6 +417,21 @@ fn pane_table((pane, offset): (&PaneKey, i32)) -> toml::Value {
     toml::Value::Table(table)
 }
 
+fn draft_table(draft: &SavedDraft) -> toml::Value {
+    let mut table = toml::Table::new();
+    table.insert("daemon".to_string(), toml::Value::String(draft.daemon.to_string()));
+    table.insert("group".to_string(), toml::Value::String(draft.group.clone()));
+    table.insert("text".to_string(), toml::Value::String(draft.text.clone()));
+    table.insert(
+        "to".to_string(),
+        toml::Value::Array(draft.to.iter().cloned().map(toml::Value::String).collect()),
+    );
+    if draft.urgent {
+        table.insert("urgent".to_string(), toml::Value::Boolean(true));
+    }
+    toml::Value::Table(table)
+}
+
 fn region_table(tab: &TabId, region: &SavedRegion) -> toml::Value {
     let mut table = toml::Table::new();
     table.insert("tab".to_string(), toml::Value::String(tab.to_string()));
@@ -467,7 +502,13 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .map(|entries| entries.iter().filter_map(read_pane_font_size).collect())
         .unwrap_or_default();
 
-    Ok(Saved { daemons, tabs, showing, presentation, font_sizes })
+    let drafts = root
+        .get("draft")
+        .and_then(toml::Value::as_array)
+        .map(|entries| entries.iter().filter_map(read_draft).collect())
+        .unwrap_or_default();
+
+    Ok(Saved { daemons, tabs, showing, presentation, font_sizes, drafts })
 }
 
 /// What a file a Muster on herdr wrote still says: the window's frame and its list, and the
@@ -520,6 +561,7 @@ fn from_herdr(root: &toml::Table, version: i64) -> Saved {
         showing: None,
         presentation: read_presentation(root.get("window").and_then(toml::Value::as_table)),
         font_sizes: FontSizes::default(),
+        drafts: Vec::new(),
     }
 }
 
@@ -606,6 +648,21 @@ fn report_window_wide_text_size(window: Option<&toml::Table>) {
                         `[font] size` in the config file is what moves all of them at once",
         },
     );
+}
+
+fn read_draft(value: &toml::Value) -> Option<SavedDraft> {
+    let table = value.as_table()?;
+    Some(SavedDraft {
+        daemon: DaemonId::new(text(table, "daemon")?),
+        group: text(table, "group")?,
+        text: text(table, "text").unwrap_or_default(),
+        to: table
+            .get("to")
+            .and_then(toml::Value::as_array)
+            .map(|names| names.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
+            .unwrap_or_default(),
+        urgent: table.get("urgent").and_then(toml::Value::as_bool).unwrap_or(false),
+    })
 }
 
 /// An entry that will not read is skipped rather than failing the file, on the same terms as a

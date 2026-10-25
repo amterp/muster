@@ -15,6 +15,7 @@
 
 use std::collections::BTreeSet;
 
+use crate::attention::GroupKey;
 use crate::composition::record::{Composition, DaemonId, MusterTab, PaneKey, Region};
 use crate::mirror::Mirror;
 use crate::mirror::backend::{LayoutNode, PaneId, SplitAxis, Tab, TabId};
@@ -47,6 +48,10 @@ pub struct View {
     /// panes' bridges dial, in the order its regions sit.
     pub machines: Vec<ViewMachine>,
     zoom: Zoom,
+    /// The group whose conversation the window shows in place of its panes (MIP-9, section 7).
+    /// The tab stays as it was underneath, with the keyboard where it was, so leaving puts both
+    /// back; but while it is shown, no pane is on screen.
+    pub conversation: Option<GroupKey>,
     /// Every pane this window has on screen, named by its daemon.
     ///
     /// Held rather than derived from `tree`, because it is not the same question and reading it
@@ -199,6 +204,7 @@ impl View {
                 keyboard: None,
                 machines: Vec::new(),
                 zoom: Zoom::Resolved,
+                conversation: None,
                 showing: BTreeSet::new(),
             },
         }
@@ -280,7 +286,22 @@ impl View {
                 });
             }
         }
-        View { tab: Some(tab), tree, zoomed, keyboard, machines, zoom, showing }
+        View { tab: Some(tab), tree, zoomed, keyboard, machines, zoom, conversation: None, showing }
+    }
+
+    /// This view with a group's conversation shown in place of its panes, or as it is for
+    /// `None`.
+    ///
+    /// Covered panes are not on screen, which is all attention needs to count them unseen: an
+    /// agent that finishes under a conversation is announced and keeps its done. Had only the
+    /// shell hidden them, the core would count them seen, and the finish would go unannounced.
+    #[must_use]
+    pub fn covered_by(mut self, conversation: Option<GroupKey>) -> View {
+        if conversation.is_some() {
+            self.showing.clear();
+        }
+        self.conversation = conversation;
+        self
     }
 
     /// Every pane this window has on screen, named by its daemon.

@@ -438,6 +438,7 @@ fn saved_from(given: &Value, key: &str) -> Result<Saved, CaseError> {
         // daemons, and nothing here is checked against anything.
         presentation: Presentation::default(),
         font_sizes: FontSizes::default(),
+        drafts: Vec::new(),
     })
 }
 

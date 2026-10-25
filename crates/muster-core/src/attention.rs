@@ -588,6 +588,12 @@ impl Attention {
         }
     }
 
+    /// Whether the window in front is focused: what a pane on screen, and a conversation shown,
+    /// need to count as seen.
+    pub fn focused(&self) -> bool {
+        self.focused
+    }
+
     /// The window gained or lost the OS's focus.
     ///
     /// Returns the panes whose presentation this changed, so a caller can re-announce those

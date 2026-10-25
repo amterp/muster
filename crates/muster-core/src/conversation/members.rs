@@ -2,10 +2,12 @@
 //!
 //! Who is in the group, whether messages wait on each member unread and why, come from the
 //! group's daemon (`Who`), which alone can say why a member has not read: whether its pane is at
-//! a dialog, its prompt holds something typed, or its program stopped reading. What each agent
-//! is doing comes from the window's own mirror, which moves far more often than membership.
+//! a dialog, its prompt holds something typed, or its program stopped reading.
+//!
+//! What each agent is doing is not here, for the reason it is not in a window's view: it moves
+//! far more often than membership, and has its own per-pane message already. A row names its
+//! pane, and the shell draws that pane's state beside it.
 
-use crate::agent_state::AgentState;
 use crate::attention::GroupKey;
 use crate::composition::PaneKey;
 use crate::conversation::Group;
@@ -47,36 +49,24 @@ pub struct MemberRow {
     pub shown: String,
     pub liveness: Liveness,
     pub pane: Option<PaneKey>,
-    /// The agent's state in its pane, when the window follows that pane.
-    pub state: Option<AgentState>,
-    /// What the agent is doing, in the words its row in the agent list uses; empty for none.
-    pub doing: String,
     pub unread: Option<Unread>,
     pub you: bool,
 }
 
 /// The members column: agents by name, then the human.
-pub fn rows(
-    group: &Group,
-    pane: impl Fn(&PaneKey) -> Option<(AgentState, String)>,
-) -> Vec<MemberRow> {
+pub fn rows(group: &Group) -> Vec<MemberRow> {
     let mut rows: Vec<MemberRow> = group
         .members
         .iter()
         .flatten()
         .filter(|member| !posting::is_muster(&member.name))
-        .map(|member| {
-            let (state, doing) = member.pane.as_ref().and_then(&pane).unzip();
-            MemberRow {
-                name: member.name.clone(),
-                shown: group.shown(&member.name),
-                liveness: member.liveness,
-                pane: member.pane.clone(),
-                state,
-                doing: doing.unwrap_or_default(),
-                unread: member.unread.clone(),
-                you: posting::is_human(&member.name),
-            }
+        .map(|member| MemberRow {
+            name: member.name.clone(),
+            shown: group.shown(&member.name),
+            liveness: member.liveness,
+            pane: member.pane.clone(),
+            unread: member.unread.clone(),
+            you: posting::is_human(&member.name),
         })
         .collect();
     rows.sort_by(|a, b| a.you.cmp(&b.you).then_with(|| a.shown.cmp(&b.shown)));
