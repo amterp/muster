@@ -23,6 +23,14 @@ pub use log::{Change, Entry, Log, Message, What};
 pub use members::{Header, Liveness, Member, MemberRow, Unread};
 pub use thread::{MessageRow, Reading, Row};
 
+/// A name kept on another machine, split into the name there and the machine: `review@devenv`.
+/// The rule is the daemon's (`muster_msg::split_machine`), which this crate does not depend on:
+/// both halves must be there, so `@human+otter`, a pair group with the human, is kept here.
+pub fn split_machine(name: &str) -> Option<(&str, &str)> {
+    let (base, machine) = name.rsplit_once('@')?;
+    (!base.is_empty() && !machine.is_empty()).then_some((base, machine))
+}
+
 /// What the core holds about one group while a window shows its conversation.
 #[derive(Debug, Clone, Default)]
 pub struct Group {

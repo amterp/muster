@@ -5,6 +5,24 @@
   "why": "The thread is what lets the human find the two messages that were for them without reading the other forty. A message for the human folded away, an unread line in the wrong place, or a Reply offered to Muster each fails quietly: nothing crashes, and the human misses a question or answers nobody.",
   "cases": [
     {
+      "name": "the header names the machine keeping a group copied from another",
+      "why": "A group kept on a devenv says so, since a post there is refused while that machine cannot be reached.",
+      "given": { "group": "review@devenv" },
+      "expect": { "rows": [], "keeper": "devenv" }
+    },
+    {
+      "name": "a pair group with the human is kept here, whatever its @",
+      "why": "Every agent-to-human pair group is named @human+agent, and reading the @ in it as a machine would name a machine called human+agent in the header of the most common group there is.",
+      "given": { "group": "@human+p2" },
+      "expect": { "rows": [], "keeper": null }
+    },
+    {
+      "name": "a pair group kept on another machine names that machine",
+      "why": "The last @ names the machine only when something comes before it.",
+      "given": { "group": "@human+otter@devenv" },
+      "expect": { "rows": [], "keeper": "devenv" }
+    },
+    {
       "name": "a run of messages between agents folds into one line",
       "why": "This is the whole point of the thread over the transcript: traffic between agents is out of the way until the human chooses to open it.",
       "given": {

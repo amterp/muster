@@ -7,10 +7,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use conformance::{CaseError, Conformance, fields, strings};
+use muster_core::attention::GroupKey;
 use muster_core::composition::PaneKey;
 use muster_core::conversation::{
     Addressed, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Reading, Row,
-    What, draft, thread,
+    What, draft, members, thread,
 };
 use serde_json::{Value, json};
 
@@ -30,7 +31,15 @@ fn conversation_conformance() {
                 .unwrap_or(0),
         };
         let rows = thread::rows(&group, &reading);
-        Ok(json!({ "rows": rows.iter().map(row_json).collect::<Vec<_>>() }))
+        // A case naming its group is about the header too.
+        let keeper = text(given, "group").map(|name| {
+            let key = GroupKey { daemon: "local".into(), group: name.to_string() };
+            json!(members::header(&key, &group).keeper)
+        });
+        Ok(fields([
+            ("rows", Some(json!(rows.iter().map(row_json).collect::<Vec<_>>()))),
+            ("keeper", keeper),
+        ]))
     });
     assert_eq!(ran, corpus.cases.len());
 }

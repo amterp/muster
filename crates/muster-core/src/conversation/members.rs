@@ -10,7 +10,7 @@
 
 use crate::attention::GroupKey;
 use crate::composition::PaneKey;
-use crate::conversation::Group;
+use crate::conversation::{Group, split_machine};
 use crate::posting;
 
 /// One member of a group, as its daemon's `Who` answers.
@@ -89,12 +89,7 @@ pub struct Header {
 }
 
 pub fn header(key: &GroupKey, group: &Group) -> Header {
-    let keeper = key
-        .group
-        .rsplit_once('@')
-        .map(|(_, machine)| machine)
-        .filter(|machine| !machine.is_empty())
-        .map(str::to_string);
+    let keeper = split_machine(&key.group).map(|(_, machine)| machine.to_string());
     Header {
         group: key.group.clone(),
         keeper,
