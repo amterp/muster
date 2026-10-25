@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "each-participant-s",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1792950082282,
+  "creator": "Alexander Terp",
+  "description": "Owner's request, 2026-10-25: in a group's conversation, a name drawn in its own color is quicker to spot when looking for one agent's messages.\n\nProposed shape, to settle before building:\n- The color comes from the participant's identity, the pane id for a pane (never reused, unlike a callsign) and the name for a joined participant, hashed into a fixed palette. So an agent has the same color in every group and every window, with nothing stored.\n- The sidebar already colors every callsign with the one accent color (Sidebar.swift, the callsign label). Drawing it in the agent's color instead ties the two views together without adding a new colored element.\n- The palette must stay clear of the agent-state colors and the machine dots, so that a name's color is never read as a state.\n- @human and @muster get fixed colors of their own, outside the palette.\n- Color only ever adds to the name text, never replaces it.\n\nOpen: with a palette of around 8, two members of one group will sometimes share a color. Accept that, or pick per group, which avoids clashes but gives an agent different colors in different groups.",
+  "id": "a_2o5jIMI5J",
+  "position": "ad",
+  "title": "🎨 Each participant's name in a conversation has a stable color, shared with its callsign in the sidebar",
+  "type": "feature",
+  "updated_at_millis": 1792950082282,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792950082282}
+  ]
+}
