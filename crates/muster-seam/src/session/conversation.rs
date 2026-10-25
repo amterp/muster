@@ -415,7 +415,8 @@ fn failed(following: &Following, why: &str) {
         },
     );
     if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
-        shared.failed = Some(why.to_string());
+        shared.failed =
+            Some(format!("The group's messages could not be fetched: {why}. Muster keeps asking."));
     }
     announce_group(group, Parts::ALL);
 }
@@ -429,7 +430,10 @@ fn gone(following: &Following, why: &str) {
         fields! { "daemon" => group.daemon.to_string(), "group" => &group.group, "why" => why },
     );
     if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
-        shared.failed = Some(format!("{why}; the group is gone, so nothing more arrives here"));
+        shared.failed = Some(format!(
+            "{} was deleted or you left it, so nothing more arrives here.",
+            group.group
+        ));
         shared.ended = true;
     }
     announce_group(group, Parts::ALL);
@@ -1154,7 +1158,7 @@ fn conversation(shown: &Showing, shared: &Shared) -> proto::ConversationChanged 
         shown.posted.as_ref(),
     );
     changed.earlier = group.log.earlier();
-    changed.loading = !shared.loaded;
+    changed.loading = !shared.loaded && !shared.ended;
     changed.failed = shared.failed.clone().unwrap_or_default();
     changed
 }

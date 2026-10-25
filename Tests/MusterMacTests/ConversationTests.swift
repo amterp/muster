@@ -483,6 +483,19 @@ struct ConversationTests {
     withExtendedLifetime(coordinator) {}
   }
 
+  @Test("why the conversation shows no more is drawn in the core's words, whichever it is")
+  func aFailureIsDrawnAsTheCoreSaysIt() {
+    var shown = Muster_ConversationChanged()
+    #expect(ConversationHeader.failure(shown) == nil)
+    for failed in [
+      "The group's messages could not be fetched: the daemon went away. Muster keeps asking.",
+      "g was deleted or you left it, so nothing more arrives here.",
+    ] {
+      shown.failed = failed
+      #expect(ConversationHeader.failure(shown) == failed)
+    }
+  }
+
   @Test("a group shown again after leaving opens afresh, on its unread line")
   func aGroupShownAgainOpensAfresh() {
     let thread = ConversationThread()

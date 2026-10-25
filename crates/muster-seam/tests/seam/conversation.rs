@@ -593,12 +593,46 @@ fn a_group_deleted_while_shown_is_said_to_be_gone() {
     expect(&mut open.control, msg(&named("a"), delete), daemon_proto::Outcome::Done);
     until(
         "the conversation to say the group is gone",
-        || conversation("window-1").failed.contains("the group is gone"),
+        || {
+            let shown = conversation("window-1");
+            shown.failed == "g was deleted or you left it, so nothing more arrives here."
+                && !shown.loading
+        },
         || format!("window-1 was told {:?}", conversation("window-1")),
     );
     let asked = follows.load(Ordering::SeqCst);
     std::thread::sleep(Duration::from_millis(1500));
     assert_eq!(follows.load(Ordering::SeqCst), asked, "a gone group was asked after again");
+    drop(relay);
+}
+
+/// A group gone before its first page arrived shows why, with no spinner promising more.
+#[test]
+fn a_group_gone_before_its_log_arrived_is_not_still_loading() {
+    let first_pages = Arc::new(AtomicUsize::new(0));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let first_pages = Arc::clone(&first_pages);
+        daemon.withholding_answers_where(move |request| {
+            is_a_first_page(request) && first_pages.fetch_add(1, Ordering::SeqCst) == 0
+        })
+    });
+    show("window-1");
+    until(
+        "the first page to be asked for",
+        || first_pages.load(Ordering::SeqCst) == 1,
+        || "no first page was asked for".to_string(),
+    );
+    let delete = Asked::GroupDelete(msg_request::GroupDelete { group: "g".to_string() });
+    expect(&mut open.control, msg(&named("a"), delete), daemon_proto::Outcome::Done);
+    until(
+        "the conversation to say the group is gone, and stop loading",
+        || {
+            let shown = conversation("window-1");
+            shown.failed == "g was deleted or you left it, so nothing more arrives here."
+                && !shown.loading
+        },
+        || format!("window-1 was told {:?}", conversation("window-1")),
+    );
     drop(relay);
 }
 

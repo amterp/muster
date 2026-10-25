@@ -613,16 +613,22 @@ struct ConversationHeader: View {
         Text("Paused: a post here wakes nobody until the group resumes.")
           .font(.callout).foregroundStyle(.secondary)
       }
-      if !thread.shown.failed.isEmpty {
-        Text(
-          "The group's messages could not be fetched: \(thread.shown.failed). Muster keeps asking."
-        )
-        .font(.callout).foregroundStyle(.red)
-        .fixedSize(horizontal: false, vertical: true)
+      if let failed = Self.failure(thread.shown) {
+        Text(failed)
+          .font(.callout).foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
+  }
+}
+
+extension ConversationHeader {
+  /// Why the conversation shows no more of the log, in the core's own sentence: it says whether
+  /// Muster is still asking or the group is gone, and only it knows which.
+  static func failure(_ shown: Muster_ConversationChanged) -> String? {
+    shown.failed.isEmpty ? nil : shown.failed
   }
 }
 

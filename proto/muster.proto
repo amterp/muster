@@ -2539,9 +2539,10 @@ message ConversationChanged {
   repeated ConversationRow rows = 4;
   // The daemon holds entries before the first row: LoadEarlier fetches them.
   bool earlier = 5;
-  // The first page has not arrived yet.
+  // The first page is still on its way: not yet arrived, and the group not gone.
   bool loading = 6;
-  // Why the log could not be fetched, when it could not.
+  // Why the conversation shows no more of the log, as a sentence to draw as it is: the log could
+  // not be fetched and is asked for again, or the group is gone. Empty while neither.
   string failed = 7;
 }
 
