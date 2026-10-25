@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "decline-a-dialog",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1792943239837,
+  "creator": "Alexander Terp",
+  "description": "A permission dialog that only a person can answer can hold an unattended pane all night. Twice an orchestrator pane (Claude Code in bypass mode, running background subagents) stopped at a subagent's command-approval prompt: 6h40m on 2026-10-12/13 and about 9h30m on 2026-10-24/25. Muster saw it both times and told the agents that had posted to the pane, none of which could answer it. Nothing in the pane's group could have.\n\nIdea (Alex, 2026-10-25): once a pane has sat at such a dialog longer than a threshold, Muster picks the declining choice (\"No\") and tells the affected agent what it declined and why, so the agent can carry on another way (here, by running the command from a script file). Unlike a_2hIfvs1Cc, which escalates to someone who can answer, this unblocks the pane with nobody present.\n\nOpen questions: which dialogs are safe to decline (a command-approval prompt is; a folder-trust dialog or a question the agent put to the person is not); whether to escalate first and decline only after a longer wait; how to recognize a declining choice across harnesses, since today this is Claude Code's prompt and Codex's looks different; and whether it is a per-pane opt-in for unattended runs.",
+  "id": "a_2o2rIAhBm",
+  "position": "ac",
+  "related": [
+    "a_2hIfvs1Cc"
+  ],
+  "title": "Decline a dialog nobody can answer, instead of letting it hold a pane for hours",
+  "type": "feature",
+  "updated_at_millis": 1792943244759,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792943239837}
+  ]
+}
