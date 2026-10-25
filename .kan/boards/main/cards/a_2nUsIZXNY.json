@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2nV4VwtSP",
@@ -18,15 +18,16 @@
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-24 on 0.18.1-dev: a parallel-work worker (Claude Code, Opus) sat idle after finishing; about an hour later Claude Code printed 'Compacted while idle, before the prompt cache expired · turn off with \"idleCompaction\": false in settings.json', its context ring went to 0%, and 58 s later @muster told the maker the helper 'went idle without posting to you since it went to work 58s ago: its turn may have ended on an error'. a_2luQuOfD1 stopped compactions Muster types from raising Need::Unreported; this one Claude Code starts by itself, so the daemon reads it as a turn. Possibly: record the idle-compaction screen in the corpus, and treat a turn whose only work was a compaction (the PreCompact/SessionStart compact hooks, if they fire) as not going to work.",
   "id": "a_2nUsIZXNY",
-  "position": "Zp",
+  "position": "YvV",
   "related": [
     "a_2mSyvanM4"
   ],
   "title": "A helper's own idle compaction raises its maker's 'went idle without posting' notice",
   "type": "bug",
-  "updated_at_millis": 1792941509832,
+  "updated_at_millis": 1792944675343,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792862247049},
-    {"field":"column","value":"in-progress","at":1792941509832}
+    {"field":"column","value":"in-progress","at":1792941509832},
+    {"field":"column","value":"done","at":1792944675343}
   ]
 }

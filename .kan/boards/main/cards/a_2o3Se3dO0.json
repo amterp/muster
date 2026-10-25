@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "record-a-live-idle",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1792944675685,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-10-25 with a_2nUsIZXNY, whose fix rests on Claude Code 2.1.310's bundled code rather than a recording: an idle compaction runs PreCompact with trigger auto. Still unrecorded: what the screen shows while it compacts, whether Muster's rules read it as working before or after the PreCompact report lands, and whether PostCompact, SessionStart (compact) or Stop follow. docs/observations/claude-code-2.1.310.md section 2 says how: a session over 100,000 tokens started with CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS=100000 and enrolled in the experiment, in a pane with extras/claude-code, left idle about 55 minutes, with Muster's run log and muster pane read around the notice.",
+  "id": "a_2o3Se3dO0",
+  "position": "b1t",
+  "title": "Record a live idle compaction in Claude Code",
+  "type": "chore",
+  "updated_at_millis": 1792944675685,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792944675685}
+  ]
+}
