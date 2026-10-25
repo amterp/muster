@@ -578,8 +578,12 @@ fn msg_open_shows_a_conversation_and_window_says_so() {
     );
     let outside = [("MUSTER_SOCKET", socket)];
 
-    let opened = run(&["msg", "open", "--group", "review", "--json"], &outside);
-    assert_eq!(opened.code, 0, "`muster msg open` failed: {}", opened.errors);
+    // The window shows only a group it has heard the human is in, which the join's notice says.
+    let opened =
+        until_some("`muster msg open` to show the group once the window has heard of it", || {
+            let opened = run(&["msg", "open", "--group", "review", "--json"], &outside);
+            (opened.code == 0).then_some(opened)
+        });
     let window = json_from(&opened)["window"].as_str().map(str::to_string);
     assert!(window.is_some_and(|window| !window.is_empty()), "it names no window: {}", opened.out);
 

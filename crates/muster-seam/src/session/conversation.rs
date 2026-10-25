@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::attention::GroupKey;
 use muster_core::composition::{DaemonId, PaneKey};
+use muster_core::conversation::{self, Named};
 use muster_core::conversation::{
     Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Reading, Unread, What,
     draft, members, thread,
@@ -163,17 +164,30 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
         },
         named => DaemonId::new(named),
     };
-    let key = GroupKey { daemon, group: group.to_string() };
-    let (name, start) = {
+    let (key, name, start) = {
         let mut session = poison::lock(&SESSION, "session");
-        let Some(backend) = session.backends.get(&key.daemon) else {
+        let Some(backend) = session.backends.get(&daemon) else {
             return Response::failure(format!(
-                "this window is attached to no daemon called {}, so {group}'s conversation was \
-                 not shown",
-                key.daemon
+                "this window is attached to no daemon called {daemon}, so {group}'s conversation \
+                 was not shown"
             ));
         };
-        let notice = poison::lock(&backend.mirror, "mirror").human_notice(group).cloned();
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        let known = mirror.human_notices().map(|(group, _)| group.as_str());
+        let group = match conversation::named(group, known) {
+            Named::Group(group) => group,
+            Named::Unknown(known) => return unknown_group(group, &daemon, &known),
+            Named::Several(several) => {
+                return Response::failure(format!(
+                    "{group} is the name of a group on more than one machine ({}), so no \
+                     conversation was shown; name the one you mean",
+                    several.join(", ")
+                ));
+            }
+        };
+        let notice = mirror.human_notice(&group).cloned();
+        drop(mirror);
+        let key = GroupKey { daemon, group };
         // Where the unread messages begin, taken before showing it reads them.
         let unread_from =
             notice.filter(|notice| notice.count > 0 && notice.first > 0).map(|notice| notice.first);
@@ -195,7 +209,8 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
             Following { group: key.clone(), generation }
         });
         session.open_drafts(&key);
-        (session.windows[window].name.to_string(), start)
+        let name = session.windows[window].name.to_string();
+        (key, name, start)
     };
     log::info(
         "conversation.shown",
@@ -210,6 +225,17 @@ pub(crate) fn show(window: WindowId, daemon: &str, group: &str) -> Response {
     super::human_noticed(&key.daemon, &key.group);
     announce(&[window]);
     Response { payload: Some(response::Payload::Opened(proto::Opened { window: name })) }
+}
+
+fn unknown_group(group: &str, daemon: &DaemonId, known: &[String]) -> Response {
+    let known = if known.is_empty() {
+        "you are in no group there".to_string()
+    } else {
+        format!("the groups you are in there are {}", known.join(", "))
+    };
+    Response::failure(format!(
+        "you are in no group called {group} on {daemon}, so no conversation was shown; {known}"
+    ))
 }
 
 /// Returns `window` to its panes, with the keyboard where it was. Says whether it was showing a

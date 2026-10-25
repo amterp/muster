@@ -160,6 +160,43 @@ fn leaving_and_showing_a_group_again_at_once_leaves_one_follow() {
 }
 
 #[test]
+fn a_group_the_human_is_not_in_is_refused_naming_those_they_are_in() {
+    let first_pages = Arc::new(AtomicUsize::new(0));
+    let (_open, relay) = Open::relayed(|daemon| {
+        let first_pages = Arc::clone(&first_pages);
+        daemon.withholding_answers_where(move |request| {
+            if is_a_first_page(request) {
+                first_pages.fetch_add(1, Ordering::SeqCst);
+            }
+            false
+        })
+    });
+    show("window-1");
+    until_loaded("window-1");
+    answer(leave());
+
+    let refused = answer_in(
+        "window-1",
+        request::Payload::ShowConversation(ShowConversation {
+            daemon_id: String::new(),
+            group: "gg".to_string(),
+        }),
+    );
+    let Some(response::Payload::Failure(failure)) = &refused.payload else {
+        panic!("showing a group nobody made answered {refused:?}");
+    };
+    assert!(
+        failure.reason.contains("no group called gg") && failure.reason.contains("are g"),
+        "and says which groups there are: {}",
+        failure.reason
+    );
+    assert!(view("window-1").conversation_group.is_empty(), "the window shows its panes");
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(first_pages.load(Ordering::SeqCst), 1, "and nothing fetches a log for it");
+    drop(relay);
+}
+
+#[test]
 fn choosing_where_to_look_leaves_the_conversation_and_a_tab_an_agent_makes_does_not() {
     let _open = Open::built();
     show("window-1");
@@ -283,6 +320,7 @@ fn a_post_whose_answer_never_came_is_found_in_the_log_and_not_sent_twice() {
     let relay = daemon.withholding_answers_where(is_a_post_by_the_human);
     start_window(&relay.muster_config(), &daemon.root().join("windows/window-1.toml"));
     group_of_three(&mut control);
+    until_listed("g");
     show("window-1");
     until_loaded("window-1");
     answer(save_draft("yes", 3, &["a"]));
@@ -484,6 +522,7 @@ impl Open {
         until_text(&mut control, "p1", "$");
         start_window(&daemon.muster_config(), &daemon.root().join("windows/window-1.toml"));
         group_of_three(&mut control);
+        until_listed("g");
         Open { turn, daemon, control }
     }
 
@@ -497,6 +536,7 @@ impl Open {
         let relay = relay(&daemon);
         start_window(&relay.muster_config(), &daemon.root().join("windows/window-1.toml"));
         group_of_three(&mut control);
+        until_listed("g");
         (Open { turn, daemon, control }, relay)
     }
 
@@ -509,6 +549,7 @@ impl Open {
         daemon.run_agent("p1");
         start_window(&daemon.muster_config(), &daemon.root().join("windows/window-1.toml"));
         group_of_three(&mut control);
+        until_listed("g");
         Open { turn, daemon, control }
     }
 }
@@ -590,6 +631,21 @@ fn until_sent(window: &str, state: post_outcome::State) {
         "the message box to say where its post stands",
         || message_box(window).sent.is_some_and(|sent| sent.state() == state),
         || format!("{window} was told {:?}", message_box(window)),
+    );
+}
+
+/// Waits for the window to hear that the human is in `group`, which a conversation shows only
+/// once it has.
+fn until_listed(group: &str) {
+    until(
+        "the window to hear the human is in the group",
+        || {
+            events().iter().any(|told| {
+                matches!(&told.payload, Some(event::Payload::GroupsChanged(changed))
+                    if changed.groups.iter().any(|listed| listed.group == group))
+            })
+        },
+        || "no groups event named it".to_string(),
     );
 }
 
@@ -889,6 +945,7 @@ extern "C" fn note(bytes: *const u8, len: usize) {
                 | event::Payload::MessageBoxChanged(_)
                 | event::Payload::ViewChanged(_)
                 | event::Payload::PaneStateChanged(_)
+                | event::Payload::GroupsChanged(_)
         )
     );
     if kept {

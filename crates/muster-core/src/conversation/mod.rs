@@ -31,6 +31,39 @@ pub fn split_machine(name: &str) -> Option<(&str, &str)> {
     (!base.is_empty() && !machine.is_empty()).then_some((base, machine))
 }
 
+/// Which of the groups the human is in a name asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Named {
+    /// That group, by the name it is kept under here.
+    Group(String),
+    /// No group the human is in; these are the ones they are in, by name.
+    Unknown(Vec<String>),
+    /// A bare name that several groups copied from other machines share, by name.
+    Several(Vec<String>),
+}
+
+/// Which of the groups the human is in, `known`, `name` asks for: that group itself, or the one
+/// copied from another machine whose name there it is, as the daemon takes `review` for
+/// `review@devenv`. Resolved here rather than left to the daemon, since everything a window
+/// keys by the group, what waits for the human there included, uses the name kept here.
+pub fn named<'a>(name: &str, known: impl IntoIterator<Item = &'a str>) -> Named {
+    let mut known: Vec<&str> = known.into_iter().collect();
+    known.sort_unstable();
+    if known.contains(&name) {
+        return Named::Group(name.to_string());
+    }
+    let copies: Vec<&str> = known
+        .iter()
+        .copied()
+        .filter(|group| split_machine(group).is_some_and(|(base, _)| base == name))
+        .collect();
+    match copies.as_slice() {
+        [one] => Named::Group((*one).to_string()),
+        [] => Named::Unknown(known.into_iter().map(str::to_string).collect()),
+        several => Named::Several(several.iter().map(|group| (*group).to_string()).collect()),
+    }
+}
+
 /// What the core holds about one group while a window shows its conversation.
 #[derive(Debug, Clone, Default)]
 pub struct Group {
@@ -93,5 +126,40 @@ impl Policy {
             .get(author)
             .or_else(|| self.ring.get("*"))
             .is_some_and(|names| names.iter().any(|name| posting::is_human(name)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_name_is_the_group_of_that_name() {
+        let known = ["review", "review@devenv"];
+        assert_eq!(named("review", known), Named::Group("review".into()));
+    }
+
+    #[test]
+    fn a_bare_name_is_the_one_group_copied_from_another_machine_under_it() {
+        let known = ["@human+p2", "review@devenv"];
+        assert_eq!(named("review", known), Named::Group("review@devenv".into()));
+    }
+
+    #[test]
+    fn a_bare_name_two_machines_share_names_both() {
+        let known = ["review@devbox", "review@devenv"];
+        assert_eq!(
+            named("review", known),
+            Named::Several(vec!["review@devbox".into(), "review@devenv".into()])
+        );
+    }
+
+    #[test]
+    fn a_name_no_group_has_says_which_there_are() {
+        let known = ["review@devenv", "@human+p2"];
+        assert_eq!(
+            named("revew", known),
+            Named::Unknown(vec!["@human+p2".into(), "review@devenv".into()])
+        );
     }
 }
