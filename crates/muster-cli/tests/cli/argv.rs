@@ -400,6 +400,7 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
         request::Payload::ReloadConfig(_) => json!({ "reload_config": {} }),
         request::Payload::ToggleSidebar(_) => json!({ "toggle_sidebar": {} }),
         request::Payload::UpgradeMuster(_) => json!({ "upgrade_muster": {} }),
+        request::Payload::LeaveConversation(_) => json!({ "leave_conversation": {} }),
         request::Payload::AdjustFontSize(adjust) => json!({
             "adjust_font_size": json!({ "change": adjust.change })
         }),

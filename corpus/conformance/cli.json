@@ -2384,7 +2384,7 @@
     },
     {
       "name": "a group's conversation is shown from a script",
-      "why": "MIP-9, section 8: `muster msg open` shows the group's conversation in a window, the request a sidebar row or a banner sends, so an agent can put the human in front of a group. It is the one msg verb sent to the window rather than the daemon, since only a window shows a conversation. It names no daemon: the one on this machine keeps messages for the human, a group kept elsewhere included under its full name.",
+      "why": "MIP-9, section 8: `muster msg open` shows the group's conversation in a window, the request a sidebar row or a banner sends, so an agent can put the human in front of a group. It and `close` are the msg verbs sent to the window rather than the daemon, since only a window shows a conversation. It names no daemon: the one on this machine keeps messages for the human, a group kept elsewhere included under its full name.",
       "given": {
         "argv": [
           "msg",
@@ -2398,6 +2398,21 @@
           "show_conversation": {
             "group": "review"
           }
+        }
+      }
+    },
+    {
+      "name": "a conversation is closed from a script",
+      "why": "Everything a chord does, `muster` does (AGENTS.md, Driving Muster): `muster msg close` returns the window from its conversation to its panes, the request Esc sends. It names no group, since a window shows one conversation at most.",
+      "given": {
+        "argv": [
+          "msg",
+          "close"
+        ]
+      },
+      "expect": {
+        "request": {
+          "leave_conversation": {}
         }
       }
     },

@@ -23,10 +23,12 @@ pub const RESUME: &str = "resume";
 /// Shows a group's conversation in a window, as choosing a message's banner does. The one verb
 /// that asks the window rather than the daemon.
 pub const OPEN: &str = "open";
+/// Returns the window from the conversation it shows to its panes, as Esc does.
+pub const CLOSE: &str = "close";
 
 /// Every verb, in the order `--help` lists them.
-pub const VERBS: [&str; 12] =
-    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN];
+pub const VERBS: [&str; 13] =
+    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN, CLOSE];
 
 /// `muster msg <verb>`, followed by `arguments` when there are any.
 pub fn command(verb: &str, arguments: &str) -> String {

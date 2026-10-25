@@ -25,10 +25,10 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HideHelpers, HidePane, MoveTab, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
-    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent, SendToPane,
-    ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes,
-    ZoomPane, request,
+    HideHelpers, HidePane, LeaveConversation, MoveTab, QuietPane, ReadDaemons, ReadPane,
+    ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane,
+    RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar,
+    UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -1046,6 +1046,9 @@ pub fn parse(
                 daemon_id: String::new(),
                 group: group.clone(),
             }))
+        }
+        What::Msg { verb: crate::messaging::Verb::Close, .. } => {
+            send(request::Payload::LeaveConversation(LeaveConversation {}))
         }
         What::Msg { identity, verb } => {
             Asking::Message(Box::new(crate::messaging::parse(verb, identity, environment, here)?))

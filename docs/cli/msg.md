@@ -511,9 +511,10 @@ which wakes it as any post does (Being woken, above) in its own session, so that
 the question and the answer both. Which way an agent should use is for your own skills to say,
 since Muster imposes no workflow.
 
-`open` is the one msg verb that asks the window rather than the daemon, since only a window shows
-a group's conversation: it shows the conversation in place of the window's panes and prints the
-window's name, and with no window open it exits 3. While the conversation is in the window in
+`open` and `close` are the msg verbs that ask the window rather than the daemon, since only a
+window shows a group's conversation. `open` shows the conversation in place of the window's panes
+and prints the window's name, and `close` returns the window to its panes, as Esc does; with no
+window open either exits 3. While the conversation is in the window in
 front and that window is focused, the group is read for the human, each message as it arrives,
 and `muster window --json` names the group under `conversation`. While it shows, the window's
 list marks the panes of the group's members. It is kept by this machine's daemon, which follows a
@@ -556,6 +557,7 @@ window has attached to shows `@human` alone.
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 | `group delete G` | deletes a group and its log, letting every member go |
 | `open --group G` | shows the group's conversation in the window, as its notification does |
+| `close` | returns the window from its conversation to its panes, as Esc does |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
 by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may or may not have happened (the

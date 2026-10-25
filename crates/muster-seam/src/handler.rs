@@ -388,8 +388,11 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             session::conversation::show(window, &show.daemon_id, &show.group)
         }
         request::Payload::LeaveConversation(_) => {
-            session::conversation::leave(window);
-            Response::ok()
+            if session::conversation::leave(window) {
+                Response::ok()
+            } else {
+                Response::noted("this window was showing no conversation, so nothing was closed")
+            }
         }
         request::Payload::OpenFold(fold) => {
             session::conversation::open_fold(window, &fold.daemon_id, &fold.group, fold.first)
