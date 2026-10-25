@@ -30,6 +30,18 @@
       "body": "2026-10-25: a fourth, in the seam suite at 840fe346, load 15.7: pane_focus::a_daemon_that_comes_back_tells_the_pane_again_that_it_has_focus timed out with the program having heard \"\" where it expected the focus report ESC [ I. Passed 3 of 3 alone. Same shape as the others: input sent to a pane is never read while the machine is starved.",
       "author": "Alexander Terp",
       "created_at_millis": 1792905836727
+    },
+    {
+      "id": "c_2o2Hi3AAF",
+      "body": "2026-10-25: reproduced 2/120, 3/120 and 1/120 with the card's loop (load 10-26). Successful-write logging shows the daemon wrote the input every time the reader's file stayed empty, so no bytes are lost on the daemon's side. One failure captured with the pane's screen (typing::a_bindings_bytes_are_written_and_a_reset_resets_the_pane_and_its_surface) shows '[1]+ Stopped(SIGTTOU) stty raw -echo' before 'ready': the wrapper (/bin/sh -l -i -c through command eval; Bash 3.2.57 here) ran stty outside the terminal's foreground process group, stty was stopped, the shell went on to print ready, and the terminal stayed canonical, so the input waited for a newline (input probe: canonical, 0 complete lines). The other failures had no screen captured, so not all are proven to be this. Not reproduced outside Muster: the same Bash/eval command in a bare PTY, 0/1200. Next: record process group, foreground group and session around the first mode change, under the daemon and standalone. The wrapper is every --run command's, so a real agent setting raw mode at launch may be stopped the same way.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792941871990
+    },
+    {
+      "id": "c_2o2STwZqA",
+      "body": "2026-10-25 10:30: a fifth test, same shape, in the gate at 4f26bc1c at load 16.2: terminal::a_kitty_image_is_forgotten_once_a_replay_is_sent timed out waiting for its 'before' file. Its program is support::answer_to, which starts with 'stty raw -echo min 1 time 0', so it takes the stty-first path the SIGTTOU capture showed. Passed alone in 0.87 s. The commits being gated touched only muster-seam, which the daemon suite does not depend on.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792942286086
     }
   ],
   "created_at_millis": 1792856237685,
@@ -42,7 +54,7 @@
   ],
   "title": "🎲 Input sent to a pane just after it prints ready is sometimes never read (typing tests, ~3% under load)",
   "type": "bug",
-  "updated_at_millis": 1792939964772,
+  "updated_at_millis": 1792942286087,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792856237685},
     {"field":"column","value":"next","at":1792860389186},
