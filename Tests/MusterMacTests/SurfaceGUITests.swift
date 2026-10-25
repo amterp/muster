@@ -455,8 +455,13 @@ extension SurfaceGUITests {
     #expect(host.holdsKeyboard)
   }
 
-  /// ⌘↩ through the application's own dispatch, menu first, to a pane holding the keyboard: the
-  /// send chord has no menu key equivalent, so nothing takes it on the way.
+  /// ⌘↩ through the application's own dispatch to a pane holding the keyboard: the send chord
+  /// has no menu key equivalent, so nothing takes it on the way.
+  ///
+  /// Dispatched in the application's order by hand - the window's views and then the main menu
+  /// offered it as a key equivalent, and only a chord none claims sent on as a keystroke -
+  /// because `NSApplication.sendEvent` hands a key event to the key window alone, and a test
+  /// process cannot count on having one.
   @MainActor
   @Test("passes ⌘↩ through the application's dispatch to a pane", .ownsTheSeam)
   func cmdReturnReachesAPaneThroughTheApplication() {
@@ -477,7 +482,12 @@ extension SurfaceGUITests {
     window.contentView?.addSubview(pane)
     window.makeFirstResponder(pane)
 
-    app.sendEvent(press("\r", keyCode: 0x24, flags: .command, in: window))
+    let event = press("\r", keyCode: 0x24, flags: .command, in: window)
+    let claimed =
+      window.performKeyEquivalent(with: event)
+      || app.mainMenu?.performKeyEquivalent(with: event) == true
+    #expect(!claimed, "a key equivalent took ⌘↩ before the pane")
+    if !claimed { window.sendEvent(event) }
 
     #expect(recorder.requests.contains { $0.keyDown.key.key == "Enter" })
   }
