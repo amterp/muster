@@ -220,6 +220,9 @@ impl Banners {
     ) -> Option<u64> {
         let waiting = notice.filter(|notice| notice.count > 0 && !looking);
         let Some(notice) = waiting else {
+            // Read, left or deleted: whatever waits next is newer than anything settled, or in
+            // a group made again whose numbers start over. Either way the mark says nothing.
+            self.settled.remove(group);
             if let Some(standing) = self.standing.get_mut(group) {
                 if standing.holding() {
                     standing.waiting = false;
@@ -231,15 +234,10 @@ impl Banners {
             return None;
         };
         let last = notice.last;
-        match self.settled.get(group) {
-            // The newest message waiting only moves forward while the group lives, so one
-            // older than a message already answered or dismissed is a group deleted and made
-            // again, whose log started over: what was settled was about the old one.
-            Some(settled) if *settled > last => {
-                self.settled.remove(group);
-            }
-            Some(settled) if *settled == last => return None,
-            _ => {}
+        // The newest waiting message can move back while the group lives, when a change to its
+        // policy stops a newer one from ringing the human, and that is not a new message.
+        if self.settled.get(group).is_some_and(|settled| *settled >= last) {
+            return None;
         }
         let order = self.raises + 1;
         match self.standing.get_mut(group) {

@@ -714,20 +714,57 @@
       }
     },
     {
-      "name": "a group deleted and made again raises banners from its first message",
-      "why": "A deleted group's log goes with it, so the same name made again numbers its messages from 1. What the human answered or dismissed in the old group says nothing about the new one; held against it, the new group would raise no banner until its numbers passed the old ones, while Muster in front keeps the operating system's notification away too.",
+      "name": "a pair group deleted and made again raises a banner for its first message after a dismissal",
+      "why": "A pair group is named for its two members and its log has the same shape each time it is made, so the new group's first message has the number the old one's had. The old group's notice went with it, and so did what the human dismissed there; held against the new group, its first message would raise nothing while Muster in front keeps the operating system's notification away too.",
       "given": {
         "steps": [
-          { "notice": "g", "last": 50, "count": 1, "from": ["otter"] },
-          { "fetched": "g", "seq": 50, "author": "otter", "body": "last of the old group" },
-          { "dismiss": "g", "seq": 50 },
-          { "notice": "g", "last": 1, "count": 1, "from": ["heron"] },
-          { "fetched": "g", "seq": 1, "author": "heron", "body": "first of the new group" }
+          { "notice": "@human+otter", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "@human+otter", "seq": 4, "author": "otter", "body": "first of the old group" },
+          { "dismiss": "@human+otter", "seq": 4 },
+          { "notice": "@human+otter", "gone": true },
+          { "notice": "@human+otter", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "@human+otter", "seq": 4, "author": "otter", "body": "first of the new group" }
         ]
       },
       "expect": {
-        "fetch": ["g#50", "g#1"],
-        "stack": [{ "group": "g", "seq": 1, "author": "heron", "replyable": true }]
+        "fetch": ["@human+otter#4", "@human+otter#4"],
+        "stack": [{ "group": "@human+otter", "seq": 4, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "a pair group deleted and made again raises a banner for its first message after an answer",
+      "why": "As after a dismissal: what the human answered in the old group is no reason to stay quiet about the new one.",
+      "given": {
+        "steps": [
+          { "notice": "@human+otter", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "@human+otter", "seq": 4, "author": "otter", "body": "first of the old group" },
+          { "reply": "@human+otter", "seq": 4, "body": "ok" },
+          { "replied": "@human+otter", "seq": 4, "posted": 5, "said": "woke otter" },
+          { "notice": "@human+otter", "gone": true },
+          { "notice": "@human+otter", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "@human+otter", "seq": 4, "author": "otter", "body": "first of the new group" }
+        ]
+      },
+      "expect": {
+        "fetch": ["@human+otter#4", "@human+otter#4"],
+        "said": ["to otter"],
+        "stack": [{ "group": "@human+otter", "seq": 4, "author": "otter", "replyable": true }]
+      }
+    },
+    {
+      "name": "a dismissed banner stays down when the newest waiting message moves back",
+      "why": "A change to the group's policy can stop a newer message from ringing the human while an older one still waits, so the newest waiting number moves back with no new message. The human dismissed the banner showing the newer one, and the older one is not news.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 12, "count": 2, "from": ["otter"] },
+          { "fetched": "g", "seq": 12, "author": "otter", "body": "the newer" },
+          { "dismiss": "g", "seq": 12 },
+          { "notice": "g", "last": 10, "count": 1, "from": ["otter"] }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#12"],
+        "stack": []
       }
     },
     {

@@ -59,7 +59,10 @@ fn take(
             ..HumanNotice::default()
         };
         let looking = step.get("looking").and_then(Value::as_bool).unwrap_or(false);
-        if let Some(seq) = banners.noticed(&group, Some(&notice), looking) {
+        // A group the human left, or that was deleted, has no notice at all.
+        let gone = step.get("gone").and_then(Value::as_bool).unwrap_or(false);
+        let notice = (!gone).then_some(&notice);
+        if let Some(seq) = banners.noticed(&group, notice, looking) {
             fetched.push(format!("{}#{seq}", spelled(&group)));
         }
     } else if let Some(group) = text(step, "fetched") {
