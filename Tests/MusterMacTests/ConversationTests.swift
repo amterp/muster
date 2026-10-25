@@ -513,6 +513,23 @@ struct ConversationTests {
     #expect(thread.opening == first + 1)
   }
 
+  @Test("a thread opens on its unread line, and its rows arriving with the opening keep it there")
+  func aThreadOpensOnItsUnreadLine() {
+    let rows = ["d:1", "m:3", "unread", "m:4"]
+    let opened = ThreadScroll.next(
+      opening: 2, scrolledFor: 1, before: [], after: rows, keeping: nil, atEnd: true)
+    #expect(opened == .open("unread"))
+    let toldAgain = ThreadScroll.next(
+      opening: 2, scrolledFor: 2, before: [], after: rows, keeping: nil, atEnd: true)
+    #expect(toldAgain == nil, "the same opening told a second time stays on the unread line")
+    let arrived = ThreadScroll.next(
+      opening: 2, scrolledFor: 2, before: rows, after: rows + ["m:5"], keeping: nil, atEnd: true)
+    #expect(arrived == .follow, "a new message with the end on screen is followed")
+    let away = ThreadScroll.next(
+      opening: 2, scrolledFor: 2, before: rows, after: rows + ["m:5"], keeping: nil, atEnd: false)
+    #expect(away == nil, "and not when the reader has scrolled away from the end")
+  }
+
   @Test("the window's view says which conversation it shows")
   func theViewNamesTheConversation() {
     var changed = Muster_ViewChanged()

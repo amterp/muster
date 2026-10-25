@@ -693,24 +693,55 @@ struct ConversationThreadView: View {
     }
   }
 
-  /// Opens on the first message the human has not read, or the end; afterwards follows new
-  /// messages only while the end is on screen, and keeps the reader's place when an earlier page
-  /// lands above it (mine).
   private func scroll(_ proxy: ScrollViewProxy, from before: [String], to after: [String]) {
-    guard thread.group != nil, !after.isEmpty else { return }
-    if scrolledFor != thread.opening {
+    guard thread.group != nil else { return }
+    let scrolling = ThreadScroll.next(
+      opening: thread.opening, scrolledFor: scrolledFor, before: before, after: after,
+      keeping: keeping, atEnd: atEnd)
+    switch scrolling {
+    case .open(let row):
       scrolledFor = thread.opening
-      proxy.scrollTo(after.contains("unread") ? "unread" : "end", anchor: .top)
-      return
+      proxy.scrollTo(row, anchor: .top)
+    case .keep(let row):
+      keeping = nil
+      proxy.scrollTo(row, anchor: .top)
+    case .follow:
+      proxy.scrollTo("end", anchor: .bottom)
+    case nil:
+      break
+    }
+  }
+}
+
+/// Where a conversation's thread scrolls when its rows change: on opening, to the first message
+/// the human has not read, or the end; afterwards to new messages only while the end is on
+/// screen, and to the reader's place when an earlier page lands above it (mine).
+enum ThreadScroll: Equatable {
+  /// The thread's first scroll since it came on screen, to this row's top.
+  case open(String)
+  /// Back to the row that was first when an earlier page was asked for.
+  case keep(String)
+  /// To the end, after a new message.
+  case follow
+
+  static func next(
+    opening: Int, scrolledFor: Int?, before: [String], after: [String], keeping: String?,
+    atEnd: Bool
+  ) -> ThreadScroll? {
+    guard !after.isEmpty else { return nil }
+    if scrolledFor != opening {
+      return .open(after.contains("unread") ? "unread" : "end")
     }
     if let keeping, before.first != after.first, after.contains(keeping) {
-      self.keeping = nil
-      proxy.scrollTo(keeping, anchor: .top)
-      return
+      return .keep(keeping)
     }
-    if atEnd, before.last != after.last {
-      proxy.scrollTo("end", anchor: .bottom)
+    // Rows that were not there before are the thread arriving, not a message: an opening that
+    // changed the rows too is told twice, and the second telling would scroll past the unread
+    // line to the end.
+    if atEnd, !before.isEmpty, before.last != after.last {
+      return .follow
     }
+    return nil
   }
 }
 
