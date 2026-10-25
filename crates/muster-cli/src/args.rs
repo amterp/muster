@@ -25,9 +25,9 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HideHelpers, HidePane, MoveTab, OpenTranscript, QuietPane, ReadDaemons, ReadPane, ReadWindow,
-    ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent,
-    SendToPane, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes,
+    HideHelpers, HidePane, MoveTab, QuietPane, ReadDaemons, ReadPane, ReadWindow, ReattachPane,
+    ReloadConfig, RenamePane, RenameTab, Request, ResizePane, RestartAgent, SendToPane,
+    ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes,
     ZoomPane, request,
 };
 
@@ -1038,11 +1038,11 @@ pub fn parse(
         }
         What::Daemons => send(request::Payload::ReadDaemons(ReadDaemons {})),
         What::Upgrade => send(request::Payload::UpgradeMuster(UpgradeMuster {})),
-        // The window's verb among the daemon's: a transcript is a pane, which only a window
-        // can open. No daemon is named, which the core reads as this machine's: the human is
-        // homed here, and a group kept elsewhere is followed here as `group@machine`.
+        // The window's verb among the daemon's: a conversation is shown in a window. No daemon
+        // is named, which the core reads as this machine's: the human is homed here, and a group
+        // kept elsewhere is followed here as `group@machine`.
         What::Msg { verb: crate::messaging::Verb::Open { group }, .. } => {
-            send(request::Payload::OpenTranscript(OpenTranscript {
+            send(request::Payload::ShowConversation(ShowConversation {
                 daemon_id: String::new(),
                 group: group.clone(),
             }))

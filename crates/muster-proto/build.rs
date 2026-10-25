@@ -40,5 +40,9 @@ fn main() {
         "Banner",
         "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
     );
+    config.message_attribute(
+        "ConversationMessage",
+        "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
+    );
     config.compile_fds(descriptors).expect("the schema generates");
 }

@@ -206,8 +206,8 @@ pub enum Verb {
         group: String,
     },
 
-    /// Go to a group's transcript in the window, as choosing its banner does: the pane
-    /// following it, or a new tab. Asks the window, not the daemon
+    /// Show a group's conversation in the window, in place of its panes, and print the
+    /// window's name. Asks the window, not the daemon
     #[command(name = OPEN)]
     Open {
         #[arg(long, value_name = "GROUP")]

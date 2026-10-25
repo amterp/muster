@@ -549,6 +549,54 @@ fn a_pane_can_be_read_back(pane: &str, environment: &[(&str, String)]) {
     );
 }
 
+/// `muster msg open` shows a group's conversation and answers with the window, and `muster window
+/// --json` then says which group's conversation the window shows, so an agent can see that the
+/// human is reading it (mip/0009-group-conversation.md, section 8).
+#[test]
+fn msg_open_shows_a_conversation_and_window_says_so() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let socket = daemon.root().join("command.sock").to_string_lossy().into_owned();
+    accepted(&dispatch(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        command_socket_path: socket.clone(),
+        ..Startup::default()
+    })));
+    accepted(&dispatch(request::Payload::OpenWindow(OpenWindow::default())));
+    let join =
+        muster_daemon_proto::msg_request::Request::Join(muster_daemon_proto::msg_request::Join {
+            group: Some("review".to_string()),
+            ..Default::default()
+        });
+    muster_harness::requests::expect(
+        &mut daemon.connect(),
+        muster_daemon_proto::request::Service::Msg(muster_daemon_proto::MsgRequest {
+            caller: Some(muster_daemon_proto::msg_request::Caller::default()),
+            request: Some(join),
+        }),
+        muster_daemon_proto::Outcome::Done,
+    );
+    let outside = [("MUSTER_SOCKET", socket)];
+
+    let opened = run(&["msg", "open", "--group", "review", "--json"], &outside);
+    assert_eq!(opened.code, 0, "`muster msg open` failed: {}", opened.errors);
+    let window = json_from(&opened)["window"].as_str().map(str::to_string);
+    assert!(window.is_some_and(|window| !window.is_empty()), "it names no window: {}", opened.out);
+
+    let described = json_from(&run(&["window", "--json"], &outside));
+    assert_eq!(
+        described["conversation"],
+        json!({ "daemon": "local", "group": "review" }),
+        "the window does not say whose conversation it shows: {described}"
+    );
+    let plain = run(&["window"], &outside);
+    assert!(
+        plain.out.starts_with("showing the conversation of review"),
+        "the plain answer does not lead with the conversation: {}",
+        plain.out
+    );
+}
+
 /// How the tab on screen is arranged, which nothing else in the answer implies.
 ///
 /// A person reading the plain output has the window in front of them. A script arranging one has

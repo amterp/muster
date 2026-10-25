@@ -70,6 +70,7 @@ use crate::{command, convert, ffi, watchdog};
 
 pub(crate) mod attaching;
 pub(crate) mod banners;
+pub(crate) mod conversation;
 pub(crate) mod lifecycle;
 mod other_installs;
 pub(crate) mod problems;
@@ -931,6 +932,10 @@ pub(crate) struct Session {
     banners: muster_core::banners::Banners,
     banners_sent: BannersChanged,
 
+    /// One copy of each group's log and members while some window shows its conversation,
+    /// shared by every window showing it (`conversation`).
+    conversations: BTreeMap<GroupKey, conversation::Shared>,
+
     /// How big each pane's text is, for the panes somebody has sized.
     ///
     /// Beside the chrome rather than inside it, because it is not one answer about the window.
@@ -1070,6 +1075,23 @@ pub(crate) struct Window {
     /// window reports it less what the pane had when it arrived: a tab moved here from the
     /// window beside it starts at zero rather than with that window's history.
     bridge_baselines: BTreeMap<PaneKey, u32>,
+
+    /// The group whose conversation this window shows in place of its panes, and how it reads
+    /// it (`conversation`).
+    conversation: Option<conversation::Shown>,
+
+    /// The message box's draft for each group, whole, kept with the arrangement so leaving a
+    /// conversation or quitting loses nothing. A window's own: typing in one window never
+    /// appears in another.
+    drafts: BTreeMap<GroupKey, muster_core::conversation::Draft>,
+
+    /// Where the last post from each group's message box stands.
+    sending: BTreeMap<GroupKey, conversation::Sending>,
+
+    /// What the shell was last told of the conversation, its members and its message box.
+    conversation_sent: Option<crate::proto::ConversationChanged>,
+    members_sent: Option<crate::proto::ConversationMembersChanged>,
+    message_box_sent: Option<crate::proto::MessageBoxChanged>,
 }
 
 /// Where a window is between being taken on and being closed.
@@ -1148,6 +1170,12 @@ impl Default for Window {
             opened_sidebar: false,
             shown_errors: BTreeSet::new(),
             bridge_baselines: BTreeMap::new(),
+            conversation: None,
+            drafts: BTreeMap::new(),
+            sending: BTreeMap::new(),
+            conversation_sent: None,
+            members_sent: None,
+            message_box_sent: None,
         }
     }
 }
@@ -1903,6 +1931,12 @@ impl Session {
         self.transcripts(group).iter().any(|pane| self.attention.seen(pane))
     }
 
+    /// Whether the human is reading the group: its conversation is shown in the window in
+    /// front, which is focused, or somebody is looking at its transcript.
+    fn looking_at(&self, group: &GroupKey) -> bool {
+        self.looking_at_conversation(group) || self.looking_at_transcript(group)
+    }
+
     /// Tells the group's daemon the human has read it. Queued rather than waited on, so it is
     /// safe under the session's lock, like [`Session::report_seen`]; one that finds its daemon
     /// disconnected is not held, since what waits is said again when it comes back.
@@ -2131,6 +2165,7 @@ impl Session {
             |daemon| self.remote(daemon),
             |daemon, pane| self.view_pane(window, daemon, pane),
         )
+        .covered_by(self.windows[window].conversation.as_ref().map(|shown| shown.group.clone()))
     }
 
     /// How every tab this window holds is arranged, in tab order, shown or not
@@ -4268,6 +4303,23 @@ pub(crate) fn ask_as_human_for(
     daemon: &DaemonId,
     request: muster_daemon_proto::msg_request::Request,
 ) -> Result<muster_daemon_proto::MsgAnswer, Refusal> {
+    let pending = send_as_human(daemon, request)?;
+    // Waited on with the session let go: the daemon may be carrying it to another machine.
+    let answer = pending.wait(AS_HUMAN_PATIENCE).map_err(|why| Refusal::Unanswered {
+        detail: format!(
+            "{daemon} did not answer ({why}); it may still have done it, in which case the \
+             group leaves the window's list of the human's groups"
+        ),
+        made: None,
+    })?;
+    answered_as_human(answer)
+}
+
+/// Sends `daemon`'s messaging a request as the human, for the caller to wait on.
+fn send_as_human(
+    daemon: &DaemonId,
+    request: muster_daemon_proto::msg_request::Request,
+) -> Result<muster_daemon_client::control::Pending, Refusal> {
     let pending = {
         let session = poison::lock(&SESSION, "session");
         let Some(backend) = session.backends.get(daemon) else {
@@ -4279,19 +4331,18 @@ pub(crate) fn ask_as_human_for(
         };
         backend.follower.as_human(request)
     };
-    // Waited on with the session let go: the daemon may be carrying it to another machine.
-    let Some(pending) = pending else {
-        return Err(Refusal::Declined(format!(
+    pending.ok_or_else(|| {
+        Refusal::Declined(format!(
             "{daemon} is not connected, so nothing was sent; it is reconnecting on its own"
-        )));
-    };
-    let answer = pending.wait(AS_HUMAN_PATIENCE).map_err(|why| Refusal::Unanswered {
-        detail: format!(
-            "{daemon} did not answer ({why}); it may still have done it, in which case the \
-             group leaves the window's list of the human's groups"
-        ),
-        made: None,
-    })?;
+        ))
+    })
+}
+
+/// What the daemon's messaging answered a request made as the human: its answer, or its refusal
+/// in its own words, which name the command that gets past it.
+pub(crate) fn answered_as_human(
+    answer: muster_daemon_proto::Answer,
+) -> Result<muster_daemon_proto::MsgAnswer, Refusal> {
     match answer.outcome() {
         muster_daemon_proto::Outcome::Done | muster_daemon_proto::Outcome::AlreadySo => {
             Ok(match answer.detail {
@@ -5232,6 +5283,20 @@ fn save(session: &mut Session, window: WindowId) {
     let Some((path, written)) = window.arrangement.as_mut() else { return };
     let mut arrangement = Saved::of(&window.composition, window.presentation, &session.font_sizes)
         .forgetting_weights(|tab| kept.contains(tab));
+    // Only a draft with words in it: recipients alone are what the conversation opens with
+    // anyway, and writing an empty draft for every group ever shown would grow the file forever.
+    arrangement.drafts = window
+        .drafts
+        .iter()
+        .filter(|(_, draft)| !draft.text.is_empty())
+        .map(|(group, draft)| saved::SavedDraft {
+            daemon: group.daemon.clone(),
+            group: group.group.clone(),
+            text: draft.text.clone(),
+            to: draft.to.clone(),
+            urgent: draft.urgent,
+        })
+        .collect();
     if let Some(left) = &window.left {
         arrangement = arrangement.keeping(left, &window.awaiting);
     }
@@ -6584,7 +6649,7 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
             poison::lock(&backend.mirror, "mirror").human_notice(group).cloned()
         });
         let waiting = notice.as_ref().is_some_and(|notice| notice.count > 0);
-        let looking = waiting && session.looking_at_transcript(&key);
+        let looking = waiting && session.looking_at(&key);
         if looking {
             session.read_as_human(&key);
         }
@@ -6618,7 +6683,7 @@ fn read_what_is_looked_at() {
             .collect();
         let mut withdrawn = Vec::new();
         for key in asking {
-            if !session.looking_at_transcript(&key) {
+            if !session.looking_at(&key) {
                 continue;
             }
             session.read_as_human(&key);
@@ -6685,6 +6750,7 @@ fn announce_state(pane: &PaneKey) {
     // shell, the shell reacts by dispatching, and a dispatch arriving while this held the
     // session would deadlock against it on the same thread.
     let Some(agent) = presented(pane) else { return };
+    conversation::member_moved(pane);
     ffi::emit(&Event::new(event::Payload::PaneStateChanged(convert::pane_state(&agent))));
     watch::publish(&Seen::State(agent));
 }

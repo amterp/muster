@@ -11,6 +11,7 @@ mod closed_windows;
 mod cold_start;
 mod command;
 mod confirmed_send;
+mod conversation;
 mod daemon_census;
 mod dispatch;
 mod effects;

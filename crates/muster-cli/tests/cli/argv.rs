@@ -204,7 +204,7 @@ fn described(request: &Request) -> Value {
         return json!("a request with no payload, which nothing here can build");
     };
     described_tab(payload)
-        .or_else(|| described_transcript(payload))
+        .or_else(|| described_conversation(payload))
         .unwrap_or_else(|| described_pane_or_window(payload))
 }
 
@@ -236,10 +236,10 @@ fn described_tab(payload: &request::Payload) -> Option<Value> {
     })
 }
 
-fn described_transcript(payload: &request::Payload) -> Option<Value> {
-    let request::Payload::OpenTranscript(open) = payload else { return None };
+fn described_conversation(payload: &request::Payload) -> Option<Value> {
+    let request::Payload::ShowConversation(open) = payload else { return None };
     Some(json!({
-        "open_transcript": fields([
+        "show_conversation": fields([
             ("daemon_id", said(&open.daemon_id)),
             ("group", said(&open.group)),
         ])

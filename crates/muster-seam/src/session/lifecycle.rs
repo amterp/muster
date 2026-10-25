@@ -7,10 +7,10 @@
 //! arrangement it was reopened from.
 
 use super::{
-    ATTACHES, BTreeSet, BackendIntent, Daemon, DaemonId, Event, Health, Implicitly, Keyboard,
-    Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId, address,
-    announce_presentation, arrangement_path, daemon_holding, daemon_holding_tab, event, ffi,
-    fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
+    ATTACHES, BTreeSet, BackendIntent, Daemon, DaemonId, Event, GroupKey, Health, Implicitly,
+    Keyboard, Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId,
+    address, announce_presentation, arrangement_path, daemon_holding, daemon_holding_tab, event,
+    ffi, fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
     local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
     reconcile_sidebar_with_problems, save, saved_arrangement, saved_arrangement_at,
     saved_presentation, settle_what_the_window_shows, submit, tell_window_each_health,
@@ -32,6 +32,7 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     follow_implicitly_if_nothing_else(Implicitly::InBackground)?;
     restore_presentation(window);
     restore_font_sizes(window);
+    restore_drafts(window);
     say_this_window_is_open(window);
     reopen_what_was_left(window);
     // After the file has been read and before anything writes over it. Everything above reads
@@ -340,6 +341,28 @@ pub(super) fn restore_font_sizes(window: WindowId) {
         if !session.font_sizes.entries().any(|(sized, _)| sized == pane) {
             session.font_sizes.set(pane, offset);
         }
+    }
+}
+
+/// Puts back what the window's message boxes held, so a draft survives quitting and an upgrade
+/// (mip/0009-group-conversation.md, section 3). Unchecked, like a pane's text size: a draft for a
+/// group the human has since left costs a row in the file and nothing on screen.
+pub(super) fn restore_drafts(window: WindowId) {
+    let Some(saved) = saved_arrangement(window) else { return };
+    if saved.drafts.is_empty() {
+        return;
+    }
+    log::info("state.drafts.restored", fields! { "drafts" => saved.drafts.len() });
+    let mut session = poison::lock(&SESSION, "session");
+    for kept in saved.drafts {
+        let group = GroupKey { daemon: kept.daemon, group: kept.group };
+        let draft = muster_core::conversation::Draft {
+            text: kept.text,
+            to: kept.to,
+            urgent: kept.urgent,
+            addressed: muster_core::conversation::Addressed::Chosen,
+        };
+        session.windows[window].drafts.entry(group).or_insert(draft);
     }
 }
 

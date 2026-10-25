@@ -78,6 +78,19 @@ type Arrived = (proto::Answer, Instant);
 const SLOW: Duration = Duration::from_secs(1);
 
 impl Pending {
+    /// Waits up to `patience` for the answer, and says nothing when it has not come.
+    ///
+    /// For a caller that waits on one request in slices between looking at something else, such
+    /// as a follow of a group's log, which is answered only once an entry arrives: a slice that
+    /// passes is not a late answer, and [`Pending::wait`] would warn of one each time.
+    pub fn poll(&self, patience: Duration) -> Option<Result<proto::Answer, Unanswered>> {
+        match self.answer.recv_timeout(patience) {
+            Ok((answer, _)) => Some(Ok(answer)),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => Some(Err(Unanswered::Ended)),
+        }
+    }
+
     /// Waits up to `patience` for the answer.
     ///
     /// Says how long it took, in two parts: until the reader took the answer off the socket,

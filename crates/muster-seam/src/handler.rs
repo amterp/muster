@@ -43,8 +43,28 @@ use prost::Message;
 /// alternative is a shell that cannot tell "the core refused" from "the core is gone", and
 /// those want very different reactions.
 pub fn dispatch(request: &[u8]) -> Vec<u8> {
+    answered(request, Origin::Window)
+}
+
+/// [`dispatch`], for a request that arrived on the command socket rather than from the shell.
+///
+/// The two are answered alike but for one thing: a tab or pane made through the socket does not
+/// take the window out of a conversation, so an agent's `muster pane new` cannot pull the human
+/// out of reading; one the person made from the window does, and shows them what they made.
+pub fn dispatch_from_socket(request: &[u8]) -> Vec<u8> {
+    answered(request, Origin::Socket)
+}
+
+/// Where a request came from: the window's own shell, or the command socket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Window,
+    Socket,
+}
+
+fn answered(request: &[u8], origin: Origin) -> Vec<u8> {
     let response = match Request::decode(request) {
-        Ok(request) => handle(request),
+        Ok(request) => handle(request, origin),
         Err(error) => Response::failure(format!(
             "the core could not decode a request ({error}). Whatever the shell was asking \
              for did not happen and will not be retried. The two sides are generated from \
@@ -75,7 +95,7 @@ fn nothing_was_asked() -> Response {
     )
 }
 
-fn handle(mut request: Request) -> Response {
+fn handle(mut request: Request, origin: Origin) -> Response {
     if let Some(payload) = request.payload.as_mut()
         && let Err(ambiguous) = session::address_panes(payload)
     {
@@ -122,6 +142,13 @@ fn handle(mut request: Request) -> Response {
         }
     }
 
+    // Choosing where to look returns a window from a conversation to its panes
+    // (mip/0009-group-conversation.md, section 1), before the choice is carried out, so the
+    // keyboard lands on what was chosen.
+    if leaves_the_conversation(&payload, origin) {
+        session::conversation::leave(resolved.to);
+    }
+
     let goes_to_a_tab = goes_to_a_tab(&payload);
     let response = route(resolved.to, payload);
     // Somebody looking at one window went to a tab in another, so that window comes forward. A
@@ -137,6 +164,25 @@ fn handle(mut request: Request) -> Response {
 /// somebody asked from elsewhere.
 fn goes_to_a_tab(payload: &request::Payload) -> bool {
     matches!(payload, request::Payload::FocusTab(_) | request::Payload::FocusPane(_))
+}
+
+/// Whether a request is somebody choosing a pane or a tab to look at: going to one, stepping, a
+/// numbered chord, walking the focus history, or making one that takes the keyboard from the
+/// window itself. A tab or pane made through the command socket is a script's or an agent's, and
+/// leaves the human reading.
+fn leaves_the_conversation(payload: &request::Payload, origin: Origin) -> bool {
+    match payload {
+        request::Payload::FocusPane(_)
+        | request::Payload::FocusTab(_)
+        | request::Payload::FocusTabRelative(_)
+        | request::Payload::FocusRelative(_)
+        | request::Payload::FocusPaneAt(_)
+        | request::Payload::PressNumberedChord(_)
+        | request::Payload::FocusHistory(_) => true,
+        request::Payload::CreateTab(made) => made.take_focus && origin == Origin::Window,
+        request::Payload::SplitPane(made) => made.take_focus && origin == Origin::Window,
+        _ => false,
+    }
 }
 
 fn is_ok(response: &Response) -> bool {
@@ -165,6 +211,8 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::DismissBanner(_)
             | request::Payload::HoldBanner(_)
             | request::Payload::PickBannerAnswer(_)
+            | request::Payload::LoadEarlier(_)
+            | request::Payload::PauseGroup(_)
     )
 }
 
@@ -350,6 +398,40 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         }
         request::Payload::PickBannerAnswer(pick) => {
             session::banners::pick(&pick.daemon_id, &pick.group, pick.seq, pick.answer)
+        }
+        request::Payload::ShowConversation(show) => {
+            session::conversation::show(window, &show.daemon_id, &show.group)
+        }
+        request::Payload::LeaveConversation(_) => {
+            session::conversation::leave(window);
+            Response::ok()
+        }
+        request::Payload::OpenFold(fold) => {
+            session::conversation::open_fold(window, &fold.daemon_id, &fold.group, fold.first)
+        }
+        request::Payload::ShowWholeMessage(whole) => {
+            session::conversation::show_whole(window, &whole.daemon_id, &whole.group, whole.seq)
+        }
+        request::Payload::PostFromConversation(post) => {
+            session::conversation::post(window, &post.daemon_id, &post.group)
+        }
+        request::Payload::SaveDraft(saved) => session::conversation::save_draft(
+            window,
+            &saved.daemon_id,
+            &saved.group,
+            muster_core::conversation::Edit {
+                cursor: usize::try_from(saved.cursor).unwrap_or(usize::MAX),
+                text: saved.text,
+                to: saved.to,
+                urgent: saved.urgent,
+                unaddress: saved.unaddress,
+            },
+        ),
+        request::Payload::LoadEarlier(earlier) => {
+            session::conversation::load_earlier(&earlier.daemon_id, &earlier.group)
+        }
+        request::Payload::PauseGroup(pause) => {
+            session::conversation::pause(&pause.daemon_id, &pause.group, pause.paused)
         }
         request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),
@@ -1731,14 +1813,17 @@ fn read_asking() -> Response {
 /// asking is an answer naming nothing rather than a refusal: nothing failed.
 fn focus_asking(window: WindowId) -> Response {
     let went = match session::most_urgent_asking() {
-        Some(Asker::Pane(pane)) => match session::focus(window, &pane.daemon, &pane.pane) {
-            Ok(()) => proto::Asking {
+        Some(Asker::Pane(pane)) => {
+            session::conversation::leave(window);
+            if let Err(refusal) = session::focus(window, &pane.daemon, &pane.pane) {
+                return relayed(Err(refusal));
+            }
+            proto::Asking {
                 daemon_id: pane.daemon.to_string(),
                 pane_id: pane.pane.to_string(),
                 ..proto::Asking::default()
-            },
-            Err(refusal) => return relayed(Err(refusal)),
-        },
+            }
+        }
         Some(Asker::Group(group)) => {
             let opened = open_transcript(window, &group.daemon, &group.group);
             if !matches!(opened.payload, Some(response::Payload::Went(_))) {
@@ -1998,7 +2083,7 @@ fn ask_for_window(ask: &proto::AskForWindow) -> Response {
         // Going to a pane or a tab is going to the window holding it, which the ordinary focus
         // path finds and brings forward; the app is then brought forward as well, since the
         // launch that asked was in front.
-        handle(Request::new(session::going_to(&ask.show)))
+        handle(Request::new(session::going_to(&ask.show)), Origin::Socket)
     } else {
         Response::ok()
     };

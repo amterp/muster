@@ -41,7 +41,7 @@ use muster_proto::{Request, Response, WatchPanes, request, response};
 use prost::Message;
 
 use crate::watch::Next;
-use crate::{dispatch, handler, session};
+use crate::{dispatch_from_socket, handler, session};
 
 /// The endpoint this process is listening on, held so that it stays open.
 ///
@@ -256,7 +256,7 @@ fn answer(mut stream: UnixStream) {
 
     // The same bytes-in, bytes-out call the C ABI makes, including its panic guard: a request
     // arriving here is no more trustworthy than one arriving from the shell.
-    let response = dispatch(&request);
+    let response = dispatch_from_socket(&request);
     after_the_window_holds_it(&response);
     let answered = received.elapsed();
     let sent = write_frame(&mut stream, &response);

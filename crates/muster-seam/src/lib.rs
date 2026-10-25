@@ -36,4 +36,4 @@ mod watchdog;
 pub use muster_proto as proto;
 
 pub use ffi::emit;
-pub use handler::dispatch;
+pub use handler::{dispatch, dispatch_from_socket};

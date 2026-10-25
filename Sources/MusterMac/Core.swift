@@ -1521,6 +1521,14 @@ public enum Core {
     case .dismissBanner: return "dismiss_banner"
     case .holdBanner: return "hold_banner"
     case .pickBannerAnswer: return "pick_banner_answer"
+    case .showConversation: return "show_conversation"
+    case .leaveConversation: return "leave_conversation"
+    case .openFold: return "open_fold"
+    case .showWholeMessage: return "show_whole_message"
+    case .postFromConversation: return "post_from_conversation"
+    case .saveDraft: return "save_draft"
+    case .loadEarlier: return "load_earlier"
+    case .pauseGroup: return "pause_group"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"
@@ -1818,6 +1826,9 @@ public enum Core {
     case .bannersChanged(let changed):
       BannerBoard.shared.apply(changed)
       info("banners.received", ["shown": String(changed.shown.count)])
+    case .conversationChanged, .conversationMembersChanged, .messageBoxChanged:
+      // Not drawn by this shell yet: a group is read in its transcript.
+      break
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.

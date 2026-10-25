@@ -11,6 +11,9 @@ use std::collections::BTreeMap;
 use muster_core::banners::{Banner, Shown, Stack};
 use muster_core::composition::{DaemonId, View, ViewPane, ViewTree};
 use muster_core::config::Rgb;
+use muster_core::conversation::{
+    Completion, Draft, Group, Header, Liveness, MemberRow, MessageRow, Row,
+};
 use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers};
 use muster_core::markdown::Block;
 use muster_core::mirror::backend::{AgentFacts, SplitAxis};
@@ -105,6 +108,16 @@ pub(crate) fn view(view: &View) -> proto::ViewChanged {
                 remote: machine.remote,
             })
             .collect(),
+        conversation_daemon_id: view
+            .conversation
+            .as_ref()
+            .map(|group| group.daemon.to_string())
+            .unwrap_or_default(),
+        conversation_group: view
+            .conversation
+            .as_ref()
+            .map(|group| group.group.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -297,7 +310,7 @@ fn banner(banner: &Banner) -> proto::Banner {
     drawn
 }
 
-fn sent(sent: &Sent) -> proto::PostOutcome {
+pub(crate) fn sent(sent: &Sent) -> proto::PostOutcome {
     use proto::post_outcome::State;
     let (state, said, heard, body) = match sent {
         Sent::Pending { body } => (State::Pending, "", false, body.as_str()),
@@ -398,4 +411,139 @@ pub(crate) fn key(event: &proto::KeyEvent) -> Result<KeyEvent, String> {
         unshifted_codepoint: event.unshifted_codepoint.and_then(char::from_u32),
         is_composing: event.is_composing,
     })
+}
+
+/// One window's conversation: the header, the thread's rows and the members column.
+pub(crate) fn conversation(
+    group: &muster_core::attention::GroupKey,
+    header: &Header,
+    rows: &[Row],
+    posted: Option<&(u64, String)>,
+) -> proto::ConversationChanged {
+    proto::ConversationChanged {
+        daemon_id: group.daemon.to_string(),
+        group: group.group.clone(),
+        header: Some(proto::ConversationHeader {
+            group: header.group.clone(),
+            keeper: header.keeper.clone().unwrap_or_default(),
+            members: header.members.map_or(0, |count| u32::try_from(count).unwrap_or(u32::MAX)),
+            members_known: header.members.is_some(),
+            paused: header.paused,
+            behind: header.behind.clone().unwrap_or_default(),
+        }),
+        rows: rows.iter().map(|row| conversation_row(row, posted)).collect(),
+        ..proto::ConversationChanged::default()
+    }
+}
+
+/// One window's members column.
+pub(crate) fn conversation_members(
+    group: &muster_core::attention::GroupKey,
+    members: &[MemberRow],
+) -> proto::ConversationMembersChanged {
+    proto::ConversationMembersChanged {
+        daemon_id: group.daemon.to_string(),
+        group: group.group.clone(),
+        members: members.iter().map(conversation_member).collect(),
+    }
+}
+
+fn conversation_row(row: &Row, posted: Option<&(u64, String)>) -> proto::ConversationRow {
+    use proto::conversation_row::Kind;
+    let kind = match row {
+        Row::Divider { date } => Kind::Divider(date.clone()),
+        Row::Members { text, at_ms } => {
+            Kind::Changes(proto::ConversationChanges { text: text.clone(), at_ms: *at_ms })
+        }
+        Row::Folded { first, count, from_ms, to_ms } => Kind::Fold(proto::ConversationFold {
+            first: *first,
+            count: u32::try_from(*count).unwrap_or(u32::MAX),
+            from_ms: *from_ms,
+            to_ms: *to_ms,
+        }),
+        Row::Message(message) => Kind::Message(conversation_message(message, posted)),
+        Row::Unread => Kind::Unread(true),
+    };
+    proto::ConversationRow { kind: Some(kind) }
+}
+
+fn conversation_message(
+    message: &MessageRow,
+    posted: Option<&(u64, String)>,
+) -> proto::ConversationMessage {
+    proto::ConversationMessage {
+        seq: message.seq,
+        at_ms: message.at_ms,
+        author: message.author.clone(),
+        author_name: message.author_name.clone(),
+        author_daemon_id: message
+            .author_pane
+            .as_ref()
+            .map(|pane| pane.daemon.to_string())
+            .unwrap_or_default(),
+        author_pane_id: message
+            .author_pane
+            .as_ref()
+            .map(|pane| pane.pane.to_string())
+            .unwrap_or_default(),
+        to: message.to.clone(),
+        to_you: message.to_you,
+        by_you: message.by_you,
+        urgent: message.urgent,
+        body: markdown(&message.blocks),
+        more: message.more,
+        replyable: message.replyable,
+        from_muster: message.from_muster,
+        said: posted
+            .filter(|(seq, _)| *seq == message.seq)
+            .map(|(_, said)| said.clone())
+            .unwrap_or_default(),
+    }
+}
+
+fn conversation_member(member: &MemberRow) -> proto::ConversationMember {
+    use proto::conversation_member::Liveness as Wire;
+    let liveness = match member.liveness {
+        Liveness::Alive => Wire::Alive,
+        Liveness::Gone => Wire::Gone,
+        Liveness::Human => Wire::Human,
+        Liveness::Unreachable => Wire::Unreachable,
+    };
+    proto::ConversationMember {
+        name: member.name.clone(),
+        shown: member.shown.clone(),
+        liveness: liveness.into(),
+        daemon_id: member.pane.as_ref().map(|pane| pane.daemon.to_string()).unwrap_or_default(),
+        pane_id: member.pane.as_ref().map(|pane| pane.pane.to_string()).unwrap_or_default(),
+        unread_first: member.unread.as_ref().map_or(0, |unread| unread.first),
+        unread_from: member.unread.as_ref().map(|unread| unread.from.clone()).unwrap_or_default(),
+        unread_why: member.unread.as_ref().map(|unread| unread.why.clone()).unwrap_or_default(),
+        you: member.you,
+    }
+}
+
+/// A message box's draft, with where its cursor goes and what the name at it may complete to.
+pub(crate) fn message_box_draft(
+    draft: &Draft,
+    cursor: usize,
+    completions: &[Completion],
+    group: &Group,
+) -> proto::MessageBoxDraft {
+    proto::MessageBoxDraft {
+        text: draft.text.clone(),
+        to: draft
+            .to
+            .iter()
+            .map(|name| proto::Recipient { name: name.clone(), shown: group.shown(name) })
+            .collect(),
+        urgent: draft.urgent,
+        cursor: u32::try_from(cursor).unwrap_or(u32::MAX),
+        completions: completions
+            .iter()
+            .map(|completion| proto::Recipient {
+                name: completion.name.clone(),
+                shown: completion.shown.clone(),
+            })
+            .collect(),
+    }
 }

@@ -100,6 +100,14 @@ message Request {
     DismissBanner dismiss_banner = 81;
     HoldBanner hold_banner = 82;
     PickBannerAnswer pick_banner_answer = 83;
+    PauseGroup pause_group = 92;
+    LoadEarlier load_earlier = 93;
+    SaveDraft save_draft = 94;
+    PostFromConversation post_from_conversation = 95;
+    ShowWholeMessage show_whole_message = 96;
+    OpenFold open_fold = 97;
+    LeaveConversation leave_conversation = 98;
+    ShowConversation show_conversation = 99;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1479,6 +1487,94 @@ message PickBannerAnswer {
   optional uint32 answer = 4;
 }
 
+// Shows a group's conversation in place of the window's panes (mip/0009-group-conversation.md,
+// sections 1, 2 and 7), as choosing its sidebar row or banner will and as `muster msg open`
+// does. The tab stays as it was underneath. While the conversation is in the window that is in
+// front and focused, the group is read for the human, and each message as it arrives. An empty
+// daemon is the first one on this machine. Answered with the window, as Opened.
+message ShowConversation {
+  string daemon_id = 1;
+  string group = 2;
+}
+
+// Returns the window to its panes, with the keyboard where it was. Choosing a tab or a pane, a
+// numbered chord, and a tab or pane made from the window leave too.
+message LeaveConversation {
+}
+
+// Opens the fold whose first message is `first`, for this window, until it leaves.
+message OpenFold {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 first = 3;
+}
+
+// Shows message `seq` whole, where the thread cut it at 40 lines.
+message ShowWholeMessage {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 seq = 3;
+}
+
+// Posts the window's draft for the group as the human, with the request `muster msg post` sends.
+// Answered once the daemon has, as ReplyToBanner is: Ok noting whom it reached, a Failure in the
+// daemon's words, or Unanswered. MessageBoxChanged says each step. A kept post clears the draft;
+// a refused or unknown one leaves it, and an unknown one is never sent again on its own.
+message PostFromConversation {
+  string daemon_id = 1;
+  string group = 2;
+}
+
+// The message box as the shell holds it after the person changed it: the whole draft, every
+// time. Answered with the draft as the core keeps it, which the shell takes in place of its own:
+// a leading @name may have become a recipient, Backspace may have turned one back into text, and
+// the name being typed may complete. Never answered with an event, so typing costs one answer.
+message SaveDraft {
+  string daemon_id = 1;
+  string group = 2;
+  string text = 3;
+  // Where the cursor is, in Unicode scalar values.
+  uint32 cursor = 4;
+  // The recipients by participant name, as Reply or taking one away left them.
+  repeated string to = 5;
+  bool urgent = 6;
+  // Backspace was pressed straight after the last recipient.
+  bool unaddress = 7;
+}
+
+// Fetches the page of the group's log before the earliest entry the conversation holds, for every
+// window showing it.
+message LoadEarlier {
+  string daemon_id = 1;
+  string group = 2;
+}
+
+// Pauses the group, or resumes it, as the human: the header's button.
+message PauseGroup {
+  string daemon_id = 1;
+  string group = 2;
+  bool paused = 3;
+}
+
+// The message box's draft, as the core keeps it.
+message MessageBoxDraft {
+  string text = 1;
+  // Empty leaves whom the post wakes to the group's policy, which the message box says.
+  repeated Recipient to = 2;
+  bool urgent = 3;
+  // Where the cursor goes, in Unicode scalar values.
+  uint32 cursor = 4;
+  // What the @name at the cursor may complete to.
+  repeated Recipient completions = 5;
+}
+
+message Recipient {
+  // The participant name a post addresses.
+  string name = 1;
+  // What the conversation calls them: a pane's callsign rather than its id.
+  string shown = 2;
+}
+
 // Puts the keyboard on the pane at a given place in the window's pane order.
 //
 // The place is the roster's `place`, counting from one across every attached daemon and every
@@ -1602,6 +1698,7 @@ message Response {
     AppClaim app_claim = 22;
     LayoutMoved layout_moved = 23;
     Restarted restarted = 24;
+    MessageBoxDraft draft = 30;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -2405,6 +2502,129 @@ message PostOutcome {
   string body = 4;
 }
 
+// A group's conversation as one window shows it (mip/0009-group-conversation.md, sections 1 and 7):
+// the header and the thread's rows. Whole each time, sent only when it changed, and sent empty once
+// when the window leaves the conversation. What changes at another pace travels apart, so that it
+// never sends the thread again: the message box is MessageBoxChanged, the members column is
+// ConversationMembersChanged, and what each member's agent is doing is its pane's
+// PaneStateChanged.
+message ConversationChanged {
+  string daemon_id = 1;
+  string group = 2;
+  ConversationHeader header = 3;
+  // Oldest first.
+  repeated ConversationRow rows = 4;
+  // The daemon holds entries before the first row: LoadEarlier fetches them.
+  bool earlier = 5;
+  // The first page has not arrived yet.
+  bool loading = 6;
+  // Why the log could not be fetched, when it could not.
+  string failed = 7;
+}
+
+// The members column of one window's conversation: who is in the group, and why each has not read
+// what waits on it. Sent when it changed, and empty once when the window leaves the conversation.
+message ConversationMembersChanged {
+  string daemon_id = 1;
+  string group = 2;
+  repeated ConversationMember members = 3;
+}
+
+message ConversationHeader {
+  string group = 1;
+  // The machine that keeps the group, for a group this daemon holds a copy of; empty for one kept
+  // here.
+  string keeper = 2;
+  uint32 members = 3;
+  // Whether `members` is known yet.
+  bool members_known = 4;
+  bool paused = 5;
+  // The keeper, while it cannot be reached and what was posted there since may be missing here.
+  string behind = 6;
+}
+
+message ConversationRow {
+  oneof kind {
+    // The day the rows after it are from, yyyy-mm-dd.
+    string divider = 1;
+    ConversationChanges changes = 2;
+    ConversationFold fold = 3;
+    ConversationMessage message = 4;
+    // Where the unread messages began when the conversation opened.
+    bool unread = 5;
+  }
+}
+
+// Consecutive joins, leaves and changes to the group, in words.
+message ConversationChanges {
+  string text = 1;
+  uint64 at_ms = 2;
+}
+
+// A run of messages that woke nobody but agents, opened by OpenFold.
+message ConversationFold {
+  uint64 first = 1;
+  uint32 count = 2;
+  uint64 from_ms = 3;
+  uint64 to_ms = 4;
+}
+
+message ConversationMessage {
+  uint64 seq = 1;
+  uint64 at_ms = 2;
+  // The author as the conversation names them, and the participant name Reply addresses.
+  string author = 3;
+  string author_name = 4;
+  // The author's pane, for Go to pane, when the author is an agent in one. Empty otherwise.
+  string author_daemon_id = 5;
+  string author_pane_id = 6;
+  repeated string to = 7;
+  bool to_you = 8;
+  bool by_you = 9;
+  bool urgent = 10;
+  // The body's first 40 lines, or all of it after ShowWholeMessage, and whether it goes on.
+  repeated MarkdownBlock body = 11;
+  bool more = 12;
+  bool replyable = 13;
+  bool from_muster = 14;
+  // Whom it woke, under a post this window sent: "woke otter", or that nobody live heard it.
+  string said = 15;
+}
+
+message ConversationMember {
+  enum Liveness {
+    LIVENESS_UNSPECIFIED = 0;
+    LIVENESS_ALIVE = 1;
+    LIVENESS_GONE = 2;
+    LIVENESS_HUMAN = 3;
+    LIVENESS_UNREACHABLE = 4;
+  }
+  string name = 1;
+  string shown = 2;
+  Liveness liveness = 3;
+  // Its pane, for Go to pane, and whose PaneStateChanged says what its agent is doing: that moves
+  // far more often than membership and has its own message already. Empty when it is in no pane
+  // this window reaches.
+  string daemon_id = 4;
+  string pane_id = 5;
+  // The first message waiting on it unread, from whom, and why it has not read it, in the
+  // daemon's words; 0 when nothing waits.
+  uint64 unread_first = 6;
+  string unread_from = 7;
+  string unread_why = 8;
+  bool you = 9;
+}
+
+// The message box of one window's conversation: the draft when the conversation shows, and where
+// a post from it stands. Not sent for the person's own edits, which SaveDraft answers. Sent empty
+// once when the window leaves the conversation.
+message MessageBoxChanged {
+  string daemon_id = 1;
+  string group = 2;
+  MessageBoxDraft draft = 3;
+  PostOutcome sent = 4;
+}
+
 // A block of a message's Markdown, parsed in the core so that every shell draws the same thing
 // (mip/0009-group-conversation.md, section 7).
 message MarkdownBlock {
@@ -2469,6 +2689,9 @@ message Event {
     GroupsChanged groups_changed = 16;
     AskingChanged asking_changed = 20;
     BannersChanged banners_changed = 21;
+    ConversationMembersChanged conversation_members_changed = 97;
+    MessageBoxChanged message_box_changed = 98;
+    ConversationChanged conversation_changed = 99;
   }
 
   // The window this event is for, by its name, or empty for one about the whole app: what the
@@ -3004,6 +3227,12 @@ message ViewChanged {
   // Every machine holding a part of the tab on screen, with where its panes' bridges dial: the
   // daemon a leaf of `tree` names is one of these.
   repeated ViewMachine machines = 7;
+
+  // The group whose conversation the window shows in place of its panes
+  // (mip/0009-group-conversation.md, section 7), empty when it shows its panes. The tab, its tree
+  // and the keyboard stay as they were underneath, so leaving puts them back.
+  string conversation_daemon_id = 20;
+  string conversation_group = 21;
 }
 
 // A machine a tab's panes run on, as this window's bridges reach it.

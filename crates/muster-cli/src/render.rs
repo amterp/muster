@@ -131,6 +131,12 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
         Some(response::Payload::Restarted(restarted)) => Ok(restarted_answer(restarted, json)),
+        // The window that shows a conversation now: `muster msg open`.
+        Some(response::Payload::Opened(opened)) => Ok(if json {
+            json!({ "window": opened.window }).to_string()
+        } else {
+            opened.window.clone()
+        }),
         Some(response::Payload::PaneClosed(closed)) => Ok(if json {
             json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })
                 .to_string()
@@ -203,6 +209,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::AppClaim(_) => "a claim on the app",
         response::Payload::LayoutMoved(_) => "word that the layout may have moved",
         response::Payload::Restarted(_) => "an agent restarted",
+        response::Payload::Draft(_) => "a message box's draft",
     }
 }
 
@@ -475,6 +482,14 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
     let rows = Rows { widths: &widths, states: &states, now_ms, say_machine, helpers: &helpers };
 
     let mut lines: Vec<String> = Vec::new();
+    // First, because it changes what everything below means: the panes listed are under it, and
+    // none of them is on screen while it is.
+    if let Some((_, group)) = conversation(window) {
+        lines.push(styled(
+            &format!("showing the conversation of {group} in place of its panes"),
+            NAME,
+        ));
+    }
     for tab in tabs(window) {
         match drawing.as_ref().and_then(|drawing| drawing.layout(&tab.tab_id)) {
             Some(layout) => {
@@ -1406,9 +1421,21 @@ fn window_json(window: &Window, others: Others) -> Value {
         // Which tab the window is on, named once rather than found by scanning
         // `tabs[].on_screen`, which says the same thing.
         "showing": showing(window),
+        // The group whose conversation the window shows in place of its panes, so an agent can
+        // see that the human is reading it. Null while it shows its panes.
+        "conversation": conversation(window).map(|(daemon, group)| json!({ "daemon": daemon, "group": group })),
         "tabs": tabs_out,
         "panes": panes,
     })
+}
+
+/// The daemon and group whose conversation the window shows, if it shows one.
+fn conversation(window: &Window) -> Option<(&str, &str)> {
+    window
+        .view
+        .as_ref()
+        .filter(|view| !view.conversation_group.is_empty())
+        .map(|view| (view.conversation_daemon_id.as_str(), view.conversation_group.as_str()))
 }
 
 /// A tab's `layout` and `zoomed`: for the tab on screen always, and under `--layout` for every tab.
