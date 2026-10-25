@@ -99,7 +99,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
 `numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
-`find_next`, `find_previous`, `send_message`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
+`find_next`, `find_previous`, `send_message`, `leave_conversation`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
 `reload_config`, `show_shortcuts`, `quit_and_close_sessions`, and `upgrade_muster`. On macOS these become menu items, which is where the
@@ -275,11 +275,17 @@ bytes on `cmd+k` before `clear_screen` shipped there goes on sending them, where
 would throw away everything else in the file for a collision nobody in it made. A `[keymap]`
 line gives the action a chord back.
 
-**`send_message` is `cmd+return`, and belongs to a reply field rather than to the menu.** It
-sends the reply written in a banner for a message. The field holding the keyboard matches the
-chord itself, so this is the one action that is not a menu key equivalent: with no reply field
-holding the keyboard, `cmd+return` reaches the pane like any chord Muster leaves alone. Return
-in a reply writes a new line.
+**`send_message` is `cmd+return`, and belongs to a text field rather than to the menu.** It
+sends the reply written in a banner for a message, or what is written in a conversation's message
+box. The field holding the keyboard matches the chord itself, so it is not a menu key equivalent:
+with no such field holding the keyboard, `cmd+return` reaches the pane like any chord Muster
+leaves alone. Return in either writes a new line.
+
+**`leave_conversation` is `escape`, and belongs to the conversation the same way.** It returns a
+window showing a group's conversation to its panes, with the keyboard where it was. The
+conversation matches the chord while it is shown, and nothing else does, so `escape` reaches the
+pane whenever no conversation is. While an input method is composing in the message box,
+`escape` ends the composition and leaves the conversation where it is.
 
 **`find` is Ghostty's search, over the pane's whole history.** `cmd+f` opens a bar over the
 pane with the keyboard and puts the keyboard in it, `return` and `shift+return` there or `cmd+g`

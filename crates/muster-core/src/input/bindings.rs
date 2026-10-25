@@ -165,11 +165,17 @@ pub enum Action {
     FindNext,
     FindPrevious,
     /// Sends what is written in the text field holding the keyboard: a reply in a banner for a
-    /// message (mip/0009-group-conversation.md, section 3).
+    /// message, or a conversation's message box (mip/0009-group-conversation.md, section 3).
     ///
     /// Belongs to that field rather than to the window ([`Action::in_text_field`]), so its chord
     /// reaches a pane whenever no such field holds the keyboard.
     SendMessage,
+    /// Returns a window showing a group's conversation to its panes, with the keyboard where it
+    /// was (mip/0009-group-conversation.md, section 1).
+    ///
+    /// Belongs to the conversation rather than to the window, as [`Action::SendMessage`] belongs
+    /// to its field, so that its chord, Escape, reaches a pane whenever no conversation is shown.
+    LeaveConversation,
     Zoom,
     /// Gives every pane in the tab the same area, Ghostty's `equalize_splits`. The divider-moving
     /// verb that earns a chord where a single divider does not: evening five panes by dragging is
@@ -207,7 +213,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 64] = [
+    pub const ALL: [Action; 65] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -253,6 +259,7 @@ impl Action {
         Action::FindNext,
         Action::FindPrevious,
         Action::SendMessage,
+        Action::LeaveConversation,
         Action::Zoom,
         Action::EqualizePanes,
         Action::ScrollToTop,
@@ -274,12 +281,12 @@ impl Action {
         Action::UpgradeMuster,
     ];
 
-    /// Whether the action belongs to a text field of Muster's rather than to the window: the
-    /// field that holds the keyboard matches its chord, and the shell makes it no menu key
-    /// equivalent. A menu gets a chord before any view does, enabled or not, so one would take
-    /// the chord from a pane even when no such field is there to use it.
+    /// Whether the action belongs to a view of Muster's rather than to the window, a text field
+    /// or the conversation: that view matches its chord while it has the keyboard, and the shell
+    /// makes it no menu key equivalent. A menu gets a chord before any view does, enabled or not,
+    /// so one would take the chord from a pane even when no such view is there to use it.
     pub fn in_text_field(self) -> bool {
-        matches!(self, Action::SendMessage)
+        matches!(self, Action::SendMessage | Action::LeaveConversation)
     }
 
     /// The name a config file, a log line and the seam all spell it with.
@@ -328,6 +335,7 @@ impl Action {
             Action::FindNext => "find_next",
             Action::FindPrevious => "find_previous",
             Action::SendMessage => "send_message",
+            Action::LeaveConversation => "leave_conversation",
             Action::Zoom => "zoom",
             Action::EqualizePanes => "equalize_panes",
             Action::ScrollToTop => "scroll_to_top",
@@ -458,6 +466,10 @@ impl Action {
             // normally never reaches a pane, but this one does whenever no text field of
             // Muster's holds the keyboard, since the shell gives it no menu key equivalent.
             Action::SendMessage => Some(Chord::new(Key::Enter, command)),
+            // What leaves a sheet, a find bar or a banner's reply on this platform. Escape is
+            // also what a terminal program reads most, which is why the conversation matches it
+            // rather than the menu: with no conversation shown, it reaches the pane.
+            Action::LeaveConversation => Some(Chord::new(Key::Escape, Modifiers::NONE)),
             Action::Zoom => Some(Chord::new(Key::Enter, shifted)),
             // Ghostty's macOS chord, beside its resize chords on ⌘⌃.
             Action::EqualizePanes => {

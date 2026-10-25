@@ -1091,6 +1091,13 @@ public enum Core {
     openTranscript(daemonID: daemonID, group: group)
   }
 
+  /// Returns the window from a group's conversation to its panes, with the keyboard where it was.
+  public static func leaveConversation() {
+    var request = Muster_Request()
+    request.leaveConversation = Muster_LeaveConversation()
+    send(request)
+  }
+
   /// Goes to a group's transcript, as choosing a banner about a message for the human does.
   public static func openTranscript(daemonID: String, group: String) {
     var open = Muster_OpenTranscript()

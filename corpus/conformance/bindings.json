@@ -267,9 +267,9 @@
         ]
       },
       "expect": {
-        "actions": 64,
-        "bound": 52,
-        "distinct_chords": 52
+        "actions": 65,
+        "bound": 53,
+        "distinct_chords": 53
       }
     },
     {
@@ -301,6 +301,20 @@
       "expect": {
         "chords": [
           "send_message=super+Enter"
+        ]
+      }
+    },
+    {
+      "name": "leaving a conversation is Escape, and only the conversation hears it",
+      "why": "Escape is what leaves a sheet, a find bar or a banner's reply on this platform, so it is what a hand reaches for to get back to the panes (mip/0009-group-conversation.md, section 1). It is also the key a terminal program reads most, so it belongs to the conversation rather than to the window: the shell makes it no menu key equivalent, and with no conversation shown Escape reaches the pane.",
+      "given": {
+        "actions": [
+          "leave_conversation"
+        ]
+      },
+      "expect": {
+        "chords": [
+          "leave_conversation=Escape"
         ]
       }
     },

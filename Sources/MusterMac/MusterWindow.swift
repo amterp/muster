@@ -1096,6 +1096,12 @@ extension MusterWindow {
     banners.sendFocused()
   }
 
+  /// Returns this window from a group's conversation to its panes. The conversation matches the
+  /// chord itself; this is the menu item.
+  @objc public func leaveConversation(_ sender: Any?) {
+    speaking { Core.leaveConversation() }
+  }
+
   @objc public func findNext(_ sender: Any?) {
     findBar?.step(forward: true)
   }
