@@ -9,7 +9,7 @@
   "blocked_by": [
     "a_2naAacfIB"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2naMvB1wL",
@@ -40,6 +40,12 @@
       "body": "The banner's half landed on main 2026-10-24 (efe581c2..d2af4080): a question's answers drawn as buttons, a pick that fills the reply and holds the banner, the body composed once in the core (posting::answer_body), and the banner fetching only the entry it shows. Contract tier green. The conversation's half remains.",
       "author": "Alexander Terp",
       "created_at_millis": 1792901383429
+    },
+    {
+      "id": "c_2npgT5uwZ",
+      "body": "Done 2026-10-25: the conversation draws a question's answers (e588329f..6a215c8f on main, as cherry-picked), with picking into the message box, Tab from the box to the newest question's answers, an answered question naming who answered, and the core deciding whether the box can send. Gate green; ./dev --contract green with 17 launch and 19 GUI checks.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792911841078
     }
   ],
   "created_at_millis": 1792874866674,
@@ -47,12 +53,13 @@
   "description": "Most questions agents put to the human are a choice between two or three things. Agreed in the Lectern page muster-group-conversation (2026-10-24): a post carries answers the agent offers (something like msg post --option \"Run it now\" --option \"Skip it\"; the spelling is open). The conversation view draws them as buttons, and the banner can offer them as its actions. Picking one fills the human's reply rather than sending it, so a note can go with it, and writing without picking stays an ordinary reply. The reply carries the choice twice: as text at the top of its body, which an agent reads with no new parsing, and as a field naming the question and the option, so Muster can show the question as answered. Digits must not pick an answer inside the message box, since a reply may start with \"1.\". Open: whether a question may take several answers, as Claude Code's multi-select does. Needs a field on a message, so a daemon protocol minor.",
   "id": "a_2naAat73L",
   "parent": "a_2die8LU6o",
-  "position": "Zt",
+  "position": "Yva",
   "title": "An agent can offer answers to a question it posts",
   "type": "feature",
-  "updated_at_millis": 1792901383486,
+  "updated_at_millis": 1792911841247,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792874866674},
-    {"field":"column","value":"in-progress","at":1792891209187}
+    {"field":"column","value":"in-progress","at":1792891209187},
+    {"field":"column","value":"done","at":1792911841247}
   ]
 }
