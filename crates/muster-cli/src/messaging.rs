@@ -22,6 +22,8 @@ use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_daemon_proto::{self as proto, ConnectionKind, request::Service};
 
+use muster_core::posting::{self, is_human};
+
 use crate::args::{Failure, TextSource};
 use crate::daemon::MayStart;
 use crate::environment;
@@ -956,9 +958,22 @@ fn left_text(left: &msg_answer::Left, json: bool) -> String {
     }
 }
 
-/// The human, on this machine or, as `@human@laptop`, on another.
-fn is_human(name: &str) -> bool {
-    name.strip_prefix(spelling::HUMAN).is_some_and(|rest| rest.is_empty() || rest.starts_with('@'))
+/// A participant a post was for, in the core's terms, which decide whether anybody heard it.
+fn reached(reached: &msg_answer::Reached) -> posting::Reached {
+    use msg_answer::Reach;
+    let reach = match reached.reach() {
+        Reach::Woken => posting::Reach::Woken,
+        Reach::AlreadyWoken => posting::Reach::AlreadyWoken,
+        // A reach this CLI is too old to know is one it cannot claim anybody heard.
+        Reach::Waiting | Reach::Unspecified => posting::Reach::Waiting,
+        Reach::Gone => posting::Reach::Gone,
+        Reach::Deferred => posting::Reach::Deferred,
+        Reach::NoAgent => posting::Reach::NoAgent,
+        Reach::NoDoorbell => posting::Reach::NoDoorbell,
+        Reach::Paused => posting::Reach::Paused,
+        Reach::Unreachable => posting::Reach::Unreachable,
+    };
+    posting::Reached { name: reached.name.clone(), reach }
 }
 
 /// How an answer shows a participant: the human by the name the app set beside its address
@@ -1019,12 +1034,7 @@ fn posted_text(
     let (no_agent, no_doorbell) = (named(Reach::NoAgent), named(Reach::NoDoorbell));
     let paused = named(Reach::Paused);
     let unreachable = named(Reach::Unreachable);
-    let heard = !woke.is_empty()
-        || !deferred.is_empty()
-        || !already.is_empty()
-        || !paused.is_empty()
-        || !unreachable.is_empty()
-        || waiting.iter().any(|reached| is_human(&reached.name));
+    let heard = posting::heard(&posted.reached.iter().map(reached).collect::<Vec<_>>());
     let text = if json {
         let listed = |reached: &[&msg_answer::Reached]| -> Vec<String> {
             reached.iter().map(|reached| reached.name.clone()).collect()
