@@ -11,6 +11,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   daemon the window cannot reach, which keeps what it read before as `last_state`.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
+- **banner** - a message for the human drawn by Muster over the top right of the panes while Muster is in front, with a
+  reply field to answer it in place (MIP-9, section 5). The operating system's notification is only a pointer back to
+  Muster.
 - **bridge** - the subprocess a surface runs to deliver a pane channel; output only.
 - **callsign** - the word a pane's daemon drew it when it made it (`otter`), and the name to call it by: drawn in blue
   at the start of its row in the agent list, first on its line in `muster window`, taken wherever a pane id is, and
@@ -28,6 +31,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   input method's composition, which is a different thing with the same name and lives under `input::` wherever it
   appears in the code.
 - **control plane** - everything except output: events, state, intents, input. Flows through the core.
+- **conversation** - a group's thread, members column and message box, shown in place of a window's panes (MIP-9).
+  Showing it is the human reading the group while its window is in front and focused. What MIP-4 called the
+  transcript, a pane following the group's log, is gone.
 - **core** - the headless, OS-free view-model: mirror, dispatcher, keymap, attention, config.
 - **daemon** - one running backend server instance owning PTYs and sessions, local or remote.
 - **data plane** - output only: pane channels, adapter to surface, bypassing the core.
@@ -43,7 +49,8 @@ One name per concept; docs and code use these terms. Alphabetical.
 - **frame** - one message on a socket: a four-byte length, then that many bytes (`muster-frame`).
 - **group** - a set of participants and the one log of messages they share (MIP-4). Addressing a message decides
   whom it wakes, never who may read it. Kept on the daemon it was made on, its home; another machine with a member
-  holds a replica, named `review@machine` there (MIP-4, section 11).
+  holds a replica, named `review@machine` there (MIP-4, section 11). The human reads one as its **conversation**.
+  Nothing about groups is called a chat, an inbox or a drawer: a participant's `inbox` is the socket it is woken on.
 - **guard** - the daemon refusing a post while its author has unread messages from others in that group. There is
   no override: read, then post.
 - **harness** - the program an agent runs in: Claude Code, Codex, Gemini. Named by its detection manifest's id
@@ -63,10 +70,14 @@ One name per concept; docs and code use these terms. Alphabetical.
   mutates; it requests.
 - **maker** - the pane a **helper** belongs to, by its id, kept by the helper's daemon for the helper's life. It may
   be on another machine, or closed.
+- **message box** - the field at the foot of a conversation that the human posts from; each window keeps its own draft
+  per group.
 - **mirror** - the core's disposable cache of daemon structure, bootstrapped from snapshot plus events; never
   authoritative.
 - **`@muster`** - Muster itself as the author of a message in a group, telling whoever posted what waits on a stalled
   member why it has not answered. Reserved like `@human`; never a participant, never addressed.
+- **Needs you** - the queue of everything asking for the human, by that name on screen. The code and the CLI call it
+  the asking list (`asking`), and ⌘⇧A goes to its first.
 - **off screen** - a pane in a tab this window holds and is not showing, or behind a zoom. Ordinary, and one click
   away.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.

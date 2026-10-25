@@ -495,9 +495,9 @@ then posts the answer with anything written below it, as `--answer` does (Questi
 Neither replying nor dismissing it reads the group, so a message posted to the human stays unread
 until they open the group. While Muster is not in front, the operating system's notification names
 the group and who wrote, or says the words of a lone message from `@muster`, since what Muster
-says is the reason for it. Choosing that, ⌘⇧A, or the banner's Open opens the group's transcript:
-a tab running `muster msg log --group G --follow`, or the pane already running it. Going there
-counts as reading the group.
+says is the reason for it, and so it does while Muster is in front with no window to draw its
+banner on. Choosing it, the group's row under the tabs, ⌘⇧A, or the banner's Open shows the
+group's conversation, as `open` does.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 
@@ -505,11 +505,13 @@ to open notifies.
 a group's conversation: it shows the conversation in place of the window's panes and prints the
 window's name, and with no window open it exits 3. While the conversation is in the window in
 front and that window is focused, the group is read for the human, each message as it arrives,
-and `muster window --json` names the group under `conversation`. It is kept by this machine's
-daemon, which follows a group kept on a devenv as `review@devenv`.
+and `muster window --json` names the group under `conversation`. While it shows, the window's
+list marks the panes of the group's members. It is kept by this machine's daemon, which follows a
+group kept on a devenv as `review@devenv`. A pane running `log --follow` is an ordinary pane, and
+reads nothing for the human.
 
-The human posts with `muster msg post` from any shell of their own, the transcript's included
-once Ctrl-C has stopped the follow and left its shell.
+The human posts from a conversation's message box, or with `muster msg post` from any shell of
+their own, which sends the same request.
 
 The window lists the groups you are in under its tabs. Right-clicking one offers Leave Group,
 which is `muster msg leave --group G` and takes the group off the list, and Delete Group, which
@@ -539,7 +541,7 @@ window has attached to shows `@human` alone.
 | `pause G` | holds a group's wakes: its posts wake nobody but the human |
 | `resume G` | wakes each member once for what it has unread, and lets posts wake again |
 | `group delete G` | deletes a group and its log, letting every member go |
-| `open --group G` | goes to the group's transcript in the window, as its notification does |
+| `open --group G` | shows the group's conversation in the window, as its notification does |
 
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
 by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may or may not have happened (the

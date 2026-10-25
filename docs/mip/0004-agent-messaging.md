@@ -47,6 +47,8 @@ proposed as decided.
 
 - (a) A transcript in an ordinary pane (`muster msg log --follow`), posting with `muster msg
   post`, and a notification through attention routing for every message that wakes the human.
+  The transcript pane has since been replaced by the group's conversation, drawn by Muster
+  (MIP-9).
 - (b) (a), plus a groups section in the sidebar with an unread count per group and a badge for
   messages addressed to the human.
 - (c) A web view, as council v1 had.
@@ -129,7 +131,7 @@ design that answers it.
 | Leave cascades within 60 s of the first "signing off", in almost every session; one agent left on the turn it was told not to | Staying meant sitting in a blocking loop; the skill primed leaving; prompting failed | Staying costs nothing; policy can refuse leaving (section 8) |
 | Joined agents asleep, with no way to tell ("Hello", "Test", no reply) | Membership was not presence | Presence from agent state (section 7) |
 | The human could not keep up and typed "wait" | No pause, and nothing separated messages for the human from chatter | Notifications only for messages that wake the human; `pause` (sections 8, 10) |
-| The human spoke through agents' terminals | The web view was one more window | The transcript is a pane in the window the human is already in (section 10) |
+| The human spoke through agents' terminals | The web view was one more window | The group's conversation is drawn in the window the human is already in (section 10, MIP-9) |
 | Multi-page pasted reviews | The web compose box took them; a PTY would not | Bodies never travel through a PTY (section 4) |
 | Hand-counted `--after N` on every post | Stateless CLI | A read cursor per participant (section 4) |
 | Turns spent only on passing the turn: "Standing by", "Passing to Moderator" | A turn was the only way to pass | An agent ends its turn and is woken when addressed (section 5) |
@@ -686,15 +688,15 @@ The human is a participant like any other, reached by the reserved name `@human`
 under a setting that defaults to the login name. It is homed on the machine the app runs on and
 registered by the app when it attaches to a daemon. Its wake adapter is attention routing: a
 message that wakes the human, because it is addressed to the human or its ring set includes the
-human, raises a notification naming its author, and choosing it lands on the transcript. Chatter
-that does not wake the human raises nothing. v1's human asked agents to "concisely summarize what
-exactly you need input on". Addressing the human, or a ring set that includes the human, is now
-the only thing that interrupts.
+human, raises a notification naming its author, and choosing it shows the group's conversation
+(MIP-9). Chatter that does not wake the human raises nothing. v1's human asked agents to
+"concisely summarize what exactly you need input on". Addressing the human, or a ring set that
+includes the human, is now the only thing that interrupts.
 
-The human posts with `muster msg post` from the transcript pane or any shell of their own, which
-section 3 attributes to the human, including long text with `--file` or stdin. With the app
-closed, messages to the human wait unread and notify at the next launch. Anything beyond that is
-Decision 1.
+The human posts from a conversation's message box or with `muster msg post` from any shell of
+their own, which section 3 attributes to the human, including long text with `--file` or stdin.
+With the app closed, messages to the human wait unread and notify at the next launch. Anything
+beyond that is Decision 1.
 
 As built in stage 3, under Decision 1 (a):
 
@@ -710,15 +712,17 @@ As built in stage 3, under Decision 1 (a):
 - **One banner per group.** It names who wrote, is replaced by each new message, and asks
   after a blocked agent and before a program's notification. Several windows raise one between
   them: the one in front most recently, as for a tab nobody holds.
-- **The transcript is a pane.** Choosing the banner, or ⌘⇧A, goes to the pane on the human's
-  home daemon running `muster msg log --group G --follow`, found by that command, or opens a
-  tab running it. Going there is the human reading the group: the window reads it for them, and
-  the banner comes down once the daemon says nothing waits. A transcript somebody is reading in
-  a focused window reads what arrives there, and raises nothing. `muster msg open --group G`,
-  added after stage 5, sends the window the same request, naming no daemon, which the window
-  reads as the one on its own machine: the human's home, where a group kept elsewhere is
-  followed by its full name. It is the one msg verb that asks the window, and answers with the
-  transcript's pane.
+- **The group is read in its conversation.** Choosing the banner, its group's row in the
+  sidebar, or ⌘⇧A shows the group's conversation in place of the window's panes (MIP-9, section
+  1). The conversation in the focused window in front is the human reading the group: the
+  window reads it for them, and the banner comes down once the daemon says nothing waits; a
+  message that arrives while it is read raises nothing. `muster msg open --group G`, added
+  after stage 5, sends the window the same request, naming no daemon, which the window reads
+  as the one on its own machine: the human's home, where a group kept elsewhere is followed by
+  its full name. It is the one msg verb that asks the window, and answers with the window. As
+  built in stage 3 this was the transcript, a pane running `muster msg log --group G --follow`
+  found by that command or opened in a new tab, which MIP-9 replaced; a pane running it now is
+  an ordinary pane and reads nothing for the human.
 - **The sidebar lists the human's groups**, added afterwards as Decision 1 (b). Under the tabs, a
   caption and a row per group the human is in, on every daemon on the app's machine, with the
   unread count that would wake them as a badge and an `@` while any were addressed to them;
@@ -903,7 +907,7 @@ All under `muster msg` (Decision 3), each with `--json`:
 | `group add G NAME...`, `group remove G NAME...` | adds or removes members, by participant or pane name |
 | `pause G`, `resume G` | holds a group's wakes, then wakes each member once |
 | `group delete G` | deletes a group and its log, letting every member go |
-| `open --group G` | goes to a group's transcript in the window; asks the window, not the daemon |
+| `open --group G` | shows a group's conversation in the window (MIP-9); asks the window, not the daemon |
 
 `wait` is for a hook running in the background and for scripts. With `--due` it answers only a
 wake section 5 would deliver, as the `Stop` hook needs (section 6); without it, it answers
@@ -1285,3 +1289,6 @@ bind.
   says when the name was taken over (section 11). A pane's place owed to a home that could not be
   reached is handed over when the link returns, and a join that fails after appending still sends
   its entries on.
+- 2026-10-25 Corrected for MIP-9: a group is read in its conversation, which the banner, the
+  sidebar's row, ⌘⇧A and `muster msg open` all show, and the transcript pane is gone (section
+  10). A pane running `muster msg log --follow` reads nothing for the human.

@@ -583,10 +583,10 @@ on, the human's home, tells each window that attends it what waits for the human
 snapshot and events, and the core asks by that group. It comes after a blocked agent and before a program's
 notification, because addressing the human is the one interruption an agent chooses to make. Every message that
 waits announces again, one banner per group replaced each time, and a group met at launch announces where a pane
-does not: a message to the human waits for the next window rather than being history. Going to it opens the group's
-transcript, a pane running `muster msg log --follow`, found by the command it runs or made in a new tab. Going
-there is the human reading the group, so the daemon is told, and the banner comes down when it says nothing waits.
-A transcript somebody is reading in a focused window reads what arrives there, as a pane on screen raises nothing.
+does not: a message to the human waits for the next window rather than being history. Going to it shows the group's
+conversation (below), as `muster msg open` does. That conversation in the focused window in front is the human reading
+the group, so the daemon is told, and the banner comes down when it says nothing waits. A pane running `muster msg log
+--follow` is an ordinary pane, and reads nothing for the human.
 
 **While Muster is in front, a message is answered where it is read** (MIP-9, section 5). Muster draws its own banner
 over the top right of the panes rather than posting the operating system's: the message's first lines, its Markdown
@@ -598,8 +598,8 @@ human is writing in is not replaced: the newer message waits behind it, named. A
 banner; a pick holds the banner as writing does and goes with the reply, whose body the core composes (`posting.rs`), as
 `muster msg post --answer` does. Neither a reply nor a dismissal reads the group, since reading moves the human's place
 past every message in it. A post has four outcomes - pending, posted, refused, unknown - and an unknown one is never
-sent again: the core asks the group's log once whether it was kept. While Muster is not in front, the operating system's
-notification is the pointer back, with no reply in it.
+sent again: the core asks the group's log once whether it was kept. While Muster is not in front, or is in front with
+no window on screen to draw the banner, the operating system's notification is the pointer back, with no reply in it.
 
 **A window can show a group's conversation in place of its panes** (MIP-9, sections 1, 2 and 7). The core's view of
 the window names the group, and while it does the view has no panes on screen, so attention counts every covered pane
@@ -610,9 +610,10 @@ does not. The core keeps one copy of each shown group's log, fetched newest firs
 followed on a connection of its own, since a follow holds its connection until an entry arrives. It builds the thread
 from it (`conversation/`): folded runs between agents, merged membership rows, the unread line, a long body cut at 40
 lines, and the message box's draft and whom it addresses. A conversation in the window in front, while that window is
-focused, is the human reading the group, as a transcript somebody looks at is. Its header and rows, its members column
-and its message box travel as three events, because they change at different paces and typing must never send the
-thread again: a draft edit is answered with the draft instead, and a member's agent state is its pane's own event.
+focused, is the human reading the group. Its header and rows, its members column and its message box travel as three
+events, because they change at different paces and typing must never send the thread again: a draft edit is answered
+with the draft instead, and a member's agent state is its pane's own event. The shell marks the sidebar rows of the
+members' panes from the members column's event.
 
 **A quiet pane asks for nobody.** Quiet is a flag on the pane that its daemon keeps, set when the pane is made or
 later (`muster docs agents`, "Out of sight"), for an agent's helpers that the agent watches over messaging. Such a
