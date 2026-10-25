@@ -8,7 +8,15 @@
   "blocked_by": [
     "a_2naAacfIB"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2noIOU66w",
+      "body": "Done 2026-10-25 (6da98a4c): docs/cli/msg.md's section on the human says how a post (Muster's banner, or the system's notification as a pointer, and the conversation) and a pane's own text each reach the human, and that which an agent uses is the user's skills' call.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792908532382
+    }
+  ],
   "created_at_millis": 1792874866856,
   "creator": "Alexander Terp",
   "description": "An agent can tell the human something two ways: by posting to @human, or by leaving it as text in its own pane. They reach the person differently, and agents mix them up. Settled in the Lectern page muster-group-conversation (2026-10-24): which one an agent should use is for the user's skills to say, since Muster imposes no workflow, but muster docs msg should state the mechanics plainly so a skill author can write that rule. A post to @human raises a banner and waits in the group's conversation; text left in a pane is seen only when somebody opens that pane. A reply from the human reaches the agent inside its own session, so the agent's session holds both.",
@@ -17,13 +25,14 @@
     "ai-hi"
   ],
   "parent": "a_2die8LU6o",
-  "position": "Zs",
+  "position": "Yvb",
   "title": "msg docs say how a post and a pane's own text each reach the human",
   "type": "docs",
-  "updated_at_millis": 1792907379616,
+  "updated_at_millis": 1792908532570,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792874866856},
     {"field":"column","value":"next","at":1792875895376},
-    {"field":"column","value":"in-progress","at":1792907379616}
+    {"field":"column","value":"in-progress","at":1792907379616},
+    {"field":"column","value":"done","at":1792908532570}
   ]
 }
