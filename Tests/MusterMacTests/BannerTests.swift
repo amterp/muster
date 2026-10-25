@@ -121,6 +121,14 @@ struct BannerTests {
     #expect(recorder.sent == ["dismiss local/g#4"])
   }
 
+  @Test("a reply of blank words sends nothing, and an answer picked alone does")
+  func blankWordsAreNotAReply() {
+    #expect(!BannerBoard.canSend(text: "", picked: false))
+    #expect(!BannerBoard.canSend(text: "  \n", picked: false), "the button would do nothing")
+    #expect(BannerBoard.canSend(text: "yes", picked: false))
+    #expect(BannerBoard.canSend(text: "  ", picked: true))
+  }
+
   @MainActor
   @Test("a banner whose reply is on its way offers no dismissal")
   func aPendingReplyIsNotDismissed() {

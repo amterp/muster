@@ -100,7 +100,6 @@ final class BannerBoard: ObservableObject {
 
   /// Picks the answer at `index` of the banner's question, or takes the pick back when it is
   /// the one already picked. What is picked is the core's to keep, and comes back in the banner.
-  /// Picks an answer; the core takes back one picked again.
   func pick(_ index: Int, in banner: Muster_Banner) {
     core.pick(banner.daemonID, banner.group, banner.seq, UInt32(index))
   }
@@ -109,11 +108,9 @@ final class BannerBoard: ObservableObject {
     core.pick(banner.daemonID, banner.group, banner.seq, nil)
   }
 
-  /// A reply is its words, or an answer picked with nothing written, which is a whole reply.
   func send(_ banner: Muster_Banner) {
     let body = reply(for: banner)
-    let written = !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    guard banner.replyable, written || banner.hasPicked else {
+    guard banner.replyable, Self.canSend(text: body, picked: banner.hasPicked) else {
       return
     }
     Core.info(
@@ -124,6 +121,12 @@ final class BannerBoard: ObservableObject {
   func dismiss(_ banner: Muster_Banner) {
     guard Self.dismissable(banner) else { return }
     core.dismiss(banner.daemonID, banner.group, banner.seq)
+  }
+
+  /// Whether a reply would send anything: words that are not all blank, or an answer picked
+  /// with nothing written, which is a whole reply.
+  nonisolated static func canSend(text: String, picked: Bool) -> Bool {
+    picked || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   /// Whether the banner can be taken down: not while its reply is on its way, since the banner
@@ -483,7 +486,7 @@ struct BannerReplyField: View {
         .onExitCommand { onLeave() }
         .disabled(banner.sent.state == .pending)
         .focused(focus, equals: .reply)
-      let sendable = !text.wrappedValue.isEmpty || picked != nil
+      let sendable = BannerBoard.canSend(text: text.wrappedValue, picked: picked != nil)
       Button(action: { board.send(banner) }) { Image(systemName: "paperplane.fill") }
         .buttonStyle(.plain)
         .foregroundStyle(sendable ? .primary : .tertiary)
