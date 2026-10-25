@@ -495,15 +495,18 @@ then posts the answer with anything written below it, as `--answer` does (Questi
 Neither replying nor dismissing it reads the group, so a message posted to the human stays unread
 until they open the group. While Muster is not in front, the operating system's notification names
 the group and who wrote, or says the words of a lone message from `@muster`, since what Muster
-says is the reason for it. Choosing that, ⌘⇧A, the banner's Open, or `muster msg open --group G`
-opens the group's transcript: a tab running `muster msg log --group G --follow`, or the pane
-already running it. Going there counts as reading the group.
+says is the reason for it. Choosing that, ⌘⇧A, or the banner's Open opens the group's transcript:
+a tab running `muster msg log --group G --follow`, or the pane already running it. Going there
+counts as reading the group.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 
-`open` is the one msg verb that asks the window rather than the daemon, since a transcript is a
-pane: it prints the transcript's pane, and with no window open it exits 3. The transcript runs
-on this machine's daemon, which follows a group kept on a devenv as `review@devenv`.
+`open` is the one msg verb that asks the window rather than the daemon, since only a window shows
+a group's conversation: it shows the conversation in place of the window's panes and prints the
+window's name, and with no window open it exits 3. While the conversation is in the window in
+front and that window is focused, the group is read for the human, each message as it arrives,
+and `muster window --json` names the group under `conversation`. It is kept by this machine's
+daemon, which follows a group kept on a devenv as `review@devenv`.
 
 The human posts with `muster msg post` from any shell of their own, the transcript's included
 once Ctrl-C has stopped the follow and left its shell.

@@ -268,6 +268,11 @@ One entry per pane every followed daemon holds, on screen or not.
 none. `keyboard` is the name of the pane the window's keyboard is on, or `null` when no pane has
 it.
 
+`conversation` is the group whose conversation the window shows in place of its panes, as
+`{"daemon": "local", "group": "review"}`, or `null` while it shows its panes. While it is set no
+pane is on screen, though `showing` and `keyboard` still name the tab and pane underneath, which
+leaving the conversation returns to. The plain output leads with it.
+
 ## tabs[].layout
 
 How the tab on screen is arranged: every pane in it, whatever machine runs each, as one tree. The
