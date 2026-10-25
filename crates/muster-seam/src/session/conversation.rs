@@ -433,7 +433,9 @@ fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
     let group = &following.group;
     let held = entries(answer, &group.group);
     let changed_group = held.entries.iter().any(|entry| !matches!(entry.what, What::Message(_)));
-    let (looking, settled) = {
+    // Not read here for the human: what wakes them arrives as the daemon's notice too, and
+    // `human_noticed` reads it while they look. A message that wakes nobody asks for nothing.
+    let settled = {
         let mut session = poison::lock(&SESSION, "session");
         let Some(shared) = following.shared(&mut session) else { return };
         shared.group.called.extend(answer.called.clone());
@@ -442,12 +444,8 @@ fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
         if new.is_empty() {
             return;
         }
-        let settled = settle(&mut session, group);
-        (session.looking_at_conversation(group), settled)
+        settle(&mut session, group)
     };
-    if looking {
-        poison::lock(&SESSION, "session").read_as_human(group);
-    }
     if changed_group {
         refresh_policy(following);
     }

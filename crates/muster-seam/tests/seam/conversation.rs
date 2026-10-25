@@ -74,6 +74,33 @@ fn showing_a_conversation_reads_the_group_and_follows_it() {
 }
 
 #[test]
+fn a_message_arriving_while_the_conversation_is_read_is_read_once() {
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (mut open, relay) = Open::relayed(|daemon| {
+        let reads = Arc::clone(&reads);
+        daemon.withholding_answers_where(move |request| {
+            if is_a_read_by_the_human(request) {
+                reads.fetch_add(1, Ordering::SeqCst);
+            }
+            false
+        })
+    });
+    assert_ok(&answer(focus(true)));
+    show("window-1");
+    until_loaded("window-1");
+    let before = reads.load(Ordering::SeqCst);
+
+    let asked = post(&mut open.control, "a", "@human", "ok to merge?");
+    until_rows(|rows| rows.iter().any(|row| is_message(row, asked)));
+    until_read(&open.daemon, "the message to be read while the conversation is read");
+    // Long enough for a second read, which nothing would wait for, to reach the daemon.
+    std::thread::sleep(Duration::from_millis(500));
+
+    assert_eq!(reads.load(Ordering::SeqCst) - before, 1, "read once, not twice");
+    drop(relay);
+}
+
+#[test]
 fn a_second_window_on_the_group_reads_nothing_until_it_comes_to_the_front() {
     let mut open = Open::built();
     open_second_window(&open.daemon);
@@ -777,6 +804,14 @@ fn until_follows(follows: &AtomicUsize, count: usize) {
         || follows.load(Ordering::SeqCst) >= count,
         || format!("the daemon was asked to follow {} times", follows.load(Ordering::SeqCst)),
     );
+}
+
+fn is_a_read_by_the_human(request: &daemon_proto::Request) -> bool {
+    matches!(
+        &request.service,
+        Some(Service::Msg(daemon_proto::MsgRequest { caller: Some(caller), request: Some(Asked::Read(_)) }))
+            if caller.as_name.is_none()
+    )
 }
 
 fn is_a_post_by_the_human(request: &daemon_proto::Request) -> bool {
