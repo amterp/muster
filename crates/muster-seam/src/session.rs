@@ -47,7 +47,6 @@ use muster_core::reconnect;
 use muster_core::respawn::{self, Decision, Ended, Ending, Respawns};
 use muster_core::roster::{Numbering, Roster, RosterTab, TabStep};
 use muster_core::spanning;
-use muster_core::transcript;
 use muster_core::typeable::Ask;
 use muster_daemon_client::backend::{DaemonBackend, DaemonInput};
 use muster_daemon_client::follow::{Follower, Following, Notice};
@@ -1912,31 +1911,6 @@ impl Session {
         }
     }
 
-    /// The panes on the group's daemon that are its transcript: each runs the command a
-    /// transcript runs, which the daemon keeps for as long as the pane lives.
-    fn transcripts(&self, group: &GroupKey) -> Vec<PaneKey> {
-        let Some(backend) = self.backends.get(&group.daemon) else { return Vec::new() };
-        let mirror = poison::lock(&backend.mirror, "mirror");
-        mirror
-            .panes()
-            .filter(|pane| {
-                pane.command.as_deref().and_then(transcript::group_of) == Some(group.group.as_str())
-            })
-            .map(|pane| PaneKey::new(&group.daemon, &pane.id))
-            .collect()
-    }
-
-    /// Whether somebody is looking at the group's transcript in this window.
-    fn looking_at_transcript(&self, group: &GroupKey) -> bool {
-        self.transcripts(group).iter().any(|pane| self.attention.seen(pane))
-    }
-
-    /// Whether the human is reading the group: its conversation is shown in the window in
-    /// front, which is focused, or somebody is looking at its transcript.
-    fn looking_at(&self, group: &GroupKey) -> bool {
-        self.looking_at_conversation(group) || self.looking_at_transcript(group)
-    }
-
     /// Tells the group's daemon the human has read it. Queued rather than waited on, so it is
     /// safe under the session's lock, like [`Session::report_seen`]; one that finds its daemon
     /// disconnected is not held, since what waits is said again when it comes back.
@@ -3169,8 +3143,8 @@ fn not_showing(daemon: &DaemonId) -> String {
 /// several windows has no single answer to hold (MIP-3, section 14).
 ///
 /// A pane in a tab another open window here holds is gone to in that window, which comes
-/// forward: ⌘⇧A and a group's transcript pick a pane wherever it is, and showing it here would
-/// take its terminals from the window showing them.
+/// forward: ⌘⇧A and a pane's banner pick a pane wherever it is, and showing it here would take
+/// its terminals from the window showing them.
 pub(crate) fn focus(asked: WindowId, daemon: &DaemonId, pane: &PaneId) -> Result<(), Refusal> {
     // Going to a hidden pane brings it back first, into the window that asked: a banner about
     // it, the chord to whatever asks, and a click on its row all mean "show me this".
@@ -4269,19 +4243,6 @@ pub(crate) fn press_numbered_chord(window: WindowId, press: usize) -> Result<(),
 pub(crate) fn most_urgent_asking() -> Option<Asker> {
     let session = poison::lock(&SESSION, "session");
     session.attention.asking().into_iter().map(|(asker, _)| asker).next()
-}
-
-/// The pane on `daemon` that is the transcript of `group`, if there is one (MIP-4, section 10).
-pub(crate) fn transcript_pane(daemon: &DaemonId, group: &str) -> Option<PaneId> {
-    let session = poison::lock(&SESSION, "session");
-    let key = GroupKey { daemon: daemon.clone(), group: group.to_string() };
-    session.transcripts(&key).into_iter().next().map(|pane| pane.pane)
-}
-
-/// Reads a group for the human, who has just been taken to its transcript.
-pub(crate) fn read_as_human(daemon: &DaemonId, group: &str) {
-    let session = poison::lock(&SESSION, "session");
-    session.read_as_human(&GroupKey { daemon: daemon.clone(), group: group.to_string() });
 }
 
 /// How long a daemon has to answer a request the window makes of its messaging as the human. A
@@ -6634,24 +6595,9 @@ fn announce_attention(pane: &PaneKey, attend: Attend) {
 }
 
 /// What waits for the human in a group moved: a message arrived for them, or they read it
-/// (MIP-4, section 10). Somebody already reading the group's transcript is the human reading
+/// (MIP-4, section 10). The human already reading the group's conversation is the human reading
 /// it, so the daemon is told that instead of anybody being interrupted.
 fn human_noticed(daemon: &DaemonId, group: &str) {
-    // A banner for it would lead to a transcript whose command line holds the name.
-    if !transcript::is_group(group) {
-        log::warn(
-            "attention.message_group_refused",
-            fields! {
-                "daemon" => daemon.to_string(),
-                "group" => group,
-                "impact" => "no notification is raised for this group and ⌘⇧A does not go to \
-                             it, since its transcript would hand the name to a shell",
-                "check" => "which program serves that daemon's socket; a group's name holds only \
-                            letters, digits and . _ - + @, and no Muster daemon sends another",
-            },
-        );
-        return;
-    }
     let key = GroupKey { daemon: daemon.clone(), group: group.to_string() };
     let attend = {
         let mut session = poison::lock(&SESSION, "session");
@@ -6659,7 +6605,7 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
             poison::lock(&backend.mirror, "mirror").human_notice(group).cloned()
         });
         let waiting = notice.as_ref().is_some_and(|notice| notice.count > 0);
-        let looking = waiting && session.looking_at(&key);
+        let looking = waiting && session.looking_at_conversation(&key);
         if looking {
             session.read_as_human(&key);
         }
@@ -6676,8 +6622,8 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
     banners::announce();
 }
 
-/// Groups whose transcript somebody has just come to look at, while a message there waits for
-/// the human: the human reading them. Each is read, and stops asking now rather than once the
+/// Groups whose conversation the human has just come to look at, in a window that came to the
+/// front or was focused, while a message there waits for them: the human reading them. Each is read, and stops asking now rather than once the
 /// daemon has said so, as a pane somebody looks at does.
 fn read_what_is_looked_at() {
     let withdrawn: Vec<(GroupKey, Attend)> = {
@@ -6693,7 +6639,7 @@ fn read_what_is_looked_at() {
             .collect();
         let mut withdrawn = Vec::new();
         for key in asking {
-            if !session.looking_at(&key) {
+            if !session.looking_at_conversation(&key) {
                 continue;
             }
             session.read_as_human(&key);

@@ -27,7 +27,6 @@ use muster_core::pane_text::{self, Scope, rows_of};
 use muster_core::problems::Severity;
 use muster_core::roster::TabStep;
 use muster_core::spanning;
-use muster_core::transcript;
 use muster_core::{PaneKey, Until};
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
@@ -360,29 +359,6 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::FocusAsking(_) => focus_asking(window),
         request::Payload::ReadAsking(_) => read_asking(),
         request::Payload::FocusHistory(walk) => focus_history(window, walk.forward),
-        request::Payload::OpenTranscript(open) if open.group.is_empty() => Response::failure(
-            "a request to open a transcript named no group, so nothing opened. A banner for a \
-             message always carries its group, so the shell building this has a bug.",
-        ),
-        // Named by a banner, and by nobody else: `muster msg open` names none, and means the
-        // daemon here, since a group kept on another machine is followed here by its full name.
-        // That is where the human is homed (MIP-4, section 10): with two on this machine, the
-        // first the config names.
-        request::Payload::OpenTranscript(open) if open.daemon_id.is_empty() => {
-            match session::first_local_daemon(window) {
-                Some(daemon) => open_transcript(window, &daemon, &open.group),
-                None => Response::failure(format!(
-                    "no transcript of {} was opened: this window is attached to no daemon on this \
-                     machine, and that daemon is the one that keeps messages for you, including \
-                     a group kept elsewhere under its full name. Attach it with a [[daemon]] \
-                     block that has no host.",
-                    open.group
-                )),
-            }
-        }
-        request::Payload::OpenTranscript(open) => {
-            open_transcript(window, &DaemonId::new(&open.daemon_id), &open.group)
-        }
         request::Payload::UpgradeMuster(_) => upgrade(window),
         request::Payload::LeaveGroup(leave) => as_human_in(
             &leave.daemon_id,
@@ -1860,48 +1836,6 @@ fn focus_history(window: WindowId, forward: bool) -> Response {
         },
         Err(refusal) => relayed(Err(refusal)),
     }
-}
-
-/// Goes to a group's transcript on a daemon: the pane there that runs it, or a new tab running
-/// it when none does (MIP-4, section 10). A new tab rather than a split, so that nobody's
-/// layout moves under them because a message arrived. Going there is the human reading the
-/// group, so its daemon is told. Answered with the pane it went to, either way.
-fn open_transcript(window: WindowId, daemon: &DaemonId, group: &str) -> Response {
-    let Some(command) = transcript::command(group) else {
-        return Response::failure(format!(
-            "{group:?} cannot be a group's name, so no transcript was opened: its pane would \
-             hand the name to a shell. A group's name holds letters, digits and . _ - + @ only. \
-             The banner or request that named it came from daemon {daemon}, which should never \
-             have sent it; check which Muster that daemon is and whether it can be trusted."
-        ));
-    };
-    let went = |pane: String| Response {
-        payload: Some(response::Payload::Went(proto::Went {
-            daemon_id: daemon.to_string(),
-            pane_id: pane,
-        })),
-    };
-    let response = if let Some(pane) = session::transcript_pane(daemon, group) {
-        relayed(session::focus(window, daemon, &pane).map(|()| went(pane.to_string())))
-    } else {
-        let making = Making {
-            cwd: None,
-            run: Some(command),
-            name: Some(transcript::pane_name(group)),
-            quiet: false,
-            maker: None,
-        };
-        let opened = open_a_tab(window, daemon, None, Keyboard::Follows, making, false);
-        if let Some(response::Payload::Made(made)) = &opened.payload {
-            went(made.pane_id.clone())
-        } else {
-            opened
-        }
-    };
-    if matches!(response.payload, Some(response::Payload::Went(_))) {
-        session::read_as_human(daemon, group);
-    }
-    response
 }
 
 /// What the tab an upgrade runs in is called.

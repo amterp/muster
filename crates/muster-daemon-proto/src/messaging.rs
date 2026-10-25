@@ -20,7 +20,7 @@ pub const GROUPS: &str = "groups";
 pub const GROUP: &str = "group";
 pub const PAUSE: &str = "pause";
 pub const RESUME: &str = "resume";
-/// Opens a group's transcript in the window, as choosing a message's banner does. The one verb
+/// Shows a group's conversation in a window, as choosing a message's banner does. The one verb
 /// that asks the window rather than the daemon.
 pub const OPEN: &str = "open";
 

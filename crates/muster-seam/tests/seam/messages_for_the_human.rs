@@ -95,11 +95,8 @@ fn the_humans_groups_are_listed_with_what_waits_in_each_until_they_leave() {
     post(&mut control, "a", "@human", "and this");
     until_groups(&[("g", 2, 2)]);
 
-    let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
-        daemon_id: String::new(),
-        group: "g".to_string(),
-    }));
-    assert_ok(&opened);
+    assert_ok(&answer(request::Payload::WindowFocus(WindowFocus { focused: true })));
+    assert_ok(&answer(show_conversation("")));
     until_groups(&[("g", 0, 0)]);
 
     let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
@@ -215,10 +212,10 @@ fn a_message_sent_while_no_window_was_open_notifies_when_one_opens() {
     assert_eq!(messages_asked()[0].group, "g");
 }
 
-/// `muster msg open` names no daemon, which means the one on this machine: it opens the group's
-/// transcript there, answers with its pane, and a second open goes to the same pane.
+/// `muster msg open` names no daemon, which means the one on this machine: the window shows the
+/// group's conversation there.
 #[test]
-fn a_transcript_opened_naming_no_daemon_is_the_one_here_and_opens_once() {
+fn a_conversation_shown_naming_no_daemon_is_on_the_daemon_here() {
     let _turn = muster::testing::fresh_session();
     let daemon = Daemon::start_built();
     let mut control = daemon.connect();
@@ -226,24 +223,15 @@ fn a_transcript_opened_naming_no_daemon_is_the_one_here_and_opens_once() {
     until_text(&mut control, "p1", "$");
     open_window(&daemon);
     group_of_three(&mut control);
-    let open = || {
-        answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
-            daemon_id: String::new(),
-            group: "g".to_string(),
-        }))
-    };
 
-    let Some(response::Payload::Went(went)) = open().payload else { panic!("not opened") };
-    assert_eq!(went.daemon_id, "local");
-    assert_eq!(command_of(&mut control, &went.pane_id), "muster msg log --group='g' --follow");
-    let Some(response::Payload::Went(again)) = open().payload else { panic!("not opened") };
-    assert_eq!(again.pane_id, went.pane_id, "a second open made a second transcript");
+    assert_ok(&answer(show_conversation("")));
+    assert_eq!(conversation_shown(), ("local".to_string(), "g".to_string()));
 }
 
 /// With two daemons on this machine, naming no daemon means the one the config names first,
 /// whatever their ids sort as.
 #[test]
-fn a_transcript_opened_naming_no_daemon_is_the_first_the_config_names() {
+fn a_conversation_shown_naming_no_daemon_is_on_the_first_the_config_names() {
     let _turn = muster::testing::fresh_session();
     let home = Daemon::start_built();
     let other = Daemon::start_built();
@@ -253,38 +241,16 @@ fn a_transcript_opened_naming_no_daemon_is_the_first_the_config_names() {
     open_window_with(&home.muster_config_naming("zz-home", &[("aa-other", &other)]));
     group_of_three(&mut control);
 
-    let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
-        daemon_id: String::new(),
-        group: "g".to_string(),
-    }));
-    let Some(response::Payload::Went(went)) = opened.payload else { panic!("{opened:?}") };
-    assert_eq!(went.daemon_id, "zz-home");
+    assert_ok(&answer(show_conversation("")));
+    assert_eq!(conversation_shown(), ("zz-home".to_string(), "g".to_string()));
 }
 
-/// A group's name reaches a shell only as a group's name: one that could be read as a command
-/// gets no transcript, rather than a tab whose shell runs it.
-#[test]
-fn a_group_name_that_is_a_command_opens_nothing() {
-    let _turn = muster::testing::fresh_session();
-    let daemon = Daemon::start_built();
-    let mut control = daemon.connect();
-    make(&mut control, create("p1", in_new_tab("t1")));
-    until_text(&mut control, "p1", "$");
-    open_window(&daemon);
-
-    for group in ["x'; touch owned; '", "x\ntouch owned", "a b", "-x\\y"] {
-        let opened = answer(request::Payload::OpenTranscript(muster::proto::OpenTranscript {
-            daemon_id: "local".to_string(),
-            group: group.to_string(),
-        }));
-        assert!(
-            matches!(opened.payload, Some(response::Payload::Failure(_))),
-            "{group:?} was answered with {opened:?}"
-        );
-    }
-    let commands: Vec<String> =
-        snapshot(&mut control).panes.iter().filter_map(|pane| pane.command.clone()).collect();
-    assert!(commands.is_empty(), "a pane was made to run {commands:?}");
+/// Shows group `g`'s conversation on `daemon`, or on the one on this machine for an empty one.
+fn show_conversation(daemon: &str) -> request::Payload {
+    request::Payload::ShowConversation(muster::proto::ShowConversation {
+        daemon_id: daemon.to_string(),
+        group: "g".to_string(),
+    })
 }
 
 /// The human, `a` and `b` in group `g`.
@@ -359,13 +325,6 @@ fn reached(posted: &daemon_proto::MsgAnswer) -> Vec<(String, msg_answer::Reach)>
 /// still listed, each at 0.
 fn nothing_waits(control: &mut Control) -> bool {
     snapshot(control).human.iter().all(|notice| notice.count == 0)
-}
-
-/// What the pane runs, as its daemon has it.
-fn command_of(control: &mut Control, pane: &str) -> String {
-    let snapshot = snapshot(control);
-    let record = snapshot.panes.iter().find(|record| record.pane == pane);
-    record.and_then(|record| record.command.clone()).unwrap_or_default()
 }
 
 fn focus_asking() -> muster::proto::Asking {

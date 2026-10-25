@@ -510,7 +510,8 @@ fn a_post_to_the_human_is_heard() {
 }
 
 /// The transcript: `log --follow` prints what is there, then each entry as it lands, and goes
-/// on across a handover to a new daemon, since a transcript pane outlives any one daemon.
+/// on across a handover to a new daemon, since a terminal or script following a group outlives
+/// any one daemon.
 #[test]
 fn a_followed_log_prints_each_entry_as_it_lands_across_a_handover() {
     use std::io::{BufRead, BufReader};

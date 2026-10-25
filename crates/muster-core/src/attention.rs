@@ -370,7 +370,7 @@ impl Attention {
     }
 
     /// What a group's daemon now says waits for the human there: nothing, once the human has
-    /// read it. `looking` is somebody reading the group's transcript in a focused window, which
+    /// read it. `looking` is the group's conversation shown in the focused window in front, which
     /// is the human reading it, so it asks nothing and the caller reads it for them.
     ///
     /// Each message that waits announces again, as a program's notification does not, because

@@ -359,7 +359,7 @@ impl Control {
     }
 
     /// Reads a group's messages as the human, which is what the human looking at the group's
-    /// transcript is: the daemon then says nothing waits for them there (MIP-4, section 10).
+    /// conversation is: the daemon then says nothing waits for them there (MIP-4, section 10).
     pub fn read_as_human(&self, group: &str) -> Pending {
         use proto::msg_request::{Read, Request};
         self.as_human(Request::Read(Read { group: Some(group.to_string()) }))

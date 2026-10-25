@@ -230,8 +230,8 @@ impl Follower {
         true
     }
 
-    /// Reads a group as the human, somebody having looked at its transcript, and says whether
-    /// it was sent. Not held for a later connection: the next look reads it then.
+    /// Reads a group as the human, who is looking at its conversation, and says whether it was
+    /// sent. Not held for a later connection: the next look reads it then.
     pub fn read_as_human(&self, group: &str) -> bool {
         let Some(control) = self.connection.control() else {
             return false;

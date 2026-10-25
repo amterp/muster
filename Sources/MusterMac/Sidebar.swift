@@ -440,7 +440,7 @@ public enum SidebarModel {
     /// Every row does but the messages caption, including a machine's: picking one asks for a
     /// pane on it, which is the only way into a machine holding nothing (kan a_2HpkpfIfq) and
     /// what makes it safe to stop giving every machine a column of its own (kan a_2I6h18OU6).
-    /// A group's opens its transcript.
+    /// A group's shows its conversation.
     public var isDestination: Bool { kind != .messages && !isHiddenCaption }
 
     public var isMachine: Bool { kind == .machine }
@@ -1029,7 +1029,7 @@ public final class SidebarView: NSView {
   /// giving every machine a column of its own: a machine you have finished with stays empty,
   /// and one row gets you back (kan a_2HpkpfIfq, a_2I6h18OU6).
   public var onMachinePicked: ((String) -> Void)?
-  /// A group picked from the messages section, by its daemon and name: opens its transcript.
+  /// A group picked from the messages section, by its daemon and name: shows its conversation.
   public var onGroupPicked: ((String, String) -> Void)?
 
   /// The human's groups, drawn under the tabs on the next `apply(roster:agents:keyboard:)`.

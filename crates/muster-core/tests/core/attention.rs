@@ -178,7 +178,7 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             continue;
         }
         // What a group's daemon says now waits for the human there (MIP-4, section 10), with
-        // `looking` when the group's transcript is on screen in a focused window.
+        // `looking` when the group's conversation is shown in the focused window in front.
         if let Some(message) = event.get("message") {
             messaged(&mut run, event, message)?;
             continue;

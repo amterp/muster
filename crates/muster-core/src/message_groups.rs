@@ -19,14 +19,13 @@ pub struct MessageGroup {
 }
 
 /// Every group held, by name and then by daemon: a list somebody scans for a name, where the
-/// same group on two machines sits together. A name no group can have is left out, since its
-/// transcript is refused (`crate::transcript::is_group`) and a row nobody can open is no use.
+/// same group on two machines sits together.
 pub fn listed<'a>(
     held: impl IntoIterator<Item = (&'a DaemonId, &'a String, &'a HumanNotice)>,
 ) -> Vec<MessageGroup> {
     let mut groups: Vec<MessageGroup> = held
         .into_iter()
-        .filter(|(_, group, notice)| notice.listed() && crate::transcript::is_group(group))
+        .filter(|(_, _, notice)| notice.listed())
         .map(|(daemon, group, notice)| MessageGroup {
             daemon: daemon.clone(),
             group: group.clone(),
@@ -53,9 +52,7 @@ mod tests {
         let (unread, read, left) = (notice(3, 1, true), notice(0, 0, true), notice(0, 0, false));
         let held =
             [(&laptop, &review, &unread), (&devenv, &review, &read), (&laptop, &chat, &read)];
-        let bad = "no spaces".to_string();
-        let listed =
-            listed(held.into_iter().chain([(&laptop, &gone, &left), (&laptop, &bad, &unread)]));
+        let listed = listed(held.into_iter().chain([(&laptop, &gone, &left)]));
         let named: Vec<(&str, &str, u64, u64)> = listed
             .iter()
             .map(|group| (group.group.as_str(), group.daemon.as_str(), group.unread, group.to_you))

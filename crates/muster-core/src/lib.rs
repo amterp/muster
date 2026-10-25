@@ -39,7 +39,6 @@ pub mod resize;
 pub mod respawn;
 pub mod roster;
 pub mod spanning;
-pub mod transcript;
 pub mod typeable;
 
 pub use agent_state::{AgentState, Until};

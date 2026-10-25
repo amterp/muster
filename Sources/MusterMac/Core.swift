@@ -1618,7 +1618,6 @@ public enum Core {
     case .claimApp: return "claim_app"
     case .adoptOldState: return "adopt_old_state"
     case .focusHistory: return "focus_history"
-    case .openTranscript: return "open_transcript"
     case .upgradeMuster: return "upgrade_muster"
     case .focusRelative: return "focus_relative"
     case .setSplitRatio: return "set_split_ratio"

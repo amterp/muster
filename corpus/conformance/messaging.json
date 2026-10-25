@@ -13,7 +13,7 @@
       {"failure": "Leave cascades within 60 s of the first \"signing off\", in almost every session; one agent left on the turn it was told not to", "case": "a member of a directed council may not leave, and is told who may dismiss it"},
       {"failure": "Joined agents asleep, with no way to tell (\"Hello\", \"Test\", no reply)", "case": "a participant whose inbox is gone is not woken"},
       {"failure": "The human could not keep up and typed \"wait\"", "case": "a paused group's posts wake nobody, and resuming wakes each member once"},
-      {"failure": "The human spoke through agents' terminals", "elsewhere": "the transcript, a pane in the human's window (MIP-4, section 10), which is not the message service's to decide: muster-seam's a_message_for_the_human_notifies_once_and_lands_on_its_transcript"},
+      {"failure": "The human spoke through agents' terminals", "elsewhere": "the group's conversation, drawn in the human's window (MIP-9, section 1), which is not the message service's to decide: muster-seam's a_message_for_the_human_notifies_once_and_lands_on_its_conversation"},
       {"failure": "Multi-page pasted reviews", "elsewhere": "a body never travels through a PTY (MIP-4, section 4): muster-cli's a_body_comes_whole_from_a_file_or_stdin, and claude_code_doorbell's brief read whole"},
       {"failure": "Hand-counted `--after N` on every post", "case": "a newcomer's reading starts when it joins, and the log still holds what came before"},
       {"failure": "Turns spent only on passing the turn: \"Standing by\", \"Passing to Moderator\"", "case": "in a directed council a member's unaddressed post wakes only the director"},
