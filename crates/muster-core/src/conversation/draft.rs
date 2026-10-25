@@ -40,6 +40,8 @@ pub struct Edit {
     pub urgent: bool,
     /// Backspace was pressed straight after the last recipient.
     pub unaddress: bool,
+    /// The member, by participant name, to complete the `@name` being typed at the cursor to.
+    pub complete: Option<String>,
 }
 
 /// A member a name being typed after an @ may complete to.
@@ -78,6 +80,9 @@ pub fn edited(draft: &Draft, edit: Edit, group: &Group) -> Edited {
     let addressed = if edit.to == draft.to { draft.addressed } else { Addressed::Chosen };
     let mut next = Draft { text: edit.text, to: edit.to, urgent: edit.urgent, addressed };
     let mut cursor = edit.cursor.min(next.text.chars().count());
+    if let Some(name) = &edit.complete {
+        cursor = complete(&mut next.text, cursor, name, group);
+    }
     if edit.unaddress {
         if let Some(last) = next.to.pop() {
             let shown = group.shown(&last);
@@ -105,6 +110,28 @@ pub fn edited(draft: &Draft, edit: Edit, group: &Group) -> Edited {
     }
     let completions = completions(&next.text, cursor, group);
     Edited { draft: next, cursor, completions }
+}
+
+/// Completes the `@name` being typed at `cursor` to the member called `name`, with a space after
+/// it, and says where the cursor goes: after that space. Done before a leading name is taken, so a completion at
+/// the start of the text addresses the member and one later stays text, as typing it would.
+fn complete(text: &mut String, cursor: usize, name: &str, group: &Group) -> usize {
+    let Some((_, shown)) = addressable(group).find(|(member, _)| member == name) else {
+        return cursor;
+    };
+    let before: String = text.chars().take(cursor).collect();
+    let word = before.rsplit(char::is_whitespace).next().unwrap_or("");
+    if !word.starts_with('@') {
+        return cursor;
+    }
+    let start = before.len() - word.len();
+    let after: String = text.chars().skip(cursor).collect();
+    // One space after the name, the one already there when the name was typed mid-sentence.
+    let spaced = after.starts_with(char::is_whitespace);
+    let completed = format!("@{shown}{}", if spaced { "" } else { " " });
+    let moved = before[..start].chars().count() + completed.chars().count() + usize::from(spaced);
+    *text = format!("{}{completed}{after}", &before[..start]);
+    moved
 }
 
 /// The member a text's leading `@name ` names, and that prefix with the whitespace after it.

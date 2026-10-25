@@ -122,6 +122,36 @@
       "expect": { "text": "", "to": ["otter"], "cursor": 0, "addressed": "chosen" }
     },
     {
+      "name": "a completion at the start of the text addresses the member",
+      "why": "Choosing a name from the list is typing it, so at the start it takes the member as a recipient as typing `@otter ` would.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "@ot", "to": ["heron"] },
+        "edit": { "text": "@ot", "cursor": 3, "complete": "otter" }
+      },
+      "expect": { "text": "", "to": ["otter"], "cursor": 0, "addressed": "at" }
+    },
+    {
+      "name": "a completion later in the text completes the name and stays text",
+      "why": "Only a leading @ addresses; a name later in a message is part of what it says.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "ask @he about it", "to": ["otter"] },
+        "edit": { "text": "ask @he about it", "cursor": 7, "complete": "heron" }
+      },
+      "expect": { "text": "ask @heron about it", "to": ["otter"], "cursor": 11, "addressed": "opening" }
+    },
+    {
+      "name": "a completion to somebody who is not a member completes nothing",
+      "why": "A list that went stale while the human chose from it must not write a name the post would be refused for.",
+      "given": {
+        "members": ["otter", "@human"],
+        "draft": { "text": "@he", "to": ["otter"] },
+        "edit": { "text": "@he", "cursor": 3, "complete": "heron" }
+      },
+      "expect": { "text": "@he", "to": ["otter"], "cursor": 3, "addressed": "opening" }
+    },
+    {
       "name": "completion offers members, never Muster or the human",
       "why": "Neither can be addressed by the human's post, so offering them only leads to a refusal.",
       "given": {

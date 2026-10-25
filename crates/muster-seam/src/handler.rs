@@ -434,6 +434,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
                 to: saved.to,
                 urgent: saved.urgent,
                 unaddress: saved.unaddress,
+                complete: Some(saved.complete).filter(|name| !name.is_empty()),
             },
         ),
         request::Payload::LoadEarlier(earlier) => {

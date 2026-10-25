@@ -65,6 +65,7 @@ fn message_box_conformance() {
             to: edit.get("to").map_or_else(|| before.to.clone(), |_| strings(edit, "to")),
             urgent: edit.get("urgent").and_then(Value::as_bool).unwrap_or(before.urgent),
             unaddress: edit.get("unaddress").and_then(Value::as_bool).unwrap_or(false),
+            complete: edit.get("complete").and_then(Value::as_str).map(str::to_string),
         };
         let edited = draft::edited(&before, edit, &group);
         Ok(fields([

@@ -1540,6 +1540,10 @@ message SaveDraft {
   bool urgent = 6;
   // Backspace was pressed straight after the last recipient.
   bool unaddress = 7;
+  // The member, by participant name, to complete the @name at the cursor to: chosen from the
+  // draft's completions. Applied before a leading name is taken, so a completion at the start
+  // addresses the member and one later stays text. Empty completes nothing.
+  string complete = 8;
 }
 
 // Fetches the page of the group's log before the earliest entry the conversation holds, for every

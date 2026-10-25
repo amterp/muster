@@ -302,6 +302,29 @@ fn typing_in_the_message_box_is_answered_with_the_draft_and_sends_no_event() {
 }
 
 #[test]
+fn choosing_a_completion_at_the_start_addresses_the_member() {
+    let _open = Open::built();
+    show("window-1");
+    until_loaded("window-1");
+    let typed = answer(save_draft("@", 1, &[]));
+    let Some(response::Payload::Draft(typed)) = typed.payload else {
+        panic!("typing answered {typed:?}");
+    };
+    let offered: Vec<&str> = typed.completions.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(offered, ["a", "b"], "both agents are offered");
+
+    let chosen = answer(request::Payload::SaveDraft(SaveDraft {
+        complete: "b".to_string(),
+        ..draft_edit("@", 1, &[])
+    }));
+    let Some(response::Payload::Draft(draft)) = chosen.payload else {
+        panic!("choosing a completion answered {chosen:?}");
+    };
+    let to: Vec<&str> = draft.to.iter().map(|to| to.name.as_str()).collect();
+    assert_eq!((draft.text.as_str(), to.as_slice(), draft.cursor), ("", &["b"][..], 0));
+}
+
+#[test]
 fn a_post_from_the_message_box_is_kept_and_its_draft_clears() {
     let mut open = Open::built();
     show("window-1");
@@ -779,14 +802,18 @@ fn focus(focused: bool) -> request::Payload {
 }
 
 fn save_draft(text: &str, cursor: u32, to: &[&str]) -> request::Payload {
-    request::Payload::SaveDraft(SaveDraft {
+    request::Payload::SaveDraft(draft_edit(text, cursor, to))
+}
+
+fn draft_edit(text: &str, cursor: u32, to: &[&str]) -> SaveDraft {
+    SaveDraft {
         daemon_id: "local".to_string(),
         group: "g".to_string(),
         text: text.to_string(),
         cursor,
         to: to.iter().map(ToString::to_string).collect(),
         ..SaveDraft::default()
-    })
+    }
 }
 
 fn post_draft() -> request::Payload {
