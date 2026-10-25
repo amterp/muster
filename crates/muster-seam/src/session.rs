@@ -6148,7 +6148,7 @@ fn catch_up_tab_names(daemon: &DaemonId) {
 /// mirrors were read - and the change that moved it arrives as an event that runs this again,
 /// so there is nothing to retry here.
 fn catch_up_tab_trees(daemon: &DaemonId) {
-    let writes: Vec<(WindowId, TabId, spanning::Write)> = {
+    let writes = {
         let session = poison::lock(&SESSION, "session");
         let mirrors = session.mirrors();
         let writable = |machine: &DaemonId| session.holds_spanning_trees(machine);
@@ -6163,13 +6163,34 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
             {
                 let (parts, settled) = spanning::parts_of(tab, mirror, writable);
                 let Some(merged) = spanning::merge(&parts, &settled) else { continue };
-                writes
-                    .extend(merged.writes.into_iter().map(|write| (window, tab.id.clone(), write)));
+                writes.extend(
+                    merged
+                        .writes
+                        .into_iter()
+                        .map(|write| TabTreeCatchUp::new(&session, window, tab.id.clone(), write)),
+                );
             }
         }
         writes
     };
-    for (window, tab, write) in writes {
+    for write in writes {
+        write.submit();
+    }
+}
+
+struct TabTreeCatchUp {
+    window: WindowId,
+    tab: TabId,
+    write: spanning::Write,
+}
+
+impl TabTreeCatchUp {
+    fn new(_session: &Session, window: WindowId, tab: TabId, write: spanning::Write) -> Self {
+        Self { window, tab, write }
+    }
+
+    fn submit(self) {
+        let Self { window, tab, write } = self;
         let machine = write.daemon.clone();
         let intent = BackendIntent::SetTabTree {
             tab: tab.clone(),
@@ -7250,6 +7271,60 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pending_tree_write_cannot_reach_a_later_sessions_daemon_with_the_same_name() {
+        use muster_core::mirror::backend::CopyNode;
+        use muster_harness::Daemon as TestDaemon;
+        use muster_harness::requests::{create, in_new_tab, make, snapshot};
+        use prost::Message;
+
+        let turn = crate::testing::fresh_session();
+        let original = TestDaemon::start_built();
+        let replacement = TestDaemon::start_built();
+        for daemon in [&original, &replacement] {
+            make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+        }
+        let open = |daemon: &TestDaemon| {
+            use crate::proto::{OpenWindow, Request, Response, Startup, request, response};
+
+            for payload in [
+                request::Payload::Startup(Startup {
+                    config_path: daemon.muster_config().to_string_lossy().into_owned(),
+                    ..Startup::default()
+                }),
+                request::Payload::OpenWindow(OpenWindow::default()),
+            ] {
+                let reply = crate::dispatch(&Request::new(payload).encode_to_vec());
+                let reply = Response::decode(reply.as_slice()).expect("the seam answers");
+                assert!(!matches!(reply.payload, Some(response::Payload::Failure(_))), "{reply:?}");
+            }
+        };
+        open(&original);
+        let pending = {
+            let session = poison::lock(&SESSION, "session");
+            TabTreeCatchUp::new(
+                &session,
+                session.front,
+                TabId::new("t1"),
+                spanning::Write {
+                    daemon: DaemonId::new("local"),
+                    root: CopyNode::Own(PaneId::new("p1")),
+                    zoomed: Some(PaneId::new("p1")),
+                    generation: 1,
+                    based_on: 0,
+                },
+            )
+        };
+        turn.relaunch();
+        open(&replacement);
+        pending.submit();
+
+        let actual = snapshot(&mut replacement.connect());
+        let tab = actual.tabs.iter().find(|tab| tab.tab == "t1").expect("the replacement's tab");
+        assert_eq!(tab.layout_generation, 0, "an earlier session wrote to the replacement daemon");
+        assert_eq!(tab.zoomed, None, "an earlier session zoomed the replacement's pane");
+    }
 
     fn refused_as(refusal: &str) -> muster_daemon_proto::Answer {
         let mut answer = muster_daemon_proto::Answer {
