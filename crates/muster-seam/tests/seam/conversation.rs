@@ -383,6 +383,28 @@ fn a_post_from_the_message_box_is_kept_and_its_draft_clears() {
     );
 }
 
+/// "Sent" under the box is about the post it last sent; once the human writes the next one,
+/// it goes, and the field keeps what they wrote where they wrote it.
+#[test]
+fn the_box_says_where_its_last_post_stands_until_the_next_is_written() {
+    let _open = Open::built();
+    show("window-1");
+    until_loaded("window-1");
+    answer(save_draft("ship it", 7, &["a"]));
+    answer(post_draft());
+    until_sent("window-1", post_outcome::State::Posted);
+
+    answer(save_draft("and", 2, &["a"]));
+    until(
+        "the outcome to go once the next draft is written",
+        || {
+            let told = message_box("window-1");
+            told.sent.is_none() && told.draft.is_some_and(|draft| draft.cursor == 2)
+        },
+        || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+}
+
 /// A question's answers are drawn under it; picking one fills the message box, addressed to the
 /// question's author, and the post is the answer with the note under it, carrying `answering`,
 /// after which the question says the human answered it and offers nothing more.

@@ -749,7 +749,7 @@ fn viewing(
 /// event carrying it back could land after the next keystroke and undo it.
 pub(crate) fn save_draft(window: WindowId, daemon: &str, group: &str, edit: Edit) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
-    let answer = {
+    let (answer, told) = {
         let mut session = poison::lock(&SESSION, "session");
         let Session { conversations, windows, .. } = &mut *session;
         let unheard = Group::default();
@@ -760,15 +760,70 @@ pub(crate) fn save_draft(window: WindowId, daemon: &str, group: &str, edit: Edit
         let answer =
             convert::message_box_draft(&edited.draft, edited.cursor, &edited.completions, group);
         let held = &mut windows[window];
+        let cleared = edited_past_outcome(held, &key, &before, &edited.draft);
         held.drafts.insert(key.clone(), edited.draft);
-        if held.conversation.as_ref().is_some_and(|shown| shown.group == key) {
-            let told = message_box(held, group);
-            held.message_box_sent = Some(told);
-        }
-        answer
+        let told = shown_box(held, &key, group, cleared, &answer);
+        (answer, told)
     };
+    tell_box(told);
     save_soon(window);
     Response { payload: Some(response::Payload::Draft(answer)) }
+}
+
+/// Takes the outcome under the box away once the human writes the next draft: a kept post's
+/// "Sent" and a refused one's "Not sent" are about words the box no longer holds. An unknown one
+/// stays until the log settles it or the human sends again, since it warns that sending again
+/// could post the message twice. Says whether it took one away.
+fn edited_past_outcome(
+    window: &mut super::Window,
+    group: &GroupKey,
+    before: &Draft,
+    after: &Draft,
+) -> bool {
+    let changed = before.text != after.text
+        || before.to != after.to
+        || before.urgent != after.urgent
+        || before.picked != after.picked;
+    let past = matches!(
+        window.sending.get(group),
+        Some(Sending { sent: Sent::Posted { .. } | Sent::Refused { .. }, .. })
+    );
+    if changed && past {
+        window.sending.remove(group);
+    }
+    changed && past
+}
+
+/// Records the message box a window showing `key` now holds, which the shell already has from
+/// the edit's answer. When the edit took the outcome under it away, the shell is told, with the
+/// very draft the answer carries: one carrying the box as `message_box` builds it would put the
+/// cursor at the end of the words while the human writes in their middle.
+fn shown_box(
+    window: &mut super::Window,
+    key: &GroupKey,
+    group: &Group,
+    cleared: bool,
+    answer: &proto::MessageBoxDraft,
+) -> Option<(String, proto::MessageBoxChanged)> {
+    if window.conversation.as_ref().is_none_or(|shown| &shown.group != key) {
+        return None;
+    }
+    window.message_box_sent = Some(message_box(window, group));
+    cleared.then(|| {
+        let told = proto::MessageBoxChanged {
+            daemon_id: key.daemon.to_string(),
+            group: key.group.clone(),
+            draft: Some(answer.clone()),
+            sent: None,
+        };
+        (window.name.to_string(), told)
+    })
+}
+
+fn tell_box(told: Option<(String, proto::MessageBoxChanged)>) {
+    let Some((name, told)) = told else { return };
+    let _telling = poison::lock(&TELLING, "conversation");
+    ffi::emit(&Event::new(event::Payload::MessageBoxChanged(told)).for_window(&name));
 }
 
 /// Picks answer `answer` of question `question` for `window`'s message box in `group`, or takes
@@ -782,7 +837,7 @@ pub(crate) fn pick(
 ) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
     let answer = answer.map(|answer| usize::try_from(answer).unwrap_or(usize::MAX));
-    let answered = {
+    let (answered, told) = {
         let mut session = poison::lock(&SESSION, "session");
         let Session { conversations, windows, .. } = &mut *session;
         let unheard = Group::default();
@@ -796,13 +851,12 @@ pub(crate) fn pick(
         let cursor = picked.text.chars().count();
         let answered = convert::message_box_draft(&picked, cursor, &[], group);
         let held = &mut windows[window];
+        let cleared = edited_past_outcome(held, &key, &before, &picked);
         held.drafts.insert(key.clone(), picked);
-        if held.conversation.as_ref().is_some_and(|shown| shown.group == key) {
-            let told = message_box(held, group);
-            held.message_box_sent = Some(told);
-        }
-        answered
+        let told = shown_box(held, &key, group, cleared, &answered);
+        (answered, told)
     };
+    tell_box(told);
     save_soon(window);
     Response { payload: Some(response::Payload::Draft(answered)) }
 }
@@ -940,6 +994,10 @@ fn save_soon(window: WindowId) {
     }
 }
 
+/// Held while settling what to tell the shell and telling it, so that no event built from an
+/// older state is sent after one built from a newer.
+static TELLING: Mutex<()> = Mutex::new(());
+
 /// Which of a conversation's three events to settle: each changes at its own pace, and settling
 /// one is never a reason to rebuild another.
 #[derive(Debug, Clone, Copy)]
@@ -970,7 +1028,6 @@ pub(crate) fn announce(windows: &[WindowId]) {
 /// group's following thread call this, and one that settled first and sent second would leave the
 /// shell drawing an older thread.
 fn announce_parts(windows: &[WindowId], parts: Parts) {
-    static TELLING: Mutex<()> = Mutex::new(());
     let _telling = poison::lock(&TELLING, "conversation");
     let mut events = Vec::new();
     {
