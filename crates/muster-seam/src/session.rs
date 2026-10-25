@@ -4340,6 +4340,11 @@ fn send_as_human(
 
 /// What the daemon's messaging answered a request made as the human: its answer, or its refusal
 /// in its own words, which name the command that gets past it.
+///
+/// A daemon that carried the request to the machine keeping the group and heard nothing back
+/// refuses it as `unanswered`: it may have been done there. That is the same doubt as this
+/// window hearing nothing from its own daemon, so it is answered the same way, and a post is
+/// settled from the group's log rather than offered to be sent again.
 pub(crate) fn answered_as_human(
     answer: muster_daemon_proto::Answer,
 ) -> Result<muster_daemon_proto::MsgAnswer, Refusal> {
@@ -4350,7 +4355,12 @@ pub(crate) fn answered_as_human(
                 _ => muster_daemon_proto::MsgAnswer::default(),
             })
         }
-        _ => Err(Refusal::Declined(answer.reason)),
+        _ => match answer.detail {
+            Some(muster_daemon_proto::answer::Detail::Msg(msg)) if msg.refusal == "unanswered" => {
+                Err(Refusal::Unanswered { detail: answer.reason, made: None })
+            }
+            _ => Err(Refusal::Declined(answer.reason)),
+        },
     }
 }
 
@@ -7278,6 +7288,31 @@ fn typeable(daemon: &DaemonId, pane: &PaneId) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn refused_as(refusal: &str) -> muster_daemon_proto::Answer {
+        let mut answer = muster_daemon_proto::Answer {
+            reason: format!("refused as {refusal}"),
+            detail: Some(muster_daemon_proto::answer::Detail::Msg(
+                muster_daemon_proto::MsgAnswer {
+                    refusal: refusal.to_string(),
+                    ..Default::default()
+                },
+            )),
+            ..Default::default()
+        };
+        answer.set_outcome(muster_daemon_proto::Outcome::Refused);
+        answer
+    }
+
+    #[test]
+    fn a_request_the_keeping_machine_never_answered_is_unknown_not_refused() {
+        assert!(
+            matches!(answered_as_human(refused_as("unanswered")), Err(Refusal::Unanswered { .. })),
+            "a post the group's machine may have kept was taken as refused, so the window would \
+             offer to send it again and the group could get it twice"
+        );
+        assert!(matches!(answered_as_human(refused_as("not_member")), Err(Refusal::Declined(_))));
+    }
 
     #[test]
     fn a_pane_is_told_the_window_socket_on_its_own_machine() {
