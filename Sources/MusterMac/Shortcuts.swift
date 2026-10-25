@@ -72,11 +72,14 @@ public enum Shortcuts {
 
   /// The chords this shell owns rather than the core.
   ///
-  /// Declared rather than read back, because these are the platform's: copy and paste go
+  /// Declared rather than read back, because these are the platform's: editing goes
   /// through the responder chain and quit is the application's, so none of them is in the
   /// core's table and none of them can be rebound by Muster's config file. Listed anyway,
   /// since a person looking for "how do I copy" does not care which layer answers.
   static let editing: [Row] = [
+    Row(title: "Undo", chord: "⌘Z", note: "in Muster's own text fields; a pane gets the key"),
+    Row(title: "Redo", chord: "⇧⌘Z", note: "in Muster's own text fields; a pane gets the key"),
+    Row(title: "Cut", chord: "⌘X", note: "in Muster's own text fields; a pane gets the key"),
     Row(title: "Copy", chord: "⌘C", note: "the selection in the focused pane"),
     Row(title: "Paste", chord: "⌘V", note: ""),
     Row(title: "Quit muster", chord: "⌘Q", note: "sessions keep running; agents are unaffected"),

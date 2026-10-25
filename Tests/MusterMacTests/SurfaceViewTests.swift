@@ -418,6 +418,37 @@ private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
   withExtendedLifetime(window) {}
 }
 
+@Test(.ownsTheSeam) @MainActor func undoRedoAndCutReachThePaneThoughTheEditMenuHasThem() {
+  // The Edit menu has Undo, Redo and Cut on their usual chords for Muster's own text fields. A
+  // key equivalent is offered to the menu before any view, so with no text being edited the
+  // menu has to give them up, or a program in a pane would never see ⌘Z.
+  let app = NSApplication.shared
+  let (before, help) = (app.mainMenu, app.helpMenu)
+  defer { (app.mainMenu, app.helpMenu) = (before, help) }
+  AppMenu.install(target: NSObject(), bindings: [])
+  let presses = [
+    ("z", NSEvent.ModifierFlags.command, ["super"]),
+    ("Z", [.command, .shift], ["shift", "super"]),
+    ("x", .command, ["super"]),
+  ]
+  for (characters, flags, modifiers) in presses {
+    let recorder = RecordingDispatcher()
+    let pane = view(recorder)
+    let window = holding(pane)
+    let keyCode: UInt16 = characters.lowercased() == "z" ? 0x06 : 0x07
+    let press = key(characters, keyCode: keyCode, flags: flags)
+
+    #expect(app.mainMenu?.performKeyEquivalent(with: press) == false, "the menu took \(flags)")
+    #expect(!pane.performKeyEquivalent(with: press))
+    pane.keyDown(with: press)
+
+    let sent = recorder.requests.first?.keyDown.key
+    #expect(sent?.key == KeyNames.name(forMacOSKeycode: keyCode))
+    #expect(sent.map { Set($0.modifiers) } == Set(modifiers))
+    withExtendedLifetime(window) {}
+  }
+}
+
 @MainActor
 private final class MenuChoice: NSObject {
   var count = 0

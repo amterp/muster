@@ -105,8 +105,14 @@ public enum AppMenu {
     menu.addItem(appItem)
 
     let editItem = NSMenuItem()
-    let editMenu = LoggedMenu(title: "Edit")
-    // nil target: AppKit walks the responder chain, which lands on the focused surface.
+    let editMenu = EditMenu(title: "Edit")
+    // nil target: AppKit walks the responder chain, which lands on the focused surface, or on
+    // the text field holding the keyboard.
+    editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+    // An uppercase key equivalent is AppKit's spelling of shift held.
+    editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    editMenu.addItem(.separator())
+    editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     editItem.submenu = editMenu
@@ -193,6 +199,46 @@ class LoggedMenu: NSMenu {
       Core.debug(BoundAction.event, fields)
     }
     super.performActionForItem(at: index)
+  }
+}
+
+/// The Edit menu, which gives up Undo, Redo and Cut's chords while no text is being edited.
+///
+/// A key equivalent is offered to the menu before any view, enabled or not, so an item on ⌘Z
+/// would take it from every pane - and a program in a pane may want it. Only a text field of
+/// Muster's has anything to undo or cut, so the menu takes those three only while one holds the
+/// keyboard, and otherwise the press goes on to the pane as if the items were not there. Kept as
+/// real key equivalents rather than matched by each field, so the menu shows them, a shortcut
+/// remapped in System Settings is honored, and every field - reply, message box, find bar,
+/// rename sheet - gets them at once. Copy and Paste are a pane's actions too, and stay as they
+/// were.
+@MainActor
+final class EditMenu: LoggedMenu {
+  /// Whether a text field holds the keyboard. Settable so a test can say without one.
+  static var editing: () -> Bool = {
+    MusterWindow.textBeingEdited(by: NSApp.keyWindow?.firstResponder) != nil
+  }
+
+  // AppKit offers key equivalents on the main thread, though NSMenu does not say so.
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    let editing = MainActor.assumeIsolated { EditMenu.editing() }
+    guard EditMenu.takes(event, editing: editing) else { return false }
+    return super.performKeyEquivalent(with: event)
+  }
+
+  /// Whether the menu may take a key press: anything but Undo's, Redo's or Cut's chord, and
+  /// those only while text is being edited.
+  nonisolated static func takes(_ event: NSEvent, editing: Bool) -> Bool {
+    editing || !textOnly(event)
+  }
+
+  nonisolated private static func textOnly(_ event: NSEvent) -> Bool {
+    let key = event.charactersIgnoringModifiers?.lowercased()
+    let held = event.modifierFlags.intersection([.shift, .control, .option, .command])
+    switch (key, held) {
+    case ("z", [.command]), ("z", [.command, .shift]), ("x", [.command]): return true
+    default: return false
+    }
   }
 }
 

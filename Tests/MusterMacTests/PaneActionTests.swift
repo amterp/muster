@@ -547,16 +547,49 @@ struct AppMenuTests {
   }
 
   @MainActor
-  @Test("copy and paste go through the responder chain, not to a target")
+  @Test("the Edit menu's items go through the responder chain, not to a target")
   func editItemsWalkTheChain() {
     // A target here would be whichever object built the menu, and the selection belongs to
-    // the focused surface. Nil is what makes AppKit walk down to it.
+    // the focused surface or the text field being typed in. Nil is what makes AppKit walk
+    // down to it.
     let menu = AppMenu.build(target: NSApp, bindings: AppMenuTests.published)
     let edit = menu.items.compactMap(\.submenu).first { $0.title == "Edit" }
 
-    let items = edit?.items.filter { ["Copy", "Paste"].contains($0.title) } ?? []
-    #expect(items.count == 2)
+    let titles = ["Undo", "Redo", "Cut", "Copy", "Paste"]
+    let items = edit?.items.filter { titles.contains($0.title) } ?? []
+    #expect(items.map(\.title) == titles)
     #expect(items.allSatisfy { $0.target == nil })
+  }
+
+  @MainActor
+  @Test("the Edit menu takes Undo, Redo and Cut only while text is being edited")
+  func editMenuGivesUpTextOnlyChords() throws {
+    func press(_ characters: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+      try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+          context: nil, characters: characters, charactersIgnoringModifiers: characters,
+          isARepeat: false, keyCode: 0))
+    }
+    let textOnly = [
+      try press("z", .command), try press("Z", [.command, .shift]), try press("x", .command),
+    ]
+    for event in textOnly {
+      #expect(!EditMenu.takes(event, editing: false))
+      #expect(EditMenu.takes(event, editing: true))
+    }
+    // Copy and Paste are a pane's actions as much as a field's.
+    #expect(EditMenu.takes(try press("c", .command), editing: false))
+    #expect(EditMenu.takes(try press("v", .command), editing: false))
+    // A chord that only shares the letter is not one of them.
+    #expect(EditMenu.takes(try press("z", [.command, .option]), editing: false))
+
+    let app = NSApplication.shared
+    let (before, help, editing) = (app.mainMenu, app.helpMenu, EditMenu.editing)
+    defer { (app.mainMenu, app.helpMenu, EditMenu.editing) = (before, help, editing) }
+    AppMenu.install(target: NSObject(), bindings: [])
+    EditMenu.editing = { true }
+    #expect(app.mainMenu?.performKeyEquivalent(with: try press("z", .command)) == true)
   }
 
   @MainActor

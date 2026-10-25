@@ -55,6 +55,9 @@ struct ShortcutsTests {
     // the core's table and none can be rebound by Muster's config. A person looking for "how
     // do I copy" does not care which layer answers.
     let listed = Set(Shortcuts.sections([]).flatMap { $0.rows.map(\.title) })
+    #expect(listed.contains("Undo"))
+    #expect(listed.contains("Redo"))
+    #expect(listed.contains("Cut"))
     #expect(listed.contains("Copy"))
     #expect(listed.contains("Paste"))
     #expect(listed.contains("Quit muster"))
