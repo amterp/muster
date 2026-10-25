@@ -13,6 +13,17 @@ import Testing
 final class ConversationRecorder {
   var sent: [String] = []
   var edits: [DraftEdit] = []
+  /// Each pick sent: the question, and the answer's place or nil for taking it back.
+  var picks: [(question: UInt64, answer: UInt32?)] = []
+  /// What the core answers a pick with.
+  var picked: (UInt64, UInt32?) -> Muster_MessageBoxDraft? = { question, answer in
+    var draft = Muster_MessageBoxDraft()
+    if let answer {
+      draft.pickedQuestion = question
+      draft.pickedAnswer = "answer \(answer)"
+    }
+    return draft
+  }
   /// What the core answers an edit with.
   var answer: (DraftEdit) -> Muster_MessageBoxDraft? = { edit in
     var draft = Muster_MessageBoxDraft()
@@ -31,6 +42,10 @@ final class ConversationRecorder {
       saveDraft: { [self] _, edit in
         edits.append(edit)
         return answer(edit)
+      },
+      pick: { [self] _, question, answer in
+        picks.append((question, answer))
+        return picked(question, answer)
       },
       post: { [self] in sent.append("post \($0.group)") },
       loadEarlier: { [self] in sent.append("earlier \($0.group)") },
@@ -252,6 +267,59 @@ struct ConversationTests {
     #expect(ScalarOffsets.utf16(beforeScalars: 4, in: text) == 5)
     #expect(ScalarOffsets.scalars(beforeUTF16: text.utf16.count, in: text) == 5)
     #expect(ScalarOffsets.utf16(beforeScalars: 99, in: text) == text.utf16.count)
+  }
+
+  @Test("picking an answer asks the core, shows its draft and puts the keyboard in the box")
+  func pickingAnAnswer() {
+    let (box, recorder) = openBox()
+    var focused = false
+    box.onFocus = { focused = true }
+    let revision = box.revision
+    #expect(!box.sendable)
+
+    box.pick(question: 44, answer: 1)
+
+    #expect(recorder.picks.map(\.question) == [44])
+    #expect(recorder.picks.map(\.answer) == [1])
+    #expect(box.picked?.question == 44)
+    #expect(box.picked?.answer == "answer 1")
+    #expect(box.revision == revision + 1, "the field shows the core's answer")
+    #expect(focused)
+    #expect(box.sendable, "an answer picked with nothing written is a whole reply")
+
+    box.unpick()
+
+    #expect(recorder.picks.last?.question == 44)
+    #expect(recorder.picks.last?.answer == nil, "taking it back names no answer")
+    #expect(box.picked == nil)
+    #expect(!box.sendable)
+  }
+
+  @Test("a pick crosses the seam naming the group, the question and the answer", .ownsTheSeam)
+  func aPickCrossesTheSeam() {
+    let core = seam(RecordingDispatcher())
+    let review = ConversationGroup(daemon: "local", group: "review")
+
+    _ = Core.pickConversationAnswer(review, question: 44, answer: 2)
+    _ = Core.pickConversationAnswer(review, question: 44, answer: nil)
+
+    // By payload: a refusal writes a log record, which crosses the same seam.
+    let picks = core.requests.compactMap { request -> Muster_PickConversationAnswer? in
+      guard case .pickConversationAnswer(let pick) = request.payload else { return nil }
+      return pick
+    }
+    #expect(picks.count == 2)
+    #expect(picks.allSatisfy { $0.daemonID == "local" && $0.group == "review" })
+    #expect(picks.allSatisfy { $0.question == 44 })
+    #expect(picks.first?.hasAnswer == true && picks.first?.answer == 2)
+    #expect(picks.last?.hasAnswer == false, "taking the pick back names no answer")
+  }
+
+  @Test("nothing is picked while a post is on its way")
+  func noPickWhilePending() {
+    let (box, recorder) = openBox(sent: .pending)
+    box.pick(question: 44, answer: 0)
+    #expect(recorder.picks.isEmpty)
   }
 
   @Test("moving the cursor asks the core what it completes now")

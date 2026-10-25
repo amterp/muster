@@ -41,6 +41,8 @@ struct ConversationRequests {
   var openFold: @MainActor (ConversationGroup, UInt64) -> Void
   var showWhole: @MainActor (ConversationGroup, UInt64) -> Void
   var saveDraft: @MainActor (ConversationGroup, DraftEdit) -> Muster_MessageBoxDraft?
+  /// Picks question #seq's answer by its place, or takes the pick back with nil.
+  var pick: @MainActor (ConversationGroup, UInt64, UInt32?) -> Muster_MessageBoxDraft?
   var post: @MainActor (ConversationGroup) -> Void
   var loadEarlier: @MainActor (ConversationGroup) -> Void
   var pause: @MainActor (ConversationGroup, Bool) -> Void
@@ -57,6 +59,11 @@ struct ConversationRequests {
         Core.speaking(for: window()) { Core.showWholeMessage(group, seq: seq) }
       },
       saveDraft: { group, edit in Core.speaking(for: window()) { Core.saveDraft(group, edit) } },
+      pick: { group, question, answer in
+        Core.speaking(for: window()) {
+          Core.pickConversationAnswer(group, question: question, answer: answer)
+        }
+      },
       post: { group in Core.postFromConversation(group, window: window()) },
       loadEarlier: { group in Core.speaking(for: window()) { Core.loadEarlier(group) } },
       pause: { group, paused in
@@ -257,8 +264,33 @@ final class MessageBox: ObservableObject {
     save(marking, fromField: false)
   }
 
+  /// The answer picked from a question in the thread, to go with the words.
+  var picked: (question: UInt64, answer: String)? {
+    draft.pickedQuestion == 0 ? nil : (draft.pickedQuestion, draft.pickedAnswer)
+  }
+
+  /// Words, or an answer picked with nothing written, which is a whole reply.
   var sendable: Bool {
-    !pending && !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    !pending
+      && (picked != nil || !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  }
+
+  /// Picks question #`question`'s answer at `answer`, which fills the reply rather than sending
+  /// it (MIP-9, section 6), and puts the keyboard in the box for a note or the send chord
+  /// (mine). Picking the picked answer again takes it back; the core says which.
+  func pick(question: UInt64, answer: Int) {
+    guard let group, !pending,
+      let answered = requests.pick(group, question, UInt32(clamping: answer))
+    else { return }
+    take(answered, fromField: false)
+    onFocus()
+  }
+
+  /// Takes the picked answer back: the cross beside it.
+  func unpick() {
+    guard let group, let picked, let answered = requests.pick(group, picked.question, nil)
+    else { return }
+    take(answered, fromField: false)
   }
 
   func send() {
@@ -549,6 +581,8 @@ struct ConversationThreadView: View {
   @State private var atEnd = true
   /// The row that was first when "Load earlier" was chosen, to stay on once the page lands.
   @State private var keeping: String?
+  /// Which question's answer holds the keyboard, if one does.
+  @FocusState private var answerFocus: AnswerFocus?
 
   var body: some View {
     let rows = identified(thread.shown.rows)
@@ -567,8 +601,11 @@ struct ConversationThreadView: View {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity)
           }
           ForEach(rows, id: \.id) { entry in
-            ConversationRowView(row: entry.row, group: thread.group, box: box, requests: requests)
-              .id(entry.id)
+            ConversationRowView(
+              row: entry.row, group: thread.group, box: box, requests: requests,
+              focus: $answerFocus
+            )
+            .id(entry.id)
           }
           Color.clear.frame(height: 1).id("end")
             .onAppear { atEnd = true }
@@ -609,6 +646,7 @@ struct ConversationRowView: View {
   let group: ConversationGroup?
   let box: MessageBox
   let requests: @MainActor () -> ConversationRequests?
+  var focus: FocusState<AnswerFocus?>.Binding
 
   var body: some View {
     switch row.kind {
@@ -645,7 +683,8 @@ struct ConversationRowView: View {
       .foregroundStyle(.secondary)
       .help("Show these messages")
     case .message(let message):
-      ConversationMessageView(message: message, group: group, box: box, requests: requests)
+      ConversationMessageView(
+        message: message, group: group, box: box, requests: requests, focus: focus)
     case .unread:
       HStack(spacing: 8) {
         Rectangle().fill(Color.red).frame(height: 1)
@@ -678,6 +717,7 @@ struct ConversationMessageView: View {
   let group: ConversationGroup?
   let box: MessageBox
   let requests: @MainActor () -> ConversationRequests?
+  var focus: FocusState<AnswerFocus?>.Binding
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -701,6 +741,9 @@ struct ConversationMessageView: View {
       if message.more, let group {
         Button("Show all") { requests()?.showWhole(group, message.seq) }
           .buttonStyle(.link)
+      }
+      if !message.answers.isEmpty {
+        QuestionAnswersView(message: message, box: box, focus: focus)
       }
       if !message.said.isEmpty {
         Text(message.said).font(.caption).foregroundStyle(.secondary)
@@ -737,6 +780,52 @@ struct ConversationMessageView: View {
     if message.toYou { return Color.accentColor.opacity(0.12) }
     if message.byYou { return Color.primary.opacity(0.05) }
     return .clear
+  }
+}
+
+/// What holds the keyboard among the thread's answers: question #`question`'s answer at `index`.
+struct AnswerFocus: Hashable {
+  let question: UInt64
+  let index: Int
+}
+
+/// A question's answers under it (MIP-9, section 6): buttons while the human may pick one, who
+/// answered once somebody has, and otherwise - a question asked of somebody else - the answers
+/// listed, so the human still sees what was offered (mine).
+struct QuestionAnswersView: View {
+  let message: Muster_ConversationMessage
+  @ObservedObject var box: MessageBox
+  var focus: FocusState<AnswerFocus?>.Binding
+
+  var body: some View {
+    if !message.answeredBy.isEmpty {
+      Text("Answered by \(message.answeredBy): \(message.answeredWith)")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    } else if message.answerable {
+      let question = message.seq
+      AnswerButtons(
+        answers: message.answers, picked: picked, enabled: !box.pending, focus: focus,
+        focusing: { AnswerFocus(question: question, index: $0) },
+        onPick: { box.pick(question: question, answer: $0) },
+        onTabOut: { _ in
+          focus.wrappedValue = nil
+          box.onFocus()
+        })
+    } else {
+      VStack(alignment: .leading, spacing: 2) {
+        ForEach(Array(message.answers.enumerated()), id: \.offset) { _, answer in
+          Label(answer, systemImage: "circle").foregroundStyle(.secondary)
+        }
+      }
+      .font(.callout)
+    }
+  }
+
+  /// The answer the message box holds for this question, by its place.
+  private var picked: Int? {
+    guard let held = box.picked, held.question == message.seq else { return nil }
+    return message.answers.firstIndex(of: held.answer)
   }
 }
 
@@ -795,6 +884,17 @@ struct MessageBoxView: View {
         completions
       }
       recipients
+      if let picked = box.picked {
+        HStack(spacing: 4) {
+          Text("Answer: \(picked.answer)").bold()
+          Button(action: { box.unpick() }) { Image(systemName: "xmark.circle.fill") }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(box.pending)
+            .help("Take the answer back")
+        }
+        .font(.callout)
+      }
       HStack(alignment: .bottom, spacing: 8) {
         MessageBoxField(box: box)
           .frame(height: 72)

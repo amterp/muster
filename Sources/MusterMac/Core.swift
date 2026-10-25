@@ -1146,6 +1146,33 @@ public enum Core {
   /// Off the main thread, like `replyToBanner`: the answer waits on the daemon keeping the post.
   /// What came of it reaches the message box as the core's next word about it. Names its window
   /// outright, since the sending thread is not the one a window speaks on.
+  /// Picks one of the answers question #`question` offers, by its place from 0, for the message
+  /// box to send with its words, or with `nil` takes the pick back. Answered with the draft, as
+  /// `saveDraft` is; nil when it was refused.
+  static func pickConversationAnswer(
+    _ group: ConversationGroup, question: UInt64, answer: UInt32?
+  ) -> Muster_MessageBoxDraft? {
+    var pick = Muster_PickConversationAnswer()
+    pick.daemonID = group.daemon
+    pick.group = group.group
+    pick.question = question
+    if let answer { pick.answer = answer }
+    var request = Muster_Request()
+    request.pickConversationAnswer = pick
+    let answered = send(request)
+    if case .draft(let draft) = answered { return draft }
+    info(
+      "conversation.pick.refused",
+      [
+        "daemon": group.daemon, "group": group.group, "question": "\(question)",
+        "reason": refusal(answered) ?? "no answer",
+        "impact":
+          "nothing was picked; the message box keeps its draft. Usually the question was answered "
+          + "in the same moment, and the thread redraws without its buttons",
+      ])
+    return nil
+  }
+
   static func postFromConversation(_ group: ConversationGroup, window: String) {
     var post = Muster_PostFromConversation()
     post.daemonID = group.daemon
