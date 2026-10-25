@@ -2175,11 +2175,16 @@ impl<S: Store> Messaging<S> {
             .map(|participant| participant.name.clone())
     }
 
+    /// The participant in `pane`. One that took a name there comes before the one named after the
+    /// pane, which a store can still hold beside it from when a replay remade a folded pane.
     pub(crate) fn by_pane(&self, pane: &str) -> Option<String> {
-        self.participants
+        let mut holders = self
+            .participants
             .values()
-            .find(|participant| participant.pane.as_deref() == Some(pane))
-            .map(|participant| participant.name.clone())
+            .filter(|participant| participant.pane.as_deref() == Some(pane));
+        let first = holders.next()?;
+        let named = std::iter::once(first).chain(holders).find(|holder| holder.name != pane);
+        Some(named.unwrap_or(first).name.clone())
     }
 
     /// The caller as far as its addresses identify it: a pane counts only while detection has

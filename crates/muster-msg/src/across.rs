@@ -1433,11 +1433,19 @@ impl<S: Store> Messaging<S> {
     /// the replica `key` when the join's own answer did not, so nothing from before the join is
     /// unread to it. A name the home added that is nobody here yet - a pane named in `--to` or
     /// `group add` on another machine, or the human - becomes a participant as it would here.
+    /// A pane means whoever holds it now: a replica replayed from nothing after a restart still
+    /// has the pane joining before the name its agent took folded it, and is the name's join.
     fn cursor_from_join(&mut self, name: &str, key: &str, seq: u64, presence: &dyn Presence) {
-        if !self.participants.contains_key(name) && split_machine(name).is_none() {
-            self.make_addressed(name, presence);
+        let mut name = name.to_string();
+        if !self.participants.contains_key(&name) && split_machine(&name).is_none() {
+            match self.by_pane(&name) {
+                Some(holder) => name = holder,
+                None => {
+                    self.make_addressed(&name, presence);
+                }
+            }
         }
-        if let Some(participant) = self.participants.get_mut(name) {
+        if let Some(participant) = self.participants.get_mut(&name) {
             participant.cursors.entry(key.to_string()).or_insert(seq);
         }
     }

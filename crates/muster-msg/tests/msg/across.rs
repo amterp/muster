@@ -2562,6 +2562,54 @@ fn a_rename_while_a_groups_home_is_unreachable_reaches_it_when_the_link_returns(
     }
 }
 
+/// A restart refetches a replica from nothing, and its log still says the pane joined before the
+/// name took its place. The pane means whoever holds it now, so the replay makes no second
+/// participant in the pane, and a caller known only by its pane, as Codex is, is the name.
+#[test]
+fn a_pane_folded_into_a_name_stays_the_name_after_a_restart_refetches_its_groups() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    wire.try_join(Side::Devenv, &agent, Some("tracer"), "review@lap").unwrap();
+    assert!(wire.devenv.participant("p9").is_none(), "folded before the restart");
+
+    let saved = wire.devenv.store().saved.clone().unwrap();
+    wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    wire.cut();
+    wire.mend();
+    assert!(wire.devenv.participant("p9").is_none(), "the replay remade the pane's participant");
+    wire.post(Side::Laptop, &session("director"), Some("review"), &[], "after the restart")
+        .unwrap();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let read = devenv.read(&in_pane("p9"), None, sessions).unwrap();
+    assert_eq!(read.name, "tracer");
+    assert_eq!(members_on(&wire, Side::Devenv, "review@lap"), ["director@lap", "tracer"]);
+}
+
+/// A store written while a replay could remake a folded pane holds the pane twice: the name, and
+/// the pane's participant in no group. A caller known only by its pane is the name, and the
+/// stale participant goes, rather than the pane being taken from the name.
+#[test]
+fn a_store_holding_a_folded_pane_twice_answers_as_the_name() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    wire.try_join(Side::Devenv, &agent, Some("tracer"), "review@lap").unwrap();
+    let mut saved = wire.devenv.store().saved.clone().unwrap();
+    let tracer = saved.participants.iter().find(|known| known.name == "tracer").unwrap().clone();
+    let stale = Participant {
+        name: "p9".to_string(),
+        inbox: None,
+        cursors: BTreeMap::new(),
+        folds_owed: BTreeMap::new(),
+        ..tracer
+    };
+    saved.participants.push(stale);
+    wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let read = devenv.read(&in_pane("p9"), None, sessions).unwrap();
+    assert_eq!(read.name, "tracer");
+    assert!(wire.devenv.participant("p9").is_none(), "the stale participant stays");
+    assert_eq!(wire.devenv.participant("tracer").unwrap().pane.as_deref(), Some("p9"));
+}
+
 /// A join that takes a pane's place, whose answer is lost after the home took it, still hands the
 /// name the pane's place: the caller is renamed before the refetch brings the home's entries,
 /// so what it had not read is still unread under the name.
