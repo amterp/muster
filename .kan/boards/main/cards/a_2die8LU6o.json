@@ -96,6 +96,12 @@
       "body": "Paged Log landed on main 2026-10-24 (304ecc4f): Log.newest and before, GroupEntries.earlier, msg log --last and --before. The conversation's model, seam and CLI are being built on it now.",
       "author": "Alexander Terp",
       "created_at_millis": 1792898460740
+    },
+    {
+      "id": "c_2nlVWL6Xa",
+      "body": "The conversation's model, seam and CLI landed on main 2026-10-24 (00c6da05..1690c93b): the conversation as part of a window's view (covered panes unseen), one shared log per group paged newest first, the thread, the members column, the message box and drafts kept with the arrangement, msg open answering with the window and window --json naming the conversation. Gate green. Next: the SwiftUI drawing, then the transcript pane's removal and routing every way of opening a group to the conversation.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792901887132
     }
   ],
   "created_at_millis": 1791417434804,
@@ -105,7 +111,7 @@
   "position": "a0",
   "title": "💬 A group conversation you can read and post into, and a view of which panes are in which groups",
   "type": "feature",
-  "updated_at_millis": 1792898460740,
+  "updated_at_millis": 1792901887133,
   "history": [
     {"field":"column","value":"uncommitted","at":1791417434804},
     {"field":"column","value":"backlog-hi","at":1792200747286},
