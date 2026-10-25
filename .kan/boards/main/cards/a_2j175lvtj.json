@@ -5,18 +5,18 @@
   "area": [
     "shell"
   ],
+  "blocked_by": [
+    "a_2hIfvJdL0"
+  ],
   "column": "backlog-lo",
   "created_at_millis": 1792200263804,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-13: \"drag tab ordering in side panel\".\n\nPane rows can be dragged: onto a row in the same tab to trade places, onto another tab's row to move there. A tab's caption row cannot be dragged. Tab order belongs to the window's composition (`docs/architecture.md`, \"The order of tabs is the window's\"), so a reorder is the window's to apply, not a daemon request.\n\nNo verb reorders tabs either: `muster tab move` hands a tab to another window. A verb that places a tab before or after another would give the drag an intent on the one action path, and would fix a_2hIfvJdL0, a tab that jumps to first place with no way to move it back.",
   "id": "a_2j175lvtj",
   "position": "b1C",
-  "related": [
-    "a_2hIfvJdL0"
-  ],
   "title": "Drag a tab in the sidebar to reorder tabs",
   "type": "feature",
-  "updated_at_millis": 1792890500188,
+  "updated_at_millis": 1792891680162,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792200263804}
   ]

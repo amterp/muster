@@ -6,6 +6,9 @@
     "shell",
     "backend"
   ],
+  "blocked_by": [
+    "a_2naAacfIB"
+  ],
   "column": "backlog-lo",
   "created_at_millis": 1792249544851,
   "creator": "Alexander Terp",
@@ -14,7 +17,7 @@
   "position": "b1L",
   "title": "A click on a closed-maker banner brings its helpers forward",
   "type": "enhancement",
-  "updated_at_millis": 1792249544851,
+  "updated_at_millis": 1792891679787,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792249544851}
   ]
