@@ -774,6 +774,13 @@ message MsgRequest {
     // `muster msg log --follow` asks again and again. Refused as `ended` by a handover, like
     // a wait, so the caller asks whichever daemon serves next.
     bool follow = 3;
+    // Since 1.8. Only the newest this many of the entries asked for, so a long group's history
+    // is fetched newest first, a page at a time: `newest` alone is the latest page, and with
+    // `before` set to the oldest entry a caller holds, the page before it.
+    optional uint32 newest = 4;
+    // Since 1.8. Only entries numbered below this. A follow takes none, and is refused as
+    // `bad_page` if given one: no entry can arrive below a number the log has passed.
+    optional uint64 before = 5;
   }
 
   // A group's rules (MIP-4, section 8). Names are participants' names, `*` for anyone, and
@@ -1010,6 +1017,9 @@ message MsgAnswer {
     // The machine the group is kept on, when this is a replica of it and that machine cannot
     // be reached now: what was posted there since may be missing.
     optional string behind = 3;
+    // Since 1.8. A log asked for its `newest` left out entries it matched, older than the first
+    // of these: there is a page before this one.
+    bool earlier = 4;
   }
 
   message Entry {

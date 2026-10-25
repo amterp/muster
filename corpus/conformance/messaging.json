@@ -371,6 +371,40 @@
       ] }
     },
     {
+      "name": "a log is fetched newest first, a page at a time",
+      "why": "A conversation opens on a group's latest messages and fetches older ones as its thread scrolls up, so a long group's history is never read whole at once (MIP-9, section 7). `newest` takes the latest of what the log matches, `before` the page before the oldest entry a reader holds, and each page says whether one comes before it.",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "body": "one"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "post", "body": "two"},
+        {"session": "a", "do": "read"},
+        {"session": "a", "do": "post", "body": "three"},
+        {"do": "log", "group": "g", "newest": 2},
+        {"do": "log", "group": "g", "newest": 2, "before": 5},
+        {"do": "log", "group": "g", "newest": 2, "before": 3},
+        {"do": "log", "group": "g", "newest": 9},
+        {"do": "log", "group": "g", "since": 4, "newest": 1},
+        {"do": "log", "group": "g", "since": 1, "before": 4}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:0 from a]",
+        "b read g: #4 a: one",
+        "b posted #5 to g; woke a [g #5-5 x1 to-you:0 from b]",
+        "a read g: #3 b joined | #5 b: two",
+        "a posted #6 to g; woke b [g #6-6 x1 to-you:0 from a]",
+        "(earlier) #5 b: two | #6 a: three",
+        "(earlier) #3 b joined | #4 a: one",
+        "#1 created by a | #2 a joined",
+        "#1 created by a | #2 a joined | #3 b joined | #4 a: one | #5 b: two | #6 a: three",
+        "(earlier) #6 a: three",
+        "#2 a joined | #3 b joined"
+      ] }
+    },
+    {
       "name": "a name must be one a command line and a log can carry",
       "why": "Names appear in commands, notices and file names, so they are letters, digits, dot, underscore and hyphen (MIP-4, section 11 for why they must be unique).",
       "given": { "steps": [

@@ -28,8 +28,8 @@ pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
     Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding, Inbox,
-    Joined, Left, Liveness, Member, Messaging, Notice, Participant, Posted, Presence, Reach, Read,
-    Removed, Ringable, Unread, Via, Waited, Wake,
+    Joined, Left, Liveness, Member, Messaging, Notice, Page, Paged, Participant, Posted, Presence,
+    Reach, Read, Removed, Ringable, Unread, Via, Waited, Wake,
 };
 pub use store::{GroupRecord, Log, Memory, Saved, Store};
 

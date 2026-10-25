@@ -385,7 +385,12 @@ fn claude_code_inbox_delivers_holds_or_refuses_as_recorded() {
 /// Every entry of a group's log, as the daemon has it.
 pub(super) fn entries_of(control: &mut Control, group: &str) -> Vec<proto::msg_answer::Entry> {
     use proto::msg_answer::Answer;
-    let log = proto::msg_request::Log { group: group.to_string(), since: 0, follow: false };
+    let log = proto::msg_request::Log {
+        group: group.to_string(),
+        since: 0,
+        follow: false,
+        ..Default::default()
+    };
     let caller = proto::msg_request::Caller {
         as_name: Some("observer".to_string()),
         ..proto::msg_request::Caller::default()

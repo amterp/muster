@@ -9,7 +9,7 @@ use std::fmt::Write as _;
 use conformance::{Conformance, fields};
 use muster_msg::{
     Action, Activity, Caller, Change, Changed, Draft, Inbox, Liveness, Memory, Messaging, Notice,
-    Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via, What,
+    Page, Participant, Policy, Posted, Presence, Reach, Refusal, Ringable, Via, What,
 };
 use serde_json::{Value, json};
 
@@ -657,8 +657,16 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                 .join(", ")
         }),
         "log" => {
-            let since = step.get("since").and_then(Value::as_u64).unwrap_or(0);
-            service.log(text("group").unwrap_or_default(), since).map(|entries| list(&entries))
+            let number = |key: &str| step.get(key).and_then(Value::as_u64);
+            let page = Page {
+                since: number("since").unwrap_or(0),
+                before: number("before"),
+                newest: number("newest").map(|newest| u32::try_from(newest).unwrap()),
+            };
+            service.log_page(text("group").unwrap_or_default(), &page).map(|paged| {
+                let earlier = if paged.earlier { "(earlier) " } else { "" };
+                format!("{earlier}{}", list(&paged.entries))
+            })
         }
         "group new" | "group set" | "group delete" | "members" | "pause" | "resume" | "groups" => {
             group_step(service, sessions, step, &who, now)

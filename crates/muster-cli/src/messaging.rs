@@ -309,7 +309,12 @@ pub fn parse(
         }
         Verb::Log { group, since, follow: following } => {
             follow = *following;
-            Asked::Log(msg_request::Log { group: group.clone(), since: *since, follow: false })
+            Asked::Log(msg_request::Log {
+                group: group.clone(),
+                since: *since,
+                follow: false,
+                ..Default::default()
+            })
         }
         Verb::Wait { group, timeout, due } => Asked::Wait(msg_request::Wait {
             group: group.clone(),
@@ -1569,6 +1574,7 @@ mod tests {
                     entry(3, What::Message(message)),
                 ],
                 behind: None,
+                earlier: false,
             }],
         };
         assert_eq!(
@@ -1661,6 +1667,7 @@ mod tests {
                     what: Some(What::Message(message)),
                 }],
                 behind: None,
+                earlier: false,
             }],
         };
         let shown = Shown {
@@ -1695,6 +1702,7 @@ mod tests {
                     what: Some(What::Message(message)),
                 }],
                 behind: None,
+                earlier: false,
             }],
         };
         assert_eq!(
@@ -1799,6 +1807,7 @@ mod tests {
                 group: "review@lap".to_string(),
                 entries: Vec::new(),
                 behind: Some("lap".to_string()),
+                earlier: false,
             }],
         };
         assert_eq!(

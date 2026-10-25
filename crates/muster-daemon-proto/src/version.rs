@@ -38,6 +38,10 @@ pub const HELPERS: u32 = 6;
 /// the request nor the placement, so a client asks before sending either.
 pub const SPANNING: u32 = 7;
 
+/// The first minor whose daemon answers a log a page at a time. An older one drops `newest` and
+/// `before` and answers with the whole log, so a client asks first.
+pub const PAGED_LOG: u32 = 8;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

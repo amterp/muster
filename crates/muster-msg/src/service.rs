@@ -269,6 +269,29 @@ pub struct Draft<'a> {
     pub urgent: bool,
 }
 
+/// Which of a group's entries a log asks for: those after `since` and below `before`, and of
+/// them only the `newest` so many, so a long log is fetched newest first, a page at a time.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Page {
+    pub since: u64,
+    pub before: Option<u64>,
+    pub newest: Option<u32>,
+}
+
+impl Page {
+    /// Every entry after `since`.
+    pub fn since(since: u64) -> Page {
+        Page { since, ..Page::default() }
+    }
+}
+
+/// A page of a group's log, and whether entries it matched were left out before its first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Paged {
+    pub entries: Vec<Entry>,
+    pub earlier: bool,
+}
+
 /// What a woken participant is told: never a body, since only its own `read` moves its cursor
 /// (MIP-4, section 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1213,8 +1236,21 @@ impl<S: Store> Messaging<S> {
 
     /// The transcript, moving nothing.
     pub fn log(&self, group: &str, since: u64) -> Result<Vec<Entry>, Refusal> {
+        self.log_page(group, &Page::since(since)).map(|paged| paged.entries)
+    }
+
+    /// The page of a group's log that `page` asks for, moving nothing.
+    pub fn log_page(&self, group: &str, page: &Page) -> Result<Paged, Refusal> {
         let group = &self.groups[&self.locate(group)?];
-        Ok(group.log.iter().filter(|entry| entry.seq > since).cloned().collect())
+        let before = page.before.unwrap_or(u64::MAX);
+        let matched: Vec<&Entry> =
+            group.log.iter().filter(|entry| entry.seq > page.since && entry.seq < before).collect();
+        let newest = page.newest.map_or(matched.len(), |newest| newest as usize);
+        let skipped = matched.len().saturating_sub(newest);
+        Ok(Paged {
+            entries: matched[skipped..].iter().map(|entry| (*entry).clone()).collect(),
+            earlier: skipped > 0,
+        })
     }
 
     /// Returns at once when the caller has unread messages that would wake it; otherwise

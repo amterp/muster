@@ -38,8 +38,8 @@ use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
     Action, Activity, AnsweredWait, Away, Caller, Change, Changed, Draft, Entry, Found, Inbox,
-    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Participant, Policy, Presence, Reach,
-    Refusal, Route, Settled, Tell, Via, Wake, What,
+    LARGEST_BODY, LONGEST_GROUP, Liveness, Messaging, Page, Paged, Participant, Policy, Presence,
+    Reach, Refusal, Route, Settled, Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -274,19 +274,19 @@ impl Messages {
                             behind: self.service.behind(&group).map(str::to_string),
                             group,
                             entries: entries.iter().map(entry_of).collect(),
+                            earlier: false,
                         })
                         .collect();
                     (read.name, Answer::Entries(msg_answer::Entries { groups }))
                 })
             }
-            Asked::Log(asked) => self.service.log(&asked.group, asked.since).map(|entries| {
-                let group = msg_answer::GroupEntries {
-                    behind: self.service.behind(&asked.group).map(str::to_string),
-                    group: asked.group,
-                    entries: entries.iter().map(entry_of).collect(),
-                };
-                (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
-            }),
+            Asked::Log(asked) => {
+                self.service.log_page(&asked.group, &page_of(&asked)).map(|paged| {
+                    let behind = self.service.behind(&asked.group).map(str::to_string);
+                    let group = group_entries(asked.group, &paged, behind);
+                    (String::new(), Answer::Entries(msg_answer::Entries { groups: vec![group] }))
+                })
+            }
             Asked::Groups(_) | Asked::GroupNew(_) | Asked::GroupSet(_) | Asked::Pause(_) => {
                 self.group(caller, asked, panes)
             }
@@ -554,25 +554,40 @@ fn nothing_waits(group: &str, member: bool) -> msg_answer::Notice {
     msg_answer::Notice { group: group.to_string(), member, ..msg_answer::Notice::default() }
 }
 
+fn page_of(log: &proto::msg_request::Log) -> Page {
+    Page { since: log.since, before: log.before, newest: log.newest }
+}
+
+fn group_entries(group: String, paged: &Paged, behind: Option<String>) -> msg_answer::GroupEntries {
+    msg_answer::GroupEntries {
+        group,
+        entries: paged.entries.iter().map(entry_of).collect(),
+        behind,
+        earlier: paged.earlier,
+    }
+}
+
 /// Answers a follow of a log once its group has an entry after `since`, at once if it already
 /// does. It is woken by whatever may have appended, and looks up every [`LOOK_UP`] to see
 /// whether its caller has gone.
 fn following(shared: &Shared, log: proto::msg_request::Log, hung_up: &dyn Fn() -> bool) -> Reply {
+    if log.before.is_some() {
+        return refused_as(
+            "",
+            "bad_page",
+            "a follow waits for entries after `since`, so it takes no `before`",
+        );
+    }
     loop {
         let woken = {
             let mut messages = shared.messages();
             if messages.handing_over {
                 return ended_by_handover();
             }
-            match messages.service.log(&log.group, log.since) {
+            match messages.service.log_page(&log.group, &page_of(&log)) {
                 Err(refusal) => return refused("", &refusal),
-                Ok(entries) if !entries.is_empty() => {
-                    let group = msg_answer::GroupEntries {
-                        group: log.group,
-                        entries: entries.iter().map(entry_of).collect(),
-                        behind: None,
-                    };
-                    let groups = vec![group];
+                Ok(paged) if !paged.entries.is_empty() => {
+                    let groups = vec![group_entries(log.group, &paged, None)];
                     return answered(
                         String::new(),
                         Answer::Entries(msg_answer::Entries { groups }),

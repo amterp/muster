@@ -109,7 +109,12 @@ fn read(caller: &msg_request::Caller) -> Service {
 fn log_of(group: &str) -> Service {
     msg(
         &named("reader"),
-        Asked::Log(msg_request::Log { group: group.to_string(), since: 0, follow: false }),
+        Asked::Log(msg_request::Log {
+            group: group.to_string(),
+            since: 0,
+            follow: false,
+            ..Default::default()
+        }),
     )
 }
 
@@ -639,7 +644,12 @@ fn a_follow_of_a_log_is_answered_by_the_next_entry() {
     let mut control = daemon.connect();
     join(&mut control, &named("a"), "a", "g");
     let head = 2;
-    let follow = Asked::Log(msg_request::Log { group: "g".to_string(), since: head, follow: true });
+    let follow = Asked::Log(msg_request::Log {
+        group: "g".to_string(),
+        since: head,
+        follow: true,
+        ..Default::default()
+    });
 
     let mut logging = daemon.connect();
     let log = session_request::Request::FollowLog(session_request::FollowLog { after: None });
@@ -684,7 +694,12 @@ fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     waiting.send(msg(&named("b"), Asked::Wait(wait)));
     logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
     let mut following = daemon.connect();
-    let follow = Asked::Log(msg_request::Log { group: "g".to_string(), since: 99, follow: true });
+    let follow = Asked::Log(msg_request::Log {
+        group: "g".to_string(),
+        since: 99,
+        follow: true,
+        ..Default::default()
+    });
     following.send(msg(&named("reader"), follow));
     logging.logged_until("msg.following", std::time::Duration::from_secs(20));
 
@@ -726,4 +741,49 @@ fn an_answer_says_what_the_app_calls_the_human() {
 
     expect(&mut control, name(Some("")), DONE);
     assert_eq!(msg_answer(&expect(&mut control, who(), DONE)).human_name, "");
+}
+
+/// A log asked for its newest entries answers with the latest page and says one comes before
+/// it; the page before the oldest entry held follows on from there. A follow takes no `before`,
+/// since nothing can land below a number the log has passed.
+#[test]
+fn a_log_is_paged_newest_first() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    for body in ["one", "two", "three"] {
+        expect(&mut control, post(&named("a"), body), DONE);
+    }
+    let page = |newest, before| {
+        let log = msg_request::Log {
+            group: "g".to_string(),
+            newest: Some(newest),
+            before,
+            ..Default::default()
+        };
+        msg(&named("reader"), Asked::Log(log))
+    };
+    let earlier = |asked: &muster_harness::Asked| match &msg_answer(asked).answer {
+        Some(Answer::Entries(entries)) => entries.groups[0].earlier,
+        other => panic!("a log answered with {other:?}"),
+    };
+
+    let latest = expect(&mut control, page(2, None), DONE);
+    assert_eq!(messages(&latest), ["a: two", "a: three"]);
+    assert!(earlier(&latest));
+    let before = expect(&mut control, page(2, Some(4)), DONE);
+    assert_eq!(messages(&before), ["a: one"]);
+    assert!(earlier(&before), "#2, a's join, is still before #3");
+    let first = expect(&mut control, page(2, Some(2)), DONE);
+    assert!(!earlier(&first));
+
+    let follow = msg_request::Log {
+        group: "g".to_string(),
+        follow: true,
+        before: Some(4),
+        ..Default::default()
+    };
+    let refused =
+        expect(&mut control, msg(&named("reader"), Asked::Log(follow)), proto::Outcome::Refused);
+    assert_eq!(msg_answer(&refused).refusal, "bad_page");
 }
