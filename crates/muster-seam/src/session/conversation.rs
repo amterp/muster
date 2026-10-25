@@ -829,7 +829,7 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
         Sent::Unknown { why, .. } => Response::unanswered(why.clone()),
         Sent::Pending { .. } => Response::ok(),
     };
-    {
+    let settled = {
         let mut session = poison::lock(&SESSION, "session");
         let Session { conversations, windows, .. } = &mut *session;
         let unheard = Group::default();
@@ -842,9 +842,18 @@ pub(crate) fn post(window: WindowId, daemon: &str, group: &str) -> Response {
             }
         }
         held.sending.insert(key.clone(), Sending { sent, draft, after });
+        // The follow may have brought the post's entry while it was still pending, when there
+        // was nothing to settle, and nothing would bring it again.
+        settle(&mut session, &key)
+    };
+    let mut changed = settled;
+    if !changed.contains(&window) {
+        changed.push(window);
     }
-    save_soon(window);
-    announce(&[window]);
+    for each in &changed {
+        save_soon(*each);
+    }
+    announce(&changed);
     response
 }
 

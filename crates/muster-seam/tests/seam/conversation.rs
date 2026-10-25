@@ -410,6 +410,41 @@ fn words_written_while_a_post_went_unanswered_stay_once_the_log_settles_it() {
 }
 
 #[test]
+fn an_unanswered_post_whose_entry_came_while_it_was_pending_settles() {
+    // Up to twenty seconds, for the reason the test above gives. Nothing is posted afterwards, so
+    // only the entry the follow brought while the post was pending can settle it.
+    let reads_withheld = Arc::new(AtomicBool::new(false));
+    let (_open, relay) = Open::relayed(|daemon| {
+        let reads_withheld = Arc::clone(&reads_withheld);
+        daemon.withholding_answers_where(move |request| {
+            is_a_post_by_the_human(request)
+                || (reads_withheld.load(Ordering::SeqCst) && is_a_log_read_by_the_human(request))
+        })
+    });
+    show("window-1");
+    until_loaded("window-1");
+    reads_withheld.store(true, Ordering::SeqCst);
+    answer(save_draft("yes", 3, &["a"]));
+
+    let unanswered = answer(post_draft());
+    assert!(
+        !matches!(unanswered.payload, Some(response::Payload::Ok(_))),
+        "a post with no answer and no log to find it in answered {unanswered:?}"
+    );
+
+    until(
+        "the post to settle from the entry the follow already brought",
+        || {
+            let told = message_box("window-1");
+            told.sent.is_some_and(|sent| sent.state() == post_outcome::State::Posted)
+                && told.draft.is_some_and(|draft| draft.text.is_empty())
+        },
+        || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+    drop(relay);
+}
+
+#[test]
 fn two_windows_keep_two_drafts_and_a_draft_survives_a_relaunch() {
     let open = Open::built();
     open_second_window(&open.daemon);
