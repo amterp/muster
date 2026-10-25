@@ -104,6 +104,9 @@ impl std::fmt::Display for GroupKey {
 /// would wake the human, the last of them, how many were addressed to them, and who wrote them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HumanNotice {
+    /// The first message waiting, where a conversation opened now marks the unread ones as
+    /// beginning.
+    pub first: u64,
     pub last: u64,
     pub count: u64,
     pub to_you: u64,

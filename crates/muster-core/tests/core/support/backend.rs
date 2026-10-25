@@ -74,6 +74,7 @@ pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
 pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
     let number = |key: &str| given.get(key).and_then(Value::as_u64).unwrap_or_default();
     HumanNotice {
+        first: number("first"),
         last: number("last"),
         count: number("count"),
         to_you: number("to_you"),

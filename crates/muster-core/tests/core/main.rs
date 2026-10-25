@@ -10,6 +10,7 @@ mod composition;
 mod composition_arbiter;
 mod composition_saved;
 mod config;
+mod conversation;
 mod daemons;
 mod equalize;
 mod font_family;

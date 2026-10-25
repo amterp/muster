@@ -1,0 +1,145 @@
+{
+  "concept": "message box",
+  "source": "authored",
+  "citation": "MIP-9, section 3 (docs/mip/0009-group-conversation.md): the message box opens addressed to whoever last wrote to the human when that author can be addressed, otherwise to nobody; Reply changes the recipients; a message starting with @ and a member's name addresses that member, several at the start address several, Backspace straight after one turns it back into text, and an @ later only completes. That a later leading name adds to recipients a leading name set, and that a name the human turned back into text is not taken again, are the implementation's own reading.",
+  "why": "The message box decides whom the human's words reach. A draft opened to Muster, a name typed mid-sentence that silently readdressed the post, or a recipient the human removed coming back each sends a message somewhere the human did not mean.",
+  "cases": [
+    {
+      "name": "it opens addressed to the last member who wrote to the human",
+      "why": "The likeliest thing the human does on opening a conversation is answer the question that brought them there.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"] },
+          { "seq": 2, "author": "heron", "to": ["@human"] },
+          { "seq": 3, "author": "otter", "to": ["heron"] }
+        ]
+      },
+      "expect": { "to": ["heron"] }
+    },
+    {
+      "name": "it opens addressed to nobody when the last author to the human is Muster",
+      "why": "@muster is never an addressee; and falling back to an older author would address somebody the human was not answering.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"] },
+          { "seq": 2, "author": "@muster", "to": ["@human"] }
+        ]
+      },
+      "expect": { "to": [] }
+    },
+    {
+      "name": "it opens addressed to nobody when the last author to the human left",
+      "why": "A post to an author who left is refused, so opening addressed to them leads the human into a refusal.",
+      "given": {
+        "members": ["heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"] }
+        ]
+      },
+      "expect": { "to": [] }
+    },
+    {
+      "name": "a leading @ and a member's name addresses that member instead",
+      "why": "Typing @heron and a space is the quick way to address somebody else; it replaces the recipient the draft opened with rather than adding to it.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "@heron", "to": ["otter"] },
+        "edit": { "text": "@heron " }
+      },
+      "expect": { "text": "", "to": ["heron"], "cursor": 0, "addressed": "at" }
+    },
+    {
+      "name": "several names at the start address several",
+      "why": "MIP-9: several at the start address several, so the second name joins the first rather than replacing it.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "@otter", "to": ["heron"], "addressed": "at" },
+        "edit": { "text": "@otter go" }
+      },
+      "expect": { "text": "go", "to": ["heron", "otter"], "cursor": 2, "addressed": "at" }
+    },
+    {
+      "name": "a callsign addresses the pane participant it names",
+      "why": "The human types the name they see, otter, and the post must address the participant, whose name is its pane id.",
+      "given": {
+        "members": ["p29te12q4t", "@human"],
+        "called": { "p29te12q4t": "otter" },
+        "draft": { "text": "@otte" },
+        "edit": { "text": "@otter " }
+      },
+      "expect": { "text": "", "to": ["p29te12q4t"], "cursor": 0, "addressed": "at" }
+    },
+    {
+      "name": "an @ later in the text completes the name and stays text",
+      "why": "Only a leading @ addresses: mentioning somebody mid-sentence must not readdress the post.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "ask @he", "to": ["otter"] },
+        "edit": { "text": "ask @her" }
+      },
+      "expect": { "text": "ask @her", "to": ["otter"], "cursor": 8, "addressed": "opening", "completions": ["heron"] }
+    },
+    {
+      "name": "a leading name that is not a member stays text",
+      "why": "Readdressing a post to a name nobody in the group answers to would be refused; the human may also just be starting a sentence with an @.",
+      "given": {
+        "members": ["otter", "@human"],
+        "draft": { "text": "@everyone", "to": ["otter"] },
+        "edit": { "text": "@everyone look" }
+      },
+      "expect": { "text": "@everyone look", "to": ["otter"], "cursor": 14, "addressed": "opening" }
+    },
+    {
+      "name": "Backspace straight after a recipient turns it back into text",
+      "why": "A recipient taken by mistake has to be undoable with the key the human reaches for, and the name must come back as they typed it.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "go", "to": ["heron"], "addressed": "at" },
+        "edit": { "text": "go", "cursor": 0, "unaddress": true }
+      },
+      "expect": { "text": "@heron go", "to": [], "cursor": 6, "addressed": "at", "completions": ["heron"] }
+    },
+    {
+      "name": "a name turned back into text is not taken again by the next keystroke",
+      "why": "Otherwise the name the human just released would snap back into a recipient as soon as they typed anything else.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "@heron go", "to": [], "addressed": "at" },
+        "edit": { "text": "@heron go!" }
+      },
+      "expect": { "text": "@heron go!", "to": [], "cursor": 10, "addressed": "at" }
+    },
+    {
+      "name": "Reply addresses the author, and a leading name then replaces it",
+      "why": "Reply is the human choosing a recipient; a name typed at the start after it is a change of mind, not an addition.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "draft": { "text": "", "to": [] },
+        "edit": { "text": "", "to": ["otter"] }
+      },
+      "expect": { "text": "", "to": ["otter"], "cursor": 0, "addressed": "chosen" }
+    },
+    {
+      "name": "completion offers members, never Muster or the human",
+      "why": "Neither can be addressed by the human's post, so offering them only leads to a refusal.",
+      "given": {
+        "members": ["otter", "olive", "@human", "@muster"],
+        "draft": { "text": "" },
+        "edit": { "text": "@" }
+      },
+      "expect": { "text": "@", "to": [], "cursor": 1, "addressed": "opening", "completions": ["olive", "otter"] }
+    },
+    {
+      "name": "Urgent is kept with the draft",
+      "why": "A draft is kept whole; dropping Urgent would send an urgent answer as an ordinary one.",
+      "given": {
+        "members": ["otter", "@human"],
+        "draft": { "text": "now", "to": ["otter"] },
+        "edit": { "text": "now", "urgent": true }
+      },
+      "expect": { "text": "now", "to": ["otter"], "cursor": 3, "addressed": "opening", "urgent": true }
+    }
+  ]
+}

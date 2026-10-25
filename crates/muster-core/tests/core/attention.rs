@@ -247,6 +247,7 @@ fn messaged(run: &mut Run, event: &Value, message: &Value) -> Result<(), CaseErr
     let group = read_group(event)?;
     let number = |key: &str| message.get(key).and_then(Value::as_u64).unwrap_or_default();
     let notice = HumanNotice {
+        first: number("first"),
         last: number("last"),
         count: number("count"),
         to_you: number("to_you"),

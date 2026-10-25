@@ -12,6 +12,7 @@ pub mod bridge_link;
 pub mod callsigns;
 pub mod composition;
 pub mod config;
+pub mod conversation;
 pub mod daemon_settings;
 pub mod daemons;
 pub mod diagnostics;

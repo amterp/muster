@@ -53,6 +53,12 @@ pub fn format_iso8601(millis: i64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{milli:03}Z")
 }
 
+/// The date of a moment, yyyy-mm-dd, in the zone `millis` was shifted into.
+pub fn format_date(millis: i64) -> String {
+    let (year, month, day) = civil_from_days(millis.div_euclid(86_400_000));
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 /// Hinnant's days-to-civil, which is exact for any day this program can be handed and
 /// needs no table. The epoch is shifted to March so that a leap day lands at the end of a
 /// year and the month arithmetic stays branch-free.

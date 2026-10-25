@@ -1,0 +1,295 @@
+{
+  "concept": "conversation",
+  "source": "authored",
+  "citation": "MIP-9, section 1 (docs/mip/0009-group-conversation.md): messages to the human stand out, a run of messages that woke nobody but agents folds into one line, a line marks where unread messages begin, joins, leaves, pauses and policy changes are merged one-line rows, @muster's messages take no Reply, a body over 40 lines shows its first 40, and dividers are dated yyyy-mm-dd. Folding only runs of two or more, a membership row or a new day ending a run, and judging a policy-woken message by the group's current policy are the implementation's own reading.",
+  "why": "The thread is what lets the human find the two messages that were for them without reading the other forty. A message for the human folded away, an unread line in the wrong place, or a Reply offered to Muster each fails quietly: nothing crashes, and the human misses a question or answers nobody.",
+  "cases": [
+    {
+      "name": "a run of messages between agents folds into one line",
+      "why": "This is the whole point of the thread over the transcript: traffic between agents is out of the way until the human chooses to open it.",
+      "given": {
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron", "to": ["otter"] },
+          { "seq": 3, "author": "otter", "to": ["heron"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "folded": 1, "count": 3 }
+        ]
+      }
+    },
+    {
+      "name": "a lone message between agents is shown rather than folded",
+      "why": "A fold that hides one message costs the human a click to read the same single line it replaced.",
+      "given": {
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["heron"] },
+          { "message": 2, "author": "heron", "to": ["you"], "to_you": true }
+        ]
+      }
+    },
+    {
+      "name": "a message to the human ends a run and stands out",
+      "why": "A question for the human folded among agents' chatter is a question the human never sees.",
+      "given": {
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron", "to": ["otter"] },
+          { "seq": 3, "author": "heron", "to": ["@human"], "urgent": true },
+          { "seq": 4, "author": "otter", "to": ["heron"] },
+          { "seq": 5, "author": "heron", "to": ["otter"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "folded": 1, "count": 2 },
+          { "message": 3, "author": "heron", "to": ["you"], "to_you": true, "urgent": true },
+          { "folded": 4, "count": 2 }
+        ]
+      }
+    },
+    {
+      "name": "an unaddressed message that woke the human through the policy does not fold",
+      "why": "MIP-9: a message that woke the human through its group's policy, without naming them, was for them as much as one that named them.",
+      "given": {
+        "policy": { "ring": { "*": ["@human", "otter"] } },
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron" },
+          { "seq": 3, "author": "otter", "to": ["heron"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["heron"] },
+          { "message": 2, "author": "heron" },
+          { "message": 3, "author": "otter", "to": ["heron"] }
+        ]
+      }
+    },
+    {
+      "name": "an unaddressed message in a group that rings every agent folds",
+      "why": "A ring of * is every member but the human, who is woken only by being named, so such a message woke nobody but agents.",
+      "given": {
+        "policy": { "ring": { "*": ["*"] } },
+        "entries": [
+          { "seq": 1, "author": "otter" },
+          { "seq": 2, "author": "heron" }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "folded": 1, "count": 2 }
+        ]
+      }
+    },
+    {
+      "name": "an opened fold shows its messages, and stays open as the run grows",
+      "why": "A fold is named by its first message, so a message arriving at the end of an open run does not close it under the human reading it.",
+      "given": {
+        "open": [1],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron", "to": ["otter"] },
+          { "seq": 3, "author": "otter", "to": ["heron"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["heron"] },
+          { "message": 2, "author": "heron", "to": ["otter"] },
+          { "message": 3, "author": "otter", "to": ["heron"] }
+        ]
+      }
+    },
+    {
+      "name": "Muster's messages are rows of their own with no Reply",
+      "why": "@muster is never an addressee, so a Reply to it could only be refused; and its notices are about the group, so they do not fold among agents' messages.",
+      "given": {
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "@muster", "body": "heron has not read #1" },
+          { "seq": 3, "author": "heron", "to": ["otter"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["heron"] },
+          { "message": 2, "author": "Muster", "no_reply": true, "muster": true },
+          { "message": 3, "author": "heron", "to": ["otter"] }
+        ]
+      }
+    },
+    {
+      "name": "the human's own messages are shown, named you, with no Reply",
+      "why": "What the human wrote is part of the conversation they are following, and replying to oneself addresses nobody.",
+      "given": {
+        "entries": [
+          { "seq": 1, "author": "@human", "to": ["otter"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "you", "to": ["otter"], "by_you": true, "no_reply": true }
+        ]
+      }
+    },
+    {
+      "name": "an author who left takes no Reply",
+      "why": "A post to somebody no longer in the group is refused, so offering Reply would lead the human straight into a refusal.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "heron", "to": ["@human"] },
+          { "seq": 2, "author": "otter", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "heron", "to": ["you"], "to_you": true, "no_reply": true },
+          { "message": 2, "author": "otter", "to": ["you"], "to_you": true }
+        ]
+      }
+    },
+    {
+      "name": "a pane participant is named by its callsign and carries its pane",
+      "why": "A participant's name is its pane id, which says nothing to a person; Go to pane needs the pane the member is in.",
+      "given": {
+        "members": ["p29te12q4t", "@human"],
+        "panes": { "p29te12q4t": "p29te12q4t" },
+        "called": { "p29te12q4t": "otter" },
+        "entries": [
+          { "seq": 1, "author": "p29te12q4t", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "pane": "p29te12q4t" }
+        ]
+      }
+    },
+    {
+      "name": "consecutive joins, leaves and changes merge into one row",
+      "why": "A group's first minutes are a burst of joins; one line each pushes the first real message off the screen.",
+      "given": {
+        "entries": [
+          { "seq": 1, "created": "otter" },
+          { "seq": 2, "joined": "otter" },
+          { "seq": 3, "joined": "heron" },
+          { "seq": 4, "joined": "lynx" },
+          { "seq": 5, "joined": "@human" },
+          { "seq": 6, "changed": "paused", "by": "heron" },
+          { "seq": 7, "author": "otter", "to": ["@human"] },
+          { "seq": 8, "left": "lynx" }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "members": "otter made the group; otter, heron, lynx and you joined; heron paused it" },
+          { "message": 7, "author": "otter", "to": ["you"], "to_you": true },
+          { "members": "lynx left" }
+        ]
+      }
+    },
+    {
+      "name": "the unread line comes before the first message that waited",
+      "why": "The conversation opens scrolled to where the human stopped reading; a line in the wrong place hides a question above it or makes them reread what they saw.",
+      "given": {
+        "unread_from": 3,
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"] },
+          { "seq": 2, "author": "heron", "to": ["otter"] },
+          { "seq": 3, "author": "heron", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true },
+          { "message": 2, "author": "heron", "to": ["otter"] },
+          "unread",
+          { "message": 3, "author": "heron", "to": ["you"], "to_you": true }
+        ]
+      }
+    },
+    {
+      "name": "the unread line ends a run so the fold does not swallow it",
+      "why": "A line inside a folded run would be invisible, and the human would not know where their unread messages begin.",
+      "given": {
+        "unread_from": 3,
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"] },
+          { "seq": 2, "author": "heron", "to": ["otter"] },
+          { "seq": 3, "author": "otter", "to": ["heron"] },
+          { "seq": 4, "author": "heron", "to": ["otter"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "folded": 1, "count": 2 },
+          "unread",
+          { "folded": 3, "count": 2 }
+        ]
+      }
+    },
+    {
+      "name": "a divider starts each day, in the window's own time zone",
+      "why": "Dates on the dividers are the human's dates: a message at 23:30 UTC belongs to the next day an hour east.",
+      "given": {
+        "offset": 3600,
+        "entries": [
+          { "seq": 1, "at_ms": 1792794600000, "author": "otter", "to": ["@human"] },
+          { "seq": 2, "at_ms": 1792798200000, "author": "otter", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "2026-10-23" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true },
+          { "divider": "2026-10-24" },
+          { "message": 2, "author": "otter", "to": ["you"], "to_you": true }
+        ]
+      }
+    },
+    {
+      "name": "a body over 40 lines shows its first 40, and all of it once asked",
+      "why": "A body runs to 1 MiB; drawing it whole would bury the thread under one message. Show all is per message, and asking for it must show the rest.",
+      "given": {
+        "whole": [2],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "lines": 41 },
+          { "seq": 2, "author": "otter", "to": ["@human"], "lines": 41 },
+          { "seq": 3, "author": "otter", "to": ["@human"], "lines": 40 }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "more": true },
+          { "message": 2, "author": "otter", "to": ["you"], "to_you": true },
+          { "message": 3, "author": "otter", "to": ["you"], "to_you": true }
+        ]
+      }
+    }
+  ]
+}

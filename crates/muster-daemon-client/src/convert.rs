@@ -92,6 +92,7 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
 /// What the daemon says waits for the human in one group (MIP-4, section 10).
 fn human(notice: proto::msg_answer::Notice) -> HumanNotice {
     HumanNotice {
+        first: notice.first,
         last: notice.last,
         count: notice.count,
         to_you: notice.to_you,
