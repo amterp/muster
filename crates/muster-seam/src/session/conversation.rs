@@ -807,8 +807,9 @@ fn viewing(
 }
 
 /// Takes the message box as the shell holds it after the person changed it, and answers with the
-/// draft as the core keeps it. Never announced: the shell already holds what it sent, and an
-/// event carrying it back could land after the next keystroke and undo it.
+/// draft as the core keeps it. Announced only when the edit takes the last post's outcome away
+/// (`shown_box`): the shell already holds what it sent, and an event carrying it back could land
+/// after the next keystroke and undo it.
 pub(crate) fn save_draft(window: WindowId, daemon: &str, group: &str, edit: Edit) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
     let (answer, told) = {
@@ -1056,8 +1057,10 @@ fn save_soon(window: WindowId) {
     }
 }
 
-/// Held while settling what to tell the shell and telling it, so that no event built from an
-/// older state is sent after one built from a newer.
+/// Held while events about the conversation are sent, and while `announce_parts` settles what to
+/// send, so that no event built from an older state is sent after one built from a newer. An
+/// edit's own event (`tell_box`) is built under the session's lock instead, from the state it
+/// left.
 static TELLING: Mutex<()> = Mutex::new(());
 
 /// Which of a conversation's three events to settle: each changes at its own pace, and settling

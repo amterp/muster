@@ -1041,9 +1041,9 @@ public enum Core {
     public let action: String
     public let key: String
     public let modifiers: [String]
-    /// The action belongs to a view of Muster's - a text field, or the conversation - that
-    /// matches the chord itself while it holds the keyboard, and gets no menu key equivalent.
-    /// Named for the text fields it began with; the conversation's Escape is one too.
+    /// The action is one a view of Muster's takes itself while it holds the keyboard: sending
+    /// from the message box or a banner's reply, or leaving the conversation. It gets no menu key
+    /// equivalent.
     public let inTextField: Bool
 
     public init(action: String, key: String, modifiers: [String], inTextField: Bool = false) {
@@ -1142,11 +1142,6 @@ public enum Core {
     return draft
   }
 
-  /// Posts the window's draft for the group as the human.
-  ///
-  /// Off the main thread, like `replyToBanner`: the answer waits on the daemon keeping the post.
-  /// What came of it reaches the message box as the core's next word about it. Names its window
-  /// outright, since the sending thread is not the one a window speaks on.
   /// Picks one of the answers question #`question` offers, by its place from 0, for the message
   /// box to send with its words, or with `nil` takes the pick back. Answered with the draft, as
   /// `saveDraft` is; nil when it was refused.
@@ -1174,6 +1169,11 @@ public enum Core {
     return nil
   }
 
+  /// Posts the window's draft for the group as the human.
+  ///
+  /// Off the main thread, like `replyToBanner`: the answer waits on the daemon keeping the post.
+  /// What came of it reaches the message box as the core's next word about it. Names its window
+  /// outright, since the sending thread is not the one a window speaks on.
   static func postFromConversation(_ group: ConversationGroup, window: String) {
     var post = Muster_PostFromConversation()
     post.daemonID = group.daemon

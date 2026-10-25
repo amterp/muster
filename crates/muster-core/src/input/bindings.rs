@@ -281,11 +281,11 @@ impl Action {
         Action::UpgradeMuster,
     ];
 
-    /// Whether the action belongs to a view of Muster's rather than to the window, a text field
-    /// or the conversation: that view matches its chord while it has the keyboard, and the shell
-    /// makes it no menu key equivalent. A menu gets a chord before any view does, enabled or not,
-    /// so one would take the chord from a pane even when no such view is there to use it.
-    /// Named for the text fields it began with; the conversation's Escape is one too.
+    /// Whether the action is one a view of Muster's takes itself while it holds the keyboard,
+    /// rather than the window's: sending from the message box or a banner's reply, or leaving the
+    /// conversation. The shell makes it no menu key equivalent: a menu gets a chord before any
+    /// view does, enabled or not, so one would take the chord from a pane even when no such view
+    /// is there to use it.
     pub fn in_text_field(self) -> bool {
         matches!(self, Action::SendMessage | Action::LeaveConversation)
     }
