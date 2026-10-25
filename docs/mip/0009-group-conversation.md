@@ -149,15 +149,16 @@ says which panes are in the group.
 
 ### 2. What the human reads
 
-Showing a conversation is the human reading the group, as going to its transcript pane is today
+Showing a conversation is the human reading the group, as going to its transcript pane was
 (MIP-4, section 10): the core tells the group's daemon, the daemon moves the human's place to the
 end of the group, and what waited stops asking. It reads while the conversation is in the window
-that is in front and focused. A second window showing the same
-group while a different window is in front reads nothing, and reads once it comes to the front.
-While the conversation is in the front, focused window, a message is read as it arrives.
+that is in front and focused, and only once the group's messages have loaded, so a group whose
+log never arrives is never read unseen. A second window showing the same group while a different
+window is in front reads nothing, and reads once it comes to the front. While the conversation is
+in the front, focused window, a message is read as it arrives.
 
-Every window can show any group's conversation, two windows showing the same one included, and
-each shows every message as it lands.
+Every window can show the conversation of any group the human is in, two windows showing the same
+one included, and each shows every message as it lands.
 
 ### 3. The message box
 
@@ -165,7 +166,8 @@ The message box posts as `@human`, with the request `muster msg post` sends from
 
 **Recipients.** It opens addressed to whoever last wrote to the human in that group, when that
 author can be addressed: not `@muster`, and still a member. Otherwise it opens addressed to
-nobody, and says that the group's policy decides whom the post wakes. Reply on a message changes
+nobody, and says that the group's policy decides whom the post wakes. A box nobody has written in
+is opened afresh each time the conversation is shown, so it follows whoever wrote last. Reply on a message changes
 the recipients to its author. A message that starts with @ and a member's name addresses that
 member instead, completed from the group's members; several at the start address several, and
 Backspace straight after one turns it back into text. An @ later in a message completes the name
