@@ -1144,7 +1144,8 @@ message MsgAnswer {
     // Since 1.6. On a notice to the windows, the message's own words when the one message
     // waiting is Muster's (`@muster`), for a banner to say rather than a count: what Muster says
     // is a sentence or two, written to be read on its own. Empty for anyone else's, whose
-    // messages are any length and are read in the transcript (MIP-4, section 5).
+    // messages are any length and are read in the group's conversation, or fetched from its log
+    // for a banner (MIP-9, sections 1 and 5).
     string said = 10;
   }
 }
