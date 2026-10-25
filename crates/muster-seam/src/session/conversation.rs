@@ -418,7 +418,7 @@ fn first_page(following: &Following) -> Result<(), String> {
         .map_err(|refusal| refusal.detail().to_string())?;
     let held = messaging::log_page(&answer, &group.group);
     let count = held.entries.len();
-    {
+    let settled = {
         let mut session = poison::lock(&SESSION, "session");
         let Some(shared) = following.shared(&mut session) else { return Ok(()) };
         shared.group.called.extend(answer.called.clone());
@@ -427,6 +427,12 @@ fn first_page(following: &Following) -> Result<(), String> {
         shared.group.log.page(held.entries, held.earlier);
         shared.loaded = true;
         shared.failed = None;
+        // A window's unknown post outlives the conversation being left, and the follow that
+        // would have settled it ended with it: the page shows whether it was kept.
+        settle(&mut session, group)
+    };
+    for window in settled {
+        save_soon(window);
     }
     log::info(
         "conversation.fetched",
