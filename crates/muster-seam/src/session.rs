@@ -7273,7 +7273,17 @@ mod tests {
             "a post the group's machine may have kept was taken as refused, so the window would \
              offer to send it again and the group could get it twice"
         );
-        assert!(matches!(answered_as_human(refused_as("not_member")), Err(Refusal::Declined(_))));
+        assert!(matches!(answered_as_human(refused_as("not_allowed")), Err(Refusal::Declined(_))));
+    }
+
+    #[test]
+    fn a_group_the_human_is_no_longer_in_is_the_windows_picture_gone_stale() {
+        for refusal in ["no_such_group", "not_a_member"] {
+            assert!(
+                matches!(answered_as_human(refused_as(refusal)), Err(Refusal::NotThere(_))),
+                "{refusal} would leave a conversation of a group that is gone asking after it"
+            );
+        }
     }
 
     #[test]
