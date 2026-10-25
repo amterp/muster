@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use crate::posting;
 
 pub use draft::{Addressed, Completion, Draft, Edit, Edited};
-pub use log::{Change, Entry, Log, Message, What};
+pub use log::{Answering, Change, Entry, Log, Message, What};
 pub use members::{Header, Liveness, Member, MemberRow, Unread};
 pub use thread::{MessageRow, Reading, Row};
 

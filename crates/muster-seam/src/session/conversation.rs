@@ -16,8 +16,7 @@ use muster_core::attention::GroupKey;
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::conversation::{self, Named};
 use muster_core::conversation::{
-    Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Reading, Unread, What,
-    draft, members, thread,
+    Draft, Edit, Group, Member, Reading, Unread, What, draft, members, thread,
 };
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -25,6 +24,7 @@ use muster_core::intent::Refusal;
 use muster_core::mirror::backend::PaneId;
 use muster_core::posting::{self, Sent};
 use muster_daemon_client::control::Control;
+use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_answer;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
@@ -404,7 +404,7 @@ fn first_page(following: &Following) -> Result<(), String> {
         msg_request::Log { group: group.group.clone(), newest: Some(PAGE), ..Default::default() };
     let answer = ask_as_human_for(&group.daemon, Asked::Log(log))
         .map_err(|refusal| refusal.detail().to_string())?;
-    let held = entries(&answer, &group.group);
+    let held = messaging::log_page(&answer, &group.group);
     let count = held.entries.len();
     {
         let mut session = poison::lock(&SESSION, "session");
@@ -432,7 +432,7 @@ fn first_page(following: &Following) -> Result<(), String> {
 /// Entries that followed the last one held.
 fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
     let group = &following.group;
-    let held = entries(answer, &group.group);
+    let held = messaging::log_page(answer, &group.group);
     let changed_group = held.entries.iter().any(|entry| !matches!(entry.what, What::Message(_)));
     // Not read here for the human: what wakes them arrives as the daemon's notice too, and
     // `human_noticed` reads it while they look. A message that wakes nobody asks for nothing.
@@ -530,10 +530,7 @@ fn refresh_policy(following: &Following) {
     else {
         return;
     };
-    let policy = Policy {
-        ring: policy.ring.into_iter().map(|(author, names)| (author, names.names)).collect(),
-        paused: policy.paused,
-    };
+    let policy = messaging::policy(policy);
     if let Some(shared) = following.shared(&mut poison::lock(&SESSION, "session")) {
         shared.group.policy = Some(policy);
     }
@@ -572,7 +569,7 @@ fn refresh_members(following: &Following) {
         .into_iter()
         .zip(panes)
         .map(|(member, pane)| {
-            let liveness = liveness(member.liveness());
+            let liveness = messaging::liveness(member.liveness());
             let unread = member.unread.into_iter().find(|unread| unread.group == group.group).map(
                 |unread| Unread {
                     first: unread.first,
@@ -591,15 +588,6 @@ fn refresh_members(following: &Following) {
     shared.group.members = Some(members);
 }
 
-fn liveness(liveness: msg_answer::Liveness) -> Liveness {
-    match liveness {
-        msg_answer::Liveness::Alive | msg_answer::Liveness::Unspecified => Liveness::Alive,
-        msg_answer::Liveness::Gone => Liveness::Gone,
-        msg_answer::Liveness::Human => Liveness::Human,
-        msg_answer::Liveness::Unreachable => Liveness::Unreachable,
-    }
-}
-
 /// The pane a member is in, when this window follows it: on the group's daemon, or for a member
 /// on another machine, whichever attached daemon holds it. A pane's name is unique across
 /// machines.
@@ -614,51 +602,6 @@ fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option<PaneKey> {
         return Some(PaneKey::new(&group.daemon, &id));
     }
     session.backends.keys().find(|daemon| holds(daemon)).map(|daemon| PaneKey::new(daemon, &id))
-}
-
-/// What a log answered for one group.
-struct Held {
-    entries: Vec<Entry>,
-    /// The number of the last entry sent, including any of a kind this build leaves out.
-    last: u64,
-    earlier: bool,
-    behind: Option<String>,
-}
-
-fn entries(answer: &muster_daemon_proto::MsgAnswer, group: &str) -> Held {
-    let mut held = Held { entries: Vec::new(), last: 0, earlier: false, behind: None };
-    let Some(msg_answer::Answer::Entries(answered)) = &answer.answer else { return held };
-    for logged in answered.groups.iter().filter(|logged| logged.group == group) {
-        held.earlier |= logged.earlier;
-        held.behind.clone_from(&logged.behind);
-        held.last = logged.entries.iter().map(|logged| logged.seq).fold(held.last, u64::max);
-        held.entries.extend(logged.entries.iter().filter_map(entry));
-    }
-    held
-}
-
-fn entry(entry: &msg_answer::Entry) -> Option<Entry> {
-    use msg_answer::entry::{Change as Wire, What as Logged};
-    let what = match entry.what.as_ref()? {
-        Logged::Message(message) => What::Message(Message::new(
-            message.author.clone(),
-            message.to.clone(),
-            message.body.clone(),
-            message.urgent,
-        )),
-        Logged::Created(name) => What::Created(name.clone()),
-        Logged::Joined(name) => What::Joined(name.clone()),
-        Logged::Left(name) => What::Left(name.clone()),
-        Logged::Changed(changed) => What::Changed {
-            by: changed.by.clone(),
-            change: match changed.change() {
-                Wire::Paused => Change::Paused,
-                Wire::Resumed => Change::Resumed,
-                Wire::SetPolicy | Wire::Unspecified => Change::Policy,
-            },
-        },
-    };
-    Some(Entry { seq: entry.seq, at_ms: entry.at_ms, what })
 }
 
 /// Fetches the page of `group`'s log before the earliest entry held, for every window showing it.
@@ -686,7 +629,7 @@ pub(crate) fn load_earlier(daemon: &str, group: &str) -> Response {
         Ok(answer) => answer,
         Err(refusal) => return refused(&refusal),
     };
-    let held = entries(&answer, &key.group);
+    let held = messaging::log_page(&answer, &key.group);
     if let Some(shared) = poison::lock(&SESSION, "session").conversations.get_mut(&key) {
         shared.group.called.extend(answer.called.clone());
         shared.group.log.page(held.entries, held.earlier);
@@ -1047,28 +990,4 @@ fn utc_offset_s() -> i32 {
         (!libc::localtime_r(&raw const now, &raw mut local).is_null()).then_some(local)
     };
     local.and_then(|local| i32::try_from(local.tm_gmtoff).ok()).unwrap_or(0)
-}
-
-#[cfg(test)]
-mod tests {
-    use muster_daemon_proto::msg_answer::{self, Answer};
-
-    use super::entries;
-
-    #[test]
-    fn an_entry_of_a_kind_this_build_does_not_know_still_counts_as_sent() {
-        let answer = muster_daemon_proto::MsgAnswer {
-            answer: Some(Answer::Entries(msg_answer::Entries {
-                groups: vec![msg_answer::GroupEntries {
-                    group: "g".to_string(),
-                    entries: vec![msg_answer::Entry { seq: 7, what: None, ..Default::default() }],
-                    ..Default::default()
-                }],
-            })),
-            ..Default::default()
-        };
-        let held = entries(&answer, "g");
-        assert!(held.entries.is_empty(), "nothing to draw");
-        assert_eq!(held.last, 7, "but the follow goes on from after it");
-    }
 }

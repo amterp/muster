@@ -43,13 +43,25 @@ pub struct Message {
     pub urgent: bool,
     /// The body's Markdown, parsed once.
     pub blocks: Vec<Block>,
+    /// The answers it offers, which make it a question (MIP-9, section 6).
+    pub answers: Vec<String>,
+    /// The question it answers, when it is a reply that picked one of a question's answers.
+    pub answering: Option<Answering>,
 }
 
 impl Message {
+    /// A message offering no answers and answering none.
     pub fn new(author: String, to: Vec<String>, body: String, urgent: bool) -> Message {
         let blocks = markdown::parse(&body);
-        Message { author, to, body, urgent, blocks }
+        Message { author, to, body, urgent, blocks, answers: Vec::new(), answering: None }
     }
+}
+
+/// Which question a reply answers, and the answer it picked, in the question's words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answering {
+    pub question: u64,
+    pub answer: String,
 }
 
 /// The entries of a group held so far.

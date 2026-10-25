@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 
 use crate::attention::{GroupKey, HumanNotice};
 use crate::composition::DaemonId;
+use crate::conversation;
 use crate::markdown::{self, Block};
 use crate::posting::{self, Sent};
 
@@ -33,7 +34,6 @@ pub const SHOWN: usize = 3;
 pub struct Message {
     pub seq: u64,
     pub author: String,
-    pub to: Vec<String>,
     pub urgent: bool,
     pub at_ms: u64,
     /// The message's first [`LINES`] lines.
@@ -45,18 +45,18 @@ pub struct Message {
 }
 
 impl Message {
-    /// A message from its entry in the group's log, its body parsed and cut to [`LINES`].
-    pub fn new(
-        seq: u64,
-        author: String,
-        to: Vec<String>,
-        urgent: bool,
-        at_ms: u64,
-        body: &str,
-        answers: Vec<String>,
-    ) -> Message {
-        let (body, more) = markdown::leading(&markdown::parse(body), LINES);
-        Message { seq, author, to, urgent, at_ms, body, more, answers }
+    /// Entry `seq` of the group's log, decoded as the conversation decodes it, cut to [`LINES`].
+    pub fn of(seq: u64, at_ms: u64, message: &conversation::Message) -> Message {
+        let (body, more) = markdown::leading(&message.blocks, LINES);
+        Message {
+            seq,
+            author: message.author.clone(),
+            urgent: message.urgent,
+            at_ms,
+            body,
+            more,
+            answers: message.answers.clone(),
+        }
     }
 }
 

@@ -16,6 +16,8 @@ use muster_core::mirror::backend::{
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
 
+pub mod messaging;
+
 /// A snapshot, with any tab whose tree will not read left out and counted.
 pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
     let mut unreadable = 0;

@@ -8,6 +8,7 @@ use conformance::{CaseError, Conformance, fields, strings};
 use muster_core::attention::{GroupKey, HumanNotice};
 use muster_core::banners::{Banner, Banners, Message, Shown};
 use muster_core::composition::DaemonId;
+use muster_core::conversation;
 use muster_core::posting::Sent;
 use serde_json::{Map, Value, json};
 
@@ -63,17 +64,19 @@ fn take(
         }
     } else if let Some(group) = text(step, "fetched") {
         let seq = seq().ok_or_else(|| CaseError::new("`fetched` needs `seq`"))?;
-        let result = match text(step, "error") {
-            Some(why) => Err(why.to_string()),
-            None => Ok(Message::new(
-                seq,
-                text(step, "author").unwrap_or_default().to_string(),
-                vec!["@human".to_string()],
-                step.get("urgent").and_then(Value::as_bool).unwrap_or(false),
-                0,
-                text(step, "body").unwrap_or_default(),
-                strings(step, "answers"),
-            )),
+        let result = if let Some(why) = text(step, "error") {
+            Err(why.to_string())
+        } else {
+            let message = conversation::Message {
+                answers: strings(step, "answers"),
+                ..conversation::Message::new(
+                    text(step, "author").unwrap_or_default().to_string(),
+                    vec!["@human".to_string()],
+                    text(step, "body").unwrap_or_default().to_string(),
+                    step.get("urgent").and_then(Value::as_bool).unwrap_or(false),
+                )
+            };
+            Ok(Message::of(seq, 0, &message))
         };
         banners.fetched(&key(group), seq, result);
     } else if let Some(group) = text(step, "hold") {
