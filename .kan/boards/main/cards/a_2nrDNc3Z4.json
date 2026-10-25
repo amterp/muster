@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "how-is-the-human",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1792915489526,
+  "creator": "Alexander Terp",
+  "description": "Left open by MIP-9's offered answers, 2026-10-25. The daemon decides who may answer a question by comparing names exactly; the core reads the human loosely. They agree in every case the shared table corpus/conformance/participant-names.json holds, which gives the human as the group's home names it (@human, or @human@laptop in a group kept elsewhere). They differ on one: @human@laptop asking in a group whose home calls the human @human (the core says it is not asked of the human, the daemon says it is). Settle how the human is named on a replica, then add the case. Related: the shell still re-derives whether a group is kept elsewhere (LinkPolicy.keptElsewhere) where the wire could say it.",
+  "id": "a_2nrDNc3Z4",
+  "position": "ab",
+  "title": "How is the human spelled across machines, for who may answer a question?",
+  "type": "chore",
+  "updated_at_millis": 1792915489526,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1792915489526}
+  ]
+}
