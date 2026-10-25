@@ -1,7 +1,7 @@
 ---
 mip: 9
 title: A group's conversation and a banner, drawn by Muster for the human
-status: Accepted
+status: Implemented
 kind: Product
 created: 2026-10-24
 decided: 2026-10-24
@@ -248,7 +248,9 @@ conversation and the banner draw them as buttons under the message.
 Picking one fills the reply rather than sending it: the message box shows the picked answer
 beside its text, the human may add a note, and Send posts both. Writing without picking is an
 ordinary reply. Digits never pick an answer inside the message box, since a reply may start with
-"1."; Tab reaches the buttons.
+"1."; Tab reaches the buttons. In the banner Tab goes from its reply field to the question's answers;
+in the conversation it goes from the message box to the answers of the newest question still
+waiting on the human, and an older question's take a click.
 
 The reply carries the pick twice. Its body starts with `Answer: Run it now`, so an agent reads it
 with no new parsing, and the post carries a field naming the question's number and the answer, so
@@ -256,9 +258,11 @@ the conversation marks the question answered and takes its buttons away. A quest
 answer. Whether an agent may ask for several, as Claude Code's multi-select does, waits until an
 agent needs it.
 
-Answers are a field on a message, so they need a daemon protocol minor of their own. A post with
-answers to a group kept by an older daemon is refused, as an urgent post to a daemon before 1.3
-is, rather than kept with its answers silently dropped.
+Answers are a field on a message, so they need a daemon protocol minor: 1.8, which paged `Log`
+shares, since both landed before a release shipped it. A post with answers to a group kept by an
+older daemon is refused, as an urgent post to a daemon before 1.3 is, rather than kept with its
+answers silently dropped. A reply that picks an answer offers none of its own, and the daemon
+refuses one that does.
 
 ### 7. Where the work is done
 
@@ -277,7 +281,7 @@ core would still count them seen, and the finish would go unannounced. Reading f
 fetches the log once with `Log`, as the human, and follows it from its last entry as `muster msg
 log --follow` does, so two windows on one group cost one fetch and one follow. A long group's
 history is fetched newest first, a page at a time as the thread scrolls up, which needs `Log` to
-take a count of newest entries: a daemon protocol minor, in stage 2.
+take a count of newest entries and a number to fetch below, in protocol 1.8.
 
 **The core builds the thread**: rows for dividers, joins, folds and messages, each message's
 Markdown parsed once into blocks, the unread line, the recipients a reply opens with, each
@@ -296,15 +300,21 @@ composition alone, so Esc while composing ends the composition and not the conve
 operating system's notification while Muster is not in front.
 
 **Cost.** Messages arrive at the speed people and agents write, so the budget is per message, not
-per byte: a body is parsed once when it arrives, a thread's rows are rebuilt for new entries only,
-and a window with no conversation open and no banner up does no conversation work at all.
+per byte: a body is parsed once when it arrives, and a window with no conversation open and no
+banner up does no conversation work at all. The thread is rebuilt and sent whole when it changes,
+rather than only its new rows, because that measured at 0.5 ms and 40 KB for 200 three-line
+messages and 5.4 ms and 475 KB for 200 at the 40-line cut; a burst of arrivals is told at most
+once per quarter second, and typing in the message box sends no thread at all.
 
 ### 8. The CLI and agents
 
 Parity follows from the seam:
 
 - `muster msg open --group G` shows the conversation in a window and answers with the window,
-  where today it answers with the transcript's pane.
+  and `muster msg close` returns that window to its panes.
+- `muster msg post --option` offers an answer, and `--answer Q:N [note]` answers question `Q` with
+  its `N`th answer as the message box does; `muster msg log --last N` and `--before N` page a
+  group's log as the thread does.
 - `muster window --json` says which group's conversation each window shows, so an agent can see
   that the human is reading.
 - `muster msg post` from a shell is still how the human posts outside a window, and its request is
@@ -406,8 +416,8 @@ terminals behind them today.
 - **The shell gains more SwiftUI.** It hosts SwiftUI in AppKit in one place today; the banner and
   the conversation make that the shell's usual way of drawing anything that is not a terminal.
 - **The core gains a Markdown parser**, a dependency the gate's license check then covers.
-- **Two daemon protocol minors**, one in stage 2 for paged `Log` and one in stage 3 for answers. A
-  window that meets an older daemon loads a group's whole log at once and draws no answers.
+- **One daemon protocol minor, 1.8**, for paged `Log` and answers both. A window that meets an older
+  daemon loads a group's whole log at once and draws no answers.
 - **Muster draws over its panes.** The banner sits at the top right of the pane area and covers
   what is under it while it stands.
 
@@ -443,3 +453,5 @@ terminals behind them today.
 ## History
 - 2026-10-24 Draft
 - 2026-10-24 Accepted by amterp, with `--option` (Decision A) as proposed
+- 2026-10-25 Implemented, all three stages; corrected to describe what was built: one protocol
+  minor for both changes, the thread sent whole, Tab's reach, and the CLI's spellings
