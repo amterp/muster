@@ -379,3 +379,114 @@ private func polled(within: Duration, _ ready: @MainActor () async -> Bool) asyn
   }
   return await ready()
 }
+
+extension SurfaceGUITests {
+  /// A banner's reply field in a real window: it takes the keyboard, and the core's
+  /// `send_message` chord sends from it. The default suite drives the board and never lets a
+  /// text view take the keyboard, for the input-method reason the find bar's field gives.
+  @MainActor
+  @Test("a banner's reply field takes the keyboard and sends on ⌘↩")
+  func aBannerReplySendsOnTheChord() async throws {
+    let (window, host, recorder) = bannerWindow()
+    let editor = try #require(replyEditor(in: host.hosting))
+    window.makeFirstResponder(editor)
+    #expect(host.holdsKeyboard)
+
+    editor.insertText("yes", replacementRange: NSRange(location: NSNotFound, length: 0))
+    try await answered("the field's words to reach the board") {
+      await polled(within: .milliseconds(250)) {
+        host.board.reply(for: aBanner("g", seq: 4)) == "yes"
+      }
+    }
+    window.sendEvent(press("\r", keyCode: 0x24, flags: .command, in: window))
+
+    #expect(recorder.sent.last == "reply local/g#4: yes")
+  }
+
+  /// Esc ends an input method's composition before it means anything to the banner: somebody
+  /// typing Japanese into a reply presses Esc to drop a candidate, not to leave.
+  @MainActor
+  @Test("Esc while composing ends the composition and keeps the keyboard in the reply")
+  func escapeWhileComposingEndsTheComposition() throws {
+    let (window, host, _) = bannerWindow()
+    var left = false
+    host.onLeave = { left = true }
+    let editor = try #require(replyEditor(in: host.hosting))
+    window.makeFirstResponder(editor)
+    editor.setMarkedText(
+      "か", selectedRange: NSRange(location: 1, length: 0),
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(editor.hasMarkedText())
+
+    window.sendEvent(press("\u{1B}", keyCode: 0x35, flags: [], in: window))
+
+    #expect(!editor.hasMarkedText(), "the composition is still open")
+    #expect(!left, "Esc during a composition left the reply")
+    #expect(host.holdsKeyboard)
+  }
+
+  /// ⌘↩ through the application's own dispatch, menu first, to a pane holding the keyboard: the
+  /// send chord has no menu key equivalent, so nothing takes it on the way.
+  @MainActor
+  @Test("passes ⌘↩ through the application's dispatch to a pane", .ownsTheSeam)
+  func cmdReturnReachesAPaneThroughTheApplication() {
+    let app = NSApplication.shared
+    let (before, help) = (app.mainMenu, app.helpMenu)
+    defer { (app.mainMenu, app.helpMenu) = (before, help) }
+    AppMenu.install(
+      target: NSObject(),
+      bindings: [
+        Core.Binding(action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true)
+      ])
+    let recorder = seam(RecordingDispatcher())
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled],
+      backing: .buffered, defer: false)
+    let pane = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    pane.attach(RecordingSurface(), typeable: true)
+    window.contentView?.addSubview(pane)
+    window.makeFirstResponder(pane)
+
+    app.sendEvent(press("\r", keyCode: 0x24, flags: .command, in: window))
+
+    #expect(recorder.requests.contains { $0.keyDown.key.key == "Enter" })
+  }
+}
+
+/// A window showing one banner from `otter` in `g`, its requests recorded.
+@MainActor
+private func bannerWindow() -> (NSWindow, BannerHost, BannerRecorder) {
+  let (board, recorder) = recordedBoard()
+  board.take(bindings: [
+    Core.Binding(action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true)
+  ])
+  board.apply(bannerStack(aBanner("g", seq: 4)))
+  let host = BannerHost(board: board)
+  let window = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 500, height: 400), styleMask: [.titled],
+    backing: .buffered, defer: false)
+  host.hosting.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+  window.contentView?.addSubview(host.hosting)
+  host.hosting.layoutSubtreeIfNeeded()
+  return (window, host, recorder)
+}
+
+/// The text view SwiftUI draws a reply field's `TextEditor` as.
+@MainActor
+private func replyEditor(in view: NSView) -> NSTextView? {
+  if let editor = view as? NSTextView, editor.isEditable { return editor }
+  for subview in view.subviews {
+    if let editor = replyEditor(in: subview) { return editor }
+  }
+  return nil
+}
+
+@MainActor
+private func press(
+  _ characters: String, keyCode: UInt16, flags: NSEvent.ModifierFlags, in window: NSWindow
+) -> NSEvent {
+  NSEvent.keyEvent(
+    with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+    windowNumber: window.windowNumber, context: nil, characters: characters,
+    charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)!
+}

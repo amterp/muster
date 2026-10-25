@@ -25,8 +25,10 @@ use std::time::{Duration, Instant};
 use muster_core::composition::{Presentation, Saved, saved};
 use muster_daemon_client::launch;
 use muster_daemon_proto::connection;
+use muster_daemon_proto::msg_request;
+use muster_daemon_proto::request::Service;
 use muster_daemon_proto::{self as proto, ConnectionKind, input_event};
-use muster_harness::requests::{beside, create, in_new_tab, make, snapshot};
+use muster_harness::requests::{beside, create, expect, in_new_tab, make, snapshot};
 use muster_harness::{Daemon, Input, until, until_file, until_within};
 use serde_json::Value;
 
@@ -589,6 +591,61 @@ fn a_pane_can_drive_the_window_it_is_drawn_in() {
          so nothing running in a pane can find out what is on this machine before ending \
          something. It got:\n{counted}",
         socket.display()
+    );
+    expect_no_daemon_left(&scratch);
+}
+
+#[test]
+#[ignore = "needs a logged-in GUI session: ./dev --contract"]
+fn a_message_for_the_human_raises_musters_own_banner() {
+    // A message that wakes the human reaches the real app's banner: the daemon's notice, the
+    // core fetching the message from the group's log as the human, and the shell being told
+    // (mip/0009-group-conversation.md, section 5). The seam's suite proves each step against a
+    // daemon with no app; this proves they meet in the app a person runs.
+    let scratch = Scratch::new("banner");
+    scratch.write_config(SHELL_CONFIG);
+    let mut app = Running::start(&built_app(), &scratch, &[], &[]);
+    app.until_ready();
+
+    let socket = proto::install::socket_path(&scratch.muster_home());
+    let mut control = muster_harness::Control::connect(&socket);
+    let caller = |name: Option<&str>| msg_request::Caller {
+        as_name: name.map(str::to_string),
+        ..msg_request::Caller::default()
+    };
+    let ask = |caller: msg_request::Caller, asked: msg_request::Request| {
+        Service::Msg(proto::MsgRequest { caller: Some(caller), request: Some(asked) })
+    };
+    for (who, name) in [(None, "@human"), (Some("otter"), "otter")] {
+        let join = msg_request::Request::Join(msg_request::Join {
+            name: Some(name.to_string()),
+            group: Some("review".to_string()),
+            pull: false,
+        });
+        expect(&mut control, ask(caller(who), join), proto::Outcome::Done);
+    }
+    let post = msg_request::Request::Post(msg_request::Post {
+        group: Some("review".to_string()),
+        to: vec!["@human".to_string()],
+        body: "can you run the **contract** tier?".to_string(),
+        ..Default::default()
+    });
+    expect(&mut control, ask(caller(Some("otter")), post), proto::Outcome::Done);
+
+    app.until_event(
+        "banners.received",
+        "a message woke the human and the shell was never told of a banner for it",
+    );
+    let records = app.stop();
+    let shown = expect_event(
+        &records,
+        "banner.shown",
+        "a message woke the human and the core raised no banner for it",
+    );
+    assert_eq!(
+        field(shown, "group").as_deref(),
+        Some("review"),
+        "the banner is not review's: {shown}"
     );
     expect_no_daemon_left(&scratch);
 }

@@ -57,10 +57,13 @@ public enum AppMenu {
           ])
         return nil
       }
+      // An action of a text field's gets no key equivalent: the menu would take its chord
+      // before any view, enabled or not, and the chord has to reach a pane whenever no such
+      // field holds the keyboard. The field matches it instead (`BannerReplyField`).
       return Item(
         title: described.title, action: described.selector,
-        key: menuKeyEquivalent(forKeyNamed: binding.key) ?? "",
-        modifiers: menuModifiers(binding.modifiers),
+        key: binding.inTextField ? "" : menuKeyEquivalent(forKeyNamed: binding.key) ?? "",
+        modifiers: binding.inTextField ? [] : menuModifiers(binding.modifiers),
         group: described.group, tag: described.tag, name: binding.action)
     }
   }

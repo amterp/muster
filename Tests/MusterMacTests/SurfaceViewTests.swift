@@ -392,6 +392,32 @@ private func keysReachThePane(_ toPane: Bool) -> RecordingDispatcher {
   withExtendedLifetime(window) {}
 }
 
+@Test(.ownsTheSeam) @MainActor func cmdReturnReachesThePaneThoughSendingAMessageIsBoundToIt() {
+  // ⌘↩ sends a banner's reply, and nothing else of Muster's is on it. The action belongs to the
+  // reply field, which matches the chord itself, so the menu must not take it from a pane: a
+  // key equivalent is offered to the menu before any view, enabled or not.
+  let app = NSApplication.shared
+  let (before, help) = (app.mainMenu, app.helpMenu)
+  defer { (app.mainMenu, app.helpMenu) = (before, help) }
+  AppMenu.install(
+    target: NSObject(),
+    bindings: [
+      Core.Binding(action: "send_message", key: "Enter", modifiers: ["super"], inTextField: true)
+    ])
+  let recorder = RecordingDispatcher()
+  let pane = view(recorder)
+  let window = holding(pane)
+  let press = key("\r", keyCode: 0x24, flags: .command)
+
+  #expect(app.mainMenu?.performKeyEquivalent(with: press) == false, "the menu took ⌘↩")
+  #expect(!pane.performKeyEquivalent(with: press))
+  pane.keyDown(with: press)
+
+  #expect(recorder.requests.first?.keyDown.key.key == "Enter")
+  #expect(recorder.requests.first?.keyDown.key.modifiers == ["super"])
+  withExtendedLifetime(window) {}
+}
+
 @MainActor
 private final class MenuChoice: NSObject {
   var count = 0

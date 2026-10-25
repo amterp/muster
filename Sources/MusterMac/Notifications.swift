@@ -91,6 +91,13 @@ public enum MessageNotification {
 
   /// Where a posted banner carries its group, beside `PaneNotification.daemonKey`.
   public static let groupKey = "group"
+
+  /// Whether the operating system is asked to show a message at all. While Muster is in front it
+  /// draws its own banner, which takes a reply (mip/0009-group-conversation.md, section 5); the
+  /// system's is only a pointer back to Muster for while it is not.
+  public static func posts(appActive: Bool) -> Bool {
+    !appActive
+  }
 }
 
 /// Posts the core's attention events as macOS notifications, and turns an activated one back
@@ -193,6 +200,10 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
       return
     }
 
+    if !group.isEmpty, !MessageNotification.posts(appActive: NSApp.isActive) {
+      return
+    }
+
     let content = UNMutableNotificationContent()
     if group.isEmpty {
       content.title = PaneNotification.title(label: label, paneID: pane)
@@ -237,11 +248,14 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   /// here: the core has already decided this window is not showing this pane, and "Muster is
   /// frontmost" is not the same claim. Somebody reading one agent while fourteen others work
   /// is the ordinary case, and it is the case that suppression would silence.
+  ///
+  /// Except a message: asked while Muster is in front, Muster's own banner is already showing it.
   nonisolated public func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions {
-    [.banner, .sound]
+    let info = notification.request.content.userInfo
+    return info[MessageNotification.groupKey] == nil ? [.banner, .sound] : []
   }
 
   /// Somebody activated a banner, so send them to the pane that raised it.
@@ -256,13 +270,12 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
   ) async {
     let info = response.notification.request.content.userInfo
     guard let daemon = info[PaneNotification.daemonKey] as? String else { return }
-    // A message for the human goes to its group's transcript, the same request going to what
-    // asks sends for it.
+    // A message for the human goes to its group, the same request its banner sends.
     if let group = info[MessageNotification.groupKey] as? String {
       await MainActor.run {
         Core.info("notifications.activated", ["daemon": daemon, "group": group])
         NSApp.activate(ignoringOtherApps: true)
-        Core.openTranscript(daemonID: daemon, group: group)
+        Core.openConversation(daemonID: daemon, group: group)
       }
       return
     }

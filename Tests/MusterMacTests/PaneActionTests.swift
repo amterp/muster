@@ -393,6 +393,12 @@ struct AppMenuTests {
       #expect(
         menuKeyEquivalent(forKeyNamed: binding.key) != nil,
         "\(binding.action)'s \(chord) has no key equivalent AppKit can express")
+      // A text field's action is matched by the field, and has to leave its chord to a pane
+      // whenever no such field holds the keyboard.
+      if binding.inTextField {
+        #expect(item?.keyEquivalent == "", "\(binding.action) would take \(chord) from a pane")
+        continue
+      }
       #expect(item?.keyEquivalent == menuKeyEquivalent(forKeyNamed: binding.key), "\(chord)")
       #expect(item?.keyEquivalentModifierMask == menuModifiers(binding.modifiers), "\(chord)")
     }

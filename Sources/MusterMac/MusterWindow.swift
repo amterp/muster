@@ -128,6 +128,9 @@ public final class MusterWindow: NSObject {
   /// that closing it and opening it again returns to the needle it was last used with.
   private var findBar: FindBar?
 
+  /// The banners for messages to the human, drawn over the panes while this is the main window.
+  let banners = BannerHost()
+
   /// Where the window is when it is not full-screen, which is the only rectangle worth writing
   /// down. macOS reports a full-screen window's frame as the whole display, so a window that
   /// went full-screen and quit would otherwise come back the size of somebody's monitor with no
@@ -212,6 +215,13 @@ public final class MusterWindow: NSObject {
     tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
     split.attach(sidebar: sidebar, strip: tabView)
     tabView.attach(empty: empty)
+    split.attach(banners: banners.hosting)
+    banners.show(window.isMainWindow)
+    banners.onLeave = { [weak self] in
+      guard let self, let surface = keyboardChrome()?.surface else { return }
+      window.makeFirstResponder(surface)
+    }
+    BannerBoard.shared.take(bindings: bindings)
     surfaces.window(key: window.isKeyWindow)
     // Named rather than left to the default, because `show` toggles into full-screen for a
     // window that quit from it and a default is a thing that can move.
@@ -236,9 +246,9 @@ public final class MusterWindow: NSObject {
         tell(TabRefusal.create, why)
       }
     }
-    // The same request a message's notification and `muster msg open` send.
+    // The same request a message's notification, its banner and `muster msg open` send.
     sidebar.onGroupPicked = { [weak self] daemon, group in
-      self?.speaking { Core.openTranscript(daemonID: daemon, group: group) }
+      self?.speaking { Core.openConversation(daemonID: daemon, group: group) }
     }
     sidebar.groups = Core.messageGroups
     sidebar.onHiddenToggled = { [weak self] collapsed in
@@ -785,6 +795,8 @@ public final class MusterWindow: NSObject {
 /// being looked at. An app can be frontmost with this window behind its own settings sheet,
 /// and the agent that finished underneath was no more seen than if the app were hidden.
 extension MusterWindow: NSMenuItemValidation {
+  /// Greys out Send Message unless a banner's reply field holds the keyboard.
+  ///
   /// Greys out Select Pane Asking while nothing asks, so the menu says there is nowhere to go
   /// before anybody tries, and Compact Agent while the keyboard's pane has no agent its daemon
   /// can compact. AppKit asks as the menu opens and as the item's chord is pressed; both answers
@@ -797,12 +809,15 @@ extension MusterWindow: NSMenuItemValidation {
     if item.action == #selector(quietPane(_:)) {
       item.state = keyboard?.quiet == true ? .on : .off
     }
-    return Self.isAvailable(item.action, keyboard: keyboard)
+    return Self.isAvailable(item.action, keyboard: keyboard, replying: banners.holdsKeyboard)
   }
 
   /// `keyboard` is the roster's row for the pane the keyboard is on, if the roster has one.
-  static func isAvailable(_ action: Selector?, keyboard: Roster.Pane? = nil) -> Bool {
+  static func isAvailable(
+    _ action: Selector?, keyboard: Roster.Pane? = nil, replying: Bool = false
+  ) -> Bool {
     switch action {
+    case #selector(sendMessage(_:)): replying
     case #selector(focusPaneAsking(_:)): Core.anythingAsking
     case #selector(compactAgent(_:)): keyboard?.compactable ?? false
     case #selector(restartAgent(_:)): !(keyboard?.resumesAs.isEmpty ?? true)
@@ -872,6 +887,15 @@ extension MusterWindow: NSWindowDelegate {
   public func windowDidResignKey(_ notification: Notification) {
     speaking { Core.windowFocused(false) }
     surfaces.window(key: false)
+  }
+
+  /// The banners follow the window in front: one stack on screen, with each reply's words.
+  public func windowDidBecomeMain(_ notification: Notification) {
+    banners.show(true)
+  }
+
+  public func windowDidResignMain(_ notification: Notification) {
+    banners.show(false)
   }
 
   /// Hidden, minimized, covered, or on a locked screen. What Ghostty's own window does, so that a
@@ -1064,6 +1088,12 @@ extension MusterWindow {
       return
     }
     (findBar ?? makeFindBar()).toggle(over: chrome)
+  }
+
+  /// Sends the reply in the banner whose field holds the keyboard. The field matches the chord
+  /// itself; this is the menu item, for somebody who picks it with the pointer.
+  @objc public func sendMessage(_ sender: Any?) {
+    banners.sendFocused()
   }
 
   @objc public func findNext(_ sender: Any?) {
@@ -1509,6 +1539,20 @@ final class WindowLayout: NSView {
     // Last, so it is on top of both: it straddles the line between them.
     addSubview(edge)
     needsLayout = true
+  }
+
+  /// The banners, over the top right of the panes and sized to what they show, so the panes
+  /// around them keep their clicks. Laid out by constraints against the panes' frame, since
+  /// their height is whatever SwiftUI says the stack needs.
+  func attach(banners: NSView) {
+    guard let strip else { return }
+    banners.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(banners)
+    NSLayoutConstraint.activate([
+      banners.topAnchor.constraint(equalTo: strip.topAnchor, constant: 8),
+      banners.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -8),
+      banners.bottomAnchor.constraint(lessThanOrEqualTo: strip.bottomAnchor, constant: -8),
+    ])
   }
 
   override func layout() {

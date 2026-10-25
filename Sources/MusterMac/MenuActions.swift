@@ -163,6 +163,8 @@ public enum MenuActions {
       title: "Find Next", selector: #selector(MusterWindow.findNext(_:)), group: .pane),
     "find_previous": Described(
       title: "Find Previous", selector: #selector(MusterWindow.findPrevious(_:)), group: .pane),
+    "send_message": Described(
+      title: "Send Message", selector: #selector(MusterWindow.sendMessage(_:)), group: .pane),
     "scroll_to_top": Described(
       title: "Scroll to Top", selector: #selector(MusterWindow.scrollToTop(_:)), group: .view),
     "scroll_to_bottom": Described(

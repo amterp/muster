@@ -554,7 +554,7 @@ public enum Core {
   /// Restarts the agent in a pane, in its session, and calls `then` on the main thread with the
   /// core's refusal, or nil once the daemon has typed the resume.
   ///
-  /// The one request the shell sends off the main thread. Its answer waits on a program ending
+  /// Sent off the main thread, as a banner's reply is. Its answer waits on a program ending
   /// and a shell drawing its prompt, which takes seconds, and the window would stop drawing
   /// meanwhile. The core answers it as it answers the CLI, whose requests already arrive on
   /// threads of their own; the window is named in the request, since which window is speaking is
@@ -1041,11 +1041,15 @@ public enum Core {
     public let action: String
     public let key: String
     public let modifiers: [String]
+    /// The action belongs to whichever text field of Muster's holds the keyboard, which matches
+    /// the chord itself, and gets no menu key equivalent.
+    public let inTextField: Bool
 
-    public init(action: String, key: String, modifiers: [String]) {
+    public init(action: String, key: String, modifiers: [String], inTextField: Bool = false) {
       self.action = action
       self.key = key
       self.modifiers = modifiers
+      self.inTextField = inTextField
     }
   }
 
@@ -1064,7 +1068,10 @@ public enum Core {
   /// One decoding for the launch-time read and the reload event, on the same terms as
   /// `read(_:)` for appearance.
   static func read(_ answer: Muster_Bindings) -> [Binding] {
-    answer.bindings.map { Binding(action: $0.action, key: $0.key, modifiers: $0.modifiers) }
+    answer.bindings.map {
+      Binding(
+        action: $0.action, key: $0.key, modifiers: $0.modifiers, inTextField: $0.inTextField)
+    }
   }
 
   /// Points this window's keyboard at a pane, and tells the daemon somebody looked.
@@ -1075,6 +1082,13 @@ public enum Core {
     var request = Muster_Request()
     request.focusPane = focus
     send(request)
+  }
+
+  /// Shows a group to the human: its banner's Open Conversation, the folded banners' count, the
+  /// sidebar's row and the operating system's notification all come here, so what showing a
+  /// group means changes in one place. Today it opens the group's transcript.
+  public static func openConversation(daemonID: String, group: String) {
+    openTranscript(daemonID: daemonID, group: group)
   }
 
   /// Goes to a group's transcript, as choosing a banner about a message for the human does.
@@ -1093,6 +1107,49 @@ public enum Core {
     var request = Muster_Request()
     request.upgradeMuster = Muster_UpgradeMuster()
     return refusal(send(request))
+  }
+
+  /// Replies to the message a banner shows, as the human, to its author.
+  ///
+  /// Off the main thread, like `restartAgent`: the answer waits on the daemon keeping the post,
+  /// and on one that never answers, on the group's log as well. What came of it reaches the
+  /// banner as the core's next word about the banners, so the answer is only logged.
+  public static func replyToBanner(daemonID: String, group: String, seq: UInt64, body: String) {
+    var reply = Muster_ReplyToBanner()
+    reply.daemonID = daemonID
+    reply.group = group
+    reply.seq = seq
+    reply.body = body
+    var request = Muster_Request()
+    request.replyToBanner = reply
+    let (sent, dispatcher) = (request, self.dispatcher)
+    DispatchQueue.global(qos: .userInitiated).async {
+      _ = send(sent, through: dispatcher)
+    }
+  }
+
+  /// Takes a banner down without reading its group.
+  public static func dismissBanner(daemonID: String, group: String, seq: UInt64) {
+    var dismiss = Muster_DismissBanner()
+    dismiss.daemonID = daemonID
+    dismiss.group = group
+    dismiss.seq = seq
+    var request = Muster_Request()
+    request.dismissBanner = dismiss
+    send(request)
+  }
+
+  /// Says whether the human is writing a reply in a banner, which keeps the group's next message
+  /// from replacing the one they are answering.
+  public static func holdBanner(daemonID: String, group: String, seq: UInt64, held: Bool) {
+    var hold = Muster_HoldBanner()
+    hold.daemonID = daemonID
+    hold.group = group
+    hold.seq = seq
+    hold.held = held
+    var request = Muster_Request()
+    request.holdBanner = hold
+    send(request)
   }
 
   /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
@@ -1637,6 +1694,7 @@ public enum Core {
       info("bindings.received", ["actions": String(bindings.count)])
       // One menu bar for the app, aimed at whichever window is in front.
       AppMenu.install(target: KeyWindowActions.shared, bindings: bindings)
+      BannerBoard.shared.take(bindings: bindings)
       for window in windows(for: event) {
         window.apply(bindings: bindings)
       }
@@ -1742,8 +1800,9 @@ public enum Core {
       for window in windows(for: event) {
         window.apply(groups: messageGroups)
       }
-    case .bannersChanged:
-      break
+    case .bannersChanged(let changed):
+      BannerBoard.shared.apply(changed)
+      info("banners.received", ["shown": String(changed.shown.count)])
     case .shutWindow:
       // `muster window close`: closed as its close button closes it, so a window closing says
       // where it was and tells the core, whichever way it was asked.
