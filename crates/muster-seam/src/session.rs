@@ -6633,8 +6633,9 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
 }
 
 /// Groups whose conversation the human has just come to look at, in a window that came to the
-/// front or was focused, while a message there waits for them: the human reading them. Each is read, and stops asking now rather than once the
-/// daemon has said so, as a pane somebody looks at does.
+/// front or was focused, while a message there waits for them: the human reading them. Each is
+/// read, and stops asking now rather than once the daemon has said so, as a pane somebody looks
+/// at does.
 fn read_what_is_looked_at() {
     let withdrawn: Vec<(GroupKey, Attend)> = {
         let mut session = poison::lock(&SESSION, "session");

@@ -149,8 +149,9 @@ pub fn edited(draft: &Draft, edit: Edit, group: &Group) -> Edited {
 }
 
 /// Completes the `@name` being typed at `cursor` to the member called `name`, with a space after
-/// it, and says where the cursor goes: after that space. Done before a leading name is taken, so a completion at
-/// the start of the text addresses the member and one later stays text, as typing it would.
+/// it, and says where the cursor goes: after that space. Done before a leading name is taken, so
+/// a completion at the start of the text addresses the member and one later stays text, as
+/// typing it would.
 fn complete(text: &mut String, cursor: usize, name: &str, group: &Group) -> usize {
     let Some((_, shown)) = addressable(group).find(|(member, _)| member == name) else {
         return cursor;

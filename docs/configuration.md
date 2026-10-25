@@ -474,9 +474,10 @@ decided it is worth it; `programs = false` is for a tool that decides that too o
 
 `messages` is a message for you from an agent: posted to `@human`, or to a group whose policy
 rings you (`muster docs msg`). While Muster is in front it draws a banner of its own over the
-panes, showing the message with a field to reply in; while it is not, the operating system's
-banner names the group and who wrote, and choosing it brings Muster forward to the group. Either
-is one per group, replaced by each new message. It is on because an agent addressing you has
+panes, showing the message with a field to reply in; while it is not, or while it is in front
+with no window to draw that banner in, the operating system's banner names the group and who
+wrote, and choosing it brings Muster forward to the group. Either is one per group, replaced by
+each new message. It is on because an agent addressing you has
 chosen to interrupt you. `messages = false`, or a mute, takes both away and leaves the group
 asking, so ⌘⇧A still reaches it; a banner you were writing a reply in stays.
 

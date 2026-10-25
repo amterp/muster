@@ -303,13 +303,15 @@ cursor, and the home daemon compares it with the log's head as it appends, so th
 across machines without the agent counting anything. There is no override: an agent that meant to
 post anyway reads first, which costs one call.
 
-The human is exempt. The guard keeps a model from acting on context that has gone stale, and the
-daemon cannot see a person's screen: the human reads the transcript with `log --follow`, which
-moves no cursor, so under the guard a busy group would refuse nearly every post the human made
-and ask them to reprint what they had just read. Agents keep it.
+The human is exempt. The guard keeps a model from acting on context that has gone stale, and a
+person is not a model: they read in a group's conversation, which moves their place as they
+look, or in a banner, which moves nothing, and the daemon cannot see which they have taken in.
+Held to the guard, a human answering a banner would be refused for messages they had not opened
+and that need not bear on the reply. Agents keep it.
 
-`muster msg log --group review [--since N] [--follow]` prints the transcript and moves no cursor.
-The human reads it, and so does an agent catching up on history from before it joined.
+`muster msg log --group review [--since N] [--follow]` prints the group's log and moves no cursor,
+for an agent catching up on history from before it joined. The human reads a group in its
+conversation (MIP-9).
 
 ### 5. Delivery: who is woken, and how often
 

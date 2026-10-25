@@ -949,9 +949,9 @@ impl<S: Store> Messaging<S> {
                 allowed: policy.allowed(author),
             });
         }
-        // The guard keeps a model from acting on context that has gone stale. The human reads
-        // the transcript as it arrives, and the daemon cannot see a person's screen, so it has
-        // no cursor worth holding a person's post to (MIP-4, section 4) - on any machine.
+        // The guard keeps a model from acting on context that has gone stale. A person is not a
+        // model, and reads in a window the daemon cannot see, so a person's post is held to no
+        // cursor (MIP-4, section 4) - on any machine.
         let unread = if is_human(author) { 0 } else { self.unread_after(author, group, cursor) };
         if unread > 0 {
             return Err(Refusal::Unread { group: group.to_string(), count: unread });
@@ -3101,9 +3101,10 @@ impl<S: Store> Messaging<S> {
             return Reach::Woken;
         }
         // Every message that wakes the human is told to the windows, above, rather than once
-        // per batch: a person reading the transcript moves no cursor, so a batch would never
-        // end (MIP-4, section 10). It is told with no window attending too, so that the next
-        // window to attend finds it.
+        // per batch as an agent is woken: each replaces its group's banner, so the human sees
+        // the newest whether or not they read the one before (MIP-4, section 10; MIP-9, section
+        // 5). It is told with no window attending too, so that the next window to attend finds
+        // it.
         if name == HUMAN {
             return if presence.attended() { Reach::Woken } else { Reach::Waiting };
         }

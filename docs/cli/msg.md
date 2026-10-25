@@ -412,13 +412,13 @@ An urgent message says so on its first line: `--- review #44 | director -> build
 A question prints the answers it offers after its body, and a reply that picks one says which
 question it answers on its first line (next section).
 
-**A post is refused while you have unread messages from others in that group**, and the refusal
-says how many and the `read` that clears it. There is no override: read, then post again. The
-human is not held to it: the guard keeps a model from acting on a conversation it has not seen,
-and a person reads the transcript as it arrives, on a screen the daemon cannot see. Joins
-and leaves never count as unread, and neither does what `@muster` tells another member, such as
-your maker told that you are blocked: nothing in it is context you need before you post. Your
-place in a group starts where you joined it; `log` shows what came before.
+**A post is refused while you have unread messages from others in that group**, and the refusal says
+how many and the `read` that clears it. There is no override: read, then post again. The human is
+not held to it: the guard keeps a model from acting on a conversation it has not seen, and a person
+is not a model, reading in a window the daemon cannot see. Joins and leaves never count as unread,
+and neither does what `@muster` tells another member, such as your maker told that you are blocked:
+nothing in it is context you need before you post. Your place in a group starts where you joined it;
+`log` shows what came before.
 
 A member someone else removed with `group remove` can still `read` what others had posted
 there and it had not read, once: everything before its removal, and nothing after. Its wake
@@ -426,7 +426,7 @@ stands until then, so a member dismissed while it was busy is still woken for th
 After that read the group is closed to it like any other it is not in. A member that leaves on
 its own is left nothing.
 
-`log --group G [--since N]` prints the transcript and moves nothing. With `--follow` it goes on
+`log --group G [--since N]` prints the group's log and moves nothing. With `--follow` it goes on
 printing each entry as it lands until interrupted, across Muster updating its daemon, and with
 `--json` prints one line per entry. `--last N` prints only the newest N entries, and `--before N`
 only those below #N, so a long log reads a page at a time: when earlier entries are left out, the
@@ -547,7 +547,7 @@ window has attached to shows `@human` alone.
 | `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
-| `log --group G [--since N] [--last N] [--before N] [--follow]` | the transcript, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |
+| `log --group G [--since N] [--last N] [--before N] [--follow]` | the group's log, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |
 | `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
 | `groups` | every group, its members, and whether it is paused; `--json` has each policy |
 | `group new G [--policy F]` | makes a group with that policy, and joins it as its first member |
@@ -612,9 +612,10 @@ from the other:
   the machine: exit 1, `unreachable` in `--json`. Nothing is queued, since a queued post would land
   behind messages its author never saw. Groups kept here work as ever. `read`, `log` and `wait`
   answer from this machine's copy, which after its daemon restarts or updates holds nothing until
-  the link returns, and `read` and `log` say it may be behind; `log --follow` waits. What was
-  posted meanwhile arrives when the link returns, and wakes whoever it is for, so a post whose
-  only member is on a machine that cannot be reached exits 0, not 6.
+  the link returns, and `read` and `log` say it may be behind. `log --follow` waits, and says so
+  once the link drops while it waits. What was posted meanwhile arrives when the link returns,
+  and wakes whoever it is for, so a post whose only member is on a machine that cannot be reached
+  exits 0, not 6.
 - **A change with no answer may have happened.** When the other machine takes a post, join or
   leave and does not answer in time, it is refused as `unanswered`, exit 4: it may have landed
   there. `muster msg log` says whether, so look before posting again. Until the group is heard

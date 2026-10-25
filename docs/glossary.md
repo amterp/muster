@@ -76,8 +76,9 @@ One name per concept; docs and code use these terms. Alphabetical.
   authoritative.
 - **`@muster`** - Muster itself as the author of a message in a group, telling whoever posted what waits on a stalled
   member why it has not answered. Reserved like `@human`; never a participant, never addressed.
-- **Needs you** - the queue of everything asking for the human, by that name on screen. The code and the CLI call it
-  the asking list (`asking`), and ⌘⇧A goes to its first.
+- **Needs you** - the queue of everything asking for the human. The code and the CLI call it the asking list
+  (`asking`), and ⌘⇧A goes to its first. Nothing on screen goes by the name yet: it is what MIP-9 calls the queue it
+  means to draw.
 - **off screen** - a pane in a tab this window holds and is not showing, or behind a zoom. Ordinary, and one click
   away.
 - **pane** - one terminal inside a tab's tree; owned by a daemon.
