@@ -36,7 +36,7 @@
     },
     {
       "name": "a question is asked of the human when it names them or nobody",
-      "why": "A question addressed to the human, or to nobody, may be answered by the human; one addressed to others only may not, nor one the human asked. The human is named as the group's home names them: `@human` there, or `@human@laptop` in a group kept on another machine.",
+      "why": "A question addressed to the human, or to nobody, may be answered by the human; one addressed to others only may not, nor one the human asked, nor one from Muster, which offers no answers and is never addressed. The human is named as the group's home names them: `@human` there, or `@human@laptop` in a group kept on another machine.",
       "given": {
         "questions": [
           { "asker": "a", "to": ["@human"], "human": "@human" },
@@ -45,10 +45,12 @@
           { "asker": "a", "to": ["b", "@human"], "human": "@human" },
           { "asker": "@human", "to": [], "human": "@human" },
           { "asker": "a", "to": ["@human@laptop"], "human": "@human@laptop" },
-          { "asker": "@human@laptop", "to": [], "human": "@human@laptop" }
+          { "asker": "@human@laptop", "to": [], "human": "@human@laptop" },
+          { "asker": "@muster", "to": ["@human"], "human": "@human" },
+          { "asker": "@muster@devenv", "to": [], "human": "@human" }
         ]
       },
-      "expect": { "asked": [true, true, false, true, false, true, false] }
+      "expect": { "asked": [true, true, false, true, false, true, false, false, false] }
     }
   ]
 }

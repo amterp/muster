@@ -77,9 +77,12 @@ pub fn is_muster(name: &str) -> bool {
 }
 
 /// Whether a question `asker` asked of `to` may be answered by `name`: it is addressed to them,
-/// or to nobody, and they did not ask it.
+/// or to nobody, and they did not ask it. Muster asks nobody anything: what it posts offers no
+/// answers, and an answer would have to address it, which nobody may.
 pub fn asked_of(asker: &str, to: &[String], name: &str) -> bool {
-    asker != name && (to.is_empty() || to.iter().any(|addressee| addressee == name))
+    asker != name
+        && !is_muster(asker)
+        && (to.is_empty() || to.iter().any(|addressee| addressee == name))
 }
 
 /// A group name is a participant name, or several joined by `+` (see [`pair_group`]).
