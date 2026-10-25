@@ -634,6 +634,7 @@ dependencies = [
  "conformance",
  "flexid",
  "libc",
+ "pulldown-cmark",
  "serde_json",
  "toml",
 ]
@@ -949,6 +950,17 @@ dependencies = [
  "miette",
  "prost-types",
  "thiserror",
+]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "278e9268c93b9e498a2da46c34d90ba93a3255eb99009646398f34bc73ab36eb"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "unicase",
 ]
 
 [[package]]

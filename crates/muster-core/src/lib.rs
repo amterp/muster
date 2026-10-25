@@ -22,6 +22,7 @@ pub mod helpers;
 pub mod input;
 pub mod intent;
 pub mod making;
+pub mod markdown;
 pub mod message_groups;
 pub mod mirror;
 pub mod names;

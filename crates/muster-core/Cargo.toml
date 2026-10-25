@@ -7,6 +7,7 @@ publish.workspace = true
 [dependencies]
 flexid.workspace = true
 libc.workspace = true
+pulldown-cmark.workspace = true
 toml.workspace = true
 
 [dev-dependencies]

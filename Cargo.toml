@@ -48,6 +48,10 @@ muster-vt = { path = "crates/muster-vt" }
 # The Linux daemons' allocator (MIP-3, section 12).
 mimalloc = "0.1"
 prost = "0.14"
+# Messages are Markdown, and the core parses them so that what a message looks like is decided
+# where the suite can see it rather than in each platform's shell (MIP-9, section 7). Without
+# its defaults, which add an HTML renderer and a command-line binary's argument parser.
+pulldown-cmark = { version = "0.13", default-features = false }
 # herdr's detection manifests are written in this crate's syntax, so matching them with
 # anything else would change what a rule means.
 regex = "1"

@@ -14,6 +14,7 @@ mod equalize;
 mod font_family;
 mod keymap;
 mod log_record;
+mod markdown;
 mod mirror;
 mod names;
 mod pane_address;

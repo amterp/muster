@@ -1,0 +1,241 @@
+{
+  "concept": "markdown.parse",
+  "source": "authored",
+  "citation": "MIP-9, section 7 (docs/mip/0009-group-conversation.md): Markdown is parsed in the core into paragraphs, lists, code blocks and runs that are emphasized, strong, code or links. CommonMark itself is pulldown-cmark's; the cases pin what Muster folds it into.",
+  "why": "Agents write Markdown and the human reads it in the banner and the conversation, which every platform's shell draws from these blocks. What a message looks like is therefore decided here once, and a change to it shows up as a failing case rather than as a message that quietly reads differently on one platform.",
+  "cases": [
+    {
+      "name": "plain text is one paragraph of one run",
+      "why": "Most messages are a sentence. Anything more than one paragraph of one unstyled run would make the common case pay for the rare one.",
+      "given": { "markdown": "the lexer is yours" },
+      "expect": { "blocks": [{ "paragraph": [{ "text": "the lexer is yours" }] }] }
+    },
+    {
+      "name": "emphasis, strong and inline code are runs of their own",
+      "why": "The three inline styles a message uses most. Each is its own run so a shell draws it with nothing more than a style per run.",
+      "given": { "markdown": "run *now*, **not** `later`" },
+      "expect": {
+        "blocks": [
+          {
+            "paragraph": [
+              { "text": "run " },
+              { "text": "now", "emphasis": true },
+              { "text": ", " },
+              { "text": "not", "strong": true },
+              { "text": " " },
+              { "text": "later", "code": true }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "nested styles combine on one run",
+      "why": "Bold inside italics is both, not whichever opened last. A run carries every style that applies to it.",
+      "given": { "markdown": "*a **b***" },
+      "expect": {
+        "blocks": [
+          {
+            "paragraph": [
+              { "text": "a ", "emphasis": true },
+              { "text": "b", "emphasis": true, "strong": true }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a link carries its destination on its text",
+      "why": "A link is drawn as its words, which the shell makes something to click. The destination travels on the run so the shell need not parse anything.",
+      "given": { "markdown": "see [the MIP](https://example.com/mip) first" },
+      "expect": {
+        "blocks": [
+          {
+            "paragraph": [
+              { "text": "see " },
+              { "text": "the MIP", "link": "https://example.com/mip" },
+              { "text": " first" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a soft break is a space and a hard break is a newline",
+      "why": "Agents wrap their source at a width the reader's view does not share, so a single newline must not break the line. Two trailing spaces or a backslash is the writer asking for a break, and gets one.",
+      "given": { "markdown": "one\ntwo  \nthree" },
+      "expect": { "blocks": [{ "paragraph": [{ "text": "one two\nthree" }] }] }
+    },
+    {
+      "name": "paragraphs are separate blocks",
+      "why": "A blank line starts a new paragraph, which a shell spaces apart.",
+      "given": { "markdown": "first\n\nsecond" },
+      "expect": {
+        "blocks": [
+          { "paragraph": [{ "text": "first" }] },
+          { "paragraph": [{ "text": "second" }] }
+        ]
+      }
+    },
+    {
+      "name": "a bulleted list holds each item's blocks",
+      "why": "A tight list's items have no paragraph around their text in CommonMark's events; the core still gives each item a paragraph, so a shell draws tight and loose lists alike.",
+      "given": { "markdown": "- one\n- **two**" },
+      "expect": {
+        "blocks": [
+          {
+            "list": {
+              "items": [
+                [{ "paragraph": [{ "text": "one" }] }],
+                [{ "paragraph": [{ "text": "two", "strong": true }] }]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a numbered list keeps the number it starts at",
+      "why": "An agent continuing a list from an earlier message starts it at 4, and the human reads the numbers as references.",
+      "given": { "markdown": "4. four\n5. five" },
+      "expect": {
+        "blocks": [
+          {
+            "list": {
+              "start": 4,
+              "items": [[{ "paragraph": [{ "text": "four" }] }], [{ "paragraph": [{ "text": "five" }] }]]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a nested list sits inside its item",
+      "why": "Plans arrive as nested lists. The inner list belongs to the item above it, after that item's text.",
+      "given": { "markdown": "- outer\n  - inner" },
+      "expect": {
+        "blocks": [
+          {
+            "list": {
+              "items": [
+                [
+                  { "paragraph": [{ "text": "outer" }] },
+                  { "list": { "items": [[{ "paragraph": [{ "text": "inner" }] }]] } }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a fenced code block keeps its language and its lines",
+      "why": "Commands and diffs are pasted as fenced blocks, and must arrive exactly as written: no styling inside, no trailing newline the shell would draw as an empty line.",
+      "given": { "markdown": "```sh\n./dev -t\n./dev -l\n```" },
+      "expect": { "blocks": [{ "code": { "language": "sh", "text": "./dev -t\n./dev -l" } }] }
+    },
+    {
+      "name": "an indented code block names no language",
+      "why": "CommonMark's other code block has no info string, so its language is empty rather than absent.",
+      "given": { "markdown": "    let x = 1;" },
+      "expect": { "blocks": [{ "code": { "language": "", "text": "let x = 1;" } }] }
+    },
+    {
+      "name": "markdown inside a code block stays text",
+      "why": "A code block is literal; asterisks in a shell glob are not emphasis.",
+      "given": { "markdown": "```\nls *.rs **/x\n```" },
+      "expect": { "blocks": [{ "code": { "language": "", "text": "ls *.rs **/x" } }] }
+    },
+    {
+      "name": "a heading is a strong paragraph",
+      "why": "A message has no outline to navigate, so a heading only needs to stand out, which strong does in every toolkit without the tree growing a block a shell must size.",
+      "given": { "markdown": "# Plan\n\nstep one" },
+      "expect": {
+        "blocks": [
+          { "paragraph": [{ "text": "Plan", "strong": true }] },
+          { "paragraph": [{ "text": "step one" }] }
+        ]
+      }
+    },
+    {
+      "name": "a quote is the blocks inside it",
+      "why": "Agents quote what they are answering; the words matter and the indent does not, so a quote folds into its own blocks rather than adding a block kind.",
+      "given": { "markdown": "> you said this\n\nand I say that" },
+      "expect": {
+        "blocks": [
+          { "paragraph": [{ "text": "you said this" }] },
+          { "paragraph": [{ "text": "and I say that" }] }
+        ]
+      }
+    },
+    {
+      "name": "HTML is shown as the text it was written as",
+      "why": "Nothing renders HTML, so a tag the agent typed stays visible rather than vanishing along with whatever it wrapped.",
+      "given": { "markdown": "a <b>tag</b> here" },
+      "expect": { "blocks": [{ "paragraph": [{ "text": "a <b>tag</b> here" }] }] }
+    },
+    {
+      "name": "an image is its alt text, linked to the image",
+      "why": "A banner draws no images; the description and where to find it are what is left.",
+      "given": { "markdown": "![the graph](https://example.com/g.png)" },
+      "expect": {
+        "blocks": [{ "paragraph": [{ "text": "the graph", "link": "https://example.com/g.png" }] }]
+      }
+    },
+    {
+      "name": "a rule separates paragraphs and draws nothing",
+      "why": "A thematic break between two paragraphs leaves two paragraphs; it is not text.",
+      "given": { "markdown": "above\n\n---\n\nbelow" },
+      "expect": {
+        "blocks": [
+          { "paragraph": [{ "text": "above" }] },
+          { "paragraph": [{ "text": "below" }] }
+        ]
+      }
+    },
+    {
+      "name": "an empty message has no blocks",
+      "why": "Nothing to draw is an empty list, not a paragraph holding an empty run.",
+      "given": { "markdown": "" },
+      "expect": { "blocks": [] }
+    },
+    {
+      "name": "the leading lines of a short message are all of it",
+      "why": "A banner shows a message's first lines; one that fits says nothing was cut, so no Show all is offered.",
+      "given": { "markdown": "one\n\ntwo", "lines": 8 },
+      "expect": {
+        "blocks": [{ "paragraph": [{ "text": "one" }] }, { "paragraph": [{ "text": "two" }] }],
+        "cut": false
+      }
+    },
+    {
+      "name": "the leading lines stop inside a paragraph at a hard break",
+      "why": "A line is what the source shows on one line, so a paragraph of hard-broken lines is cut between them.",
+      "given": { "markdown": "one  \n**two**  \nthree", "lines": 2 },
+      "expect": {
+        "blocks": [{ "paragraph": [{ "text": "one\n" }, { "text": "two", "strong": true }] }],
+        "cut": true
+      }
+    },
+    {
+      "name": "the leading lines count list items and code lines",
+      "why": "A list takes a line per item and a code block a line per line, so a banner holding a plan or a command shows its start and says the rest was cut.",
+      "given": { "markdown": "- a\n- b\n- c\n\n```\nx\ny\n```", "lines": 4 },
+      "expect": {
+        "blocks": [
+          {
+            "list": {
+              "items": [
+                [{ "paragraph": [{ "text": "a" }] }],
+                [{ "paragraph": [{ "text": "b" }] }],
+                [{ "paragraph": [{ "text": "c" }] }]
+              ]
+            }
+          },
+          { "code": { "language": "", "text": "x" } }
+        ],
+        "cut": true
+      }
+    }
+  ]
+}
