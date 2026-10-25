@@ -2726,19 +2726,7 @@ pub(crate) fn submit_from(
         publish("intent");
         return outcome;
     }
-    let outcome = channel.submit(intent);
-    let (refused, unanswered) = refused_or_unanswered(&outcome);
-    log::info(
-        "intent.submitted",
-        fields! {
-            "intent" => intent.redacted(),
-            "backend" => channel.description(),
-            "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
-                .map(|pane| pane.to_string()).unwrap_or_default(),
-            "refused" => refused,
-            "unanswered" => unanswered,
-        },
-    );
+    let outcome = submit_on(channel.as_ref(), intent);
     let Ok(Outcome { created, created_tab, .. }) = &outcome else {
         return outcome;
     };
@@ -6140,20 +6128,37 @@ fn catch_up_tab_names(daemon: &DaemonId) {
     }
 }
 
+fn submit_on(channel: &dyn BackendChannel, intent: &BackendIntent) -> Result<Outcome, Refusal> {
+    let outcome = channel.submit(intent);
+    let (refused, unanswered) = refused_or_unanswered(&outcome);
+    log::info(
+        "intent.submitted",
+        fields! {
+            "intent" => intent.redacted(),
+            "backend" => channel.description(),
+            "created" => outcome.as_ref().ok().and_then(|outcome| outcome.created.clone())
+                .map(|pane| pane.to_string()).unwrap_or_default(),
+            "refused" => refused,
+            "unanswered" => unanswered,
+        },
+    );
+    outcome
+}
+
 /// Writes each tab spanning machines back to every part of it whose copy the merge of all of
 /// them has moved past, for the tabs `daemon` holds a part of (MIP-8, `muster_core::spanning`).
 ///
-/// Worked out under the lock and sent outside it, as `catch_up_tab_names` sends a name. A write
-/// a daemon refuses is one it had moved on from - a pane of its own opened or closed after the
-/// mirrors were read - and the change that moved it arrives as an event that runs this again,
-/// so there is nothing to retry here.
+/// Worked out under the lock and sent outside it, keeping the channel read with the tree so
+/// a reused daemon name cannot send it to a later session. A write a daemon refuses is one it
+/// had moved on from - a pane of its own opened or closed after the mirrors were read - and
+/// the change that moved it arrives as an event that runs this again, so nothing is retried here.
 fn catch_up_tab_trees(daemon: &DaemonId) {
     let writes = {
         let session = poison::lock(&SESSION, "session");
         let mirrors = session.mirrors();
         let writable = |machine: &DaemonId| session.holds_spanning_trees(machine);
         let mut writes = Vec::new();
-        for (window, held) in session.windows.iter() {
+        for held in session.windows.values() {
             let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
             for tab in held
                 .composition
@@ -6167,7 +6172,7 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
                     merged
                         .writes
                         .into_iter()
-                        .map(|write| TabTreeCatchUp::new(&session, window, tab.id.clone(), write)),
+                        .map(|write| TabTreeCatchUp::new(&session, tab.id.clone(), write)),
                 );
             }
         }
@@ -6179,18 +6184,19 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
 }
 
 struct TabTreeCatchUp {
-    window: WindowId,
+    channel: Arc<dyn BackendChannel>,
     tab: TabId,
     write: spanning::Write,
 }
 
 impl TabTreeCatchUp {
-    fn new(_session: &Session, window: WindowId, tab: TabId, write: spanning::Write) -> Self {
-        Self { window, tab, write }
+    fn new(session: &Session, tab: TabId, write: spanning::Write) -> Self {
+        let channel = Arc::clone(&session.backends[&write.daemon].channel);
+        Self { channel, tab, write }
     }
 
     fn submit(self) {
-        let Self { window, tab, write } = self;
+        let Self { channel, tab, write } = self;
         let machine = write.daemon.clone();
         let intent = BackendIntent::SetTabTree {
             tab: tab.clone(),
@@ -6199,7 +6205,7 @@ impl TabTreeCatchUp {
             generation: write.generation,
             based_on: write.based_on,
         };
-        if let Err(refusal) = submit(window, &machine, &intent, Keyboard::StaysPut) {
+        if let Err(refusal) = submit_on(channel.as_ref(), &intent) {
             log::warn(
                 "tab.layout.write_refused",
                 fields! {
@@ -7305,7 +7311,6 @@ mod tests {
             let session = poison::lock(&SESSION, "session");
             TabTreeCatchUp::new(
                 &session,
-                session.front,
                 TabId::new("t1"),
                 spanning::Write {
                     daemon: DaemonId::new("local"),
