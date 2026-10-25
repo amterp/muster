@@ -566,6 +566,63 @@ extension SurfaceGUITests {
   }
 }
 
+extension SurfaceGUITests {
+  /// Undo and Redo in the message box, through the responder chain from the field holding the
+  /// keyboard, which is where the Edit menu's nil-targeted items go. Driven with
+  /// `tryToPerform` rather than through the menu bar, since a test process cannot count on a key
+  /// window for AppKit to start the chain from.
+  @MainActor
+  @Test("the message box undoes and redoes what was typed, as the Edit menu asks")
+  func theMessageBoxUndoesWhatWasTyped() async throws {
+    let (window, _, host, recorder) = conversationWindow()
+    let review = ConversationGroup(daemon: "local", group: "review")
+    host.show(review) { window.contentView?.addSubview($0) }
+    host.hosting?.frame = window.contentView?.bounds ?? .zero
+    try await answered("the message box to take the keyboard") { host.holdsKeyboard }
+    let field = try #require(window.firstResponder as? MessageBoxTextView)
+    let undo = press("z", keyCode: 0x06, flags: .command, in: window)
+    #expect(EditMenu.takes(undo, editing: MusterWindow.textBeingEdited(by: field) != nil))
+
+    field.insertText("yes", replacementRange: NSRange(location: NSNotFound, length: 0))
+    field.breakUndoCoalescing()
+    try await answered("the typing to be something Undo can take back") {
+      await polled(within: .milliseconds(250)) { field.undoManager?.canUndo == true }
+    }
+
+    #expect(field.tryToPerform(Selector(("undo:")), with: nil))
+    #expect(field.string == "")
+    #expect(recorder.edits.last?.text == "", "the core still holds the undone words")
+    #expect(field.tryToPerform(Selector(("redo:")), with: nil))
+    #expect(field.string == "yes")
+  }
+
+  /// Undo in a banner's reply, which SwiftUI draws as a `TextEditor` and which keeps the
+  /// window's undo history.
+  @MainActor
+  @Test("a banner's reply undoes what was typed, as the Edit menu asks")
+  func aBannerReplyUndoesWhatWasTyped() async throws {
+    let (window, host, _) = bannerWindow()
+    let editor = try #require(replyEditor(in: host.hosting))
+    window.makeFirstResponder(editor)
+    #expect(editor.allowsUndo)
+
+    editor.insertText("yes", replacementRange: NSRange(location: NSNotFound, length: 0))
+    editor.breakUndoCoalescing()
+    try await answered("the field's words to reach the board") {
+      await polled(within: .milliseconds(250)) {
+        host.board.reply(for: aBanner("g", seq: 4)) == "yes"
+      }
+    }
+
+    #expect(editor.tryToPerform(Selector(("undo:")), with: nil))
+    try await answered("the undone words to leave the board") {
+      await polled(within: .milliseconds(250)) {
+        host.board.reply(for: aBanner("g", seq: 4)).isEmpty
+      }
+    }
+  }
+}
+
 /// A window holding a tab and a conversation over it, as `MusterWindow` lays them out, with the
 /// conversation's requests recorded and the window's key presses offered to it first.
 @MainActor
