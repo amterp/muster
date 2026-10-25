@@ -411,6 +411,7 @@ fn first_page(following: &Following) -> Result<(), String> {
         let Some(shared) = following.shared(&mut session) else { return Ok(()) };
         shared.group.called.extend(answer.called.clone());
         shared.group.log.behind = held.behind;
+        shared.group.log.seen(held.last);
         shared.group.log.page(held.entries, held.earlier);
         shared.loaded = true;
         shared.failed = None;
@@ -440,6 +441,7 @@ fn arrived(following: &Following, answer: &muster_daemon_proto::MsgAnswer) {
         let Some(shared) = following.shared(&mut session) else { return };
         shared.group.called.extend(answer.called.clone());
         shared.group.log.behind = held.behind;
+        shared.group.log.seen(held.last);
         let new = shared.group.log.followed(held.entries);
         if new.is_empty() {
             return;
@@ -617,16 +619,19 @@ fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option<PaneKey> {
 /// What a log answered for one group.
 struct Held {
     entries: Vec<Entry>,
+    /// The number of the last entry sent, including any of a kind this build leaves out.
+    last: u64,
     earlier: bool,
     behind: Option<String>,
 }
 
 fn entries(answer: &muster_daemon_proto::MsgAnswer, group: &str) -> Held {
-    let mut held = Held { entries: Vec::new(), earlier: false, behind: None };
+    let mut held = Held { entries: Vec::new(), last: 0, earlier: false, behind: None };
     let Some(msg_answer::Answer::Entries(answered)) = &answer.answer else { return held };
     for logged in answered.groups.iter().filter(|logged| logged.group == group) {
         held.earlier |= logged.earlier;
         held.behind.clone_from(&logged.behind);
+        held.last = logged.entries.iter().map(|logged| logged.seq).fold(held.last, u64::max);
         held.entries.extend(logged.entries.iter().filter_map(entry));
     }
     held
@@ -1042,4 +1047,28 @@ fn utc_offset_s() -> i32 {
         (!libc::localtime_r(&raw const now, &raw mut local).is_null()).then_some(local)
     };
     local.and_then(|local| i32::try_from(local.tm_gmtoff).ok()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use muster_daemon_proto::msg_answer::{self, Answer};
+
+    use super::entries;
+
+    #[test]
+    fn an_entry_of_a_kind_this_build_does_not_know_still_counts_as_sent() {
+        let answer = muster_daemon_proto::MsgAnswer {
+            answer: Some(Answer::Entries(msg_answer::Entries {
+                groups: vec![msg_answer::GroupEntries {
+                    group: "g".to_string(),
+                    entries: vec![msg_answer::Entry { seq: 7, what: None, ..Default::default() }],
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        let held = entries(&answer, "g");
+        assert!(held.entries.is_empty(), "nothing to draw");
+        assert_eq!(held.last, 7, "but the follow goes on from after it");
+    }
 }

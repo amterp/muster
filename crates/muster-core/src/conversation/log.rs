@@ -57,6 +57,8 @@ impl Message {
 pub struct Log {
     entries: BTreeMap<u64, Entry>,
     earlier: bool,
+    /// The number of the last entry the daemon sent, drawn here or not.
+    seen: u64,
     /// The machine the group is kept on, when this copy is behind it because that machine
     /// cannot be reached.
     pub behind: Option<String>,
@@ -92,9 +94,16 @@ impl Log {
         new
     }
 
-    /// The number of the last entry held, or 0 for none.
+    /// Notes that the daemon sent entry `seq`, whether or not it is one this log holds: a kind
+    /// of entry a newer daemon adds is left out, and following from before it again would be
+    /// answered with it again, at once and forever.
+    pub fn seen(&mut self, seq: u64) {
+        self.seen = self.seen.max(seq);
+    }
+
+    /// The number of the last entry the daemon sent, or 0 for none: where a follow goes on from.
     pub fn head(&self) -> u64 {
-        self.entries.last_key_value().map_or(0, |(seq, _)| *seq)
+        self.entries.last_key_value().map_or(0, |(seq, _)| *seq).max(self.seen)
     }
 
     pub fn earliest(&self) -> Option<u64> {
@@ -146,6 +155,15 @@ mod tests {
         log.page(vec![joined(6)], true);
         assert!(!log.earlier(), "a page that is not older says nothing about what came before");
         assert_eq!((log.earliest(), log.head()), (Some(3), 6));
+    }
+
+    #[test]
+    fn an_entry_left_out_still_moves_the_head() {
+        let mut log = Log::default();
+        log.page(vec![joined(1)], false);
+        log.seen(4);
+        assert_eq!(log.followed(Vec::new()), Vec::<u64>::new());
+        assert_eq!(log.head(), 4);
     }
 
     #[test]
