@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-gate-runs-its",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jOJhLhql",
       "body": "2026-10-17: landed (4a4361fa, dfeafd6f, b914ee91). The round's final full gate on the final runner: 317 s total, Rust suite 110.7 s (was 407.8 s); build 57.9 s and discovery 101.5 s there because every binary was fresh. Still owed, now a_ card below: the regex opt-level measurement, fresh-build before/after, and the job count on a small machine.",
-      "created_at_millis": 1792255563791,
-      "id": "c_2jOJhLhql"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792255563791
     }
   ],
   "created_at_millis": 1792251368520,

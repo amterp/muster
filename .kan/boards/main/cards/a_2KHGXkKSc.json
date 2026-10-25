@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "herdr-renders-every",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2WDEcfpK7",
       "body": "Local number, 2026-09-24 (tools/latency.py crowded run): 14 attached clients vs 2 -\u003e herdr 0.135 vs 0.030 cores, pane.send_input median 10.6 vs 1.8 ms, p95 72.6 vs 17.5 ms. herdr spends ~1.5 ms CPU per echoed keystroke on its virtual render and framing, per attached client per pass, and sends ~82 bytes to the surface per echoed byte (4.6x amplification on a streaming pane). Method in docs/observations/herdr-0.8.0.md section 9.",
-      "created_at_millis": 1790308228939,
-      "id": "c_2WDEcfpK7"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790308228939
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JbKt9M",
       "body": "Obsolete since MIP-3: herdr is gone, and muster-daemon forwards a pane's bytes rather than rendering each client.",
-      "created_at_millis": 1792200744626,
-      "id": "c_2j1JbKt9M"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200744626
     }
   ],
   "created_at_millis": 1788544675585,

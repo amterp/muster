@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "when-a-declared-wait",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3xxi3B",
       "body": "2026-10-24: on main in 764c1c2e. The maker's idle notice says the wait the helper declared on \u003cwhat\u003e ran out after its limit, instead of guessing at an error.",
-      "created_at_millis": 1792855545611,
-      "id": "c_2nS3xxi3B"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855545611
     }
   ],
   "created_at_millis": 1792636682937,

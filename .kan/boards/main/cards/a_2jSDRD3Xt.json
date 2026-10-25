@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-window-says",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3x0P4R",
       "body": "2026-10-24: on main in 375c6d92. Only a state, session id, sub-agent change or --clear marks the adapter heard; a statusline-only Claude Code pane reads silent after a turn.",
-      "created_at_millis": 1792855545026,
-      "id": "c_2nS3x0P4R"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855545026
     }
   ],
   "created_at_millis": 1792264856323,

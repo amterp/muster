@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "mip-4-agents-message",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JZMS73",
       "body": "Done. MIP-4's five stages are built and shipped: muster msg, groups, cross-machine messaging, the human's messages, and the doorbell. Open follow-ups are their own cards.",
-      "created_at_millis": 1792200743406,
-      "id": "c_2j1JZMS73"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200743406
     }
   ],
   "created_at_millis": 1790580291940,

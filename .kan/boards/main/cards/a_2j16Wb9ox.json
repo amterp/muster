@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "should-a-pane-s",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "uncommitted",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j5DOrDsu",
       "body": "2026-10-16: the first of this card's costs is paid - a renamed pane's drawn word now stays reserved to it (bded1038) and shows on every agent row (a_2j16WrhNT). It still does not resolve as an address after a rename; that is the rest of this card.",
-      "created_at_millis": 1792210039372,
-      "id": "c_2j5DOrDsu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792210039372
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jz1YHI6t",
       "body": "2026-10-18: the drawn word is now the pane's callsign and resolves as an address after a rename, through --pane, msg post --to and name@machine (901c789b). What is left of this card is only dropping the uniqueness of given names.",
-      "created_at_millis": 1792343047611,
-      "id": "c_2jz1YHI6t"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792343047611
     }
   ],
   "created_at_millis": 1792200242011,

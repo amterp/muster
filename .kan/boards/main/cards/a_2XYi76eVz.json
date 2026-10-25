@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "done-survives-a",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XqYKrPNp",
       "body": "Daemon side landed (fc7ea43 and before): Pane.finished_unseen = 10, PaneRequest.Seen = 10, not persisted across a daemon restart (decided), carried across a handoff. Stays open for the app side: the core's done becomes the fact and the app sends Seen (slot 1's L5).",
-      "created_at_millis": 1790549697977,
-      "id": "c_2XqYKrPNp"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790549697977
     }
   ],
   "created_at_millis": 1790507174835,

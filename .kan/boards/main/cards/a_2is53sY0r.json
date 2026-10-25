@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-run-log-s-unread",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvWCDbM",
       "body": "2026-10-24: fixed on main in aeb26376, with a test that failed before the fix. Six events renamed their clashing fields, and log::emit asserts in debug builds that no field takes a key every line carries.",
-      "created_at_millis": 1792852837606,
-      "id": "c_2nQvWCDbM"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837606
     }
   ],
   "created_at_millis": 1792178736271,

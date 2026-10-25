@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-relaunch-brings",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Mhi0mXpg",
       "body": "2026-09-08: the third direction's question is answered. The two-home workaround is retired: `~/.muster/config.toml` names both daemons, and the laptop home's pane names and arrangement were merged into `~/.muster`. So the second-home case no longer exists, and what is left is the first two directions. After a full quit today `open -a Muster` brought back one window and `muster window reopen` the other, so both are reachable, but `reopen` picks by recency rather than by name, and with both saved arrangements pointing at the same tab the two windows opened onto it and raced for its terminal. Filed alongside: `a_2Mhi0EZlv` (a tab belongs to one window) and `a_2Mhi0XFTz` (`window new` cannot say which machine or tab).",
-      "created_at_millis": 1788903223446,
-      "id": "c_2Mhi0mXpg"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788903223446
     }
   ],
   "created_at_millis": 1788527953489,

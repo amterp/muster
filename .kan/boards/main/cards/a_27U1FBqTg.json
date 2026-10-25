@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-shell-renders",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27Y2qxrSE",
       "body": "Landed. The window lays out whatever the core publishes: a surface, a border and a bridge per leaf, dividers between them, regions side by side. Splits, closes, focus moves and divider drags all go out as intents through the core dispatcher and come back as an arrangement the daemon agreed to; nothing is rendered optimistically.\n\nDeliberately not NSSplitView - it owns its divider positions and would argue with every event the daemon sends. A container computing frames from ratios is small and testable with no GPU.\n\nKeybindings are menu items (Ghostty's own shortcuts: cmd-D, shift-cmd-D, cmd-W, cmd-] and cmd-[), because on macOS that is where a key equivalent is dispatched and where the user rebinds it.\n\nTwo edges per pane now: the outer is the agent's state, the inner says which pane has the keyboard. One edge carrying both would make a working pane and the focused pane indistinguishable. The title drops agent state - fifteen panes have fifteen of those - and keeps health, zoom, and which pane the keyboard feeds.\n\nThree bugs found by ./dev --contract, which now builds a nested tab and asserts a surface, a channel and a painted frame per pane:\n- a tree that disagreed with its tab was published, so a bootstrap replaying old layout events tore down two of three panes and their bridges\n- a pane's control socket accepted one connection, so a rebuilt surface could never be typed into again\n- a refused request reached stderr and not the run log, so a mistyped pane id was an empty window and a silent file\n\nDeferred, with reasons: directional focus (cmd-opt-arrows) - herdr has pane.neighbor and pane.focus_direction, so this wants the backend seam to grow a read, which is a decision worth making deliberately rather than in passing. Region sizing - regions get equal widths, and dragging the line between a laptop and a devenv is its own thing.",
-      "created_at_millis": 1786663741390,
-      "id": "c_27Y2qxrSE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786663741390
     }
   ],
   "created_at_millis": 1786654146412,

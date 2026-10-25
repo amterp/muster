@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-keybinding-that",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_295erkv3Z",
       "body": "**Units: decided, and it is not what the description says.** Support\nboth, spelled with a required suffix - `resize_step = \"150px\"` and\n`resize_step = \"20c\"`.\n\nThe description above argues for cells alone. The argument that beat it\nis the asymmetry: a cell is about 8x17 points, so one number in cells\nmoves a divider roughly 160pt sideways and 340pt vertically. Four\nsymmetric chords that move visibly different distances is not what a hand\nexpects, and pixels are the unit a \"nudge the divider\" gesture is\nactually felt in. Cells keep their own advantage - they survive a font\nsize change, which pixels do not, and ⌘+ is a thing people press - so\nneither is right for everybody.\n\n**The suffix is required rather than optional**, and that is the whole of\nwhat makes two units safe. A bare `20` meaning cells beside a suffixed\n`\"150px\"` is a form you have to know rather than read; with both\nsuffixed there is nothing to guess. It also means the currently shipping\nbare `resize_step = 2` stops parsing, which is a breaking change to say\nplainly in a release note - and cheap now, in a way it will not be later.\n\n`c` rather than `ce` or `cells`: kitty already spells this exact\nambiguity that way (`initial_window_width 80c`, bare or `px` for pixels),\nso anyone arriving from a terminal that solved it has one less thing to\nlearn.\n\nCost is close to nothing once pixels exist at all. The shell has to\nmeasure cell size and convert regardless, because the daemon's resize is\ngrid-based - so cells is the identity case of a conversion that has to be\nwritten anyway.\n\nConsistency question to answer in the same pass rather than leave ragged:\n`pane_padding` is points and bare. The rule that seems right is to suffix\nonly where two units are genuinely plausible - nobody wants padding in\ncells - but that asymmetry should read as a decision in the docs rather\nthan as an oversight.",
-      "created_at_millis": 1786891614204,
-      "id": "c_295erkv3Z"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786891614204
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2995Ta6Iw",
       "body": "**Decided: `[keymap]` stays keyed by action, and the mechanism does not\nget built.** Neither shape in the description wins - the question turns\nout to be settled by a constraint neither of them mentions.\n\n**On macOS the keymap is the menu.** Every action is a menu item, a menu\nitem has exactly one key equivalent, and that is also how System Settings\nfinds a shortcut to override. Ghostty's chord-keyed form lets you write\ntwo chords for one action, or a binding with no action name at all -\nconfigs the menu cannot represent and the platform cannot rebind. That\nrules out keying by chord on a Muster-specific ground rather than on\ntaste, and it is the kind of reason worth having written down, because\nthe next person to arrive from Ghostty will ask again.\n\nThat leaves the inline-table shape, and it has nothing to carry.\n`resize_step` and `scroll_multiplier` are root keys already, they cover\nwhat prompted this, and no second parameterized action is waiting.\n\n**So `focus_tab_1` through `focus_tab_9` staying nine names is correct\nrather than a wart to unpick.** Nine menu items need nine actions. The\ncore carrying `Action::FocusTab(u8)` internally is the right shape: the\nconfig file names menu items, the core names intents. (Note that when\na_294D7XaZl lands these become nine pane actions, and the same reasoning\ncarries over unchanged.)\n\n**One rule to write into architecture.md while settling this**, because\nit is what keeps this decision from constraining the CLI: **the intent is\nparameterized, the action is not.** `CreateTab { workspace, cwd }` already\ntakes arguments; `new_tab` is a parameterless name that dispatches it with\ndefaults. The CLI (a_26BJb2n6o) names intents directly and passes\narguments, so it does not inherit the menu's one-chord-per-item\nconstraint. Two surfaces onto one path, which is what the parity\ndesideratum promised.\n\n**What is left of this card is the units work** from the comment above -\nboth units, required suffix, `\"150px\"` and `\"20c\"` - plus documenting\nthat a Ghostty `resize_split:left,150` becomes `resize_step` here and\nmoves a different distance unless you suffix it. The bare\n`resize_step = 2` shipping today stops parsing, and that belongs in a\nrelease note.",
-      "created_at_millis": 1786899786947,
-      "id": "c_2995Ta6Iw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786899786947
     }
   ],
   "created_at_millis": 1786891010078,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-dot-says-idle",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2I6bRkkUd",
       "body": "Verified against the pinned herdr 0.8.0 rather than reasoned about.\n\nA daemon started with the config Muster now writes - `[update]` holding only `version_check = false` - fetches `2026.08.29.1` into its state dir. Its `osc_title_working` regex covers `\\x{25D0}-\\x{25D3}` as well as Braille, and it adds the `live_turn_working` screen rule.\n\n`herdr agent explain --file \u003cscreen\u003e --agent claude --json` on a screen showing a turn in progress:\n\n    with the fetched manifest:   version 2026.08.29.1 | state working | rule live_turn_working\n    with only the bundled one:   version 2026.07.13.1 | state idle    | rule none\n\nThat command is worth knowing about on its own: it needs no daemon, and it reports `manifest_source`, `manifest_version` and the matched rule. It is how the option set below was settled.\n\n**Two of the card's four options are not available.** herdr reads override manifests from `$XDG_CONFIG_HOME/herdr/agent-detection/`, not from the directory `HERDR_CONFIG_PATH` names - measured: a manifest placed beside Muster's derived config is ignored and detection falls back to `bundled`. So \"pin manifests with Muster\" and \"place overrides\" are one mechanism, and both mean writing into the user's own herdr config directory, which `configuration.md` promises Muster leaves alone.\n\nNobody's dot says `working` yet: a running daemon keeps the manifests it loaded, so a machine picks the new set up when its daemon next restarts. The card's per-machine workaround still applies until then.",
-      "created_at_millis": 1788223736289,
-      "id": "c_2I6bRkkUd"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788223736289
     }
   ],
   "created_at_millis": 1788201956198,

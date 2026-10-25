@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-knows-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Js2D2jlK",
       "body": "**Done. `muster daemons` is the verb, and here are the three decisions with their reasons.**\n\n**Where it lives, and what happens when it is wrong.** One file per daemon under `~/.muster/state/daemons/`, keyed by socket. Keyed by socket because a daemon restarted a hundred times is one daemon, and a census that grew a row per restart would be the unreadable thing it exists to fix. A directory rather than one file because two windows starting daemons never reach for the same file - a second window on the same socket adopts rather than starts - which is what lets this be a plain write where `panes.toml` beside it needs a lock.\n\nThe record is never an answer. Every row is dialed, and there are three states rather than two: `answering`, `silent` (a socket file nothing answers on, so a daemon that ended without tidying up), and `gone` (no socket file left). `gone` is the honest one this card asked for - a daemon whose socket path was deleted out from under it is running and unreachable, and from here it looks identical to one that ended, so the row says both and picks neither.\n\n**Whether a person or an agent reads it.** Its own verb, not a section of `muster window` and not only the quit sheet. `muster window` is about one window; this is about the machine, and the daemons worth knowing about are exactly the ones no window is showing. `attached_here` is the one field a window adds that the record cannot, and it is the field the decision turns on - so it is named for what a window can actually know rather than for \"in use\".\n\n**What it must not become.** Nothing ends a daemon. The verb prints `HERDR_SOCKET_PATH=\u003csocket\u003e herdr server stop` and stops there, and both `docs/cli/window.md` and the module's own comment say why rather than leaving it to be rediscovered.\n\n**Two more decisions this card did not name.**\n\n*Only daemons Muster started.* An adopted one belongs to whoever started it, and offering it here would be offering somebody a process to end on Muster's word. `muster window` still names an adopted daemon while this window is using it.\n\n*Doctor's approach was rejected on portability, not on taste.* Walking pids to sockets with `pgrep` and `lsof` sees more - it finds daemons Muster never started - and it is two Unix tools. The core is portable by construction, and the CLI links the schema and nothing else, so neither can shell out. The record is what Muster can answer everywhere.\n\nBounded at twenty records, oldest dropped on write rather than swept on read, matching the saved arrangements. Reading a census changes nothing, which is what lets somebody run it twice and compare.\n\nCovered at three levels: the record's own rules in `muster-core`, the dial against a real daemon in `muster-herdr` - including a daemon that is killed rather than stopped, which is the case a file-only answer would report as running - `attached_here` in the seam, and the whole path end to end in `./dev --contract`, where a cold start is the only launch that writes a record at all.",
-      "created_at_millis": 1788484542563,
-      "id": "c_2Js2D2jlK"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788484542563
     }
   ],
   "created_at_millis": 1788326765207,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "agents-messaging",
   "alias_explicit": false,
   "area": [
@@ -10,16 +10,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XJ1uSRyb",
       "body": "MIP-3 (docs/mip/0003-own-daemon.md, Draft 2026-09-26) settles this card's herdr question: herdr is replaced by muster-daemon, tracked under a_2XJ1fUIyr. The message service stays this card's subject; MIP-3 makes muster-daemon the process it will live in (namespaced protocol, messaging as its own crate with no pane dependency, never depended on by muster-core). Not built in MIP-3.",
-      "created_at_millis": 1790469803284,
-      "id": "c_2XJ1uSRyb"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790469803284
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1Jc3KaP",
       "body": "Settled. MIP-3 replaced herdr with muster-daemon, and MIP-4 built messaging inside it. This card's design thread is history now.",
-      "created_at_millis": 1792200745076,
-      "id": "c_2j1Jc3KaP"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745076
     }
   ],
   "created_at_millis": 1789670447087,

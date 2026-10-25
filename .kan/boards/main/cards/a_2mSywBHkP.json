@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "msg-post-window-on",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvWcUZr",
       "body": "2026-10-24: fixed on main in 8e826635, with a test that failed before the fix. Each command that refuses --window says what it does without it; the reopen hint stays only on window reopen. Hiding --window from those commands' help needs the CLI to build its clap command by hand; not done.",
-      "created_at_millis": 1792852837866,
-      "id": "c_2nQvWcUZr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837866
     }
   ],
   "created_at_millis": 1792709972313,

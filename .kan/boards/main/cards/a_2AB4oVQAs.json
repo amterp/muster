@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "publish-the-first",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ABxc4Les",
       "body": "**Shipped.** v0.1.0 is public and installable:\n\n```sh\nbrew install amterp/tap/muster\n```\n\nDone, in order: the bundle id moved to `dev.amterp.muster` before anything shipped; `./dev --bundle --notarize` built a signed, notarized, stapled arm64 artifact from `ffaecf0`; `amterp/muster` went public with a description and topics; the release was cut with that artifact attached; the cask went to `amterp/homebrew-tap` with the real checksum.\n\nVerified by doing it rather than by reasoning about it: `brew install --cask` pulled from the public release URL, matched sha256 `281fd9a4…`, placed `Muster.app` with `spctl` reporting accepted / source=Notarized Developer ID, linked `muster-cli` onto PATH as `muster`, and that binary drove a live window.\n\nOne piece did not land: **the tag-triggered release workflow still cannot cut a release**, because `./dev` interpolates the signing identity into a shell command unquoted under CI's rad and the identity has parentheses in it. All seven secrets are set; the failure is `./dev`. Tracked as a_2ABxHZCao, blocked on rad 0.12.\n\nSo the next release is a local `./dev --notarize` plus `gh release create` until that card closes, rather than a tag.",
-      "created_at_millis": 1787054397887,
-      "id": "c_2ABxc4Les"
+      "author": "Alexander Terp",
+      "created_at_millis": 1787054397887
     }
   ],
   "created_at_millis": 1787052291403,

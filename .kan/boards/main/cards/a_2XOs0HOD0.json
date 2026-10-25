@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-read-row",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XduovI0A",
       "body": "Not built. Rows leave the top of libghostty's PageList at six sites (grow prune with a revert path, Limits.enforce, erasing history, the resize trim, reset, reflow). A stable row number has no meaning across reset or reflow, and a counter means edits across the most-changed core file, past what an additive patch should carry.",
-      "created_at_millis": 1790519579652,
-      "id": "c_2XduovI0A"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790519579652
     }
   ],
   "created_at_millis": 1790483722201,

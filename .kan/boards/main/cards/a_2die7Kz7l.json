@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "with-the-laptop-gone",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2dmW0GbYr",
       "body": "2026-10-07: hidden panes landed as a daemon tab flagged hidden that no window claims, and pane hide / show / quiet already work with no window. What is left here for pane new: with no window, pane new --hidden can make the pane in a hidden tab on the daemon, which a window shows later from its Hidden list.",
-      "created_at_millis": 1791426655364,
-      "id": "c_2dmW0GbYr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791426655364
     }
   ],
   "created_at_millis": 1791417434173,

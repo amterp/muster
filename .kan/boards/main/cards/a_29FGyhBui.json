@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "two-senders-keep-one-request",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_29JlXafDb",
       "body": "Done. The coalescing moved into Sources/MusterMac/LatestRequestSender.swift and both callers keep only what they genuinely do differently - the find bar drops an answer to a needle already typed past, the divider drops all of them. Reading a refusal out of a response moved with it, since both did that identically too.\n\nWorth recording why the old comment argued against this, since it was wrong in an instructive way: it said merging would hand the divider a callback it has no use for. That reads the split in the wrong place. What differs is the answer type and what is done with it, which a generic and a closure cover; what is the same is the interleaving of the pending request and the in-flight flag across a hop off the main thread and back - the subtle part, and the part a change would otherwise have to be made in twice.\n\nCovered by the two tests that already existed: 'a needle reaches the core, and only the last one typed does', and 'a drag sends the position the pointer reached, not every one it passed'.",
-      "created_at_millis": 1786925236708,
-      "id": "c_29JlXafDb"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786925236708
     }
   ],
   "created_at_millis": 1786914528778,

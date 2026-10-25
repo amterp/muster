@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "zooming-a-pane-in-a",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cP6wLknQ",
       "body": "Alex, 2026-10-05: a zoom should fill the whole tab, whatever daemons its panes are on.",
-      "created_at_millis": 1791223113139,
-      "id": "c_2cP6wLknQ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791223113139
     }
   ],
   "created_at_millis": 1791223026304,

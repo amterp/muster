@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "window-verbs-hang-on",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ZPJ06CFv",
       "body": "Second instance, 2026-09-30, from a worker agent on the dev box while the laptop's window was away again: `muster window --json` waited over 120 s, printed `the window at ~/.muster/daemon/window-release-\u003cid\u003e.sock took the request and never answered (Resource temporarily unavailable (os error 11))` and exited 0, so a script reading its JSON gets nothing and no failure. `muster pane read --pane $MUSTER_PANE --rows 4` on the agent's own pane hung past 20 s. New detail for the fix: a request that never answered must exit non-zero, and reading one's own pane should not need the window at all.",
-      "created_at_millis": 1790780286660,
-      "id": "c_2ZPJ06CFv"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790780286660
     }
   ],
   "created_at_millis": 1790776691242,

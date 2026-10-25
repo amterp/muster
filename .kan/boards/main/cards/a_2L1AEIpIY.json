@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-send-reports-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2LMqACF1X",
       "body": "A second instance, and not on `pane send`: closing a pane by hand on 2026-09-06 logged\n\n```\nintent.submitted  ClosePane { pane: \"p21ep311we\" }  refused: \"timed out\"\ncore.refused      \"the daemon did not make that change: timed out ...\"\n```\n\nand herdr had in fact closed the terminal - the bridge died a fraction of a second later\nsaying that terminal is not found, and the pane is gone from `muster window`. It happened\ntwice in three seconds, on two panes closed in a row, with 15 panes on the daemon.\n\nThat puts the fault below `pane send`: every intent goes through\n`IntentSubmitter::submit` -\u003e `HerdrClient::request`, which is the 500ms\n`DEFAULT_TIMEOUT`. So the contract question this card asks - what an exit code means when\nthe daemon did the work and the acknowledgement did not arrive in time - is the same\nquestion for `pane.close`, and answering it only for `pane.send_input` would leave the\nwindow itself reporting refusals for changes it made.\n\n`a_2LMpvavhA` covers what the close's misreported failure then triggered.",
-      "created_at_millis": 1788705724561,
-      "id": "c_2LMqACF1X"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788705724561
     }
   ],
   "created_at_millis": 1788654063762,

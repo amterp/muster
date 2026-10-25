@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "latency-tier-prove",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XSDNGJMc",
       "body": "From the vertical slice (MIP-3 s13 History 2026-09-27): crates/muster-latency now carries the daemon rows in ./dev --latency (idle, 15 panes attached/detached, local flood, bytes per echo); every local target met (bridge glyph median 0.09 ms, p95 0.14; 1.00 surface byte per echoed byte). Rust rather than tools/latency.py, and the daemon is spawned directly until the helper app exists. Remaining here: the Launch Services launch, reattach timing, and the remote flood: over one ssh ControlMaster the second pane's echo beside a flood had p95 +4 ms (median unaffected) at load 14. Re-measure on a quiet machine once --ssh installs a commit-built daemon; if it holds, consider a smaller remote window or streams not sharing one ssh connection.",
-      "created_at_millis": 1790491693507,
-      "id": "c_2XSDNGJMc"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790491693507
     }
   ],
   "created_at_millis": 1790469796598,

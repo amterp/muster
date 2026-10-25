@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-claude-code-pane",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3xNeJ6",
       "body": "2026-10-24: on main in 104ac998. Checked from local transcripts and the clear corpus that /clear starts a new session id. The statusline names its session with the new report --context-session (protocol 1.8, Report field 14); a report naming another session forgets context and cost first. pane restart still resumes by the hook's session id.",
-      "created_at_millis": 1792855545253,
-      "id": "c_2nS3xNeJ6"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855545253
     }
   ],
   "created_at_millis": 1792264850487,

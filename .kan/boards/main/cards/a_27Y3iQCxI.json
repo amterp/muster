@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "regions-get-equal",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28KRYGSvJ",
       "body": "Now the card that matters rather than a hypothetical: two regions side by side are reachable as of 386c9e0, so a laptop and a devenv genuinely split the window evenly with no way to change it. Everything the card asked for still stands - a ratio per boundary, a divider that drags, the value written into composition - and the panes inside each region already have all three, so this is the same treatment one level out.",
-      "created_at_millis": 1786779088242,
-      "id": "c_28KRYGSvJ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786779088242
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_28No1FdxI",
       "body": "Landed, with one correction to the card. It says the value goes 'into composition, where it is already durable' - composition is NOT persisted. There is no serde on it, no writer, and no format chosen; that is still a_27QcqNxRB in backlog-hi. So a dragged boundary survives every republish and does not survive quitting the app.\n\nLeft that way rather than pulled forward, because persisting composition is a design question of its own and this is now the best argument for answering it: equal widths are a default nobody minds losing, and a width somebody chose is not.\n\nWhat landed otherwise is what the card asked for. A weight per region rather than a ratio per boundary, so the arrangement stays a list - a tree over regions is the multiplexer this project is not. A boundary is named by the region on its left rather than by an index, unlike a pane divider, because a region has an id that outlives a drag and an index does not: a drag is a stream of requests and a region can close underneath one.\n\nOne thing the card did not anticipate: this is the only share Muster clamps. A pane's ratio goes to the daemon untouched because the daemon sizes its own rectangles and refuses what it cannot do. Nothing sits behind a region boundary, and a region dragged to zero leaves no divider to grab and no way back - so neither side goes below a tenth of the pair.\n\nRegionStrip also has tests for the first time.",
-      "created_at_millis": 1786787101739,
-      "id": "c_28No1FdxI"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786787101739
     }
   ],
   "created_at_millis": 1786663774545,

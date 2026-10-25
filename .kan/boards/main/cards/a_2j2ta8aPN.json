@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "record-claude-code-s-waiting",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2luRWmka8",
       "body": "First cost seen, from tooling feedback, 2026-10-21 ~01:30, 0.16.2-dev on the Mac. A Claude Code integrator ended its turn waiting on background sub-agents and background Bash it had started, after running `report --waiting`. A worker's post sat unrung for 30 minutes, and @muster told the worker the integrator 'has read as working for 111 minutes without a break, so it is rung only once it stops'; the worker resent with --urgent. The screen was not captured, but waiting on background agents is this card's screen, and the declared wait did not outrank the working read. Moved to backlog-hi: an integrator waits like this in every round.",
-      "created_at_millis": 1792627656442,
-      "id": "c_2luRWmka8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792627656442
     }
   ],
   "created_at_millis": 1792204511111,

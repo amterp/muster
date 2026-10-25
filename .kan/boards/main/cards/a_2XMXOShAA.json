@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-agent-says-more",
   "alias_explicit": false,
   "area": [
@@ -9,16 +9,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XOWbVD6N",
       "body": "Design settled 2026-09-26 (integrator), from what Claude Code documents (code.claude.com/docs/en/statusline.md, hooks.md, agent-view.md):\n- Claude Code's statusline command receives JSON on every assistant message (and on a refreshInterval timer): context_window.used_percentage / remaining_percentage / total_input_tokens / context_window_size, model.id / display_name, cost.total_cost_usd, session_id, transcript_path, rate_limits. No sub-agent count.\n- Hooks SubagentStart / SubagentStop fire per sub-agent (with its type), so a running count is start minus stop.\n- `claude agents --json` (stable) gives state working|blocked|done|failed|stopped and waitingFor (permission prompt | input needed | dialog open ...) per session pid - a stronger blocked/done signal for Claude than screen reading, e.g. for the plan-approval dialog Muster reads as done.\n- All of these can run a shell command, so an agent can report its own facts.\nDecision for v1: agent-reported facts, stored and published by the daemon (view = f(daemon state); they survive app quits and work on the devenv with no window). A verb run from inside the pane reports to the daemon that owns it, named by $MUSTER_PANE - e.g. `muster agent report --context 31 --model opus --cost 1.2` and `--subagent-started / --subagent-stopped`. A small vocabulary of well-known facts the view renders (context used %, sub-agents running, model, cost) plus free-form key/values passed through. Reported facts are per pane and cleared when the agent in the pane changes (detection sees a new agent). Screen-captured facts via manifests are a later addition, not v1 (statuslines are user-configurable). Harness wiring (statusline snippet, hook config) ships as docs/skill in extras/, not Muster code. Open for the implementer: the verb's transport (the pane needs the daemon socket: a MUSTER_DAEMON_SOCKET env var in every pane, and a reporting subcommand available on Linux where no muster CLI exists yet - possibly the daemon binary itself), and how the sidebar shows facts without clutter. Sequenced with the detection wiring (a_2XORXgBGa).",
-      "created_at_millis": 1790482899577,
-      "id": "c_2XOWbVD6N"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790482899577
     },
     {
-      "author": "Alexander Terp",
-      "body": "Daemon side done in round 3: muster-daemon report subcommand, MUSTER_DAEMON/MUSTER_DAEMON_SOCKET in each pane, Pane.facts on the record, extras/claude-code/ statusline and hooks, checked against Claude Code 2.1.283. Rendering (mirror, sidebar, muster window, pane wait) is a_2XQXk8sou, after the cut-over.",
-      "created_at_millis": 1790487709845,
       "id": "c_2XQXk0jZw",
+      "body": "Daemon side done in round 3: muster-daemon report subcommand, MUSTER_DAEMON/MUSTER_DAEMON_SOCKET in each pane, Pane.facts on the record, extras/claude-code/ statusline and hooks, checked against Claude Code 2.1.283. Rendering (mirror, sidebar, muster window, pane wait) is a_2XQXk8sou, after the cut-over.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1790487709845,
       "updated_at_millis": 1790487718699
     }
   ],

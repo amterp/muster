@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-second-post-can",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSLyJVxi",
       "body": "2026-10-24: hit again in the full gate on 8042bdfb. Fix in progress.",
-      "created_at_millis": 1792856237753,
-      "id": "c_2nSLyJVxi"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792856237753
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSw6pXxT",
       "body": "2026-10-24: on main in c17ebbea. A post that leaves its wake to one a doorbell look has in hand reports that wake's held reason. A wake in hand for its very first look can still print woke; closing that would make the post wait for the look.",
-      "created_at_millis": 1792857626872,
-      "id": "c_2nSw6pXxT"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857626872
     }
   ],
   "created_at_millis": 1792855654579,

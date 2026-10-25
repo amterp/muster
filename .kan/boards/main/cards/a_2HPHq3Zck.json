@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-window-and-the",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2HPMrvk3H",
       "body": "Landed and green through `./dev`.\n\nThe CLI moved, not the window: `working` is blue and `done` is green in both now, `blocked` stays yellow in the terminal because the sixteen have no orange, and `idle`/`unknown` stay bare because no colour is what resting looks like in a list of words.\n\nThe legend is written down for the first time - `docs/architecture.md` with the reasoning, `docs/cli/window.md` so it ships inside the binary for an agent with no repo - and both source sites now cite the doc and each other, with a test per side that fails if its own row moves.\n\nConsidered and rejected: a hue table in `muster-core`. A hue never crosses the seam, so Swift would keep its table and the core would gain a second rather than replace one, plus a `muster-cli` -\u003e `muster-core` edge Cargo.toml deliberately refuses. A text lint across both files is the thing to promote to if a tripwire ever fails to fire.\n\nOpen question for you: plain ANSI blue (34) is the least legible of the sixteen on a dark background, and `working` is the state a window spends most of its time in. `BrightBlue` is the same hue slot if it reads badly in your theme.",
-      "created_at_millis": 1788120694872,
-      "id": "c_2HPMrvk3H"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788120694872
     }
   ],
   "created_at_millis": 1788120501530,

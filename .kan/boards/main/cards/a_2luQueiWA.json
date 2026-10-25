@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-compact-then",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lyELNUOK",
       "body": "2026-10-21: fixed on main in 701101b9. Every compaction in the 10-18..21 run log (35 of 35) was logged given_up: the typist's second look found the screen at work while a hooked agent's idle report still outranked it, gave up, and dropped the --then prompt. A line taken at work now counts as taken; a test reproduced the bug first. The --then prompt is also typed as work now (2d02510c).",
-      "created_at_millis": 1792636682775,
-      "id": "c_2lyELNUOK"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792636682775
     }
   ],
   "created_at_millis": 1792627632846,

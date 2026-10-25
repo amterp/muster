@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "every-tunnel-reopen",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2J1UcY0wI",
       "body": "Correction, measured on the quit this card describes: quitting leaves *every* master behind, not just the last one. The title understates it.\n\nPid 2227 was quit from the menu with `cmd+q`. Eighteen masters against its control path were still running afterwards, all reparented to init, holding eighteen authenticated connections to the far machine. They had to be killed by hand:\n\n    before: 18 masters\n    pkill -f \"ssh -N -M -S /private/tmp/muster-2227-\"\n    after:  0 masters\n\nThe socket files needed removing too - `/private/tmp/muster-2227-*.sock` and the `.ctl` - since `Drop` unlinks them only on the path it thinks it owns.\n\nThis sharpens the fix rather than changing it. `Drop` cannot end connections it has no handle on, so ending the master has to be addressed to the control path with `ssh -O exit`, and one call per tunnel is not enough while previous masters are still bound to paths of their own. Either the reopen path ends the old master before it abandons the path (which is where the accumulation starts), or `Drop` sweeps every master matching this process's own path prefix. The first is better: it stops them accumulating rather than tidying up after.",
-      "created_at_millis": 1788359320869,
-      "id": "c_2J1UcY0wI"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788359320869
     }
   ],
   "created_at_millis": 1788358933914,

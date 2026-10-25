@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "msg-verbs-start-a",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2bZyMPzL9",
       "body": "2026-10-04: cargo tree -p muster-daemon-client -e normal shows no muster-vt/libghostty today, so the stated blocker may be stale. Remaining: the CLI finding the daemon binary and data dir (bundle helper on macOS, ~/.muster/daemon/\u003cversion\u003e/ on a devenv), the Launch Services start, and whether muster-ssh/sha2/tar in the musl CLI is acceptable.",
-      "created_at_millis": 1791101236058,
-      "id": "c_2bZyMPzL9"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791101236058
     }
   ],
   "created_at_millis": 1790596529148,

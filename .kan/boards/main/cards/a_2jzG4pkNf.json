@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-new-tab-is-refused",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvWKwUe",
       "body": "2026-10-24: fixed on main in 82314b3c, with a test that failed before the fix. An inherited directory that is gone starts the pane in home (new tab and split alike, since macOS reports a removed directory as live); a typed --cwd is still refused. Daemon protocol 1.8, Create.cwd_inherited.",
-      "created_at_millis": 1792852837682,
-      "id": "c_2nQvWKwUe"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837682
     }
   ],
   "created_at_millis": 1792343605989,

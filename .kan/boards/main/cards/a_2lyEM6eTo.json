@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-handoff-does-not",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2m0jJuFRS",
       "body": "2026-10-21 review: the handoff also drops typed.turn (who started the current turn), so a helper handed over mid-chore - a compaction or rename Muster typed - reads as at real work in the newer daemon, and its idle afterwards can raise a maker notice. And the pending blocked report that has not yet counted (04f7d15f) is not carried either, as that commit says. Carry all three with the pane's facts.",
-      "created_at_millis": 1792642640066,
-      "id": "c_2m0jJuFRS"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792642640066
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3xf4Gy",
       "body": "2026-10-24: on main in 1ea8bd86. A handoff carries the carried mark, who typed the current turn, and a blocked report still waiting for the screen (Handoff.Pane 11-13, Handoff.Detection 32-34). A carried wait's limit starts over in the new daemon, so it can last up to twice the limit across a handoff.",
-      "created_at_millis": 1792855545438,
-      "id": "c_2nS3xf4Gy"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855545438
     }
   ],
   "created_at_millis": 1792636683273,

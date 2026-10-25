@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "naming-a-pane-on-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_29eBvbawr",
       "body": "Closed by pane naming rather than by a CLI decision. Muster mints its own pane names now and they are unique across every attached machine, so `muster p1w3r07bsd` names one pane and needs nothing beside it - there is no `devenv:w1:p1` to invent. A name that resolved to two panes would be a bug in the registry rather than an honest ambiguity.\n\nSee docs/architecture.md, ownership of truth (Muster names its own panes), and a_26BJb2n6o.",
-      "created_at_millis": 1786973916635,
-      "id": "c_29eBvbawr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786973916635
     }
   ],
   "created_at_millis": 1786779067766,

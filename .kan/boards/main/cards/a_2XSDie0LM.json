@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-app-follows-each",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XYiNal7A",
       "body": "Built on the cut-over branch (client in round 5, the seam's relay in round 6). Moves to done when the cut-over reaches main.",
-      "created_at_millis": 1790507185029,
-      "id": "c_2XYiNal7A"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790507185029
     }
   ],
   "created_at_millis": 1790491706788,

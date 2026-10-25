@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "mip-3-a-daemon-of",
   "alias_explicit": false,
   "area": [
@@ -11,10 +11,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JZcLjD",
       "body": "Done. herdr is removed and muster-daemon ships in the bundle and installs on remote machines. The children still open (latency tier, static libghostty-vt, manifest re-sync) are their own cards.",
-      "created_at_millis": 1792200743566,
-      "id": "c_2j1JZcLjD"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200743566
     }
   ],
   "created_at_millis": 1790469794031,

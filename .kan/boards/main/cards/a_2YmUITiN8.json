@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "one-process-holds",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JZr86L",
       "body": "Done as MIP-6: one app per install holds every window (9bee6c34 --window, c8d277b2 window list, 00f1b83d docs).",
-      "created_at_millis": 1792200743715,
-      "id": "c_2j1JZr86L"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200743715
     }
   ],
   "created_at_millis": 1790687773015,

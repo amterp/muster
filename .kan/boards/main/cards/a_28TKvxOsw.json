@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-suite-is-green",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28UAzHtXJ",
       "body": "Fillers 1 and 2 landed in 3d64f65. A contract run now fails on any warning or error the scenario did not declare it expects, and separately on any pane the window was told to show that never got a surface or never painted a frame. `check_bad_pane` declares `core.refused` and nothing else, so a second unrelated warning inside a scenario about a refusal still fails the run.\n\nBoth were replayed against the run logs of the two real bugs to check they bite:\n\n- blank window (14:11): caught by the warning check (`pane.surface.deferred`, one record). Not caught by the paint check, because the pane did eventually paint once a split forced a republish. These read a whole run and cannot see how long something was broken for - worth knowing before trusting them.\n- phantom pane (14:20): caught by both. 78 records the app itself called wrong, and `w1:p2` got a surface and never painted.\n\nFiller 3 - invariants over sequences - is a habit rather than a change, and has two instances now: `cold_start.rs` and `resize.rs`. Left open for the part still undone: none of the daemon-backed tests starts from a state a user's daemon is actually in. They all build their world first, which is why a daemon holding nothing and a daemon holding a pane whose terminal died both had no coverage.",
-      "created_at_millis": 1786802284316,
-      "id": "c_28UAzHtXJ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786802284316
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_28XzySqLZ",
       "body": "Filler 3 is now closed too, and one of the card's premises turned out to be wrong.\n\n`crates/muster-seam/tests/inherited.rs` opens onto a session Muster did not build: a workspace somebody else created, two tabs, one zoomed, and a focused tab chosen by a person. It asserts invariants over whatever the window settles on - every pane on screen is typeable, every pane that exists is in the roster, none listed twice, and a pane in the tab nothing shows can still be reached. Verified to bite by making the roster report only what is on screen; it fails naming the pane it dropped.\n\nTwo things worth recording:\n\n- **\"A daemon holding a pane whose terminal died\" is not a state.** herdr drops the pane from `pane.list` the moment its process goes, so a daemon holds a live pane or no pane. That case is the phantom pane (a_28TK7FIcF), which already has coverage.\n- **A daemon holding nothing was already covered** by `cold_start.rs`.\n\nGuarded against the failure this card is about: the arrangement is asserted before Muster sees it, because every check passes vacuously on a daemon holding one pane, and the hidden-pane half demands a hidden pane rather than skipping when there is none.\n\nRaised on the way out: a_28XbMv3tn - the suite now starts enough concurrent daemons that a 10s deadline lost once during a full run and passed alone.",
-      "created_at_millis": 1786811394082,
-      "id": "c_28XzySqLZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786811394082
     }
   ],
   "created_at_millis": 1786800283385,

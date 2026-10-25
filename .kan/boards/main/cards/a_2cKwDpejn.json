@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "right-click-never",
   "alias_explicit": false,
   "area": [
@@ -9,16 +9,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cL0nN9y0",
       "body": "Narrowed 2026-10-05: a laptop tab holding only a zsh shell (p296he013e, made with muster tab new --daemon local in window-3) opens no menu on right-click either, so this is not Claude Code taking the clicks. The surface menu tests (ContextMenuTests) run against RecordingSurface, a stand-in, so nothing in the gate checks whether a real libghostty surface leaves a right-click to the host. Still to check: whether the menu opens in window-6, which the app opened at launch rather than adding later.",
-      "created_at_millis": 1791213343810,
-      "id": "c_2cL0nN9y0"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791213343810
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2cL4YvhLj",
       "body": "Cause: Appearance.swift tells every surface right-click-action = ignore (04c8fd12, 2026-09-27, from before the pane menu existed: 'a context menu Muster does not have'). In libghostty's mouseButtonCallback at the pin, .ignore falls through to 'return true', so the surface consumes every right-click and SurfaceView.rightMouseDown never reaches super, so AppKit never asks menu(for:). Only .context-menu returns false. This also explains shift-right-click over Claude Code: shift skips the mouse report, then hits the same block. Fix: right-click-action = context-menu (Ghostty's default, which selects the word under the pointer as Ghostty does), update GhosttyConfigTests, and add a real-surface test (contract tier) that a right-click over a shell opens the menu, since ContextMenuTests' RecordingSurface returns false where the real surface returned true.",
-      "created_at_millis": 1791213488612,
-      "id": "c_2cL4YvhLj"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791213488612
     }
   ],
   "created_at_millis": 1791213168056,

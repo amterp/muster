@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-ambiguous-to",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nRWO2P5C",
       "body": "2026-10-24: on main in 4051ffb4 and 421c4707. Each candidate is named by a ref that reaches it alone; a participant with no pane gets the new shadowed refusal. With --group, a name several agents answer to means the group's one member (post path only).",
-      "created_at_millis": 1792854254828,
-      "id": "c_2nRWO2P5C"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792854254828
     }
   ],
   "created_at_millis": 1792448895501,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-perf-baseline",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-lo",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1Jeb4UA",
       "body": "a_2AAQN3Of9 is merged here: view.build reads 137-150 ns/pane against a baseline of 118.7, because View::of and full_window do more per pane than when the baseline was recorded. Decide whether that is the honest cost before re-recording. Needs a quiet machine.",
-      "created_at_millis": 1792200746652,
-      "id": "c_2j1Jeb4UA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200746652
     }
   ],
   "created_at_millis": 1787050736919,

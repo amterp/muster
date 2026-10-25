@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-helper-s-own-idle",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nV4VwtSP",
       "body": "2026-10-24 12:25: the same again for a second idle worker (Opus, Claude Code), about an hour after its last turn.",
-      "created_at_millis": 1792862716527,
-      "id": "c_2nV4VwtSP"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792862716527
     }
   ],
   "created_at_millis": 1792862247049,

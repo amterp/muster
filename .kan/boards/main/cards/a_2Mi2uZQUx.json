@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "nothing-in-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2YSLgFjmU",
       "body": "amterp, 2026-09-28, noting it again in use: \"some indicator of eg laptop or devenv, which daemon\".",
-      "created_at_millis": 1790639776158,
-      "id": "c_2YSLgFjmU"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790639776158
     }
   ],
   "created_at_millis": 1788904026868,

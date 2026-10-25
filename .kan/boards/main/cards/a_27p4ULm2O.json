@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "config-is-a-file-and",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27pMEYVX3",
       "body": "Landed in 4cb3643, with one deviation from the plan worth recording: the seam wiring - Startup gaining a config path, the app reading the file - is not here. A config path the core accepts and does nothing with is a promise the app does not keep, and a log line saying 'two daemons' beside a window showing one is worse than no line. It lands with the card that opens a region per daemon.\n\nAlso deferred deliberately: no timeout knob. The SSH endpoint will want one, since 500 ms was tuned for a local socket and sits on the input path - but the default belongs with the code that reads it, and a config field with no behavior behind it is a lie to whoever reads the docs.",
-      "created_at_millis": 1786705002141,
-      "id": "c_27pMEYVX3"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786705002141
     }
   ],
   "created_at_millis": 1786704320018,

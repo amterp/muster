@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "cross-machine-pair",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2YOlJpguu",
       "body": "A real case, 2026-09-28 on 0.11.0: telling two idle devenv agents to carry on after the upgrade. `muster msg post --to \u003cpane\u003e` from a devenv shell is refused ('this shell is the person at the Muster window on sydmac7m7r ... Run this on sydmac7m7r'), and from the laptop it needs a group both have joined, which neither pane had. Fell back to `muster pane send --confirm` then `--enter` into their empty prompts. The refusal itself was clear about why and where to go.",
-      "created_at_millis": 1790631228574,
-      "id": "c_2YOlJpguu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790631228574
     }
   ],
   "created_at_millis": 1790619585008,

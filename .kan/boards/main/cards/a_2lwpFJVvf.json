@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "ctrl-beeps-rather",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nRWNmIul",
       "body": "2026-10-24: on main in 3b6c5316. Ghostty's ctrl+/ case ported beside ctrl+return; a program in legacy mode reads 0x1f. Checked by test only: whether macOS beeps on ctrl+/ in a real key window is Ghostty's account.",
-      "created_at_millis": 1792854254665,
-      "id": "c_2nRWNmIul"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792854254665
     }
   ],
   "created_at_millis": 1792633334776,

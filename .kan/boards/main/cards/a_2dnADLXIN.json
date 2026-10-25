@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-return-sent-the",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hIgKBUFn",
       "body": "More instances from tooling feedback: six more lost Returns at a dialog (2026-10-08, four on 10-09, one on 10-12). Two of the 10-09 losses came within a second of `pane wait` returning blocked, and a second identical send 8-40 s later worked every time, which fits \"blocked is reported before the dialog takes keys\". `--confirm` on a key-only send already checks that the pane changed (since 0.14.0) and could serve as the check, though a spinner also changes the pane.\n\nSeparate cause, not this card: two later losses (2026-09-28, 2026-10-12 with `/clear`) were slash commands sent as text, then Return in a second `pane send`. `Input::writes` in `crates/muster-daemon/src/writer.rs` documents that a harness takes a slash command only with its text and Return in one write, so that two-call recipe comes from the parallel-work skill, filed as feedback there.",
-      "created_at_millis": 1791946607150,
-      "id": "c_2hIgKBUFn"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791946607150
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzZxYL7W",
       "body": "2026-10-21: partly addressed by 04f7d15f, which stops a hook's blocked report from counting before the dialog is drawn and the screen sits still - the likely cause of Returns lost within a second of pane wait answering blocked. It does not explain the first sighting here, where the dialog was already drawn with option 1 highlighted. Keep open for that case.",
-      "created_at_millis": 1792639896966,
-      "id": "c_2lzZxYL7W"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792639896966
     }
   ],
   "created_at_millis": 1791428201129,

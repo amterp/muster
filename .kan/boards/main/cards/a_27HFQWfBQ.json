@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "port-the-core-to",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27J4nt84g",
       "body": "Done for everything short of the seam. The core, the herdr adapter, the VT bindings, the bridge, the grid oracle and the perf harness are Rust; all 73 conformance cases run in both languages and the gate reports the count on every run.\n\nTwo proofs that mattered more than the green suite. The key-encoder survey snapshots and both grid snapshots pass unregenerated, so the Rust code drives libghostty to byte-identical output. And './dev --contract' runs the real app against a real daemon with the Rust bridge - which needed no FFI, because a separate process needs no seam.\n\nPerf moved with the code it measures: frame.decode 5.96 -\u003e 0.80 ns/byte, input.encode 162 -\u003e 40 ns/key, frame.vt_parse flat at 3.72 -\u003e 3.91 (the same libghostty call in both, so its flatness is what says the other two are real).\n\nWhat stays Swift until the seam lands (a_27HFQbwG6): the window, the renderer, PaneInput's callers, and the key encoder the app still calls directly.",
-      "created_at_millis": 1786628067174,
-      "id": "c_27J4nt84g"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786628067174
     }
   ],
   "created_at_millis": 1786623708969,

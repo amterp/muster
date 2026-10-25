@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "controlpersist-makes",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2J1Mznh8o",
       "body": "`ControlPersist=no` is confirmed as both the fix and the workaround. Running the same `master_arguments` command with the option added, against the same host:\n\n    spawned pid 70064 STILL ALIVE after 5s\n    pgrep -f probe2.ctl -\u003e 70064          \u003c- one master, and it is the process that was spawned\n    HERDR_SOCKET_PATH=/tmp/probe2.sock herdr workspace list -\u003e answers\n\nSo the option keeps ssh in the foreground without costing the forward, and `child.try_wait()` then answers the question `supervise` is asking. The same command without it exits within four seconds and hands the forward to a different pid.\n\nUntil the fix lands, a user hits this only if their ssh config sets `ControlPersist` for the host, and they can neutralize it per daemon without touching `~/.ssh/config`:\n\n    [[daemon]]\n    id = \"devenv\"\n    host = \"aterp-chco\"\n    ssh_options = [\"-o\", \"ControlPersist=no\"]\n\n`master_arguments` appends `forward.options` after Muster's own, and a command-line `-o` beats the config file, so this reaches ssh as the effective value. That it works from `ssh_options` at all is the argument for pinning it in `master_arguments` instead: the workaround proves the option belongs with the other four Muster already refuses to let a config override.",
-      "created_at_millis": 1788359027758,
-      "id": "c_2J1Mznh8o"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788359027758
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2J1UcMsTR",
       "body": "Verified in the real app, not just by hand. Applied `ssh_options = [\"-o\", \"ControlPersist=no\"]` to the devenv `[[daemon]]` block and relaunched (run 73812):\n\n    tunnel events for the whole run:  1  (tunnel.open, nothing else)\n    ssh masters:                      1, PPID 73812\n    problems raised:                  0\n\nTwo numbers say it worked. The master's parent is the app, so it stayed in the foreground and `try_wait` is now asking about the connection itself. And the run has no `tunnel.down` at all, where every previous launch opened with two `down` / `reopened` pairs in its first three seconds. Those startup pairs were never \"the normal blip\" the card `a_2IRdZK6Un` describes; they were this bug, small.\n\nAll seven panes came back. Two had their attach refused by far-side clients left over from the flapping run, and Muster retried with `takeover=true` 200ms later and both became typeable, so the `a_2HrmSyRAQ` recovery path works once the tunnel underneath it holds still.",
-      "created_at_millis": 1788359320748,
-      "id": "c_2J1UcMsTR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788359320748
     }
   ],
   "created_at_millis": 1788358934380,

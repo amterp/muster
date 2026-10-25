@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-contract-tier",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Js2CoDzW",
       "body": "**Done, and the open question is decided: both, because they are not the same mechanism.**\n\n**Each check owns its daemon's life.** All three cleanups now go through one `stop_daemon(socket, env)`, spelled `HERDR_SOCKET_PATH=\u003csocket\u003e \u003cpinned herdr\u003e server stop`. Three call sites had it three ways and one of them worked; the other two exited quietly under `check=False`, which is why this was invisible for as long as it was.\n\n**And `main()` ends what a previous run left, before it deletes ROOT.** Not a second way of doing the same job: a run that is interrupted never reaches its `finally`, and the delete is what makes a stray unreachable by anything but a signal. That ordering was the third fault on this card and the one that made the first two stick.\n\n**Third, not asked for: the tier now fails if it leaked.** After the checks, any socket under ROOT that still answers a ping is named and the run exits non-zero. The first validation bullet was otherwise something somebody had to re-measure with `./dev --doctor`, which is a thing people run when already suspicious - four runs left eight strays before anybody looked. Exercised against a daemon staged under ROOT on purpose, and it reports zero when there is none.\n\n**Also chosen: the tier runs the pinned daemon rather than whatever is on PATH.** Every other tier does, and it is what makes the stop above reach a binary that exists - on a machine set up the way this project intends there is no herdr on PATH at all, which is half of why the `--socket` cleanup did nothing. A contract judged against an unpinned daemon is judged against a version nothing here recorded. AGENTS.md said the tier needs a herdr on PATH; it no longer does, and now says so.\n\n**All three validation bullets checked on this machine.** Two `./dev --contract` runs back to back, green both times, and `./dev --doctor` naming no daemon under `/private/tmp/muster-smoke` afterwards.\n\n**One thing this cannot recover.** The two strays this machine was carrying from before the fix - `/private/tmp/muster-smoke/{driving,problems}` - had already had their socket files deleted by a later run's `rmtree`, so nothing could ask them to stop and they had to be signalled. The fix stops new ones being orphaned; it cannot reach one that already is.",
-      "created_at_millis": 1788484542427,
-      "id": "c_2Js2CoDzW"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788484542427
     }
   ],
   "created_at_millis": 1788225082277,

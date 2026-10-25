@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "two-contract-tier",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1Jd3WBz",
       "body": "Obsolete: herdr-era contract daemons. If strays turn up again, ./dev --doctor lists them and muster daemons says what each holds.",
-      "created_at_millis": 1792200745699,
-      "id": "c_2j1Jd3WBz"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745699
     }
   ],
   "created_at_millis": 1788656697004,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-held-wake-notice",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvW4pDK",
       "body": "2026-10-24: fixed on main in 7786ed20, with a test that failed before the fix. The stall watch forgets a member's working run once nothing waits on it.",
-      "created_at_millis": 1792852837522,
-      "id": "c_2nQvW4pDK"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837522
     }
   ],
   "created_at_millis": 1792792470993,

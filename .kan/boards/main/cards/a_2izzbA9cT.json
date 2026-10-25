@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-self-compacted",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j17JuWHh",
       "body": "amterp asked for the same thing, Chat Notes 2026-10-12: \"compact plus message after in one command\".",
-      "created_at_millis": 1792200272549,
-      "id": "c_2j17JuWHh"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200272549
     }
   ],
   "created_at_millis": 1792197592516,

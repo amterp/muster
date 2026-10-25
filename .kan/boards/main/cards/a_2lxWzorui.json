@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-ring-left-in-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvVoJyR",
       "body": "2026-10-24: fixed on main in 7f6165d8, with a test that failed before the fix. The doorbell takes back a left or swallowed ring once its messages are read, if the prompt holds only that ring.",
-      "created_at_millis": 1792852837364,
-      "id": "c_2nQvVoJyR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837364
     }
   ],
   "created_at_millis": 1792635016526,

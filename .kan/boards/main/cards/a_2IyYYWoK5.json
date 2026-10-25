@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "shake-down-0-5-0",
   "alias_explicit": false,
   "area": [
@@ -10,10 +10,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JdJHXY",
       "body": "Obsolete: a shakedown of 0.5.0, eleven releases ago.",
-      "created_at_millis": 1792200745850,
-      "id": "c_2j1JdJHXY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745850
     }
   ],
   "created_at_millis": 1788352322303,

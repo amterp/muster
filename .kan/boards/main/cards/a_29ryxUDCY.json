@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "herdr-keeps-a-pane-s",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JbnqBy",
       "body": "Obsolete since MIP-3: about herdr's handling of a detached client's PTY size.",
-      "created_at_millis": 1792200744917,
-      "id": "c_2j1JbnqBy"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200744917
     }
   ],
   "created_at_millis": 1787006784012,

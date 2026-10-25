@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "is-refilling-a",
   "alias_explicit": false,
   "area": [
@@ -8,28 +8,28 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2IPhz2q9A",
       "body": "Observed in use on 0.4.1, which is the evidence this card said it was waiting for.\n\nDriving a laptop and a devenv in one window, I wanted the local side gone for the day and to work on the devenv alone. Closing the local pane three times produced a fresh local tab and pane each time, with a new id every round:\n\n    t206zcc903 / p206zc68fg  -\u003e  closed\n    t206zpgpw6 / p206zpeagf  -\u003e  closed\n    t206zwkf92 / p206zwsnkx  -\u003e  and so on\n\nThe workaround the card predicted is the one I had to use: take the `[[daemon]]` block out of `~/.muster/config.toml`. `muster reload` does not apply it either - `daemons_differ` logs \"relaunch to pick up a `[[daemon]]` change\" - so it also costs a relaunch, and with it every pane in the window.\n\nTwo things the card did not anticipate.\n\nIt was the **local** machine I wanted empty, not the remote one. The card reasons about a devenv shell appearing over ssh, but wanting one machine off screen has nothing to do with which machine it is: I was working on the devenv and the laptop half was in the way.\n\nAnd **there is no way to ask for this short of the config**. `muster pane close` is the only verb that empties a machine, and it is the trigger for refilling it. So the answer to \"I am done with this machine for now\" is to edit a file and relaunch, which loses the state of the machine you are keeping.\n\nThat moves me to the card's first option - ask once per attach, and leave a machine empty once you empty it - now that `muster pane new --daemon \u003cid\u003e` exists as the way back. The property given up is that the window can show a machine holding nothing you cannot use, and the sidebar heading already says `no tabs, so this daemon is holding nothing`, so that state is visible rather than silent.",
-      "created_at_millis": 1788269269880,
-      "id": "c_2IPhz2q9A"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788269269880
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2IoYZmDj9",
       "body": "Answered, though not yet built. The 2026-09-01 comment settled on the card's first option - ask once per attach, and leave a machine empty once you empty it - and the reason it is still open is that the rule it wants deleted is the same rule the tab model deletes.\n\n`open_remaining_regions` refills a machine because the window is a column per machine: a machine with no region has nothing on screen, and a window showing a machine you cannot use is the state `a_2HpkpfIfq` was about. Once a window holds an ordered list of Muster tabs with one on screen (MIP-2, stages three and four, carded as `a_2IoXIHzri`), nothing is owed a column and the rule stops existing in its present form. Deleting it before then would put back the hole `a_2HpkpfIfq` closed.\n\nSo this card's answer is: yes, refilling is too eager, and it goes when the tab model does. MIP-2 says so in \"What gets easier\". Moving it to `backlog-hi` rather than leaving it in `uncommitted`, because the question is settled and only the sequencing is outstanding.\n\nOne thing the 2026-09-01 comment turned up that outlives the rule and is worth keeping in view: `muster reload` does not apply a `[[daemon]]` change, so detaching a machine costs a relaunch and every pane in the window with it. That is a separate gap from refilling and stays one after the tab model lands.",
-      "created_at_millis": 1788328490266,
-      "id": "c_2IoYZmDj9"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788328490266
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2J5N3hwZo",
       "body": "Another cost of the two-home workaround, found 2026-09-02: it breaks per-app window switching.\n\nRunning the devenv window from `~/.muster` and the local window from `--home ~/.muster-local` is two processes, and Launch Services registers them as two applications (`lsappinfo list` shows two \"Muster\" entries with the same bundle id, pids 73812 and 11860). AltTab's \"show windows from the active app\" filter is per application, so `⌥+\\`` shows only the windows of whichever Muster is frontmost. The other window is a different app as far as macOS is concerned. It reads as a per-monitor limitation, because each process has one window and they sit on different screens, but the screen filter is set to all screens and is not the cause.\n\nThis is a cost of the workaround rather than a new bug, and it goes when the tab model (`a_2IoXIHzri`) lets one process hold two windows that each show one machine. Until then the choice is: two processes and no per-app switching between them, or one process and every window showing every attached machine.",
-      "created_at_millis": 1788368563294,
-      "id": "c_2J5N3hwZo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788368563294
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2JtQSg6OX",
       "body": "Answered and built, on `main1` (slot 1 of the 2026-09-03 parallel round), as part of MIP-2 stages three and four (`a_2IoXIHzri`).\n\n`open_remaining_regions` is gone. Nothing is owed a column now that a window holds an ordered list of Muster tabs and shows one of them, so a machine whose last pane you close simply stops contributing tabs - and stays that way. That is the card's first option, which the 2026-09-01 comment settled on: ask once per attach, and leave a machine empty once you empty it.\n\nWhat replaces the property it gave up. The card and `a_2HpkpfIfq` both worried about a machine that is attached and holds nothing dropping out of the window's reach. Two things keep it reachable:\n\n- **It is still in the window.** The agent list grows a section at its foot holding a row per machine that is unreachable or holding no panes. A machine that is connected and holding panes contributes no row - its panes carry its name - so the common case is unchanged and silent.\n- **That row is a way in.** Picking one asks for a pane on that machine, which is the sidebar affordance `a_2HpkpfIfq` deliberately deferred. `muster pane new --daemon \u003cid\u003e` and `muster tab new --daemon \u003cid\u003e` are the same reach from a script.\n\nThe window still asks for a workspace when it has no tab at all to open onto, which is a different rule and the one that makes a first launch a window rather than an empty rectangle. It asks once per machine for the life of the window and never again - so closing your last pane later leaves it empty, which is the whole of what this card wanted.\n\nOne thing tightened while doing it, because it was the same rule misfiring: the window now waits for a machine to say what it holds before asking it for a workspace. Asking in the moment before a first snapshot lands opened a tab nobody wanted and left the one they did behind.\n\nThe gap the 2026-09-01 comment turned up and said outlives this is still open: `muster reload` does not apply a `[[daemon]]` change, so detaching a machine still costs a relaunch.",
-      "created_at_millis": 1788487858103,
-      "id": "c_2JtQSg6OX"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788487858103
     }
   ],
   "created_at_millis": 1788223950434,

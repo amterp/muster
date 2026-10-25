@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "directional-focus-between",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28O4XR7fo",
       "body": "Done, and the card's open decision went to the client side - but not to the tree walk it leaned towards.\n\nAsking herdr was rejected for the reason the card gives: BackendChannel::submit is write-only by design, and every future backend would then owe us a read to answer a question about an arrangement Muster is already holding.\n\nThe walk was rejected too, which the card did not anticipate. Up to the first matching-axis ancestor and back down the near side has to pick a child by its position in the tree whenever it descends through a perpendicular split - so in any arrangement that is not symmetric it lands somewhere the user did not point at. The view already carries every ratio, and after region weights (a_27Y3iQCxI) it carries the arrangement over regions too, so the whole window is one normalized space and the honest answer is a rectangle comparison. Same inputs, no seam read, and it agrees with the screen.\n\nA candidate has to be on the far side and overlap the source across the direction of travel, so nothing diagonal is reachable in one move, and it does not wrap. Both are affordable because next and previous already reach every pane - reachability is their job, so this one gets to be predictable.\n\nTwo corpus cases pin the disagreement specifically: an asymmetric layout where the pane actually to the left is the second child of its subtree, and a tie broken by shared edge rather than by tree order.",
-      "created_at_millis": 1786787736735,
-      "id": "c_28O4XR7fo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786787736735
     }
   ],
   "created_at_millis": 1786663774500,

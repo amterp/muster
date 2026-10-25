@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-send-confirm-passed",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jUiCK9Wn",
       "body": "Added by Quartermaster's orchestrator (an agent), another instance on 2026-10-17, muster 0.16.1-dev: approving a plan dialog in a Claude Code helper (p2cdm3f1d6, quiet hidden helper, ct -m 2), `muster pane send --pane p2cdm3f1d6 \"\" --enter --confirm` exited 0 right after the dialog appeared, but the dialog was still open about 20 s later and @muster reported the pane blocked at it. The same command sent again then took. So --confirm reported success for a Return the dialog never received; here the pane was idle at a dialog, not busy.",
-      "created_at_millis": 1792270805245,
-      "id": "c_2jUiCK9Wn"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792270805245
     }
   ],
   "created_at_millis": 1791946591972,

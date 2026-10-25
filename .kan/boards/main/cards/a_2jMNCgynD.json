@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "rings-to-an-idle",
   "alias_explicit": false,
   "area": [
@@ -8,28 +8,28 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jOJhEBBu",
       "body": "2026-10-17: not the tip box - a live one (Claude Code 2.1.301) reads idle with an empty prompt under main's and 0.16.0's rules, now recorded (1401a635, docs/observations/claude-code-2.1.301.md). 0.16.0 gave one reason, 'its screen is not its prompt', for three causes main tells apart (a box over the prompt, a screen reading at work, no prompt box found). Candidates: the feedback-draft box (main reads it), a title still showing the busy spinner after the turn (osc_title_working outranks live_prompt_box), or a rule drawn below the prompt box (the box is found as the second rule from the bottom). Since cd3e07bd, msg.ring.waits and msg.ring.covered carry the deciding rule and a text-free shape of the last 12 rows, so the next hold under a build with it names its cause; close this from that record.",
-      "created_at_millis": 1792255563727,
-      "id": "c_2jOJhEBBu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792255563727
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jQIZ1wqp",
       "body": "2026-10-17 13:03, a new lead (see a_2cP6w1lHN's newest comment): an idle Claude Code pane had a wake typed into its prompt that was never submitted, until its sender pressed Return for it ten minutes later, while Claude Code's 'Heads up' tip box showed above the prompt. The rules read the prompt under the box (1401a635), but whether the box takes the ring's Return is not established; the next sighting's msg.ring.* record (cd3e07bd) should say whether the ring was typed and its Return lost, or never rung.",
-      "created_at_millis": 1792260286753,
-      "id": "c_2jQIZ1wqp"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792260286753
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2luRWXgks",
       "body": "Three more from tooling feedback, Claude Code panes on the Mac:\n- 2026-10-16, 0.16.0: an urgent post to a Claude Code worker at work printed `rung once its prompt is empty: \u003cpane\u003e (working)` rather than ringing the running turn, and the wake reached the worker about 13 minutes later. Claude Code's 'Heads up' tip box showed above its prompt throughout.\n- 2026-10-17 18:58 and 2026-10-18 13:45, 0.16.1-dev, after a_2hIfuUkdQ was done: a worker's post arrived while the integrator was mid-turn. The integrator's turn then ended, and the wake rang 15 and 3 minutes later, after the integrator had read the message by hand, so it also rang for a message already read.",
-      "created_at_millis": 1792627656290,
-      "id": "c_2luRWXgks"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792627656290
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSw78OfG",
       "body": "2026-10-24: 0f82dc00 makes the next sighting record what the doorbell judged: msg.group.stalled (warn, once per stall) now carries the deciding rule, the shape of the last rows and of the title (letters as a, digits as #, no text), and still_ms, how long the screen had been unchanged. msg.ring.waits and msg.ring.covered gain the title's shape. No cause found in the code; keep open until a sighting under this build.",
-      "created_at_millis": 1792857627061,
-      "id": "c_2nSw78OfG"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857627061
     }
   ],
   "created_at_millis": 1792250932025,

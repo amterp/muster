@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-queued-compaction",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j3B4KAXM",
       "body": "Landed 2026-10-16 (e122d553): muster window shows a queued compaction or follow-up on the agent's row with what it waits for, --json has compaction, and pane compact says it when the agent is not at its prompt. Whether a compaction or ring should wait on Claude Code's 'Waiting for N background agents' screen is unsettled until that screen is recorded: a_2j2ta8aPN.",
-      "created_at_millis": 1792205183203,
-      "id": "c_2j3B4KAXM"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792205183203
     }
   ],
   "created_at_millis": 1792197592853,

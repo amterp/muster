@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "herdr-published-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3KvDR22",
       "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
-      "created_at_millis": 1790580164992,
-      "id": "c_2Y3KvDR22"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580164992
     }
   ],
   "created_at_millis": 1789256868512,

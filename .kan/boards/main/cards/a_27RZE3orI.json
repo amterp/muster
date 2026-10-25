@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "budget-the-per-pane-agent",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28MNPPqWu",
       "body": "Settled. One thread and ~48 KB per pane, idle at zero CPU, measured at fifteen panes against a real daemon (observations/herdr-0.8.0.md section 11, 'What sixteen of them cost'). Both questions answered: thread-per-watcher stays, and the upstream ask (a_27N6pklkl) drops from need to courtesy - Muster ships the sidebar without it.\n\nWhat the measurement found that nobody asked for: a watcher costs two descriptors, not one, because watch() clones the stream so Drop can unpark the thread. Against the 256 a GUI-launched process inherits from launchd, fifteen panes on two daemons is a real fraction of the budget - raised as a_28MLhxLsn.\n\nThe rig is crates/muster-perf/examples/watcher-cost.rs: an example rather than a baseline entry, so the gate compiles it and never fails a build over a memory reading.",
-      "created_at_millis": 1786783695558,
-      "id": "c_28MNPPqWu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786783695558
     }
   ],
   "created_at_millis": 1786648302839,

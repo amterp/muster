@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "restart-a-stuck",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2is5535h8",
       "body": "2026-10-16, second sighting (a_2is4efRU1): two stuck Codex panes on the devenv, recovered by hand. The steps that worked, which a restart request would automate: (1) drain the terminal's input from the slave side until it stays empty, since the daemon refills it from its own queue (a_2is4QBDSZ) and the shell reads whatever is left once the program exits; (2) SIGTERM the program, which leaves its shell at a prompt; (3) type `codex resume \u003csession id\u003e`. The id came from the main thread's rollout file the process held open (session_meta source \"cli\"; guardian and spawned sub-agent rollouts are open too and must be skipped), because the panes ran plain `codex` and the adapter's reported session id was not to hand. SIGWINCH and emptying the queue alone did not get Codex reading again. Both sessions came back intact.",
-      "created_at_millis": 1792178736930,
-      "id": "c_2is5535h8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792178736930
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2izzeb94Z",
       "body": "Third sighting, from tooling feedback, 2026-10-15 (0.16.0, devenv daemon), with a different reason to restart: 12 Claude Code and Codex agents had to pick up a changed `HTTPS_PROXY`, each resuming its conversation. With no verb for it, the agent doing it found each agent's pid by `MUSTER_PANE` in `/proc/\u003cpid\u003e/environ`, read the session id from Claude Code's `~/.claude/sessions/\u003cpid\u003e.json` and the flags from `/proc/\u003cpid\u003e/cmdline`, then for each pane: `--key esc`, wait for idle, `/exit`, poll the pid, and type `cd \u003ccwd\u003e \u0026\u0026 \u003clauncher\u003e --resume \u003cid\u003e`. Codex's main thread id had to be dug out of a sub-agent rollout's `parent_thread_id`. So a restart request would want an optional changed environment (`--env K=V`) as well as the session and flags. `muster window --json` giving the reported session id and launch command would have saved most of the digging: card a_2izzYTOC6.",
-      "created_at_millis": 1792197594573,
-      "id": "c_2izzeb94Z"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792197594573
     }
   ],
   "created_at_millis": 1791426126169,

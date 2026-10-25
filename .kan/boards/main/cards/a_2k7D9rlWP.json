@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "keys-for-a-name",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-lo",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSzPskRg",
       "body": "2026-10-24: not reproduced in 300 runs (three loops at once through qm, load ~6). Ruled out from code: the input cache skips a PaneIo marked closed, and forget marks it closed under the session lock before the close is answered; Discards drops keys only while an agent restarts; the pane's command runs through -c, so 'ready' means stty raw -echo has run; the old pane's kill_after_grace cannot reach the new one short of PIDs wrapping within 50 ms. Reader and writer threads run user-interactive, so starvation at load 22 is unlikely but not ruled out.",
-      "created_at_millis": 1792857754005,
-      "id": "c_2nSzPskRg"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857754005
     }
   ],
   "created_at_millis": 1792362560030,

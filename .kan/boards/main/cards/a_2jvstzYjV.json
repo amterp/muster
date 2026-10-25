@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "run-dev-through",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jxPLAh8A",
       "body": "Closed without doing it. On 2026-10-18 the owner decided muster's ./dev carries no Quartermaster code, because muster is public: agents reach qm through the skill and hooks installed for every session, which remind them to type `qm run -- ./dev`.\n\nThe wrap was built and run twice before that decision, and the numbers went to Quartermaster's board. The card's 1.5 jobs per granted core gave a 1-core grant a Rust suite that ran one test at a time, and the gate took 1809 s against the usual 139 s or so. Eight jobs per granted core brought it to 174 s on a 2-core grant. Both clamped runs went red, each on a different test that passes alone, at loads this suite has gone red at without qm.",
-      "created_at_millis": 1792339195483,
-      "id": "c_2jxPLAh8A"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792339195483
     }
   ],
   "created_at_millis": 1792335565315,

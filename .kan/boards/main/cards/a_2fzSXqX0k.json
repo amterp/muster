@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "install-a-developer",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hXdHJTV4",
       "body": "2026-10-14: probably superseded. This Mac now runs Homebrew's release (0.16.0) for daily use and upgrades with `muster upgrade`. HEAD runs beside it from the debug build under its own home via `tools/run-checkout`, so nothing replaces /Applications/Muster.app any more. Close unless a signed local bundle is still wanted.",
-      "created_at_millis": 1791982239253,
-      "id": "c_2hXdHJTV4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791982239253
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1Jb5V4B",
       "body": "Superseded, as the 2026-10-14 comment says: this Mac runs Homebrew's release and upgrades with muster upgrade, and HEAD runs beside it through tools/run-checkout.",
-      "created_at_millis": 1792200744474,
-      "id": "c_2j1Jb5V4B"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200744474
     }
   ],
   "created_at_millis": 1791753031816,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-streams",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XM6ePRCu",
       "body": "From round 1: (slot 2) pane.read is REFUSED until the headless terminal exists - serve it here, paged by absolute row (muster-vt now has Terminal::text(first,last), 196 ns/row). Publish cwd changes (OSC 7, falling back to the foreground process) as PaneChanged; records carry the start cwd until then; splits already inherit the live cwd. The reader to attach to is crates/muster-daemon/src/pane.rs drain(). (slot 1) Build the daemon with MUSTER_VT_LINK=static in an invocation that does not also build muster-seam; parse a handoff replay before set_effect_handler; drop feature 52 from Answers.primary_attributes when the clipboard-write setting denies writes, as Ghostty does; pick the kitty image store size deliberately (a store smaller than the surface's makes programs see errors the surface would not give).",
-      "created_at_millis": 1790477135379,
-      "id": "c_2XM6ePRCu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790477135379
     }
   ],
   "created_at_millis": 1790469794694,

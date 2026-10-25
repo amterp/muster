@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-release-workflow",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2AIxNDqSw",
       "body": "Fixed. deps/rad.pin now names rad 0.12.0, whose shell interpolation quotes every value it substitutes - verified against the released binary:\n\n    v = \"Developer ID Application: Alexander Terp (CV4835A2BN)\"\n    $`echo -s {v}`\n    -\u003e echo -s 'Developer ID Application: Alexander Terp (CV4835A2BN)'\n\nThat also settles the follow-up this card asked for. The sweep does not have to check each interpolation in ./dev one by one, because the quoting is systematic rather than per-site: no value a user can put a space or a bracket in reaches bash unquoted any more.\n\nrelease.yml then cut v0.1.1 end to end - built, signed with the Developer ID, notarized, stapled, and published - in 4m48s with no local involvement. spctl on the published artifact reports accepted, source=Notarized Developer ID.",
-      "created_at_millis": 1787071071633,
-      "id": "c_2AIxNDqSw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1787071071633
     }
   ],
   "created_at_millis": 1787054385183,

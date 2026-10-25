@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "compute-done",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28MwnXrcn",
       "body": "Done. The core grew crates/muster-core/src/attention.rs - window focus plus seen-ness per pane - and the seam grew one request, WindowFocus, which is the only thing about attention the shell can see and the core cannot.\n\nThe decision worth recording: herdr's own `done` is normalized back to idle on the way in rather than trusted alongside ours. It is derived from a client-focus signal it can never get from us, so keeping it would mean two writers for one field with no way to tell whose answer is on screen - the failure architecture.md already names. Ours is the writer that can see the window.\n\nThe open question on this card is answered the only way it can be, and stated in the module doc rather than hidden: `done` means 'nobody we know of saw it'. A second Muster window or a herdr TUI beside us is focus we cannot observe.\n\nCases in corpus/conformance/attention.json (14, authored). The end-to-end proof is in crates/muster-seam/tests/attach.rs, and the assertion that cannot pass by accident is the settling one - herdr never revises its answer when a Muster window gains focus, because it cannot see that happen.",
-      "created_at_millis": 1786785055917,
-      "id": "c_28MwnXrcn"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786785055917
     }
   ],
   "created_at_millis": 1786653247498,

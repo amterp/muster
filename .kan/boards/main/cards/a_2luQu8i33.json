@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-notice-muster",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lxXHgWMM",
       "body": "2026-10-21: fixed on main in 371ce7d0, the narrow option: unread_after no longer counts a message from @muster addressed to other members; everything else still counts. Test in muster-msg's telling.rs fails without it. MIP-4 section 4 and docs/cli/msg.md say so. Full gate pending (disk).",
-      "created_at_millis": 1792635027564,
-      "id": "c_2lxXHgWMM"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792635027564
     }
   ],
   "created_at_millis": 1792627632523,

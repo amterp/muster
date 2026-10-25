@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "copy-what-is",
   "alias_explicit": false,
   "area": [
@@ -8,22 +8,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28SLbOEH5",
       "body": "Wired and green in the suite, not yet eyeballed. `Surface` gained the three libghostty calls (mouse position, left button, read selection), `SurfaceView` reports a drag to the surface and copies on ⌘C, and the Edit menu carries Copy beside Paste with both greying out when they would do nothing.\n\nWhat no test here can say is whether a drag actually produces a highlighted range and whether ⌘C lands the right text on the clipboard - that needs a window. To check: `./dev --bundle` (the bundle does not rebuild with `./dev -b`), launch it, drag across some output, ⌘C, and paste somewhere.\n\nThe comment claiming a pane's selection lived in the daemon was wrong and is corrected. Worth knowing why this was never blocked on a_27CTgqqdv: that card is about reporting a click to the program in the pane, which needs the pane's mouse mode - and frame diffs consume mode changes before this surface sees one, so the surface believes mouse reporting is always off. That is exactly what makes a drag mean \"select\" here and never \"click\" over there.\n\nStill open: whether double-click-to-word and triple-click-to-line come free from the surface, and keyboard selection.",
-      "created_at_millis": 1786797925787,
-      "id": "c_28SLbOEH5"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786797925787
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_28SrCwz5Q",
       "body": "The wiring is now pinned rather than only compiled. `SurfaceView` drives a protocol the shell owns instead of a libghostty `Surface` directly, which moved the two decisions no test could reach into the layer the suite already covers: the AppKit-to-surface coordinate flip (unflipped, a drag selects its own mirror image), and copying nothing leaving the clipboard alone. Tests write to a pasteboard of their own.\n\nStill needs the eyeball, and only for the half no test can reach: whether a drag paints a visible highlight, and whether the text that lands is the text under the pointer. `./dev --bundle`, launch it, drag, ⌘C, paste.",
-      "created_at_millis": 1786799140704,
-      "id": "c_28SrCwz5Q"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786799140704
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_28VfYnqeo",
       "body": "Eyeballed and working - drag, ⌘C, paste. Closing.\n\nBoth open questions from the original card are still open and neither is blocking: whether double-click-to-word and triple-click-to-line come free from the surface, and whether keyboard selection is wanted. Worth a card each if they turn out to be missed.",
-      "created_at_millis": 1786805842813,
-      "id": "c_28VfYnqeo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786805842813
     }
   ],
   "created_at_millis": 1786790514531,

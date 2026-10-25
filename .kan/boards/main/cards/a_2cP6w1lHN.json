@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-codex-agent-got-a",
   "alias_explicit": false,
   "area": [
@@ -8,142 +8,142 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2caSI6YiA",
       "body": "2026-10-05: cause not pinned from code; the run log is on another machine. Three paths could hand a wake over twice: (1) codex queue succeeded but the pane still read idle/waiting 5 s later, so unanswered_commands typed it too - log msg.rang via=command, msg.ring.command_untaken, then a typed msg.rang; (2) codex queue outlasted PATIENCE (5 s; the 223 MB binary can sit \u003e15 s in _dyld_start) and was killed after storing - msg.ring.command_failed refused=false, then a typed msg.rang; (3) the pane participant left behind when the agent named itself (fixed as a_2cW57OXLB) re-rung from outstanding() after a restart/takeover - daemon.started or a takeover between the read and the second ring. Ruled out: the declared wait re-ringing (went_idle fires only on Idle, and says still unread). Paths 1 and 2 type the second copy on purpose (a wake too many over one lost); changing that needs evidence of which fired. Check the next occurrence's daemon log against these.",
-      "created_at_millis": 1791250149946,
-      "id": "c_2caSI6YiA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791250149946
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2djt67Vvb",
       "body": "2026-10-07: not reproduced, unchanged. The OpenAI account hit its usage limit until 2026-11-02, so no real turns could be timed. Measured: a warm `codex queue` through a login shell takes 0.04 s (0.3 s first run), far inside the 5 s patience, so the 'fallback typed first' path needs a cold binary, as after an upgrade. The card's paths are in the doorbell's harness-agnostic command-wake code.",
-      "created_at_millis": 1791420393271,
-      "id": "c_2djt67Vvb"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791420393271
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2hIgK3z1c",
       "body": "Three more Codex instances, from GitHub issue #2 part 9 and its two comments (Muster 0.15.0):\n\n- Undated: in a two-member group, the wake for #5 arrived twice. The first read returned the message; the second wake arrived after the reply (#6), and the read returned \"nothing unread\".\n- 2026-10-13, macOS: a wake for #74 arrived again after the pane had read it, done the review and posted #78. `muster msg read --group \u003csame group\u003e` returned `nothing unread`.\n- 2026-10-13, macOS: a peer-group wake for #43 was read and reviewed, the findings posted as #45, the turn ended, and the identical wake for #43 arrived and started another turn. Both the group and the team group had nothing unread.\n\nIn every instance so far, the repeat arrived after the agent had answered and ended its turn.\n\nAnd one from Claude Code on 0.15.0 (tooling feedback, 2026-10-12), so the `codex queue` paths above cannot be the whole story. A harness-agnostic path to check: `doorbell.rs`'s module doc says a ring given up with its text still in the prompt is sent by the next ring that finds that text. That matches a stale wake line seen left unsubmitted in an idle worker's prompt the same day. The same day also had one notice naming two groups that had already been read.",
-      "created_at_millis": 1791946607079,
-      "id": "c_2hIgK3z1c"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791946607079
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jQGDNlex",
       "body": "Claude Code instance 2026-10-17, Mac mini, a helper pane in a private project, adapter reporting. At 12:51:39 I ran muster msg read --group \u003cits group with its maker\u003e and it printed #7, #8 and #9. About ten minutes later Muster typed '3 new (#7-9), 1 urgent, 3 to you ... still unread' into my prompt. It was not submitted until the sender pressed Return for me (submitted 13:01:57 per my transcript), and a read then printed nothing. muster window showed me idle the whole time. A Claude Code 'Heads up' banner was showing above the prompt, which may also be why the Return was lost (see the late-urgent-ring report on the feedback board, a_2iUefqPcQ there). So: the stale-wake recheck is still missing, and a typed wake can be left unsubmitted.",
-      "created_at_millis": 1792260196450,
-      "id": "c_2jQGDNlex"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792260196450
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2k4Y3gqV8",
       "body": "Four more instances on 2026-10-18 (muster 0.15.x, Mac Mini), all Codex workers (gpt-6.1-sol) in one parallel-work round, each woken again for a message it had already read and acted on; muster msg read then returned 'nothing unread': approval #23 in group ordo-2+ordo-integrator, and #20, #25 and #30 in ordo-3+ordo-integrator. In each, the duplicate came after the worker's own post to the group (a plan, report or reply). No work was repeated, but each costs a Codex turn and a message asking the integrator to file it.",
-      "created_at_millis": 1792356213563,
-      "id": "c_2k4Y3gqV8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792356213563
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2k5gozNj0",
       "body": "One more, same round, ~17:40: Codex worker in pane p2cnhzb1m5 was woken again for #35 (ordo-3+ordo-integrator) after it had read and executed #35 and posted its report #37; muster msg read returned 'nothing unread'. Same pattern: the duplicate follows the worker's own post.",
-      "created_at_millis": 1792358933690,
-      "id": "c_2k5gozNj0"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792358933690
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2k7tascf5",
       "body": "Another, ~17:43: Codex worker p2cnhzb1m5 re-woken for #41 (ordo-3+ordo-integrator) after it had completed that work and posted #43; 'nothing unread'. New side effect: the duplicate turn ended idle without a post, so @muster then sent the integrator a 'went idle without posting to you' notice (#44), which sent the integrator to investigate a worker that had nothing wrong.",
-      "created_at_millis": 1792364191221,
-      "id": "c_2k7tascf5"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792364191221
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lLKXG0Nw",
       "body": "Another instance, 2026-10-20, Mac: a Codex worker (gpt-6.1-sol) in a parallel-work round read approval #8 in its group with the integrator, built the assignment, and posted its completion as #9. Another wake then arrived for #8 ('1 new (#8), 1 to you, from denim'), and muster msg read returned 'nothing unread'. Cost: one wasted agent turn.",
-      "created_at_millis": 1792543972866,
-      "id": "c_2lLKXG0Nw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792543972866
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lLX77cZK",
       "body": "Same round, 2026-10-20, a second Codex worker: approval #6 was read before building, then after it posted its report as #7 another wake for #6 arrived and muster msg read found nothing unread. Both instances follow the same shape: the stale wake fires right after the worker's own next post.",
-      "created_at_millis": 1792544456370,
-      "id": "c_2lLX77cZK"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792544456370
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lLoS7aaf",
       "body": "Third instance in the same round, 2026-10-20 (Muster 0.16.2-dev, Codex pane, adapter reporting): wake for approval #6 arrived again after the worker posted its report #7; nothing unread. Three of three Codex workers hit it after their first report.",
-      "created_at_millis": 1792545122870,
-      "id": "c_2lLoS7aaf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792545122870
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lMbmI5LR",
       "body": "Fourth instance, same round: it recurs on every hand-off, not only the first. The same Codex worker got a stale wake for the fix brief (#15) right after posting its fix report (#16). So far every Codex worker report in this round has been followed by one.",
-      "created_at_millis": 1792547018940,
-      "id": "c_2lMbmI5LR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792547018940
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lO1JTizG",
       "body": "A worse variant, same round, 2026-10-20 (Muster 0.16.2-dev, Codex pane, adapter reporting, daemon connected): right after the integrator typed /new into the Codex pane and posted a new brief (#14), the wake arrived but muster msg read returned 'nothing unread'. The brief was only recoverable through muster msg log --since 13. So a new message was counted as read before the agent read it, and a worker that trusted msg read would have sat idle with its assignment unseen. Possibly tied to the /new reset.",
-      "created_at_millis": 1792550383795,
-      "id": "c_2lO1JTizG"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792550383795
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lO1cNpiJ",
       "body": "Correction to the previous comment: the worker reports the brief was not lost. It was a stale wake (msg read showed nothing unread because the message had already been read), the same symptom as the other instances. Read the previous comment's 'counted as read before the agent saw it' as unconfirmed.",
-      "created_at_millis": 1792550395510,
-      "id": "c_2lO1cNpiJ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792550395510
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lPx9jxbZ",
       "body": "A new cost, same round: after a duplicate wake, a second thread inside one Codex worker re-read its assignment from the message log, saw its own in-progress edits, took them for another writer's, and sent an urgent 'another process is editing this tree' message before stopping. Nothing was lost, but a worker nearly abandoned its own work, and the integrator had to inspect processes to confirm a single writer.",
-      "created_at_millis": 1792554990555,
-      "id": "c_2lPx9jxbZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792554990555
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2luRWec1S",
       "body": "Three more Codex instances, 2026-10-21, 0.16.2-dev on the Mac, one parallel round, daemon connected and both adapters reporting. One pane was woken again for #8 right after posting its plan as #9, and later for #16 right after posting #17; a second pane was woken again for #21 after reading it. `muster msg read --group` answered 'nothing unread' each time. Same shape as the 10-18 and 10-20 rounds: the stale wake follows the Codex pane's own post.",
-      "created_at_millis": 1792627656366,
-      "id": "c_2luRWec1S"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792627656366
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lwGT4Ges",
       "body": "Another instance, 2026-10-21 ~20:20, Mac, Codex worker (gpt-6.1-sol via bunx @openai/codex@0.162.1, adapter not reporting at first) in a parallel-work round, group cougar+topaz: the approval wake for #6 rang a second time after the worker had read #6, built and committed the work, and posted its waiting report. The second muster msg read returned 'nothing unread'. Same pattern as the earlier Codex instances: the duplicate follows the worker's own post in the group.",
-      "created_at_millis": 1792631997862,
-      "id": "c_2lwGT4Ges"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792631997862
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lwwPSj3M",
       "body": "Second instance in the same Lectern round, 2026-10-21 ~20:45, same Codex worker (group cougar+topaz): approval wake #11 rang again after the worker read it, built the work and posted #12; read returned 'nothing unread'.",
-      "created_at_millis": 1792633610107,
-      "id": "c_2lwwPSj3M"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792633610107
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lxXHUYzg",
       "body": "2026-10-21: cause found and fixed on main (d83a509f..24151394). Every Codex duplicate on this Mac (11 on 10-20..22) followed msg.ring.command_untaken: codex queue stored the wake, a Codex without the shared app-server (daemon_auto_start = false here) polls its queue every ~10 s, the doorbell typed its fallback copy at 5 s, and Codex then delivered its stored copy as that turn ended - right after the agent's own post. The command wake now gets 20 s (COMMAND_ANSWER) before it is typed; a test with a fake session that takes its wake 8 s late failed before the fix. Measurement in docs/observations/codex-0.163.0.md. The Claude Code sightings are a different path, now a_2lxWzorui. Full gate pending (disk).",
-      "created_at_millis": 1792635027445,
-      "id": "c_2lxXHUYzg"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792635027445
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lyQbzc5K",
       "body": "Third instance in the same Lectern round, 2026-10-21 ~21:45: the same Codex worker got approval wake #20 again after it had posted done #21; read returned nothing unread.",
-      "created_at_millis": 1792637154351,
-      "id": "c_2lyQbzc5K"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792637154351
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzHhgQkB",
       "body": "Fourth instance in the same Lectern round, 2026-10-21 ~22:20, a second Codex worker (group cumin+topaz): approval wake #20 rang again after the worker posted done #21; read returned nothing unread. Every Codex worker post in this round has been followed by a duplicate of the wake before it.",
-      "created_at_millis": 1792639195200,
-      "id": "c_2lzHhgQkB"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792639195200
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzNFzE49",
       "body": "Another instance on 2026-10-21, Mac, Codex worker gecko (pane p2dhmjmvgq, adapter reporting), cwd /Users/amterp/src/go-delta-1, group gecko+holly. Read approval #7, completed the work, and posted report #8. After ending the turn, received the identical wake: \"[muster] gecko+holly: 1 new (#7), 1 to you, from holly\". Running `muster msg read --group gecko+holly` returned \"nothing unread\". The local daemon was connected. No work ran twice; it cost a turn and an empty read. Cause and installed-fix status not investigated.",
-      "created_at_millis": 1792639408671,
-      "id": "c_2lzNFzE49"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792639408671
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2m0VLe2Kp",
       "body": "Another instance, 2026-10-21 23:07 CDT, Mac, Codex gpt-6.1-sol worker saffron (pane p2dh32xjyb), group holly+saffron. The worker read review brief #13, completed the checks, and posted its report as #14. After the turn ended, the identical wake arrived again: [muster] holly+saffron: 1 new (#13), 1 to you, from holly. Running `muster msg read --group holly+saffron` returned `nothing unread`. No work ran twice. Installed build and wake-path cause were not investigated.",
-      "created_at_millis": 1792642102984,
-      "id": "c_2m0VLe2Kp"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792642102984
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2m1gfp4pQ",
       "body": "2026-10-21 23:55 CDT: another duplicate wake on the Mac, Codex reviewer saffron (pane p2dh32xjyb), cwd /Users/amterp/src/ordo-2, group holly+saffron. Read brief #20, rebuilt the requested commit, reran the real-binary probe, and posted completion #21. After ending the turn, received the identical wake for #20; muster msg read --group holly+saffron returned \"nothing unread\". No work ran twice; the duplicate cost another turn. Recording recurrence without changing this done card or assuming the installed daemon includes its fix.",
-      "created_at_millis": 1792644921617,
-      "id": "c_2m1gfp4pQ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792644921617
     }
   ],
   "created_at_millis": 1791223112987,

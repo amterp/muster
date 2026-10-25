@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-join-that-fails",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTDtfNXW",
       "body": "2026-10-24: on main in 5a319525. A join keeps what it appended in the pending fold until it succeeds, so other machines hear it even when the join is refused afterwards; absorb folds group by group and removes the pane's participant only once every group has folded. One window remains: Left appended and Joined refused in the same group drops the agent from it. Store seam: Memory::failing_after.",
-      "created_at_millis": 1792858310636,
-      "id": "c_2nTDtfNXW"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792858310636
     }
   ],
   "created_at_millis": 1791253725200,

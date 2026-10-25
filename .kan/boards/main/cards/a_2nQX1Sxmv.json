@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "driving-a-window-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS6nEAB1",
       "body": "2026-10-24: not reproduced in 57 runs (45 alone, 12 suite runs three at a time at load 10). Ruled out from code: both forms render quiet from one roster field, nothing clears it between the reads, callsigns do not change. The two text reads never checked their exit status, so a failed read looked exactly like this; 77e34684 asserts it, so a next sighting saying 'muster window failed' means the read failed.",
-      "created_at_millis": 1792855654286,
-      "id": "c_2nS6nEAB1"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855654286
     }
   ],
   "created_at_millis": 1792851896027,

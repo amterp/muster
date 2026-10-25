@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-followed-log",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jLBPu2jl",
       "body": "2026-10-17: the refusal's reason now prints (c8db68c0), in this assert and in two others that dropped it (the CLI's messaging tests, the bridge's link.rs). The CLI's messaging:: tests ran 25 times throttled at load 4-10 with no failure, so which refusal it was is still unknown; the next sighting in a gate will say.",
-      "created_at_millis": 1792248095629,
-      "id": "c_2jLBPu2jl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792248095629
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS6nLu6z",
       "body": "2026-10-24: not reproduced in 12 full CLI suite runs, three at a time at load 10, with the daemon binary given a new inode before each round to force macOS's first-exec assessment. Candidates unchanged: begin_replacing, or a 10 s STEP in handoff/mod.rs running out.",
-      "created_at_millis": 1792855654353,
-      "id": "c_2nS6nLu6z"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855654353
     }
   ],
   "created_at_millis": 1791254541353,

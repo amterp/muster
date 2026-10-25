@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "put-our-own-daemon",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28Vg83cUx",
       "body": "**Decided: fetch on demand, with a filesystem cache.** Not bundling all four platforms (~72 MB of app, mostly daemons nobody on that machine runs), and not having the remote fetch it either.\n\nThe reasoning, from the measurement the card asked for: `deps/herdr.pin` already carries a checksum for all four platform assets, and `./dev` already knows how to download one and verify it - so the acquisition step exists and is being moved rather than invented. Anybody setting up a remote almost certainly has web access, so a fetch is not a bet worth avoiding at the cost of tripling the app.\n\nOne refinement worth being explicit about: **the local machine fetches, not the remote.** The machine running Muster definitely has network - it got Muster somehow - and the remote may be a locked-down container or build box with no route out. So the shape is: probe the remote with `uname -sm`, work out the asset name, look for it in a local cache, download it once if absent, verify against the pin, and copy it over the ssh master Muster already has open. That also keeps the remote's network out of the picture entirely, which the original card flagged as the risk with letting the remote fetch.\n\nCache location is an OS question, so the shell answers it and hands it over - the same division as the log file, the config file, the herdr path and the state file. Something under `~/.cache/muster/herdr/\u003cversion\u003e/\u003casset\u003e/herdr` (XDG_CACHE_HOME when set). Present and matching the checksum means no web call.\n\nWhat stays fixed from the original card: the pin decides the version, and a checksum that does not match is a refusal rather than a warning.\n\nStill to work out when this starts: the remote install path (`~/.muster/herdr/\u003cversion\u003e/herdr` was the card's suggestion), starting the remote daemon on Muster's own herdr session the way the local one is, and a devenv image with no herdr baked in - the current Dockerfile installs it at build time, which is exactly the thing this card exists to stop needing.",
-      "created_at_millis": 1786805864677,
-      "id": "c_28Vg83cUx"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786805864677
     }
   ],
   "created_at_millis": 1786794152740,

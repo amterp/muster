@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "stage-2-render-the",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27Y49TPqA",
       "body": "The arc landed across six commits: layout in the vocabulary, composition as records, the seam's view and write path, the shell rendering it, and the 15-pane budgets. ./dev --contract builds a nested tab against a real daemon and asserts a surface, a channel and a painted frame per pane.\n\nRemaining work that came out of it has its own cards: directional focus (a_27Y3iLkil), region sizing (a_27Y3iQCxI), and recording herdr's layout replay (a_27WZ30MO1).",
-      "created_at_millis": 1786663791314,
-      "id": "c_27Y49TPqA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786663791314
     }
   ],
   "created_at_millis": 1786461793373,

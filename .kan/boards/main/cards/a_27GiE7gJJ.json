@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "upstream-a-keystroke",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2WDEcsQms",
       "body": "Still bimodal in the rebuilt harness (2026-09-24): 9 of 60 glyphs waited for a second frame at load ~30. Separate finding: the first-attached control client lands in the ~20 ms mode far more often (12-15 of 24) than the second (3 of 24), independent of which pane each is on. The old harness read herdr's stream a byte per syscall, which inflated earlier numbers under load.",
-      "created_at_millis": 1790308229063,
-      "id": "c_2WDEcsQms"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790308229063
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3Kw0ZDi",
       "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
-      "created_at_millis": 1790580165486,
-      "id": "c_2Y3Kw0ZDi"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580165486
     }
   ],
   "created_at_millis": 1786622432756,

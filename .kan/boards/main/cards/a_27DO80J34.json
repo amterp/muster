@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "recover-paste-and",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27EeQwQyN",
       "body": "Measured 2026-08-13 against a real pane. less rings the bell instead of scrolling: it calls terminfo's smkx on startup, turning application cursor mode on, then decodes arrows as kcuu1 - ESC O A under xterm-256color. Muster sends ESC [ A because it assumes power-on state, so less echoes the sequence into its status line and beeps. vim is unaffected because its key tables accept both forms.\n\nPaste and arrows want different answers. A paste is one action, so a socket connect per paste costs nothing and send_input can carry it today. Arrows repeat at 30+ events a second under key repeat, which is the case the latency measurement (a_26BIX28HG) has to rule on first.\n\nReproduce with tools/mode-cost.py - local pty, no daemon.",
-      "created_at_millis": 1786617520388,
-      "id": "c_27EeQwQyN"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786617520388
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27FSXROHs",
       "body": "Done for arrows and paste. Bare arrows resolve to a named key the daemon encodes against the pane's live modes; less scrolls, verified through the GUI. Paste goes the same way, so bracketed paste is applied from real state and a multi-line paste is text to edit rather than commands to run.\n\nThe round trip costs 0.09ms median over 20 samples, 1.6ms worst, against the 33ms a key repeat allows - so the latency worry that gated this was unfounded, and it is measured on every send rather than assumed.\n\nLeft alone deliberately: everything else in the guess was measured to survive, and each routed key costs a round trip, so the exception list stays as short as the evidence supports. herdr's key vocabulary has no pageup/pagedown/home/end/insert/delete (parse_key_combo in src/config/keybinds.rs never got aliases for them, though the KeyCodes exist), so those cannot be routed even if we wanted to - that stays part of the upstream ask a_27CTRluw7.",
-      "created_at_millis": 1786619446417,
-      "id": "c_27FSXROHs"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786619446417
     }
   ],
   "created_at_millis": 1786614510328,

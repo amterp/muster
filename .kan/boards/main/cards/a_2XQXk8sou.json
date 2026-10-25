@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "show-agent-facts-in",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y6brdYmz",
       "body": "Facts reach the sidebar, muster window and --json (round of 2026-09-28). Left: a pane wait keyed on a fact, and the app installing or pointing at extras/claude-code; both raised as their own cards.",
-      "created_at_millis": 1790587966099,
-      "id": "c_2Y6brdYmz"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790587966099
     }
   ],
   "created_at_millis": 1790487709943,

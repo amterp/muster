@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-wake-held-behind",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
-      "body": "Possible second shape, same evening: a worker's Claude Code pane showed a box above its prompt reading '✦ Heads up · The main agent concluded ... 1: Learn more  2: Knew this already  0: Dismiss'. It did not hold a wake: a post to that pane rang at once while the box was on screen (or had just gone). So it is not established that every such box holds wakes; the feedback-draft box did, for 30 minutes. Record each with its version.",
-      "created_at_millis": 1792203110771,
       "id": "c_2j2J9hHPB",
+      "body": "Possible second shape, same evening: a worker's Claude Code pane showed a box above its prompt reading '✦ Heads up · The main agent concluded ... 1: Learn more  2: Knew this already  0: Dismiss'. It did not hold a wake: a post to that pane rang at once while the box was on screen (or had just gone). So it is not established that every such box holds wakes; the feedback-draft box did, for 30 minutes. Record each with its version.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1792203110771,
       "updated_at_millis": 1792203146454
     }
   ],

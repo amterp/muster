@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "spike-embed-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26Ymm5dih",
       "body": "Done. One window, one libghostty surface, running $SHELL, rendering with the user's own ghostty font and colors, and typing reaches the PTY. Verified by screenshot rather than by the process staying alive.\n\nTwo traps, neither visible in ghostty.h, both now in docs/observations/libghostty-9f9b8d1d.md section 4: ghostty_init needs the process's real argv (argc 0 exits 6 with no diagnostic), and the six runtime callbacks must be file-scope nonisolated functions - as closures inside a @MainActor type, Swift 6 compiles in an executor check that aborts the moment libghostty's renderer thread calls wakeup_cb, and the backtrace reads like a libghostty threading bug.\n\nAlso: libghostty runs its own display link and paints the layer it attaches to the host NSView. Do not call ghostty_surface_draw; ghostty's own macOS app never does.\n\nThe callback table turned out to be six functions rather than the large surface this card assumed.",
-      "created_at_millis": 1786517743250,
-      "id": "c_26Ymm5dih"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786517743250
     }
   ],
   "created_at_millis": 1786461765162,

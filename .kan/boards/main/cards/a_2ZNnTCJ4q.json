@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-send-without-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2caDvxx7z",
       "body": "2026-10-05: not reproduced against Claude Code 2.1.290. Both paths send the same daemon Send event (and did at 0.12.0). /clear ran as a command pasted with its Return, pasted with a Return 2 s later, typed as keys, pasted mid-turn, and through the daemon with no window. Evidence: corpus/claude-code-2.1.290/clear.txt, docs/observations/claude-code-2.1.290.md.",
-      "created_at_millis": 1791249598053,
-      "id": "c_2caDvxx7z"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791249598053
     }
   ],
   "created_at_millis": 1790776691390,

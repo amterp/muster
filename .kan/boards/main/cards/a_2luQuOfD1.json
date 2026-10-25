@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-helper-that",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lyELFDJw",
       "body": "2026-10-21: fixed on main (d590527b, 2d02510c). Cause, from the 10-17 run log: a ring landing just after a helper declared its wait fired Claude Code's UserPromptSubmit hook, whose --waiting '' cleared the wait as a person's prompt would; the card's guess was wrong. A prompt Muster typed now keeps a declared wait through its turn (marked carried, and limited to 10 minutes since Claude Code can fold the job's end into that turn). A compaction or rename no longer starts a stretch of work for the maker watch. The Monitor case showed no separate bug.",
-      "created_at_millis": 1792636682694,
-      "id": "c_2lyELFDJw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792636682694
     }
   ],
   "created_at_millis": 1792627632683,

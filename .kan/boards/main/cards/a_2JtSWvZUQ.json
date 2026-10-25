@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-new-tab-goes-on",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "uncommitted",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2JtT5t51c",
       "body": "Related: `a_29eFFiDco` is the other half of tab ordering, from the daemon's side - `tab_moved` is unread, so a tab dragged elsewhere by another client keeps the place it arrived in.\n\nThe two have come apart since that card was written. The window's tab list is now Muster's own record rather than a reading of one daemon's order: tabs are appended on first sight and never reordered, and the list spans machines. So reading `tab_moved` would tell Muster that a herdr TUI moved a tab, and Muster would still have to decide whether its own list should follow - which is a third question neither card asks yet.",
-      "created_at_millis": 1788487959297,
-      "id": "c_2JtT5t51c"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788487959297
     }
   ],
   "created_at_millis": 1788487937635,

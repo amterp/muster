@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-wait-outlasts-a",
   "alias_explicit": false,
   "area": [
@@ -8,22 +8,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2bYcw6r8W",
       "body": "2026-10-04 ~02:00, gate at load ~20: detection::an_agent_waiting_on_its_own_work_has_not_finished timed out with the new detail 'it was None Unknown, reported: false, facts: None' - the fake agent was never identified at all. So the stall is in launching or identifying the agent, not a report landing before the wait is armed as guessed above. Passed 16/16 alone.",
-      "created_at_millis": 1791098029224,
-      "id": "c_2bYcw6r8W"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791098029224
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2bZyMDu6u",
       "body": "2026-10-04 03:00, ruled out (from code): typed input lost (/bin/sh has no shell integration; readline uses TCSADRAIN); the first probe landing before exec with the acquisition window never opening (the agent's first paint lands on a later tick, whose screen change opens it); a dropped publication (publish_agent re-sends unsent every tick); pty/process limits (60/511 ptys, 544/2666 procs, $ prompt showed). 25 more runs at load 20-30 did not reproduce. Detection probes the foreground group on group change and in an 8 s acquisition window (500 ms for 1.5 s, then 2 s); after it, an unidentified pane is not probed until group or screen changes. Waits now print the pane's screen on timeout, so the next failure says whether the command ran.",
-      "created_at_millis": 1791101235930,
-      "id": "c_2bZyMDu6u"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791101235930
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2bjvWfFvB",
       "body": "2026-10-04: fixed a real gap (ef95e096): a job that execs after the acquisition window's last probe (7.5 s) and paints before it closes (8 s) was never probed again, so detection reported no agent for good - matching 'it was None Unknown'. Deterministic test in detector/tests.rs. Not confirmed under real load as the timeout's cause; if the test times out again, the screen it prints says whether the agent had painted. Reopen then.",
-      "created_at_millis": 1791124959891,
-      "id": "c_2bjvWfFvB"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791124959891
     }
   ],
   "created_at_millis": 1791040070378,

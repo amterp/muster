@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "bridge-herdr-pane",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26Z0XtPay",
       "body": "Done for the local path. muster-bridge runs as the surface's command, spawns 'herdr terminal session control', and unwraps frame envelopes into raw ANSI on its stdout, which is the surface's PTY.\n\nVerified: the process tree is muster -\u003e muster-bridge -\u003e herdr control session, and the bridge's byte stream reconstructs to the pane's actual screen. Frame sizes match the observation doc (35,607 bytes for a full repaint).\n\nResize needed no channel of its own. libghostty sizes the PTY from the surface's pixels and font metrics, so SIGWINCH on the bridge is the surface telling it the new grid - observed passing --cols 119 --rows 35 for a 960x600 window at the user's font.\n\nFrame decoding lives in MusterHerdr rather than in the executable, because an executable target cannot be imported by tests. Seven cases cover the awkward parts: a repaint split a byte at a time, several frames in one read, a withheld partial line, unknown message types skipped rather than fatal.\n\nNot done here: the remote path over SSH, and visual confirmation in the window (the screen locked mid-verification; the byte stream and process tree are what was checked).",
-      "created_at_millis": 1786518272617,
-      "id": "c_26Z0XtPay"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786518272617
     }
   ],
   "created_at_millis": 1786461765205,

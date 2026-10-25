@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "decide-the-shell",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27HEmqA2v",
       "body": "Decided: portable core in Rust, native per-OS shell, one C ABI symbol carrying protobuf between them. Full case, alternatives and consequences in docs/mip/0001-portable-core.md (MIP-1).\n\nWhat stage 1 taught, which is what this card was waiting for:\n\n1. The core stayed OS-free without discipline. 1269 lines, four files importing anything at all. So the portability risk Swift was meant to carry never showed up as a code problem - which means moving it is a port, not an unpicking.\n2. Both dependencies are C APIs. libghostty's surface embedding is NSView-shaped and stays in the shell whatever happens; libghostty-vt is language-neutral, and herdr already drives its key encoder from Rust.\n3. The decisive one, which is not about Swift's quality: a Linux or Windows shell will not be Swift either, because Swift's GUI story off Apple is not something to bet on. So a Swift core does not avoid the FFI boundary - it relocates it to Rust-calling-Swift, the direction that needs hand-written @_cdecl exports, manual ownership, and the Swift runtime shipped inside a Rust binary, on the platform where we would have the least tooling to debug it.\n\nTiming: the core is the smallest it will ever be and the plan was about to triple it with the mirror. Porting now is days; porting after Stage 2 is a rewrite of the spine.",
-      "created_at_millis": 1786623684366,
-      "id": "c_27HEmqA2v"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786623684366
     }
   ],
   "created_at_millis": 1786461793160,

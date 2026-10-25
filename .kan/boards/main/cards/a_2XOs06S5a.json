@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-daemon-honor",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XQEG62Vf",
       "body": "Shell integration now exists (round 3, a_2XJ1hMByY), so OSC 133 prompt marks reach the daemon's terminal; what remains is the C API for at-prompt state and eraseActive.",
-      "created_at_millis": 1790486960945,
-      "id": "c_2XQEG62Vf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790486960945
     }
   ],
   "created_at_millis": 1790483722085,

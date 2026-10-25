@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-moved-to",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JcoelY",
       "body": "Obsolete: the flaking test lived in crates/muster-herdr, deleted at the cut-over.",
-      "created_at_millis": 1792200745540,
-      "id": "c_2j1JcoelY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745540
     }
   ],
   "created_at_millis": 1790312889735,

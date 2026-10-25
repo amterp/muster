@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-machine-being",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_29kAfCVj9",
       "body": "Measured, after the fact: the full ./dev took 43.8 minutes with the orphaned loops alive for part of the run, and 27.1 minutes on the next run with them dead - about a third of the gate, spent on nothing.\n\nNeither number is a clean baseline. The first run spans both conditions, since the loops were killed partway through it, and the second still had another worktree compiling throughout. The uncontended cost is lower than 27 minutes and nobody has measured it.\n\nWorth recording because it sizes the problem: the symptom was never an error, only a gate that took long enough to seem plausible. Half an hour is not obviously wrong for a run that builds two toolchains, which is exactly why seventy-four minutes of a machine being eaten went unnoticed - and why the integrator explained it with a wrong theory (parallel agents) and wrote that down as fact.",
-      "created_at_millis": 1786988167708,
-      "id": "c_29kAfCVj9"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786988167708
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2AARAjnPS",
       "body": "Both halves landed. Every `./dev` run opens with a line like\n\n    machine: 10 cores (6 performance), load 4.90 4.59 3.90\n\non the full gate and on narrowed flags alike, and turns yellow with a clause when the fast cores are already committed. `./dev --doctor` names what is on the machine.\n\n**The census this card's sibling asked for works, and it found the same thing again.** Running it here, twenty-two herdr processes: two were clients with no API socket at all, four were bound to sockets whose paths have since been deleted and are unreachable by anything, and of the sixteen still answering, exactly one - pid 11093, `~/.config/herdr/herdr.sock`, two panes in `~/src` - held anybody's work. Everything else was a smoke fixture, a test-harness daemon under `/tmp/muster-test/`, or a scratch directory. It was neither the oldest nor the youngest, so the doctor prints what each socket holds rather than sorting by age.\n\n`lsof -a -p \u003cpid\u003e -U`, with the `-a`, as a_28YghIUw2's last comment corrects. The API socket turns out to be listed directly in that output beside `herdr-client.sock`, so the path is read rather than derived - one less thing to get wrong. Dialling is `HERDR_SOCKET_PATH=\u003cpath\u003e herdr pane list`, and only when the pinned herdr is already downloaded.\n\n**The load half, on this card's own framing.** Nothing here is evidence that stray daemons are why a gate is slow - a_28YghIUw2 measured twenty of them at 0.1% CPU together, and this run agrees. The doctor's third section, the busiest processes, is what would actually have caught the eight orphaned busy loops, and it is there for that reason. Load says the machine is busy; the process list says what is eating it; the daemon census is about knowing which process holds work before ending it.",
-      "created_at_millis": 1787050767572,
-      "id": "c_2AARAjnPS"
+      "author": "Alexander Terp",
+      "created_at_millis": 1787050767572
     }
   ],
   "created_at_millis": 1786985221352,

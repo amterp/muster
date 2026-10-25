@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "auto-resume-cannot",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2izzfn6KC",
       "body": "Seen in real restarts now, from tooling feedback, 2026-10-16, 0.16.0 on the devenv. Where the restore of a wrapper-launched Claude Code did run, it ran a bare `claude --resume \u003cid\u003e`, and the pane's `resume` in `release.state.json` lists the wrapper's argv as `uncarried`. Two things went with that argv. One is the environment the wrapper sets: here `HTTPS_PROXY`, so 11 restored agents skipped the proxy the wrapper had pointed them at and sat at \"Waiting for API response\" until each was exited and relaunched through the wrapper by hand. The other is the model and effort the wrapper passed as `--model`/`--effort`, so every restored agent ran the settings default, and nothing Muster keeps records what they had been. A pane started with plain `claude --model ... --effort ...` keeps both in its `resume.command`. The `MUSTER_RESUME` option above would cover both losses. Short of that, carrying `--model` and `--effort` even when the rest of the wrapper argv can't be carried, or recording them next to `uncarried`, would let a person restore them.",
-      "created_at_millis": 1792197595318,
-      "id": "c_2izzfn6KC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792197595318
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j2pUJbVh",
       "body": "Landed 2026-10-16 (18cb51b0): MUSTER_RESUME, read off the agent process, replaces the manifest's resume for agents whose manifest has one (Claude Code today); [session] resume_keeps carries --model and --effort when the rest of a wrapper's argv cannot go along (detection engine 15). The wrapper reproduction runs on Linux only: macOS hides a system binary's environment, so the fake agent's MUSTER_RESUME cannot be read there.",
-      "created_at_millis": 1792204353635,
-      "id": "c_2j2pUJbVh"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792204353635
     }
   ],
   "created_at_millis": 1791946591621,

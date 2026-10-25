@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-claude-code-plan",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cOvc2I4c",
       "body": "Two more dialogs read the same way, 2026-10-05 (0.13.0): in fresh panes, Claude Code's workspace-trust prompt (\"Accessing workspace: /home ... ❯ No, exit / Yes, I trust this folder\") and Codex 0.159's startup hook review (\"Hooks need review / 27 hooks are new or changed / › 1. Review hooks / 2. Trust all and continue / 3. Continue without trusting\") both showed `idle` in `muster window` and ended `muster pane wait --until idle,blocked` as idle. An orchestrator that posts as soon as a spawned agent is idle would ring into either: for the trust prompt, a ring's Return answers \"No, exit\".",
-      "created_at_millis": 1791222677708,
-      "id": "c_2cOvc2I4c"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791222677708
     }
   ],
   "created_at_millis": 1791032049720,

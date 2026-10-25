@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "input-sent-to-a-pane",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "next",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTjhkpfi",
       "body": "2026-10-24: a second typing test failed the same way in the gate at aa2ec3fc: typing::a_click_is_reported_only_to_a_program_tracking_the_mouse_and_never_with_shift, its tracking file empty after 20 s; passed 3 of 3 alone. Being looked at against c784999a.",
-      "created_at_millis": 1792859533325,
-      "id": "c_2nTjhkpfi"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792859533325
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nU5a56ZT",
       "body": "2026-10-24 investigation: c784999a is ruled out, by code (neither failing test reaches the mark; the nudge is a non-blocking pipe write) and by experiment: typing:: looped with --test-threads 8, three copies at once, 40 runs each - 3/120 and 1/120 as is, 4/120 with c784999a's calls disabled. Eight failures across seven of the module's eighteen tests, all the same: the program reading the pane sees nothing for 20 s. Pattern in five kept daemon logs: the starved pane is always the last one the test made; the harness's input opens 0-5 ms after the read that found that pane's 'ready', so the input lands well under 100 ms after ready, while earlier panes get theirs hundreds of ms later; the program's output file exists and is empty; the log has no warning, restart or flush. The daemon drops typed input only on a restart's flush (Discards::is_stale, pty::flush_input from restart.rs). Leads: (1) a debug line per successful write (pane, seq, byte count, no text) would say whether the bytes left the daemon; (2) what runs between 'echo ready' and the program's first read - a tcsetattr with TCSAFLUSH or a tcflush there (stty, the shell, Ghostty's shell integration) discards pending input, which would fit exactly; (3) pty::queued briefly opens the slave side from the reader. Starvation unlikely: it always hits the pane sent input soonest after ready.",
-      "created_at_millis": 1792860374252,
-      "id": "c_2nU5a56ZT"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792860374252
     }
   ],
   "created_at_millis": 1792856237685,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-can-be-placed",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2HTvlNLnd",
       "body": "Done in 4000017. The four questions the card raised, as answered:\n\n- **One verb covers both.** `muster pane move --pane X --onto Y`. ArrangePane already carries both outcomes and lets the core decide from where the panes are; splitting it in the CLI would put that rule in a second place.\n- **Spelled --onto**, which is the schema's own word (onto_pane_id).\n- **No chord.** Arranging is not going somewhere, which is the argument that already keeps the keyboard off `pane new`. Drag and drop stays its own card (a_29bpH8BZ5).\n- **Left and up cost what they always did** - the adapter's problem, unchanged.\n\nOne thing the card did not anticipate: ArrangePane refused a request that named no daemon, so the CLI could not send one at all. It now finds the daemon from the pane, like every other request that names one.",
-      "created_at_millis": 1788131569334,
-      "id": "c_2HTvlNLnd"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788131569334
     }
   ],
   "created_at_millis": 1786978108213,

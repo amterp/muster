@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-agent-in-a-pane",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2995jFdVZ",
       "body": "The surface question is settled on a_26BJb2n6o: seven verbs, shaped to\nintents, and addressing via a `MUSTER_PANE` that Muster sets itself when\nit creates the pane. That last part was the piece with no known answer -\nherdr turns out to accept a per-pane `env` map on `pane.split`,\n`tab.create` and `workspace.create` at the pinned version, so the CLI\nnever has to read a `HERDR_*` variable to know where it is.\n\nConsequence for sequencing: a_294rihJCP owns that mechanism, so it lands\nfirst, then a_26BJb2n6o, then this card is the scenario that proves both.",
-      "created_at_millis": 1786899796654,
-      "id": "c_2995jFdVZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786899796654
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_29eCVrW0Y",
       "body": "Delivered, and verified end to end in the running app: an agent in a pane split two panes below itself, named them, started a program in each, and sent each its first instruction - naming no pane and no window.\n\nWhat makes it work without setup:\n- Muster mints its own pane names and puts `MUSTER_PANE` in the environment of the request that creates the pane, so a program inside one can say which pane it is.\n- `MUSTER_SOCKET` travels beside it, naming that window's endpoint. Local daemons only: a unix socket path means nothing across an ssh tunnel.\n- `~/.muster/bin` holds a link to this build's CLI, refreshed at every launch, and goes on the front of the PATH every daemon Muster starts hands its panes.\n\nPinned by `crates/muster-cli/tests/driving_a_window.rs` (the real binary against a real window) and by a `./dev --contract` check that runs `muster` inside a pane on a cold start - the only thing that proves the link, the PATH and the two variables meet.\n\nLimits carded rather than chased: a_29e9be7aQ (a devenv pane cannot reach the endpoint) and a_29e9boMfk (a tab has no name anybody outside Muster can say).",
-      "created_at_millis": 1786973939117,
-      "id": "c_29eCVrW0Y"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786973939117
     }
   ],
   "created_at_millis": 1786888541503,

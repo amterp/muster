@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-stall-notice-that",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jOJgyuyu",
       "body": "2026-10-17: fixed in 48846eaa. A stall is now kept across a turn the member works without reading; the poster is told once per unread message, and again only when the member reads some and stops on a later one. The second idle stretch still writes msg.group.stalled, with unlock=told_already.",
-      "created_at_millis": 1792255563569,
-      "id": "c_2jOJgyuyu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792255563569
     }
   ],
   "created_at_millis": 1792242551714,

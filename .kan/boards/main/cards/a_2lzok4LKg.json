@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "without-a-window-s",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3yb5bA",
       "body": "2026-10-24: seen again in a full ./dev on main (3450a35c), same signature (Some(0) where Some(4)), passed 2 of 2 alone. Being fixed now: the case gets staged so nothing of the line ever reaches the screen.",
-      "created_at_millis": 1792855546011,
-      "id": "c_2nS3yb5bA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855546011
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS6mxR63",
       "body": "2026-10-24: fixed on main in 00755689. The product was right: --confirm answers arrival, and under load its first look saw the line echoed before the repaint. The case now turns the fake agent's echo off first, so nothing of the line can show; 18 loaded runs and 12 suite runs passed.",
-      "created_at_millis": 1792855654116,
-      "id": "c_2nS6mxR63"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855654116
     }
   ],
   "created_at_millis": 1792640465243,

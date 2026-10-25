@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "input-path-prove",
   "alias_explicit": false,
   "area": [
@@ -9,34 +9,34 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26LBHIbnj",
       "body": "The 0.8.0 observation pass settled the API half (docs/observations/herdr-0.8.0.md section 5).\n\nDecided: encoding is daemon-side. herdr exposes no pane terminal modes anywhere in its API, and the frame stream consumes the sequences that set them, so neither the surface nor the adapter can encode. terminal.input takes raw bytes; herdr's raw_input parses them and re-encodes for the pane's modes, which is what its own TUI relies on. Muster reports bytes.\n\nRuled out: pane.send_keys. It refuses home, end, pageup, pagedown, insert, delete, and ctrl+alt+delete with invalid_key - a named-key API with no navigation cluster cannot carry a terminal keyboard.\n\nStill open, and why this card stays in next: IME composition, AltGr, dead keys, and whether byte-level reporting preserves enough for the kitty protocol in practice. All need the Swift surface, so this is blocked behind the libghostty spike rather than behind more daemon observation.",
-      "created_at_millis": 1786485319243,
-      "id": "c_26LBHIbnj"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786485319243
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_26YRwcHTS",
       "body": "The renderer half is now settled too, and it lands better than expected: herdr re-encodes input with libghostty-vt's own key encoder (src/ghostty/mod.rs:2547 and :2552 call ghostty_key_encoder_setopt_from_terminal and _encode). Muster can encode with the same library, so the path is ghostty-encode, herdr's crossterm parse, ghostty-encode - one foreign step between two runs of one engine, not two implementations that have to agree.\n\nCorrecting the plan's wording: do NOT encode at maximal fidelity. herdr's TUI enables exactly three kitty flags - disambiguate, report event types, report alternate keys (src/input/model.rs:219) - and the function is called ime_compatible_keyboard_enhancement_flags because reporting all keys as escape codes breaks IME. src/input/model.rs:427 asserts REPORT_ALL_KEYS stays out. Match those three.\n\nStill needs the Swift surface: IME composition, AltGr, dead keys. The key event struct carries a 'composing' flag, so the shape is there.",
-      "created_at_millis": 1786516942542,
-      "id": "c_26YRwcHTS"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786516942542
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27CTwaHFo",
       "body": "The premise both earlier comments rest on is wrong, and the card is more open than it looked.\n\nterminal.input on a control stream does not get parsed and re-encoded. It is a raw write to the pane's PTY: src/server/headless.rs:2852 routes TerminalAttach clients to apply_terminal_attach_input (:403), which is runtime.try_send_bytes and nothing else. The raw_input.rs re-encoding is real but belongs to ClientConnectionMode::App - herdr's own TUI - and reading that branch as if it covered both is how this got recorded backwards.\n\nCaptured decisively: corpus/herdr-0.8.0/input-encoding/ runs cat -v in a pane with no kitty keyboard, no bracketed paste and no application cursor mode, and every probe arrives byte-identical. CSI 97 u stays CSI 97 u where a re-encode would deliver 'a'; bracketed paste markers reach the program as text. Findings rewritten in docs/observations/herdr-0.8.0.md section 5.\n\nSo encoding is ours and we cannot see what to encode for - no pane mode is exposed anywhere in the API, and section 2 already showed the frame stream eats the sequences that set them. What this card now has to settle is not where encoding lives but how much a guess costs against a real agent. Upstream ask split out to a_27CTRluw7; mouse buttons to a_27CTgqqdv.\n\nStill needing the Swift surface, unchanged: IME composition, AltGr, dead keys.",
-      "created_at_millis": 1786612350609,
-      "id": "c_27CTwaHFo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786612350609
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27DHuNnN5",
       "body": "The buildable half has landed; what is left is measurement.\n\nBuilt: MusterCore carries an OS-free KeyEvent and a Key vocabulary generated from the pinned ghostty (the generator resolves keys ghostty's own lookup leaves unnamed, IntlBackslash among them, rather than inheriting dead keys). MusterVT wraps libghostty-vt's key encoder. The shell translates NSEvents, routes them through a Keymap seam that has no bindings yet, and sends bytes on a socket the bridge dials back on. IME goes through NSTextInputClient: the pane sees only committed text.\n\nVerified end to end against a real daemon with cat -v in the pane: typing, arrows, shift+enter and ctrl+c each arrive as exactly the bytes the recorded encoder matrix says they should. Transcript recipe in the commit; the matrices are Tests/MusterVTTests/snapshots/keys-*.txt.\n\nOne assumption in the plan turned out wrong in our favour. Guessing low does NOT lose shift+enter: ghostty encodes it as CSI 27;2;13~ in every mode, not only under kitty (src/input/function_keys.zig:199, an entry with no mode qualifier). So the flagship agent distinction survives a pane we know nothing about. What the guess actually costs is application cursor keys (arrows in vim and less) and bracketed paste.\n\nStill open, and all of it needs a human at a real keyboard: IME composition, AltGr, dead keys, and how a real kitty-negotiating agent behaves through this path. That is the kill-criterion verdict and it stays here until it is recorded.",
-      "created_at_millis": 1786614271233,
-      "id": "c_27DHuNnN5"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786614271233
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27EfWSHrB",
       "body": "Verdict: passes, with one documented loss.\n\nWorks through Muster against a real pane: printable text, enter, tab, ctrl+C, dead keys (option+e then e), arrows in vim, and shift+enter in Claude Code - the distinction an agent needs most, and it survives without kitty negotiation because ghostty encodes it as CSI 27;2;13~ in every mode.\n\nFails: arrows in less, and multi-line paste. Both are the same root cause - the pane's terminal modes are invisible to a control-stream client - and both have known fixes that need no upstream change (a_27DO80J34), gated on latency (a_26BIX28HG). Mechanism and measurement in docs/observations/herdr-0.8.0.md section 5.\n\nNot covered, and carded separately: mouse buttons (a_27CTgqqdv), full IME with a candidate window, AltGr on a non-US layout.",
-      "created_at_millis": 1786617562244,
-      "id": "c_27EfWSHrB"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786617562244
     }
   ],
   "created_at_millis": 1786461765245,

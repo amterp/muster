@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-the-daemon",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28U5mfHQp",
       "body": "Fixed in d808ec1, by acting on what the daemon was already saying rather than by chasing how the state arises.\n\nConfirmed from the run log that herdr never emitted a removal for the pane - not one change record for it across the whole session - while the daemon's own `pane list` had dropped it. So there is no event to wait for, and the only account Muster gets is the refusals: the bridge could not attach, and `pane.focus` came back `pane_not_found`. Both were flattened into prose for the log before anything could act on them.\n\nA refusal now has a shape - the backend declined, or it does not hold what was named - and the second triggers a re-read of that daemon's whole session. The whole session rather than the one pane, because a refusal only proves the picture is wrong somewhere and a pane that went may have taken its tab with it.\n\nWhat is pinned is the classification, in `corpus/conformance/daemon-refusal.json`. A renamed error code upstream would quietly turn the self-heal off, and the distinction worth protecting most is that unreachable and timed-out stay ordinary refusals: a daemon that did not answer has said nothing about what exists, and reading silence as loss would empty a window every time a socket hiccuped.\n\nNot covered: the self-heal end to end. Producing the state needs herdr to drop a pane without an event, which is exactly the behaviour we cannot make it perform on demand - and Muster refuses locally before sending a request about a pane its mirror does not hold, so the divergence cannot be faked from outside either. Worth revisiting when the contract tier starts failing on unexpected warnings, which would catch a regression here from the app side.",
-      "created_at_millis": 1786802084299,
-      "id": "c_28U5mfHQp"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786802084299
     }
   ],
   "created_at_millis": 1786800251939,

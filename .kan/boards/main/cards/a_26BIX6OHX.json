@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "devenv-container",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26LgyqBcf",
       "body": "Landed. devenv/ builds a debian-slim container with sshd and a pinned Linux herdr 0.8.0 (release binary verified against its published sha256, not a source build), reachable at ssh -p 2222 dev@localhost via ./devenv/devenv up.\n\nAcceptance was the probe itself: tools/herdr-probe/probe --remote runs all six scenarios against the container's daemon through an SSH socket forward, and diff-corpus reports 0 differences against the macOS corpus. Identical attach frames, PTY handling, done derivation, and refused key names.\n\nFake agents come from tools/herdr-probe/fake-agent rather than being duplicated, so local and remote fixtures cannot drift. probe-agent reports its state through the API; screen-agent installs as 'claude' and is detected from its screen.\n\nNot done here: CI wiring. Nothing runs this automatically yet - that belongs with the ./dev script card (a_26Jyk8yxA), which is what CI is meant to invoke.",
-      "created_at_millis": 1786486537881,
-      "id": "c_26LgyqBcf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786486537881
     }
   ],
   "created_at_millis": 1786461765323,

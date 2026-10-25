@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-s-daemon",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28aecoPKu",
       "body": "**Environment half done** (2026-08-15). `daemon::start` now builds the daemon's environment from an allowlist rather than inheriting it, so `CLAUDE_CODE_*` and everything else a launching session was carrying stops at the app.\n\nWhat survives, and why it is short: `HOME` and the `XDG_*` family (the daemon binds its socket from them), `PATH` and `SHELL` (a pane with neither is a shell that cannot run `ls`), `USER`/`LOGNAME`, `LANG` plus the whole `LC_*` family, `TZ`, `TMPDIR`, `TERM`, and `SSH_AUTH_SOCK`. That last one is a credential channel carried on purpose - a pane that cannot `git push` is a pane nobody uses, it is the person's own agent rather than a program's session token, and every terminal on this platform passes it.\n\nThe list stays short because a pane runs a shell and a shell rebuilds its own world from the user's rc files, so version managers, toolchains and prompts all put themselves back. `HERDR_*` is deliberately not carried: herdr sets its own per-pane variables, including pointing a pane's `herdr` CLI at the daemon that owns it.\n\nAnswering the card's questions: the daemon and its panes get **one** answer, because a pane's program is a child of the daemon and herdr 0.8.0 has no per-pane environment on the paths Muster uses. A launch says what it did in `daemon.environment` - carried and dropped, by name and never by value.\n\nCovered by `corpus/conformance/daemon-environment.json` (9 cases) and by `crates/muster-herdr/tests/daemon_isolation.rs`, which starts a real pinned daemon from a poisoned environment, has a real shell in a real pane write its own environment to a file, and asserts the marker and the token are absent while PATH and HOME are present. Confirmed to fail before the fix.\n\n**Config half moved out** to a_28adIUgPE, as an upstream ask. It cannot be done from this side: herdr resolves its config dir from `XDG_CONFIG_HOME` alone, and panes inherit the daemon's environment - so giving the daemon a private config directory would point every pane's git, editor and shell at one too. Muster now names the config file in the run log instead, so a surprising pane is at least diagnosable.",
-      "created_at_millis": 1786817723269,
-      "id": "c_28aecoPKu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786817723269
     }
   ],
   "created_at_millis": 1786813019975,

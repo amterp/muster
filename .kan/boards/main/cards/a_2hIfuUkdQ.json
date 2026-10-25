@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "wakes-go-missing",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2izzeJX58",
       "body": "More from tooling feedback. 2026-10-13, 0.15.0, on the laptop: a Claude Code builder ended its turn on a long `\"$MUSTER_DAEMON\" report --waiting \"...\"` Bash call, then sat at an empty prompt from 20:30 to 21:24 while every post to it, from its director and a reviewer, went undelivered. `muster window` showed `waiting` at first and later `working`, and the stall notice said the wake was held by \"something typed in its prompt, or a menu over it\". `muster msg post --urgent` got through at once. The director's pane hit the same that evening after its own `report --waiting`, and woke only from a timer it had set. A turn ending on a long Bash row is what a_2hKNOFr7i fixed in 0.16.0, so these may be gone; that card does not explain the `waiting` reading with the draft-or-menu notice. 2026-10-14, 0.16.0, devenv: after Claude Code's folder-trust dialog was answered with `pane send --key down --enter`, the pane showed an empty prompt but read `blocked` for about a minute, and a post answered `rung once idle: ... (blocked)`. It cleared by itself. The 2026-10-16 sightings with a confirmed cause (a pane too short, a zoomed tab) are card a_2izzXOqQF.",
-      "created_at_millis": 1792197594393,
-      "id": "c_2izzeJX58"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792197594393
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j2J9bAvg",
       "body": "2026-10-16 breakdown after a_2e0HhtDc8 and a_2izzXOqQF landed: the 10-07, 10-11 and 10-13 sightings fit the long-Bash-row misread fixed in 0.16.0, and the new stall notices would now name the cause ('its screen reads as its agent at work', or after 30 minutes of working). Not explained: 10-14 (blocked for a minute after the trust dialog). 10-12 (an idle integrator never woken while a background watcher ran) may be a_2j29db4KH: on 2026-10-16 an integrator's wakes were held for 30 minutes by a Claude Code box over its prompt, which an integrator running background agents or feedback tools is likely to have. Still open: a sender cannot see a held wake.",
-      "created_at_millis": 1792203110715,
-      "id": "c_2j2J9bAvg"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792203110715
     }
   ],
   "created_at_millis": 1791946591261,

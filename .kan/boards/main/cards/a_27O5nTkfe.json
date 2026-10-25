@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "ci-run-the-gate-on-every",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27U0HR89n",
       "body": "Now has evidence rather than only a principle behind it. The gate was\nred at HEAD and nobody knew: ./dev handed the pinned herdr down as a\nrepo-relative path, cargo runs an integration test from its own\npackage root, and so every daemon-backed test since the harness landed\n(64d46d0) died at startup. Fixed in 11f7301.\n\nThat is exactly the failure a push-triggered gate catches on the commit\nthat causes it rather than a day later, and it is the second argument\nfor this card: the README's claim being true matters less than the gate\nbeing watched.",
-      "created_at_millis": 1786654109372,
-      "id": "c_27U0HR89n"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786654109372
     }
   ],
   "created_at_millis": 1786640021758,

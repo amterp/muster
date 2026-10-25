@@ -1,26 +1,26 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "codex-and-opencode",
   "alias_explicit": false,
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2djt6lHMN",
       "body": "2026-10-07: the OpenAI account is at its usage limit until 2026-11-02 (hit during ./dev --codex), so Codex recordings that need model turns wait until then.",
-      "created_at_millis": 1791420393678,
-      "id": "c_2djt6lHMN"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791420393678
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2izzfBQjB",
       "body": "From tooling feedback, 2026-10-16 (0.16.0, Codex on the devenv, version not noted): a hand recording of Codex's `/compact`. `muster pane compact --pane p2bjgf98za \u003cfocus\u003e` refused: \"codex gives Muster no way to compact it from its prompt, so pane ... is left as it is\". Typing `/compact` with `muster pane send --enter` at an idle, empty prompt worked at once: Codex printed \"Context compacted\" and its footer read \"Context 6% used\". Nobody tried giving it a focus. Afterwards `muster window` still showed the pane at 71%, because Codex's context comes from its hooks reading the transcript and no hook ran. Adding `[session] compact` for Codex therefore also wants a fresh context reading after it, from the transcript or the footer. The same send with `--confirm` reported the line not taken, which is a_2hIftWa0n.",
-      "created_at_millis": 1792197594936,
-      "id": "c_2izzfBQjB"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792197594936
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JfEDZN",
       "body": "Blocked until 2026-11-02 for the Codex recordings, which need model turns on the OpenAI account. The OpenCode half can be recorded on the free model ./dev --opencode uses.",
-      "created_at_millis": 1792200747049,
-      "id": "c_2j1JfEDZN"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200747049
     }
   ],
   "created_at_millis": 1791120807068,

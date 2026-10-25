@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "whose-file-is-it-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28v7rqNYh",
       "body": "**Settled: one file, and it is Muster's.** Muster reads no file belonging to another application. Everything Muster owns moved into `~/.muster` (`config.toml`, `state/window.toml`, `state/libghostty.conf`, and room for the herdr cache a_28QlRpvKj will need), rooted by `MUSTER_HOME`. XDG no longer moves anything of Muster's; it still decides where herdr listens and what herdr reads, because those are herdr's rules and Muster only passes them on.\n\nThe rule the card asked for, now in README.md: **a setting is Muster's when Muster acts on the answer**, including the ones it only translates onward for a dependency. It is the daemon's when the daemon owns the thing being configured and Muster never sees it - what a pane runs, how deep its scrollback is. Within the file, a table when a subject has several answers, a root key when it has one.\n\nAnswering the card's four questions directly:\n\n- **Does inheriting from another app's config belong in the design?** No, and not as an opt-in either. a_28Yi1hLyM is closed with it: `[font]`, `[colors]` and `[cursor]` are Muster's own, and the asymmetry a Ghostty user hit first is gone by becoming symmetric - nothing is inherited, and one file explains the whole window.\n- **Where is the line between ours and the daemon's?** Above. Scrollback stays herdr's under it, and the rule generalises to a second backend because it turns on who owns the thing rather than on who implements it today.\n- **Is one file right?** Yes. The three-audiences argument did not survive contact: a person tuning appearance and a person naming daemons are the same person, and splitting the file would have meant three paths to document, three refusals to word, and three things for an agent to be taught.\n- **What does an agent see?** One directory it can list.\n\nNot done here, deliberately: reading it still means relaunching (a_28Yi1xGwp), which the appearance work makes more pressing rather than less.",
-      "created_at_millis": 1786866512943,
-      "id": "c_28v7rqNYh"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786866512943
     }
   ],
   "created_at_millis": 1786833856262,

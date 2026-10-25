@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "typing-knobs-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28XH9gUHE",
       "body": "**Done and shipped:** `option_as_alt` and `[text]`, proven end to end against a real daemon (`crates/muster-bridge/tests/typing_settings.rs`).\n\nThe option-as-alt fix needed two commits and the second is the interesting one. Setting the encoder's flag does nothing on its own: libghostty computes effective modifiers as held-minus-consumed, and macOS always reports option as consumed when it composed a character, so the alt-prefix branch is never reached and the flag is read by nobody. The consumed alt is now taken back before encoding and the text replaced with what the layout would have produced without option - a second reading the shell reports (`KeyEvent.text_without_option`) because only the layout can answer it.\n\nThe conformance corpus is the more useful half of that fix. `key-encoder.json` had no way to express consumed modifiers, so every case described a keystroke nobody presses - which is how four new cases about option passed while the behaviour was entirely absent.\n\n**Checked and not needed:** shift+enter already encodes as `CSI 27;2;13~` in every mode, so `[text]` is an escape hatch for programs that do not read that, not a fix.\n\n**Split left/up is out**, and split into a_28XGcvXEg: measured at 100.4 ms of visible flash, so the answer is upstream rather than a two-call fake.\n\nLeft on this card: the small ones - a configurable resize step, a scroll multiplier, and a divider colour.",
-      "created_at_millis": 1786809671246,
-      "id": "c_28XH9gUHE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786809671246
     }
   ],
   "created_at_millis": 1786808100123,

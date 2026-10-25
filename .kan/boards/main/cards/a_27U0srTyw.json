@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "composition-which",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27VwPq7pS",
       "body": "Landed in 938b713. Composition is records in crates/muster-core/src/composition.rs, judged by corpus/conformance/composition.json - 16 cases, and all nine deliberate breakages of the implementation were caught.\n\nBoth inversions the card named are done: one mirror and one subscription per daemon, and the control socket is per pane. The attached-pane map is nested by daemon rather than keyed by a (daemon, pane) pair, because building a pair key means cloning both ids on a path that runs per keystroke.\n\nTwo things went further than the card asked, both because the shape forced the question:\n\n- Attach asks the daemon where a pane lives before building anything. A region shows a tab and only the daemon knows which tab a pane is in, so the alternative was a region in a pending state that landings 4 and 5 would each have to handle. It costs one local round trip on the launch path and buys a refusal by name: 'muster w9:p9' used to open a window that rendered nothing and dropped every keystroke.\n- reconcile trims the attached-pane map as well as the regions. Each entry owns a bound socket and the thread waiting on it, so a window whose panes churn would have collected both.\n\nDeliberately left out: nothing here is emitted to the shell yet, and composition grew no change vocabulary. ViewChanged in landing 4 is whole-view and idempotent, so a diff vocabulary would be a guess at what a reader wants rather than an answer to one.",
-      "created_at_millis": 1786658727388,
-      "id": "c_27VwPq7pS"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786658727388
     }
   ],
   "created_at_millis": 1786654132582,

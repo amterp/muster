@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "reconciliation-cadence-how",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JdpCgy",
       "body": "Closed: deferred until a divergence was seen, and none has been in two months, across herdr and muster-daemon. Reopen with the first sighting.",
-      "created_at_millis": 1792200746172,
-      "id": "c_2j1JdpCgy"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200746172
     }
   ],
   "created_at_millis": 1786648294183,

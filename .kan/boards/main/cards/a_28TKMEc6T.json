@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-whose-bridge",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28UAzMozO",
       "body": "Most of this went away with d808ec1. A pane the daemon denies is now taken off screen the moment it refuses a focus or a close, so the specific dead square in the report - a phantom pane - can be dismissed by trying to dismiss it.\n\nWhat is left is narrower: a bridge that fails for some other reason (no herdr, a socket that went) still leaves Ghostty's own `Press any key to close the window` screen, and no key reaches it. Keystrokes in a pane go to the core and out to that pane's channel; nothing is ever sent to the surface, so the surface never sees the key it is asking for.\n\nThe hook for this exists and we decline it: libghostty's `close_surface_cb` fires with whether the process is still alive, and `Renderer.swift` answers nothing. Wiring it would let the shell know a pane's command exited, mark that pane not typeable, and say so on the chrome - which is both a better screen than Ghostty's and one keystroke fewer that goes nowhere.",
-      "created_at_millis": 1786802284361,
-      "id": "c_28UAzMozO"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786802284361
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_28UT3CeL4",
       "body": "Closed by d35b63e, together with d808ec1 which took care of the phantom-pane half.\n\nlibghostty reports when a surface's command exits and we were declining the callback, so a pane whose bridge died kept accepting keystrokes into a channel with nobody on the other end. The shell now stops typing into it, and tells the core - which is the only thing that can find out what a dead bridge means, since the usual reason is that the daemon no longer holds the pane and herdr does not always say. A pane that really went now leaves the window by itself instead of waiting for somebody to click it.\n\nTwo details worth keeping: the callback carries a token rather than a pointer to the surface, because it arrives on libghostty's own thread and the surface may already have been freed; and it is reported once per surface, because libghostty may call more than once and each call would otherwise cost a round trip to the daemon.\n\nNot done, deliberately: nothing on the chrome says the pane is dead. The chrome's vocabulary is agent states - working, blocked, done, idle - and adding a fifth for 'its bridge exited' would put a shell-local fact into the one vocabulary that is supposed to mean what an agent is doing. Whatever says this belongs beside that vocabulary rather than inside it.",
-      "created_at_millis": 1786802978663,
-      "id": "c_28UT3CeL4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786802978663
     }
   ],
   "created_at_millis": 1786800261226,

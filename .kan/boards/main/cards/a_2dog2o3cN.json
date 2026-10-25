@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "across-machines-whom",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nRWOJurZ",
       "body": "2026-10-24: on main in a1292811. whom on the answering machine reads the name as --to does, so a name meaning two agents is refused naming each, and the asker refuses with every candidate. A daemon from before this treats the refusal as no answer.",
-      "created_at_millis": 1792854254992,
-      "id": "c_2nRWOJurZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792854254992
     }
   ],
   "created_at_millis": 1791431808004,

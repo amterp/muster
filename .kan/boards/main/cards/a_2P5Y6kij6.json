@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-bridge-names-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2biVsNEyw",
       "body": "2026-10-04: already true - MIP-3 changed the bridge's pane argument, removing --pane-name and the 'pane w5:p1 closed' line. Closing.",
-      "created_at_millis": 1791121590635,
-      "id": "c_2biVsNEyw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791121590635
     }
   ],
   "created_at_millis": 1789255568222,

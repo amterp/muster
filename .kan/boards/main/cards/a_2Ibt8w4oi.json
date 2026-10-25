@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "agent-state-and",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ImsLFqXV",
       "body": "Built. The window's colours are configurable, the CLI keeps its fixed sixteen, and both doc pages say which is which.\n\nOn the card's open question - whether the core needs to know - a_2HPHq3Zck's reasoning half survives. It rejected a hue table in muster-core because a hue never crosses the seam. A configured colour does cross: it arrives in the file the core parses and rides the same Appearance message divider already does. But what crosses is a value somebody wrote, not a legend. The core gains six optional strings and no opinion: it paints nothing, holds no state-to-hue table, and could not say which of them is the default. The defaults stay in Swift because the window is the canonical surface.\n\nThat is also what keeps the tripwires meaning something. The Swift one now pins PaneAppearance.defaultBorderColor, which is exactly what the CLI's fixed sixteen are aligned against, so configurability costs it nothing. A second Swift test pins that a configured colour wins, that an unset one does not, and that the sidebar's dot follows a repainted state as well as a default one - the same \"two places show one state\" failure arriving by a new route.\n\nKeys are flat under [colors]: agent_working, agent_blocked, agent_done, agent_idle, agent_unknown, focus_ring. Flat rather than a nested [colors.agent] table because [colors] is already the table for this subject and its keys are already compound (selection_background, cursor_text) - a nested table would have been the config file's first, to group five keys that read as grouped already.\n\nOne thing found on the way: the Appearance message grew past clippy's large-enum-variant threshold, so Event.payload.appearance_changed is now boxed. Response.payload.appearance already was, and the argument applies harder on the event side - every event is built by value and most of them are one pane's state change.\n\nVerified end to end against an isolated herdr: saving a file with agent_working, agent_blocked and focus_ring produced appearance.received in the window's log carrying all three, with divider correctly absent.",
-      "created_at_millis": 1788324483499,
-      "id": "c_2ImsLFqXV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788324483499
     }
   ],
   "created_at_millis": 1788298298249,

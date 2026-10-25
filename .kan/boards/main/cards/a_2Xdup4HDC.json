@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-surface-honors",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3KubcCj",
       "body": "Done without code: the surface reads XTSHIFTESCAPE from the pane's own bytes and the replay restates it; a real-surface test proves it.",
-      "created_at_millis": 1790580164618,
-      "id": "c_2Y3KubcCj"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580164618
     }
   ],
   "created_at_millis": 1790519579774,

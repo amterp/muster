@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "perf-harness-budget",
   "alias_explicit": false,
   "area": [
@@ -8,28 +8,28 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26LBHPCtO",
       "body": "The control plane is connection-per-request: herdr answers a request and closes the socket, so every intent Muster dispatches pays a connect() (docs/observations/herdr-0.8.0.md section 6). That belongs in the input-to-glyph budget, and it is a per-intent cost rather than a per-byte one, so it scales with interaction rate rather than output volume.",
-      "created_at_millis": 1786485319318,
-      "id": "c_26LBHPCtO"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786485319318
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27Gkt5MfX",
       "body": "Half landed. ./dev --perf measures and gates the per-byte and per-key budgets in release, against a checked-in baseline, with a 2x tolerance and a loud failure when a benchmark stops running. Verified it fails by doctoring the baseline: regression, vanished benchmark and new benchmark all reported correctly.\n\nStill open, and now printed by the harness itself rather than left implicit:\n- mirror.apply (ns/event), the control plane's per-event cost - needs the mirror (a_26DAm1Zt0).\n- render at 15 panes - per-byte cost is linear and covered; what 15 panes actually tests is aggregate scheduling across surfaces, which needs splits (a_26BJGL7VZ).\n\nThe input-to-glyph half is answered separately by ./dev --latency and a_26BIX28HG.",
-      "created_at_millis": 1786622535031,
-      "id": "c_27Gkt5MfX"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786622535031
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27RYQXnDB",
       "body": "mirror.apply is measured and in the baseline at 231 ns/event. Remaining debt is render at 15 panes, which needs splits (a_26BJGL7VZ) and is printed as not-measured rather than dropped.\n\nNew cost worth budgeting when splits land: agent state costs one held-open connection per pane, so 15 panes is 16 connections and 16 threads. Nothing measures that yet.",
-      "created_at_millis": 1786648272132,
-      "id": "c_27RYQXnDB"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786648272132
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27Y3Bnc1A",
       "body": "Closing. The 1-and-15-pane budgets are measured and gated.\n\nTwo new costs in perf/baseline.json, both per pane because both scale with how full the window is rather than with how much it prints:\n- view.build, 119 ns/pane - publishing what the window is showing, which runs on every structural change\n- pane.channel, 86 us/pane - a bound socket and the thread waiting on it, so a full window is about 1 ms of setup\n- pane.encoder, 67 ns/pane - separate from the socket because they regress for unrelated reasons, and because this is the number a replacement renderer would have to match\n\n./dev --latency now runs at 15 panes as well as 1, with 14 of them printing - an idle full window costs the daemon nothing and would report the same figure as one pane, which looks like good news and is not a measurement. Input-to-glyph goes from 0.5 ms median at one pane to 15 ms with the window full and busy. That is a render window rather than per-pane work, and it is a_27GiE7gJJ (a keystroke waits out a render it did not cause) with a number on it. Still inside one 60 Hz frame, so it is a ceiling to watch rather than a problem today.\n\nHeld-open connections: the shape is measured (86 us and one thread per pane, so 16 of each at a full window), and what a herdr agent subscription costs on top is herdr's number - a_27RZE3orI.\n\nNot closed by this: over SSH, which needs a remote pane to exist first (a_26Z1SKp7r).",
-      "created_at_millis": 1786663754316,
-      "id": "c_27Y3Bnc1A"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786663754316
     }
   ],
   "created_at_millis": 1786481782109,

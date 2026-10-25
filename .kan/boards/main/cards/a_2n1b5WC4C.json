@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-wait-until-idle",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2n4PpLICT",
       "body": "2026-10-23 re-triage: moved to backlog-hi. It is a reported bug on 0.18.0 that misleads a script launching a helper: a maker that posts its brief on idle and treats blocked as stuck would decide the helper never got past its dialog. Same family as a_2luRHNGh6 (done).",
-      "created_at_millis": 1792799187237,
-      "id": "c_2n4PpLICT"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792799187237
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvVwPjl",
       "body": "2026-10-24: fixed on main in c784999a, with a test that failed before the fix. A Return or Esc at a blocked pane publishes working until the screen text changes, capped at 5 s; a lost Return reads blocked again after the cap. A dialog answered with a shortcut letter or digit is not covered.",
-      "created_at_millis": 1792852837446,
-      "id": "c_2nQvVwPjl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837446
     }
   ],
   "created_at_millis": 1792792470395,

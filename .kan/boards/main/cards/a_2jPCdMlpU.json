@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "under-x86-64",
   "alias_explicit": false,
   "area": [
@@ -9,22 +9,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzB7Jkm4",
       "body": "2026-10-21: failed natively on macOS too, once, in a full ./dev on main (319119e2's parent) on the Mac mini, with the same assertion (left [\"served 0\"], right [\"served 1\"]) while the machine's load reached 19.4 against 6 performance cores (four agent workers building, another project's gate, 6 GB in swap). It passed 3 of 3 run alone straight after. So it is not only the emulator: it is timing-dependent, and slowness of any kind can make the server's report be taken. The earlier note that it is 'neither load' was about load under emulation; the native case says the race is real. Look at how the daemon tells a backgrounded server from the pane's agent and what it reads before the server's process is fully set up.",
-      "created_at_millis": 1792638942018,
-      "id": "c_2lzB7Jkm4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792638942018
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQv3q92L",
       "body": "2026-10-24: the same failure on macOS, natively: a full ./dev on main (93a786a9) on the Mac mini at load 14.1 saw ['served 0'] where ['served 1'] was expected. It passed 5 of 5 alone right after, so it is not emulation-specific. A guess that fits both sightings, not verified: the fake agent's 'serve --context-used 55 \u0026' reports and exits at once, so a daemon slow to handle the report walks the sender's processes after they are gone, finds no server, and lets the agentless pane take the report as it takes any other. If so, a real Codex hook that exits before the daemon walks it could slip past the app-server refusal the same way under load. Check whether the walk can be made from facts captured at accept time (peer pid and its ancestors read before the report is queued), or whether a walk that finds the sender gone should refuse rather than accept.",
-      "created_at_millis": 1792852820023,
-      "id": "c_2nQv3q92L"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852820023
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS6mgBc3",
       "body": "2026-10-24: cause verified, and it is the test, not the process walk (the guess in the previous comment was wrong: muster-daemon report holds its connection open until answered, so nothing on the walk has exited). sender_of waits 1 s (MANIFESTS_PATIENCE) for the first manifest load, then takes the report unattributed; the two agentless-pane tests reported before detection loaded. Staged with a FIFO as the override manifest, now a committed test. Fixed on main in ca7b807e: both tests wait for daemon.detect.loaded, and the daemon logs daemon.report.unattributed once when it takes a report it could not attribute. Taking such a report stays deliberate (detect.rs).",
-      "created_at_millis": 1792855653941,
-      "id": "c_2nS6mgBc3"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855653941
     }
   ],
   "created_at_millis": 1792257675573,

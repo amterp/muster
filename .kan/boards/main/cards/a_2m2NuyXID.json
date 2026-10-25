@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-restarted-machine",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-lo",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQX0okLX",
       "body": "2026-10-24: a bounded look found no route on current code. The failing run was on 4b21a66a, before b0aaf6f6, whose message says the gate hit its unreconciled-part route 'through a restarted devenv, dropping the laptop's pane from the devenv's copy' - this card's signature, so likely that route. Ruled out on current code: the laptop's region present while its mirror lacks the tab or A; the laptop not a region while its mirror holds the tab (silent since b0aaf6f6); a stopping devenv; harness teardown (SIGKILL); stale follower threads after fresh_session. On pre-b0aaf6f6 code a startup ordering does prune A but heals at generation 3. Kept in backlog-lo until it recurs; keep the run's daemon and window logs then.",
-      "created_at_millis": 1792851895583,
-      "id": "c_2nQX0okLX"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792851895583
     }
   ],
   "created_at_millis": 1792646583963,

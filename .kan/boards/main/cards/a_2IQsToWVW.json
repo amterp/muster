@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-relaunch-cannot",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ImKS9n94",
       "body": "**Confirmed from the code, and the chain does close.** With `a_2IRcMjFs0` fixed, a refused attach ends the bridge, the exit reaches the core over the pane's control socket, `Respawns::ended` answers `Start(1)`, the view carries the count, and `MusterWindow.swift:524` turns a non-zero count into `--takeover`. Nothing further was needed for the relaunch case, and the first-attach rule is untouched.\n\n**But the property this card names does not survive that on its own.** `bridgeRestarts \u003e 0` was written to mean \"we had this terminal and lost it\". Once a *refused* attach also produces an exit it also means \"we were told no once\", so the replacement takes a terminal this window has never rendered. Two live windows on one pane then fight: the second is refused, respawns with takeover, steals; the first is kicked, respawns with takeover, steals it back; both climb to LIMIT and the pane can end up dead in both. Worse than the failure this card is about.\n\n**The fix is the ending, not the count.** herdr distinguishes the two refusals, in prose and only in prose - measured 2026-09-01 and now `docs/observations/herdr-0.8.0.md` section 23, with the transcripts in `corpus/herdr-0.8.0/closing-reasons/`:\n\n    terminal attach failed: terminal \u003cid\u003e already has an attached client; retry with --takeover\n    terminal attach taken over\n\nSo a bridge that was displaced yields: no replacement, nothing published, and the count left exactly where it was - a count that moved is what makes the shell build a new surface, so a yield that touched it would start the bridge it is refusing to start. Every other ending replaces with takeover as before. The relaunch case recovers by itself, two windows never trade a terminal, and the window that lost one says so rather than going quiet.\n\nCovered by `crates/muster-bridge/tests/bridge_taken_over.rs`, which takes the terminal with a real second `herdr terminal session control --takeover` rather than a fabricated report - the endings differ only in herdr's wording, so a test that fabricated one would be testing itself.\n\n**The one thing this leaves open** is what a person sees when it happens. The yielded pane goes dark with a sentence on stderr; turning that into a `Problem` with the way out belongs to `a_2Ic6mB36E` and is next.\n\nFixed in `1a27089`.",
-      "created_at_millis": 1788323180812,
-      "id": "c_2ImKS9n94"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788323180812
     }
   ],
   "created_at_millis": 1788272056664,

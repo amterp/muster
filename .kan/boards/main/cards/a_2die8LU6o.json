@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-group-conversation",
   "alias_explicit": false,
   "area": [
@@ -8,82 +8,82 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j17K3Fbd",
       "body": "Second ask, Chat Notes 2026-10-14 (voice): \"Viewing at human messages is still super awkward. It opens up like a new pane and there's just plain text, it's hard to parse. I think there's already an outstanding ticket for this but this needs to be properly implemented via some other approach.\" Going to a message notification today opens a pane running `muster msg log --follow` (docs/architecture.md, attention routing).",
-      "created_at_millis": 1792200272634,
-      "id": "c_2j17K3Fbd"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200272634
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JfTCLL",
       "body": "Committed 2026-10-16, after the second ask. First step: draft a MIP for the view (native AppKit over a core view-model, or a richer terminal view) and how membership shows on rows.",
-      "created_at_millis": 1792200747196,
-      "id": "c_2j1JfTCLL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200747196
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nZmx3Joy",
       "body": "Mockups, 2026-10-24: Lectern artifact muster-group-conversation. Recommended direction: a native drawer over the panes (A), with a queue of everything waiting on you (B) and banner/sidebar replies (C) as later additions. Agreed in its thread for the MIP: the conversation shows each member's pane state, including a turn that ended without a post, and muster docs msg states plainly how each channel reaches the human. Which channel an agent uses stays the user's skills' call, not Muster's. Open in the MIP: Markdown parsed in the core or in Swift; answers an agent offers as buttons (a new message field).",
-      "created_at_millis": 1792873957812,
-      "id": "c_2nZmx3Joy"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792873957812
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nZvwj1I9",
       "body": "Agreed on the mockups since (muster-group-conversation v3): a message that starts with @ and a member's name addresses that member in place of the default recipient, and an @ later only completes the name; only the composer reads it, and msg post keeps --to. Answers an agent offers fill the reply instead of sending it, so a note can go with them; the reply carries the choice as text for the agent and as a field for Muster. Unsent replies are kept per group on the daemon, with the human's participant, and the sidebar row marks a waiting draft.",
-      "created_at_millis": 1792874303573,
-      "id": "c_2nZvwj1I9"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792874303573
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2na4FafxE",
       "body": "Direction changed in muster-group-conversation v4, replacing the drawer: choosing a group (sidebar row or banner) shows its conversation in place of the panes until Esc or a tab or pane is chosen; a members column gives each agent Go to pane. Any window can show any group, two at once included; each window's message box and draft are its own (kept with the window's saved arrangement, not the daemon), and a post shows in both. Keep the door open to a conversation pane in a tab's tree later (a pane with no terminal, a protocol change). Terms: group, conversation, message box, transcript (the msg log pane), Needs you, banner. A banner with a reply field and offered answers is the first piece to ship.",
-      "created_at_millis": 1792874622788,
-      "id": "c_2na4FafxE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792874622788
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naAj2CE3",
       "body": "Owner approved the design in muster-group-conversation v4 (2026-10-24). This card stays the conversation view itself, whose next step is the MIP. Split out as children: a_2naAacfIB (banner shows the message and takes a reply; ship first), a_2naAat73L (answers an agent offers), a_2naAbBoP6 (msg docs on how each channel reaches the human), a_2naAbSaGZ (Needs you queue), a_2naAbjFtA (conversation as a pane, uncommitted). Naming: B's queue is \"Needs you\" on screen and \"asking\" in code and CLI.",
-      "created_at_millis": 1792874871680,
-      "id": "c_2naAj2CE3"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792874871680
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naMupzJl",
       "body": "Codex critique (gpt-6.1-sol, xhigh), 2026-10-24, claims spot-checked against the code. For the MIP: (1) Showing the conversation in place of the panes must change what the core counts as on screen, not only what Swift draws. Attention::seen is window focus plus the visible-pane set (crates/muster-core/src/attention.rs:748), and a transcript somebody is looking at reads new messages for the human (crates/muster-seam/src/session.rs:6563). If only the shell hides the surfaces, a covered terminal finishes unseen and loses its done, and a covered transcript reads messages nobody saw. Publish covered panes as not on screen, and restore real focus on the way back. Both need headless checks; Esc during input-method composition needs a native one. (2) Send has four outcomes, not two: pending, saved (with whom it woke, or nobody live: exit 6), refused, and unknown (a remote post can be appended and still answer unanswered: exit 4). MsgRequest.Post has no idempotency key, so never retry an unknown post automatically, and keep the text on refusal or doubt. (3) Default recipient must be someone who can be addressed: @muster is never a valid addressee (crates/muster-msg/src/names.rs), and an author who left the group is refused. (4) Keep a draft whole: recipients, urgency, picked answer and text, keyed by window and group; a message arriving must not retarget it. (5) Share one history cache per group across windows, fetched incrementally with Log since=N, rather than each window re-reading the log (bodies up to 1 MiB).",
-      "created_at_millis": 1792875340270,
-      "id": "c_2naMupzJl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875340270
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naTpRU7X",
       "body": "Owner, 2026-10-24: nothing in this work is answered through a macOS notification. Muster draws its own banner in the window (Swift, SwiftUI), for the reason MIP-3 replaced herdr: \"the more vertically integrated we are, the better an experience we can deliver with Muster.\" The banner card a_2naAacfIB is rewritten to match. Open: whether a message still raises a macOS notification, as a pointer back to Muster only, while Muster is not in front.",
-      "created_at_millis": 1792875606019,
-      "id": "c_2naTpRU7X"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875606019
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naXEYVdj",
       "body": "Settled by the owner, 2026-10-24: while Muster is not in front, a message for the human still raises a macOS notification, as a pointer back to Muster only. It carries no reply field and no answers; choosing it brings Muster forward to the message. Everything else is answered in Muster's own banner and conversation.",
-      "created_at_millis": 1792875736905,
-      "id": "c_2naXEYVdj"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875736905
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nabLlSNq",
       "body": "Decided 2026-10-24 under the owner's say-so to settle what does not need him: (1) Next step is MIP-9, covering the conversation view, with Muster's own banner (a_2naAacfIB) as its first stage, since both share posting as @human from the window, the send outcomes and the read rules, and offered answers (a_2naAat73L) as a later stage, so the message field is designed once. (2) Markdown is parsed in the core (pulldown-cmark) and crosses the seam as blocks: the parsing rules are then tested in the gate, and no logic lands in the shell. (3) The views are SwiftUI hosted in the AppKit shell, which already does this in one place. (4) Banner defaults for the MIP to confirm or change: it shows for messages that wake the human while Muster is in front and that group's conversation is not on screen, is replaced by the next message from the same group, and stays until answered, dismissed or read. Muster's own banner for other attention (blocked panes) is a later question, not this MIP's. Remaining one-way choices go in the MIP's Decisions section, as usual.",
-      "created_at_millis": 1792875895137,
-      "id": "c_2nabLlSNq"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875895137
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nbV5YEuV",
       "body": "MIP-9 drafted, 2026-10-24: docs/mip/0009-group-conversation.md, status Draft. It records the decisions from the design rounds and stages the work as the banner (no daemon change), the conversation (the core's view of a window gains the conversation, so covered panes count as unseen), then offered answers. Two hard-to-undo choices are flagged in it for amterp's veto: --option as the flag, and msg open answering with a window instead of a pane.",
-      "created_at_millis": 1792878037721,
-      "id": "c_2nbV5YEuV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792878037721
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nbfCA4Nl",
       "body": "Owner, 2026-10-24: the transcript pane goes, with no compatibility kept (Muster is before version one). MIP-9 updated: the conversation replaces the pane, OpenTranscript and core/transcript.rs are removed in stage 2, muster msg open answers with the window, and muster msg log stays as a command for agents, scripts and terminals.",
-      "created_at_millis": 1792878426221,
-      "id": "c_2nbfCA4Nl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792878426221
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nbhVt30L",
       "body": "MIP-9 Accepted by amterp, 2026-10-24, with --option as proposed. This card's MIP step is done and it stays the parent of the stages: stage 1, Muster's own banner, is a_2naAacfIB, now in next; stage 2, the conversation, is this card; stage 3, offered answers, is a_2naAat73L.",
-      "created_at_millis": 1792878515331,
-      "id": "c_2nbhVt30L"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792878515331
     }
   ],
   "created_at_millis": 1791417434804,

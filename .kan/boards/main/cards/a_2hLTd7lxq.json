@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "handoff-detection",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jLBQAhVC",
       "body": "2026-10-17: no defect found; closing as an artifact of throttled stress runs. detection:: ran 23 times under taskpolicy -b at load 6-11; one run failed, in 56 s against the usual 24 s, with three tests failing together after waiting 20 s each. The daemons' own logs show the stall: a lone debug daemon loads its manifests in 96-132 ms, but every load over 7 s fell in the failing run's 22-second window, five of them at 14-21 s. Background QoS starved them of CPU. Every sighting so far was a throttled run, never a gate. Reopen on a sighting in an unthrottled gate.",
-      "created_at_millis": 1792248095781,
-      "id": "c_2jLBQAhVC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792248095781
     }
   ],
   "created_at_millis": 1791953269050,

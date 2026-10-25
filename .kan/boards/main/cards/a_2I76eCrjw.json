@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "upstream-a-herdr",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2IQst2tXL",
       "body": "Hit again on 0.4.1, and the measurement matches this card exactly - three orphans on a devenv, 31 minutes after the ssh carrying them died, for exactly the three panes that could not re-attach:\n\n    1708967  31:50  herdr terminal session control w4:p2 --cols 164 --rows 27\n    1708971  31:50  herdr terminal session control w4:p1 --cols 164 --rows 59\n    1713704  30:25  herdr terminal session control w4:p3 --cols 164 --rows 29\n\nOne correction to this card. It says \"Muster's own side is fixed (kan a_2HrmSyRAQ): a replacement bridge re-attaches with --takeover.\" That holds only while the app that owned the dead bridges is still running. A takeover needs `bridgeRestarts \u003e 0` for the pane, and a freshly launched app has zero for all of them, so every attach after a relaunch is a plain one and an orphan refuses all of them. Unplug and then relaunch, in that order, and Muster's side has no answer - which is the ordinary order, since a laptop that has lost its network is a laptop somebody is about to restart things on.\n\nFiled as `a_2IQsToWVW` with the run log. It does not change what this card asks of herdr; it removes the reason to treat that ask as already worked around.",
-      "created_at_millis": 1788272072289,
-      "id": "c_2IQst2tXL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788272072289
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3KxqKYf",
       "body": "Moot: herdr left Muster with the MIP-3 cut-over; muster-daemon replaces it. Closed without action.",
-      "created_at_millis": 1790580166621,
-      "id": "c_2Y3KxqKYf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580166621
     }
   ],
   "created_at_millis": 1788224935662,

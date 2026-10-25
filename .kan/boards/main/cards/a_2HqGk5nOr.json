@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-that-ssh-d",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2I6fVJ2b8",
       "body": "## Decided: leave it. No code.\n\nMuster commits for now to panes it spawns itself, into local or remote sessions it fully owns\nand is aware of, and does that well. Following a hand-rolled ssh session, in the user's words,\n\"is just not going to be good, it's not going to work well\" - so a pane that ssh'd somewhere\nkeeps being listed where its PTY is, and Muster says nothing about where its attention went.\n\nThe card's own argument agrees, and is the reason this closes rather than waits. An ssh session\ninside a local pane and a real remote pane have different durability: one survives a dropped VPN\nand a quit app with nothing else involved, the other lives only as long as something on the far\nside holds it. Filing them together would make the weaker look like the stronger in the one\nplace somebody would look to tell them apart. Detecting it is cheap; saying it accurately is\nnot.\n\nWorth re-reading once `a_2HpkpfIfq` has landed, which it now has: making the first pane on a\nmachine is one `muster pane new --daemon \u003cid\u003e` away, and the window gives an attached machine a\npane on its own. Most of the reason to ssh by hand into a machine Muster already knows is gone,\nwhich is the outcome this card hoped for rather than a reason to revisit it.",
-      "created_at_millis": 1788223892254,
-      "id": "c_2I6fVJ2b8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788223892254
     }
   ],
   "created_at_millis": 1788184807953,

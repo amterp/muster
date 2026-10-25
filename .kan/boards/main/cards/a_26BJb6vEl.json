@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "scrollback-strategy",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JcJkYh",
       "body": "Settled by MIP-3: the daemon replays a pane's history and the surface keeps its own scrollback built from that replay, so Ghostty's search works (docs/architecture.md, data plane).",
-      "created_at_millis": 1792200745236,
-      "id": "c_2j1JcJkYh"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745236
     }
   ],
   "created_at_millis": 1786461806247,

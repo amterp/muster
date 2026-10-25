@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-sidebar-you-can",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28XbaebSM",
       "body": "Landed in a24d5fd. The answer to the card's real question - where the answer lives - is a `Presentation` value beside composition in the same file, not inside it: composition describes a session, and a chrome setting inside \"which tabs was I looking at\" makes that answer harder to read. Being a value in the core rather than a bool in the window is what makes it rebindable, a menu item, and one day CLI-reachable.\n\nRestored ahead of the regions and separately from them, which turned out to matter: a saved region is a wish that can come to nothing, so sharing that early return would have put the list back whenever somebody's tabs did not survive.\n\nCarded on the way out: a_28Xb4UJFc, because putting the list away closes the only door to a pane in a tab no region is showing.",
-      "created_at_millis": 1786810456765,
-      "id": "c_28XbaebSM"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786810456765
     }
   ],
   "created_at_millis": 1786786229820,

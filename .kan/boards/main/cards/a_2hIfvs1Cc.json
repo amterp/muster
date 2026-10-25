@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-blocked-at-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j4C0VLFA",
       "body": "Related, from building the stall notice's reasons (2026-10-16): when a wake is held behind something only a person can answer - a covered prompt such as Claude Code's feedback-draft box, or a blocked agent - the stall notice names it after two minutes but tells only the group's poster. Raising that notice to the person as well is a narrower first step toward this card's escalation.",
-      "created_at_millis": 1792207602556,
-      "id": "c_2j4C0VLFA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792207602556
     }
   ],
   "created_at_millis": 1791946592114,

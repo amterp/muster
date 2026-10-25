@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "extract-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27HhapLOg",
       "body": "Done for its purpose: everything the Rust port needs is now data. 9 files, 73 cases, all claimed by a driver and counted by the gate.\n\nExtracted (44 Swift tests -\u003e 73 cases): keymap, composition-arbiter, agent-state, control-stream-message, frame-decoder, socket-discovery, key-encoder, log-record, pane-input.\n\nTwo format decisions worth knowing before adding more:\n- Sequential concepts get a trace: a case is a list of steps and the expectation is the ordered trace of what went out, tagged by channel. frame-decoder and pane-input use it.\n- Fakes are part of the contract. pane-input names what its test encoder does, because a Rust fake that spelled a keystroke differently would make every case disagree for a reason unrelated to the behavior.\n\nDeliberately left native, and why:\n- SurfaceView (5): drives AppKit with synthesized NSEvents.\n- KeyTranslation (7): the hybrid case - macOS driver, portable KeyEvent expectation. Worth doing when a second shell exists; does not block the port.\n- Log sink concurrency, unwritable path, monotonic clock (4): properties of an implementation, not behaviors.\n- Control-stream socket delivery (1): framing across a real socket and losing the accept race.\n- Grid fidelity and the key-encoder survey (8): already snapshot-driven, oracle is libghostty upstream. a_27Haa38Gp covers moving the survey's keystroke list into data.\n- MusterPerf comparison (10): tests the harness, not the core.\n\nVerified the mechanism by breaking it four ways: wrong expectation prints a readable diff with the why, a blank why refuses to load, a misspelled modifier reports that the case was never evaluated rather than that behavior failed, and an unclaimed corpus file fails the lint.",
-      "created_at_millis": 1786624791674,
-      "id": "c_27HhapLOg"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786624791674
     }
   ],
   "created_at_millis": 1786623701522,

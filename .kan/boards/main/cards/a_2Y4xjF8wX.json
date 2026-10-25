@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "under-heavy-load-the",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y8yNiqOr",
       "body": "Cause: App Nap. A hidden app (or any app with the screen locked) runs every thread at priority 4, under nice-10 builds at 31; the app reads every daemon answer, so a 240 KB whole-pane answer waited up to 12 s in the socket. Fixed by an app-lifetime ProcessInfo activity (threads at 28 hidden) and reads that ask for only the rows wanted (Read.last). ./dev --latency now times reads and an echo beside a build, with budgets. Open: v2's signed daemon ran under a utility clamp (priority 20) that could not be reproduced; the latency row catches it if it recurs.",
-      "created_at_millis": 1790593598227,
-      "id": "c_2Y8yNiqOr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790593598227
     }
   ],
   "created_at_millis": 1790584040125,

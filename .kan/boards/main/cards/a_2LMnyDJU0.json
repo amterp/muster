@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-attaches-a",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2WDEcF8FV",
       "body": "Done for local panes (round 1, 2026-09-24). A hidden local pane's bridge lets go of its herdr client and starts a new one when the pane is shown; agent state keeps arriving on its own subscription. Crowded run, 15 panes, 12 printing: herdr 0.135 -\u003e 0.030 cores; pane.send_input median 10.6 -\u003e 1.8 ms, p95 72.6 -\u003e 17.5 ms. Showing a parked pane costs a new client's first frame, 50 ms median (30-133) under load; the surface keeps its last picture meanwhile. Remote panes still stay attached - see the card for parking them.",
-      "created_at_millis": 1790308228674,
-      "id": "c_2WDEcF8FV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790308228674
     }
   ],
   "created_at_millis": 1788705640303,

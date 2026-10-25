@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-window",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ImCSxfz8",
       "body": "Done on `main3` (slot 3 of the 2026-09-02 parallel round): `feat: muster window answers for every window that is listening`.\n\n`muster window` and `muster pane read` now fan out when the caller named no window and several answer; everything that changes something refuses exactly as before, with the same message.\n\n## Where the read/write line ended up\n\n`only_reads` moved to `muster-proto`, which is the one crate the CLI and the window both have. It lost one entry on the way, and that is the interesting part: `FocusPaneAt` was in the list because it is the second press of a numbered chord and so must not disarm it - but it *changes* something, and a CLI that fanned it out would move the keyboard in every window somebody had open. So the shared list is now the reads, and `handler.rs` states the chord's own exception beside the chord rule, where it can be read as a fact about chords rather than about reads.\n\n## What each answer is headed by\n\nThe pid, with the socket path beside it. Nothing gives a window a name a person chose, and the path is a temporary directory with the pid on the end of it - so this is the most readable true thing available, and the path stays visible because that is what `--socket` takes.\n\n`--json` becomes `{\"windows\": [...]}` with each window's ordinary answer flattened into its row, so a filter written for one window reads across all of them. One window is byte for byte what it was, in both shapes.\n\n## Also done\n\n`window list`'s help no longer claims \"every Muster window on this machine\". It reads one state directory, so a window launched with a `MUSTER_HOME` of its own was never in it.\n\nAnd `regions[]` grew `zoomed`, which `ViewRegion` has always carried and the answer never showed. That is not tidiness: it is the field that would have turned `a_2Ibz6NXjV` into a read rather than an investigation, because a zoomed region reports every pane but one as `on_screen: false` and nothing else in the answer says why.\n\n## Tested\n\n`crates/muster-cli/tests/two_windows.rs`, five cases: two windows answer, one window is unchanged and grows no heading, a caller inside a pane hears only its own window, a change still refuses with exit 3 and names both sockets, and the JSON carries one row per window. The far end is two listeners answering a real framed `Window` - a peer client of this CLI's protocol rather than a faked daemon, since two real windows would need two processes.",
-      "created_at_millis": 1788322873793,
-      "id": "c_2ImCSxfz8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788322873793
     }
   ],
   "created_at_millis": 1788291952214,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-cli-drive-the",
   "alias_explicit": false,
   "area": [
@@ -8,28 +8,28 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_294MvrZ3C",
       "body": "A concrete use case landed for this, which is why it moves up: an agent\nin a pane acting as integrator for a parallel workflow - splitting panes\nbelow itself, starting an agent in each, and briefing them. See the card\nthat records it.\n\nVerified today that the *backend* half of that needs nothing from us:\n`$HERDR_PANE_ID` tells a pane where it is, and `herdr pane split`,\n`pane rename` and `pane run` do the rest, from inside the pane. So this\ncard is precisely the remainder - focus, zoom, which tab a region shows,\nthe sidebar - and the remainder is exactly the part herdr cannot reach,\nbecause Muster's keyboard cursor is view-local by design.\n\nOne addition to the description: **an agent has no eyes.** A person can\nsee which panes are on screen and where focus is; an agent must ask. The\nread side (\"what is this window showing\") is at least as important as the\nwrite side, and a CLI that only writes leaves an agent arranging a window\nit cannot look at.",
-      "created_at_millis": 1786888541553,
-      "id": "c_294MvrZ3C"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786888541553
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_294V9TBni",
       "body": "**This is the agent surface, and herdr's CLI explicitly is not** - worth\nrecording as a decision rather than leaving to be re-litigated whenever\nsomebody notices that shelling out to `herdr` from a pane already works.\n\nIt does already work, which is the temptation. But it cannot express a\nwindow that spans two daemons - `herdr` in a pane reaches that pane's\ndaemon and no other, so nothing can put a pane on the devenv or ask what\nthe window is showing. It silently truncates anything with a view\nconsequence, because a split made behind Muster's back appears but\nfocuses nothing. And a documented herdr-shaped agent surface would *be*\nthe contract regardless of what the seam says, which is the one thing\n\"we never let one own our contract\" rules out. Nothing depends on it yet;\nthat is what makes this cheap to settle now.\n\n**Ergonomics is the point, not coverage.** Not one verb per herdr verb -\na vocabulary shaped to what Muster means to support, where one intent is\none call. The sharpest evidence: driving this by hand needs a `sleep`\nbetween creating a pane and typing into it, because a pane's program is\nspawned with the pane and text sent before its shell draws a prompt races\nthe first output. The suite already carries a comment about that hazard,\nhaving been caught by it. Every agent scripting this by hand would\nrediscover that wait and get it wrong under load. \"Make a pane below me,\nin this directory, running this\" as a single call moves the race into one\nplace that gets it right, and that is the kind of thing this CLI is for.\n\n**Reads are half the job.** An agent has no eyes: it cannot see which\npanes are on screen or where focus is, so it must be able to ask. A CLI\nthat only writes leaves an agent arranging a window it cannot look at.\n\n**Addressing needs designing with this, not after.** The CLI has to reach\na running GUI process, and something has to say which window. A `MUSTER_*`\nvariable carried into panes answers that and announces the surface at the\nsame time, so `muster` needs no `--window` flag from inside a pane.",
-      "created_at_millis": 1786888857519,
-      "id": "c_294V9TBni"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786888857519
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2995TrjFU",
       "body": "**Two things settled, enough to make this implementable rather than a\ndesign question.**\n\n**The verb vocabulary is mostly already determined, by parity.** Every\naction runs one shared path, so the CLI's verbs are the action list, plus\narguments, plus reads. `split_right` becomes `muster pane new --right`,\n`zoom` becomes `muster zoom`, `close_pane` becomes `muster pane close`.\nThat is not a coincidence to exploit later; it is the desideratum, and it\nmeans the design work here is small. The minimal set covering the\nintegrator scenario in a_294MvlG1E is seven:\n\n    muster pane new [--right|--below|--left|--up] [--cwd] [--run] [--name]\n    muster pane rename \u003cpane\u003e \u003cname\u003e\n    muster pane send \u003cpane\u003e \u003ctext\u003e\n    muster pane close \u003cpane\u003e\n    muster focus \u003cpane\u003e\n    muster zoom [\u003cpane\u003e]\n    muster window [--json]\n\n`pane new` is the only one that is not a thin front over an existing\nintent: it owns the wait between spawning a pane and typing into it,\nwhich is the race every hand-written script rediscovers and gets wrong\nunder load.\n\nThis does not conflict with the decision on a_295P9LTpd to keep\nparameterless actions. The intent is parameterized and the *action* is a\nparameterless name that dispatches it with defaults; the CLI names the\nintent directly. Two surfaces, one path.\n\n**Addressing is solved by the same mechanism as a_294rihJCP, which makes\nthat card a prerequisite.** The description proposes a `MUSTER_*`\nvariable carried into panes, and until now there was no way to set one -\nwhich would have left `muster` inside a pane reading `$HERDR_PANE_ID` and\nmapping it through the adapter. Workable, but it puts the backend's\nvocabulary inside Muster's own surface, which is what this card exists to\navoid. herdr's per-pane `env` map turns out to be on `pane.split`,\n`tab.create` and `workspace.create` at the pinned version, so Muster sets\n`MUSTER_PANE` itself when it creates the pane and the question does not\narise.\n\nSo the ordering is a_294rihJCP first, then this.\n\n**Still to design when this is picked up**, neither of them blocking:\n\n- **The endpoint.** A unix socket the app listens on, presumably under\n  `~/.muster/state/`, and what happens when two Muster instances are\n  running.\n- **What `muster window --json` actually returns.** An agent has no eyes,\n  so this is half the value of the CLI, and the shape wants deciding\n  against a real agent transcript rather than guessed at.",
-      "created_at_millis": 1786899787114,
-      "id": "c_2995TrjFU"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786899787114
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_29eCVj5fV",
       "body": "Delivered. `muster` is `crates/muster-cli`, a pure client: argv -\u003e Request -\u003e unix socket -\u003e render. It covers `window`, `pane new|rename|send|close`, `focus`, `zoom`, `docs` and `completions`, and every one is a request a chord already sends.\n\n- The endpoint is `crates/muster-seam/src/command.rs`: `~/.muster/state/command-\u003cpid\u003e.sock`, length-prefixed protobuf through the same dispatcher, one request per connection, a thread each.\n- `crates/muster-proto` was extracted so a client can link the schema without linking libghostty-vt.\n- `ReadWindow` answers the view, the roster, every pane's agent state and each daemon's health from the same builders the events come from.\n- Human output by default, `--json` for a program, colour only to a terminal. Exit codes: 0 done, 1 refused, 2 bad command line, 3 no window.\n- clap rather than hand-rolled parsing, departing from the plan: suggestions, a --help that cannot drift, and shell completions are worth more than owning the wording of \"unknown argument\". What clap cannot know is still worded by us.\n- `corpus/conformance/cli.json` pins 26 cases of argv -\u003e request or refusal.\n- Docs ship inside the binary: `muster docs` over `docs/cli/*.md`, with a test that fails on a file no topic names.",
-      "created_at_millis": 1786973939035,
-      "id": "c_29eCVj5fV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786973939035
     }
   ],
   "created_at_millis": 1786461806201,

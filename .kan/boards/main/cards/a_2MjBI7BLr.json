@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-displaced-pane",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2MjMpJsXc",
       "body": "The devenv herdr log shows the pane this was observed on being closed a few minutes later, with a Claude session in it. Times local (UTC-5), from /home/.config/herdr/sessions/muster/herdr-server.log:\n\n    17:29  window still lists p224xypzs3 (backend w5:p1) as 'src · claude · Lore status confirmation', idle\n    17:33:47  api.request  method=\"pane.close\"  request_id=\"muster:3\"\n              workspace.close workspace_id=\"w5\"\n              pane.exit pane_id=21 status=ExitStatus { code: 1, signal: Some(\"Hangup\") }\n              pane session terminated pane=21 pid=1083673 signal=Terminate\n    17:33:52  persist.clear - herdr had nothing left to remember\n\nw5:p1 is the pane that had been displaced by the second window and was drawing 'close this pane and open it again to bring it back here'. The close came from Muster's API, so it was the pane being closed in the window rather than the agent exiting. Whether the message was followed is not in the log; what the log does show is that the advice was on screen and the pane it was about was closed while it was.\n\nNo devenv pane survived: the whole w4 workspace went the same way between 16:23 and 16:27, which was deliberate. This card is about w5:p1 at 17:33, which was not.",
-      "created_at_millis": 1788907175659,
-      "id": "c_2MjMpJsXc"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788907175659
     }
   ],
   "created_at_millis": 1788906732268,

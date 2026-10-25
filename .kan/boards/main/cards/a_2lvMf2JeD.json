@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "arrange-panes-from",
   "alias_explicit": false,
   "area": [
@@ -9,40 +9,40 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lxkT7Bks",
       "body": "2026-10-21: MIP-8 drafted (a031d6a0, docs/mip/0008-panes-across-machines.md), with four questions A-D for amterp at its end. Stage 1 of its 'How it lands' is on main (3c00f285): the daemon can keep a tab's whole tree with other machines' panes as foreign leaves, protocol 1.7, state file v2 only when a foreign leaf exists. Nothing visible changes until stage 3. Stage 2 (the window merges the copies) in progress.",
-      "created_at_millis": 1792635534375,
-      "id": "c_2lxkT7Bks"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792635534375
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzOhQABT",
       "body": "2026-10-21: stage 2 on main too (24251e43): the core merges a tab's copies (highest generation, prune only on the holder's own word, add a missing pane beside its sibling) as a pure module with 11 conformance cases, publishes View.tree beside the regions, and writes back only to tabs already held as spanning trees (the migration's write waits for stage 3, which sends resize/swap/zoom as SetTree). Nothing visible changes. Next is stage 3 (the shell draws one tree), which needs amterp's answer to question D; stage 4 needs C, stage 5 A and B. MIP corrections from building are in the MIP.",
-      "created_at_millis": 1792639464122,
-      "id": "c_2lzOhQABT"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792639464122
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2n4Ppp3KZ",
       "body": "2026-10-23 re-triage: no commit since stage 2 landed on 2026-10-21, because stage 3 waits on amterp's answer to MIP-8 question D (whether `muster window --json` drops `regions[]` at once; the MIP recommends yes). Stages 4 and 5 wait on questions C, A and B. Moved to backlog-hi with the blocked label until D is answered, so in-progress shows only work that is moving.",
-      "created_at_millis": 1792799187535,
-      "id": "c_2n4Ppp3KZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792799187535
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2n4rxRvGu",
       "body": "2026-10-23: question D decided, (a): `muster window --json` drops `regions[]` at once, and the release that ships stage 3 says so in its notes. amterp left the choice to an agent, which took the MIP's recommendation (recorded in MIP-8). Stage 3, the shell drawing one tree, is unblocked: blocked label off, moved to next. Stages 4 and 5 still wait on questions C, A and B.",
-      "created_at_millis": 1792800268575,
-      "id": "c_2n4rxRvGu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792800268575
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQX0gDvZ",
       "body": "2026-10-24: stage 3's first half on main (4400037c..1eed31d4): spanning::rearrange works out resize, swap, zoom, a divider ratio and equalize on a spanning tab's whole tree, and the seam sends each as one SetTabTree per part; the resize rule moved into muster_core::resize, shared with the daemon; every tab's tree is in the view, and muster window --json drops regions[] for tabs[].layout and tabs[].zoomed (question D). Dormant in real use: no window writes a tab made before MIP-8 until the second half. Stage 3 was cut in two because the shell drawing the tree and the migration write must land together (MIP-8, How it lands). Second half in progress. Release-note line: muster window --json no longer has regions[] or tabs[].regions; the tab on screen has layout, its whole tree with the machine on every pane, and zoomed; with --layout, every tab has both.",
-      "created_at_millis": 1792851895509,
-      "id": "c_2nQX0gDvZ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792851895509
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTOzWm0M",
       "body": "2026-10-24: stages 3 and 4 on main. Stage 3 (8042bdfb and the commits before it): the shell draws one tree per tab, muster window --json has tabs[].layout in place of regions[], and the window writes tabs made before MIP-8 as one tree. Stage 4 (ca276b09-equivalents up to 09715e88, plus 3dccac7e and 831435a8): every placement path works out the whole tree, so a devenv pane can go below a laptop pane - Split on Machine (still right only, question C), pane new --daemon with a side, drags onto any pane's edge, row drops, pane move --onto and --tab; agent-list numbering and the chords follow the tree's reading order; AGENTS.md's Not built line is gone; a rearrangement refused as stale is redone once. Not seen in the real app yet (screen locked): by-hand steps in the round report. Stage 5 waits on questions A and B; C is still open for the menu. Release-note lines: see the round report. Moved to backlog-hi with the blocked label until A and B are answered.",
-      "created_at_millis": 1792858737102,
-      "id": "c_2nTOzWm0M"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792858737102
     }
   ],
   "created_at_millis": 1792629852682,

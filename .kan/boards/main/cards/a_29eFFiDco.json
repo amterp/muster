@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "tab-moved-is-unread",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2JtT63dEC",
       "body": "Worth knowing that the ground moved under this, with MIP-2 stages three and four (2026-09-03). The window's tab order is now Muster's own record - a window holds an ordered list of Muster tabs, appended on first sight and never reordered, spanning machines - rather than a reading of one daemon's order.\n\nSo the answer this card was reaching for has changed shape. Reading `tab_moved` would say that another client moved a tab within its daemon; whether Muster's own list should follow is a separate decision, and there is now somewhere to put an order that there was not before. `a_2JtSWvZUQ` asks the nearest live version of the question.",
-      "created_at_millis": 1788487959390,
-      "id": "c_2JtT63dEC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788487959390
     }
   ],
   "created_at_millis": 1786974044438,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "one-frame-stream-per",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1Ja68Ew",
       "body": "Done by MIP-3: a bridge dials the forwarded socket of the one ssh master and asks for its pane's stream, so a remote pane costs no ssh exec of its own (docs/architecture.md, remote daemons).",
-      "created_at_millis": 1792200743864,
-      "id": "c_2j1Ja68Ew"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200743864
     }
   ],
   "created_at_millis": 1788224953437,

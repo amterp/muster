@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "agent-state-from",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XqYKyFVV",
       "body": "Daemon side and hooks landed: Report.agent/state, Pane.state_reported/screen_unreadable, a working report stale after 10 s quiet, drift after 60 s, extras/claude-code as a plugin with hooks (README leads with the plugin), ./dev --claude-code. Review found a blocked or idle report never goes stale (critical) and false drift for harnesses with no idle rule: both fixed next round. Stays open for those fixes and the app showing screen_unreadable.",
-      "created_at_millis": 1790549698043,
-      "id": "c_2XqYKyFVV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790549698043
     }
   ],
   "created_at_millis": 1790512314357,

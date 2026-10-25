@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "no-bridge-that-dies",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ImK1Rf0V",
       "body": "**The hypothesis was right, and settling it turned out not to matter.** The card offered a cheap check - press a key on a dead pane and watch for `pane.bridge.exited`. Not needed: the fix does not depend on the answer. Muster now watches the socket it bound for the pane and the bridge dialed back on, which ends when the process does, whatever libghostty decides to do with the surface. The renderer's callback stays wired as a second source rather than the one that matters.\n\n**What the fix needed beyond the card.** The connection closing says a bridge is gone; it does not say which of several things happened, and the answers differ. So the bridge writes one sentence on that socket before it exits, carrying herdr's own closing reason. That is a new direction on a channel whose whole point was that the bridge has no vocabulary of its own - defensible, and now argued rather than glossed in `control_socket.rs`: what crosses towards the bridge is still herdr's JSON copied through, and what comes back is the bridge reporting on itself, which is nobody else's to phrase.\n\n**One death, however many things notice it.** Both watches can fire for one bridge, and counting the second would spend a pane's three replacements in two. So a pane whose bridge is known gone ignores further reports until something dials its socket again. That changed a seam test: `a_bridge_that_keeps_dying_is_given_up_on` used to report five exits with nothing in between, which is now one bridge reported five times. It dials the pane's control socket between them instead, which is what a replacement bridge does.\n\n**The four validation cases, and where each lives.** A bridge killed by hand while its pane renders is `crates/muster-bridge/tests/bridge_death.rs` - a real bridge process ended with a signal, asserting the view carries the replacement. A pane whose daemon is genuinely gone still giving up after LIMIT is the seam test above. The end-to-end case the card asks for rather than a corpus one is those two. The network-change case needs a devenv and is the integrator's to run under `./dev --ssh`.\n\nFixed in `1a27089`.",
-      "created_at_millis": 1788323164253,
-      "id": "c_2ImK1Rf0V"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788323164253
     }
   ],
   "created_at_millis": 1788273820515,

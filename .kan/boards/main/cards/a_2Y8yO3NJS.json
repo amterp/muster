@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "why-v2-s-signed",
   "alias_explicit": false,
   "column": "backlog-lo",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2YAdk5nOo",
       "body": "The daemon's bundle already declares NSAppSleepDisabled (dev around 788-812), so v2's utility clamp is not App Nap, and holding a Foundation activity in the daemon would likely change nothing.",
-      "created_at_millis": 1790597571418,
-      "id": "c_2YAdk5nOo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790597571418
     }
   ],
   "created_at_millis": 1790593598486,

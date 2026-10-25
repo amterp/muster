@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "dev-claude-code",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lz94CsMK",
       "body": "2026-10-21: done in 319119e2. The live test now restarts the hooked Claude Code in its pane (RestartAgent, as muster pane restart) before the daemon restart: Done, not killed (ended on SIGTERM inside the 5 s grace), typed 'claude ... --model haiku ... --resume \u003cid\u003e', and the resumed session redraws the first turn. Ran and passed on Claude Code 2.1.307 (restart in 0.96 s, session id kept on --resume), no extra model turn. The Codex step waits for the OpenAI account (card says 2026-11-02).",
-      "created_at_millis": 1792638863207,
-      "id": "c_2lz94CsMK"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792638863207
     }
   ],
   "created_at_millis": 1792207432461,

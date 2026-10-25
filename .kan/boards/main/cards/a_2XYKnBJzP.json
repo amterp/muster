@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-app-replaces-an",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3KuhYWL",
       "body": "The bridge half (reattach on REPLACED) landed with the cut-over. Left: the app asking an older daemon to hand over. The landing review found nothing triggers it, so daemon fixes after 0.10.0 reach a machine only when its daemon restarts. Next slot 1 round, together with one launch patience for the handoff and the launcher (the handoff waits 30 s for --version; a first launch of a new bundle's daemon measured 44 s).",
-      "created_at_millis": 1790580164672,
-      "id": "c_2Y3KuhYWL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580164672
     }
   ],
   "created_at_millis": 1790506278356,

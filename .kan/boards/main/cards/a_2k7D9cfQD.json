@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-bridge-that-stops",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTDuYWoE",
       "body": "2026-10-24: on main in 728e37e6. The daemon logs daemon.stream.behind with held_ms, how long the program waited for credit; the test asserts that instead of timing on its reader's clock.",
-      "created_at_millis": 1792858311183,
-      "id": "c_2nTDuYWoE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792858311183
     }
   ],
   "created_at_millis": 1792362559884,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-send-confirm",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2izzfVrP7",
       "body": "Another from tooling feedback, 2026-10-16 (0.16.0, devenv): `muster pane send --pane p2bjgf98za --enter --confirm \"/compact\"` into an idle Codex. Codex took it and compacted (`pane read` showed \"Compacting context\", then \"Context 0% used\"), but send printed \"the text was sent ... and does not show on it any more than it did before, so whatever is running there did not take it\", with three causes that did not apply. It is the same shape as `/quit`: a consumed slash command leaves the prompt empty.",
-      "created_at_millis": 1792197595135,
-      "id": "c_2izzfVrP7"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792197595135
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j2pUaece",
       "body": "Landed 2026-10-16: --confirm now answers unknown (exit 4) when the pane changed without showing the text - a consumed slash command, a quit, a submitted prompt - and refuses (exit 1) only when nothing changed or the line was cut short. Nothing that was refused became confirmed, so a_2hIfvZQJP is not reopened.",
-      "created_at_millis": 1792204353806,
-      "id": "c_2j2pUaece"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792204353806
     }
   ],
   "created_at_millis": 1791946590660,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-s-own-banner",
   "alias_explicit": false,
   "area": [
@@ -9,22 +9,22 @@
   "column": "next",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2naMv3OCN",
       "body": "Correction and critique, 2026-10-24. The description is wrong that msg post --to @human with no --group lands in a group of just that agent and the human: it goes to the one group they already share, which may hold others, is refused if they share several, and makes a pair group only if they share none (docs/cli/msg.md, Groups). The quick ask still works, without that guarantee. From the Codex critique, checked against the code: (1) Freeze the group, sequence number and author shown in the banner into its payload; today it carries only daemon and group (Notifications.swift:210), and each new message replaces the group's banner, so a reply resolved at callback time could go to whoever posted last. (2) A banner reply must not read the group: MsgRequest.Read takes only a group and moves the human's cursor to the head, so answering otter's banner would also clear heron's unseen question. Simplest first version: a banner reply leaves the read cursor alone. (3) @muster's banners are not replyable: @muster is never a valid addressee. (4) Keep the reply on failure and offer a way to recover it; never retry a post whose outcome is unknown.",
-      "created_at_millis": 1792875340415,
-      "id": "c_2naMv3OCN"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875340415
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naXEfp6H",
       "body": "Settled 2026-10-24: while Muster is not in front, the macOS notification stays, as a pointer back to Muster only, with no reply in it. This banner is what shows once Muster is in front.",
-      "created_at_millis": 1792875736971,
-      "id": "c_2naXEfp6H"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875736971
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nbhW0eiE",
       "body": "MIP-9 Accepted 2026-10-24: this is its stage 1 (docs/mip/0009-group-conversation.md, sections 4, 5 and 9). It includes what the banner needs underneath: posting as the human from the window, the four send outcomes, Markdown parsed in the core, and the banner's model and events. No daemon change.",
-      "created_at_millis": 1792878515400,
-      "id": "c_2nbhW0eiE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792878515400
     }
   ],
   "created_at_millis": 1792874866507,

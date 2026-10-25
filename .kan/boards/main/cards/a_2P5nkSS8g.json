@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-pane-read-may",
   "alias_explicit": false,
   "area": [
@@ -9,16 +9,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2P65xNvZ4",
       "body": "Likely seen in the gate, 2026-09-12: crates/muster-seam/tests/reopen.rs a_saved_region_naming_a_dropped_pane_puts_the_keyboard_on_one_that_is_there failed once under load ~60, when a SplitPane of the window's first pane answered 'no pane called p237e21sss on local'. Six reruns passed, and the next full gate passed. Same shape as this card: a verb resolving a name the mirror did not hold yet.",
-      "created_at_millis": 1789256869330,
-      "id": "c_2P65xNvZ4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1789256869330
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2PRmaf1O8",
       "body": "Fixed 2026-09-13 (slot 2): a pane new or tab new on the command socket answers once the window holds the pane, bounded at 2s; the shell's dispatch path does not wait. Validation showed read, send --confirm, move, close, and read after tab new racing; plain send and rename were already fine. The reopen.rs flake quoted above is probably not this race: 'no pane called ... on local' comes from Names::backend_pane, a name-registry miss on the window's first pane, which this fix does not touch.",
-      "created_at_millis": 1789308557052,
-      "id": "c_2PRmaf1O8"
+      "author": "Alexander Terp",
+      "created_at_millis": 1789308557052
     }
   ],
   "created_at_millis": 1789256169439,

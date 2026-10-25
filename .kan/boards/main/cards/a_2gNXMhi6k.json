@@ -1,50 +1,50 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-bundle-built-from",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jOk34B0s",
       "body": "2026-10-17, a second trap for running main day to day: even with MUSTER_INSTALL=release, a bundle of unreleased main carries the last release's version (Cargo.toml says 0.16.0 until ./release bumps it), and the app hands an older daemon's panes over only to a newer version (muster-daemon-client/src/handover.rs, age_against compares major.minor.patch and ignores any suffix). So the new app adopts the running 0.16.0 daemon and every daemon-side change in main stays off until that daemon restarts, which ends every agent. A build meant to replace the release has to carry a version between the two, such as 0.16.1-dev, newer than the installed release and older than the next one, so brew's next upgrade still hands over. A script that builds and installs main this way (version, MUSTER_INSTALL, bundle, keep the old app aside, relaunch) would close both traps.",
-      "created_at_millis": 1792256576706,
-      "id": "c_2jOk34B0s"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792256576706
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jQUqx2UN",
       "body": "2026-10-17, the owner's plan for running unreleased main as the everyday Muster on the Mac mini, agreed but NOT to be done until he says so (his agents were busy; an app restart must not interrupt them). The Homebrew cask (0.16.0) is installed at /Applications/Muster.app.\n\nSteps:\n1. Ask the owner first, every time, and check `muster window` that nothing is mid-turn that he cares about. The handover keeps every agent's process running, but the window closes and reopens.\n2. Build in a throwaway worktree so main's version stays as ./release expects: `git worktree add ../muster-build main`, then in it set the workspace version in Cargo.toml to `0.16.1-dev` (newer than the installed 0.16.0, older than the next release, so this build's daemon is handed the panes, and brew's next upgrade hands them on again). Do not commit it. Check `df -h ~` first: a release build of everything plus both Linux daemons needs several GB.\n3. `MUSTER_INSTALL=release ./dev --bundle` there, so the bundle belongs to the release install (socket release.sock) rather than a dev-\u003chash\u003e one. Result: .build/muster.app.\n4. Quit Muster, move /Applications/Muster.app aside as Muster.app.0.16.0 (keep it; .old and .prev already exist from earlier swaps), `ditto` the new bundle to /Applications/Muster.app, and launch it.\n5. Verify: `muster daemons` and `muster window` show the release daemon at 0.16.1-dev and every pane still there with its agent; spot-check a few agents answer. An attached devenv gets this build's Linux daemon too.\n6. Then the hand checks from the 2026-10-17 round (helpers: --helper, the fold in the agent list, Show/Hide Helpers, the maker notice, the closed-maker banner; across machines from the devenv).\n\nRolling back: quit, put Muster.app.0.16.0 back. The daemon stays 0.16.1-dev until it restarts (an older app adopts a newer daemon as it is), so a full rollback means letting that daemon end, which ends its agents: avoid unless needed.\n\nRemove the worktree after (`git worktree remove ../muster-build`).",
-      "created_at_millis": 1792260759154,
-      "id": "c_2jQUqx2UN"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792260759154
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jSb3X4Dm",
       "body": "Swap procedure addition (2026-10-17): Muster's harness adapters are now installed by tai-personal's muster bundle (`muster harness install` per target). Claude Code's plugin loads in place from /Applications/Muster.app/Contents/Resources/extras, so it follows the new app by itself; Codex keeps its own copy, so run `tai reinstall` (or `muster harness install codex`) after the swap. Codex then asks to trust any changed hooks in /hooks.",
-      "created_at_millis": 1792265764152,
-      "id": "c_2jSb3X4Dm"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792265764152
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jTaWvCuC",
       "body": "Done 2026-10-17 15:14: main at 7cd0443a, built as 0.16.1-dev with MUSTER_INSTALL=release, now /Applications/Muster.app (0.16.0 kept as Muster.app.0.16.0). The new daemon took the release daemon's 8 panes by handoff a second after launch; every agent kept running, including the session doing the swap, which ran the quit-move-ditto-open steps as one detached script from its own pane. Corrections to the steps above: main is checked out in the main worktree, so the build worktree needs `git worktree add --detach ../muster-build main`; copying deps/ghostty and deps/.built in with `cp -c` skips rebuilding libghostty (bundle took 6 min); the CLI inside the bundle is Contents/MacOS/muster-cli (Contents/MacOS/muster is the app). Next time: the handover ignores the -dev suffix, so the next main build must be 0.16.2-dev (or higher) to take this daemon over, while staying below the next release.",
-      "created_at_millis": 1792268127218,
-      "id": "c_2jTaWvCuC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792268127218
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jTj6nqp0",
       "body": "2026-10-17: the owner chose not to run the hand checks listed above. Main is the everyday Muster now, so issues get found and filed through use instead. Least covered by the suite, so likeliest to surface: the helpers' fold in the agent list and the closed-maker banner (Swift unit tests only, no rendered check).",
-      "created_at_millis": 1792268456973,
-      "id": "c_2jTj6nqp0"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792268456973
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2k2PIKETy",
       "body": "Done 2026-10-18 14:16: main at 1a97670d (callsigns) built as 0.16.2-dev with MUSTER_INSTALL=release, now /Applications/Muster.app; 0.16.1-dev kept as Muster.app.0.16.1-dev. The new daemon took all 8 panes by handoff about a second after launch and every agent kept running. Bundle took 6.3 min with deps/ghostty and deps/.built copied in by cp -c. Run tai reinstall from ~/src/tai-personal afterwards: its codex-settings post_install step uses a cwd-relative path. Next main build: 0.16.3-dev.",
-      "created_at_millis": 1792351110124,
-      "id": "c_2k2PIKETy"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792351110124
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2m04mLPHk",
       "body": "2026-10-21: done on main (9cf9562c..9c648322). tools/install-main [rev] builds a commit in a scratch worktree as one patch past the highest of Cargo.toml, the installed app and the running daemon (-dev), for the installed app's install (MUSTER_INSTALL), signed with the keychain's Developer ID when there is exactly one; checks the bundle is newer than both app and daemon; asks before swapping; the detached swap quits only a Muster running from the destination, moves the old app aside as \u003capp\u003e.\u003cversion\u003e, ditto's the new one in, reopens it, and waits for muster daemons to show the new version with the same pane count. --dry-run, --bundle \u003cpath\u003e, --yes. Also: muster daemons shows each daemon's version, and a window raises an error when another install's daemon in its home holds panes. Ran: a real build (0.17.1-dev, release, Developer ID, 632 s) and the swap against a scratch copy. Not run: the real swap (the owner's to run) and the launch-time error in a real window. --bundle still defaults to the checkout's own install, so the contract tier's bundle keeps its daemon.",
-      "created_at_millis": 1792641081651,
-      "id": "c_2m04mLPHk"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792641081651
     }
   ],
   "created_at_millis": 1791810415852,

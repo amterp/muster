@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-agent-list-holds",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2I6FljCll",
       "body": "Defence landed in Muster: `Mirror::bootstrap` now refuses a tab that none of the same snapshot's panes are in, and drops its tree and any focus cursor pointing at it. Justified by `observations/herdr-0.8.0.md` section 15 - a tab is never legitimately empty, because on creation the pane arrives before the tab - which is the same measurement `remove_pane` already relies on. Three cases in `corpus/conformance/mirror.json`, and a `mirror.tabs_denied` warning so a refusal is never silent.\n\nComposition needs nothing extra: `prune` already drops a region whose tab the mirror no longer holds, so the card's `window.toml` check follows.\n\nThe upstream report is `a_2I6FXLq23`.\n\n**Not verified this round:** whether the integrator's `$MUSTER_PANE` going stale mid-session - tab and pane ids renumbering under a running window - is this same fault. It has the right shape, since the phantoms came back renumbered across a restart, but confirming it needs the live daemon, which this round could not touch. Worth checking next time it happens.",
-      "created_at_millis": 1788222902991,
-      "id": "c_2I6FljCll"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788222902991
     }
   ],
   "created_at_millis": 1788198362764,

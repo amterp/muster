@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "moving-a-pane-into-a",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2InBTgyAL",
       "body": "Done on `main3` (slot 3 of the 2026-09-02 parallel round): `feat: one command moves a pane into a tab of its own`.\n\n    muster pane move --pane p1w3r0ab2n --new-tab --name \"the build\"\n\nPlus a menu item under Pane and a `move_pane_to_new_tab` action, unbound by default beside `split_left`, `split_up` and `rename_tab`.\n\n## The shape the core says it in\n\n`BackendIntent::MovePane` grew a destination rather than gaining a sibling intent: `Beside { tab, after }` or `NewTab { name }`. herdr's own shape is a tagged union, and this is Muster's own two answers - \"put this beside that\" needs somewhere that exists, \"give this a tab of its own\" names nowhere. `new_workspace`, herdr's third arm, stays unreached: a workspace is its unit for a whole project, which `proto/muster.proto` already refuses to expose.\n\n## `workspace_id` was worth measuring rather than guessing\n\nMuster sends none on the `new_tab` arm, and `pane_arranging.rs` is why: with a second workspace created and focused, a pane moved into a tab of its own lands in the workspace it came from. herdr's other tab-making request, `tab.create`, is the opposite - omitting the workspace there drops the tab wherever the daemon last had focus, which is the defence `intent.rs` already carries - so the two arms really do differ and the test says which is which.\n\n## The one decision the card did not name\n\n**The window does not follow the tab the move makes.** A move is about a pane, so bringing its tab on screen would answer \"pull that pane out of the split\" by putting the tab somebody is working in behind it - and an agent pulling *another* agent's pane out would lose its own place doing it. The card's own list asks for exactly this (\"the keyboard does not land anywhere the caller did not ask for\"), and `focus: false` on the wire says the same thing to herdr.\n\nThat needed one line in the seam: a tab a request *asked for* is shown, and a tab a move made as somewhere to put a pane is not. `tab new` is untouched - its tab is what was asked for, and `driving_a_window.rs` depends on it coming on screen.\n\nAnyone who does want to go there: `muster tab focus \u003cTAB\u003e`, and the name is `--name`'s.\n\n## Validating a fix, item by item\n\n- One command, and `muster window` shows the pane alone in the new tab. ✓ `arranging.rs`\n- No pane created and destroyed on the way. ✓ the same test counts panes before and after, which is the only thing that tells \"nothing extra was made\" from \"something was made and thrown away\"\n- The keyboard does not land anywhere the caller did not ask for. ✓ and the tab on screen does not move either\n- `--name` names the new tab. ✓ in both `arranging.rs` and `pane_arranging.rs`\n- Moving the last pane out of a tab still closes the tab it left. ✓ herdr's, unchanged; the existing move test still passes\n- The wire pinned the way `backend-intent.json` pins `type: tab`. ✓ two cases, named and unnamed\n\n## Not done, and carded\n\nThe window's drag gesture. Dropping a row below the last tab or into the gap between two tab groups both need a drop target that does not exist, which the card itself calls a separate question. Raised as `a_2Imr6krmO`.",
-      "created_at_millis": 1788325219088,
-      "id": "c_2InBTgyAL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788325219088
     }
   ],
   "created_at_millis": 1788287278201,

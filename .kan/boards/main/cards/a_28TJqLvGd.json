@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-resized-window",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28TijJ60p",
       "body": "Fixed in c383122. SIGWINCH's default disposition is to be ignored, and POSIX discards an ignored signal where it is generated rather than leaving it pending - so the `sigwait` collecting it never returned and every resize was dropped in silence. Installing a handler that can never run (the signal is blocked) takes the disposition off SIG_IGN, which is all it takes.\n\nNone of the three candidates on this card was right, and none of them was checkable from the code: every piece was correct in isolation. What found it was a probe that ran the real arrangement - a real pty, a real bridge, a real daemon - and asked the daemon what size it thought the pane was. That probe is now `crates/muster-bridge/tests/resize.rs` and it fails without the fix.\n\nA resize also leaves a `bridge.resize` record now, so the next one that goes nowhere says so rather than looking like a program that draws badly.\n\nSaved as a memory, since it applies to any signal whose default action is Ignore: SIGWINCH, SIGCHLD, SIGURG, SIGCONT.",
-      "created_at_millis": 1786801198097,
-      "id": "c_28TijJ60p"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786801198097
     }
   ],
   "created_at_millis": 1786800241463,

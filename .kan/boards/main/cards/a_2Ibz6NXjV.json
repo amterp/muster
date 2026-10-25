@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-restored-window",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ImUSN9nr",
       "body": "Fixed on `main3` (slot 3 of the 2026-09-02 parallel round): `fix: a window says on screen the panes it is drawing`.\n\n## The restore path was not the cause\n\nThe card asked to settle that first, and it is settled the other way. A test now drives a real daemon, splits a tab into four panes, relaunches onto the saved arrangement and asks `ReadWindow`: all four report `on_screen`, and did before any change. `session::window()` recomputes the view and the roster on every read - no cache - so \"the restore never recomputes\" is out.\n\n## What was wrong is the derivation, and it had no coverage at all\n\n`RosterPane::on_screen` came from `View::showing()`, which walked each region's published *tree*. A tree is how a tab's panes are arranged; it is not which panes are drawn, and it goes absent for two reasons that have nothing to do with the screen:\n\n- the daemon has not published one yet, and\n- the one it published disagrees with the tab's pane list, so `arranges()` withholds it.\n\nIn both, the shell is documented to leave its surfaces alone - so the window is drawing panes while the answer says nothing is on screen. That is the contradiction the card's last bullet names, and it was reachable from the derivation alone.\n\nThe new rule: **a region shows a tab, and a tab on screen has its panes on screen.** A zoom is the one thing that covers a pane without closing its tab, so a zoomed region reports the one pane filling it. Always defined, which the old rule was not.\n\n## The gap that let this happen\n\n`corpus/conformance/composition.json` pinned every region's tree in all 51 cases and never pinned what the window said was on screen. It does now. Forty-five of the expectations follow mechanically from the tree lines that were already reviewed - a published tree names exactly the tab's panes, since `arranges()` compares them for equality - and six are hand-written with their reasons: the ones where a tree is withheld, which are exactly where the answer moved.\n\n## The reported shape, honestly\n\nExactly one pane on screen and the rest hidden is the zoom signature in the old code, and a withheld tree gives *zero*. The measurement in the card shows one. So either that window had a region reporting a zoom, or it had a second region the excerpt does not show. Both are covered by the new rule, and `muster window --json` now carries `zoomed` on each region (added in the `a_2IZE3PiGe` commit), which is the field that would have made this a read rather than an investigation.\n\nNot exercised here: `./dev --contract`, which is the tier that could reproduce the original window.",
-      "created_at_millis": 1788323565350,
-      "id": "c_2ImUSN9nr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788323565350
     }
   ],
   "created_at_millis": 1788298527291,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "record-a-nested",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27UEDsenR",
       "body": "Done, and it answered more than it was asked. corpus/herdr-0.8.0/layout\nholds five panes at three levels with a split under each side of the\nroot, plus zoom, a divider drag, a close, and a crowding sweep to\nsixteen panes. Findings in observations section 13.\n\nWhere geometry comes from is settled: layout_updated. Every split in\nthe exported tree has a border in the snapshot covering exactly the\npanes beneath it, same direction and ratio, so structure is\nreconstructible from the live event with no second request. The border\nids independently spell the same paths (split_2_01 = first, second),\nand layout.set_split_ratio takes that same path - so rebuilding the\ntree also derives the address a divider drag is sent back on.\n\nTwo things that would have bitten later. The rects are about nobody's\nwindow: the area is a fixed 54x23 whether a client is attached at\n200x50 or not attached at all, so only structure and ratios transfer.\nAnd zoom leaves every pane listed at its unzoomed rect with only a\nflag moving, so a view that renders what it is given paints every pane\nwhile the daemon shows one.\n\nThe crowding sweep was the one that could have gone badly. It did not:\nat sixteen panes every covering rect was still distinct, smallest\ndimension 5 cells.",
-      "created_at_millis": 1786654645324,
-      "id": "c_27UEDsenR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786654645324
     }
   ],
   "created_at_millis": 1786648302883,

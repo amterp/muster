@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "shift-tab-never",
   "alias_explicit": false,
   "area": [
@@ -8,22 +8,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hLSqxLJM",
       "body": "2026-10-13: fixed in code, not tried in the real app (the installed Muster could not be replaced that night). Cause: the window sent Shift+Tab with text \"\\t\" and shift marked consumed, so libghostty's kitty encoder (Claude Code's mode) dropped the shift and wrote a plain Tab; a plain shell (legacy mode) was unaffected. Commits 5095f784 (pane send --key shift+tab, bytes pinned by a test) and c21d7b3e (no text for a single control character, as Ghostty's keyAction does; Shift+Return now also keeps its shift in kitty mode). To check by hand after upgrading to 0.16.0: Shift+Tab cycles Claude Code's permission mode in a pane; 'printf \"\\e[\u003e1u\"; cat -v' then Shift+Tab shows ^[[9;2u. Move to done once seen.",
-      "created_at_millis": 1791953239150,
-      "id": "c_2hLSqxLJM"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791953239150
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j17KBEvW",
       "body": "Ctrl+Return may be broken by the same fix (a_2j1768I1p). Check both keys in one session.",
-      "created_at_millis": 1792200272716,
-      "id": "c_2j17KBEvW"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200272716
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2lvPTFvEj",
       "body": "2026-10-21: the owner confirmed Shift+Tab cycles Claude Code's permission modes in a pane on 0.16.2-dev (main at 1a97670d). Ctrl+Return (a_2j1768I1p) is still to be tried.",
-      "created_at_millis": 1792629960650,
-      "id": "c_2lvPTFvEj"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792629960650
     }
   ],
   "created_at_millis": 1791946590112,

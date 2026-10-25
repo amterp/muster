@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "ship-muster-daemon",
   "alias_explicit": false,
   "area": [
@@ -9,22 +9,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XM6dtA3C",
       "body": "From round 1 (slot 2): release builds must set MUSTER_INSTALL=release (./dev --bundle, release.yml, the Linux cross-builds), or a shipped daemon is named dev-\u003chash of CI's checkout path\u003e and releases stop adopting each other across upgrades; worth having ./dev refuse a release bundle whose daemon has a dev install name. Also: a daemon started under nohup inherits an ignored SIGHUP; muster-daemon now resets inherited ignored signals and clears its blocked mask in each pane's pre_exec, so keep that when writing the remote start script. QoS and App Nap opt-out remain this card's (MIP-3 section 1).",
-      "created_at_millis": 1790477135055,
-      "id": "c_2XM6dtA3C"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790477135055
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2XORXonRn",
       "body": "From round 2 (slot 1): make muster-daemon a shipped root in tools/licenses.py when it ships - then regex and the herdr VENDORED entry (ported detection code + manifests) render into THIRD-PARTY.md, which they do not yet.",
-      "created_at_millis": 1790482705084,
-      "id": "c_2XORXonRn"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790482705084
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2XQEG11Wr",
       "body": "From round 3: the daemon needs muster-daemon-data beside it (terminfo, shell integration, GPLv3 bash/zsh scripts as separate files). In the Mac bundle Contents/MacOS cannot hold a directory, so pass --data pointing into Contents/Resources or add a lookup rule; a remote install copies binary and directory together. When the daemon becomes a tools/licenses.py shipped root, filter for the musl targets too: mimalloc (MIT) is linked only there. The data directory's licenses are covered by NOTICE.",
-      "created_at_millis": 1790486960891,
-      "id": "c_2XQEG11Wr"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790486960891
     }
   ],
   "created_at_millis": 1790469795995,

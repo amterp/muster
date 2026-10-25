@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "layout-in-the",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27UimXTNw",
       "body": "Done. The mirror holds a Layout per tab; muster-herdr rebuilds the tree\nfrom layout_updated's rectangles by exact containment and keeps the\nratio off the border rather than dividing the rects. Cases in\ncorpus/conformance/layout-reconstruction.json, all expectations derived\nfrom herdr's own layout.export rather than from our output.\n\nTwo findings worth carrying forward:\n\nThe subscription was never asking for layout.updated. Every offline\ntest passed - recorded bytes cannot show a subscription that was never\nopened - so a live daemon would have rendered the tree it had at\nconnect and frozen it. Caught by the one daemon-backed test added here,\nwhich is the argument for having it.\n\nA reconstruction taking any first-child candidate rather than the\nlargest is wrong only when a split nests under a first child along its\nown axis. Nothing recorded had that shape, so the implementation was\nbroken deliberately, the corpus passed, and the probe now records\ncolumns(columns(p3, p6), p4) as well.\n\nLeft for the seam landing: nothing in the shell can see any of this\nyet, and Change::LayoutChanged has no consumer.",
-      "created_at_millis": 1786655820013,
-      "id": "c_27UimXTNw"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786655820013
     }
   ],
   "created_at_millis": 1786654132528,

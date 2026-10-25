@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "msg-post-to-human",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nS3yENkA",
       "body": "2026-10-24: on main in 830a38f7 and 23ab4d76. Route inferred from code, not reproduced: most likely the group was deleted between the posts (MIP-4 then said 'free again, from #1'); a lost log file would fit too. The devenv's 2026-10-19 run log (msg.group.deleted, msg.group.forgotten) would settle it. Fix: a deleted group's log becomes one tombstone line with its last number, a group made again numbers on from it, and a replica takes a batch beginning with a creation whatever its number, which also closes a group deleted and made again while the link was down. A peer older than this would refetch such a group without end.",
-      "created_at_millis": 1792855545785,
-      "id": "c_2nS3yENkA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792855545785
     }
   ],
   "created_at_millis": 1792448884322,

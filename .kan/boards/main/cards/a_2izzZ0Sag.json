@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-looked-up-by",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvWTZg5",
       "body": "2026-10-24: fixed on main in 8e7ae0f7, with a test that failed before the fix. A pane verb given a name from before a rename refuses naming the pane's present name, callsign and id. Pane.former_labels, memory only. muster msg is a_2nQcxfhTU.",
-      "created_at_millis": 1792852837773,
-      "id": "c_2nQvWTZg5"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837773
     }
   ],
   "created_at_millis": 1792197591179,

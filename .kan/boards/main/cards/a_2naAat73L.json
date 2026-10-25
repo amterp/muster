@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-agent-can-offer",
   "alias_explicit": false,
   "area": [
@@ -9,16 +9,16 @@
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2naMvB1wL",
       "body": "From the Codex critique, 2026-10-24 (an inference from Apple's docs, not probed natively): UNTextInputNotificationAction takes a placeholder, not an editable initial value, so a banner cannot fill its reply field with a picked answer the way the conversation does. Option: one text-input action per offered answer, carrying the option in the action's identity, with the typed text as an optional note. Otherwise picking in a banner opens the conversation with the answer selected. Settle with a native probe before promising the banner behaves like the conversation.",
-      "created_at_millis": 1792875340494,
-      "id": "c_2naMvB1wL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875340494
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2naTpIW85",
       "body": "Owner, 2026-10-24: the banner is Muster's own, drawn in the window, not a macOS notification. So the Apple limitation in the previous comment no longer applies: Muster's banner draws offered answers as buttons that fill its reply field, as the conversation does.",
-      "created_at_millis": 1792875605920,
-      "id": "c_2naTpIW85"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875605920
     }
   ],
   "created_at_millis": 1792874866674,

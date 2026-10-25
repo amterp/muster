@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-s-rename",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTDuGMbe",
       "body": "2026-10-24: on main in 2fc39ea8. A fold that cannot reach its home is recorded on the participant (folds_owed, persisted) and sent when the link returns, before the refetch. A routed join's groups list stays this machine's view, which is complete apart from a fold still owed.",
-      "created_at_millis": 1792858311004,
-      "id": "c_2nTDuGMbe"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792858311004
     }
   ],
   "created_at_millis": 1791248651542,

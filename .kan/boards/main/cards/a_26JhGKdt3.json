@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "add-notice-when-the",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_26YRwgolP",
       "body": "Not triggered yet by the libghostty work. deps/ is gitignored and ./dev -d rebuilds it from deps/ghostty.pin, so no Apache-2.0 artifact or source is committed to this repo. The trigger is still the first vendored or ported file.",
-      "created_at_millis": 1786516942587,
-      "id": "c_26YRwgolP"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786516942587
     }
   ],
   "created_at_millis": 1786481782163,

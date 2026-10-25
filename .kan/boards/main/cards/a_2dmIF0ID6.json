@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-cannot-tell",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSw6TIpF",
       "body": "2026-10-24: on main in 2e6454be. A stall in a group kept on another machine is posted there through the group's home with the new PeerCall.muster (protocol 1.8); the home checks the group and every addressee, then posts as @muster and replicates. A home older than 1.8 is not asked; the stall stays in the log. Also fixed: a replica's @muster@\u003chome\u003e notice counted as a member's unread message.",
-      "created_at_millis": 1792857626655,
-      "id": "c_2nSw6TIpF"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857626655
     }
   ],
   "created_at_millis": 1791426126395,

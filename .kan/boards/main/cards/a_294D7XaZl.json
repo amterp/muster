@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-numbered-chords",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2995TUuNq",
       "body": "**Decided: the numbers name panes, they are positional, and the sidebar\norder is yours to rearrange.** Tab numbering goes away in the same pass -\ntwo numberings in one sidebar is worse than either.\n\n**Positional, despite the doubt above, because rearrangement changes what\npositional means.** The description worries that positions shift under\nyou, and that worry is about *involuntary* renumbering: a pane closes two\nrows up and the number you read a moment ago now lands somewhere else.\nAn order you arranged yourself is not that. ⌘4 moving because you moved\nthe row is the behaviour you asked for, and stable allocation would fight\nit - you would drag a row to the top and it would keep the number it had.\n\nSo the choice the description frames as positional-or-stable resolves\nonce the list is user-owned, and it resolves toward reading the number\noff the row rather than remembering it.\n\n**What a drag does is the open question, and it decides the size of this\ncard.** Two shapes:\n\n- **It moves the pane in the window.** herdr has `pane.swap`, so the\n  sidebar stays a faithful view of the tree, `view = f(daemon state)`\n  holds, and nothing new is persisted. The constraint is that you get\n  swap rather than arbitrary insertion, which is fine - reordering a tree\n  is not otherwise well defined.\n- **It is presentation only,** stored in `window.toml` beside tab order\n  and widths. Free-form reordering, at the cost of a sidebar that no\n  longer tells you where a pane is on screen, and of Muster owning an\n  ordering the daemon has never heard of.\n\n**Lean: the first.** Dragging an agent in the list and watching it move\nin the window is a better feature than a list that disagrees with the\nwindow, and it costs no new truth.\n\n**One residue, worth naming rather than solving here.** Closing a pane\nstill shifts every number below it, so a number that reached you a moment\nago can be stale by the time you press it. That is not fixable in the\nnumbering, and the answer is elsewhere: a notification should name the\nagent, not the chord. Relevant to a_28Q5b3oPA.\n\n**Deferred, but keep it in mind.** Past nine or ten panes the numbers run\nout and reaching a *specific* tab becomes useful again. `next_tab` and\n`previous_tab` still cover browsing, so what would be missing is only the\ndirect jump - a second chord family, decided when the pane count makes it\nbite rather than now.",
-      "created_at_millis": 1786899786889,
-      "id": "c_2995TUuNq"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786899786889
     }
   ],
   "created_at_millis": 1786888164400,

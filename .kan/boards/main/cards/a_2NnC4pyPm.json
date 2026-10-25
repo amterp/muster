@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-bridge-takes",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Q3lht6CY",
       "body": "Second sighting, on 0.8.1, in window 3742. Stale for 75 minutes, and this time `supervise` logged nothing at all - not even the `tunnel.down` / `tunnel.reopened` pair that preceded the 40-minute silence above.\n\nFrom `muster-2026-09-14_08-43-25-3742.jsonl`:\n\n    13:44:22.094Z  tunnel.reopened           the forwarded socket is bound and a command came back\n    14:01:12.278Z  mirror.resnapshot.failed  timed out\n    14:01:24.866Z  mirror.resnapshot.failed  unreachable (Connection refused (os error 61))\n    (no tunnel event after 13:44:22Z)\n\n`ps -o lstart,ppid` puts the takeover inside one second:\n\n    14:01:12Z  ssh -S ...-devenv.ctl -o BatchMode=yes aterp-chco   pid 26765, ppid 26764 (a bridge)\n    14:01:13Z  ssh: ...-devenv.ctl [mux]                           pid 26794, ppid 1\n\nThe master Muster spawned died, and a bridge's client had the path back before the next `HEALTH_POLL`. The supervisor never saw an unanswered check, so there is no `tunnel.down` to find this time.\n\n## What the person at the keyboard got\n\nNothing. `session.rs:869` raises the daemon-unreachable warning from `TunnelState::Unreachable`, and `supervise` only reports that state after `PATIENCE` consecutive `tunnel.down`. No `tunnel.down`, so no problem, and no remedy offered - while `backend.stale` was logged 3244 times and the mirror took `ECONNREFUSED` every few seconds. The window's own signal was there and unused, which is the third fix above.\n\nZoom and focus surfaced it again, and the attempts are in the log:\n\n    15:04:43Z  FocusPane p22msx4e35  refused: unreachable (Connection refused (os error 61))\n    15:04:44Z  ZoomPane  p22msx4e35  refused  (three times)\n    15:05:04Z  FocusPane p22my9c0er  refused\n\n32 `core.refused` in all, over 40 seconds of trying. The CRAB tab would not unzoom and tab 1 would not take the keyboard.\n\n## A recovery that costs no bridge\n\n`kill` on the master reproduced the takeover exactly as `-O exit` did above: a new `[mux]` and five respawned bridges within the same second, no `tunnel.down`. Re-binding the forward on the bridge's master instead leaves every channel up:\n\n    rm /var/.../muster-3742-devenv.sock\n    ssh -O forward \\\n        -L /var/.../muster-3742-devenv.sock:/home/.config/herdr/sessions/muster/herdr.sock \\\n        -S /var/.../muster-3742-devenv.ctl aterp-chco\n\n`connected` on the next resnapshot, and the requests that had been refused landed: tab 1 came back with its four-pane tree, CRAB unzoomed. Worth having for somebody mid-session, since moving the control path aside costs every bridge its channel. It unblocks rather than fixes - Muster is left supervising a master it did not spawn, with no `-L` of its own and `ControlPersist 10m`.",
-      "created_at_millis": 1789399087730,
-      "id": "c_2Q3lht6CY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1789399087730
     }
   ],
   "created_at_millis": 1789064058943,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-claude-pane-whose",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hIgKJlTP",
       "body": "More from tooling feedback (2026-10-09): pane p29te1jh5d, the one this card describes, still read `working` after about 41 hours and misled an integrator about machine load. A new plan-mode variant: the stale `working` followed the pane's own `msg post` just before its turn ended, and once cleared by itself after about a minute.\n\nUnverified lead: `extras/claude-code/hooks/hooks.json` reports `working` on every PostToolUse and `idle` on Stop, with no ordering between them, so a slow PostToolUse report landing after Stop's would leave the pane `working`. The report's fix idea: decay `working`, or re-probe the pane after N minutes with no hook report and no screen change. Card `wakes-go-missing` depends on this: a receiver stuck at `working` is never rung.",
-      "created_at_millis": 1791946607239,
-      "id": "c_2hIgKJlTP"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791946607239
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j2J9VNjE",
       "body": "Landed 2026-10-16 (2c8f4803). The cause was the screen rules, not a late hook report: a report waits for the daemon's answer before its hook exits, and a late working stops counting after 10 s of no output (QUIET), so hours at working means the rules read the screen as working. That was 0.13.0's spinner rule reading a finished long Bash row, fixed in 0.16.0 (a_2hKNOFr7i, 4039ab34). Inferred, since the 10-07 logs are gone. The safety net: the stall watch now tells whoever waits, once, when a message has waited 30 minutes on a member that read working at every look. No change to detection.",
-      "created_at_millis": 1792203110655,
-      "id": "c_2j2J9VNjE"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792203110655
     }
   ],
   "created_at_millis": 1791459471760,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "needs-you-one-queue",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "backlog-lo",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2naMvNFYY",
       "body": "From the Codex critique, 2026-10-24, checked against attention.rs: the description undersells what ⌘⇧A already visits. Attention::asking holds blocked, stuck, message, program-notified and done asks, ordered by severity and then oldest first, and a message ask also covers unaddressed posts whose policy rings the human. Build the queue from the existing asks, expanding each group's ask into its waking messages, and decide any change of order explicitly. Also keep read apart from answered: opening a conversation clears its message ask today even when nothing was replied, and a queue of unanswered questions needs that difference.",
-      "created_at_millis": 1792875340614,
-      "id": "c_2naMvNFYY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792875340614
     }
   ],
   "created_at_millis": 1792874867030,

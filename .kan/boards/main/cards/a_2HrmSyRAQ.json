@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "swapping-ethernet",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2I76CyZxI",
       "body": "Both halves done. A bridge that ends is replaced while its daemon still holds the pane, capped at three replacements inside thirty seconds; and a replacement re-attaches with --takeover, which a first bridge never does (the user's choice, over a blanket flag and over reaping the orphan by ssh).\n\nTwo corrections to the card, both of which shaped the fix:\n\nprocess_alive does not separate 'the connection blinked' from 'the pane is gone' - both report false, since it is libghostty saying the surface's command exited and a bridge whose pane closed exits too. What separates those is the resnapshot bridge_exited already did. process_alive is still needed, for the other question: false means the bridge died, true means Muster tore the surface down and must not start a second one racing the first.\n\nDialing back cannot be the health signal either, which is the obvious candidate for resetting the cap. A bridge whose attach is refused dials the app first and reports the refusal afterwards, so a rule keyed on the dial would reset on exactly the failure it exists to stop. The cap is keyed on how long the last bridge lasted.\n\nThe card's constraint about the ordering holds by construction: the trigger is the bridge exiting, not tunnel.reopened, so the two bridges that died two minutes before tunnel.down are covered.\n\nNot validated against a real network change - that needs the laptop's network moved and a live devenv. What is covered in the gate: crates/muster-seam/tests/respawn.rs drives the whole path against a real daemon, corpus/conformance/respawn.json pins the policy including the cap, and the --takeover half has cases on both sides of the seam.",
-      "created_at_millis": 1788224918766,
-      "id": "c_2I76CyZxI"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788224918766
     }
   ],
   "created_at_millis": 1788188410699,

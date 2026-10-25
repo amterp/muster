@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-pane-no-machine",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2InddOq9U",
       "body": "Fixed. A pane name no machine holds now refuses without naming a machine, offers a stale name as a cause, and points at `muster window` - the sentence `read_pane` already used.\n\nOne thing the card's diagnosis got half right, and it matters. The `target` helper is where the routing decision is, but the misleading sentence the card quotes verbatim is not the daemon's: it comes from `Session::surface`, reached from `focus` before any daemon is asked. So relaying-versus-rewording at the submit path alone would have left `muster focus` - the card's own repro - unchanged. The fix classifies that miss as `Refusal::NotThere`, which is honest: a mirror with no such pane is the same fact a daemon would answer with, reached without a round trip.\n\nThat meant carrying the refusal's kind up rather than flattening it to a sentence at the seam's edge. `session::submit`, `focus` and `arrange_pane` now return `Refusal`, and `handler::placed` is the one place that decides whether to reword. Everything else relays untouched, via `relayed` beside it: a daemon that is down or a tab that moved is a real failure of the request rather than a routing story, and the verbs that resolved a tab or a machine themselves cannot have been sent somewhere that never held it.\n\nThe `_` arm stays, for the reason its comment gives. Two new tests in across_machines.rs: a name no machine holds refuses without naming one, and a pane the daemon has only just made can still be typed into - `pane send` because it asks nothing about what is on screen, so the daemon's answer is the whole of it. The existing eight-verb sweep still covers a_2Hwef7lQT's routing guarantee.",
-      "created_at_millis": 1788326301423,
-      "id": "c_2InddOq9U"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788326301423
     }
   ],
   "created_at_millis": 1788269211320,

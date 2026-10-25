@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "bold-text-cannot-be",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2In5Mx9MU",
       "body": "Built as `[colors] bold`.\n\nChecked first, as the card asked: the pinned libghostty (9f9b8d1d) does have `bold-color` - it is in src/config/Config.zig, and Ghostty 1.2 is where `bold-is-bright` was folded into it. A GhosttyConfigTests case now asks the real library, so a pin bump that dropped the key fails the suite rather than turning up as bold text that never changes colour. It is a union like the selection colours, so it cannot be read back and the zero-diagnostics count is the whole oracle - which is the case that check was designed for.\n\nSpelled `bold` rather than `bold-color`, matching `divider` beside it. Hex only: ghostty also takes `bright` there, meaning \"the bright slot of whatever hue this already was\", which is a different setting wearing the same name and would need its own vocabulary. Worth having eventually; not worth conflating.\n\n## The larger decision, now recorded\n\nKeep curating. Muster keeps exposing a chosen subset of Ghostty's appearance settings one at a time, each costing the five-place change this card lists, and `ghosttyConfiguration` stays the single translation point. The cost is a trickle of cards like this one.\n\nThe alternative - a pass-through block whose contents land in libghostty.conf verbatim - is rejected rather than deferred. It puts ghostty's own vocabulary into a file a person writes, which is what MIP-1 says not to do, and a key that stops existing becomes a silent no-op rather than a refusal. Reopen it if the trickle becomes a stream.",
-      "created_at_millis": 1788324984276,
-      "id": "c_2In5Mx9MU"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788324984276
     }
   ],
   "created_at_millis": 1788295898229,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "two-windows-are-two",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Q85dkU2q",
       "body": "No click needed, and the window that loses the tab is the one that asked for it. Measured on 0.8.1, 2026-09-14, one home (`~/.muster`), two windows: 3742 launched 08:43, and 19284 launched 08:56 with `--fresh`. 19284 had no workspace of its own for 97 minutes - `showing: null`, `regions: []`, `keyboard: null`, `mirror.bootstrap` at 13:56Z and 14:01Z and nothing after.\n\nThen, with the keyboard in 3742 on the CRAB tab:\n\n    15:33:47.686Z  3742   view.region     t22ahb9ayj, keyboard p22k9bcrpv\n    15:33:53.577Z  3742   intent          CreateTab { beside: p22k9bcrpv, cwd: /home/src/goat-cr }\n    15:33:53.834Z  19284  view.region     t23nf3693h, keyboard p23nf3pw67, tabs 3\n    15:33:53.951Z  19284  bridge.start    w6:p1G\n    15:33:57.202Z  3742   intent          FocusPane p23nf3pw67\n    15:33:59.148Z  3742   intent          FocusPane p23nf3pw67\n    15:33:59.391Z  3742   intent          ClosePane p23nf3pw67\n    15:33:59.485Z  19284  view.region     t22ahb9ayj\n    15:34:00.382Z  19284  bridge.replacing  devenv/p22k9bcrpv\n\n3742 asked for the tab and 19284 drew it. 3742 then asked twice for the keyboard on the pane it had just made, got it neither time, and closed the pane. Twenty seconds later 19284 took the CRAB tab as well - all three panes, `bridge.replacing` on each - and 3742 raised one problem per pane naming `muster pane reattach`.\n\nTwo things this adds to the card.\n\n**A tab lands in the window that has nothing, not the window that asked.** `CreateTab` carries `beside: PaneId(\"p22k9bcrpv\")`, and that pane was on screen in 3742, so the request already named where the tab belonged. Nothing had to be guessed. The card's first direction - a tab belongs to one window at a time - covers this if placement reads the intent's own `beside`.\n\n**An empty window is not a harmless one.** 19284 sat there for an hour and a half looking inert, then took the next tab anybody created and the tab the keyboard was on with it. That is the cost of `a_2Mhi0XFTz`'s pane-less window compounding with this card: the window nobody could give a workspace to is the window that takes the next one going.\n\nFor anyone hitting it: quit the window that should not have the tab, then `muster pane reattach --pane \u003ceach\u003e` in the one that should. Reattaching while both are open works and does not hold, because the next tab or click goes the same way.",
-      "created_at_millis": 1789409387081,
-      "id": "c_2Q85dkU2q"
+      "author": "Alexander Terp",
+      "created_at_millis": 1789409387081
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2WEHqaiRS",
       "body": "Done in round 1 (2026-09-24), on Alex's model: a tab is a grouping of panes and belongs to exactly one window, always; any muster verb works from any window and is carried to the window holding the tab; muster tab move, a Move Tab to Window submenu, and dragging a tab row into another window all send one MoveTab; a closed window keeps its tabs, muster window lists them, its blocked agents are announced by the most recently focused open window, and going to one of its tabs reopens it; a tab made outside Muster joins the most recently focused window. The record is ~/.muster/state/holding/tabs.toml. Not driven by hand: the menu, the drag and a notification click (Swift tests cover the drop rule and menu titles; the paths behind them are the MoveTab and FocusPane the CLI exercised).",
-      "created_at_millis": 1790310736165,
-      "id": "c_2WEHqaiRS"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790310736165
     }
   ],
   "created_at_millis": 1788903223131,

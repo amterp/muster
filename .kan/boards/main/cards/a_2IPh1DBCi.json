@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-read-rows",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2InKH2CIl",
       "body": "Fixed by the first of the three: ask for the maximum and take the last N in Muster, so `--rows` is the count agents.md already sold it as.\n\nWhy that one. Keeping the behaviour and documenting it (the third) leaves the surface honest and still useless to an agent, and an agent driving Muster is a stated desideratum - the card's own author is the evidence that a human cannot act on it either. `recent_unwrapped` (the second) rests on an unmeasured guess about whether herdr pads that too, and splits two callers that share one request pinned in the corpus. The cost of the first is the whole thousand rows on the wire per read, which is a person or an agent asking a question rather than anything on the render path.\n\n`--rows` also drops out of `read_request` and out of `BackendChannel::read` entirely. Both callers wanted the maximum - `find` already passed ROWS_READ - so the parameter was threading a constant through two layers. The count is now `PaneText::tail`, which splits rows the way a search splits them so there is still one idea of what a row is.\n\n`truncated` keeps its meaning: there is history this read did not reach. It is now true when Muster dropped rows above as well as when herdr did.\n\n## Measured, not assumed\n\nNew `crates/muster-herdr/tests/pane_read.rs`, against the real pinned daemon: a 60-row pane holding 20 printed lines. Four tests - the reported shape (`--rows 5` comes back with the last five printed rows, not blank), that the rows are the newest ones, that no count still gives everything, and one that asks herdr directly for `lines: 5` and asserts it answers with nothing. That last one is the premise; without it, a later herdr that counted rows of text would leave the other three passing while the fix solved a problem the daemon had fixed, and the failure message says so.\n\n## The two doc pages\n\nagents.md keeps \"the last forty\" and now says plainly that it is a count and not a ceiling. limits.md loses the correction and keeps the thousand-row cap, which is a different and still-true limit, plus a line on what the fix costs on the wire.",
-      "created_at_millis": 1788325557205,
-      "id": "c_2InKH2CIl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788325557205
     }
   ],
   "created_at_millis": 1788269232815,

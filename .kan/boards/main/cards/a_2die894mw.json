@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-agent-s-sub",
   "alias_explicit": false,
   "area": [
@@ -8,58 +8,58 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2dmW0Md4H",
       "body": "2026-10-07: hide and quiet landed (pane new --hidden --quiet, pane hide/show/quiet, a Hidden section in the agent list). extras/skill/SKILL.md says nothing yet about making helpers hidden and quiet; that belongs to this design.",
-      "created_at_millis": 1791426655421,
-      "id": "c_2dmW0Md4H"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791426655421
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2do5LxG2g",
       "body": "2026-10-07: MIP-7 drafted (docs/mip/0007-sub-agents.md, status Draft) for the owner to decide. Two questions for amterp: the word ('helper' recommended over 'sub-agent', which already means a harness's own Task agents on the same rows) and whether helpers are quiet by default.",
-      "created_at_millis": 1791430397494,
-      "id": "c_2do5LxG2g"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791430397494
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jI5dKy1Q",
       "body": "2026-10-17, evidence for section 4 (a helper tells its maker) from two projects:\n\n- A private project, 2026-10-13: its orchestrator watched up to ten worker panes with background `muster pane wait --pane ... --until blocked,stuck,idle` and rebuilt the pane list by hand about a dozen times. Closing a finished worker's pane ended the wait for all of them, since a wait fails when any pane it names closes. One worker sat idle for 35 minutes after an API connection error before anyone noticed. The orchestrator kept its workers' pane ids in a scratchpad file to find them again after compacting.\n- muster's parallel-work round, 2026-10-16: the integrator hand-wrote a watcher polling `muster window --json`, and it misreported workers for an hour (tooling-feedback a_2j5RMfBLI).\n\nTwo gaps between section 4 and that evidence:\n\n- **Idle.** Section 4 covers blocked and stuck. The 35-minute case was a helper whose turn ended on an API error and that posted nothing. Proposed: a helper that goes idle without having posted to its maker since it last went to work tells the maker too. A helper that reports and then goes idle stays silent.\n- **Context.** Nothing to add: `compact_at` already compacts a helper once it is full enough.\n\n`select(.maker == env.MUSTER_PANE)` replaces the pane-id files. Questions A and B are still waiting on amterp.",
-      "created_at_millis": 1792240723467,
-      "id": "c_2jI5dKy1Q"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792240723467
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jIRczZRW",
       "body": "2026-10-17: amterp chose \"helper\" (question A), and the file is now docs/mip/0007-helpers.md. His account of the word: an agent another agent starts for its own work and stays coupled to, with Muster setting up the coupling (the maker hears when it needs it, a group for the two) and flags to opt out. An agent the person asks for as a peer, to fork off part of the work at its own level, is not a helper: plain `pane new`, no watching on the maker's behalf, though the two can share a group. Both are in the draft, with the idle case added to section 4. Question B (quiet by default) is still open.",
-      "created_at_millis": 1792241568935,
-      "id": "c_2jIRczZRW"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792241568935
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jIbaRTUY",
       "body": "2026-10-17: question B settled as (a), hidden and quiet; MIP-7 is Accepted. Building it in stages from today.",
-      "created_at_millis": 1792241951758,
-      "id": "c_2jIbaRTUY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792241951758
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jJnsKcpL",
       "body": "2026-10-17: stage 1 landed (02e7c218..2d475f11): maker on the pane record and in muster window --json, pane new --helper / --helper-of / --shown, one hidden tab per maker, muster window lists helpers under their maker. Full gate green. Open from it for stage 2: whether Hide Helpers takes back a helper moved into a visible tab, and whether the helpers' tab name follows a renamed maker (it keeps the name from the first helper). Stage 3 is next.",
-      "created_at_millis": 1792244807407,
-      "id": "c_2jJnsKcpL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792244807407
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jLBQQRzh",
       "body": "2026-10-17: stage 3 landed (ce23494e..1929d70b): a helper is quiet by default (--notify opts out); a helper that blocks, gets stuck, or goes idle without posting to its maker tells the maker once each time, after 10 s, from @muster; a closed maker's helpers stop being quiet and the person hears once; Claude Code waiting on background shells reads waiting (engine 16), so the idle notice skips it. Stage 2 (the agent list, Show/Hide Helpers) is being built; stage 4 (across machines) remains.",
-      "created_at_millis": 1792248095941,
-      "id": "c_2jLBQQRzh"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792248095941
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jM37XtUC",
       "body": "2026-10-17: stage 2 landed (5a7e157f..7094c268): helpers fold under their maker in the agent list (3 helpers · 1 blocked), Show Helpers / Hide Helpers on the maker's row and pane show/hide --helpers-of, a hidden tab can be shown and hidden whole (TabRequest.SetHidden), one nesting rule in the core for the list and muster window, and a lone @muster message's banner shows its words. Settled: Hide Helpers takes only tabs holding nothing but the maker's helpers; the helpers' tab is renamed after the maker when shown, unless a person renamed it. Banner click left as a_2jLn7Jakd. Stage 4 (across machines) is being built.",
-      "created_at_millis": 1792250159998,
-      "id": "c_2jM37XtUC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792250159998
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jOJgiMtC",
       "body": "2026-10-17: stage 4 landed (4aafe2c2..9bd35c05, then 76c1aae5 for a load-fragile assert): a helper tells a maker on another machine through a pair group kept on its own machine; the window tells a helper's daemon that its maker closed elsewhere, and a window opening catches what happened with none open; a devenv holds a closed-maker notice for the person until the laptop links; a quiet helper whose maker cannot be reached asks the person; a new helper joins its maker's helpers' tab on screen. Also fixed on the way: every replicated entry Muster wrote was refused by the peer (bad_name @muster), so stall notices never reached a group's other machine. All four stages are in; full gate green. Hand checks are in the round summary.",
-      "created_at_millis": 1792255563407,
-      "id": "c_2jOJgiMtC"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792255563407
     }
   ],
   "created_at_millis": 1791417434682,

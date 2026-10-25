@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-hidden-devenv-pane",
   "alias_explicit": false,
   "area": [
@@ -10,10 +10,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JYuMIG",
       "body": "Obsolete since MIP-3. The cost this card measured was herdr rendering every attached client and an ssh exec per remote pane. Under muster-daemon a hidden pane costs a socket write per chunk and a parse, deliberately the same as a background tab in Ghostty, and a remote bridge dials the forwarded socket with no exec of its own (docs/architecture.md, data plane and remote daemons).",
-      "created_at_millis": 1792200743124,
-      "id": "c_2j1JYuMIG"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200743124
     }
   ],
   "created_at_millis": 1790308244794,

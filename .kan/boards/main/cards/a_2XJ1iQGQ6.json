@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "cut-over-the-suite",
   "alias_explicit": false,
   "area": [
@@ -9,22 +9,22 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2XM6eBcsL",
       "body": "From round 1 (slot 2): muster-harness's Daemon::start takes the binary path explicitly and muster-daemon's own tests use CARGO_BIN_EXE; crates other than muster-daemon cannot (no cross-crate CARGO_BIN_EXE). Decide how they get it at the cut-over, e.g. ./dev builds muster-daemon and exports MUSTER_DAEMON the way MUSTER_HERDR works today.",
-      "created_at_millis": 1790477135230,
-      "id": "c_2XM6eBcsL"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790477135230
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2XSDNLcdo",
       "body": "Needed before the seam's tests move: CARGO_BIN_EXE_muster-daemon exists only inside the muster-daemon package, so tests in other packages (core, cli, the seam) need another way to get the daemon binary built and located.",
-      "created_at_millis": 1790491693559,
-      "id": "c_2XSDNLcdo"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790491693559
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2Y3KuP1Ix",
       "body": "Done with the cut-over. One correction to this card and MIP-3 section 14: herdr's license and NOTICE lines stay. muster-detect is an Apache-2.0 port of herdr's detection, so its license travels with it; MIP-3 section 14 now says so.",
-      "created_at_millis": 1790580164496,
-      "id": "c_2Y3KuP1Ix"
+      "author": "Alexander Terp",
+      "created_at_millis": 1790580164496
     }
   ],
   "created_at_millis": 1790469795855,

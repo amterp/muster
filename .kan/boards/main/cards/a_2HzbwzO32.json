@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "switching-to-a",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2I6RxJfJW",
       "body": "Option 2 built - a surface belongs to its pane and is owned by the window, lent to whichever region shows it. Switching a tab away keeps its bridges running; switching back starts none. New Sources/MusterMac/PaneSurfaces.swift, with RegionView borrowing rather than owning.\n\nThe user chose this over the other three. Worth recording why the fourth is still open: one multiplexed frame stream per machine is the only option that removes the 400ms rather than moving it, and it is a bridge-protocol change - raised as its own card.\n\nNot measured, and both halves of the card's 'Validating a fix' need a machine this one is not. ./dev --perf is the tier that judges holding fifteen surfaces where three were held, and it refuses a loaded machine; this one is hosting live agent sessions. The 440ms needs a devenv, and ./dev --ssh recreates the container. Both worth running before this is trusted.",
-      "created_at_millis": 1788223371453,
-      "id": "c_2I6RxJfJW"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788223371453
     }
   ],
   "created_at_millis": 1788207072709,

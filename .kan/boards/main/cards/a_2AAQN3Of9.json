@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "view-build-costs",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JeMzNX",
       "body": "Merged into a_2AAQNGWQ5, which already says view.build has to be explained before any baseline is re-recorded.",
-      "created_at_millis": 1792200746503,
-      "id": "c_2j1JeMzNX"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200746503
     }
   ],
   "created_at_millis": 1787050736783,

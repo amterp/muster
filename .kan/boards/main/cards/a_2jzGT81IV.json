@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-refused-new-tab",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvWktkX",
       "body": "2026-10-24: fixed on main in 93a786a9, with a test that failed before the fix. A refused one-press action (new tab, split, close, move, compact, drops, move tab) shows a sheet with the core's reason and beeps; repeating chords (resize, zoom, focus and tab steps, font size) only beep. Not yet seen in the real app.",
-      "created_at_millis": 1792852837949,
-      "id": "c_2nQvWktkX"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837949
     }
   ],
   "created_at_millis": 1792343621072,

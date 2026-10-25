@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "record-herdr-s-transient",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27Y49PYaV",
       "body": "Bigger than a transient. Measured while running the app against a real daemon: a subscription that has just bootstrapped replays layout events, so a tab walks backwards through arrangements it had minutes ago - a three-pane tab published one pane, then two, then three again, each as though it were current. The transient during a split is the same behavior on a shorter timescale.\n\nThe core now withholds any tree that disagrees with its tab's pane list, which covers both, but the probe should record it so docs/observations/herdr-0.8.0.md can cite a transcript rather than a test log. Two scenarios: split a two-pane tab and capture the tree in between, and open a subscription against an already-split tab and capture what it replays.",
-      "created_at_millis": 1786663791275,
-      "id": "c_27Y49PYaV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786663791275
     }
   ],
   "created_at_millis": 1786660212393,

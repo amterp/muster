@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-codex-agent",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lyEL7Eza",
       "body": "2026-10-21: fixed on main (22ab94ce, d8e0a77c, d28385c4). report --waiting \"\u003cwhat\u003e\" --until-exits \u003cpid\u003e: the daemon ends the wait when the process exits and posts @muster's message to the agent alone, which wakes it as any message does (typed, or codex queue). A declared wait from a harness whose manifest lacks [session] wakes_when_jobs_end (every harness but Claude Code), or one carried through a turn Muster typed, runs out after 10 minutes, so the pane reads idle and a maker is told. Codex's SessionStart line names --until-exits.",
-      "created_at_millis": 1792636682617,
-      "id": "c_2lyEL7Eza"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792636682617
     }
   ],
   "created_at_millis": 1792627647097,

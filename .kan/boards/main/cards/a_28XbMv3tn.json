@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "an-agent-state-is",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28b7uDyXb",
       "body": "**Done** (2026-08-15). A watcher now subscribes and then asks: after `connect` returns, it reads the pane's current agent state once and applies it. That closes the window outright rather than papering over it, which is what the card wanted over the reconciliation option.\n\nAnswering the card's questions:\n\n- **What herdr offers.** `pane.get`, which answers `{\"type\":\"pane_info\",\"pane\":{..,\"agent_status\":..}}` - per pane and cheap, so no need for the `session.snapshot` sledgehammer. One request per pane, once, at creation.\n- **Ordering.** The watcher reads what the mirror believed *before* it asks, and the answer is refused if the mirror moved in the meantime. A live subscription is the better authority: it was delivered because the daemon witnessed the transition, where a read is a snapshot of an instant the caller cannot pin down. So anything arriving while the question is in flight wins.\n- **A third thing the card did not ask about, and it matters.** The read goes through `Mirror::seed_agent_state` rather than `apply`, so it does **not** increment `agent_transitions_applied`. That counter is reconciled against herdr's own `agent_state_seq` to notice gaps - counting a recovery would have hidden the very gap it recovered from, and the next bootstrap would have found the numbers agreeing and reported nothing missed. Not counting it is right on both grounds: a transition genuinely was missed, and saying so is honest.\n\nAlso handles the second shape the card measured. A rule about `unknown` alone would not: a pane can be `working` in the bootstrap snapshot and finish inside the window, so the mirror holds a real state and is still wrong. The compare-and-set covers both.\n\nSix conformance cases in `corpus/conformance/mirror.json` under a new `seeds` step, plus `an_agent_state_that_lands_before_its_watcher_is_recovered` in `crates/muster-herdr/tests/subscription.rs` - twenty split-and-report rounds against a real pinned daemon. Confirmed to fail 3 runs out of 3 with the read disabled.\n\n**On the flakiness:** three clean `cargo test --workspace` runs after the fix. Not conclusive against a 2-in-6 failure rate, so worth watching rather than declaring settled - but nothing was touched about timeouts, which is what the card asked for.",
-      "created_at_millis": 1786818848819,
-      "id": "c_28b7uDyXb"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786818848819
     }
   ],
   "created_at_millis": 1786810448261,

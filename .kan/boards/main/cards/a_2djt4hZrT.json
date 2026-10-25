@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-msg-run-under",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSw62V6O",
       "body": "2026-10-24: on main in 10956827. A msg request whose sender walk ends at a harness's shared server is refused with the cause and the remedy, as a report is, and logged once per server as msg.request.shared_server. A nested agent's msg requests still act as the pane (a_2nS-nested card).",
-      "created_at_millis": 1792857626382,
-      "id": "c_2nSw62V6O"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857626382
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nSwMgIFu",
       "body": "The nested-agent card mentioned above is a_2nSw5pbpW.",
-      "created_at_millis": 1792857636703,
-      "id": "c_2nSwMgIFu"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792857636703
     }
   ],
   "created_at_millis": 1791420392519,

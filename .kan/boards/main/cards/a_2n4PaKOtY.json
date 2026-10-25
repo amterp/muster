@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-post-after-new-in",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2n4PpThGV",
       "body": "2026-10-23 re-triage: filed from tooling feedback a_2lyi2udb7 and put at the top of backlog-hi. A brief went unseen for 9 minutes, and the integrator saw no sign of it.",
-      "created_at_millis": 1792799187310,
-      "id": "c_2n4PpThGV"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792799187310
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2nQvVgGvJ",
       "body": "2026-10-24: fixed on main in b76817b6, with a test that failed before the fix. A post to an idle agent already woken rings it again (MIP-4 section 5 now says so); a wake already on its way is left alone. Not checked in a real Codex pane.",
-      "created_at_millis": 1792852837281,
-      "id": "c_2nQvVgGvJ"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792852837281
     }
   ],
   "created_at_millis": 1792799177969,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-msg-post-to-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nRWOaq3P",
       "body": "2026-10-24: on main in cd39a5f3. --to a former name is refused with code renamed, naming the pane's present name, callsign and id; a live holder anywhere wins. A former name on a linked machine is a_2nRP5rqgG.",
-      "created_at_millis": 1792854255166,
-      "id": "c_2nRWOaq3P"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792854255166
     }
   ],
   "created_at_millis": 1792852124314,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-fake-agent-loses",
   "alias_explicit": false,
   "area": [
@@ -8,16 +8,16 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hLTTbKso",
       "body": "2026-10-13 attempt, nothing landed. Reproduced without a daemon (pty, /bin/sh = bash 3.2.57, USR2 then 'say the answer\\r'): 13 lost bytes in 540 throttled runs, always the last character with the newline kept. Replacing restate's command substitution with an inline case gave 0 in 480, but the same case moved into a function called by both restate and paint gave 10 in 600, so the command substitution is not the whole cause and the fix was not committed. The repro harness and full notes were in that night's report; restart from: a trap that runs while read is partway through a line, under bash 3.2, and why one extra function call changes the rate. The handoff test failures seen under load (detection::a_wait_ends_with_the_next_turn_after_a_handoff and three others) do not signal the agent, so they are a separate cause.",
-      "created_at_millis": 1791953263114,
-      "id": "c_2hLTTbKso"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791953263114
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jLBPfpyx",
       "body": "2026-10-17: fixed in 00b6d341 and 3ec6615e. Measured with no daemon (pty, SIGUSR2, then 'say the answer'), throttled at load 5-7: bash 3.2 (/bin/sh) lost the last byte in 221 of 300 runs, dash in 0 of 300. The fake agent now runs under #!/bin/dash, and detection names an agent run through a dash script by its script, as it already did for sh, bash and zsh. turn:: ran 24 times throttled at load 4.6-19.5 with no failure.",
-      "created_at_millis": 1792248095474,
-      "id": "c_2jLBPfpyx"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792248095474
     }
   ],
   "created_at_millis": 1791252237575,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "agent-watchers-may",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2Imhf9yKt",
       "body": "**The suspicion was right, and the test settled it in one run.** Written first, as the card asks: restart the daemon, drive a transition on a pane that existed before it, and assert the change arrives. It timed out after 20 seconds with the mirror holding `Unknown` and `Health::Connected` throughout - which is exactly the shape the card describes, and exactly the \"shows working forever on a connection that looks healthy\" failure.\n\nThe mechanism is as read. `follow()` treats a map entry as a live watcher; `mark_stale` leaves the panes alone and the bootstrap upserts them, so `wanted` still names every pane, `contains_key` is true, and `watch` is never called again. New panes are watched normally, which is why `a_pane_created_later_is_watched_too` passes - it creates its pane after the subscription is up.\n\n**The fix is the smaller of the two the card offered.** A `Watcher` now carries a flag its thread sets on the way out, and `follow` drops the stopped ones before deciding what is missing. Dropping every watcher when the mirror goes stale was the other candidate and is worse: it throws away watchers that are still alive whenever a connection blinks, and it makes staleness carry a meaning it does not have. The flag is set by a drop guard rather than by a store before each `return`, because the thread has three ways out and the one that gets forgotten is the one that reproduces this.\n\n**The test is worth keeping either way, and the card was right about why.** The existing restart test asserts pane count and name survive, which they always did. The new one asserts a transition is *reported*, not merely that the mirror holds the right value - a bootstrap replaying what is already true satisfies the weaker assertion while the watcher stays dead, which is how this would have shipped green a second time.\n\n**One residual, not fixed and not worth a card on its own.** A watcher is only ever rebuilt by `follow`, which runs on a reconnect and on a pane being added or removed. A single watcher socket dying while the structure stream survives leaves that one pane frozen until the next structural change. The per-pane threads deliberately have no retry of their own, and the comment's reasoning still holds - a watcher's connection almost always dies with the daemon, and the structure stream dies with it - so this is a narrow case that now has a name rather than a hazard.\n\nFixed in `efd10b7`.",
-      "created_at_millis": 1788324072992,
-      "id": "c_2Imhf9yKt"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788324072992
     }
   ],
   "created_at_millis": 1788120739873,

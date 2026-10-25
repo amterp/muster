@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-resumed-agent",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2biVsBdXU",
       "body": "2026-10-04: blocked on a_27QdHGMeC - nothing runs claude --resume today (resume after restart was never built), so there are no flags to carry yet.",
-      "created_at_millis": 1791121590511,
-      "id": "c_2biVsBdXU"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791121590511
     }
   ],
   "created_at_millis": 1790652108781,

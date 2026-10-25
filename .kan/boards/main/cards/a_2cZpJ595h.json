@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-refused-join-to-a",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2nTDtyH2k",
       "body": "2026-10-24: on main in dcd2d1f3. A join to a group kept elsewhere checks the rename without changing anything, and renames only once the home answers Joined; took_over now comes from the rename instead of always false.",
-      "created_at_millis": 1792858310827,
-      "id": "c_2nTDtyH2k"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792858310827
     }
   ],
   "created_at_millis": 1791248651425,

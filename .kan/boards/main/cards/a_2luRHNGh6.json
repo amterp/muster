@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "pane-wait-until",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2lzZxRJkf",
       "body": "2026-10-21: fixed on main in 04f7d15f. Cause, from the run logs: hundreds of 2-3.8 s blocked spans mid-turn, Claude Code and Codex alike - PermissionRequest (mapped to blocked by both adapters) fires before the dialog is drawn, and for approvals nobody is asked. A blocked report the screen rules do not read now counts only once the screen has sat still for 1 s (or the rules read the prompt); the report before it keeps counting meanwhile. Fixed in detection, so pane wait, the maker watch, notifications and the sidebar all get it.",
-      "created_at_millis": 1792639896895,
-      "id": "c_2lzZxRJkf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792639896895
     }
   ],
   "created_at_millis": 1792627646937,

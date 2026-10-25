@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "machine-sharing",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "uncommitted",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2jR70nrze",
       "body": "Moved to its own project on 2026-10-17: ~/src/quartermaster (command qm). The owner chose a separate tool that Muster shows, rather than a Muster feature, because projects' ./dev scripts, beagle jobs and the owner at a plain shell need it whether or not Muster is running. Its docs/origin.md answers this card's questions: it arbitrates (a queue against a per-machine budget) and also informs; priority comes from the owner's standing ranking and his notes of the moment; machines and the usage limit are two mechanisms behind one place to ask. Muster's likely part: attributing processes to panes through MUSTER_PANE, a queued job's reason in the pane's waiting state, and messages to lead agents who subscribe. Quartermaster's card 'The agent interface: qm docs, a skill, hooks for Claude Code and Codex, and Muster' tracks that.",
-      "created_at_millis": 1792262225971,
-      "id": "c_2jR70nrze"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792262225971
     }
   ],
   "created_at_millis": 1792240718451,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-dock-launched",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_298V2bEth",
       "body": "Fixed, but the symptom did not reproduce in the running app, and that\nis worth recording rather than quietly inheriting. `ghostty_init` calls\nGhostty's `ensureLocale`, which derives a locale from CFLocale and\nsetenvs LANG and LANGUAGE across the whole process before Muster starts\nits daemon - measured on a bundle opened under `env -i`. So a Dock\nlaunch was already being rescued, by the renderer, one initialisation\nstep earlier.\n\nThat is an invisible loan on renderer init order: nothing states it, no\ntest holds it, and a libghostty that stopped calling `ensureLocale` - or\na Muster that started its daemon before `ghostty_init` - would break\npanes with no edit to blame. Muster now decides its own daemon's\nlocale, so the loan is repaid rather than the break repaired.",
-      "created_at_millis": 1786898386370,
-      "id": "c_298V2bEth"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786898386370
     }
   ],
   "created_at_millis": 1786884073251,

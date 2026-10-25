@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-surface-keeps-the",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j5Q7pM6V",
       "body": "Landed 2026-10-16 (bee0a421), following Ghostty's handling, with window.scale.changed and window.screen.changed in the run log. Tested by overriding a test window's backingScaleFactor; no test can move a window between real screens, so worth checking by hand: drag a window between the laptop's 2x display and the 1x ultrawide and compare muster window --layout's grids with the panes' room.",
-      "created_at_millis": 1792210528531,
-      "id": "c_2j5Q7pM6V"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792210528531
     }
   ],
   "created_at_millis": 1790774029892,

@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "a-tab-on-a-daemon",
   "alias_explicit": false,
   "area": [
@@ -8,28 +8,28 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j2nxhOeY",
       "body": "Seen again 2026-10-16 in a full gate at load 28.6 (main at 18cb51b0): this time the window held only a fresh tab, left [\"t2c79gxnsa\"] against right [\"t-left\"], so under load it can lose the tab it was meant to keep, not just hold an extra one. Passed 3 of 3 alone straight after.",
-      "created_at_millis": 1792204294974,
-      "id": "c_2j2nxhOeY"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792204294974
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j54qUalP",
       "body": "Third sighting 2026-10-16, gate at load 10.5: left [\"t2c7t8bxq3\"] against right [\"t-left\"], the same lost-tab shape as the second.",
-      "created_at_millis": 1792209710546,
-      "id": "c_2j54qUalP"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792209710546
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j5g15EB4",
       "body": "Fourth sighting 2026-10-16 (third in five full gates that night, at loads 10-28): same lost-tab shape. Passes 6 of 6 alone at load 2. Now the gate's most frequent false red; moved to next.",
-      "created_at_millis": 1792211139396,
-      "id": "c_2j5g15EB4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792211139396
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2jLBPOmba",
       "body": "2026-10-17: fixed in e5c3ac6b. Cause: the late-daemon test's Stopped guard stopped its daemon while its session still followed it, and since 9744e214 a session starts a daemon it lost again, so a real daemon served the binary's shared socket two seconds later and the next test adopted it. The guard now resets the session first; daemon_gone.rs had the same guard and the same fix. Throttled (taskpolicy -b, load 4-8): 13 of 23 runs of the binary failed before, 0 of 23 after. Every run had left a daemon behind; 42 leaked test daemons were ended on the laptop.",
-      "created_at_millis": 1792248095303,
-      "id": "c_2jLBPOmba"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792248095303
     }
   ],
   "created_at_millis": 1791952873746,

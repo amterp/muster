@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "stage-3-agent-state",
   "alias_explicit": false,
   "area": [
@@ -9,10 +9,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_28NR5hwo6",
       "body": "Landed. The core grew a roster - crates/muster-core/src/roster.rs - and the seam a RosterChanged event beside ViewChanged: everything every attached daemon holds, ordered and labelled, each row saying whether a region is showing it.\n\nTwo decisions kept in the core rather than the sidebar, because the CLI and the agent API will ask the same questions: what order a person reads the panes in (daemons in the order their regions sit in the window, then any with no region; panes in their tab's tree order, so the list reads down the side the way the window reads across it), and what a pane is called when w1:p2 tells nobody anything (its directory, plus the harness detected in it).\n\nTwo gaps the work surfaced, both fixed here rather than carded. Detecting a harness and changing directory both mutated the mirror and reported nothing - the comment on Change said a variant with no consumer was a guess at what a reader would want, and the roster is that reader - so a row would have read 'src' forever where it should read 'src · claude'. And idle and unknown shared a grey, which cost nothing while the only thing painted was a border neither state draws, and became wrong the moment every row drew a dot.\n\nAlways visible in this pass. The toggle, and where its state lives, is its own question.",
-      "created_at_millis": 1786786220373,
-      "id": "c_28NR5hwo6"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786786220373
     }
   ],
   "created_at_millis": 1786461793455,

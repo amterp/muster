@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "muster-pane-send-confirm",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2MGzXJ8QR",
       "body": "Measured rather than inferred: 2 failures in 30 runs of the test alone on an idle 10-core M-series laptop, and 0 in 20 earlier runs including 10 under twelve spinning cores. So load is not what decides it - the two events are simply close together. CI failed it twice in a row on a commit that changed only version strings, and its parent passed the gate first attempt four hours earlier, so the runner's rate is much higher than 7%.\n\nThe failing run takes 0.60s locally against CI's 0.41s and 0.49s, which is the shape of a race lost early rather than a deadline waited out.",
-      "created_at_millis": 1788839548530,
-      "id": "c_2MGzXJ8QR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1788839548530
     }
   ],
   "created_at_millis": 1788838974227,

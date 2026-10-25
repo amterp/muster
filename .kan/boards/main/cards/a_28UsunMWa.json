@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "the-perf-tier-fails",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2AARAvZtl",
       "body": "Half of this card is answered directly: `./dev --ssh` now ends by saying the devenv container is still up on port 2222, that it is left up deliberately, that `./dev --perf` reads slow against its baseline while it runs, and how to stop it. The measurement on this card - `frame.decode` at 1.67 ns/byte with the container up against 1.44 with it stopped - is what makes that worth saying at the point it matters rather than in a doc.\n\nThe other half turned out differently than this card assumed. It reads \"`frame.decode` now sits close enough to its 2.00x tolerance that ordinary machine load crosses it, which means the baseline was recorded on a quieter machine than the one anybody runs this on\". Measured on a_28wKty65Z: the baseline still describes this machine. Eight consecutive runs of an unchanged tree at a load average of about ten sat within 1.14x of it for every arithmetic benchmark, `frame.decode` among them at 0.79-0.83 against a baseline of 0.83.\n\nSo the fix is not a re-recorded baseline. It is the two things now in place: `--perf` refuses to judge above a one-minute load average of the performance-core count, and the run says what the machine was doing while it measured. The container being up is one of the things that pushes a machine over that line, which is why the tier now names it on the way out.",
-      "created_at_millis": 1787050767698,
-      "id": "c_2AARAvZtl"
+      "author": "Alexander Terp",
+      "created_at_millis": 1787050767698
     }
   ],
   "created_at_millis": 1786803972902,

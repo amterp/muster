@@ -1,5 +1,5 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "say-on-the-pane-that",
   "alias_explicit": false,
   "area": [
@@ -8,10 +8,10 @@
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JcY7Fk",
       "body": "Obsolete: agent.transitions_missed was herdr's counter and no longer exists in the code.",
-      "created_at_millis": 1792200745387,
-      "id": "c_2j1JcY7Fk"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200745387
     }
   ],
   "created_at_millis": 1786784306352,

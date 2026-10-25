@@ -1,32 +1,32 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "approach-the-herdr",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_27QdHK5LD",
       "body": "Agenda for that conversation is accumulating, all measured rather than guessed:\n\n1. Agent state needs a subscription per pane (a_27N6pklkl). pane.agent_status_changed requires a pane_id and no unparameterized subscription carries the same information, so an overview of N panes costs N held-open connections. pane.updated already exists unparameterized, so the plumbing looks present.\n\n2. Scrollback does not survive a daemon restart, though the tree and cwds do (observations section 12). Whether that is intended is worth asking before anyone builds around it.\n\n3. layout.export could carry the agent session reference herdr already tracks via pane.report_agent_session. That would make its own restore resumable rather than merely structural, for every client.\n\n4. A keystroke can wait out a render window it did not cause (a_27GiE7gJJ).",
-      "created_at_millis": 1786646075348,
-      "id": "c_27QdHK5LD"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786646075348
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_27R5GBZWm",
       "body": "5. state_change_seq reaches clients only through session.snapshot's agents[], never on an event - one hit in the whole 252 KB schema, at success_response/$defs/AgentInfo. So a subscriber cannot tell live that it missed a transition; it learns only when it next snapshots, at which point the snapshot has already corrected it. Putting the stamp on PaneAgentStatusChangedEvent would cost one field and would let a client detect a gap at the moment it matters. Pairs with item 1: both are about a subscriber being able to trust what it holds.",
-      "created_at_millis": 1786647150950,
-      "id": "c_27R5GBZWm"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786647150950
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_295HztTAt",
       "body": "**Option on the table, from amterp: maintain our own adapter fork of\nherdr** and carry the small changes ourselves rather than waiting on\nthem.\n\nThe reasoning is that several of the things we need are trivial - the\nconfig-path override this came up over (a_28adIUgPE) is a flag and a\ntest - and being blocked on somebody else's roadmap for changes that cost\nthem nothing and us a lot is a poor trade. The groundwork already exists:\nthe README contemplates a replacement \"wholesale, or a fork\",\n`deps/herdr.pin` names a version and a per-platform checksum, and `./dev`\nalready downloads, verifies, stages and bundles whatever that names - so\nchanging where the binary comes from is a change of source rather than of\narchitecture.\n\nNot decided, and deliberately not argued out here. Reservations were\nraised in the same conversation - about what a self-built daemon does to\nthe corpus's authority, about whether the patch queue stays small, and\nabout testing upstream's receptiveness with one PR before committing -\nand amterp does not necessarily agree with them. Recording that the\ndisagreement exists and is unresolved, rather than settling it in a card\ncomment, so whoever picks this up knows there is a conversation to have\nand not a conclusion to implement.",
-      "created_at_millis": 1786890735139,
-      "id": "c_295HztTAt"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786890735139
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2j1JbY6TR",
       "body": "Obsolete since MIP-3: Muster replaced herdr with its own daemon rather than forking or upstreaming.",
-      "created_at_millis": 1792200744768,
-      "id": "c_2j1JbY6TR"
+      "author": "Alexander Terp",
+      "created_at_millis": 1792200744768
     }
   ],
   "created_at_millis": 1786461806376,
