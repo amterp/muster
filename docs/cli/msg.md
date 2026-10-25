@@ -409,6 +409,8 @@ place past them. It skips your own messages and shows joins and leaves as one li
     --- review #43 | scout joined ---
 
 An urgent message says so on its first line: `--- review #44 | director -> builder, urgent ---`.
+A question prints the answers it offers after its body, and a reply that picks one says which
+question it answers on its first line (next section).
 
 **A post is refused while you have unread messages from others in that group**, and the refusal
 says how many and the `read` that clears it. There is no override: read, then post again. The
@@ -426,10 +428,43 @@ its own is left nothing.
 
 `log --group G [--since N]` prints the transcript and moves nothing. With `--follow` it goes on
 printing each entry as it lands until interrupted, across Muster updating its daemon, and with
-`--json` prints one line per entry.
+`--json` prints one line per entry. `--last N` prints only the newest N entries, and `--before N`
+only those below #N, so a long log reads a page at a time: when earlier entries are left out, the
+output ends with the command for the page before. `--last` with `--follow` prints that page and
+then follows; `--before` with `--follow` is refused.
 
 `read --if-unread` prints nothing at all unless a message is unread, for a hook to run after every
 tool call. Joins and leaves on their own print nothing, though your place still moves past them.
+
+## Questions
+
+A post can offer answers, which makes it a question. Each `--option` is one answer, at most six,
+each one line of at most 120 bytes and different from the others:
+
+    muster msg post --to @human --option "Run it now" --option "Skip it this round" \
+      "Can you run ./dev --contract on 9b2f3d1? It needs a GUI session."
+
+`read` and `log` print the answers after the body, numbered, with the command that picks one:
+
+    --- review #44 | builder -> Alex (@human) ---
+    Can you run ./dev --contract on 9b2f3d1? It needs a GUI session.
+
+    Answers (reply with `muster msg post --group review --answer 44:N`):
+    1. Run it now
+    2. Skip it this round
+    --- end review #44 | builder ---
+
+`post --group G --answer Q:N [TEXT]` answers question #Q with its Nth answer. The reply's body
+starts `Answer: <the answer>`, with TEXT below it as a note, so whoever asked reads the pick with
+no new parsing; the post also carries the pick as a field, `answering` in `--json`, which is how a
+view marks the question answered. It goes to whoever asked unless `--to` says otherwise. Its first
+line ends `, answering #44`.
+
+The group's machine holds a reply to its question: #Q has to be a message there offering answers,
+asked of you (not your own, and addressed to you if it names anybody), offering the answer you
+pick, and not answered yet, since a question takes one answer. Each is refused in words saying
+which, as `no_such_question`, `not_asked_of`, `not_offered` or `already_answered` in `--json`. A
+reply that picks an answer cannot offer answers of its own.
 
 ## Waiting
 
@@ -487,9 +522,10 @@ window has attached to shows `@human` alone.
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
-| `post [--group G] [--to A,B] [--urgent] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work |
+| `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
+| `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
 | `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
-| `log --group G [--since N] [--follow]` | the transcript, moving nothing; `--follow` keeps printing |
+| `log --group G [--since N] [--last N] [--before N] [--follow]` | the transcript, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |
 | `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
 | `groups` | every group, its members, and whether it is paused; `--json` has each policy |
 | `group new G [--policy F]` | makes a group with that policy, and joins it as its first member |
@@ -602,6 +638,12 @@ to be from a Muster that knows it; either being older refuses it, saying which, 
 urgently, which is `not_urgent`. A member on a machine whose daemon is older is rung for it as for
 an ordinary post. A `group set` from an older Muster, which knows nothing of `urgent`, leaves the
 group's list as it was.
+
+A question, a reply picking an answer, and `log --last` or `--before` need a daemon from a Muster
+that knows them, on this machine and, for a post, on the machine its group is kept on; an older
+one refuses, saying which, as `answers_unsupported` in `--json` for a post kept elsewhere. A member
+on a machine whose daemon is older reads a question without its answers, and a reply as its words
+alone.
 
 An agent in a pane on a machine whose daemon is older than this Muster is shown by its id and
 machine, `p2w3r07bsd@devenv`, since that daemon does not say what its panes are called.

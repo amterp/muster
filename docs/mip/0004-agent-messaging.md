@@ -183,7 +183,9 @@ learned from it. When its agent exits it is gone, not deleted, and its name and 
 it to come back.
 
 **Message.** An author, a group, optional addressees, a UTF-8 body of at most 1 MiB (well under the
-16 MiB a daemon message may be), and a sequence number assigned by the group's home daemon.
+16 MiB a daemon message may be), and a sequence number assigned by the group's home daemon. Since
+MIP-9 a message may also offer up to six answers, which make it a question, or name the question
+it answers and the answer it picks (MIP-9, section 6).
 
 **Group.** A named set of participants with a policy and one log. Every message belongs to
 exactly one group. A post names its group with `--group`. Without one, it goes to the group its
