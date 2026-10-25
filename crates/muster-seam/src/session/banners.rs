@@ -60,9 +60,13 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
 }
 
 fn fetch_message(group: &GroupKey, seq: u64) -> Result<Message, String> {
+    // Bounded above too, so the answer is the one entry rather than everything after it. A
+    // daemon before 1.8 drops `before` and answers with the rest of the log, which `find` below
+    // still reads the entry out of.
     let log = msg_request::Log {
         group: group.group.clone(),
         since: seq.saturating_sub(1),
+        before: Some(seq + 1),
         ..Default::default()
     };
     let answer = ask_as_human_for(&group.daemon, Asked::Log(log))
@@ -242,6 +246,23 @@ pub(crate) fn dismiss(daemon: &str, group: &str, seq: u64) -> Response {
 pub(crate) fn hold(daemon: &str, group: &str, seq: u64, held: bool) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
     let changed = poison::lock(&SESSION, "session").banners.hold(&key, seq, held);
+    match changed {
+        Ok(changed) => {
+            if changed {
+                announce();
+            }
+            Response::ok()
+        }
+        Err(why) => Response::failure(why),
+    }
+}
+
+/// Picks the answer numbered `answer` (from 0) of the question the banner showing `seq` asks, or
+/// with none takes the pick back. Sends nothing: the pick goes with the reply.
+pub(crate) fn pick(daemon: &str, group: &str, seq: u64, answer: Option<u32>) -> Response {
+    let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
+    let answer = answer.map(|answer| answer as usize);
+    let changed = poison::lock(&SESSION, "session").banners.pick(&key, seq, answer);
     match changed {
         Ok(changed) => {
             if changed {

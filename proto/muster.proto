@@ -99,6 +99,7 @@ message Request {
     ReplyToBanner reply_to_banner = 80;
     DismissBanner dismiss_banner = 81;
     HoldBanner hold_banner = 82;
+    PickBannerAnswer pick_banner_answer = 83;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -1441,6 +1442,9 @@ message ReplyToBanner {
   string daemon_id = 1;
   string group = 2;
   uint64 seq = 3;
+  // What the human wrote. With an answer picked in the banner, it is the note that goes below the
+  // answer, and may be empty: the core composes the post's body from both, and names the answer in
+  // the post's `answering` (section 6).
   string body = 4;
 }
 
@@ -1460,6 +1464,19 @@ message HoldBanner {
   string group = 2;
   uint64 seq = 3;
   bool held = 4;
+}
+
+// Picks one of the answers the message a banner shows offers, or with no `answer` takes the pick
+// back (mip/0009-group-conversation.md, section 6). Nothing is sent: the pick goes with the next
+// ReplyToBanner, so a note can go with it. A pick holds the banner as HoldBanner does. Refused,
+// with nothing changed, for an answer the message does not offer, a banner that has moved on to
+// another message, or one whose reply is on its way or posted.
+message PickBannerAnswer {
+  string daemon_id = 1;
+  string group = 2;
+  uint64 seq = 3;
+  // The answer's place among those the message offers, from 0.
+  optional uint32 answer = 4;
 }
 
 // Puts the keyboard on the pane at a given place in the window's pane order.
@@ -2362,6 +2379,11 @@ message Banner {
   // A newer message waiting behind this banner while it holds a reply. Empty author when none.
   string waiting_author = 15;
   bool waiting_urgent = 16;
+  // The answers the message offers, which make it a question (section 6). Drawn as buttons until
+  // a reply is posted.
+  repeated string answers = 17;
+  // Which of them the human picked, from 0, to go with the reply.
+  optional uint32 picked = 18;
 }
 
 // Where a post the human sent stands (mip/0009-group-conversation.md, section 4).

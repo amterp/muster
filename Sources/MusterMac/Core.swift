@@ -1506,6 +1506,7 @@ public enum Core {
     case .replyToBanner: return "reply_to_banner"
     case .dismissBanner: return "dismiss_banner"
     case .holdBanner: return "hold_banner"
+    case .pickBannerAnswer: return "pick_banner_answer"
     case .readReopening: return "read_reopening"
     case .askForWindow: return "ask_for_window"
     case .claimApp: return "claim_app"

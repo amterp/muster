@@ -279,6 +279,8 @@ fn banner(banner: &Banner) -> proto::Banner {
             drawn.at_ms = message.at_ms;
             drawn.body = markdown(&message.body);
             drawn.more = message.more;
+            drawn.answers.clone_from(&message.answers);
+            drawn.picked = banner.picked.and_then(|picked| u32::try_from(picked).ok());
         }
         Shown::Unloaded { from, count, why, .. } => {
             drawn.from.clone_from(from);

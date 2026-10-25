@@ -164,6 +164,7 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::ReplyToBanner(_)
             | request::Payload::DismissBanner(_)
             | request::Payload::HoldBanner(_)
+            | request::Payload::PickBannerAnswer(_)
     )
 }
 
@@ -346,6 +347,9 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         }
         request::Payload::HoldBanner(hold) => {
             session::banners::hold(&hold.daemon_id, &hold.group, hold.seq, hold.held)
+        }
+        request::Payload::PickBannerAnswer(pick) => {
+            session::banners::pick(&pick.daemon_id, &pick.group, pick.seq, pick.answer)
         }
         request::Payload::FocusTab(tab) => focus_tab(window, &tab.tab_id),
         request::Payload::ArrangePane(arrange) => arrange_pane(window, &arrange),

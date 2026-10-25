@@ -4,8 +4,8 @@
 //! and a reply the daemon refuses or never answers stays in it.
 
 use muster::proto::{
-    BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, ReplyToBanner, Request, Response,
-    Startup, event, markdown_block, post_outcome, request, response,
+    BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, PickBannerAnswer, ReplyToBanner,
+    Request, Response, Startup, event, markdown_block, post_outcome, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{Answer, entry::What};
@@ -150,6 +150,56 @@ fn a_reply_whose_answer_never_came_is_found_in_the_log_and_not_sent_twice() {
     drop(relay);
 }
 
+#[test]
+fn a_questions_banner_draws_its_answers_and_a_reply_sends_the_pick_with_its_note() {
+    let (_turn, _daemon, mut control) = window_on_a_group_of_three();
+    let asked = ask(&mut control, "a", "run the contract tier?", &["Run it now", "Skip it"]);
+    let banner = until_banner(|banner| banner.seq == asked);
+    assert_eq!(banner.answers, ["Run it now", "Skip it"]);
+
+    assert_ok(&answer(pick(asked, Some(1))));
+    let picked = until_banner(|banner| banner.picked.is_some());
+    assert_eq!(picked.picked, Some(1));
+    assert_ok(&answer(reply(asked, "after lunch")));
+
+    let (author, to, body) = last_entry(&mut control);
+    assert_eq!((author.as_str(), to.as_slice()), ("@human", &["a".to_string()][..]));
+    assert_eq!(body, "Answer: Skip it\n\nafter lunch", "the answer above the note");
+    let answering = msg_request::Answering { question: asked, answer: "Skip it".to_string() };
+    assert_eq!(last_answering(&mut control), Some(answering), "and named as the post's field");
+}
+
+#[test]
+fn a_picked_answer_holds_the_banner_and_a_refused_reply_keeps_it_with_the_note() {
+    let (_turn, _daemon, mut control) = window_on_a_group_of_three();
+    let asked = ask(&mut control, "a", "ok to merge?", &["Merge", "Hold off"]);
+    until_banner(|banner| banner.seq == asked);
+    assert_ok(&answer(pick(asked, Some(0))));
+    post(&mut control, "b", "@human", "the build is red");
+    let held = until_banner(|banner| banner.waiting_author == "b");
+    assert_eq!((held.seq, held.picked), (asked, Some(0)), "a pick holds the banner");
+
+    // Answered from a shell meanwhile, so the daemon refuses a second answer.
+    let elsewhere = Asked::Post(msg_request::Post {
+        group: Some("g".to_string()),
+        to: vec!["a".to_string()],
+        body: "Answer: Hold off".to_string(),
+        answering: Some(msg_request::Answering { question: asked, answer: "Hold off".to_string() }),
+        ..Default::default()
+    });
+    expect(&mut control, msg(&the_human(), elsewhere), daemon_proto::Outcome::Done);
+    let replied = answer(reply(asked, "after lunch"));
+    let Some(response::Payload::Failure(failure)) = &replied.payload else {
+        panic!("a second answer to a question answered {replied:?}");
+    };
+    assert!(failure.reason.contains("answered already"), "{}", failure.reason);
+    let banner = until_banner(|banner| banner.sent.is_some());
+    let sent = banner.sent.clone().unwrap_or_default();
+    assert_eq!(sent.state(), post_outcome::State::Refused);
+    assert_eq!(sent.body, "after lunch", "the note the human wrote, not the body made from it");
+    assert_eq!(banner.picked, Some(0), "and the pick stays with it");
+}
+
 /// A post as the human: the request whose answer the relay withholds.
 fn posts(request: &daemon_proto::Request) -> bool {
     matches!(
@@ -180,6 +230,15 @@ fn hold(seq: u64, held: bool) -> request::Payload {
         group: "g".to_string(),
         seq,
         held,
+    })
+}
+
+fn pick(seq: u64, answer: Option<u32>) -> request::Payload {
+    request::Payload::PickBannerAnswer(PickBannerAnswer {
+        daemon_id: "local".to_string(),
+        group: "g".to_string(),
+        seq,
+        answer,
     })
 }
 
@@ -238,6 +297,24 @@ fn last_entry(control: &mut Control) -> (String, Vec<String>, String) {
     entries(control).pop().expect("the group holds a message")
 }
 
+/// The answer the last message in `g` picks, if it picks one.
+fn last_answering(control: &mut Control) -> Option<msg_request::Answering> {
+    let log = Asked::Log(msg_request::Log { group: "g".to_string(), ..Default::default() });
+    let logged = expect(control, msg(&named("b"), log), daemon_proto::Outcome::Done);
+    let Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
+        answer: Some(Answer::Entries(entries)),
+        ..
+    })) = logged.answer.detail
+    else {
+        panic!("a log answered {:?}", logged.answer);
+    };
+    let last = entries.groups.into_iter().flat_map(|group| group.entries).last()?;
+    match last.what {
+        Some(What::Message(message)) => message.answering,
+        _ => None,
+    }
+}
+
 /// The human, `a` and `b` in group `g`.
 fn group_of_three(control: &mut Control) {
     for (caller, name) in [(the_human(), "@human"), (named("a"), "a"), (named("b"), "b")] {
@@ -277,12 +354,22 @@ fn msg(caller: &msg_request::Caller, asked: Asked) -> Service {
 /// Posts as `from` to `to` in `g`, having read what waits there first as an agent does, and
 /// returns the message's number.
 fn post(control: &mut Control, from: &str, to: &str, body: &str) -> u64 {
+    post_offering(control, from, to, body, &[])
+}
+
+/// Asks the human a question as `from`, offering `answers`, and returns its number.
+fn ask(control: &mut Control, from: &str, body: &str, answers: &[&str]) -> u64 {
+    post_offering(control, from, "@human", body, answers)
+}
+
+fn post_offering(control: &mut Control, from: &str, to: &str, body: &str, answers: &[&str]) -> u64 {
     let read = Asked::Read(msg_request::Read { group: Some("g".to_string()) });
     control.ask(msg(&named(from), read));
     let asked = Asked::Post(msg_request::Post {
         group: Some("g".to_string()),
         to: vec![to.to_string()],
         body: body.to_string(),
+        answers: answers.iter().map(ToString::to_string).collect(),
         ..Default::default()
     });
     let posted = control.ask(msg(&named(from), asked));
