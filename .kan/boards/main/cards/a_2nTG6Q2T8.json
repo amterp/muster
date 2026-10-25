@@ -11,9 +11,12 @@
   "description": "From the 2026-10-24 round review, read from code. In muster_core::spanning, Change::Resize (turns_to, resize::divider) and Change::Even (equalize::dividers) work on the merged tree; only Change::Ratio maps through drawn/whole_path. A window that reaches only some of a tab's machines can pick a divider whose other side it does not draw, report success, and move nothing visible.",
   "id": "a_2nTG6Q2T8",
   "position": "b1k",
+  "related": [
+    "a_2lvMf2JeD"
+  ],
   "title": "Resize and equalize in a spanning tab pick dividers in the whole tree, not the tree the window draws",
   "type": "bug",
-  "updated_at_millis": 1792858395477,
+  "updated_at_millis": 1792890501648,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792858395477}
   ]

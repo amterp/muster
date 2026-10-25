@@ -24,7 +24,7 @@
   "creator": "Alexander Terp",
   "description": "2026-10-05, in ./release minor's gate for 0.14.0 at load 11.8, right after the version bump rebuilt every binary: crates/muster-cli/tests/cli/messaging.rs:466 asserted daemon.replace(None).outcome() == Done and got Refused. Passed 5/5 alone and in the gate an hour before, on unchanged daemon/handoff code. The assert drops the answer's reason, so which refusal it was (begin_replacing, or a STEP of 10 s timing out while macOS scanned the fresh binary) is unknown. First make the assert print the reason; then decide whether the handoff's step patience or the test is wrong.",
   "id": "a_2ccIWycOS",
-  "position": "!!!!!!3",
+  "position": "a4",
   "title": "🎲 a_followed_log_prints_each_entry_as_it_lands_across_a_handover saw its handover refused",
   "type": "bug",
   "updated_at_millis": 1792855654353,

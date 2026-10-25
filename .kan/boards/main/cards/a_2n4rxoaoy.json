@@ -11,7 +11,7 @@
   "creator": "Alexander Terp",
   "description": "amterp's chat note, 2026-10-22: \"paste images thru ssh\".\n\nPasting a screenshot into an agent works only on the laptop: Claude Code and Codex read an image from the machine's own clipboard when you paste. An agent on a devenv runs where the laptop's clipboard is out of reach, and a terminal paste carries text only, so the image never arrives. Inferred, not measured on each harness.\n\nWanted: an image pasted into a pane on another machine reaches its agent as it would locally. Muster already holds an ssh connection to that machine, so one route is copying the image there and handing the agent a file path, which both harnesses take as an image. Which harnesses accept a path, and where the file goes and when it is cleaned up, are open.",
   "id": "a_2n4rxoaoy",
-  "position": "!!!!!!0l",
+  "position": "a2",
   "title": "An image pasted into a devenv pane never reaches the agent there",
   "type": "feature",
   "updated_at_millis": 1792800277088,

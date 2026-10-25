@@ -11,9 +11,12 @@
   "description": "amterp, Chat Notes 2026-10-15: \"in built compression warnings to the agents? or reminders\". Clarified 2026-10-16: unsure whether agents should opt in, or whether a user setting should inject a message at a threshold asking the agent to compact itself.\n\nToday `compact_at` (`docs/configuration.md`) types the harness's compact command at an idle agent's empty prompt once its context passes a threshold, so the agent has no say in what survives. A reminder would let it save its state, write a handoff, or run `muster pane compact` saying what to keep.\n\nOpen:\n\n- Who sets it: a user setting beside `compact_at`, an agent opting in for itself, or both.\n- How the reminder arrives: as a message from Muster, or typed like a ring (see a_2j17531rW).\n- Once per crossing, as `compact_at` is.\n\nAn agent that compacts itself on the reminder then hits a_2izzbA9cT: nothing starts its next turn.",
   "id": "a_2j175IlgP",
   "position": "aX",
+  "related": [
+    "a_2j17531rW"
+  ],
   "title": "Should Muster remind an agent to compact itself as its context fills?",
   "type": "chore",
-  "updated_at_millis": 1792200263520,
+  "updated_at_millis": 1792890500320,
   "history": [
     {"field":"column","value":"uncommitted","at":1792200263520}
   ]

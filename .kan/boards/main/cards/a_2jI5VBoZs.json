@@ -19,9 +19,13 @@
   "description": "Agents from different projects share one Mac and one account's weekly usage limit, and each project works out its share alone. Today that is ad hoc: caps written into each project's CLAUDE.md, a lock script per repo, and messages between orchestrators. Needs its own design pass, probably a MIP, before anything is built.\n\nSightings:\n\n- 2026-10-16 night: muster's integrator and spool's integrator took turns at full gates by `muster msg` (\"gate starting\", \"gate done\"). Each wait cost a turn, and a post was refused while the other side had unread messages. Gates run side by side flaked under load: a_2hLJLXgsA failed four gates that night and passes alone.\n- A private project that runs up to ten Muster workers: its CLAUDE.md caps it at about four concurrent agents because other projects share the 16 GB Mac. A card on its board copies spool's `tools/gate-lock`, an fcntl lock. On 2026-10-13 its orchestrator asked spool's and chat-notes' orchestrators by message to warn it before heavy work, so it could hold off a long export job.\n- Disk: that project stops below 10 GB free, and muster's integrator freed 3.1 GB with `cargo clean` at 12 GB free on 2026-10-16.\n- Usage: its orchestrator checks the account's weekly limit before every dispatch and stops at 25% left. Every project's agents draw on that budget, and none sees the others' spending.\n- `./dev --perf` refuses to run on a loaded machine, and cannot say whose load it is (`./dev --doctor` lists processes, not agents).\n\nQuestions for the design:\n\n- Which resources count: CPU, memory, disk, the account's usage limit, and things only one job may hold at a time (the logged-in GUI session `--contract` needs, a devenv container).\n- Does Muster arbitrate (hold locks and queues) or only inform (show which agent runs which heavy job, and let agents agree)? A queued agent could read `waiting` with the reason, rather than `working`.\n- Priority between projects is the person's call. How do they state it, so that agents do not guess? a_2YSLgtM5f carries the same warning about agents coordinating on their own.\n- CPU and memory are per machine, the usage limit is per account: one design or two?\n- Is Muster the home for this at all, given that it imposes no workflow, or is it a separate tool that Muster shows?\n\nRelated: a_2die8Xhxs (usage telemetry), a_2YSLgtM5f.",
   "id": "a_2jI5VBoZs",
   "position": "aY",
+  "related": [
+    "a_2die8Xhxs",
+    "a_2YSLgtM5f"
+  ],
   "title": "Machine sharing: agents from several projects contend for one machine and one usage limit",
   "type": "feature",
-  "updated_at_millis": 1792262225971,
+  "updated_at_millis": 1792890500582,
   "history": [
     {"field":"column","value":"uncommitted","at":1792240718451}
   ]

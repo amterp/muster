@@ -12,9 +12,12 @@
   "description": "amterp, Chat Notes 2026-10-19: \"detect when cache goes cold or warn timing\", confirmed at triage on 2026-10-21.\n\nAn agent left idle past its prompt cache's lifetime pays to re-read its whole context on its next message, which at a large context is a real share of a usage limit. Claude Code's own tool docs say its requests use a one-hour cache, dropping to five minutes once the account is in overage. Codex matters less, so start with Claude Code. Muster knows when each agent went idle and how full its context is, so it can show how long an idle agent's cache has left, and the person answers the agents about to go cold first.\n\nIn order:\n\n1. Research the stable ways to read this rather than guess it. The strongest lead: Claude Code 2.1.307's transcript records each turn's usage, including `cache_read_input_tokens` and `cache_creation.ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens`, so which lifetime a turn wrote to is readable, not assumed. Also check what the statusline input and hooks carry, since the adapter already reads both. Claude Code shows a notice once a cache has expired, offering to save tokens by clearing first; reading that off the screen is a fallback only, since its wording can change. Record what each harness version offers in `docs/observations/`.\n2. Measure how accurate the estimate is: log when Muster judges a cache cold, and compare with whether the next turn read from the cache (`cache_read_input_tokens`). Keep the measurement on the user's machines, as a_2die8Xhxs (rich usage telemetry) proposes.\n3. On an idle agent's row in the agent list, show the time left once it nears expiry, about five minutes before, and mark it once cold.",
   "id": "a_2luwIdT57",
   "position": "b1T",
+  "related": [
+    "a_2die8Xhxs"
+  ],
   "title": "Show how long until an idle Claude Code agent's prompt cache goes cold",
   "type": "feature",
-  "updated_at_millis": 1792628839353,
+  "updated_at_millis": 1792890500721,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792628839353}
   ]

@@ -30,7 +30,7 @@
   "labels": [
     "blocked"
   ],
-  "position": "!!!!!!F",
+  "position": "a5",
   "title": "Codex and OpenCode compaction: record /compact as typed and add it to their manifests",
   "type": "feature",
   "updated_at_millis": 1792200747130,
