@@ -12,8 +12,8 @@ use std::time::Duration;
 use muster::proto::{
     ConversationChanged, ConversationMembersChanged, CreateTab, Event, FocusPane,
     LeaveConversation, LoadEarlier, MessageBoxChanged, OpenWindow, PauseGroup,
-    PostFromConversation, Request, Response, SaveDraft, ShowConversation, Startup, ViewChanged,
-    WindowFocus, conversation_row, event, post_outcome, request, response,
+    PostFromConversation, Quitting, Request, Response, SaveDraft, ShowConversation, Startup,
+    ViewChanged, WindowFocus, conversation_row, event, post_outcome, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{Answer, entry::What};
@@ -521,6 +521,23 @@ fn two_windows_keep_two_drafts_and_a_draft_survives_a_relaunch() {
         "the draft to come back with the window",
         || message_box("window-1").draft.is_some_and(|draft| draft.text == "from one"),
         || format!("window-1 was told {:?}", message_box("window-1")),
+    );
+}
+
+#[test]
+fn a_draft_written_just_before_quitting_is_kept() {
+    let open = Open::built();
+    show("window-1");
+    until_loaded("window-1");
+    let arrangement = open.daemon.root().join("windows/window-1.toml");
+
+    answer(save_draft("last words", 10, &[]));
+    assert_ok(&answer(request::Payload::Quitting(Quitting { close_sessions: false })));
+
+    assert!(
+        std::fs::read_to_string(&arrangement).is_ok_and(|text| text.contains("last words")),
+        "the draft was not written down before the quit, so it is gone on the next launch: {}",
+        std::fs::read_to_string(&arrangement).unwrap_or_default()
     );
 }
 

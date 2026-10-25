@@ -6989,6 +6989,11 @@ pub(crate) fn quitting(close_sessions: bool) {
             }
         }
         session.quitting = true;
+        // What changed in the last second, a message box's draft above all, is otherwise written
+        // down only once it has been still for that second, which a quit does not wait for.
+        for window in session.windows.ids() {
+            save(&mut session, window);
+        }
     }
     if close_sessions {
         let daemons: Vec<(DaemonId, String)> = {
