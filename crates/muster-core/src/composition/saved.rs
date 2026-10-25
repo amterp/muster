@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::presentation::{FontSizes, Frame, Presentation};
 use crate::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
+use crate::conversation::Answering;
 use crate::diagnostics::log;
 use crate::fields;
 use crate::mirror::backend::{PaneId, TabId};
@@ -97,6 +98,8 @@ pub struct SavedDraft {
     pub text: String,
     pub to: Vec<String>,
     pub urgent: bool,
+    /// The answer picked from a question, whole: the question's number and the answer's words.
+    pub picked: Option<Answering>,
 }
 
 /// What survives a check against what the daemons actually hold.
@@ -429,6 +432,15 @@ fn draft_table(draft: &SavedDraft) -> toml::Value {
     if draft.urgent {
         table.insert("urgent".to_string(), toml::Value::Boolean(true));
     }
+    if let Some(picked) = &draft.picked {
+        let mut answering = toml::Table::new();
+        answering.insert(
+            "question".to_string(),
+            toml::Value::Integer(i64::try_from(picked.question).unwrap_or(i64::MAX)),
+        );
+        answering.insert("answer".to_string(), toml::Value::String(picked.answer.clone()));
+        table.insert("answering".to_string(), toml::Value::Table(answering));
+    }
     toml::Value::Table(table)
 }
 
@@ -662,6 +674,13 @@ fn read_draft(value: &toml::Value) -> Option<SavedDraft> {
             .map(|names| names.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
             .unwrap_or_default(),
         urgent: table.get("urgent").and_then(toml::Value::as_bool).unwrap_or(false),
+        // A pick that will not read is dropped, and the words are kept: they are the human's.
+        picked: table.get("answering").and_then(toml::Value::as_table).and_then(|answering| {
+            Some(Answering {
+                question: u64::try_from(answering.get("question")?.as_integer()?).ok()?,
+                answer: text(answering, "answer")?,
+            })
+        }),
     })
 }
 

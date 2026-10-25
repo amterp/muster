@@ -7,7 +7,7 @@
 //!
 //! Cursors count Unicode scalar values, which every shell's strings can count.
 
-use crate::conversation::{Group, What};
+use crate::conversation::{Answering, Group, What};
 use crate::posting;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -17,6 +17,26 @@ pub struct Draft {
     pub to: Vec<String>,
     pub urgent: bool,
     pub addressed: Addressed,
+    /// The answer picked from a question in the thread, to go with the text (MIP-9, section 6).
+    /// Kept whole, the question's number and the answer's words, so a draft written down never
+    /// depends on a message the log may not hold when it is read back.
+    pub picked: Option<Answering>,
+}
+
+impl Draft {
+    /// Whether posting it sends anything: words, or an answer picked.
+    pub fn sends(&self) -> bool {
+        !self.text.trim().is_empty() || self.picked.is_some()
+    }
+
+    /// The body a post of it carries: the text, or the picked answer first and the text as its
+    /// note, as every reply that picks an answer is written.
+    pub fn body(&self) -> String {
+        match &self.picked {
+            Some(picked) => posting::answer_body(&picked.answer, &self.text),
+            None => self.text.clone(),
+        }
+    }
 }
 
 /// How a draft's recipients came to be, which decides what a leading @ does to them.
@@ -78,7 +98,13 @@ pub fn opening(group: &Group) -> Draft {
 /// What the human's edit makes of `draft`.
 pub fn edited(draft: &Draft, edit: Edit, group: &Group) -> Edited {
     let addressed = if edit.to == draft.to { draft.addressed } else { Addressed::Chosen };
-    let mut next = Draft { text: edit.text, to: edit.to, urgent: edit.urgent, addressed };
+    let mut next = Draft {
+        text: edit.text,
+        to: edit.to,
+        urgent: edit.urgent,
+        addressed,
+        picked: draft.picked.clone(),
+    };
     let mut cursor = edit.cursor.min(next.text.chars().count());
     if let Some(name) = &edit.complete {
         cursor = complete(&mut next.text, cursor, name, group);
@@ -132,6 +158,49 @@ fn complete(text: &mut String, cursor: usize, name: &str, group: &Group) -> usiz
     let moved = before[..start].chars().count() + completed.chars().count() + usize::from(spaced);
     *text = format!("{}{completed}{after}", &before[..start]);
     moved
+}
+
+/// What picking answer `answer` of question `question`, counted from 0, makes of `draft`, or
+/// `None` taking the pick back. A pick addresses the question's author, as Reply does, since an
+/// answer goes to whoever asked. Picking the answer already picked takes it back.
+pub fn pick(
+    draft: &Draft,
+    question: u64,
+    answer: Option<usize>,
+    group: &Group,
+) -> Result<Draft, String> {
+    let Some(answer) = answer else {
+        return Ok(Draft { picked: None, ..draft.clone() });
+    };
+    let asked = group.log.entries().find_map(|entry| match &entry.what {
+        What::Message(message) if entry.seq == question => Some(message),
+        _ => None,
+    });
+    let Some(asked) = asked.filter(|message| group.asks_human(message)) else {
+        return Err(format!(
+            "#{question} is not a question asked of you in this conversation, so nothing was \
+             picked"
+        ));
+    };
+    if let Some((by, given)) = group.answers_given().get(&question) {
+        return Err(format!(
+            "#{question} was answered already, by {}: {given}; nothing was picked",
+            group.shown(by)
+        ));
+    }
+    let Some(words) = asked.answers.get(answer) else {
+        return Err(format!(
+            "#{question} offers {} answers, so answer {} is none of them; nothing was picked",
+            asked.answers.len(),
+            answer + 1
+        ));
+    };
+    let picked = Answering { question, answer: words.clone() };
+    if draft.picked.as_ref() == Some(&picked) {
+        return Ok(Draft { picked: None, ..draft.clone() });
+    }
+    let to = if group.addressable(&asked.author) { vec![asked.author.clone()] } else { Vec::new() };
+    Ok(Draft { to, addressed: Addressed::Chosen, picked: Some(picked), ..draft.clone() })
 }
 
 /// The member a text's leading `@name ` names, and that prefix with the whitespace after it.

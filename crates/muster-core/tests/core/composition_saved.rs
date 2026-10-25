@@ -9,7 +9,10 @@ use std::collections::BTreeSet;
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::presentation::{FontSizes, Frame, Presentation};
 use muster_core::composition::record::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
-use muster_core::composition::saved::{Saved, SavedRegion, SavedTab, from_toml, to_toml};
+use muster_core::composition::saved::{
+    Saved, SavedDraft, SavedRegion, SavedTab, from_toml, to_toml,
+};
+use muster_core::conversation::Answering;
 use muster_core::mirror::backend::{PaneId, TabId};
 use serde_json::{Value, json};
 
@@ -497,4 +500,24 @@ fn a_tab_its_daemons_keep_as_one_tree_is_written_without_widths() {
             ("w1:t2".to_string(), Some(2.0)),
         ]
     );
+}
+
+#[test]
+fn a_draft_keeps_its_picked_answer_whole_across_a_write() {
+    // Kept as the question's number and the answer's words rather than an index, so reading it
+    // back never depends on a message the log may not hold by then.
+    let draft = SavedDraft {
+        daemon: DaemonId::new("local"),
+        group: "review".to_string(),
+        text: "after lunch".to_string(),
+        to: vec!["otter".to_string()],
+        urgent: false,
+        picked: Some(Answering { question: 4, answer: "Skip it".to_string() }),
+    };
+    let saved = Saved {
+        drafts: vec![draft.clone()],
+        ..Saved::of(&Composition::new(), Presentation::default(), &FontSizes::default())
+    };
+    let read = from_toml(&to_toml(&saved)).expect("the arrangement reads back");
+    assert_eq!(read.drafts, [draft]);
 }

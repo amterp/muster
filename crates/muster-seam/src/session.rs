@@ -5255,18 +5255,20 @@ fn save(session: &mut Session, window: WindowId) {
     let Some((path, written)) = window.arrangement.as_mut() else { return };
     let mut arrangement = Saved::of(&window.composition, window.presentation, &session.font_sizes)
         .forgetting_weights(|tab| kept.contains(tab));
-    // Only a draft with words in it: recipients alone are what the conversation opens with
-    // anyway, and writing an empty draft for every group ever shown would grow the file forever.
+    // Only a draft with words or a pick in it: recipients alone are what the conversation opens
+    // with anyway, and writing an empty draft for every group ever shown would grow the file
+    // forever.
     arrangement.drafts = window
         .drafts
         .iter()
-        .filter(|(_, draft)| !draft.text.is_empty())
+        .filter(|(_, draft)| !draft.text.is_empty() || draft.picked.is_some())
         .map(|(group, draft)| saved::SavedDraft {
             daemon: group.daemon.clone(),
             group: group.group.clone(),
             text: draft.text.clone(),
             to: draft.to.clone(),
             urgent: draft.urgent,
+            picked: draft.picked.clone(),
         })
         .collect();
     if let Some(left) = &window.left {

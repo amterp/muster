@@ -21,7 +21,7 @@ use crate::posting;
 pub use draft::{Addressed, Completion, Draft, Edit, Edited};
 pub use log::{Answering, Change, Entry, Log, Message, What};
 pub use members::{Header, Liveness, Member, MemberRow, Unread};
-pub use thread::{MessageRow, Row, ThreadView};
+pub use thread::{Answered, MessageRow, Row, ThreadView};
 
 /// A name kept on another machine, split into the name there and the machine: `review@devenv`.
 /// The rule is the daemon's (`muster_msg::split_machine`), which this crate does not depend on:
@@ -93,6 +93,30 @@ impl Group {
     /// human, who is the one posting, and still a member, since an author who left is refused.
     pub fn addressable(&self, name: &str) -> bool {
         !posting::is_muster(name) && !posting::is_human(name) && self.is_member(name)
+    }
+
+    /// Whether the human may pick one of the answers `message` offers: it offers some, it is
+    /// from an agent, and it was asked of the human - addressed to them, or to nobody. The
+    /// daemon holds a reply to the same rule (`muster_msg`'s `not_asked_of`).
+    pub fn asks_human(&self, message: &Message) -> bool {
+        !message.answers.is_empty()
+            && !posting::is_human(&message.author)
+            && !posting::is_muster(&message.author)
+            && (message.to.is_empty() || message.to.iter().any(|to| posting::is_human(to)))
+    }
+
+    /// Each question answered so far, by its number: who answered it and with what. The first
+    /// answer is the one that counts, as a question takes one answer.
+    pub fn answers_given(&self) -> BTreeMap<u64, (&str, &str)> {
+        let mut given = BTreeMap::new();
+        for entry in self.log.entries() {
+            if let What::Message(Message { author, answering: Some(answering), .. }) = &entry.what {
+                given
+                    .entry(answering.question)
+                    .or_insert((author.as_str(), answering.answer.as_str()));
+            }
+        }
+        given
     }
 
     /// Whether a message woke the human: addressed to them, or unaddressed in a group whose

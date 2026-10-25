@@ -10,8 +10,8 @@ use conformance::{CaseError, Conformance, fields, strings};
 use muster_core::attention::GroupKey;
 use muster_core::composition::PaneKey;
 use muster_core::conversation::{
-    Addressed, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy, Row,
-    ThreadView, What, draft, members, thread,
+    Addressed, Answering, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy,
+    Row, ThreadView, What, draft, members, thread,
 };
 use serde_json::{Value, json};
 
@@ -49,11 +49,29 @@ fn message_box_conformance() {
     let corpus = Conformance::load("message_box.json");
     let ran = corpus.run(|given| {
         let group = group(given)?;
+        let before = given.get("draft").map(read_draft).unwrap_or_default();
+        if let Some(pick) = given.get("pick") {
+            let question = pick.get("question").and_then(Value::as_u64).unwrap_or(0);
+            // Counted from 1, as a question's answers are printed; none takes the pick back.
+            let answer = pick
+                .get("answer")
+                .and_then(Value::as_u64)
+                .map(|answer| usize::try_from(answer - 1).unwrap_or(usize::MAX));
+            return Ok(match draft::pick(&before, question, answer, &group) {
+                Ok(picked) => fields([
+                    ("text", Some(json!(picked.text))),
+                    ("to", Some(json!(picked.to))),
+                    ("addressed", Some(json!(addressed_name(picked.addressed)))),
+                    ("picked", picked_json(&picked)),
+                    ("body", picked.sends().then(|| json!(picked.body()))),
+                ]),
+                Err(why) => json!({ "refused": why }),
+            });
+        }
         let Some(edit) = given.get("edit") else {
             let opened = draft::opening(&group);
             return Ok(json!({ "to": opened.to }));
         };
-        let before = given.get("draft").map(read_draft).unwrap_or_default();
         let text = text(edit, "text").unwrap_or_default().to_string();
         let edit = Edit {
             cursor: edit
@@ -74,6 +92,7 @@ fn message_box_conformance() {
             ("cursor", Some(json!(edited.cursor))),
             ("addressed", Some(json!(addressed_name(edited.draft.addressed)))),
             ("urgent", edited.draft.urgent.then_some(json!(true))),
+            ("picked", picked_json(&edited.draft)),
             (
                 "completions",
                 (!edited.completions.is_empty()).then(|| {
@@ -162,12 +181,18 @@ fn entry(given: &Value) -> Result<Entry, CaseError> {
             }
             None => text(given, "body").unwrap_or("hello").to_string(),
         };
-        What::Message(Message::new(
-            text(given, "author").ok_or_else(|| CaseError::new("a message needs `author`"))?.into(),
-            strings(given, "to"),
-            body,
-            given.get("urgent").and_then(Value::as_bool).unwrap_or(false),
-        ))
+        What::Message(Message {
+            answers: strings(given, "answers"),
+            answering: given.get("answering").map(answering),
+            ..Message::new(
+                text(given, "author")
+                    .ok_or_else(|| CaseError::new("a message needs `author`"))?
+                    .into(),
+                strings(given, "to"),
+                body,
+                given.get("urgent").and_then(Value::as_bool).unwrap_or(false),
+            )
+        })
     };
     Ok(Entry { seq, at_ms, what })
 }
@@ -189,6 +214,16 @@ fn row_json(row: &Row) -> Value {
             ("no_reply", (!message.replyable).then_some(json!(true))),
             ("muster", message.from_muster.then_some(json!(true))),
             ("pane", message.author_pane.as_ref().map(|pane| json!(pane.pane.as_str()))),
+            ("answers", (!message.answers.is_empty()).then(|| json!(message.answers.join(" / ")))),
+            ("answerable", message.answerable.then_some(json!(true))),
+            (
+                "answered",
+                message
+                    .answered
+                    .as_ref()
+                    .map(|answered| json!(format!("{}: {}", answered.by, answered.answer))),
+            ),
+            ("answering", message.answering.map(|question| json!(question))),
         ]),
     }
 }
@@ -203,7 +238,20 @@ fn read_draft(given: &Value) -> Draft {
             Some("at") => Addressed::At,
             _ => Addressed::Opening,
         },
+        picked: given.get("picked").map(answering),
     }
+}
+
+/// `{ "question": 4, "answer": "Run it now" }`.
+fn answering(given: &Value) -> Answering {
+    Answering {
+        question: given.get("question").and_then(Value::as_u64).unwrap_or(0),
+        answer: text(given, "answer").unwrap_or_default().to_string(),
+    }
+}
+
+fn picked_json(draft: &Draft) -> Option<Value> {
+    draft.picked.as_ref().map(|picked| json!(format!("#{} {}", picked.question, picked.answer)))
 }
 
 fn addressed_name(addressed: Addressed) -> &'static str {

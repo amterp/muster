@@ -170,6 +170,83 @@
         "edit": { "text": "now", "urgent": true }
       },
       "expect": { "text": "now", "to": ["otter"], "cursor": 3, "addressed": "opening", "urgent": true }
+    },
+    {
+      "name": "picking a question's answer addresses its author, and the post is the answer and the note",
+      "why": "Picking fills the message box rather than sending it, so a note can go with it (MIP-9, section 6), and an answer goes to whoever asked, as Reply addresses them. The post's body starts with the answer, as every reply that picks one does.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] },
+          { "seq": 2, "author": "heron", "to": ["@human"] }
+        ],
+        "draft": { "text": "after lunch", "to": ["heron"] },
+        "pick": { "question": 1, "answer": 2 }
+      },
+      "expect": { "text": "after lunch", "to": ["otter"], "addressed": "chosen", "picked": "#1 Skip it", "body": "Answer: Skip it\n\nafter lunch" }
+    },
+    {
+      "name": "a picked answer is kept through typing, and picking it again takes it back",
+      "why": "The draft is kept whole, the pick with it, so writing the note does not lose the answer; and the banner's rule holds here too, so one gesture undoes a pick.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] }
+        ],
+        "draft": { "text": "", "to": ["otter"], "addressed": "chosen", "picked": { "question": 1, "answer": "Run it now" } },
+        "edit": { "text": "today" }
+      },
+      "expect": { "text": "today", "to": ["otter"], "cursor": 5, "addressed": "chosen", "picked": "#1 Run it now" }
+    },
+    {
+      "name": "picking the picked answer again takes it back",
+      "why": "As in the banner: one gesture picks, and the same gesture undoes it.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] }
+        ],
+        "draft": { "text": "", "to": ["otter"], "addressed": "chosen", "picked": { "question": 1, "answer": "Run it now" } },
+        "pick": { "question": 1, "answer": 1 }
+      },
+      "expect": { "text": "", "to": ["otter"], "addressed": "chosen" }
+    },
+    {
+      "name": "a question asked of another agent takes no pick",
+      "why": "The daemon refuses an answer from somebody a question was not asked of, so the pick would end in a refusal after the human had written their note.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["heron"], "answers": ["Yes", "No"] }
+        ],
+        "pick": { "question": 1, "answer": 1 }
+      },
+      "expect": { "refused": "#1 is not a question asked of you in this conversation, so nothing was picked" }
+    },
+    {
+      "name": "a question answered by somebody else takes no pick",
+      "why": "A question takes one answer; the human would only be refused by the daemon after writing a note.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 2, "author": "otter", "answers": ["Yes", "No"] },
+          { "seq": 3, "author": "heron", "to": ["otter"], "body": "Answer: Yes", "answering": { "question": 2, "answer": "Yes" } }
+        ],
+        "pick": { "question": 2, "answer": 2 }
+      },
+      "expect": { "refused": "#2 was answered already, by heron: Yes; nothing was picked" }
+    },
+    {
+      "name": "a pick names one of the question's own answers",
+      "why": "The answer is sent by its words, so a number past the last names nothing the question offered.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Yes", "No"] }
+        ],
+        "pick": { "question": 1, "answer": 3 }
+      },
+      "expect": { "refused": "#1 offers 2 answers, so answer 3 is none of them; nothing was picked" }
     }
   ]
 }

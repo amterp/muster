@@ -361,6 +361,7 @@ pub(super) fn restore_drafts(window: WindowId) {
             to: kept.to,
             urgent: kept.urgent,
             addressed: muster_core::conversation::Addressed::Chosen,
+            picked: kept.picked,
         };
         session.windows[window].drafts.entry(group).or_insert(draft);
     }

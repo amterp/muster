@@ -308,6 +308,44 @@
           { "message": 3, "author": "otter", "to": ["you"], "to_you": true }
         ]
       }
+    },
+    {
+      "name": "a question to the human offers its answers, and one to somebody else shows them only",
+      "why": "A question's answers are buttons under it (MIP-9, section 6). The human picks one only where the question was asked of them, addressed to them or to nobody, as the daemon refuses a reply otherwise; another agent's question still says what it offered.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] },
+          { "seq": 2, "author": "heron", "to": ["@human", "otter"], "answers": ["Yes", "No"] },
+          { "seq": 3, "author": "otter", "to": ["heron"], "answers": ["Merge", "Hold"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "answers": "Run it now / Skip it", "answerable": true },
+          { "message": 2, "author": "heron", "to": ["you", "otter"], "to_you": true, "answers": "Yes / No", "answerable": true },
+          { "message": 3, "author": "otter", "to": ["heron"], "answers": "Merge / Hold" }
+        ]
+      }
+    },
+    {
+      "name": "an answered question says who answered and with what, and offers nothing more",
+      "why": "A question takes one answer, so once one is given its buttons go and the row says who gave it. The first answer is the one that counts, and the reply says which question it answers.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] },
+          { "seq": 2, "author": "@human", "to": ["otter"], "body": "Answer: Skip it", "answering": { "question": 1, "answer": "Skip it" } }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "answers": "Run it now / Skip it", "answered": "you: Skip it" },
+          { "message": 2, "author": "you", "to": ["otter"], "by_you": true, "no_reply": true, "answering": 1 }
+        ]
+      }
     }
   ]
 }

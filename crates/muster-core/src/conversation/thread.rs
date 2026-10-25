@@ -8,7 +8,7 @@
 //! The whole thread is rebuilt when anything in it changes. It is a few hundred rows of
 //! already-parsed blocks, and messages arrive at the speed people and agents write.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::PaneKey;
 use crate::conversation::log::{Change, Entry, What};
@@ -52,7 +52,7 @@ pub enum Row {
         from_ms: u64,
         to_ms: u64,
     },
-    Message(MessageRow),
+    Message(Box<MessageRow>),
     /// Where the unread messages began.
     Unread,
 }
@@ -79,10 +79,29 @@ pub struct MessageRow {
     /// Whether Reply addresses its author: not Muster, not the human, and still a member.
     pub replyable: bool,
     pub from_muster: bool,
+    /// The answers it offers, which make it a question (MIP-9, section 6).
+    pub answers: Vec<String>,
+    /// Who answered it and with what, once somebody has.
+    pub answered: Option<Answered>,
+    /// Whether the human may pick one of its answers now: asked of them, and not yet answered.
+    pub answerable: bool,
+    /// The question it answers, when it is a reply that picked one.
+    pub answering: Option<u64>,
+}
+
+/// Who answered a question, and with which of its answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answered {
+    /// As the conversation names them.
+    pub by: String,
+    pub by_name: String,
+    pub answer: String,
 }
 
 /// The rows of `group`'s thread as a window with this view of it shows them.
 pub fn rows(group: &Group, view: &ThreadView) -> Vec<Row> {
+    let answered = group.answers_given();
+    let made = Made { group, view, answered: &answered };
     let mut rows = Vec::new();
     let mut day = None;
     let mut run: Vec<&Entry> = Vec::new();
@@ -96,7 +115,7 @@ pub fn rows(group: &Group, view: &ThreadView) -> Vec<Row> {
         let foldable = matches!(&entry.what, What::Message(message) if folds(group, message));
         let is_change = !matches!(entry.what, What::Message(_));
         if new_day || unread_here || !foldable {
-            flush_run(group, view, &mut run, &mut rows);
+            flush_run(&made, &mut run, &mut rows);
         }
         if new_day || unread_here || !is_change {
             flush_changes(group, &mut changes, &mut rows);
@@ -111,13 +130,21 @@ pub fn rows(group: &Group, view: &ThreadView) -> Vec<Row> {
         }
         match &entry.what {
             What::Message(_) if foldable => run.push(entry),
-            What::Message(message) => rows.push(message_row(group, view, entry, message)),
+            What::Message(message) => rows.push(message_row(&made, entry, message)),
             _ => changes.push(entry),
         }
     }
-    flush_run(group, view, &mut run, &mut rows);
+    flush_run(&made, &mut run, &mut rows);
     flush_changes(group, &mut changes, &mut rows);
     rows
+}
+
+/// What every row of one thread is made from.
+struct Made<'a> {
+    group: &'a Group,
+    view: &'a ThreadView,
+    /// Each question answered, by its number: by whom and with what.
+    answered: &'a BTreeMap<u64, (&'a str, &'a str)>,
 }
 
 /// Whether a message is one that woke nobody but agents.
@@ -132,9 +159,9 @@ fn date(at_ms: u64, utc_offset_s: i32) -> String {
     clock::format_date(at.saturating_add(i64::from(utc_offset_s) * 1000))
 }
 
-fn flush_run(group: &Group, view: &ThreadView, run: &mut Vec<&Entry>, rows: &mut Vec<Row>) {
+fn flush_run(made: &Made, run: &mut Vec<&Entry>, rows: &mut Vec<Row>) {
     let (Some(first), Some(last)) = (run.first(), run.last()) else { return };
-    if run.len() >= 2 && !view.open_folds.contains(&first.seq) {
+    if run.len() >= 2 && !made.view.open_folds.contains(&first.seq) {
         rows.push(Row::Folded {
             first: first.seq,
             count: run.len(),
@@ -144,15 +171,16 @@ fn flush_run(group: &Group, view: &ThreadView, run: &mut Vec<&Entry>, rows: &mut
     } else {
         for entry in run.iter() {
             if let What::Message(message) = &entry.what {
-                rows.push(message_row(group, view, entry, message));
+                rows.push(message_row(made, entry, message));
             }
         }
     }
     run.clear();
 }
 
-fn message_row(group: &Group, view: &ThreadView, entry: &Entry, message: &Message) -> Row {
-    let (blocks, more) = if view.whole.contains(&entry.seq) {
+fn message_row(made: &Made, entry: &Entry, message: &Message) -> Row {
+    let group = made.group;
+    let (blocks, more) = if made.view.whole.contains(&entry.seq) {
         (message.blocks.clone(), false)
     } else {
         markdown::leading(&message.blocks, LINES)
@@ -163,7 +191,12 @@ fn message_row(group: &Group, view: &ThreadView, entry: &Entry, message: &Messag
         .flatten()
         .find(|member| member.name == message.author)
         .and_then(|member| member.pane.clone());
-    Row::Message(MessageRow {
+    let answered = made.answered.get(&entry.seq).map(|(by, answer)| Answered {
+        by: group.shown(by),
+        by_name: (*by).to_string(),
+        answer: (*answer).to_string(),
+    });
+    Row::Message(Box::new(MessageRow {
         seq: entry.seq,
         at_ms: entry.at_ms,
         author: group.shown(&message.author),
@@ -177,7 +210,11 @@ fn message_row(group: &Group, view: &ThreadView, entry: &Entry, message: &Messag
         more,
         replyable: group.addressable(&message.author),
         from_muster: posting::is_muster(&message.author),
-    })
+        answers: message.answers.clone(),
+        answerable: answered.is_none() && group.asks_human(message),
+        answered,
+        answering: message.answering.as_ref().map(|answering| answering.question),
+    }))
 }
 
 /// Consecutive changes to the group as one row: "otter made the group; heron, lynx and you
