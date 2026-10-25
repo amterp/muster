@@ -485,17 +485,19 @@ remove. It is for hooks and scripts.
 
 ## The human
 
-`@human` is the person at Muster's window, on the machine the app runs on. A message that
-wakes them - addressed to `@human`, or unaddressed in a group whose policy rings them - raises a
-banner, and chatter between agents raises nothing. While Muster is in front the banner is
-Muster's own, over the panes: the group, who wrote, the message's first lines, and a field the
-human replies in with ⌘↩, which posts to that message's author as `@human`. Neither replying nor
-dismissing it reads the group, so a message posted to the human stays unread until they open the
-group. While Muster is not in front, the operating system's notification names the group and who
-wrote, or says the words of a lone message from `@muster`, since what Muster says is the reason
-for it. Choosing that, ⌘⇧A, the banner's Open, or `muster msg open --group G` opens the group's
-transcript: a tab running `muster msg log --group G --follow`, or the pane already running it.
-Going there counts as reading the group.
+`@human` is the person at Muster's window, on the machine the app runs on. A message that wakes
+them - addressed to `@human`, or unaddressed in a group whose policy rings them - raises a banner,
+and chatter between agents raises nothing. While Muster is in front the banner is Muster's own,
+over the panes: the group, who wrote, the message's first lines, and a field the human replies in
+with ⌘↩, which posts to that message's author as `@human`. A question's answers are buttons under
+it, which Tab reaches from the field: picking one fills the reply rather than sending it, and ⌘↩
+then posts the answer with anything written below it, as `--answer` does (Questions, above).
+Neither replying nor dismissing it reads the group, so a message posted to the human stays unread
+until they open the group. While Muster is not in front, the operating system's notification names
+the group and who wrote, or says the words of a lone message from `@muster`, since what Muster
+says is the reason for it. Choosing that, ⌘⇧A, the banner's Open, or `muster msg open --group G`
+opens the group's transcript: a tab running `muster msg log --group G --follow`, or the pane
+already running it. Going there counts as reading the group.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 
