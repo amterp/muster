@@ -285,6 +285,7 @@ impl Action {
     /// or the conversation: that view matches its chord while it has the keyboard, and the shell
     /// makes it no menu key equivalent. A menu gets a chord before any view does, enabled or not,
     /// so one would take the chord from a pane even when no such view is there to use it.
+    /// Named for the text fields it began with; the conversation's Escape is one too.
     pub fn in_text_field(self) -> bool {
         matches!(self, Action::SendMessage | Action::LeaveConversation)
     }

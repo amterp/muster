@@ -2056,9 +2056,10 @@ message Binding {
   // the same chord whichever command key supplied it.
   repeated string modifiers = 3;
 
-  // The action belongs to whichever text field of Muster's holds the keyboard, which matches
-  // the chord itself: it gets no menu key equivalent, since a menu takes a chord before any
-  // view, and this chord has to reach a pane whenever no such field is there.
+  // The action belongs to a view of Muster's - a text field, or the conversation - that matches
+  // the chord itself while it holds the keyboard: it gets no menu key equivalent, since a menu
+  // takes a chord before any view, and this chord has to reach a pane whenever no such view is
+  // there. Named for the text fields it began with; the conversation's Escape is one too.
   bool in_text_field = 4;
 }
 

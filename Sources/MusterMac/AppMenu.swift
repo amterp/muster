@@ -57,9 +57,10 @@ public enum AppMenu {
           ])
         return nil
       }
-      // An action of a text field's gets no key equivalent: the menu would take its chord
-      // before any view, enabled or not, and the chord has to reach a pane whenever no such
-      // field holds the keyboard. The field matches it instead (`BannerReplyField`).
+      // An action of a view of Muster's - a text field, or the conversation - gets no key
+      // equivalent: the menu would take its chord before any view, enabled or not, and the
+      // chord has to reach a pane whenever no such view holds the keyboard. The view matches it
+      // instead (`BannerReplyField`, `MessageBoxTextView`, `ConversationHost.handles`).
       return Item(
         title: described.title, action: described.selector,
         key: binding.inTextField ? "" : menuKeyEquivalent(forKeyNamed: binding.key) ?? "",

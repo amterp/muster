@@ -1041,8 +1041,9 @@ public enum Core {
     public let action: String
     public let key: String
     public let modifiers: [String]
-    /// The action belongs to whichever text field of Muster's holds the keyboard, which matches
-    /// the chord itself, and gets no menu key equivalent.
+    /// The action belongs to a view of Muster's - a text field, or the conversation - that
+    /// matches the chord itself while it holds the keyboard, and gets no menu key equivalent.
+    /// Named for the text fields it began with; the conversation's Escape is one too.
     public let inTextField: Bool
 
     public init(action: String, key: String, modifiers: [String], inTextField: Bool = false) {
