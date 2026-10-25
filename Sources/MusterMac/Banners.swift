@@ -306,7 +306,12 @@ struct BannerCard: View {
       header
       content
       if !banner.answers.isEmpty, banner.sent.state != .posted {
-        BannerAnswers(banner: banner, board: board, focus: $focus, onLeave: onLeave)
+        AnswerButtons(
+          answers: banner.answers, picked: banner.hasPicked ? Int(banner.picked) : nil,
+          enabled: banner.replyable, focus: $focus, focusing: { .answer($0) },
+          onPick: { board.pick($0, in: banner) }, onTabOut: { _ in focus = .reply }
+        )
+        .onExitCommand { onLeave() }
       }
       if !banner.waitingAuthor.isEmpty {
         Text("\(banner.waitingAuthor) wrote since\(banner.waitingUrgent ? " - urgent" : "")")
@@ -397,50 +402,6 @@ struct BannerCard: View {
         .fixedSize(horizontal: false, vertical: true)
     default:
       EmptyView()
-    }
-  }
-}
-
-/// The answers a question offers, one button each (mip/0009-group-conversation.md, section 6).
-/// Picking one fills the reply rather than sending it. Tab reaches them from the reply field
-/// whatever the system's keyboard navigation setting, since a question is answered from the
-/// keyboard as often as with the pointer; no digit picks one, since a reply may start with "1.".
-struct BannerAnswers: View {
-  let banner: Muster_Banner
-  @ObservedObject var board: BannerBoard
-  var focus: FocusState<BannerFocus?>.Binding
-  let onLeave: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      ForEach(Array(banner.answers.enumerated()), id: \.offset) { index, answer in
-        let picked = banner.hasPicked && Int(banner.picked) == index
-        Button(action: { board.pick(index, in: banner) }) {
-          HStack(spacing: 6) {
-            Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-              .foregroundStyle(picked ? Color.accentColor : .secondary)
-            Text(answer).frame(maxWidth: .infinity, alignment: .leading)
-          }
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, 2)
-        .focusable()
-        .focused(focus, equals: .answer(index))
-        .disabled(!banner.replyable)
-        .help(picked ? "Take this answer back" : "Pick this answer; send it with or without a note")
-        .onKeyPress(keys: [.space, .return], phases: .down) { _ in
-          board.pick(index, in: banner)
-          return .handled
-        }
-        .onKeyPress(keys: [.tab], phases: .down) { press in
-          let back = press.modifiers.contains(.shift)
-          let next = back ? index - 1 : index + 1
-          focus.wrappedValue = banner.answers.indices.contains(next) ? .answer(next) : .reply
-          return .handled
-        }
-        .onExitCommand { onLeave() }
-      }
     }
   }
 }
