@@ -11,31 +11,30 @@ if your harness wants one.
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap that
 ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each of the
 first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot say them -
-`waiting` on its own build among them - an agent read as `stuck` once its program stops reading its input,
-a callsign for every pane (`otter`) taken wherever its id is, messages included and through a rename,
-renaming, which names the agent's session in its harness too
-and follows a session renamed there, trading two agents' places by dragging a row, dragging a pane by its
-handle onto another pane's edge on either machine, right-click menus on a pane, a tab and an agent row, including a split onto any
-attached machine, hiding a pane from every window with its agent running and bringing it back from a list, an agent's
-helpers made hidden and quiet into one tab of their own, listed under it in the agent list and by `muster window`,
-brought forward and put away together, and telling it when one is blocked, stuck or idle without reporting, on either
-machine, a pane
-made quiet so that nothing about it interrupts you, a focus history the mouse's back and forward buttons walk across tabs, configuration that reloads when
-you save it, a CLI that drives the window from inside a pane on either machine and presses keys at another agent's
-dialog, a notification when an agent needs you that takes you to the pane that asked, a second daemon on an SSH
-machine in the same window - where one tab can hold a
-laptop pane beside or above a devenv pane - several windows that each hold their own tabs and hand them to each other, a newer
-Muster taking over an older daemon's panes with their agents still running, a machine whose daemon died shown as
-`unreachable` on every pane and its daemon started again, agents posting messages to each other and
-being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
-both, a group held up on a member noticed and told why once, a message for you shown in Muster's own banner with
-its Markdown drawn and answered from it without leaving your pane, or raising a notification that brings Muster
-forward while it is behind, a group's conversation drawn in place of the panes with what was for you standing out,
-what each member is doing and why it has not read, and a message box that posts as you, left with Esc, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a
-right-click there, compacting an agent's context when asked or once it is full enough, restarting an agent in its
-session from its notice, its menus or the CLI, upgrading Muster through
-Homebrew from its own menu or `muster upgrade`, and installing a harness's adapter through the harness's own plugin
-command, with `muster window` saying whose adapter is not reporting.
+`waiting` on its own build among them - an agent read as `stuck` once its program stops reading its input, a callsign
+for every pane (`otter`) taken wherever its id is, messages included and through a rename, renaming, which names the
+agent's session in its harness too and follows a session renamed there, trading two agents' places by dragging a row,
+dragging a pane by its handle onto another pane's edge on either machine, right-click menus on a pane, a tab and an
+agent row, including a split onto any attached machine, hiding a pane from every window with its agent running and
+bringing it back from a list, an agent's helpers made hidden and quiet into one tab of their own, listed under it in the
+agent list and by `muster window`, brought forward and put away together, and telling it when one is blocked, stuck or
+idle without reporting, on either machine, a pane made quiet so that nothing about it interrupts you, a focus history
+the mouse's back and forward buttons walk across tabs, configuration that reloads when you save it, a CLI that drives
+the window from inside a pane on either machine and presses keys at another agent's dialog, a notification when an agent
+needs you that takes you to the pane that asked, a second daemon on an SSH machine in the same window - where one tab
+can hold a laptop pane beside or above a devenv pane - several windows that each hold their own tabs and hand them to
+each other, a newer Muster taking over an older daemon's panes with their agents still running, a machine whose daemon
+died shown as `unreachable` on every pane and its daemon started again, agents posting messages to each other and being
+woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to both,
+a group held up on a member noticed and told why once, a message for you shown in Muster's own banner with its Markdown
+drawn and answered from it without leaving your pane, or raising a notification that brings Muster forward while it is
+behind, a question's answers, offered with `--option`, drawn as buttons under it in the banner and in the conversation,
+where Tab reaches them and no digit picks one, a group's conversation drawn in place of the panes with what was for you
+standing out, what each member is doing and why it has not read, and a message box that posts as you and is left with
+Esc, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a right-click
+there, compacting an agent's context when asked or once it is full enough, restarting an agent in its session from its
+notice, its menus or the CLI, upgrading Muster through Homebrew from its own menu or `muster upgrade`, and installing a
+harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter is not reporting.
 
 `docs/origin.md` is why this exists, `docs/architecture.md` is the shape, `docs/configuration.md` is every
 setting, and `docs/cli/limits.md` is the same honest account for the CLI.
