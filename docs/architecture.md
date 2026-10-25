@@ -586,6 +586,17 @@ transcript, a pane running `muster msg log --follow`, found by the command it ru
 there is the human reading the group, so the daemon is told, and the banner comes down when it says nothing waits.
 A transcript somebody is reading in a focused window reads what arrives there, as a pane on screen raises nothing.
 
+**While Muster is in front, a message is answered where it is read** (MIP-9, section 5). Muster draws its own banner
+over the top right of the panes rather than posting the operating system's: the message's first lines, its Markdown
+parsed in the core (`markdown.rs`) into blocks every shell draws alike, and a reply field addressed to its author. The
+core keeps the banners (`banners.rs`), one per group, newest on top, three at most. It fetches the message the daemon's
+notice numbers from the group's log as the human, and posts a reply as the human with the request `muster msg post`
+sends. A banner holds the message it shows, so a reply goes to that author whatever arrives meanwhile, and a banner the
+human is writing in is not replaced: the newer message waits behind it, named. Neither a reply nor a dismissal reads
+the group, since reading moves the human's place past every message in it. A post has four outcomes - pending, posted,
+refused, unknown - and an unknown one is never sent again: the core asks the group's log once whether it was kept.
+While Muster is not in front, the operating system's notification is the pointer back, with no reply in it.
+
 **A quiet pane asks for nobody.** Quiet is a flag on the pane that its daemon keeps, set when the pane is made or
 later (`muster docs agents`, "Out of sight"), for an agent's helpers that the agent watches over messaging. Such a
 pane takes no part in the unread set: no banner, and nothing for the chord to whatever asks to go to. That is more

@@ -452,11 +452,15 @@ remove. It is for hooks and scripts.
 
 `@human` is the person at Muster's window, on the machine the app runs on. A message that
 wakes them - addressed to `@human`, or unaddressed in a group whose policy rings them - raises a
-notification naming the group and who wrote, and chatter between agents raises nothing. A lone
-message from `@muster` says its own words there instead, since what Muster says is the reason for
-the banner. Choosing it, ⌘⇧A, or `muster msg open --group G` opens the group's transcript: a tab
-running `muster msg log --group G --follow`, or the pane already running it. Going there counts as
-reading the group.
+banner, and chatter between agents raises nothing. While Muster is in front the banner is
+Muster's own, over the panes: the group, who wrote, the message's first lines, and a field the
+human replies in with ⌘↩, which posts to that message's author as `@human`. Neither replying nor
+dismissing it reads the group, so a message posted to the human stays unread until they open the
+group. While Muster is not in front, the operating system's notification names the group and who
+wrote, or says the words of a lone message from `@muster`, since what Muster says is the reason
+for it. Choosing that, ⌘⇧A, the banner's Open, or `muster msg open --group G` opens the group's
+transcript: a tab running `muster msg log --group G --follow`, or the pane already running it.
+Going there counts as reading the group.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 

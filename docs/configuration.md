@@ -99,7 +99,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
 `numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
-`find_next`, `find_previous`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
+`find_next`, `find_previous`, `send_message`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
 `reload_config`, `show_shortcuts`, `quit_and_close_sessions`, and `upgrade_muster`. On macOS these become menu items, which is where the
@@ -274,6 +274,12 @@ a shortcut, and the run log says so as `config.keymap.default_given_up`. So a fi
 bytes on `cmd+k` before `clear_screen` shipped there goes on sending them, where refusing it
 would throw away everything else in the file for a collision nobody in it made. A `[keymap]`
 line gives the action a chord back.
+
+**`send_message` is `cmd+return`, and belongs to a reply field rather than to the menu.** It
+sends the reply written in a banner for a message. The field holding the keyboard matches the
+chord itself, so this is the one action that is not a menu key equivalent: with no reply field
+holding the keyboard, `cmd+return` reaches the pane like any chord Muster leaves alone. Return
+in a reply writes a new line.
 
 **`find` is Ghostty's search, over the pane's whole history.** `cmd+f` opens a bar over the
 pane with the keyboard and puts the keyboard in it, `return` and `shift+return` there or `cmd+g`
@@ -461,10 +467,12 @@ so a program that notifies in a loop costs one banner. It is on because a progra
 decided it is worth it; `programs = false` is for a tool that decides that too often.
 
 `messages` is a message for you from an agent: posted to `@human`, or to a group whose policy
-rings you (`muster docs msg`). Its banner names the group and who wrote, one per group, replaced
-by each new message, and choosing it opens the group's transcript. It is on because an agent
-addressing you has chosen to interrupt you. `messages = false` takes the banner away and leaves
-the group asking, so ⌘⇧A still reaches it.
+rings you (`muster docs msg`). While Muster is in front it draws a banner of its own over the
+panes, showing the message with a field to reply in; while it is not, the operating system's
+banner names the group and who wrote, and choosing it brings Muster forward to the group. Either
+is one per group, replaced by each new message. It is on because an agent addressing you has
+chosen to interrupt you. `messages = false`, or a mute, takes both away and leaves the group
+asking, so ⌘⇧A still reaches it; a banner you were writing a reply in stays.
 
 A pane running an agent Muster recognizes never raises one, whatever this says. Every pane tells
 its programs it is Ghostty, and agents that see that notify at the moments their state already

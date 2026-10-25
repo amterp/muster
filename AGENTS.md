@@ -28,8 +28,9 @@ laptop pane beside or above a devenv pane - several windows that each hold their
 Muster taking over an older daemon's panes with their agents still running, a machine whose daemon died shown as
 `unreachable` on every pane and its daemon started again, agents posting messages to each other and
 being woken by them rather than polling, on one machine or across the laptop and a devenv while a window is attached to
-both, a group held up on a member noticed and told why once, a message for you raising a notification that opens
-the conversation, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a
+both, a group held up on a member noticed and told why once, a message for you shown in Muster's own banner with
+its Markdown drawn and answered from it without leaving your pane, or raising a notification that brings Muster
+forward while it is behind, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a
 right-click there, compacting an agent's context when asked or once it is full enough, restarting an agent in its
 session from its notice, its menus or the CLI, upgrading Muster through
 Homebrew from its own menu or `muster upgrade`, and installing a harness's adapter through the harness's own plugin
