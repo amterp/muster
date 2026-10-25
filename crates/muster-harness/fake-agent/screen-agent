@@ -47,7 +47,8 @@
 # messaging hooks of a `claude -p` run `muster msg`. Each appends `hook <status>`,
 # `nested <status>` or `served <status>` to $HOME/fake-agent-reported once its command has
 # answered, and a command the server or the nested copy ran also leaves what it printed on stderr
-# in $HOME/fake-agent-served-said or $HOME/fake-agent-nested-said.
+# in $HOME/fake-agent-served-said or $HOME/fake-agent-nested-said; the nested copy's stdout is in
+# $HOME/fake-agent-nested-out.
 #
 # Every line it reads is also appended to $HOME/fake-agent-heard, which is how a test sees what
 # was typed into it (a daemon's doorbell, say) after the screen has been painted over.
@@ -76,7 +77,7 @@
 # `nested-report`, it runs the command that follows instead of a report.
 if [ "$1" = nested-report ] && [ "$2" = run ]; then
     shift 2
-    "$@" >/dev/null 2>"$HOME/fake-agent-nested-said"
+    "$@" >"$HOME/fake-agent-nested-out" 2>"$HOME/fake-agent-nested-said"
     printf 'nested %s\n' "$?" >> "$HOME/fake-agent-reported"
     exit 0
 fi

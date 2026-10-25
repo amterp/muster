@@ -430,17 +430,32 @@ pub(crate) fn from_nested(pane: &str, own: &str, nearest: &crate::attribution::N
 /// acts as the pane speaks for the pane's agent and carries the pane alone: the nested session's
 /// own inbox would replace the pane's participant's, and a wake sent there ends with the nested
 /// session. One that names another participant, with `--as` or `join --name`, is the nested
-/// session's own and carries its inbox without the pane, which would otherwise move to that name.
-pub(crate) fn as_nested(mut request: proto::MsgRequest) -> proto::MsgRequest {
+/// session's own and carries its inbox without the pane, which would otherwise move to that name;
+/// and so is any request once that inbox is `its_own` participant's, a session that joined under a
+/// name of its own.
+pub(crate) fn as_nested(mut request: proto::MsgRequest, its_own: bool) -> proto::MsgRequest {
     let joins_as = matches!(&request.request, Some(Asked::Join(join)) if join.name.is_some());
     if let Some(caller) = request.caller.as_mut() {
-        if caller.as_name.is_some() || joins_as {
+        if its_own || caller.as_name.is_some() || joins_as {
             caller.pane = None;
         } else {
             caller.inbox = None;
         }
     }
     request
+}
+
+/// Whether `inbox`, a nested agent's own, is that of a participant other than the one in `pane`:
+/// a nested session that joined under a name of its own. A store from before nested agents were
+/// told apart may have given the pane's participant that inbox, and that one is the pane's.
+pub(crate) fn inbox_of_its_own(
+    shared: &Shared,
+    inbox: &proto::msg_request::Inbox,
+    pane: &str,
+) -> bool {
+    let inbox = Inbox { socket: inbox.socket.clone(), inode: inbox.inode };
+    let messages = shared.messages();
+    messages.service.holding_inbox(&inbox).is_some_and(|held| held.pane.as_deref() != Some(pane))
 }
 
 /// The answer, saying what each participant named after its pane is called, for it to be shown
@@ -2253,22 +2268,22 @@ mod tests {
     }
 
     /// A nested agent acting as its pane gives the pane none of its own addresses, and one naming
-    /// another participant is a session of its own, without the pane. Codex's `codex exec` has no
-    /// inbox, and acts as the pane as it came.
+    /// another participant, or whose inbox is already a participant of its own, is a session of
+    /// its own, without the pane. Codex's `codex exec` has no inbox, and acts as the pane as it
+    /// came.
     #[test]
     fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
         use proto::msg_request::{self as asked, Caller as Called, Join, Post};
         let inbox = asked::Inbox { socket: "/tmp/nested.sock".to_string(), inode: 7 };
-        let nested = |as_name: Option<&str>, inbox: Option<asked::Inbox>, request| {
+        let nested = |as_name: Option<&str>, inbox: Option<asked::Inbox>, request, its_own| {
             let caller = Called {
                 as_name: as_name.map(str::to_string),
                 inbox,
                 pane: Some("p1".to_string()),
                 directory: None,
             };
-            let taken =
-                as_nested(proto::MsgRequest { caller: Some(caller), request: Some(request) });
-            let caller = taken.caller.unwrap();
+            let request = proto::MsgRequest { caller: Some(caller), request: Some(request) };
+            let caller = as_nested(request, its_own).caller.unwrap();
             (caller.pane, caller.inbox.map(|inbox| inbox.socket))
         };
         let post = || Asked::Post(Post { body: "hi".to_string(), ..Post::default() });
@@ -2282,10 +2297,14 @@ mod tests {
         let pane = (Some("p1".to_string()), None);
         let own = (None, Some("/tmp/nested.sock".to_string()));
 
-        assert_eq!(nested(None, Some(inbox.clone()), post()), pane, "a post as the pane");
-        assert_eq!(nested(None, Some(inbox.clone()), join(None)), pane, "a join as the pane");
-        assert_eq!(nested(None, Some(inbox.clone()), join(Some("helper"))), own, "join --name");
-        assert_eq!(nested(Some("helper"), Some(inbox), post()), own, "--as");
-        assert_eq!(nested(None, None, post()), pane, "codex exec");
+        let read = || Asked::Read(asked::Read { group: None });
+        let with = || Some(inbox.clone());
+        assert_eq!(nested(None, with(), post(), false), pane, "a post as the pane");
+        assert_eq!(nested(None, with(), join(None), false), pane, "a join as the pane");
+        assert_eq!(nested(None, with(), join(Some("helper")), false), own, "join --name");
+        assert_eq!(nested(Some("helper"), with(), post(), false), own, "--as");
+        assert_eq!(nested(None, with(), read(), true), own, "a read once it joined as itself");
+        assert_eq!(nested(None, with(), post(), true), own, "a post once it joined as itself");
+        assert_eq!(nested(None, None, post(), false), pane, "codex exec");
     }
 }

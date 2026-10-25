@@ -682,7 +682,8 @@ fn a_nested_agent_posts_as_its_pane_but_does_not_read_or_wait_for_it() {
 /// A nested `claude -p` has an inbox of its own, which a request taken as the pane would give the
 /// pane's participant in place of its own: a wake sent there ends with the nested session. So its
 /// posts carry the pane alone, and one naming another participant, as `join --name` does, is a
-/// session of its own and leaves the pane where it was.
+/// session of its own and leaves the pane where it was. Joined so, its hooks' reads are that
+/// participant's, and leave the pane's messages to the pane's agent.
 #[test]
 fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
     use proto::msg_answer::Answer;
@@ -722,7 +723,19 @@ fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
             .map(|member| (member.name.clone(), (member.pane.clone(), member.inbox.clone())))
             .collect::<std::collections::BTreeMap<_, _>>()
     };
+    let in_pane = |pane: &str, arguments: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_muster"))
+            .args(arguments)
+            .env_clear()
+            .env("HOME", std::env::temp_dir())
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .env("MUSTER_PANE", pane)
+            .stdin(Stdio::null())
+            .output()
+            .expect("the muster binary runs")
+    };
     let p2 = words(&daemon)["p2"].clone();
+    let p1 = words(&daemon)["p1"].clone();
     let socket = Some(inbox.display().to_string());
 
     nested(&format!("msg post --to {p2} from-the-nested-agent"), 1);
@@ -732,6 +745,16 @@ fn a_nested_agent_gives_its_pane_none_of_its_addresses() {
     let after = addresses(&mut control);
     assert_eq!(after["p1"], (Some("p1".to_string()), None), "the pane moved to the nested name");
     assert_eq!(after["helper"], (None, socket), "the nested session is not its own");
+
+    ok(&in_pane("p2", &["msg", "read"]));
+    ok(&in_pane("p2", &["msg", "post", "--to", &p1, "for-the-pane"]));
+    ok(&in_pane("p2", &["msg", "post", "--to", "helper", "for-the-helper"]));
+    nested("msg read --if-unread", 3);
+    let read = std::fs::read_to_string(home.join("fake-agent-nested-out")).unwrap_or_default();
+    assert!(read.contains("for-the-helper"), "the nested session read nothing of its own: {read}");
+    assert!(!read.contains("for-the-pane"), "the nested session read the pane's: {read}");
+    let read = ok(&in_pane("p1", &["msg", "read"]));
+    assert!(read.contains("for-the-pane"), "the pane's agent lost its message: {read}");
 }
 
 /// A msg request that comes before the daemon's first manifest load cannot be attributed, so it

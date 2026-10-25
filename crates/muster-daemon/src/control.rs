@@ -383,8 +383,9 @@ fn attributed(service: Option<&Service>) -> Option<attribution::Asked> {
 /// A msg request from `nearest`, as the daemon takes it. Sent by an agent nested in the pane it
 /// names, such as a `claude -p` the pane's agent started, a read or a wait as the pane is refused,
 /// since the nested agent's messaging hooks would take the pane's agent's messages, and anything
-/// else is narrowed to the addresses that are its to give ([`messages::as_nested`]). Any other
-/// request is taken as it came.
+/// else is narrowed to the addresses that are its to give ([`messages::as_nested`]). A nested
+/// session whose own inbox is a participant's, having joined under a name of its own, reads and
+/// posts as that participant. Any other request is taken as it came.
 fn from_agent(
     shared: &Shared,
     request: proto::MsgRequest,
@@ -398,11 +399,13 @@ fn from_agent(
     let Some(own) = shared.lock().nested_in(&pane, nearest).map(str::to_string) else {
         return Ok(request);
     };
+    let its_own =
+        caller.inbox.as_ref().is_some_and(|inbox| messages::inbox_of_its_own(shared, inbox, &pane));
     let receives = matches!(request.request, Some(Request::Read(_) | Request::Wait(_)));
-    if receives && caller.as_name.is_none() {
+    if receives && caller.as_name.is_none() && !its_own {
         return Err(messages::from_nested(&pane, &own, nearest));
     }
-    Ok(messages::as_nested(request))
+    Ok(messages::as_nested(request, its_own))
 }
 
 /// Hands this daemon's panes to a replacement, with messages refusing changes until it is

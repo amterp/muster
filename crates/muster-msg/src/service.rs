@@ -714,6 +714,11 @@ impl<S: Store> Messaging<S> {
         self.participants.get(name)
     }
 
+    /// The participant whose inbox `inbox` is, if any.
+    pub fn holding_inbox(&self, inbox: &Inbox) -> Option<&Participant> {
+        self.participants.get(&self.by_inbox(inbox)?)
+    }
+
     /// Every participant that is, or was, the agent in `pane`.
     pub fn in_pane(&self, pane: &str) -> Vec<&str> {
         self.participants

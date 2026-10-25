@@ -27,7 +27,8 @@
 //! are the pane's, where its reports would overwrite the pane's own agent's state; but it does not
 //! read for that agent, so its reads and waits are refused, since its messaging hooks would take
 //! the pane's messages and wakes. Nor does it give the pane its own addresses: what it is taken
-//! for carries the pane alone, and one naming another participant is a session of its own.
+//! for carries the pane alone, and one naming another participant, or sent once its own inbox is
+//! a participant's, is a session of its own.
 
 use std::collections::HashSet;
 use std::os::fd::AsRawFd;
