@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-closed-pane-s-claude",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793142513106,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-26 on 0.19.0 with Claude Code 2.1.310, closing panes that ran `extras/claude-code/messaging-hooks.json`. After `muster pane close`, the pane left `muster window`, but its shell, launcher and `claude` processes stayed in state `?E` (exiting). The Stop hook's `/bin/sh -c muster msg wait --due ...` and its `muster msg wait --due` child, which carries the closed pane's `MUSTER_PANE`, kept running. Claude Code cannot finish exiting while an async hook runs, and the hook's timeout is 86400 s, so each closed pane can hold a dead session and a daemon connection for up to a day. Killing the `muster msg wait` child let all of them exit at once.\n\nPossibly: have `muster msg wait` end when its pane closes, since the daemon knows, or have pane close end the pane's waits. Failing that, a shorter hook timeout re-armed each turn.",
+  "id": "a_2pOTIVxnx",
+  "position": "b1w",
+  "related": [
+    "a_2j17531rW",
+    "a_2pOTJDMPl"
+  ],
+  "title": "A closed pane's Claude Code stays exiting for up to a day while its Stop hook's msg wait runs",
+  "type": "bug",
+  "updated_at_millis": 1793142524080,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793142513106}
+  ]
+}

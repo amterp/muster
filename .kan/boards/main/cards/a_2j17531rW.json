@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "uncommitted",
+  "comments": [
+    {
+      "id": "c_2pOTbBaiM",
+      "body": "Spiked 2026-10-26 on 0.19.0 with Claude Code 2.1.310, in panes started with `extras/claude-code/messaging-hooks.json`. Mid-turn and Stop delivery worked, but three problems would come with making the hooks the default: a_2pOSx27ml (a subagent's tool call takes the pane's message), a_2pOTIVxnx (a closed pane's session stays exiting while its Stop hook's wait runs), and a_2pOTJDMPl (a mid-turn message reaches the agent twice).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793142524531
+    }
+  ],
   "created_at_millis": 1792200263368,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-14: \"mechanism for messaging between agents which doesn't just enter thru pane, since that can be blocked or occupied. what about something involving monitors maybe?\"\n\nThe doorbell types a wake into an agent's pane, and that fails when the prompt holds a draft, a dialog covers it, or it is not on screen: a_2izzXOqQF, a_2hIfuUkdQ, a_2hL5I8kn2 and a_2hIfvZQJP are all this.\n\nA way around the doorbell exists for Claude Code and Codex. `extras/claude-code/messaging-hooks.json` and `extras/codex/messaging-hooks.json` hand an agent its messages after each tool call, and Claude Code's background `Stop` hook starts a turn when a wake is due (`muster docs msg`). But it is opt-in per session, through `--settings`, and kept out of the plugin so that not every session with the plugin takes part in messaging. So an agent started in a pane the usual way is rung.\n\nQuestions:\n\n- Should an agent Muster starts in a pane get the messaging hooks by default? Or should the hooks ship in the plugin and do nothing until the pane joins a group?\n- Claude Code's `Stop` hook misses a session that went idle after Esc or an API error. Would its Monitor tool, watching `muster msg wait`, cover that?\n- Which agents would still need the doorbell: harnesses with no hooks, and sessions that opted out.",
@@ -16,7 +24,7 @@
   ],
   "title": "Should agents in panes get their messages without anything typed into their prompt?",
   "type": "chore",
-  "updated_at_millis": 1792890500451,
+  "updated_at_millis": 1793142524531,
   "history": [
     {"field":"column","value":"uncommitted","at":1792200263368}
   ]

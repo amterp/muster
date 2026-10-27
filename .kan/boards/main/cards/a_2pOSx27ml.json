@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "messaging-hooks-hand",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793142499720,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-26 on 0.19.0 with Claude Code 2.1.310, in a pane started with `extras/claude-code/messaging-hooks.json`. Claude Code runs PostToolUse hooks for a subagent's tool calls too, and the hook's payload then carries `agent_id` and `agent_type` (logged: `{\"agent_id\":\"a2390a287e6a1b7f5\",\"agent_type\":\"general-purpose\",\"tool_name\":\"Bash\"}`). The read hook checks neither, so whichever context makes the next tool call takes the message body and marks it read.\n\nReproduced: the pane's agent started a background subagent that made a Bash call every 5 s, then ran a 40 s command in the foreground. A post arrived, and 6 s later the subagent's PostToolUse hook handed it the body. The pane's agent got only the Stop hook's notice (\"1 new (#5) ... Read: muster msg read\"), and its own `muster msg read --if-unread` then printed nothing. When the pane's agent is idle instead, its Stop wait usually wins, by about a second in one run.\n\na_2nSw5pbpW was a nested `claude -p` that inherits `$MUSTER_PANE`. This subagent runs inside the pane's own Claude Code process.\n\nPossibly: have the PostToolUse hook exit 0 when its stdin payload has an `agent_id`, so only the session's main agent reads. For example `[ -n \"$(jq -r '.agent_id // empty')\" ] \u0026\u0026 exit 0` ahead of the read, or a test without jq that the snippet can count on.",
+  "id": "a_2pOSx27ml",
+  "position": "b1v",
+  "related": [
+    "a_2nSw5pbpW",
+    "a_2j17531rW"
+  ],
+  "title": "Messaging hooks hand the pane's message to a subagent's tool call",
+  "type": "bug",
+  "updated_at_millis": 1793142523828,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793142499720}
+  ]
+}

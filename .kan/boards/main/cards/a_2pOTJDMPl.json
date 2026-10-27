@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "messaging-hooks",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793142513467,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-26 on 0.19.0 with Claude Code 2.1.310, in a pane started with `extras/claude-code/messaging-hooks.json`. The Stop hook's `muster msg wait --due` from the previous turn keeps running into the next turn. A message posted mid-turn then reached the agent twice in that turn: the old wait fired and Claude Code queued its \"Stop hook feedback\" notice into the turn, and the PostToolUse read hook handed over the body after the next tool call. No extra turn started, but the agent was told twice, and the notice tells it to run `muster msg read`, which by then finds nothing.\n\nNo obvious fix. Options: end the wait once a turn starts (a UserPromptSubmit hook that ends it, or `wait` exiting quietly when its session reports working), or have `--due` skip a wake that the read hook already delivered.",
+  "id": "a_2pOTJDMPl",
+  "position": "b1x",
+  "related": [
+    "a_2j17531rW"
+  ],
+  "title": "Messaging hooks deliver a mid-turn message twice",
+  "type": "bug",
+  "updated_at_millis": 1793142524331,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793142513467}
+  ]
+}

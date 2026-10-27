@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "muster-docs-agents",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1793142513830,
+  "creator": "Alexander Terp",
+  "description": "`docs/cli/agents.md` (lines 542-543) says `--asking`, and `cmd+shift+a`, go to \"`blocked` first, then a program's notification, then `done`\". `Attention::asking` sorts by `Alert` (`crates/muster-core/src/attention.rs:45`): blocked, stuck, message (a group with a message waiting for the human), notified, done. So the doc leaves out stuck panes and groups with a message, and an agent reading it would conclude that the chord never reaches a post to `@human`. Checked at 21601587.\n\nFix: list all five in that paragraph, in the enum's order, and say that a group's ask opens its conversation.",
+  "id": "a_2pOTJn426",
+  "position": "b1y",
+  "title": "muster docs agents: the --asking order leaves out stuck panes and messages for the human",
+  "type": "docs",
+  "updated_at_millis": 1793142513830,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793142513830}
+  ]
+}
