@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "every-libghostty",
+  "alias_explicit": false,
+  "area": [
+    "renderer"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793126050993,
+  "creator": "Alexander Terp",
+  "description": "`./dev`'s libghostty step runs `zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`. At the pinned commit (9f9b8d1), Ghostty's `src/build/Config.zig` defaults `-Demit-macos-app` to `!emit-lib-vt and emit-xcframework`, so that one call also runs xcodebuild on Ghostty's whole macOS app and installs the result. Muster links only the xcframework.\n\nEach build leaves two copies of the app in the checkout:\n\n- `deps/ghostty/macos/build/ReleaseLocal/Ghostty.app`, xcodebuild's output\n- `deps/ghostty/zig-out/Ghostty.app`, the copy `macos_app.install()` makes (build.zig:242)\n\nBoth carry the bundle id `com.mitchellh.ghostty` and version 0.1. Seen 2026-10-27 on the owner's laptop: Alfred lists both beside `/Applications/Ghostty.app` when searching \"ghostty\". Inferred, not seen: Launch Services registers them too, so something that opens Ghostty by bundle id could start a dev build instead of the installed one.\n\nWhat it costs besides the clutter:\n\n- An xcodebuild of a whole app on every libghostty rebuild, which happens on a re-pin or a patch edit. Not measured.\n- CI caches `zig-out` (the comment at `./dev`'s restore step says so), so the app rides in that cache too.\n\nLikely fix: pass `-Demit-macos-app=false` on that `zig build` line, then confirm GhosttyKit's xcframework still builds and the shell still links. No commit here records a reason for building the app.",
+  "id": "a_2pHZ2pTu1",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "b1u",
+  "title": "🍏 Every libghostty build also builds Ghostty.app, and leaves two copies Spotlight finds",
+  "type": "bug",
+  "updated_at_millis": 1793126050993,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793126050993}
+  ]
+}

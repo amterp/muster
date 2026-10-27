@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "muster-daemons-fails",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793021950923,
+  "creator": "Alexander Terp",
+  "description": "`muster daemons` fails whenever no window answers, though it is the one verb about the machine rather than a window. The CLI sends `ReadDaemons` to the window, and `windowless::can_answer` does not let this machine's daemon answer it in the window's place, as it does for `muster window` and the pane verbs.\n\nSeen on 2026-10-26: macOS paused the app when the system ran out of memory, so its command socket took connections and never answered. `muster window` fell back to the daemon and worked. `muster daemons` refused with \"no Muster window is listening\", then listed what still works without a window and said \"everything else is about what a window shows or how it lays out its tabs\", which is not true of this verb.\n\nA hung or quit window is when this verb is most useful: it says which daemons are alive and what they hold before anyone decides what to restart. The daemons a window started are written down under `~/.muster/state/daemons/`, so the CLI could dial each socket itself. That answer would cover this machine only, since a remote machine's daemon is known to the window that attached it.\n\nAt minimum, the refusal should stop saying that every other verb is about a window.",
+  "id": "a_2oZsvVaop",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b1g",
+  "title": "`muster daemons` fails when the window does not answer",
+  "type": "bug",
+  "updated_at_millis": 1793021950923,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793021950923}
+  ]
+}
