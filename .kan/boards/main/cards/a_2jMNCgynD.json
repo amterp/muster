@@ -30,16 +30,31 @@
       "body": "2026-10-24: 0f82dc00 makes the next sighting record what the doorbell judged: msg.group.stalled (warn, once per stall) now carries the deciding rule, the shape of the last rows and of the title (letters as a, digits as #, no text), and still_ms, how long the screen had been unchanged. msg.ring.waits and msg.ring.covered gain the title's shape. No cause found in the code; keep open until a sighting under this build.",
       "author": "Alexander Terp",
       "created_at_millis": 1792857627061
+    },
+    {
+      "id": "c_2pP0tf9oB",
+      "body": "2026-10-27 re-triage, from tooling feedback a_2o3vIWdkx: three newer Heads up sightings add compaction and input-routing evidence. After a compaction in an Ordo round, the pane read done and `pane wait --until idle` returned while the notice and its follow-up feedback menu still took digit keys. On 2026-10-25, a helper in a private project kept a requested compaction queued for about an hour on \"waiting for an empty prompt\"; its context grew from about 48% to 82% while its pane read done. `muster pane send --key 0` dismissed the notice and the compaction ran at once. On 2026-10-26, four of five Spool workers showed such boxes together and message wakes and compactions were held. Some tips contained useful findings, so automatic dismissal would lose information unless it is retained.\n\nThe 2.1.301 recording in 1401a635 established that the box is drawn above the prompt and the detector reads that recording as idle; it did not test digit-key handling. That remains useful evidence, but does not settle these later interactions. Capture the newer screen, the deciding rule and the input actually taken before deciding whether to wait, dismiss or pass the tip to the agent.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143804513
+    },
+    {
+      "id": "c_2pP0tu5Xs",
+      "body": "2026-10-27 re-triage: forwarded the previously uncaptured 2026-10-23 Lectern recurrence from pending feedback a_2doDlCl8P. After its integrator started a background subagent and ended its turn with `report --waiting`, worker done posts #21 at about 21:04 and #25 at about 21:08 stayed unread until the subagent finished at 21:33. Earlier posts arrived while background Bash gates ran. The screen and deciding rule were not captured. Also tracked by a_2j2ta8aPN, whose background-agent investigation now holds the newer `--waiting` report.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143804661
     }
   ],
   "created_at_millis": 1792250932025,
   "creator": "Alexander Terp",
   "description": "2026-10-17, laptop, Muster 0.16.0 with its built-in claude.toml (the Oct 13 override had been removed): the integrator pane MUSTER (Claude Code 2.1.3xx, Opus) had worker messages held five times in one morning. The daemon log shows `msg.ring.waits` with reason \"its screen is not its prompt\" from the post until the stall watch spoke 2-5 minutes later (`msg.group.stalled` at 14:26:23, 14:44:23, 15:14:24, 15:17:54, 15:18:24 UTC), each time while the pane was idle at its prompt; the wake arrived only when something else made the pane redraw. The round lost those minutes on every worker report.\n\nA capture of the same pane idle 30 s after a turn at 15:28 UTC read normally (state idle, prompt empty, done line '· 1 shell, 1 monitor still running', footer '⏵⏵ bypass permissions on · 1 shell, 1 monitor'), so the cause is something drawn only some of the time. Candidates, unconfirmed: Claude Code's feedback-draft box (main's `feedback_draft_box` rule reads it; 0.16.0 does not), and Claude Code's tip box ('✦ Heads up · ... 1: Learn more   2: Knew this already   0: Dismiss'), seen in worker panes the same morning and known to neither 0.16.0 nor main's manifest or corpus.\n\nNext step: capture the screen at the moment a ring waits on this reason (the daemon could log the rows it judged, behind the debug flag, or a watcher could read the pane on `msg.ring.waits`), then record it into the detection corpus and decide whether the tip box covers the prompt.",
   "id": "a_2jMNCgynD",
-  "position": "b12",
+  "position": "Zzl",
+  "related": [
+    "a_2j2ta8aPN"
+  ],
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1792857627061,
+  "updated_at_millis": 1793143965743,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025}
   ]

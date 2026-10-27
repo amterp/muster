@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2pP0tSzBh",
+      "body": "2026-10-27 re-triage: tooling feedback a_2neJkhNSM adds three 2026-10-24 instances in a kan round. A helper told \"nothing else is queued for slot 2, so stay idle\" ended its turn as asked; about 16 seconds later its maker got \"went idle without posting.\" These are turns started by a message needing no answer, rather than idle compactions or declared waits. Keep this case separate from a_2nUsIZXNY, fixed by a29fb3e4, and from the repeat-notice fix b84df279. Forwarded the feedback here.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143804388
+    }
+  ],
   "created_at_millis": 1792709971945,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-21, before 0.18.0, in a directed council with the helper on another machine. The maker was done with a helper's assignment and told it to stay idle until its next message. The helper read that and ended its turn without posting, as `extras/skill/council/SKILL.md` says to: \"Pass the turn by ending it.\" About 21 s later the maker was told the helper \"went idle without posting to you since it went to work\", with the hint that its turn may have ended on an error.\n\nThe turn that read the stay-idle message counted as going to work, so its end raised `Need::Unreported` (`crates/muster-daemon/src/messages/makers.rs`). a_2luQuOfD1 (done, in 0.18.0) stopped compactions and declared waits from raising it, and MIP-7 section 4 lists those as not going to work. A message from the maker that asks for no reply is a case neither covers, and the only way a helper can avoid the notice today is the \"standing by\" post the council skill forbids.\n\nPossibly: let `msg post` mark a message as needing no reply, and start no stretch of work for a turn whose only input was such a message. A simpler rule, exempting any short turn that only read a message from the maker, would also hide a helper whose turn failed while reading it.",
@@ -13,7 +21,7 @@
   "position": "b1c",
   "title": "A helper told to stay idle is reported to its maker as idle without posting",
   "type": "bug",
-  "updated_at_millis": 1792709985244,
+  "updated_at_millis": 1793143804388,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792709971945}
   ]

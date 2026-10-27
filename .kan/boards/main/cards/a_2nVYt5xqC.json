@@ -6,14 +6,22 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2pP0uNdPK",
+      "body": "2026-10-27 re-triage: tooling feedback a_2o63mJgaE adds the trust-review consequence already anticipated in this card. After an adapter update during a Quartermaster round, a new Codex 0.163.0 helper stopped at \"Hooks need review: 1 hook is new or changed.\" SessionStart #4 from \"Plugin - muster-codex@muster\" was marked \"Modified since last trusted - review required.\" The brief was held behind the dialog until the integrator navigated `/hooks`; whether its attempted trust action took was not established. Include changed-hook review and the supported recovery steps when validating the adapter-refresh behavior. An unchanged plugin should not be needlessly refreshed and made to request trust again.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143804953
+    }
+  ],
   "created_at_millis": 1792863884121,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-24 after upgrading to 0.18.1-dev. Claude Code reads Muster's plugin straight from the app bundle (claude plugin list: Read from /Applications/Muster.app/Contents/Resources/extras/claude-code), so an upgrade updates it. Codex copies a plugin into ~/.codex/plugins/cache/\u003cmarketplace\u003e when it is installed and never refreshes it, so after an upgrade every Codex session runs the previous adapter until muster harness install codex runs again. The owner's tai muster bundle runs that on every tai reinstall, which covers his machines only after a reinstall, and nobody else's. Possibly: on the first launch of a new version, the app refreshes Codex's copy when Codex has the muster marketplace installed (the same commands harness install runs, without touching daemon_auto_start again); or at least muster window says Codex's adapter copy is older than the running Muster, beside its existing adapter-not-reporting note. Mind that Codex re-arms hook trust when hooks change, so a refresh should happen only when the adapter's content changed.",
   "id": "a_2nVYt5xqC",
-  "position": "b1Q",
+  "position": "a0l",
   "title": "Codex runs an old Muster adapter after an upgrade until someone reinstalls it",
   "type": "enhancement",
-  "updated_at_millis": 1792863884121,
+  "updated_at_millis": 1793143966290,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792863884121}
   ]

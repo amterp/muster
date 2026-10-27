@@ -12,16 +12,22 @@
       "body": "First cost seen, from tooling feedback, 2026-10-21 ~01:30, 0.16.2-dev on the Mac. A Claude Code integrator ended its turn waiting on background sub-agents and background Bash it had started, after running `report --waiting`. A worker's post sat unrung for 30 minutes, and @muster told the worker the integrator 'has read as working for 111 minutes without a break, so it is rung only once it stops'; the worker resent with --urgent. The screen was not captured, but waiting on background agents is this card's screen, and the declared wait did not outrank the working read. Moved to backlog-hi: an integrator waits like this in every round.",
       "author": "Alexander Terp",
       "created_at_millis": 1792627656442
+    },
+    {
+      "id": "c_2pP0u9pWO",
+      "body": "2026-10-27 re-triage: tooling feedback a_2o5tCfSnl adds an Ordo integrator that followed the SessionStart guidance, declared a wait on gates and subagents, and ended several turns while a worker's done post stayed unread for over 30 minutes. Muster told the worker its recipient had read as working throughout. Pending feedback a_2doDlCl8P adds the same pattern in Lectern on 2026-10-23: worker reports waited about 25-30 minutes until a background subagent's completion woke the integrator.\n\nChecked current code: `messages/doorbell.rs::waits_for` permits ordinary wakes for `Activity::Waiting`, with a unit assertion for it. The report therefore does not establish that all `report --waiting` declarations suppress wakes. Record the effective activity, deciding screen rule and hook sequence when a turn ends with a background subagent running; the visible-working rule or another update may be leaving the recipient working. The SessionStart guidance explicitly covers waiting on a build, background job or subagent, so that supported use must still accept messages.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143804810
     }
   ],
   "created_at_millis": 1792204511111,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-16 while building pane compact --then (a_2izzbA9cT) and the queued-compaction note (a_2izzbhXja). The background_agents_working rule reads that screen as working, so a compaction or a ring waits behind it, as it did for 20 minutes on 2026-10-14. But the screen came with herdr's manifests and has never been recorded here: Claude Code 2.1.288, recorded, goes idle at its prompt while a background agent runs and takes rings (docs/observations/claude-code-2.1.288.md, section 6). Record it with tools/detection-capture.py or ./dev --claude-code, note the version, and decide from the recording whether Claude Code is still inside its turn there (keep waiting) or would take a typed line.",
   "id": "a_2j2ta8aPN",
-  "position": "a3",
+  "position": "ZzV",
   "title": "Record Claude Code's 'Waiting for N background agents to finish' screen, and decide whether a compaction or ring may be typed there",
   "type": "chore",
-  "updated_at_millis": 1792627656536,
+  "updated_at_millis": 1793143965566,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792204511111},
     {"field":"column","value":"backlog-hi","at":1792627656536}

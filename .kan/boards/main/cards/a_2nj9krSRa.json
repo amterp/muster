@@ -5,24 +5,31 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "backlog-hi",
   "comments": [
     {
       "id": "c_2nn4B95Pe",
       "body": "Sharper, 2026-10-25: 764c1c2e (main, 10-24 09:57) already ends a declared wait after 10 minutes and tells the maker. The running Muster was 0.18.1-dev, installed at 10-24 12:02, after that commit, and the daemon answered as 0.18.1-dev. Yet the helper's wait, declared with `\"$MUSTER_DAEMON\" report --waiting \"cargo fmt in the background\"` at about 20:35, showed in muster window as `waiting 53m` and `waiting 57m`, and no notice reached its maker. So either that build predates 764c1c2e after all, or the 10-minute end does not fire in some case (the helper's turn had ended; one background shell was still running). Check which commit tools/install-main built, then reproduce: declare a wait, end the turn, leave a background job hanging.",
       "author": "Alexander Terp",
       "created_at_millis": 1792905602672
+    },
+    {
+      "id": "c_2pP0ubxWf",
+      "body": "2026-10-27 re-triage: tooling feedback a_2ocrquAaV (identical duplicate a_2ocrezxhc) adds a Spool Claude Code helper whose `swiftpm-testing-helper` hung at about 08:46 on 2026-10-26. It declared a wait and ended its turn at 08:51, then remained waiting until its maker noticed at 10:36. No notice was raised; an urgent post was the successful recovery.\n\nCurrent-code clarification for the earlier comment: `Session::declared_waits` limits waits carried through a Muster-typed turn and waits for a harness without `wakes_when_jobs_end`. A plain Claude Code wait can remain unlimited because its manifest says its jobs wake it. `messages/waits.rs::judge` skips unlimited waits. Commit 764c1c2e improves the notice for waits that do expire; it does not impose a universal ten-minute limit. Investigate that policy and a notice for a hung job before assuming the deployed build missed the timeout change. Promoted to backlog-hi because this newer instance lost almost two hours.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143805095
     }
   ],
   "created_at_millis": 1792896283950,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-24 running two parallel-work helpers. One declared `report --waiting \"cargo fmt in the background\"` and ended its turn; its background command hung for an hour on a `cat` reading a stdin that never closed. Muster tells a maker when a helper is blocked, stuck, or idle without having reported to it, but `waiting` is none of those, so nothing reached the maker, and `muster window` showed `waiting 57m` to nobody looking. It was found only by reading the pane. Something like a notice to the maker once a helper has waited past a limit (or past a time the helper gave with --waiting) would have caught it within minutes.",
   "id": "a_2nj9krSRa",
-  "position": "b1q",
+  "position": "a0",
   "title": "A helper waiting on its own job is never noticed to its maker, however long it waits",
   "type": "enhancement",
-  "updated_at_millis": 1792905602672,
+  "updated_at_millis": 1793143965919,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1792896283950}
+    {"field":"column","value":"backlog-lo","at":1792896283950},
+    {"field":"column","value":"backlog-hi","at":1793143875826}
   ]
 }

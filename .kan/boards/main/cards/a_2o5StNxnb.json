@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "id": "c_2o5TWJfTY",
@@ -19,17 +19,24 @@
       "body": "The stall check also posts to the group as @muster telling the agents '@human has not read #7 ... 5 minutes after it was posted', as though the human were a stuck agent holding the group up.",
       "author": "Alexander Terp",
       "created_at_millis": 1792949704228
+    },
+    {
+      "id": "c_2pP54EFvj",
+      "body": "2026-10-27 re-triage: First in next: acting as @human redirects the human's inbox and wakes into an agent pane. Correct identity and message delivery take priority over new capabilities.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143964827
     }
   ],
   "created_at_millis": 1792949451750,
   "creator": "Alexander Terp",
   "description": "A Claude Code session in a pane that runs any msg verb with `--as @human` gives the human participant that session's pane and inbox. From then on the daemon treats the human as an agent in that pane: `muster msg who` lists `@human` as \"human (working)\" with its unread \"rung, and is at work\", and the stall check (`stalls.rs`, `Act::WakeAgain`) types the human's wake into the agent's prompt.\n\nSeen on 0.18.2-dev, 2026-10-25. From pane umber (p2eg0vf7he) I ran `msg group new otter-name --as @human`, `group add ... --as @human` and `post --as @human` to set up a demo. Two minutes after agents posted to the group, the daemon logged `msg.group.stalled` for member `@human` with `pane: p2eg0vf7he`, then `msg.group.woken_again ... via p2eg0vf7he` and `msg.rang name=@human pane=p2eg0vf7he`. Umber's Claude Code received `[muster] otter-name: 4 new (#7-10), 1 to you ...` as a prompt. `state.json` then held `{\"name\":\"@human\",\"inbox\":{\"socket\":\"/tmp/cc-socks/77338.sock\"},\"pane\":\"p2eg0vf7he\"}`.\n\nThe cause looks to be `identify_reporting` in `muster-msg/src/service.rs`: for `as_name`, `may_become` exempts `HUMAN` from the name-in-use check, and `adopt(name, caller)` then copies the caller's addresses onto `@human`. Acting as the human from a session should move no addresses, the way a script with none acts as anyone. Likely also at risk: a later verb from that session without `--as` being looked up as `@human` by its addresses, so a plain `muster msg read` there would read the human's unread.\n\nWorkaround until fixed: act as the human from a shell with no addresses, `env -u MUSTER_PANE -u CLAUDE_CODE_MESSAGING_SOCKET muster msg ... --as @human`.",
   "id": "a_2o5StNxnb",
-  "position": "b1T",
+  "position": "a0",
   "title": "An agent that acts --as @human takes over the human's pane and inbox, so the human's wakes are typed into that agent",
   "type": "bug",
-  "updated_at_millis": 1792949704228,
+  "updated_at_millis": 1793143964827,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792949451750}
+    {"field":"column","value":"backlog-hi","at":1792949451750},
+    {"field":"column","value":"next","at":1793143876176}
   ]
 }

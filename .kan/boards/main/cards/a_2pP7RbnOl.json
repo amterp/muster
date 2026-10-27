@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "a-resumed-agent-recovers",
+  "alias_explicit": false,
+  "area": [
+    "shell",
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793144056291,
+  "creator": "Alexander Terp",
+  "description": "From chat note SHpGuBsz1QL, 2026-10-27: \"ability to bring back pane with same name if resuming agent.\" The owner confirmed that \"same name\" means both the given name and the callsign.\n\nWhen a closed pane's agent conversation resumes in another pane, restore its previous given name and callsign, such as otter. The same conversation should be recognizable and addressable under the name it had before it closed.\n\nDaemon-restart recovery already resumes agents in their existing panes (a_27QdHGMeC). This request covers a closed pane's conversation resumed in another pane. Naming a pane after its harness session, including the open Codex work in a_2bEEG4Hbv, also does not restore its old callsign.\n\nOpen: whether this happens automatically or is offered on resume, and what to do if the old callsign is already in use.",
+  "id": "a_2pP7RbnOl",
+  "position": "b1z",
+  "related": [
+    "a_27QdHGMeC",
+    "a_2bEEG4Hbv"
+  ],
+  "title": "A resumed agent recovers its pane's given name and callsign",
+  "type": "feature",
+  "updated_at_millis": 1793144056619,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793144056291}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "two-codex",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793143760891,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback a_2o7D9czbp, 2026-10-25, Codex 0.163.0 on the Mac mini.\n\nAfter a worker was reset with `/new` and \"Use current Git worktree,\" one Codex process kept the old and new conversations active. Both read the same Muster participant's inbox. Both planned the new brief; one changed the worktree while the other reported unexpected concurrent edits and stopped. A typed wake reached the old conversation while `muster window --json` tracked the new one. The old conversation then found nothing unread because the new one had already read the post.\n\nA second worker that afternoon left the visible new conversation empty after a post reported \"woke.\" The pane later showed the old conversation's context figure. Closing it and starting a fresh helper recovered the round, costing about five minutes and its callsign.\n\nMuster needs to address and deliver messages to the conversation the pane is actually running, or make the conflicting sessions visible before another assignment is sent. Record the `/new` transition and identify which session receives typed input, queued wakes, reports and message reads. The process-group guard added by `c0a3d3b2` and `77b12797` handles nested processes; these conversations share one process, so those fixes do not establish that this is covered.\n\nThe older \"already woken\" failure, a_2n4PaKOtY, was fixed by `b76817b6` and is a separate case. The parallel-work skill also advised `/new` for a new Codex assignment when these reports were filed; restarting the pane was the successful workaround.",
+  "id": "a_2pOzlEw3G",
+  "position": "Zz",
+  "related": [
+    "a_2n4PaKOtY",
+    "a_2nSw5pbpW"
+  ],
+  "title": "Two Codex conversations share a pane's messages after /new",
+  "type": "bug",
+  "updated_at_millis": 1793143876002,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793143760891}
+  ]
+}

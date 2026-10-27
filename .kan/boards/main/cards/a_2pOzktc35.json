@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-long-foreground",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793143760678,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback a_2n6f4V5Db, 2026-10-23 and 2026-10-24, on the Mac mini.\n\nMuster told a Lectern integrator that each of two Claude Code helpers was blocked at a dialog while the helper was running a long foreground `Bash` command. The screen showed the command, \"(ctrl+b to run in background)\" and a spinner (\"Shimmying… (7m 27s)\"); no dialog needed an answer. A window read moments later showed working. One notice came nine minutes after the helper's plan dialog had been answered, so it needs checking separately from the stale-notice fix tracked by a_2luQuuoeI.\n\nA third instance, 2026-10-24 about 18:55 in a kan round: the integrator's foreground command spent about eight minutes queued in Quartermaster. Muster told a worker that the integrator had not read its post because it was \"at a dialog, waiting for somebody to answer it.\" The command was still running.\n\nFalse dialog notices send the owner or another agent looking for an answer nobody needs to give. Capture the deciding detection rule and state transitions during a foreground command, and distinguish a real permission dialog from the background-command hint. The hint matching a dialog rule is the reporter's hypothesis; it has not been established.",
+  "id": "a_2pOzktc35",
+  "position": "a0V",
+  "related": [
+    "a_2luQuuoeI"
+  ],
+  "title": "A long foreground Claude Code command is reported as blocked at a dialog",
+  "type": "bug",
+  "updated_at_millis": 1793143966096,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793143760678}
+  ]
+}

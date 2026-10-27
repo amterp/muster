@@ -6,19 +6,28 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
+  "comments": [
+    {
+      "id": "c_2pP558aEo",
+      "body": "2026-10-27 re-triage: Fifth in next: measured ten-second waits block the app's main thread. Fixing daemon request concurrency alone does not make a synchronous main-thread call responsive.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793143965388
+    }
+  ],
   "created_at_millis": 1793141675554,
   "creator": "Alexander Terp",
   "description": "On the owner's laptop (0.19.0, 2026-10-27), deleting a group kept on devenv from the sidebar froze the window for 10 s. Two new-tab requests on a devenv pane, made during that freeze, froze it for another 10 s each. devenv received nothing from the laptop for 47 s (cause unknown), and every request the window made in that time held the main thread until it timed out.\n\nThe confirm sheet calls `Core.deleteGroup` on the main thread (`Sources/MusterMac/MusterWindow.swift:1346`), and the core waits `AS_HUMAN_PATIENCE`, 10 s, for the answer (`crates/muster-seam/src/session.rs:4238`). The laptop daemon in turn waits up to a minute for devenv (`CARRYING`, `crates/muster-daemon/src/messages/peer.rs:44`), so the window gives up long before the daemon does. `CreateTab` waited 10 s on the devenv daemon the same way. `docs/architecture.md` says the shell enters the seam synchronously on purpose and hands only divider drags and window moves to `LatestRequestSender`. That holds only while every answer is quick, and an answer that crosses the ssh tunnel is not always quick.\n\nRun log, UTC (`~/Library/Logs/muster/muster-2026-10-26_09-03-57-35622.jsonl`):\n\n- 22:44:37.712 laptop daemon `msg.carrying` group_delete to devenv\n- 22:44:47.712 `daemon.answer.late` msg.group_delete, waited 10000 ms\n- 22:44:57.740 `daemon.answer.late` pane.create on devenv, then a burst of `window.focus` lines as the main thread catches up on queued events\n- 22:45:17.434 the same for the second pane.create\n- 22:45:24.364 devenv `msg.carried`; the delete and both pane.creates are handled there within 20 ms\n- 22:45:24.429 laptop daemon answers msg.group_delete after 46715.7 ms\n\nOpen: send requests that may wait on another machine off the main thread, as divider drags already are, and let their outcome arrive on the next view. The Delete Group sheet beeps on a refusal, so that beep would need the answer to come back to the window later.",
   "id": "a_2pO7VjFVp",
-  "position": "b1V",
+  "position": "a4",
   "related": [
     "a_2pO7iUpdU"
   ],
   "title": "The window freezes for up to 10 s per request while a daemon is slow to answer",
   "type": "bug",
-  "updated_at_millis": 1793141687652,
+  "updated_at_millis": 1793143965388,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793141675554}
+    {"field":"column","value":"backlog-hi","at":1793141675554},
+    {"field":"column","value":"next","at":1793143876874}
   ]
 }
