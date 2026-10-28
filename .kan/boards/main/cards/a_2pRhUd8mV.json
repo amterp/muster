@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "cli-hidden-pane",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1793150208523,
+  "creator": "Alexander Terp",
+  "description": "The windowless CLI test can fail even when the hidden pane is listed correctly. Its hidden-pane assertion finds the first line containing the pane callsign anywhere, then requires that line to follow the hidden heading.\n\nDuring the 2026-10-27 round, the generated callsign was `wind`. The assertion matched `no window answered` in the header before reaching the correct `wind` row under `hidden`. All 104 messaging tests passed; this was the only failing test function. Evidence: /tmp/muster-round-20261027.6S6lF0/check-1-human-remote.log and findings-1-human-remote.md.\n\nMatch the callsign column when locating the pane row. The captured output demonstrates the defect; keep the assertion repair separate from the remote human-join production fix. Relevant history: 901c789b3 introduced the substring assertion and e2822dd44 changed the input from an ID to a callsign.",
+  "id": "a_2pRhUd8mV",
+  "position": "a1",
+  "title": "CLI hidden-pane assertion can match a callsign in the header",
+  "type": "bug",
+  "updated_at_millis": 1793150208523,
+  "history": [
+    {"field":"column","value":"in-progress","at":1793150208523}
+  ]
+}
