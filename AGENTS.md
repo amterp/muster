@@ -225,6 +225,9 @@ new one and opens it. `--dry-run` says all of that and changes nothing, and `--b
 earlier. A window that finds another install's daemon in its home holding panes says so, which is how a bundle
 installed any other way shows up.
 
+Replacement and rollback launches keep the selected `MUSTER_HOME` and a basic login environment; they discard the
+installing pane's identity, harness credentials and Quartermaster job tags.
+
 **`MUSTER_SIGN_IDENTITY` is what makes a bundle somebody else can run**, and `./dev --notarize` is the rest of it.
 Set the variable to a Developer ID and the same `--bundle` signs with it instead, under the hardened runtime and with
 `packaging/muster-release.entitlements` rather than the debug entitlement SwiftPM signs a local build with - and the

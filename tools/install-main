@@ -26,7 +26,17 @@ FREE_GIB_NEEDED = 25
 // line it writes says how it ended, and a failure puts the old app back.
 SWAP = r"""
 set -u
-app=$1 staged=$2 aside=$3
+app=$1 staged=$2 aside=$3 muster_home=$4
+
+# Launch Services must not receive the installing agent's session credentials or job tags.
+open_app() {
+  env -i \
+    HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/zsh}" \
+    TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+    MUSTER_HOME="$muster_home" \
+    /usr/bin/open "$app"
+}
+
 quit=0
 for pid in $(pgrep -x muster); do
   if [ "$(ps -o comm= -p "$pid")" = "$app/Contents/MacOS/muster" ]; then
@@ -43,18 +53,18 @@ for pid in $(pgrep -x muster); do
   fi
 done
 if ! mv "$app" "$aside"; then
-  [ "$quit" = 1 ] && open "$app"
+  [ "$quit" = 1 ] && open_app
   echo "failed: could not move $app aside to $aside"
   exit 1
 fi
 if ! ditto "$staged" "$app"; then
   rm -rf "$app"
   mv "$aside" "$app"
-  [ "$quit" = 1 ] && open "$app"
+  [ "$quit" = 1 ] && open_app
   echo "failed: could not copy $staged to $app, so the old app was put back"
   exit 1
 fi
-[ "$quit" = 1 ] && open "$app"
+[ "$quit" = 1 ] && open_app
 echo "swapped quit=$quit"
 """
 
@@ -336,7 +346,7 @@ while quiet $`test -e {aside}`.ok:
 if installed:
     log = "{staged}.swap.log"
     quiet $`rm -f {log}`
-    quiet $`nohup bash -c {SWAP} install-main-swap {app} {staged} {aside} > {log} 2>&1 &`
+    quiet $`nohup bash -c {SWAP} install-main-swap {app} {staged} {aside} {home} > {log} 2>&1 &`
     ended = ""
     waited = 0
     while ended == "":

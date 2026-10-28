@@ -6,6 +6,8 @@ mod docs;
 mod driving_a_window;
 mod exit_codes;
 mod harness;
+#[cfg(target_os = "macos")]
+mod install_main;
 mod messaging;
 mod two_windows;
 mod upgrading;
