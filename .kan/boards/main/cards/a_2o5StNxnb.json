@@ -31,6 +31,13 @@
       "body": "2026-10-27 round: opal (Codex GPT-6.1 Sol, xhigh) owns actor attribution; voyage integrates. Initial plan pending.",
       "author": "Alexander Terp",
       "created_at_millis": 1793144969100
+    },
+    {
+      "id": "c_2pQ9nQkdf",
+      "body": "Integrated actor attribution and legacy-state repair as ba677ff8 (worker 077d683b). Worker red regression, ./dev -t and ./dev -l verified from logs; final main gate and independent review pending.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793146529888,
+      "updated_at_millis": 1793146555100
     }
   ],
   "created_at_millis": 1792949451750,
@@ -40,7 +47,7 @@
   "position": "a0",
   "title": "An agent that acts --as @human takes over the human's pane and inbox, so the human's wakes are typed into that agent",
   "type": "bug",
-  "updated_at_millis": 1793144969100,
+  "updated_at_millis": 1793146555101,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792949451750},
     {"field":"column","value":"next","at":1793143876176},
