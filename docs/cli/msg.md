@@ -44,6 +44,9 @@ Every verb works out who is asking, in this order:
 `--as @human` acts as the human for that command. The agent keeps its pane and inbox, so later
 commands without `--as` still act as the agent.
 
+`join --name @human` also leaves the agent's identity and memberships in place. The human's join
+follows the group's membership policy, including for a group on another machine.
+
 `join --name NAME` takes a name. An agent in a pane that runs any other verb first is its pane:
 known by the pane's id, which is never reused, and shown by the pane's callsign beside it, `otter
 (p29te12q4t)`, in what `muster msg` prints and in the line that wakes an agent. Any other

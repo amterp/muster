@@ -685,6 +685,9 @@ impl<S: Store> Messaging<S> {
         key: &str,
         presence: &dyn Presence,
     ) -> Option<String> {
+        if name == HUMAN {
+            return None;
+        }
         let member = |pane: &String| {
             *pane != name && self.groups.get(key).is_some_and(|group| group.members.contains(pane))
         };

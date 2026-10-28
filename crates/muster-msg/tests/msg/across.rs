@@ -2420,6 +2420,79 @@ fn members_on(wire: &Wire, side: Side, group: &str) -> Vec<String> {
     summary.unwrap_or_else(|| panic!("{side:?} holds {group}")).members
 }
 
+fn laptop_pane_in_a_devenv_group(policy: Option<Policy>) -> (Wire, Caller) {
+    let mut wire = dialed();
+    wire.pane(Side::Laptop, "p1");
+    let director = session("director");
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.join(&director, Some("director"), None, sessions, now).unwrap();
+    devenv.group_new(&director, "review", policy, sessions, now).unwrap();
+    let pane = ["p1".to_string()];
+    let found = wire.found(Side::Devenv, &pane).unwrap();
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let added = devenv.group_members(&director, "review", &pane, &[], &found, sessions, now);
+    wire.tell(Side::Devenv, &added.unwrap().tell);
+    let agent = in_pane("p1");
+    wire.read(Side::Laptop, &agent, Some("review@devenv"));
+    wire.post(Side::Devenv, &director, Some("review"), &["p1@lap"], "still for the agent").unwrap();
+    (wire, agent)
+}
+
+#[test]
+fn a_human_join_to_a_remote_group_keeps_the_agent_and_its_unread_messages() {
+    let (mut wire, agent) = laptop_pane_in_a_devenv_group(None);
+    let joined = wire.try_join(Side::Laptop, &agent, Some(HUMAN), "review@devenv").unwrap();
+    assert_eq!(joined.name, HUMAN);
+    assert_eq!(members_on(&wire, Side::Devenv, "review"), ["@human@lap", "director", "p1@lap"]);
+    assert_eq!(members_on(&wire, Side::Laptop, "review@devenv"), [HUMAN, "director@devenv", "p1"]);
+    wire.post(
+        Side::Devenv,
+        &session("director"),
+        Some("review"),
+        &["p1@lap"],
+        "after the human joined",
+    )
+    .unwrap();
+    assert_eq!(
+        wire.read(Side::Laptop, &agent, Some("review@devenv")),
+        [
+            "review@devenv director@devenv: still for the agent",
+            "review@devenv director@devenv: after the human joined",
+        ]
+    );
+    assert!(wire.read(Side::Laptop, &agent, Some("review@devenv")).is_empty());
+}
+
+#[test]
+fn a_human_join_from_a_member_pane_obeys_the_remote_groups_policy() {
+    let (mut wire, agent) = laptop_pane_in_a_devenv_group(Some(directed(&["director"])));
+    let refused = wire.try_join(Side::Laptop, &agent, Some(HUMAN), "review@devenv");
+    assert_eq!(
+        refused.unwrap_err(),
+        Refusal::NotPermitted {
+            name: HUMAN.to_string(),
+            group: "review@devenv".to_string(),
+            action: Action::Join,
+            permitted: vec!["director@devenv".to_string()],
+        }
+    );
+    assert_eq!(members_on(&wire, Side::Devenv, "review"), ["director", "p1@lap"]);
+    assert_eq!(members_on(&wire, Side::Laptop, "review@devenv"), ["director@devenv", "p1"]);
+    assert_eq!(
+        wire.read(Side::Laptop, &agent, Some("review@devenv")),
+        ["review@devenv director@devenv: still for the agent"]
+    );
+    assert!(wire.read(Side::Laptop, &agent, Some("review@devenv")).is_empty());
+    wire.post(Side::Devenv, &session("director"), Some("review"), &["p1@lap"], "still a member")
+        .unwrap();
+    assert_eq!(
+        wire.read(Side::Laptop, &agent, Some("review@devenv")),
+        ["review@devenv director@devenv: still a member"]
+    );
+}
+
 /// A laptop agent in pane `p1`, added by its pane to `review` and `notes`, both kept on the
 /// laptop; `review` has a member on the devenv too. Returns the agent as it calls from its pane.
 fn pane_in_two_groups() -> (Wire, Caller) {
