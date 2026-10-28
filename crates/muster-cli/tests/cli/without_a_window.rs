@@ -360,7 +360,7 @@ fn hiding_and_quiet_are_asked_of_the_daemon(here: &Here) {
     let listed = ok(&here.muster(&["window"]));
     let hidden_from = listed.lines().position(|line| line == "hidden");
     let p2 = callsign_of(here, "p2");
-    let p2_at = listed.lines().position(|line| line.contains(&p2));
+    let p2_at = listed.lines().position(|line| line.split_whitespace().next() == Some(p2.as_str()));
     assert!(
         matches!((hidden_from, p2_at), (Some(heading), Some(row)) if row > heading),
         "p2 is not listed under `hidden`:\n{listed}"
