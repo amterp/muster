@@ -12,6 +12,12 @@
       "body": "2026-10-27 round: jade (Codex GPT-6.1 Sol, xhigh) owns library-only builds, cache invalidation and checkout artifact cleanup; voyage integrates. Initial plan pending.",
       "author": "Alexander Terp",
       "created_at_millis": 1793144969179
+    },
+    {
+      "id": "c_2pQQRA9bx",
+      "body": "Integrated as 2b56ae30 (worker e8e0369e). Verified cold ./dev -db exit 0, warm ./dev -d exit 0, required artifacts, app absence and stamp rejection. Main full gate and independent review pending.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793147169567
     }
   ],
   "created_at_millis": 1793126050993,
@@ -24,7 +30,7 @@
   "position": "Zz",
   "title": "🍏 Every libghostty build also builds Ghostty.app, and leaves two copies Spotlight finds",
   "type": "bug",
-  "updated_at_millis": 1793144969179,
+  "updated_at_millis": 1793147169567,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793126050993},
     {"field":"column","value":"in-progress","at":1793144969013}
