@@ -5,7 +5,7 @@
   "area": [
     "renderer"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2pPVC9ZZm",
@@ -18,6 +18,12 @@
       "body": "Integrated as 2b56ae30 (worker e8e0369e). Verified cold ./dev -db exit 0, warm ./dev -d exit 0, required artifacts, app absence and stamp rejection. Main full gate and independent review pending.",
       "author": "Alexander Terp",
       "created_at_millis": 1793147169567
+    },
+    {
+      "id": "c_2pS1JyDuQ",
+      "body": "Completed in the authorized round: main full gate 2 passed at d7f429f3 (qm run -- ./dev, exit 0, 290.77 s), and independent Sol xhigh review plus relevant repair extensions are clean. Evidence under /tmp/muster-round-20261027.6S6lF0. No push or everyday app replacement performed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793150970663
     }
   ],
   "created_at_millis": 1793126050993,
@@ -27,12 +33,13 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "Zz",
+  "position": "YvR",
   "title": "🍏 Every libghostty build also builds Ghostty.app, and leaves two copies Spotlight finds",
   "type": "bug",
-  "updated_at_millis": 1793147169567,
+  "updated_at_millis": 1793150970782,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793126050993},
-    {"field":"column","value":"in-progress","at":1793144969013}
+    {"field":"column","value":"in-progress","at":1793144969013},
+    {"field":"column","value":"done","at":1793150970782}
   ]
 }
