@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2pP54u6Ou",
@@ -24,19 +24,26 @@
       "body": "Integrated as b001a596 (worker 259984e5), clean tree and red/green evidence verified. Two real-daemon blocked-snapshot regressions failed before fix; final worker ./dev -t exit 0 (201.6 s) and -l exit 0 (8.5 s). Independent baseline and bug-hunter reviews plus final main gate pending.",
       "author": "Alexander Terp",
       "created_at_millis": 1793152005499
+    },
+    {
+      "id": "c_2pSg1ZlvZ",
+      "body": "Completed after integration and verification. Main b001a596 is covered by full qm run -- ./dev at e58b47b8, exit 0 in 232.93 s (gate-3.log/json in /tmp/muster-round-20261027.6S6lF0). Independent Codex GPT-6.1 Sol xhigh baseline and bug-hunter reviews found no significant issue; reports report-review-1-carried.md and report-review-2.md. Local handling stays ordered; only remote continuation waits off-reader, with original IDs/names and reader-ended cancellation. No runtime install or performance claim.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793152535297
     }
   ],
   "created_at_millis": 1793141683478,
   "creator": "Alexander Terp",
   "description": "The laptop daemon reads the next request on a connection only after it has answered the one before. `serve` in `crates/muster-daemon/src/control.rs` handles a message request inline (line 239), and a carried one waits there up to a minute (`CARRYING`) for the machine that keeps the group. Everything else the window asks the laptop daemon on that connection, pane requests included, waits behind it.\n\nOn the owner's laptop (0.19.0, 2026-10-27), the window's msg.group_delete for a group kept on devenv waited 46.7 s on connection 3. Three `msg.log` fetches the window sent behind it, to show that group's conversation (ids 351-353), each timed out after 10 s and logged `conversation.fetch_failed`, so the conversation showed a spinner and no messages. All of them were answered at 22:45:24.429 UTC, the fetches in 0.2 ms each. Run log: `~/Library/Logs/muster/muster-2026-10-26_09-03-57-35622.jsonl`.\n\nThe daemon's own log hides the wait. `received` is taken after the request is read off the socket (line 216), so the fetches' `daemon.request.answered` lines say `ms` 0.2 and `queued_ms` 0.1 for requests that sat unread for up to 37 s.\n\nRestarts already avoid this: `Handled::Restart` is answered off the connection's thread (line 281), because an answer carries its request's id and may follow later ones. A carried message request could be answered the same way.",
   "id": "a_2pO7iUpdU",
-  "position": "Zw",
+  "position": "YvN",
   "title": "A carried message request holds up every later request on the window's connection to its daemon",
   "type": "bug",
-  "updated_at_millis": 1793152005499,
+  "updated_at_millis": 1793152535471,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793141683478},
     {"field":"column","value":"next","at":1793143876700},
-    {"field":"column","value":"in-progress","at":1793150701603}
+    {"field":"column","value":"in-progress","at":1793150701603},
+    {"field":"column","value":"done","at":1793152535471}
   ]
 }
