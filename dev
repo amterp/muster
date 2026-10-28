@@ -66,6 +66,10 @@ DEP_ARTIFACTS = [
     // The entry's source, which a pane's ssh installs on a host without it.
     "deps/ghostty/zig-out/share/terminfo/ghostty.terminfo",
 ]
+GHOSTTY_APP_BUNDLES = [
+    "deps/ghostty/macos/build/ReleaseLocal/Ghostty.app",
+    "deps/ghostty/zig-out/Ghostty.app",
+]
 // Short and outside the toolchain's output directories, because it is the one artifact a
 // person types the path of - and `swift package clean` still takes it with the rest.
 BUNDLE = ".build/muster.app"
@@ -1425,16 +1429,15 @@ fn patch_note():
     count = len(ghostty_patches())
     return count == 0 ? "" : " with {count} patch{count == 1 ? '' : 'es'}"
 
-// What deps/.built records: the pin, then each patch with a hash of its content, so editing,
-// adding or removing a patch rebuilds exactly as a re-pin does.
+// Pin and patch hashes alone cannot distinguish a build that also produced Ghostty.app.
 fn deps_stamp(pin):
-    lines = [pin]
+    lines = [pin, "recipe library-only-v1"]
     for patch in ghostty_patches():
         hash = quiet $`git hash-object {patch}`.stdout.trim()
         lines += ["{patch} {hash}"]
     return lines.join("\n")
 
-// Everything under deps/ is reproducible from the pin and the patches, so the check is only
+// Everything under deps/ is reproducible from the pin, patches and recipe, so the check is only
 // ever "is what sits there what we asked for". libghostty takes minutes to build and changes
 // only when one of those does.
 //
@@ -1452,6 +1455,14 @@ fn deps_are_current(pin):
             return false
     return true
 
+fn check_ghostty_apps_absent():
+    for bundle in GHOSTTY_APP_BUNDLES:
+        if get_path(bundle).exists:
+            print_err(red("Unexpected Ghostty app bundle: {bundle}"))
+            print_err("Muster builds Ghostty's libraries only. Remove this checkout's leftover bundle:")
+            print_err("  tm {bundle}")
+            exit(1)
+
 fn build_deps():
     pin = read_pin()
     if deps_are_current(pin):
@@ -1463,6 +1474,7 @@ fn build_deps():
         if not get_path("{GHOSTTY_DIR}/.git").exists:
             print(dim("checking out libghostty's source at {pin[:12]} beside the restored build"))
             check_out(pin)
+        check_ghostty_apps_absent()
         return
 
     // Asked for only once there is something to build with it. Every other tier takes deps on
@@ -1493,10 +1505,11 @@ fn build_deps():
     // the shell renders through, then the VT that the core encodes keys with and the
     // tests read grids from. The VT stays ReleaseFast for the daemon too: ReleaseSafe parsed
     // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13).
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dxcframework-target=native -Demit-terminfo=true`
+    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=native -Demit-terminfo=true`
     $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
     for zig_target in LINUX_DAEMONS.values():
         $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
+    check_ghostty_apps_absent()
     write_file(BUILT_STAMP, deps_stamp(pin))
 
 // The pinned commit into GHOSTTY_DIR with Muster's patches applied, leaving whatever a build left
