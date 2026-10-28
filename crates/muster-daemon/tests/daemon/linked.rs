@@ -8,6 +8,8 @@ use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use prost::Message;
+
 use crate::support::*;
 use proto::msg_answer::{self, Answer};
 use proto::msg_request::{self, Request as Asked};
@@ -15,6 +17,188 @@ use proto::request::Service;
 use proto::session_request;
 
 const LINKING: Duration = Duration::from_secs(20);
+
+struct HoldCarriedReply {
+    held: std::sync::mpsc::Sender<()>,
+    release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl muster_harness::Pump for HoldCarriedReply {
+    fn carry(&self, client: std::os::unix::net::UnixStream, daemon: &std::path::Path) {
+        use proto::peer_frame::Frame;
+        let mut upstream = std::os::unix::net::UnixStream::connect(daemon).unwrap();
+        let mut reading = client.try_clone().unwrap();
+        let mut sending = upstream.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut reading, &mut sending);
+            let _ = sending.shutdown(std::net::Shutdown::Both);
+        });
+        let mut client = client;
+        let mut welcomed = false;
+        while let Ok(Some(frame)) =
+            muster_frame::read_frame_or_end(&mut upstream, proto::connection::LARGEST_MESSAGE)
+        {
+            let carried = welcomed
+                && proto::PeerFrame::decode(frame.as_slice()).is_ok_and(|frame| {
+                    matches!(
+                        frame.frame,
+                        Some(Frame::Reply(proto::PeerReply {
+                            reply: Some(proto::peer_reply::Reply::Carried(_)),
+                            ..
+                        }))
+                    )
+                });
+            if carried && let Some(release) = self.release.lock().unwrap().take() {
+                let _ = self.held.send(());
+                if release.recv_timeout(LINKING).is_err() {
+                    break;
+                }
+            }
+            welcomed = true;
+            if muster_frame::write_frame(&mut client, &frame).is_err() {
+                break;
+            }
+        }
+        let _ = client.shutdown(std::net::Shutdown::Both);
+        let _ = upstream.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+fn next_answer(control: &mut Control, id: u64) -> proto::Answer {
+    let Some(proto::control_message::Message::Answer(answer)) = control.next_message(LINKING)
+    else {
+        panic!("request {id} was not answered while the carried reply was held")
+    };
+    assert_eq!(answer.id, id, "the later request must finish before the carried one");
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    answer
+}
+
+#[test]
+fn a_held_carried_reply_does_not_hold_up_later_requests_on_the_connection() {
+    let (near, far) = (daemon(), daemon());
+    let (held, waiting) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let relay = muster_harness::Relay::start(
+        far.root(),
+        far.socket_path(),
+        std::sync::Arc::new(HoldCarriedReply {
+            held,
+            release: std::sync::Mutex::new(Some(released)),
+        }),
+    );
+    let mut logging = following(&near);
+    let mut holding = near.connect();
+    holding.send(msg(
+        &named("app"),
+        Asked::Peer(msg_request::Peer {
+            name: "far".to_string(),
+            socket: relay.socket_path().display().to_string(),
+        }),
+    ));
+    assert!(
+        logging
+            .logged_until("msg.peer.linked", LINKING)
+            .iter()
+            .any(|line| { line.line.contains("msg.peer.linked") })
+    );
+    let (mut control, mut remote) = (near.connect(), far.connect());
+    let person = msg_request::Caller::default();
+    join(&mut remote, &named("critic"), "critic", "review");
+    join(&mut control, &person, "@human", "review");
+    expect(
+        &mut control,
+        msg(
+            &named("builder"),
+            Asked::GroupNew(msg_request::GroupNew { group: "local".to_string(), policy: None }),
+        ),
+        proto::Outcome::Done,
+    );
+    let carried = control.send(msg(
+        &person,
+        Asked::GroupDelete(msg_request::GroupDelete { group: "review@far".to_string() }),
+    ));
+    waiting.recv_timeout(LINKING).expect("the real peer reply is held by the relay");
+    let snapshot = control.send(snapshot_request());
+    let joined = control.send(msg(
+        &named("observer"),
+        Asked::Join(msg_request::Join {
+            name: Some("observer".to_string()),
+            group: Some("local".to_string()),
+            pull: false,
+        }),
+    ));
+    let posted = control.send(post(&named("observer"), Some("local"), &[], "still responsive"));
+    for id in [snapshot, joined, posted] {
+        next_answer(&mut control, id);
+    }
+    release.send(()).unwrap();
+    let answer = next_answer(&mut control, carried);
+    let Some(proto::answer::Detail::Msg(answer)) = answer.detail else { panic!("a msg answer") };
+    let Some(Answer::Deleted(deleted)) = answer.answer else { panic!("a deletion") };
+    assert_eq!(deleted.group, "review@far");
+    let mut members = deleted.let_go;
+    members.sort();
+    assert_eq!(members, ["@human", "critic@far"]);
+}
+
+#[test]
+fn ending_the_control_reader_cancels_a_carried_wait_while_the_client_stays_open() {
+    let (near, far) = (daemon(), daemon());
+    let mut logging = following(&near);
+    let _holding = link(&near, &far, &mut logging, 1);
+    let person = msg_request::Caller::default();
+    join(&mut near.connect(), &person, "@human", "review");
+    let (mut client, _) = proto::connection::connect(
+        far.socket_path(),
+        proto::ConnectionKind::Control,
+        "a client that sends a malformed frame",
+    )
+    .unwrap();
+    client.set_read_timeout(Some(LINKING)).unwrap();
+    proto::connection::send(
+        &mut client,
+        &proto::Request {
+            id: 41,
+            service: Some(msg(&person, Asked::Wait(msg_request::Wait::default()))),
+        },
+    )
+    .unwrap();
+    assert!(
+        logging
+            .logged_until("msg.waiting", LINKING)
+            .iter()
+            .any(|line| { line.line.contains("msg.waiting") })
+    );
+    proto::connection::send(
+        &mut client,
+        &proto::Request { id: 42, service: Some(snapshot_request()) },
+    )
+    .unwrap();
+    let next: Option<proto::ControlMessage> = proto::connection::receive(&mut client)
+        .expect("the later snapshot must be answered while the carried wait is pending");
+    let Some(proto::ControlMessage {
+        message: Some(proto::control_message::Message::Answer(answer)),
+    }) = next
+    else {
+        panic!("the snapshot must finish while the carried wait is pending")
+    };
+    assert_eq!(answer.id, 42);
+    assert_eq!(answer.outcome(), proto::Outcome::Done);
+    let mut malformed = Vec::new();
+    muster_frame::write_frame(&mut malformed, &[0x0f]).unwrap();
+    let following = proto::Request { id: 43, service: Some(snapshot_request()) }.encode_to_vec();
+    muster_frame::write_frame(&mut malformed, &following).unwrap();
+    std::io::Write::write_all(&mut client, &malformed).unwrap();
+    assert!(
+        logging
+            .logged_until("msg.wait.ended", LINKING)
+            .iter()
+            .any(|line| { line.line.contains("msg.wait.ended") }),
+        "ending the reader must cancel the wait without the client closing its socket"
+    );
+    assert!(proto::connection::receive::<proto::ControlMessage>(&mut client).unwrap().is_none());
+}
 
 /// A Claude session's inbox socket, which keeps its participant alive while it is bound.
 struct Inbox {

@@ -357,8 +357,36 @@ impl Messages {
     }
 }
 
-/// Answers a `msg` request. `hung_up` says whether the caller has gone, for a wait that would
-/// otherwise outlive it.
+pub(crate) enum Handled {
+    Reply(Reply),
+    Carrying(Box<Carrying>),
+}
+
+pub(crate) struct Carrying {
+    destination: Destination,
+    asked: Asked,
+    fallback: Reply,
+    panes: Panes,
+}
+
+impl Carrying {
+    pub(crate) fn run(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> Reply {
+        let Self { destination, asked, fallback, panes } = self;
+        let reply = match destination {
+            Destination::HumanHome(home) => {
+                peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(fallback)
+            }
+            Destination::GroupHome(machine) => peer::carry(shared, &machine, asked, hung_up)
+                .map(|carried| peer::named_here(shared, &machine, carried))
+                .unwrap_or(fallback),
+        };
+        let reply = naming_the_human(shared, reply);
+        naming_the_panes(shared, reply, &panes)
+    }
+}
+
+/// Handles a `msg` request locally, leaving only its carried part for a worker so local
+/// operations keep the connection's request order. `hung_up` ends waits whose caller has gone.
 ///
 /// A person's request this machine refuses because the human is homed elsewhere is carried
 /// there, when a link to it is up, and answered as that machine answers it (MIP-4, section 10).
@@ -368,11 +396,11 @@ pub(crate) fn handle(
     shared: &Arc<Shared>,
     request: proto::MsgRequest,
     hung_up: &dyn Fn() -> bool,
-) -> Reply {
+) -> Handled {
     let caller = caller_of(request.caller.unwrap_or_default());
-    let Some(asked) = request.request else { return Reply::unsupported() };
+    let Some(asked) = request.request else { return Handled::Reply(Reply::unsupported()) };
     if let Asked::Peer(peer) = &asked {
-        return peer::hold(shared, &peer.name, &peer.socket, hung_up);
+        return Handled::Reply(peer::hold(shared, &peer.name, &peer.socket, hung_up));
     }
     let panes = Panes::of(shared);
     // Before the request too, so that a pair group it makes is named by what panes are called now.
@@ -381,24 +409,19 @@ pub(crate) fn handle(
     let kept = carriable.then(|| asked.clone());
     let reply = respond(shared, &caller, asked, hung_up, &panes);
     shared.messages().note_joined();
-    let reply = match kept {
-        None => reply,
-        Some(asked) => match carry::destination(shared, &caller, &asked, &reply, &panes) {
-            None => reply,
-            Some(Destination::HumanHome(home)) => {
-                let asked = carry::outward(&shared.messages().service, asked, &panes);
-                peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(reply)
-            }
-            Some(Destination::GroupHome(machine)) => {
-                let asked = carry::outward(&shared.messages().service, asked, &panes);
-                peer::carry(shared, &machine, asked, hung_up)
-                    .map(|carried| peer::named_here(shared, &machine, carried))
-                    .unwrap_or(reply)
-            }
-        },
-    };
+    if let Some(asked) = kept
+        && let Some(destination) = carry::destination(shared, &caller, &asked, &reply, &panes)
+    {
+        let asked = carry::outward(&shared.messages().service, asked, &panes);
+        return Handled::Carrying(Box::new(Carrying {
+            destination,
+            asked,
+            fallback: reply,
+            panes,
+        }));
+    }
     let reply = naming_the_human(shared, reply);
-    naming_the_panes(shared, reply, &panes)
+    Handled::Reply(naming_the_panes(shared, reply, &panes))
 }
 
 /// Refuses a `msg` request that came through a harness's server, which cannot say which pane it

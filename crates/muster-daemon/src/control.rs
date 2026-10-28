@@ -8,7 +8,7 @@
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, atomic::AtomicU64, atomic::Ordering};
+use std::sync::{Arc, atomic::AtomicBool, atomic::AtomicU64, atomic::Ordering};
 use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
@@ -195,6 +195,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         fields! { "connection" => outbox.id, "client" => client },
     );
     let peer = attribution::peer_pid(&stream);
+    let reader_ended = Arc::new(AtomicBool::new(false));
 
     loop {
         let request = match connection::receive::<proto::Request>(&mut stream) {
@@ -236,18 +237,28 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         let sender = sender_of(peer, request.service.as_ref(), shared);
         let handled = match request.service {
             // Outside the session's lock: messages have their own (crate::messages).
-            Some(Service::Msg(request)) => Handled::Reply(match &sender {
-                Some(attribution::Sender::Server(server)) => {
-                    messages::through_server(&request, server)
-                }
-                Some(attribution::Sender::Agent(nearest)) => {
-                    match from_agent(shared, request, nearest) {
-                        Ok(request) => messages::handle(shared, request, &|| hung_up(&stream)),
-                        Err(refused) => refused,
+            Some(Service::Msg(message)) => {
+                let handled = match &sender {
+                    Some(attribution::Sender::Server(server)) => {
+                        messages::Handled::Reply(messages::through_server(&message, server))
+                    }
+                    Some(attribution::Sender::Agent(nearest)) => {
+                        match from_agent(shared, message, nearest) {
+                            Ok(message) => messages::handle(shared, message, &|| hung_up(&stream)),
+                            Err(refused) => messages::Handled::Reply(refused),
+                        }
+                    }
+                    None => messages::handle(shared, message, &|| hung_up(&stream)),
+                };
+                match handled {
+                    messages::Handled::Reply(reply) => Handled::Reply(reply),
+                    messages::Handled::Carrying(carrying) => {
+                        let answered = Answered::after(request.id, name, received, lock);
+                        carry_later(shared, &outbox, *carrying, &reader_ended, answered);
+                        continue;
                     }
                 }
-                None => messages::handle(shared, request, &|| hung_up(&stream)),
-            }),
+            }
             Some(service) => {
                 let mut session = locked();
                 match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
@@ -294,12 +305,14 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         answer(&session, &outbox, reply, Answered::after(request.id, name, received, lock));
         drop(session);
         if let Some(stop) = stop {
+            reader_ended.store(true, Ordering::Release);
             outbox.flush(STOP_FLUSH);
             let _ = shared.stopping.send(stop);
             return;
         }
     }
 
+    reader_ended.store(true, Ordering::Release);
     shared.lock().unsubscribe(outbox.id);
     let _ = stream.shutdown(Shutdown::Both);
     log::info("daemon.connection.closed", fields! { "connection" => outbox.id });
@@ -466,6 +479,39 @@ fn answer_later(shared: &Arc<Shared>, outbox: &Outbox, restarting: Restarting, a
              done"
         ));
         answer(&shared.lock(), &outbox, reply, answered);
+    }
+}
+
+fn carry_later(
+    shared: &Arc<Shared>,
+    outbox: &Outbox,
+    carrying: messages::Carrying,
+    reader_ended: &Arc<AtomicBool>,
+    answered: Answered,
+) {
+    let (shared, outbox) = (Arc::clone(shared), outbox.clone());
+    let reader_ended = Arc::clone(reader_ended);
+    let started = std::thread::Builder::new().name(format!("carry {}", answered.id)).spawn({
+        let shared = Arc::clone(&shared);
+        let outbox = outbox.clone();
+        move || {
+            let gone = || reader_ended.load(Ordering::Acquire) || hung_up(&outbox.stream);
+            let reply = carrying.run(&shared, &gone);
+            let waiting = Instant::now();
+            let session = shared.lock();
+            let answered = Answered { lock: answered.lock + waiting.elapsed(), ..answered };
+            answer(&session, &outbox, reply, answered);
+        }
+    });
+    if let Err(error) = started {
+        let reply = Reply::refused(format!(
+            "the daemon could not start a thread to carry this request ({error}); it was not \
+             sent to the other machine"
+        ));
+        let waiting = Instant::now();
+        let session = shared.lock();
+        let answered = Answered { lock: answered.lock + waiting.elapsed(), ..answered };
+        answer(&session, &outbox, reply, answered);
     }
 }
 
