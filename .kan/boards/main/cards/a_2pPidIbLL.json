@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "muster-resumed-codex",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793145485777,
+  "creator": "Alexander Terp",
+  "description": "Codex helpers receive wake prompts claiming messages are still unread after their first successful read. Each stale wake starts another turn, and the requested read prints `nothing unread`.\n\nSeen 2026-10-27 in the authorized Muster round, after repeatedly resuming the same conversations to recover from a Codex code-mode host failure. Opal read #4-10 in opal+voyage and posted #11, then received stale `still unread` wakes for #4-8 and #4-9. Both subsequent `muster msg read --group opal+voyage` calls returned exit 0 and `nothing unread`. Jade saw the same pattern for #4-9 after its successful read.\n\nNo message body was lost. It is unclear whether these were delayed terminal input, queued Codex steering prompts, or stale daemon wake state. The worker session IDs are 01a17fc5-c172-7bf2-b4dc-e9566acbc604 and 01a17fc5-c1af-7c21-a7c7-8917304882a2. Round evidence is under /tmp/muster-round-20261027.6S6lF0; opal+voyage #12 records the report. Preserve the distinction from the Claude Code Stop/PostToolUse duplicate-delivery card a_2pOTJDMPl.",
+  "id": "a_2pPidIbLL",
+  "position": "b1T",
+  "title": "Muster: resumed Codex gets wakes for already-read messages",
+  "type": "bug",
+  "updated_at_millis": 1793145485777,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793145485777}
+  ]
+}
