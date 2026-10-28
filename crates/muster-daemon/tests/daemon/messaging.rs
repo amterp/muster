@@ -501,6 +501,41 @@ fn a_window_hears_each_message_for_the_human_once_and_no_chatter() {
     assert_eq!((told.group.as_str(), told.count), ("g", 0));
 }
 
+#[test]
+fn acting_as_the_human_keeps_the_agents_inbox_and_human_unread_separate() {
+    let daemon = daemon();
+    let mut window = daemon.connect();
+    attend(&mut window);
+    let mut control = daemon.connect();
+    let inbox = Inbox::bind(&daemon, "worker");
+    join(&mut control, &inbox.caller(), "worker", "agents");
+    let as_human = msg_request::Caller { as_name: Some("@human".into()), ..inbox.caller() };
+    expect(
+        &mut control,
+        msg(
+            &as_human,
+            Asked::GroupNew(msg_request::GroupNew { group: "human-group".into(), policy: None }),
+        ),
+        DONE,
+    );
+    human_joined(&mut window, "human-group");
+    join(&mut control, &named("sender"), "sender", "human-group");
+
+    expect(&mut control, post_to(&named("sender"), "@human", "human only"), DONE);
+    let notice = human_notice(&mut window);
+    assert_eq!((notice.group.as_str(), notice.count), ("human-group", 1));
+
+    let agent_read = expect(&mut control, read(&inbox.caller()), DONE);
+    assert!(messages(&agent_read).is_empty());
+    let human_read = expect(&mut control, read(&the_human()), DONE);
+    assert_eq!(messages(&human_read), ["sender: human only"]);
+    assert_eq!(human_notice(&mut window).count, 0);
+
+    expect(&mut control, post(&inbox.caller(), "agent again"), DONE);
+    let logged = expect(&mut control, log_of("agents"), DONE);
+    assert_eq!(messages(&logged), ["worker: agent again"]);
+}
+
 /// Removed from a group by a member, the human has left it, so nothing waits there any more.
 #[test]
 fn a_window_hears_nothing_waits_once_the_human_is_removed_from_the_group() {

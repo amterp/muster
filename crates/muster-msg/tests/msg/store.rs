@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 
 use muster_msg::{
-    Caller, Inbox, Memory, Messaging, Participant, Policy, Presence, Refusal, Saved, What,
+    Activity, Caller, HUMAN, Inbox, Memory, Messaging, Participant, Policy, Presence, Refusal,
+    Saved, Via, What,
 };
 
 struct Everyone;
@@ -42,6 +43,95 @@ fn a_restored_service_has_the_same_members_cursors_and_log() {
     let posted = second.post(&session("b"), None, &[], "after", &Everyone, 5).unwrap();
     assert_eq!(posted.seq, 5);
     assert_eq!(posted.wakes.iter().map(|wake| wake.name.as_str()).collect::<Vec<_>>(), ["a"]);
+}
+
+#[test]
+fn a_restored_human_loses_agent_addresses_but_keeps_its_unread_messages() {
+    struct Agent;
+
+    impl Presence for Agent {
+        fn alive(&self, _: &Participant) -> bool {
+            true
+        }
+
+        fn agent_in(&self, pane: &str) -> bool {
+            pane == "p1"
+        }
+
+        fn activity(&self, participant: &Participant) -> Option<Activity> {
+            participant
+                .pane
+                .as_deref()
+                .filter(|pane| self.agent_in(pane))
+                .map(|_| Activity::Working)
+        }
+    }
+
+    for (has_pane, has_inbox) in [(true, true), (true, false), (false, true)] {
+        let human = Caller::default();
+        let mut first = Messaging::new(Memory::default());
+        first.join(&human, None, Some("g"), &Agent, 1).unwrap();
+        first.join(&session("sender"), Some("sender"), Some("g"), &Agent, 2).unwrap();
+        first.read(&human, None, &Agent).unwrap();
+        first
+            .post(&session("sender"), Some("g"), &[HUMAN.into()], "still unread", &Agent, 3)
+            .unwrap();
+
+        let mut saved = first.store().saved.clone().unwrap();
+        let kept_human = saved.participants.iter_mut().find(|p| p.name == HUMAN).unwrap();
+        let cursors = kept_human.cursors.clone();
+        kept_human.pane = has_pane.then(|| "p1".to_string());
+        kept_human.inbox = has_inbox.then(|| session("worker").inbox.unwrap());
+        kept_human.woken.insert("g".into());
+        let logs = first.store().logs();
+        let store = Memory { kept: logs.clone(), ..Memory::default() };
+        let mut second = Messaging::restore(store, saved, logs);
+
+        let who = second.who(Some("g"), &Agent).unwrap();
+        let human_member = who.iter().find(|member| member.name == HUMAN).unwrap();
+        assert_eq!(human_member.pane, None);
+        assert_eq!(human_member.inbox, None);
+        assert_eq!(human_member.activity, None);
+        assert!(second.holding().iter().all(|holding| holding.name != HUMAN));
+        assert!(second.went_idle(HUMAN, &Agent, 4).0.is_empty());
+        assert_eq!(second.participant(HUMAN).unwrap().cursors, cursors);
+
+        let worker = Caller {
+            directory: Some("/work/worker".into()),
+            pane: has_pane.then(|| "p1".to_string()),
+            inbox: has_inbox.then(|| session("worker").inbox.unwrap()),
+            ..Caller::default()
+        };
+        let read = second.read(&worker, None, &Agent).unwrap();
+        assert_ne!(read.name, HUMAN);
+        assert!(read.groups.is_empty());
+        assert_eq!(second.human_notice("g").count, 1);
+
+        let posted = second
+            .post(&session("sender"), Some("g"), &[HUMAN.into()], "also unread", &Agent, 5)
+            .unwrap();
+        assert!(
+            matches!(&posted.wakes[..], [wake] if wake.name == HUMAN && wake.via == Via::Human)
+        );
+        let saved = second.store().saved.clone().unwrap();
+        let kept_human = saved.participants.iter().find(|p| p.name == HUMAN).unwrap();
+        assert_eq!(kept_human.pane, None);
+        assert_eq!(kept_human.inbox, None);
+        assert_eq!(kept_human.cursors, cursors);
+
+        let mut third = Messaging::restore(Memory::default(), saved, second.store().logs());
+        let read = third.read(&human, Some("g"), &Agent).unwrap();
+        let messages: Vec<_> = read
+            .groups
+            .iter()
+            .flat_map(|(_, entries)| entries)
+            .filter_map(|entry| match &entry.what {
+                What::Message { body, .. } => Some(body.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(messages, ["still unread", "also unread"]);
+    }
 }
 
 /// The saved state may miss its last write, since a power loss can undo the rename that wrote it;

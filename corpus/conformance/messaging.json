@@ -279,6 +279,80 @@
       ] }
     },
     {
+      "name": "acting as the human does not take a registered agent's pane or inbox",
+      "why": "An agent may act as the human for one command, but its subsequent commands must still identify the agent. Moving its addresses onto the human would also send human stall wakes into the agent's prompt.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"session": "s1", "pane": "p1", "do": "join", "name": "worker"},
+        {"session": "s1", "pane": "p1", "as": "@human", "do": "read"},
+        {"session": "s1", "pane": "p1", "do": "join"},
+        {"do": "who"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "worker registered",
+        "@human read nothing",
+        "worker registered",
+        "@human human, worker alive (working)"
+      ] }
+    },
+    {
+      "name": "an inbox-only agent waiting as the human keeps its own identity",
+      "why": "An explicit human wait belongs to the human, but it must not register the agent's inbox as the human's delivery address or change who an ordinary later read is for.",
+      "given": { "steps": [
+        {"session": "s1", "do": "join", "name": "worker"},
+        {"session": "s1", "as": "@human", "do": "wait"},
+        {"session": "s1", "do": "read"},
+        {"do": "who"}
+      ] },
+      "expect": { "said": [
+        "worker registered",
+        "waiting 1",
+        "worker read nothing",
+        "@human human, worker alive"
+      ] }
+    },
+    {
+      "name": "an unregistered pane agent can set up a human group without becoming the human",
+      "why": "Creating a group, adding a member, and posting as the human are attribution choices for those commands. They must leave the pane free to identify and wake its own agent, even when the agent had not registered before the human commands.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "working"},
+        {"pane": "p1", "as": "@human", "do": "group new", "group": "g"},
+        {"pane": "p1", "as": "@human", "do": "members", "group": "g", "add": ["p1"]},
+        {"pane": "p1", "do": "read", "group": "g"},
+        {"pane": "p1", "as": "@human", "do": "post", "group": "g", "body": "setup done"},
+        {"pane": "p1", "do": "read", "group": "g"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 working",
+        "@human made g, which changed nothing",
+        "@human changed the members of g (#3); added p1",
+        "p1 read nothing",
+        "@human posted #4 to g; woke p1 [g #4-4 x1 to-you:0 from @human] rung p1",
+        "p1 read g: #4 @human: setup done",
+        "@human human, p1 alive (working)"
+      ] }
+    },
+    {
+      "name": "joining as the human does not fold the pane agent into the human",
+      "why": "The human cannot take over an agent's addresses or group memberships through join --name any more than through --as. Folding the pane participant into the human would remove the agent even if address adoption were skipped.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle"},
+        {"pane": "p1", "do": "join", "group": "g"},
+        {"pane": "p1", "do": "join", "name": "@human"},
+        {"pane": "p1", "do": "read", "group": "g"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "p1 joined g (created)",
+        "@human registered",
+        "p1 read nothing",
+        "p1 alive (idle)"
+      ] }
+    },
+    {
       "name": "a wait returns when a waking message arrives, and a newer wait ends the older",
       "why": "wait is what a hook runs in the background; at most one runs per participant (MIP-4, section 13).",
       "given": { "steps": [

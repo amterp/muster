@@ -41,6 +41,9 @@ Every verb works out who is asking, in this order:
   shell in a pane with no agent in it. On a devenv the laptop has linked to, that is you as the
   laptop's member, `@human@<laptop>` (below).
 
+`--as @human` acts as the human for that command. The agent keeps its pane and inbox, so later
+commands without `--as` still act as the agent.
+
 `join --name NAME` takes a name. An agent in a pane that runs any other verb first is its pane:
 known by the pane's id, which is never reused, and shown by the pane's callsign beside it, `otter
 (p29te12q4t)`, in what `muster msg` prints and in the line that wakes an agent. Any other

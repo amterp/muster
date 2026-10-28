@@ -651,6 +651,11 @@ impl<S: Store> Messaging<S> {
             .participants
             .into_iter()
             .map(|mut participant| {
+                // Older builds let `--as @human` attach an agent's delivery addresses here.
+                if participant.name == HUMAN {
+                    participant.inbox = None;
+                    participant.pane = None;
+                }
                 for (group, cursor) in &mut participant.cursors {
                     if let Some((_, machine)) = split_machine(group) {
                         groups
@@ -795,6 +800,10 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<bool, Refusal> {
         self.may_be_named(caller, name, presence)?;
+        if name == HUMAN {
+            self.adopt(name, caller);
+            return Ok(false);
+        }
         let caller = &Self::addressed(caller, presence);
         let took_over = self
             .participants
@@ -2248,7 +2257,7 @@ impl<S: Store> Messaging<S> {
     }
 
     /// The participant the caller is, registering it under a default name if it is new
-    /// (MIP-4, section 3). Refreshes the addresses it carries.
+    /// (MIP-4, section 3). Refreshes an agent's delivery addresses.
     pub(crate) fn identify(
         &mut self,
         caller: &Caller,
@@ -2363,12 +2372,15 @@ impl<S: Store> Messaging<S> {
         name
     }
 
-    /// Makes `name` the participant the caller's addresses belong to, creating it if needed. An
+    /// Creates `name` if needed and, unless it is the human, adopts the caller's addresses. An
     /// address belongs to one participant, so any other holding it lets go, and one that is left
     /// holding nothing - a default name the caller has since replaced with its own - goes.
     pub(crate) fn adopt(&mut self, name: &str, caller: &Caller) {
         let participant =
             self.participants.entry(name.to_string()).or_insert_with(|| Participant::named(name));
+        if name == HUMAN {
+            return;
+        }
         let moved = replaced(participant.inbox.as_ref(), caller.inbox.as_ref())
             || replaced(participant.pane.as_ref(), caller.pane.as_ref());
         // A session that takes over a name has been woken for nothing yet, whatever the session
