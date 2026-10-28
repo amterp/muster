@@ -18,6 +18,12 @@
       "body": "2026-10-27 round: opal continues on Codex GPT-6.1 Sol xhigh; planning the internal Claude subagent hook fix. Worker branch will advance before plan approval.",
       "author": "Alexander Terp",
       "created_at_millis": 1793146529968
+    },
+    {
+      "id": "c_2pR41Uvd0",
+      "body": "Integrated as 4243b27b (worker 08059d3b). Verified failing-before hook regression and final ./dev -t and -l exit 0. One extra mechanical cycle corrected parser length and import qualification lint. Main full gate and independent review pending.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793148691242
     }
   ],
   "created_at_millis": 1793142499720,
@@ -31,7 +37,7 @@
   ],
   "title": "Messaging hooks hand the pane's message to a subagent's tool call",
   "type": "bug",
-  "updated_at_millis": 1793146529968,
+  "updated_at_millis": 1793148691242,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793142499720},
     {"field":"column","value":"next","at":1793143876350},
