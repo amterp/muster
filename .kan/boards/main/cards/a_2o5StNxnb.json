@@ -38,6 +38,12 @@
       "author": "Alexander Terp",
       "created_at_millis": 1793146529888,
       "updated_at_millis": 1793146555100
+    },
+    {
+      "id": "c_2pRB1fgBa",
+      "body": "Independent Sol xhigh review found a remaining remote join path: route_join still sends was: pane for @human, and the remote home folds the agent before the new local guard. Opal is planning the required repair and across-machine regression. Card remains in-progress.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793148960430
     }
   ],
   "created_at_millis": 1792949451750,
@@ -47,7 +53,7 @@
   "position": "a0",
   "title": "An agent that acts --as @human takes over the human's pane and inbox, so the human's wakes are typed into that agent",
   "type": "bug",
-  "updated_at_millis": 1793146555101,
+  "updated_at_millis": 1793148960430,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792949451750},
     {"field":"column","value":"next","at":1793143876176},
