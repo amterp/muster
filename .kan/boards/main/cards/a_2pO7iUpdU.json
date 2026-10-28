@@ -18,6 +18,12 @@
       "body": "2026-10-27 authorized round follow-on: opal (Codex GPT-6.1 Sol xhigh) plans the carried-message connection blockage after the initial four fixes and required repairs landed. Forty-minute implementation cap; final integration, review and full gate reserved before round deadline.",
       "author": "Alexander Terp",
       "created_at_millis": 1793150701694
+    },
+    {
+      "id": "c_2pSSF3EBb",
+      "body": "Integrated as b001a596 (worker 259984e5), clean tree and red/green evidence verified. Two real-daemon blocked-snapshot regressions failed before fix; final worker ./dev -t exit 0 (201.6 s) and -l exit 0 (8.5 s). Independent baseline and bug-hunter reviews plus final main gate pending.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793152005499
     }
   ],
   "created_at_millis": 1793141683478,
@@ -27,7 +33,7 @@
   "position": "Zw",
   "title": "A carried message request holds up every later request on the window's connection to its daemon",
   "type": "bug",
-  "updated_at_millis": 1793150701694,
+  "updated_at_millis": 1793152005499,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793141683478},
     {"field":"column","value":"next","at":1793143876700},
