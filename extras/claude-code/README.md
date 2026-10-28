@@ -118,9 +118,10 @@ its inbox. Pass it to the sessions that should use it, `claude --settings
 `.claude/settings.json`. It is not in the plugin, because every session with the plugin would
 then take part in messaging.
 
-- `PostToolUse` runs `muster msg read --if-unread` after each tool call, and hands anything
-  unread to the model on stderr with exit 2. Claude Code shows that to you as the hook's
-  feedback.
+- `PostToolUse` runs `muster msg read --if-unread --from-hook` after each tool call. Muster reads
+  the hook's JSON and skips internal subagent events, leaving messages for the main agent. The
+  main agent receives anything unread on stderr with exit 2. Claude Code shows that to you as
+  the hook's feedback. The snippet needs no external JSON parser.
 - `Stop` runs `muster msg wait --due` in the background (`asyncRewake`) once a turn ends. When a
   message arrives for the session, the wait prints the wake and the hook exits 2, which starts a
   turn with that wake. Its `timeout` of a day is what keeps it waiting: without one, Claude Code

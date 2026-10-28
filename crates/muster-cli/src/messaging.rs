@@ -34,6 +34,8 @@ use crate::{Trouble, daemon};
 pub const CLAUDE_INBOX: &str = "CLAUDE_CODE_MESSAGING_SOCKET";
 pub use crate::daemon::SOCKET as DAEMON_SOCKET;
 
+const HOOK_INPUT_BYTES: usize = 1 << 20;
+
 /// What `muster msg --help` says before the verbs: the protocol an agent follows.
 pub const PROTOCOL: &str = "\
 Agents post messages to groups through the muster-daemon on this machine, and are woken when a \
@@ -151,6 +153,9 @@ pub enum Verb {
         /// Print nothing when nothing is unread, for a hook to run after every tool call
         #[arg(long)]
         if_unread: bool,
+        /// Read hook JSON from stdin and skip internal subagent events
+        #[arg(long)]
+        from_hook: bool,
     },
 
     /// Print a group's log, moving nothing
@@ -270,6 +275,7 @@ pub struct Messaging {
     /// The policy file a group is made with or set to, read when the request is sent.
     pub policy_from: Option<String>,
     pub if_unread: bool,
+    pub from_hook: bool,
     /// A log to keep printing as it grows, rather than answer once.
     pub follow: bool,
     /// The offered answer a post picks, looked up in its question when the request is sent.
@@ -315,7 +321,8 @@ pub fn parse(
     };
     let mut body_from = None;
     let mut policy_from = None;
-    let mut if_unread = false;
+    let if_unread = matches!(verb, Verb::Read { if_unread: true, .. });
+    let from_hook = matches!(verb, Verb::Read { from_hook: true, .. });
     let mut follow = false;
     let mut answer = None;
     let asked = match verb {
@@ -349,10 +356,7 @@ pub fn parse(
                 ..Default::default()
             })
         }
-        Verb::Read { group, if_unread: quiet } => {
-            if_unread = *quiet;
-            Asked::Read(msg_request::Read { group: group.clone() })
-        }
+        Verb::Read { group, .. } => Asked::Read(msg_request::Read { group: group.clone() }),
         Verb::Log { group, since, last, before, follow: following } => {
             follow = *following;
             Asked::Log(msg_request::Log {
@@ -403,7 +407,7 @@ pub fn parse(
         }
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
-    Ok(Messaging { request, body_from, policy_from, if_unread, follow, answer })
+    Ok(Messaging { request, body_from, policy_from, if_unread, from_hook, follow, answer })
 }
 
 /// Sends the request to this machine's daemon and renders its answer.
@@ -413,6 +417,9 @@ pub fn run(
     input: &mut impl Read,
     json: bool,
 ) -> Result<String, Trouble> {
+    if messaging.from_hook && !is_main_agent_hook(input)? {
+        return Ok(String::new());
+    }
     if let Some(from) = &messaging.body_from {
         let body = read_body(from, input)?;
         if let Some(Asked::Post(post)) = messaging.request.request.as_mut() {
@@ -591,6 +598,32 @@ fn render_entries(answer: &proto::Answer) -> Result<Option<(msg_answer::Entries,
         Some(Answer::Entries(entries)) => Some((entries.clone(), Shown::of(msg))),
         _ => None,
     })
+}
+
+fn is_main_agent_hook(input: &mut impl Read) -> Result<bool, Trouble> {
+    let mut bytes = Vec::new();
+    input.take(HOOK_INPUT_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|error| {
+        Trouble::Refused(format!(
+            "could not read hook input ({error}), so messages were left unread."
+        ))
+    })?;
+    if bytes.len() > HOOK_INPUT_BYTES {
+        return Err(Trouble::Refused(format!(
+            "hook input exceeds {HOOK_INPUT_BYTES} bytes, so messages were left unread."
+        )));
+    }
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(true);
+    }
+    let event: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        Trouble::Refused(format!(
+            "hook input is not valid JSON ({error}), so messages were left unread."
+        ))
+    })?;
+    let event = event.as_object().ok_or_else(|| {
+        Trouble::Refused("hook input must be a JSON object, so messages were left unread.".into())
+    })?;
+    Ok(event.get("agent_id").is_none_or(|id| id.is_null() || id.as_str() == Some("")))
 }
 
 fn read_body(from: &TextSource, input: &mut impl Read) -> Result<String, Trouble> {

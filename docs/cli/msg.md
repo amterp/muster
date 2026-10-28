@@ -549,7 +549,7 @@ window has attached to shows `@human` alone.
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
 | `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
-| `read [--group G] [--if-unread]` | prints your unread messages and moves your place |
+| `read [--group G] [--if-unread] [--from-hook]` | prints your unread messages and moves your place |
 | `log --group G [--since N] [--last N] [--before N] [--follow]` | the group's log, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |
 | `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
 | `groups` | every group, its members, and whether it is paused; `--json` has each policy |
@@ -566,6 +566,12 @@ Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refus
 by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may or may not have happened (the
 daemon hung up, or another machine never answered), 5 a wait that timed out, 6 a post that woke
 nobody live.
+
+`read --from-hook` first reads a hook's JSON object from stdin. A nonempty top-level `agent_id`
+identifies an internal subagent, so the command prints nothing and leaves messages unread for the
+main agent. An absent, null, or empty `agent_id` allows the read; a field inside a tool result does
+not identify the hook's agent. Empty input also allows the read. Input over 1 MiB, malformed JSON,
+and a JSON value that is not an object are refused before any message is read.
 
 A verb run in a pane acts as that pane's agent, which `$MUSTER_PANE` names. One run under a
 harness's server that runs every session's commands, as Codex's shared app-server does, carries

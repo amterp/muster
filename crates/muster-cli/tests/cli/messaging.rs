@@ -159,6 +159,124 @@ fn read_if_unread_says_nothing_when_only_joins_and_leaves_are_new() {
 }
 
 #[test]
+fn claude_codes_subagent_hook_leaves_messages_for_the_main_agent() {
+    let hooks: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../extras/claude-code/messaging-hooks.json"
+    )))
+    .unwrap();
+    let command = hooks["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+    for shell in ["/bin/sh", "/bin/zsh"].into_iter().filter(|shell| Path::new(shell).exists()) {
+        let daemon = Daemon::start_built();
+        let inbox = daemon.root().join("receiver.inbox");
+        let _listener = std::os::unix::net::UnixListener::bind(&inbox).unwrap();
+        let path = format!(
+            "{}:/usr/bin:/bin",
+            Path::new(env!("CARGO_BIN_EXE_muster")).parent().unwrap().display()
+        );
+        let run = |script: &str, payload: &str| {
+            let mut hook = Command::new(shell)
+                .args(["-c", script])
+                .env_clear()
+                .env("HOME", daemon.root())
+                .env("PATH", &path)
+                .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+                .env("CLAUDE_CODE_MESSAGING_SOCKET", &inbox)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            hook.stdin.take().unwrap().write_all(payload.as_bytes()).unwrap();
+            hook.wait_with_output().unwrap()
+        };
+        ok(&run("muster msg join --name receiver --group review", "{}"));
+        ok(&muster(&daemon, &["msg", "--as", "sender", "join", "--group", "review"]));
+        ok(&muster(&daemon, &["msg", "--as", "sender", "post", "for the main agent"]));
+
+        let subagent = run(
+            command,
+            r#"{
+            "hook_event_name": "PostToolUse", "tool_name": "Bash",
+            "agent_id": "a2390a287e6a1b7f5", "agent_type": "general-purpose"
+        }"#,
+        );
+        assert_eq!(subagent.status.code(), Some(0), "{shell}: {}", complained(&subagent));
+        assert!(subagent.stdout.is_empty());
+        assert!(subagent.stderr.is_empty());
+
+        let main = run(command, r#"{"hook_event_name":"PostToolUse","tool_name":"Bash"}"#);
+        assert_eq!(main.status.code(), Some(2), "{shell}: {}", complained(&main));
+        assert!(main.stdout.is_empty());
+        assert!(complained(&main).contains("\nfor the main agent\n"), "{}", complained(&main));
+        let empty = run(command, "{}");
+        assert_eq!(empty.status.code(), Some(0));
+        assert!(empty.stdout.is_empty());
+        assert!(empty.stderr.is_empty());
+    }
+}
+
+fn read_from_hook(socket: &Path, payload: &[u8]) -> (i32, String, String) {
+    let argv =
+        ["msg", "--as", "receiver", "read", "--if-unread", "--from-hook"].map(str::to_string);
+    let environment = std::collections::BTreeMap::from([(
+        "MUSTER_DAEMON_SOCKET".to_string(),
+        socket.display().to_string(),
+    )]);
+    let (mut out, mut errors) = (Vec::new(), Vec::new());
+    let mut input = payload;
+    let status = muster_cli::run(&argv, &environment, None, &mut input, &mut out, &mut errors);
+    (status, String::from_utf8(out).unwrap(), String::from_utf8(errors).unwrap())
+}
+
+#[test]
+fn hook_reads_allow_main_events_and_ignore_nested_agent_ids() {
+    for payload in [
+        "",
+        "{}",
+        r#"{"agent_id":null}"#,
+        r#"{"agent_id":""}"#,
+        r#"{"tool_response":{"agent_id":"belongs to the tool result"}}"#,
+    ] {
+        let daemon = Daemon::start_built();
+        ok(&muster(&daemon, &["msg", "--as", "receiver", "join", "--group", "review"]));
+        ok(&muster(&daemon, &["msg", "--as", "sender", "join", "--group", "review"]));
+        unheard(&muster(&daemon, &["msg", "--as", "sender", "post", "main message"]));
+        let (status, out, errors) = read_from_hook(daemon.socket_path(), payload.as_bytes());
+        assert_eq!(status, 0, "{payload}: {errors}");
+        assert!(errors.is_empty(), "{errors}");
+        assert!(out.contains("\nmain message\n"), "{out}");
+        assert_eq!(ok(&muster(&daemon, &["msg", "--as", "receiver", "read", "--if-unread"])), "");
+    }
+}
+
+#[test]
+fn bad_hook_input_leaves_messages_unread() {
+    for payload in ["{".to_string(), "[]".to_string(), " ".repeat((1 << 20) + 1)] {
+        let daemon = Daemon::start_built();
+        ok(&muster(&daemon, &["msg", "--as", "receiver", "join", "--group", "review"]));
+        ok(&muster(&daemon, &["msg", "--as", "sender", "join", "--group", "review"]));
+        unheard(&muster(&daemon, &["msg", "--as", "sender", "post", "still unread"]));
+        let (status, out, errors) = read_from_hook(daemon.socket_path(), payload.as_bytes());
+        assert_eq!(status, 1, "{errors}");
+        assert!(out.is_empty(), "{out}");
+        assert!(errors.contains("hook input"), "{errors}");
+        let read = ok(&muster(&daemon, &["msg", "--as", "receiver", "read", "--if-unread"]));
+        assert!(read.contains("\nstill unread\n"), "{read}");
+    }
+}
+
+#[test]
+fn a_subagent_hook_read_does_not_need_a_daemon() {
+    let daemon = Daemon::start_built();
+    let absent = daemon.root().join("absent.sock");
+    assert_eq!(
+        read_from_hook(&absent, br#"{"agent_id":"subagent"}"#),
+        (0, String::new(), String::new())
+    );
+}
+
+#[test]
 fn a_body_comes_whole_from_a_file_or_stdin() {
     let daemon = Daemon::start_built();
     ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "g"]));
