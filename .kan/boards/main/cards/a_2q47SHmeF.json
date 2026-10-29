@@ -8,7 +8,15 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2q7WoutfC",
+      "body": "Landed 2026-10-28 (73ceda6b..99331e10, with the composition refactor 3c02cf8e): five outcomes and refusal codes, Event.correlation to the causing connection, operation ids on pane.new. Retention settled: 24 hours as a time, cap 4096 per store; at the cap a new operation is refused UNAVAILABLE rather than evicting early; an operation under way is kept until settled; ids survive a reconnect, a handoff and an orderly restart, a crash may lose the last second. Written in docs/architecture.md (Durability) and the schema header. Plan reviewed by Codex gpt-6.1-sol xhigh (4 findings, all taken); code by Codex and Claude (1 P1, 1 P2, fixed). pane.new from 2c is done here.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793249895963
+    }
+  ],
   "created_at_millis": 1793241771141,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 2, part 1 of 3: the request envelope for acting. Read docs/mip/0010-api-for-other-tools.md section 5.\n\nWhat: every request carries a correlation id its answer and events repeat; answers are done, already so, refused (not found or a stated reason), not sent (never left this daemon; safe to retry) or unknown (sent, reply lost; may have happened). The daemon already tells the last two apart (Unsent and Unanswered in crates/muster-daemon/src/messages/peer.rs). Operation ids: a post and a new pane carry an id the client chooses; the daemon that carries out the request remembers ids for a retention period, across a reconnect and a handoff, and answers a repeat with already so and the original result. Settle the retention period (an open question in the MIP); record the answer on this card and in docs/architecture.md, since the accepted MIP is frozen.\n\nProves: a gate test client that retries an unknown request with the same operation id never acts twice, including across a daemon handoff; a refused request is never reported as unknown or the reverse.",
@@ -17,12 +25,13 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "a0",
+  "position": "YvK",
   "title": "MIP-10 stage 2a: correlation ids, not sent and unknown, operation ids",
   "type": "feature",
-  "updated_at_millis": 1793246483648,
+  "updated_at_millis": 1793249896014,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241771141},
-    {"field":"column","value":"in-progress","at":1793246483648}
+    {"field":"column","value":"in-progress","at":1793246483648},
+    {"field":"column","value":"done","at":1793249895880}
   ]
 }

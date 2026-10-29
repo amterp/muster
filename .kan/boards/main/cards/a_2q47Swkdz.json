@@ -10,6 +10,14 @@
     "a_2q47QxaZd"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2q7Wp7Yok",
+      "body": "2026-10-28: making a pane (pane.new with an operation id) landed with 2a (1a9b9e50). Left for this card: typing into a pane with the --confirm read-back, closing a pane, compacting and restarting its agent.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793249896094
+    }
+  ],
   "created_at_millis": 1793241771555,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 2, part 3 of 3: acting on panes. Read docs/mip/0010-api-for-other-tools.md section 5.\n\nWhat: make a pane that runs a command in a directory, on this machine, as a helper of a pane or not (`muster pane new --run`), with an operation id; type into a pane with the `--confirm` read-back (`muster pane send`), never retried for the client, an input of unknown fate reported as unknown; close a pane; compact and restart its agent. Each runs the same daemon code the CLI reaches with no window open (crates/muster-cli/src/windowless.rs and the daemon's handlers), so the API and the CLI cannot drift.\n\nProves: a gate test client starts a shell pane, types into it and reads the confirmation, closes it; a retried pane creation with the same operation id makes one pane.",
@@ -21,7 +29,7 @@
   "position": "b1a",
   "title": "MIP-10 stage 2c: making, typing into and closing panes through the API",
   "type": "feature",
-  "updated_at_millis": 1793241773078,
+  "updated_at_millis": 1793249896143,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241771555}
   ]
