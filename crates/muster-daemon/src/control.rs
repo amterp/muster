@@ -93,6 +93,8 @@ pub(crate) struct Outbox {
 #[derive(Debug)]
 struct Queued {
     bytes: AtomicUsize,
+    /// Frames queued and not yet written, which the channel holds and cannot say.
+    messages: AtomicUsize,
     /// The connection fell behind: nothing more is queued, and its writer stops at the next
     /// frame.
     overrun: AtomicBool,
@@ -129,6 +131,7 @@ impl Outbox {
         let (ending, writer_ended) = mpsc::channel::<()>();
         let queued = Arc::new(Queued {
             bytes: AtomicUsize::new(0),
+            messages: AtomicUsize::new(0),
             overrun: AtomicBool::new(false),
             writer_ended: Mutex::new(Some(writer_ended)),
             patience: farewell.as_ref().map(|farewell| farewell.patience),
@@ -149,6 +152,7 @@ impl Outbox {
                             return;
                         }
                         written.bytes.fetch_sub(frame.len(), Ordering::AcqRel);
+                        written.messages.fetch_sub(1, Ordering::AcqRel);
                         if let Some(position) = position {
                             reached = position;
                         }
@@ -159,6 +163,7 @@ impl Outbox {
                             return;
                         }
                         written.bytes.fetch_sub(frame.len(), Ordering::AcqRel);
+                        written.messages.fetch_sub(1, Ordering::AcqRel);
                         answered.log(id);
                     }
                     Outbound::Flushed(done) => {
@@ -189,15 +194,28 @@ impl Outbox {
         self.queue(Outbound::Frame(frame, Some(position)), false)
     }
 
+    /// Whether `bytes` in `messages` more, on top of what is queued now, would pass the budget.
+    pub(crate) fn would_overrun(&self, bytes: usize, messages: usize) -> bool {
+        self.queued.bytes.load(Ordering::Acquire) + bytes > self.budget.bytes
+            || self.queued.messages.load(Ordering::Acquire) + messages > self.budget.messages
+    }
+
+    /// Gives up on the connection as a push past its budget would, with `waiting` bytes not
+    /// yet queued.
+    pub(crate) fn fall_behind(&self, waiting: usize) {
+        self.fell_behind(self.queued.bytes.load(Ordering::Acquire) + waiting, false);
+    }
+
     fn queue(&self, outbound: Outbound, quiet: bool) -> bool {
         if self.queued.overrun.load(Ordering::Acquire) {
             return false;
         }
-        let bytes = match &outbound {
-            Outbound::Frame(frame, _) | Outbound::Answer(frame, _) => frame.len(),
-            Outbound::Flushed(_) | Outbound::Overrun => 0,
+        let (bytes, frames) = match &outbound {
+            Outbound::Frame(frame, _) | Outbound::Answer(frame, _) => (frame.len(), 1),
+            Outbound::Flushed(_) | Outbound::Overrun => (0, 0),
         };
         let queued = self.queued.bytes.fetch_add(bytes, Ordering::AcqRel) + bytes;
+        self.queued.messages.fetch_add(frames, Ordering::AcqRel);
         if queued <= self.budget.bytes {
             match self.sender.try_send(outbound) {
                 Ok(()) => return true,

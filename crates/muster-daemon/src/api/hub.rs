@@ -70,7 +70,16 @@ struct Subscription {
     /// The number of the last event queued.
     last: u64,
     /// Events newer than the snapshot being gathered, until its answer is queued.
-    held: Option<Vec<Held>>,
+    held: Option<Holding>,
+}
+
+/// The events held for a subscription that is joining, and how many bytes they come to: they
+/// are queued for the connection as surely as the ones in its outbox, so they count against the
+/// same budget.
+#[derive(Debug, Default)]
+struct Holding {
+    events: Vec<Held>,
+    bytes: usize,
 }
 
 /// An event held unnumbered, with the correlation id it carries to this subscription.
@@ -78,6 +87,17 @@ struct Subscription {
 struct Held {
     event: api::event::Event,
     correlation: String,
+}
+
+/// More than the tags, lengths, epoch and number a held event's frame adds to it, together.
+const ENVELOPE: usize = 64;
+
+impl Holding {
+    /// Holds `event`, charged at no less than the frame it will be once numbered from `source`.
+    fn hold(&mut self, event: api::event::Event, correlation: String, source: &api::Source) {
+        self.bytes += event.encoded_len() + correlation.len() + source.encoded_len() + ENVELOPE;
+        self.events.push(Held { event, correlation });
+    }
 }
 
 /// The request whose events are being published: on which connection, and its correlation id.
@@ -132,8 +152,12 @@ impl Api {
         let mut connections = self.connections();
         let open = connections.find(connection)?;
         let epoch = draw_epoch();
-        open.subscription =
-            Some(Subscription { epoch, joined: BTreeSet::new(), last: 0, held: Some(Vec::new()) });
+        open.subscription = Some(Subscription {
+            epoch,
+            joined: BTreeSet::new(),
+            last: 0,
+            held: Some(Holding::default()),
+        });
         Some(Joining { connection, epoch })
     }
 
@@ -174,7 +198,7 @@ impl Api {
         let at = Position { epoch: subscription.epoch, number: subscription.last };
         let mut delivered =
             open.outbox.push_at(frame(api::daemon_message::Message::Answer(answer)), at);
-        for held in subscription.held.take().unwrap_or_default() {
+        for held in subscription.held.take().unwrap_or_default().events {
             delivered = delivered
                 && deliver(&open.outbox, subscription, &source, held.event, held.correlation);
         }
@@ -242,7 +266,15 @@ impl Api {
                 .map(|cause| cause.correlation.clone())
                 .unwrap_or_default();
             match subscription.held.as_mut() {
-                Some(held) => held.push(Held { event, correlation }),
+                Some(holding) => {
+                    holding.hold(event, correlation, &source);
+                    // `go_live` pushes the answer and all of these at once.
+                    if open.outbox.would_overrun(holding.bytes, holding.events.len() + 1) {
+                        open.outbox.fall_behind(holding.bytes);
+                        open.subscription = None;
+                        open.ended = true;
+                    }
+                }
                 None => {
                     open.ended |= !deliver(&open.outbox, subscription, &source, event, correlation);
                 }
@@ -362,6 +394,7 @@ mod tests {
     use std::os::unix::net::UnixStream;
 
     use super::*;
+    use crate::control::Budget;
 
     fn hub() -> Arc<Api> {
         Api::new(api::Machine {
@@ -435,5 +468,78 @@ mod tests {
         assert!(matches!(next(&mut asking), api::daemon_message::Message::Answer(_)));
         let event = next_event(&mut asking);
         assert_eq!((event.number, event.correlation.as_str()), (1, "c1"));
+    }
+
+    /// A connection on `hub` whose outbox has `budget`, and the client's end of it.
+    fn connect_within(hub: &Api, budget: Budget) -> (u64, UnixStream) {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let outbox = Outbox::open_with(&ours, budget, Some(super::super::farewell())).unwrap();
+        let id = outbox.id;
+        hub.open(outbox);
+        theirs.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        (id, theirs)
+    }
+
+    fn closed(pane: &str) -> api::event::Event {
+        api::event::Event::PaneClosed(api::PaneClosed { pane: pane.to_string() })
+    }
+
+    fn ended(hub: &Api, connection: u64) -> bool {
+        hub.connections().open.iter().any(|open| open.outbox.id == connection && open.ended)
+    }
+
+    /// A subscription replacing another inherits its backlog, so what it holds counts on top.
+    #[test]
+    fn events_held_on_top_of_a_backlog_past_the_message_budget_end_the_subscription() {
+        let hub = hub();
+        let (connection, _client) = connect_within(&hub, Budget { messages: 6, bytes: 64 << 20 });
+        let live = subscribe(&hub, connection);
+        hub.go_live(&live, "s1".to_string(), api::Snapshot::default());
+        // Larger than the socket holds, so the writer is still on it while the rest queue.
+        hub.publish(api::Topic::Panes, None, || closed(&"p".repeat(4 << 20)));
+        for _ in 0..3 {
+            hub.publish(api::Topic::Panes, None, || closed("p"));
+        }
+
+        let joining = subscribe(&hub, connection);
+        hub.publish(api::Topic::Panes, None, || closed("p"));
+        assert!(!ended(&hub, connection), "five queued and the answer to come is within six");
+        hub.publish(api::Topic::Panes, None, || closed("p"));
+        assert!(ended(&hub, connection), "a sixth held event passes the budget while it is held");
+        hub.go_live(&joining, "s2".to_string(), api::Snapshot::default());
+    }
+
+    /// A held event is charged for the frame it becomes, not its payload alone.
+    #[test]
+    fn small_events_held_past_the_byte_budget_end_the_subscription_as_fallen_behind() {
+        const HELD: u64 = 20;
+        let source = hub().source();
+        let numbered = api::DaemonMessage {
+            message: Some(api::daemon_message::Message::Event(api::Event {
+                epoch: u64::MAX,
+                number: HELD,
+                source: Some(source),
+                correlation: String::new(),
+                event: Some(closed("p")),
+            })),
+        };
+        let (payload, frame) = (closed("p").encoded_len(), numbered.encoded_len());
+        let bytes = usize::try_from(HELD).unwrap() * (payload + frame) / 2;
+        let hub = hub();
+        let (connection, mut client) = connect_within(&hub, Budget { messages: 4096, bytes });
+        let joining = subscribe(&hub, connection);
+        for _ in 0..HELD {
+            hub.publish(api::Topic::Panes, None, || closed("p"));
+        }
+        assert!(ended(&hub, connection), "{HELD} frames of {frame} bytes pass {bytes}");
+        hub.go_live(&joining, "s1".to_string(), api::Snapshot::default());
+
+        match next(&mut client) {
+            api::daemon_message::Message::Ended(ended) => {
+                assert_eq!(ended.reason(), api::ended::Reason::FellBehind);
+            }
+            other => panic!("the connection was sent {other:?}"),
+        }
+        assert!(muster_frame::read_frame_or_end(&mut client, 1 << 24).unwrap().is_none());
     }
 }
