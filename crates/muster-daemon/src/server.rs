@@ -123,23 +123,24 @@ pub(crate) fn accept(shared: &Arc<Shared>) {
 
 fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     let _ = stream.set_read_timeout(Some(HELLO_PATIENCE));
-    // Read as bytes first: an API Hello is muster_api.proto's, and shares only its kind with this
-    // protocol's (`proto/muster_daemon.proto`, connections).
+    // Read as bytes, and the kind alone off them first: an API Hello is muster_api.proto's and
+    // shares only that field with this protocol's (`proto/muster_daemon.proto`, connections), so
+    // neither schema's other fields may decide whether the frame is read at all.
     let hello = muster_frame::read_frame_or_end(&mut stream, connection::LARGEST_MESSAGE).and_then(
         |frame| {
             let Some(frame) = frame else { return Ok(None) };
-            let hello = proto::Hello::decode(frame.as_slice())
-                .map_err(|error| format!("a {}-byte hello did not decode: {error}", frame.len()))?;
-            Ok(Some((hello, frame)))
+            let undecoded = |error| format!("a {}-byte hello did not decode: {error}", frame.len());
+            let kind = Kind::decode(frame.as_slice()).map_err(undecoded)?.kind;
+            if kind == i32::from(ConnectionKind::Api) {
+                return Ok(Some(Greeting::Api(frame)));
+            }
+            let hello = proto::Hello::decode(frame.as_slice()).map_err(undecoded)?;
+            Ok(Some(Greeting::Internal(hello)))
         },
     );
     let hello = match hello {
-        Ok(Some((hello, frame))) => {
-            if hello.kind == i32::from(ConnectionKind::Api) {
-                return crate::api::serve(stream, &frame, shared);
-            }
-            hello
-        }
+        Ok(Some(Greeting::Api(frame))) => return crate::api::serve(stream, &frame, shared),
+        Ok(Some(Greeting::Internal(hello))) => hello,
         Ok(None) => return,
         Err(error) => {
             log::warn(
@@ -188,6 +189,19 @@ fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
         }
         _ => control::serve(stream, shared, &hello.client),
     }
+}
+
+/// The one field every Hello carries, whichever schema it is from.
+#[derive(Clone, PartialEq, prost::Message)]
+struct Kind {
+    #[prost(int32, tag = "2")]
+    kind: i32,
+}
+
+enum Greeting {
+    Internal(proto::Hello),
+    /// An API Hello, undecoded.
+    Api(Vec<u8>),
 }
 
 /// Whether this daemon will serve a connection that says hello this way.

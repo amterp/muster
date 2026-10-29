@@ -50,6 +50,20 @@ fn an_api_client_is_welcomed_by_its_own_version_whatever_the_internal_one_says()
     assert_eq!(features.topics, topics);
 }
 
+/// The kind is read before either schema's other fields: an API Hello stays readable whatever
+/// the internal Hello would make of its other fields.
+#[test]
+fn an_api_hello_is_read_whatever_the_internal_hello_would_make_of_it() {
+    let daemon = daemon();
+    // Field 1 as a number, where the internal Hello holds its version as a message.
+    let mut hello = vec![0x08, 0x07];
+    hello.extend(connection::hello(test_client()).encode_to_vec());
+    assert!(proto::Hello::decode(hello.as_slice()).is_err(), "the internal Hello reads it");
+    let api = Api::try_connect_with_hello(daemon.socket_path(), &hello)
+        .unwrap_or_else(|error| panic!("an API client was not welcomed: {error}"));
+    assert_eq!(api.welcome().api, Some(API));
+}
+
 #[test]
 fn a_client_of_another_api_major_is_refused_with_the_daemons_version_and_hung_up_on() {
     let daemon = daemon();
