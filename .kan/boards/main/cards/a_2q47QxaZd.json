@@ -8,7 +8,15 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2q6xgXkKg",
+      "body": "Landed 2026-10-28: since in the daemon (2b8d3ff5..b7d4b79b) and the panes topic (e54980f2..956453ed): whole pane on appear/change, id on close, title alone raises no event, state rule shared in muster-daemon-proto (Pane::state/shown_state), API 0.2. Reviewed by Codex and Claude (one P2, fixed). Full gate green.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793248545370
+    }
+  ],
   "created_at_millis": 1793241770325,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 1, part 2 of 5: the panes topic. Read docs/mip/0010-api-for-other-tools.md sections 3 and 4 (\"Panes\").\n\nWhat: panes in the snapshot and as events (appears, changes, closes), as typed fields carrying what `muster window --json` gives today: id, callsign, given name, title, machine, directory, harness, state, facts, unread_input, context used, model, cost, session, maker, hidden, quiet, adapter reporting. And `since` as the daemon saw it: the daemon starts recording when an agent entered its current state where it publishes a state change, and carries it across a handoff. Unknown when the daemon did not see the change (after a restart), never filled with a client's first sight. Today the daemon keeps no such time: crates/muster-cli/src/windowless.rs returns since_ms 0 and the window counts from first sight (crates/muster-seam/src/session.rs). Consider having `muster window` with no window open print the daemon's `since` too.\n\nProves: a gate test client sees a pane appear, change state with a `since` that matches the transition, and close; a daemon handoff keeps `since`; a restarted daemon reports `since` as unknown.",
@@ -17,12 +25,13 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "Zz",
+  "position": "YvL",
   "title": "MIP-10 stage 1b: the panes topic, with a since the daemon keeps",
   "type": "feature",
-  "updated_at_millis": 1793246491519,
+  "updated_at_millis": 1793248545423,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241770325},
-    {"field":"column","value":"in-progress","at":1793246491519}
+    {"field":"column","value":"in-progress","at":1793246491519},
+    {"field":"column","value":"done","at":1793248545276}
   ]
 }
