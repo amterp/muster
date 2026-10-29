@@ -7,7 +7,8 @@
 //! conversation is made of and the tokens for what differs per run.
 //!
 //! The same conversations, as the last release shipped them, are kept in `corpus/api-baseline/`,
-//! and stand unchanged in the corpus until the API's version moves past that release's.
+//! and stand unchanged in the corpus while the daemon still serves clients of that release's
+//! version.
 
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
@@ -16,7 +17,7 @@ use std::time::Duration;
 
 use conformance::{Case, CaseError, Conformance};
 use muster_api::connection::LARGEST_MESSAGE;
-use muster_api::version::API;
+use muster_api::version::{API, SERVES_FROM};
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use serde_json::{Map, Value, json};
 
@@ -83,13 +84,15 @@ fn ending() {
     played(&Conformance::load("api-ending.json"));
 }
 
-/// While the API is still the version the last release shipped, every conversation it shipped is
-/// still in the corpus as it was. The corpus is played green above, so an answer can only change
-/// by editing its case, and this is what makes that edit come with a new version: the rule until
-/// the API's 1.0, under which a break raises the version and updates the conversations in the same
-/// change (MIP-10, section 1).
+/// While the daemon still serves clients of the version the last release shipped, every
+/// conversation it shipped is still in the corpus as it was, but for a list of features that has
+/// grown. The corpus is played green above, so an answer can only change by editing its case, and
+/// this is what makes that edit come with a break the daemon admits to: the rule until the API's
+/// 1.0, under which a break moves the oldest version served up to the new one and updates the
+/// conversations in the same change (MIP-10, section 1). Raising the minor alone is not enough,
+/// since every change to the schema does that and a client of the old minor is still welcomed.
 #[test]
-fn the_conversations_a_release_shipped_stand_until_the_version_moves() {
+fn the_conversations_a_release_shipped_stand_while_its_clients_are_served() {
     let directory = conformance::repo_root().join("corpus/api-baseline");
     let shipped = shipped(&directory);
     if shipped.is_empty() {
@@ -101,17 +104,22 @@ fn the_conversations_a_release_shipped_stand_until_the_version_moves() {
         return;
     }
     let baseline = shipped_version(&directory);
-    if (API.major, API.minor) != baseline {
+    if (SERVES_FROM.major, SERVES_FROM.minor) > baseline {
         return;
     }
     let changed = changed_since(&shipped, &conformance::repo_root().join("corpus/conformance"));
     assert!(
         changed.is_empty(),
-        "The API is still {}.{}, the version the last release shipped, and conversations that \
-         release recorded have changed:\n  {}\nImpact: a client written against {0}.{1} hears \
-         answers it was not written for, with nothing to tell it so.\nFix: give the daemon its \
-         old answers back, or raise the API's minor in crates/muster-api/src/version.rs and say \
-         what changed in the release notes; a rewording of a case's `why` alone is not a change.",
+        "The daemon serves clients of API {}.{} and later, and {}.{} is the version the last \
+         release shipped, yet conversations that release recorded have changed:\n  {}\nImpact: \
+         a client written against {2}.{3} is still welcomed and hears answers it was not written \
+         for, with nothing to tell it so.\nFix: give the daemon its old answers back; or, if the \
+         change is a break, move SERVES_FROM in crates/muster-api/src/version.rs up to API \
+         (raising API's minor first if this release has not already) and say what broke in the \
+         release notes. A rewording of a case's `why` is not a change, and neither is a request \
+         or topic added to a features list.",
+        SERVES_FROM.major,
+        SERVES_FROM.minor,
         baseline.0,
         baseline.1,
         changed.join("\n  ")
@@ -131,7 +139,7 @@ fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
         for case in &corpus.cases {
             match now.cases.iter().find(|held| held.name == case.name) {
                 None => changed.push(format!("{name}: `{}` is gone", case.name)),
-                Some(held) if held.given != case.given || held.expect != case.expect => {
+                Some(held) if held.given != case.given || !stands(&case.expect, &held.expect) => {
                     changed.push(format!("{name}: `{}` says something else now", case.name));
                 }
                 Some(_) => {}
@@ -139,6 +147,34 @@ fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
         }
     }
     changed
+}
+
+/// Whether a shipped expectation is still what the corpus expects: the same, but for features
+/// added since, which a client finds in the Welcome and does not miss when they were not there.
+fn stands(shipped: &Value, now: &Value) -> bool {
+    stands_within(shipped, now, false)
+}
+
+fn stands_within(shipped: &Value, now: &Value, in_features: bool) -> bool {
+    match (shipped, now) {
+        (Value::Object(was), Value::Object(is)) => {
+            let kept = was.iter().all(|(key, value)| {
+                is.get(key).is_some_and(|held| {
+                    stands_within(value, held, in_features || key == "features")
+                })
+            });
+            kept && (in_features || is.keys().all(|key| was.contains_key(key)))
+        }
+        (Value::Array(was), Value::Array(is)) if in_features => {
+            let mut rest = is.iter();
+            was.iter().all(|value| rest.any(|held| held == value))
+        }
+        (Value::Array(was), Value::Array(is)) => {
+            was.len() == is.len()
+                && was.iter().zip(is).all(|(value, held)| stands_within(value, held, false))
+        }
+        _ => shipped == now,
+    }
 }
 
 /// The version the copy in `directory` was shipped as, which its `VERSION` file says. Its own
@@ -633,6 +669,20 @@ fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_no
             format!("api-acting.json: `{}` says something else now", as_shipped.cases[1].name),
             "api-gone.json is gone from the corpus".to_string(),
         ]
+    );
+
+    let features = "/conversation/0/heard/0/welcome/machine/features/requests";
+    let welcomed = Conformance::load("api-handshake.json");
+    let mut fewer = Conformance::load("api-handshake.json");
+    let requests = fewer.cases[0].expect.pointer_mut(features).and_then(Value::as_array_mut);
+    requests.expect("the first handshake case lists the requests").remove(1);
+    let mut more = Conformance::load("api-handshake.json");
+    let requests = more.cases[0].expect.pointer_mut(features).and_then(Value::as_array_mut);
+    requests.expect("the first handshake case lists the requests").push(json!("pane.fly"));
+    assert_eq!(
+        changed_since(&[fewer, more], &current),
+        [format!("api-handshake.json: `{}` says something else now", welcomed.cases[0].name)],
+        "a request added since shipping stands, and one gone since does not"
     );
 }
 

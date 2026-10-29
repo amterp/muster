@@ -329,9 +329,12 @@ bound value's text. `api`, the version the client speaks, and `scratch`, a direc
 before the first step. Everything else is compared exactly, so a field the daemon starts filling fails the case, and
 prose a program is told not to parse, `reason` and `detail`, is written `"*"`.
 
-**An answer changes only with the API's version.** Played by the commit that wrote it, a corpus can always be edited
-to agree. So `./release`, once its gate has passed, copies the API's files into `corpus/api-baseline/` with a
-`VERSION` naming the API version it ships them as, and while the API is still that version, every shipped case must be
-in the corpus with the same `given` and `expect`; its `why` may be reworded. An answer a release recorded changes, then, in the change that raises
-the API's minor, which is MIP-10's rule until 1.0. Adding a case is a conversation added to a file; a new file is a
+**An answer changes only with a break the daemon admits to.** Played by the commit that wrote it, a corpus can always
+be edited to agree. So `./release`, once its gate has passed, copies the API's files into `corpus/api-baseline/` with
+a `VERSION` naming the API version it ships them as, and while the daemon still serves clients of that version
+(`SERVES_FROM` in `crates/muster-api/src/version.rs` is no newer), every shipped case must be in the corpus with the
+same `given` and `expect`. Its `why` may be reworded, and a list under `features` may gain entries, since a client
+asks the Welcome what is served. An answer a release recorded changes, then, in the change that moves the oldest
+version served past it, which is MIP-10's rule until 1.0: raising the minor alone does not free it, because every
+change to the schema does that and the old client is still welcomed. Adding a case is a conversation added to a file; a new file is a
 three-line test in the driver naming it, which is what `corpus-lint` holds it to.
