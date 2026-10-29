@@ -176,9 +176,10 @@ impl Messages {
         *poison::lock(&self.joined, "daemon.messages.joined") = self.service.joined();
     }
 
-    /// Who asked question `question` in `group`, where this daemon holds the group's log.
+    /// Who asked question `question` in `group`, by any name a post may give the group, where
+    /// this daemon holds the group's log.
     pub(crate) fn asker(&self, group: &str, question: u64) -> Option<String> {
-        let entries = self.service.entries(group)?;
+        let entries = self.service.entries(&self.service.locate(group).ok()?)?;
         let entry = entries.iter().rev().find(|entry| entry.seq == question)?;
         match &entry.what {
             What::Message { author, .. } => Some(author.clone()),

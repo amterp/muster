@@ -1268,6 +1268,67 @@ fn a_programs_post_to_a_group_kept_on_the_far_daemon_is_kept_there_once() {
     assert_eq!(kept_there(&mut far_control), ["foreman"]);
 }
 
+/// A program answering a question in a group kept on the far daemon, naming it as the human
+/// would by its bare name and naming no addressee, answers whoever asked, as `muster msg post
+/// --answer` does: the near daemon finds the asker in its copy of the group.
+#[test]
+fn a_programs_answer_in_a_group_kept_far_away_goes_to_the_asker() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut far_control, &named("critic"), "critic", "plan");
+    join(&mut far_control, &named("builder"), "builder", "plan");
+    let here = join(&mut near_control, &msg_request::Caller::default(), "@human", "plan");
+    let question = Asked::Post(msg_request::Post {
+        group: Some("plan".to_string()),
+        to: vec!["@human".to_string()],
+        body: "Ship it?".to_string(),
+        answers: vec!["Yes".to_string(), "No".to_string()],
+        ..Default::default()
+    });
+    let asked = expect(&mut far_control, msg(&named("critic"), question), proto::Outcome::Done);
+    let Some(Answer::Posted(asked)) = &msg_answer(&asked).answer else { panic!("{asked:?}") };
+    until_some("the near daemon's copy to hold the question", || {
+        let log = Asked::Log(msg_request::Log { group: here.clone(), ..Default::default() });
+        let answered = expect(
+            &mut near_control,
+            msg(&msg_request::Caller::default(), log),
+            proto::Outcome::Done,
+        );
+        let Some(Answer::Entries(entries)) = &msg_answer(&answered).answer else { panic!() };
+        let mut entries = entries.groups.iter().flat_map(|group| &group.entries);
+        entries.any(|entry| entry.seq == asked.seq).then_some(())
+    });
+
+    let client = api::Client { name: "foreman".to_string(), version: String::new() };
+    let mut program = Api::connect_as(near.socket_path(), client);
+    let answered = program.ask(muster_harness::post(api::NewPost {
+        operation: "op-1".to_string(),
+        group: "plan".to_string(),
+        answering: Some(api::Answering { question: asked.seq, answer: "Yes".to_string() }),
+        ..api::NewPost::default()
+    }));
+    assert_eq!(answered.outcome(), api::Outcome::Done, "{:?}", answered.answer);
+    let log = Asked::Log(msg_request::Log { group: "plan".to_string(), ..Default::default() });
+    let kept = expect(&mut far_control, msg(&named("critic"), log), proto::Outcome::Done);
+    let Some(Answer::Entries(entries)) = &msg_answer(&kept).answer else { panic!() };
+    let answer = entries
+        .groups
+        .iter()
+        .flat_map(|group| &group.entries)
+        .find(|entry| entry.seq == answered.posted().number)
+        .and_then(|entry| match &entry.what {
+            Some(msg_answer::entry::What::Message(message)) => Some(message.clone()),
+            _ => None,
+        })
+        .expect("the answer is kept at the group's home");
+    assert_eq!(
+        (answer.body.as_str(), answer.to.as_slice()),
+        ("Answer: Yes", ["critic".to_string()].as_slice())
+    );
+}
+
 /// On a machine whose human is homed on the one that dialed it, a program's acknowledgement is
 /// carried to the human's home, where their place is kept, and a post to a group kept here is
 /// posted here, where its operation id is kept. A post that would make a group is refused

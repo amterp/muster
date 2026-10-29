@@ -741,7 +741,8 @@ message NewPost {
   // the group of exactly them, made for this post, as a post with no group is.
   string group = 2;
   // Whom it is for, as the group's members are named. Empty: whoever asked the question it
-  // answers, and for any other post, whom the group's policy rings.
+  // answers, where this daemon holds a copy of the group, and otherwise whom the group's policy
+  // rings.
   repeated string to = 3;
   // At most 1 MiB. In a post answering a question, a note after the answer, and may be empty.
   string body = 4;
