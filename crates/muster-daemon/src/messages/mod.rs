@@ -1359,9 +1359,10 @@ fn membering(
         }
         let (group, add, remove) = (&members.group, &members.add, &members.remove);
         let changed =
-            messages.service.group_members(caller, group, add, remove, found, panes, now_ms())?;
-        let answer = messages.members_changed(changed);
+            messages.service.group_members(caller, group, add, remove, found, panes, now_ms());
+        // Members are changed one at a time, so a refusal may come after some were.
         messages.appended();
+        let answer = messages.members_changed(changed?);
         Ok(Some((answer, messages.take_told(), std::mem::take(&mut messages.telling))))
     });
     match result {
@@ -1481,7 +1482,11 @@ fn delivering(
         }
         let posted = match act(&mut messages.service) {
             Ok(posted) => posted,
-            Err(refusal) => return Err(refused("", &refusal)),
+            Err(refusal) => {
+                // A post refused after making the group it was for leaves that group made.
+                messages.appended();
+                return Err(refused("", &refusal));
+            }
         };
         let holding = messages.hold(&posted.wakes, &posted.answered, panes);
         (posted, holding)

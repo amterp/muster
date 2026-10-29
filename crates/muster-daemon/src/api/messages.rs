@@ -2,7 +2,7 @@
 //! every change to them by comparing the service with what was told last, and the pages of a
 //! group's log that `msg.history` answers with.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use muster_api as api;
 use muster_msg::{Entry, GroupSummary, Messaging, Policy, Store, What};
@@ -51,12 +51,9 @@ impl Published {
     /// since, then a change to it, then the human's unread state, which changes with both.
     pub(crate) fn publish<S: Store>(&mut self, service: &Messaging<S>, api: &Api) {
         let summaries = service.groups();
-        let gone: Vec<String> = self
-            .groups
-            .keys()
-            .filter(|name| !summaries.iter().any(|summary| summary.name == **name))
-            .cloned()
-            .collect();
+        let held: BTreeSet<&str> = summaries.iter().map(|summary| summary.name.as_str()).collect();
+        let gone: Vec<String> =
+            self.groups.keys().filter(|name| !held.contains(name.as_str())).cloned().collect();
         for name in gone {
             if let Some(kept) = self.groups.remove(&name) {
                 deleted(api, kept);
@@ -71,7 +68,9 @@ impl Published {
                     made(api, service, group)
                 }
                 Some(mut kept) => {
-                    logged(api, service, &summary.name, kept.group.latest);
+                    if group.latest > kept.group.latest {
+                        logged(api, service, &summary.name, kept.group.latest);
+                    }
                     if !same_but_where_read(&kept.group, &group) {
                         let changed = group.clone();
                         api.publish(api::Topic::Messages, None, || {

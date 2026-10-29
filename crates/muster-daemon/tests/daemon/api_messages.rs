@@ -340,3 +340,28 @@ fn a_post_that_makes_its_group_arrives_with_its_body() {
     assert_eq!(numbers(&entries), expected, "every entry from the group's first, in order");
     assert_eq!(entries.last().and_then(body), Some("need input"));
 }
+
+/// A members request refused partway, after adding one member and before removing a name it
+/// cannot find, still tells a program of the member it added.
+#[test]
+fn a_change_refused_partway_still_tells_a_program_what_it_changed() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "elsewhere");
+    let mut program = daemon.api();
+    program.subscribe(&[api::Topic::Messages]);
+
+    let members = Asked::GroupMembers(msg_request::GroupMembers {
+        group: "g".to_string(),
+        add: vec!["b".to_string()],
+        remove: vec!["nobody".to_string()],
+    });
+    let refused = control.ask(msg(&named("a"), members));
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "{:?}", refused.answer);
+    let changed = next(&mut program, "the member added", |event| match event {
+        api::event::Event::GroupChanged(changed) => changed.group,
+        _ => None,
+    });
+    assert_eq!(changed.members, ["a", "b"]);
+}
