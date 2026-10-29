@@ -319,7 +319,16 @@ conversation, played in order:
   `{"agent": "a", "posts": "body", "to": [...]}`, which may also offer `"answers": [...]` or answer with
   `"answering": {"question": 4, "answer": "Yes"}`, and as `"agent": "@human"` is the desk's post, `{"agent": "a",
   "deletes": "g"}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app": "attending"}` and `{"app": "gone"}`.
-  Each finishes before the next step starts.
+  Each finishes before the next step starts; a restart, once the daemon says it has brought back what it saved.
+
+A client hears nothing the case does not say. After the last step, each client still connected is sent a request no
+daemon serves and must hear only its refusal, apart from what a `passing` it declared allows, and a client told it is
+over, by a refused Hello or an Ended, must hear its connection end. A request rather than a pause, so everything the
+daemon sent before it is read and the check never waits on a clock; something the daemon sends later still than that
+goes unseen. The driver also holds every frame a client hears, the ones `passing` passes over included, to the
+numbering the schema promises: each event one past the last in its subscription's epoch, each answer through the last
+event heard, and each end at it. Either fault is written into the conversation as played, so it fails like any other
+difference, and an event's `number` can be `"*"` where a pane's own changes make the count vary.
 
 What differs from run to run is written as a token. `"*"` is any value that is there, and `"?"` any value or none, for
 a field a pane fills when its program gets to it, such as a title. `"$name"` binds a whole value the first time it is

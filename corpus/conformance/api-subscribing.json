@@ -147,8 +147,12 @@
           {"agent": "a", "joins": "g"},
           {
             "as": "a",
-            "read": 1,
-            "heard": [{"event": {"epoch": "$epoch", "number": "1", "source": "*", "groupMade": "*"}}]
+            "read": 3,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "1", "source": "*", "groupMade": "*"}},
+              {"event": {"epoch": "$epoch", "number": "2", "source": "*", "logged": {"group": "g", "entry": {"number": "1", "atMs": "*", "made": {"by": "a"}}}}},
+              {"event": {"epoch": "$epoch", "number": "3", "source": "*", "logged": {"group": "g", "entry": {"number": "2", "atMs": "*", "joined": {"who": "a"}}}}}
+            ]
           }
         ]
       }

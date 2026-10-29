@@ -108,6 +108,8 @@
             "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
           },
           {"daemon": "hand_off"},
+          {"as": "watcher", "read": 1, "heard": [{"ended": {"reason": "REASON_REPLACED", "epoch": "$epoch", "reached": "1", "detail": "*"}}]},
+          {"as": "foreman", "read": 1, "heard": [{"ended": {"reason": "REASON_REPLACED", "detail": "*"}}]},
           {
             "as": "foreman",
             "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
@@ -119,6 +121,7 @@
             "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
           },
           {"daemon": "restart"},
+          {"as": "foreman", "read": 1, "heard": [{"ended": {"reason": "REASON_STOPPING", "detail": "*"}}]},
           {
             "as": "foreman",
             "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},

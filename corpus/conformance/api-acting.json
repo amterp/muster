@@ -267,7 +267,7 @@
     },
     {
       "name": "an operation id makes one pane per client, and one request",
-      "why": "A repeat is answered ALREADY_SO with the first answer's pane, and an id used for a different request is refused OPERATION_REUSED. Ids are the client's own, scoped by the name in its Hello, so another program choosing the same id makes a pane of its own (the header, Operation ids).",
+      "why": "A repeat is answered ALREADY_SO with the first answer's pane, and an id used for a different request is refused OPERATION_REUSED. Ids are the client's own, scoped by the name in its Hello, so another program choosing the same id makes a pane of its own: one, since the snapshot before it holds the first pane alone and the request makes one appear (the header, Operation ids).",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -314,8 +314,72 @@
           },
           {
             "as": "b",
-            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
-            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$theirs", "callsign": "*"}}}]
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "$pane",
+                        "source": "*",
+                        "callsign": "$callsign",
+                        "title": "?",
+                        "directory": "*",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "*",
+                        "facts": {},
+                        "adapter": "*",
+                        "name": "once"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "2", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "*",
+                  "correlation": "2",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "$theirs",
+                      "source": "*",
+                      "callsign": "$their_callsign",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*",
+                      "name": "once"
+                    }
+                  }
+                }
+              },
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "through": "1",
+                  "made": {"pane": "$theirs", "callsign": "$their_callsign"}
+                }
+              }
+            ]
           }
         ]
       }
@@ -375,6 +439,11 @@
           },
           {"daemon": "hand_off"},
           {
+            "as": "b",
+            "read": 1,
+            "heard": [{"ended": {"reason": "REASON_REPLACED", "epoch": "*", "reached": "1", "detail": "*"}}]
+          },
+          {
             "as": "a",
             "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
             "heard": [{"welcome": "*"}]
@@ -429,7 +498,7 @@
     },
     {
       "name": "an operation id outlives an orderly restart",
-      "why": "The daemon saves the operations it remembers with its tabs, so a client asking again after the daemon was stopped and started is answered from the record, not by making a second pane (the header, Operation ids).",
+      "why": "The daemon saves the operations it remembers with its tabs, so a client asking again after the daemon was stopped and started is answered from the record, not by making a second pane: the snapshot after holds the first pane alone (the header, Operation ids).",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -448,6 +517,7 @@
             ]
           },
           {"daemon": "restart"},
+          {"as": "a", "read": 1, "heard": [{"ended": {"reason": "REASON_STOPPING", "detail": "*"}}]},
           {
             "as": "a",
             "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
@@ -462,6 +532,38 @@
                   "correlation": "1",
                   "outcome": "OUTCOME_ALREADY_SO",
                   "made": {"pane": "$pane", "callsign": "$callsign"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "$pane",
+                        "source": "*",
+                        "callsign": "$callsign",
+                        "title": "?",
+                        "directory": "*",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "?",
+                        "facts": {},
+                        "adapter": "*",
+                        "name": "once"
+                      }
+                    ]
+                  }
                 }
               }
             ]

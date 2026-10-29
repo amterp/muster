@@ -269,10 +269,12 @@ impl Schema {
 struct Conversation<'a> {
     schema: &'a Schema,
     daemon: Daemon,
-    clients: BTreeMap<String, UnixStream>,
+    clients: BTreeMap<String, Client>,
     /// Control connections standing in for Muster's app, by what they stand for.
     app: Option<Control>,
     bound: Map<String, Value>,
+    /// What was wrong with clients that are gone, for the played conversation to show.
+    faults: Vec<Value>,
 }
 
 impl<'a> Conversation<'a> {
@@ -287,11 +289,13 @@ impl<'a> Conversation<'a> {
         let mut bound = Map::new();
         bound.insert("api".to_string(), schema.api());
         bound.insert("scratch".to_string(), json!(canonical(&scratch).to_string_lossy()));
-        Ok(Conversation { schema, daemon, clients: BTreeMap::new(), app: None, bound })
+        let clients = BTreeMap::new();
+        Ok(Conversation { schema, daemon, clients, app: None, bound, faults: Vec::new() })
     }
 
     /// Plays every step of `expect`'s conversation, and answers with the same conversation
-    /// holding what each step heard, settled into the expectation's tokens where it matched.
+    /// holding what each step heard, settled into the expectation's tokens where it matched, and
+    /// what was wrong with a client's connection once it was gone.
     fn play(mut self, expect: &Value) -> Result<Value, CaseError> {
         let steps = expect
             .get("conversation")
@@ -309,9 +313,63 @@ impl<'a> Conversation<'a> {
                 let expected = step.get("heard").cloned().unwrap_or(Value::Array(Vec::new()));
                 settled["heard"] = settle(&expected, &Value::Array(heard), &mut self.bound);
             }
+            played.append(&mut self.faults);
             played.push(settled);
         }
+        let names: Vec<String> = self.clients.keys().cloned().collect();
+        for name in names {
+            self.finish(&name)?;
+        }
+        played.append(&mut self.faults);
         Ok(json!({"conversation": played}))
+    }
+
+    /// Holds `name` to hearing nothing after its last step. A client that was told it is over
+    /// hears its connection end. Any other is sent a request every daemon refuses and nothing
+    /// comes of, and hears only its answer: everything the daemon queued for it before that is
+    /// read, without waiting on a clock. What a `passing` the client declared allows is passed
+    /// over, as in its reads.
+    fn finish(&mut self, name: &str) -> Result<(), CaseError> {
+        let Some(mut client) = self.clients.remove(name) else { return Ok(()) };
+        let last = json!(AFTER_THE_LAST_STEP);
+        if !client.over {
+            let request = self.schema.encode("Request", &json!({"correlation": last}))?;
+            write(&mut client.stream, &request);
+        }
+        let mut unheard = Vec::new();
+        loop {
+            let Some(frame) = read(&mut client.stream) else {
+                if !client.over {
+                    unheard.push(json!("the connection's end, with no answer"));
+                }
+                break;
+            };
+            let message = self.schema.decode("DaemonMessage", &frame)?;
+            client.hear(&message);
+            if message.pointer("/answer/correlation") == Some(&last) {
+                break;
+            }
+            if !client.passing.iter().any(|passing| matches(passing, &message, &self.bound)) {
+                unheard.push(message);
+            }
+        }
+        self.gone(name, &client, unheard);
+        Ok(())
+    }
+
+    /// Puts on record what was wrong with `name`'s connection, now it is gone.
+    fn gone(&mut self, name: &str, client: &Client, unheard: Vec<Value>) {
+        let mut wrong = Map::new();
+        if !client.misnumbered.is_empty() {
+            wrong.insert("misnumbered".to_string(), json!(client.misnumbered));
+        }
+        if !unheard.is_empty() {
+            wrong.insert("heard after its last step".to_string(), Value::Array(unheard));
+        }
+        if !wrong.is_empty() {
+            wrong.insert("as".to_string(), json!(name));
+            self.faults.push(Value::Object(wrong));
+        }
     }
 
     /// Takes one step, and what the client heard if it was a client's.
@@ -325,6 +383,7 @@ impl<'a> Conversation<'a> {
 
     fn client_step(&mut self, client: &str, step: &Value) -> Result<Vec<Value>, CaseError> {
         if let Some(hello) = step.get("hello") {
+            self.finish(client)?;
             let hello = substitute(hello, &self.bound)?;
             let mut stream = dial(&self.daemon);
             write(&mut stream, &self.schema.encode("Hello", &hello)?);
@@ -332,29 +391,32 @@ impl<'a> Conversation<'a> {
                 Some(frame) => vec![self.schema.decode("HelloAnswer", &frame)?],
                 None => Vec::new(),
             };
-            self.clients.insert(client.to_string(), stream);
+            let over = heard.iter().any(|answer| answer.get("welcome").is_none());
+            self.clients.insert(client.to_string(), Client::new(stream, over));
             return Ok(heard);
         }
         if step.get("hang_up").and_then(Value::as_bool) == Some(true) {
-            self.clients.remove(client);
+            self.hang_up(client);
             return Ok(Vec::new());
         }
         let schema = self.schema;
-        let stream = self
+        let name = client;
+        let client = self
             .clients
-            .get_mut(client)
-            .ok_or_else(|| CaseError::new(format!("`{client}` has not said hello")))?;
+            .get_mut(name)
+            .ok_or_else(|| CaseError::new(format!("`{name}` has not said hello")))?;
         if let Some(request) = step.get("send") {
             let request = substitute(request, &self.bound)?;
-            write(stream, &schema.encode("Request", &request)?);
+            write(&mut client.stream, &schema.encode("Request", &request)?);
             if step.get("then").and_then(Value::as_str) == Some("hang_up") {
-                self.clients.remove(client);
+                self.hang_up(name);
                 return Ok(Vec::new());
             }
             let correlation = request.get("correlation").cloned().unwrap_or(Value::Null);
             let mut heard = Vec::new();
-            while let Some(frame) = read(stream) {
+            while let Some(frame) = read(&mut client.stream) {
                 let message = schema.decode("DaemonMessage", &frame)?;
+                client.hear(&message);
                 let answered = message.pointer("/answer/correlation") == Some(&correlation);
                 heard.push(message);
                 if answered {
@@ -366,10 +428,12 @@ impl<'a> Conversation<'a> {
         if let Some(count) = step.get("read").and_then(Value::as_u64) {
             let wanted = step.get("heard").and_then(Value::as_array).cloned().unwrap_or_default();
             let passing = step.get("passing");
+            client.passing.extend(passing.cloned());
             let mut heard = Vec::new();
             while heard.len() < usize::try_from(count).unwrap_or(usize::MAX) {
-                let Some(frame) = read(stream) else { break };
+                let Some(frame) = read(&mut client.stream) else { break };
                 let message = schema.decode("DaemonMessage", &frame)?;
+                client.hear(&message);
                 let next = wanted.get(heard.len());
                 let passed = passing.is_some_and(|passing| matches(passing, &message, &self.bound))
                     && !next.is_some_and(|next| matches(next, &message, &self.bound));
@@ -380,6 +444,12 @@ impl<'a> Conversation<'a> {
             return Ok(heard);
         }
         Err(CaseError::new("a client's step says neither hello, send, read nor hang_up"))
+    }
+
+    fn hang_up(&mut self, name: &str) {
+        if let Some(client) = self.clients.remove(name) {
+            self.gone(name, &client, Vec::new());
+        }
     }
 
     /// What happens in Muster around the clients, brought about as the daemon's own tests do.
@@ -397,6 +467,7 @@ impl<'a> Conversation<'a> {
                     let mut control = self.daemon.connect();
                     stop(&mut self.daemon, &mut control);
                     self.daemon.restart();
+                    until_current(&self.daemon);
                 }
                 other => return Err(CaseError::new(format!("no daemon step `{other}`"))),
             }
@@ -507,6 +578,90 @@ impl<'a> Conversation<'a> {
         self.daemon.set_agent_state(pane, state);
         Ok(())
     }
+}
+
+/// The correlation id of the request a client is sent after its last step.
+const AFTER_THE_LAST_STEP: &str = "after the last step";
+
+/// A client's connection, and where it has got to in its subscription's numbers.
+struct Client {
+    stream: UnixStream,
+    /// The epoch of the subscription it holds and the number of the last event it heard in it.
+    numbered: Option<(u64, u64)>,
+    /// What it heard out of the numbering, in words.
+    misnumbered: Vec<String>,
+    /// Refused at its Hello, or sent an Ended: the daemon hangs up next.
+    over: bool,
+    /// What it may hear on its own, from every `passing` its reads declared.
+    passing: Vec<Value>,
+}
+
+impl Client {
+    fn new(stream: UnixStream, over: bool) -> Client {
+        Client { stream, numbered: None, misnumbered: Vec::new(), over, passing: Vec::new() }
+    }
+
+    /// Holds `message` to the numbering the header promises, whatever the case expects of it:
+    /// each event is one past the last in its subscription's epoch, an answer is through the
+    /// last event heard, and a subscribe's answer starts the count again.
+    fn hear(&mut self, message: &Value) {
+        let at = self.numbered.unwrap_or((0, 0));
+        let heard = if let Some(event) = message.get("event") {
+            let numbered = (uint(event, "epoch"), uint(event, "number"));
+            let next = self.numbered.is_some() && numbered == (at.0, at.1 + 1);
+            self.numbered = Some(numbered);
+            (!next).then(|| format!("event {} of epoch {}", numbered.1, numbered.0))
+        } else if let Some(answer) = message.get("answer") {
+            let through = (uint(answer, "epoch"), uint(answer, "through"));
+            let subscribed = answer.get("outcome") == Some(&json!("OUTCOME_DONE"));
+            match answer.get("snapshot").filter(|_| subscribed) {
+                Some(snapshot) => {
+                    self.numbered = Some(through);
+                    let current = (uint(snapshot, "epoch"), uint(snapshot, "through"));
+                    (current != through).then(|| {
+                        format!(
+                            "a snapshot current to {current:?} in an answer through {through:?}"
+                        )
+                    })
+                }
+                None => (through != at).then(|| {
+                    format!("an answer through event {} of epoch {}", through.1, through.0)
+                }),
+            }
+        } else if let Some(ended) = message.get("ended") {
+            self.over = true;
+            let reached = (uint(ended, "epoch"), uint(ended, "reached"));
+            (reached != at).then(|| format!("an end at event {} of epoch {}", reached.1, reached.0))
+        } else {
+            None
+        };
+        if let Some(heard) = heard {
+            self.misnumbered.push(format!("{heard}, after event {} of epoch {}", at.1, at.0));
+        }
+    }
+}
+
+/// A 64-bit field of `message`, which canonical JSON writes as a string and leaves out at zero.
+fn uint(message: &Value, field: &str) -> u64 {
+    match message.get(field) {
+        Some(Value::String(text)) => text.parse().unwrap_or(u64::MAX),
+        Some(Value::Number(number)) => number.as_u64().unwrap_or(u64::MAX),
+        _ => 0,
+    }
+}
+
+/// Waits until a restarted daemon has brought back what it saved, as a client learns it: from
+/// its own source's state in a snapshot, and the change to current that follows.
+fn until_current(daemon: &Daemon) {
+    let is_current = |status: &api::SourceStatus| status.state() == api::SourceState::Current;
+    let mut client = daemon.api();
+    if client.subscribe(&[]).snapshot().sources.iter().all(is_current) {
+        return;
+    }
+    client.event_matching("the restarted daemon to be current", |event| {
+        matches!(&event.event, Some(api::event::Event::SourceChanged(changed))
+            if changed.status.as_ref().is_some_and(is_current))
+    });
 }
 
 fn strings(step: &Value, key: &str) -> Vec<String> {
