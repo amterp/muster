@@ -128,6 +128,10 @@ pub struct Pane {
     /// Its maker has closed, here or on another machine, so it is no longer quiet on its maker's
     /// behalf (MIP-7, section 6). Set once by its daemon, never cleared.
     pub maker_closed: bool,
+    /// When its daemon saw the agent enter the state [`Pane::state`] reads, in milliseconds
+    /// since the Unix epoch by that daemon's clock. None when the daemon did not see it begin,
+    /// as after a restart, or is too old to say.
+    pub state_since_ms: Option<u64>,
 }
 
 /// The command that resumes a pane's agent session, as its daemon will run it.

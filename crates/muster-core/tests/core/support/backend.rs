@@ -187,6 +187,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         },
         maker: optional(given, "maker").map(PaneId::new),
         maker_closed: false,
+        state_since_ms: None,
     }
 }
 

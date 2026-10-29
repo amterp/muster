@@ -909,10 +909,11 @@ pub(crate) struct Session {
     /// to hear it. Spans the daemons for the reason attention does.
     pane_focus: PaneFocus,
 
-    /// When each pane's agent last changed state, in milliseconds since the epoch.
+    /// When this window saw each pane's agent last change state, in milliseconds since the
+    /// epoch: what a pane says while its daemon does not know when the state began, as after a
+    /// restart or from a daemon too old to say.
     ///
-    /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said -
-    /// and a daemon's events carry no time.
+    /// Stamped here rather than in the mirror, which is a pure fold over what a daemon said.
     state_since: BTreeMap<PaneKey, i64>,
 
     /// The daemons this window cannot reach, and since when, in milliseconds since the epoch.
@@ -1943,7 +1944,11 @@ impl Session {
         progress: Option<Progress>,
     ) -> PaneAgent {
         let state = self.attention.presented(key, pane.presented_state());
-        let since_ms = self.state_since.get(key).copied().unwrap_or_default();
+        let since_ms = pane
+            .state_since_ms
+            .map(|since| i64::try_from(since).unwrap_or(i64::MAX))
+            .or_else(|| self.state_since.get(key).copied())
+            .unwrap_or_default();
         let (state, since_ms, last_state) = match self.unreachable_since.get(&key.daemon) {
             Some(since) => (AgentState::Unreachable, *since, Some(state)),
             None => (state, since_ms, None),
@@ -4731,9 +4736,10 @@ pub(crate) struct PaneAgent {
     pub state: AgentState,
     /// What it read before its daemon stopped answering, while `state` is `Unreachable`.
     pub last_state: Option<AgentState>,
-    /// When the agent last changed state, in milliseconds since the epoch. Zero for a pane
-    /// nothing has stamped, which a window only holds between a daemon describing a pane and
-    /// that change reaching `report`.
+    /// When the agent last changed state, in milliseconds since the epoch: as its daemon saw
+    /// it, or as this window did when the daemon cannot say. Zero for a pane nothing has
+    /// stamped, which a window only holds between a daemon describing a pane and that change
+    /// reaching `report`.
     pub since_ms: i64,
     /// Whether the state is the agent's own report.
     pub reported: bool,

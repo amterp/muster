@@ -69,6 +69,30 @@ fn a_pane_says_since_when_its_agent_has_been_doing_it() {
     );
 }
 
+/// A window opened after the agent settled says when its daemon saw it settle, not when the
+/// window first saw the pane: the daemon is the one that was watching, and two windows, or a window
+/// and `muster window` with none, give one pane one time.
+#[test]
+fn a_window_takes_since_when_from_the_daemon() {
+    let _turn = muster::testing::fresh_session();
+    let (daemon, pane) = an_idle_agent();
+    let record =
+        snapshot(&mut daemon.connect()).panes.into_iter().find(|record| record.pane == pane);
+    let since = record.and_then(|record| record.state_since_ms).expect("the daemon dated the idle");
+    let since = i64::try_from(since).expect("milliseconds fit");
+    // So that the moment the window first sees the pane cannot be the same millisecond.
+    until("the clock to pass the daemon's `since`", || now_ms() > since, || format!("{since}"));
+
+    let open = a_window_onto(daemon, pane);
+
+    assert_eq!(
+        agent(&open.socket, &open.pane).since_ms,
+        since,
+        "the window dates the agent's idle from when it first saw the pane, so it and its daemon \
+         disagree about how long the agent has rested"
+    );
+}
+
 /// A finish nobody saw outlives the window, and a window that shows it clears it for every window.
 ///
 /// The daemon keeps the finish on the pane's record, because it is the one that outlives the app,
@@ -537,13 +561,21 @@ impl Open {
 }
 
 fn a_window_onto_one_pane() -> Open {
+    let (daemon, pane) = an_idle_agent();
+    a_window_onto(daemon, pane)
+}
+
+/// A daemon with one pane, its agent idle. Made before the window opens, so the agent is already
+/// idle when it is first seen and the only state changes a test hears are the ones it makes.
+fn an_idle_agent() -> (Daemon, String) {
     let daemon = Daemon::start_detecting();
     let pane = "p1".to_string();
     make(&mut daemon.connect(), create(&pane, in_new_tab("t1")));
-    // Before the window opens, so the agent is already idle when it is first seen and the only
-    // state changes a test hears are the ones it makes.
     daemon.run_agent(&pane);
+    (daemon, pane)
+}
 
+fn a_window_onto(daemon: Daemon, pane: String) -> Open {
     let socket = daemon.root().join("command.sock");
     open_the_window(&daemon, &socket);
 

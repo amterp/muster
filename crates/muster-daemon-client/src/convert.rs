@@ -182,6 +182,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         compaction,
         maker: record.maker.filter(|maker| !maker.is_empty()).map(PaneId::new),
         maker_closed: record.maker_closed,
+        state_since_ms: record.state_since_ms,
     }
 }
 
