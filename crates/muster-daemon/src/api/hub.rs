@@ -177,7 +177,6 @@ impl Api {
     /// Sends what `event` builds to every subscription that has joined `topic`. Called holding
     /// the lock `topic`'s events are published under; `event` is built only when somebody hears
     /// it.
-    #[expect(dead_code, reason = "a topic's content publishes through it; none has content yet")]
     pub(crate) fn publish(&self, topic: api::Topic, event: impl FnOnce() -> api::event::Event) {
         self.send(Some(topic), event);
     }

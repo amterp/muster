@@ -6,7 +6,7 @@
 use crate::Version;
 
 /// The API this build speaks. Every change to the schema raises `minor`.
-pub const API: Version = Version { major: 0, minor: 1 };
+pub const API: Version = Version { major: 0, minor: 2 };
 
 /// The oldest API a daemon of this build serves. Before 1.0, a change that breaks clients moves
 /// it up to the new `API`; from 1.0 it is the major's first minor, since a break is a new major.

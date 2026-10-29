@@ -213,6 +213,7 @@ impl Shared {
                     replacing: Replacing::No,
                     stop_deferred: false,
                     api: Arc::clone(&api),
+                    api_panes: BTreeMap::new(),
                 }),
                 stopping,
                 instance,
@@ -396,8 +397,12 @@ pub(crate) struct Session {
     manifest_loads: u64,
     manifests_adopted: u64,
     subscribers: Vec<Outbox>,
-    /// The API's connections, told when this daemon's state as a source changes.
+    /// The API's connections, told when this daemon's state as a source changes and when a
+    /// pane does.
     api: Arc<Api>,
+    /// Each pane as the API last described it, which the snapshot holds and a change is weighed
+    /// against (`api::panes::news`).
+    api_panes: BTreeMap<String, muster_api::Pane>,
     /// The subscribers that are windows telling the human what waits for them, by connection.
     attending: HashSet<u64>,
     /// What waits for the human, per group, as last told to the windows, with the order the
@@ -1472,6 +1477,7 @@ impl Session {
     /// Numbers an event and queues it for every subscriber. One that cannot take it has fallen
     /// too far behind to catch up from here, so it is dropped and resubscribes.
     fn emit(&mut self, payload: Payload) {
+        self.tell_api(&payload);
         if !matches!(
             payload,
             Payload::PaneEffect(_)
@@ -1504,6 +1510,56 @@ impl Session {
         if let Some(pane) = pane {
             self.reconsider_asking(&pane);
         }
+    }
+
+    /// Tells the API's subscribers what `payload` changed about a pane as they read it.
+    fn tell_api(&mut self, payload: &Payload) {
+        match payload {
+            Payload::PaneOpened(proto::PaneOpened { pane: Some(record) })
+            | Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }) => {
+                let hidden = self.hidden(&record.pane);
+                api_pane(&mut self.api_panes, &self.api, record, hidden);
+            }
+            Payload::PaneClosed(closed) => {
+                if self.api_panes.remove(&closed.pane).is_some() {
+                    let pane = closed.pane.clone();
+                    self.api.publish(muster_api::Topic::Panes, || {
+                        muster_api::event::Event::PaneClosed(muster_api::PaneClosed { pane })
+                    });
+                }
+            }
+            // Whether a pane is hidden is its tab's to say.
+            Payload::TabOpened(proto::TabOpened { tab: Some(tab) })
+            | Payload::TabChanged(proto::TabChanged { tab: Some(tab) }) => {
+                let panes: Vec<String> = self
+                    .tabs
+                    .iter()
+                    .find(|held| held.name == tab.tab)
+                    .map(|held| held.root.panes().into_iter().map(str::to_string).collect())
+                    .unwrap_or_default();
+                self.api_panes_changed(&panes);
+            }
+            _ => {}
+        }
+    }
+
+    /// Weighs each of `panes` that this daemon runs against what the API last said of it.
+    fn api_panes_changed(&mut self, panes: &[String]) {
+        for name in panes {
+            let hidden = self.hidden(name);
+            if let Some(pane) = self.panes.iter().find(|pane| pane.record.pane == *name) {
+                api_pane(&mut self.api_panes, &self.api, &pane.record, hidden);
+            }
+        }
+    }
+
+    /// Every pane as the API describes it, for a subscription's snapshot.
+    pub(crate) fn api_panes(&self) -> Vec<muster_api::Pane> {
+        self.api_panes.values().cloned().collect()
+    }
+
+    fn hidden(&self, pane: &str) -> bool {
+        self.tab_of(pane).is_some_and(|index| self.tabs[index].hidden)
     }
 
     // -----------------------------------------------------------------------------------------
@@ -3904,8 +3960,10 @@ impl Session {
                 layout_generation: tab.layout_generation,
             });
         }
-        // Adopted panes arrive with no event, which is where asking is otherwise worked out.
-        let panes = self.panes.iter().map(|pane| pane.record.pane.clone()).collect();
+        // Adopted panes arrive with no event, which is where asking is otherwise worked out and
+        // where the API learns of a pane, so both happen here, every tab now in place.
+        let panes: Vec<String> = self.panes.iter().map(|pane| pane.record.pane.clone()).collect();
+        self.api_panes_changed(&panes);
         self.reconsider_each(panes);
         Ok(())
     }
@@ -4237,6 +4295,32 @@ fn typed_line<'a>(
 }
 
 /// Sets `field` to `value`, saying whether that changed it.
+/// Keeps `record` as the API describes it, and tells subscribers when it appears, or changes in
+/// something they read.
+fn api_pane(
+    held: &mut BTreeMap<String, muster_api::Pane>,
+    api: &Api,
+    record: &proto::Pane,
+    hidden: bool,
+) {
+    let now = crate::api::panes::pane(record, hidden, &api.source());
+    match held.insert(record.pane.clone(), now.clone()) {
+        None => api.publish(muster_api::Topic::Panes, || {
+            muster_api::event::Event::PaneAppeared(muster_api::PaneAppeared {
+                pane: Some(Box::new(now)),
+            })
+        }),
+        Some(before) if crate::api::panes::news(&before, &now) => {
+            api.publish(muster_api::Topic::Panes, || {
+                muster_api::event::Event::PaneChanged(muster_api::PaneChanged {
+                    pane: Some(Box::new(now)),
+                })
+            });
+        }
+        Some(_) => {}
+    }
+}
+
 fn replaced<T: PartialEq>(field: &mut T, value: T) -> bool {
     if *field == value {
         return false;

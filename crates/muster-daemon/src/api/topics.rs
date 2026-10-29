@@ -22,9 +22,14 @@ pub(super) fn join(
             snapshot.machines.push(shared.api.machine());
             shared.api.join(joining, topic);
         }
-        api::Topic::Panes
-        | api::Topic::Messages
-        | api::Topic::Attention
-        | api::Topic::Unspecified => shared.api.join(joining, topic),
+        // Under the session's lock, which a pane's events are published under.
+        api::Topic::Panes => {
+            let session = shared.lock();
+            snapshot.panes = session.api_panes();
+            shared.api.join(joining, topic);
+        }
+        api::Topic::Messages | api::Topic::Attention | api::Topic::Unspecified => {
+            shared.api.join(joining, topic);
+        }
     }
 }

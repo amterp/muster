@@ -4,6 +4,7 @@
 
 mod hub;
 pub(crate) mod identity;
+pub(crate) mod panes;
 mod topics;
 
 pub(crate) use hub::Api;

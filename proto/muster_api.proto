@@ -74,6 +74,14 @@
 //   when it was answered.
 // - Reading changes nothing: subscribing moves nobody's place in any group and clears nothing.
 //
+// ## Panes
+//
+// TOPIC_PANES holds every pane its daemon runs, each as a whole Pane: in the snapshot, and again
+// in an event when it appears, when anything a client reads of it changes, and an id when it
+// closes. A client replaces what it holds of a pane with each event's. Nothing fires for a pane's
+// output, and a title on its own fires nothing either, since a harness redraws its title while it
+// works; every event and snapshot carries the latest title.
+//
 // ## Ending
 //
 // The daemon ends a connection with an Ended saying why, when it can:
@@ -266,6 +274,8 @@ message Snapshot {
   repeated SourceStatus sources = 4;
   // TOPIC_MACHINES: every daemon this one answers for, itself first.
   repeated Machine machines = 10;
+  // TOPIC_PANES: every pane.
+  repeated Pane panes = 11;
 }
 
 message SourceStatus {
@@ -294,11 +304,127 @@ message Event {
   oneof event {
     // Whatever the topics.
     SourceChanged source_changed = 10;
+    // TOPIC_PANES.
+    PaneAppeared pane_appeared = 20;
+    PaneChanged pane_changed = 21;
+    PaneClosed pane_closed = 22;
   }
 }
 
 message SourceChanged {
   SourceStatus status = 1;
+}
+
+message PaneAppeared {
+  Pane pane = 1;
+}
+
+// The pane as it is now, whole.
+message PaneChanged {
+  Pane pane = 1;
+}
+
+message PaneClosed {
+  string pane = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Panes
+
+// A terminal its daemon runs, and the agent in it, if any.
+message Pane {
+  // Its id, which no other pane has on any machine and which it keeps for life.
+  string pane = 1;
+  // The daemon running it.
+  Source source = 2;
+  // A short word its daemon drew for it (`otter`), which `muster` takes wherever it takes a
+  // pane, and which no other live pane on that machine holds. Kept through a rename.
+  string callsign = 3;
+  // The name somebody gave it. Empty while nobody has.
+  string name = 4;
+  // What the program in it last called itself.
+  string title = 5;
+  // Its program's working directory.
+  string directory = 6;
+  // The agent running in it, by the name of the harness its daemon recognized (`claude`,
+  // `codex`). Empty while it runs none that its daemon recognizes.
+  string harness = 7;
+  PaneState state = 8;
+  // When its daemon saw the agent enter its state, in milliseconds since the Unix epoch by that
+  // daemon's clock. Waiting and done are laid over the state this dates, so a waiting pane's
+  // `since_ms` is when it went idle, and a done one's when it finished. Absent when the daemon
+  // did not see the state begin: an agent a restart resumed has none until its state next
+  // changes.
+  optional uint64 since_ms = 9;
+  // What the agent says about itself, through its harness's adapter.
+  Facts facts = 10;
+  // Input its program has left unread, while it has stopped reading. Absent while it reads.
+  UnreadInput unread_input = 11;
+  // The id the agent's harness gives its session. Empty while it has reported none.
+  string session = 12;
+  // The pane that made this one as its helper, by id, which may be on another machine. Empty for
+  // a pane nobody made as one.
+  string maker = 13;
+  // No window shows it; it goes on running.
+  bool hidden = 14;
+  // Nothing about it asks for the human: no banner, and no notification.
+  bool quiet = 15;
+  Adapter adapter = 16;
+}
+
+// What a pane's agent is doing, as Muster's window shows it.
+enum PaneState {
+  PANE_STATE_UNSPECIFIED = 0;
+  // No agent its daemon recognizes, or one not yet read.
+  PANE_STATE_UNKNOWN = 1;
+  PANE_STATE_WORKING = 2;
+  // Waiting on the human, at a dialog or a question.
+  PANE_STATE_BLOCKED = 3;
+  PANE_STATE_IDLE = 4;
+  // Idle, having said what it waits on (`Facts.waiting`).
+  PANE_STATE_WAITING = 5;
+  // Its program has stopped reading its input (`Pane.unread_input`).
+  PANE_STATE_STUCK = 6;
+  // It finished something - stopped working, or ended - that no window has shown anybody.
+  PANE_STATE_DONE = 7;
+}
+
+// What a pane's agent says about itself. Each field is absent or empty until it says it.
+message Facts {
+  // How full its context is, as a percentage.
+  optional float context_used = 1;
+  // How many sub-agents it is running.
+  uint32 subagents = 2;
+  string model = 3;
+  // What its session has cost so far, in US dollars.
+  optional double cost_usd = 4;
+  // What it waits on while idle, in its own words.
+  string waiting = 5;
+  // Anything else it says, by name.
+  map<string, string> other = 6;
+}
+
+message UnreadInput {
+  // Bytes waiting for the program to read: whole lines only, when the terminal is line by line.
+  uint32 bytes = 1;
+  // Since when, in milliseconds since the Unix epoch by the daemon's clock.
+  uint64 since_ms = 2;
+  // The program holding the terminal, and its process id.
+  string program = 3;
+  int32 pid = 4;
+}
+
+// Whether a pane's agent reports itself through its harness's adapter, which is where its facts,
+// and its state when it says it, come from.
+enum Adapter {
+  ADAPTER_UNSPECIFIED = 0;
+  // Nothing to say yet: no agent, or one that has not ended a turn.
+  ADAPTER_UNSAID = 1;
+  ADAPTER_REPORTING = 2;
+  // It ended a turn without reporting, and Muster ships an adapter for its harness: install it.
+  ADAPTER_SILENT = 3;
+  // It ended a turn without reporting, and Muster ships no adapter for its harness.
+  ADAPTER_NONE = 4;
 }
 
 // The daemon's last word on a connection, after which it hangs up.

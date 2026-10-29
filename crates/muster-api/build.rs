@@ -11,5 +11,8 @@ fn main() {
     let descriptors = protox::compile([&proto], [root]).expect("the schema compiles");
     let mut config = prost_build::Config::new();
     config.skip_protoc_run();
+    // A pane outweighs every other event, and events wait in a queue per subscription.
+    config.boxed(".muster.api.PaneAppeared.pane");
+    config.boxed(".muster.api.PaneChanged.pane");
     config.compile_fds(descriptors).expect("the schema generates");
 }
