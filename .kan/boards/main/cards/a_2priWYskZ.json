@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "lifting-a-key-raises",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793212213455,
+  "creator": "Alexander Terp",
+  "description": "`PaneInput::send` (crates/muster-core/src/input/pane_input.rs) counts every unbound key event as input that owes output, releases included. The daemon writes a release only to a program that asked for releases (crates/muster-daemon/src/writer.rs, the key encoder), so for a shell or a pager it writes nothing and nothing paints. When the program answers the press before the key comes up, the paint settles what the press owed, the release opens a new debt, and `pane:\u003ckey\u003e:painting` is raised 10s later about a healthy pane. It clears on the next paint.\n\nSeen on devenv/p2f9c3ayhw, a shell, on 0.19.0: KeyQ press 18:26:19.532Z, bridge.painted 19.556, KeyQ release 19.595, problem.raised 29.600. All 18 painting-stopped warnings in the laptop's run log for 2026-10-27 and 2026-10-28 were armed by a release 1-11ms before their 10s clock started. The three runs before that carry 15-22 of the same warning each, not checked for cause.\n\nNot a_2PeXwg4fA (paint reports held until the next frame), which is fixed.\n\nFix: count presses and repeats only, and send a release uncounted, as `pointer` and `focus` already are. Test: press, paint, release, then the deadline passes with nothing raised.",
+  "id": "a_2priWYskZ",
+  "position": "a0",
+  "title": "Lifting a key raises a false painting-stopped warning",
+  "type": "bug",
+  "updated_at_millis": 1793212213455,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793212213455}
+  ]
+}
