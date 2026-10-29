@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "pane-send-command",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793246116676,
+  "creator": "Alexander Terp",
+  "description": "Reported 2026-10-28 by a Claude Code worker (carrot) driving its Codex reviewer's pane after Codex exited to the shell: muster pane send --pane \u003cp\u003e \"\u003ccommand\u003e\" --enter left the command typed at the zsh prompt, and a second muster pane send --pane \u003cp\u003e --key enter was needed. The parallel-work skill says text and its Return in one call are taken by a harness; at a plain shell prompt they were not. Impact: an agent restarting a harness in a pane believes it ran when it did not.",
+  "id": "a_2q5wVBW2n",
+  "position": "b26",
+  "title": "pane send '\u003ccommand\u003e' --enter at a zsh prompt typed the command without submitting it",
+  "type": "bug",
+  "updated_at_millis": 1793246116676,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793246116676}
+  ]
+}

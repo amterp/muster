@@ -1,0 +1,28 @@
+{
+  "_v": 4,
+  "alias": "a-worker-that-posted",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2q65sSp7K",
+      "body": "Also: carrot's declared wait survived a compaction (muster pane compact) - after it, the pane showed 0% context and still 'waiting ... on melon re-checking two review fixes', so muster pane wait --until idle timed out at 300 s on an idle agent.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793246477009
+    }
+  ],
+  "created_at_millis": 1793246116437,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-28 in a parallel-work round, twice: anvil and carrot (Claude Code workers, helpers of tulip) each declared a wait on their own reviewers with report --waiting, got the reviews back, finished, posted 'slot N done' to the integrator and ended their turns at an empty prompt. muster window then showed each as 'waiting ... on review from elder' / 'on melon re-checking two review fixes' rather than done or idle. Impact: the integrator reads a finished worker as still busy. Check whether a turn that ends after a post should clear a declared wait, or whether the agent re-declared it at the end of its last turn (pane read --turn did not show it).",
+  "id": "a_2q5wUnqa4",
+  "position": "b25",
+  "title": "A worker that posted its report and ended its turn still reads waiting on a wait it declared earlier",
+  "type": "bug",
+  "updated_at_millis": 1793246477009,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793246116437}
+  ]
+}

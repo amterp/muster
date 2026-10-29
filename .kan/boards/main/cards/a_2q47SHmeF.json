@@ -8,7 +8,7 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1793241771141,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 2, part 1 of 3: the request envelope for acting. Read docs/mip/0010-api-for-other-tools.md section 5.\n\nWhat: every request carries a correlation id its answer and events repeat; answers are done, already so, refused (not found or a stated reason), not sent (never left this daemon; safe to retry) or unknown (sent, reply lost; may have happened). The daemon already tells the last two apart (Unsent and Unanswered in crates/muster-daemon/src/messages/peer.rs). Operation ids: a post and a new pane carry an id the client chooses; the daemon that carries out the request remembers ids for a retention period, across a reconnect and a handoff, and answers a repeat with already so and the original result. Settle the retention period (an open question in the MIP); record the answer on this card and in docs/architecture.md, since the accepted MIP is frozen.\n\nProves: a gate test client that retries an unknown request with the same operation id never acts twice, including across a daemon handoff; a refused request is never reported as unknown or the reverse.",
@@ -17,11 +17,12 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "b1Y",
+  "position": "a0",
   "title": "MIP-10 stage 2a: correlation ids, not sent and unknown, operation ids",
   "type": "feature",
-  "updated_at_millis": 1793241772818,
+  "updated_at_millis": 1793246483648,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793241771141}
+    {"field":"column","value":"backlog-hi","at":1793241771141},
+    {"field":"column","value":"in-progress","at":1793246483648}
   ]
 }
