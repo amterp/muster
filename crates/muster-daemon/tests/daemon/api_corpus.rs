@@ -6,9 +6,9 @@
 //! as a client generated from the published schema hears it. `docs/testing.md` has the steps a
 //! conversation is made of and the tokens for what differs per run.
 //!
-//! The same conversations, as the last release shipped them, are kept in `corpus/api-baseline/`,
-//! and stand unchanged in the corpus while the daemon still serves clients of that release's
-//! version.
+//! The same conversations, as the last release shipped them, are kept in `corpus/api-baseline/`
+//! with the schema they were recorded against, and stand in the corpus while the daemon still
+//! serves clients of that release's version.
 
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
@@ -85,8 +85,8 @@ fn ending() {
 }
 
 /// While the daemon still serves clients of the version the last release shipped, every
-/// conversation it shipped is still in the corpus as it was, but for a list of features that has
-/// grown. The corpus is played green above, so an answer can only change by editing its case, and
+/// conversation it shipped is still in the corpus as it was, but for what a client of that
+/// version skips: fields its schema did not have, and features its Welcome did not list. The corpus is played green above, so an answer can only change by editing its case, and
 /// this is what makes that edit come with a break the daemon admits to: the rule until the API's
 /// 1.0, under which a break moves the oldest version served up to the new one and updates the
 /// conversations in the same change (MIP-10, section 1). Raising the minor alone is not enough,
@@ -107,7 +107,9 @@ fn the_conversations_a_release_shipped_stand_while_its_clients_are_served() {
     if (SERVES_FROM.major, SERVES_FROM.minor) > baseline {
         return;
     }
-    let changed = changed_since(&shipped, &conformance::repo_root().join("corpus/conformance"));
+    let schema = shipped_schema(&directory);
+    let changed =
+        changed_since(&shipped, &conformance::repo_root().join("corpus/conformance"), &schema);
     assert!(
         changed.is_empty(),
         "The daemon serves clients of API {}.{} and later, and {}.{} is the version the last \
@@ -116,8 +118,8 @@ fn the_conversations_a_release_shipped_stand_while_its_clients_are_served() {
          for, with nothing to tell it so.\nFix: give the daemon its old answers back; or, if the \
          change is a break, move SERVES_FROM in crates/muster-api/src/version.rs up to API \
          (raising API's minor first if this release has not already) and say what broke in the \
-         release notes. A rewording of a case's `why` is not a change, and neither is a request \
-         or topic added to a features list.",
+         release notes. A rewording of a case's `why` is not a change, and neither is a field \
+         {2}.{3}'s schema did not have, or a request or topic added to a features list.",
         SERVES_FROM.major,
         SERVES_FROM.minor,
         baseline.0,
@@ -126,8 +128,9 @@ fn the_conversations_a_release_shipped_stand_while_its_clients_are_served() {
     );
 }
 
-/// Each shipped case the corpus in `current` no longer holds as it was shipped.
-fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
+/// Each shipped case the corpus in `current` no longer holds as it was shipped, judged by the
+/// `schema` it was shipped with.
+fn changed_since(shipped: &[Conformance], current: &Path, schema: &Schema) -> Vec<String> {
     let mut changed = Vec::new();
     for corpus in shipped {
         let name = corpus.file.trim_start_matches("api-baseline/");
@@ -139,7 +142,9 @@ fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
         for case in &corpus.cases {
             match now.cases.iter().find(|held| held.name == case.name) {
                 None => changed.push(format!("{name}: `{}` is gone", case.name)),
-                Some(held) if held.given != case.given || !stands(&case.expect, &held.expect) => {
+                Some(held)
+                    if held.given != case.given || !stands(&case.expect, &held.expect, schema) =>
+                {
                     changed.push(format!("{name}: `{}` says something else now", case.name));
                 }
                 Some(_) => {}
@@ -149,32 +154,109 @@ fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
     changed
 }
 
-/// Whether a shipped expectation is still what the corpus expects: the same, but for features
-/// added since, which a client finds in the Welcome and does not miss when they were not there.
-fn stands(shipped: &Value, now: &Value) -> bool {
-    stands_within(shipped, now, false)
+/// Whether a shipped expectation is still what the corpus expects: the same conversation, step
+/// for step and message for message, where a message may hold a field the shipped `schema` did
+/// not have, since a client skips a field it does not know, and a features list may have gained
+/// entries, since a client asks the Welcome what is served. A field the schema had and the case
+/// did not show was at its zero, so its now being set is a change. A message the shipped
+/// conversation did not hear is a change too, even of an event kind that schema did not have:
+/// it takes a number, so every number and `through` after it moves.
+fn stands(shipped: &Value, now: &Value, schema: &Schema) -> bool {
+    let steps = |expect: &Value| expect.get("conversation").and_then(Value::as_array).cloned();
+    let (Some(was), Some(is)) = (steps(shipped), steps(now)) else { return shipped == now };
+    same_keys(shipped, now)
+        && was.len() == is.len()
+        && was.iter().zip(&is).all(|(step, held)| step_stands(step, held, schema))
 }
 
-fn stands_within(shipped: &Value, now: &Value, in_features: bool) -> bool {
-    match (shipped, now) {
-        (Value::Object(was), Value::Object(is)) => {
-            let kept = was.iter().all(|(key, value)| {
-                is.get(key).is_some_and(|held| {
-                    stands_within(value, held, in_features || key == "features")
-                })
-            });
-            kept && (in_features || is.keys().all(|key| was.contains_key(key)))
+fn step_stands(was: &Value, is: &Value, schema: &Schema) -> bool {
+    let (Value::Object(was), Value::Object(is)) = (was, is) else { return was == is };
+    let heard = if was.contains_key("hello") { "HelloAnswer" } else { "DaemonMessage" };
+    let message_of = |key: &str| match key {
+        "hello" => schema.descriptor("Hello").ok(),
+        "send" => schema.descriptor("Request").ok(),
+        "passing" => schema.descriptor("DaemonMessage").ok(),
+        "heard" => schema.descriptor(heard).ok(),
+        _ => None,
+    };
+    was.len() == is.len()
+        && was.iter().all(|(key, value)| {
+            let Some(held) = is.get(key) else { return false };
+            match (message_of(key), value, held) {
+                (Some(message), Value::Array(said), Value::Array(saying)) => {
+                    said.len() == saying.len()
+                        && said
+                            .iter()
+                            .zip(saying)
+                            .all(|(one, other)| message_stands(one, other, &message, false))
+                }
+                (Some(message), _, _) => message_stands(value, held, &message, false),
+                (None, _, _) => value == held,
+            }
+        })
+}
+
+fn message_stands(
+    was: &Value,
+    is: &Value,
+    message: &prost_reflect::MessageDescriptor,
+    in_features: bool,
+) -> bool {
+    let (Value::Object(had), Value::Object(has)) = (was, is) else { return was == is };
+    let kept = had.iter().all(|(key, value)| {
+        has.get(key).is_some_and(|held| field_stands(message, key, value, held, in_features))
+    });
+    let added = has.keys().filter(|key| !had.contains_key(*key));
+    kept && added
+        .into_iter()
+        .all(|key| in_features || message.get_field_by_json_name(key).is_none())
+}
+
+fn field_stands(
+    message: &prost_reflect::MessageDescriptor,
+    key: &str,
+    was: &Value,
+    is: &Value,
+    in_features: bool,
+) -> bool {
+    use prost_reflect::Kind;
+    let in_features = in_features || key == "features";
+    let Some(field) = message.get_field_by_json_name(key).filter(|field| !field.is_map()) else {
+        return was == is;
+    };
+    match (field.kind(), was, is) {
+        (_, Value::Array(had), Value::Array(has)) if in_features => {
+            let mut rest = has.iter();
+            had.iter().all(|value| rest.any(|held| held == value))
         }
-        (Value::Array(was), Value::Array(is)) if in_features => {
-            let mut rest = is.iter();
-            was.iter().all(|value| rest.any(|held| held == value))
+        (Kind::Message(inner), Value::Array(had), Value::Array(has)) => {
+            had.len() == has.len()
+                && had.iter().zip(has).all(|(one, other)| message_stands(one, other, &inner, false))
         }
-        (Value::Array(was), Value::Array(is)) => {
-            was.len() == is.len()
-                && was.iter().zip(is).all(|(value, held)| stands_within(value, held, false))
-        }
-        _ => shipped == now,
+        (Kind::Message(inner), _, _) => message_stands(was, is, &inner, in_features),
+        _ => was == is,
     }
+}
+
+fn same_keys(one: &Value, other: &Value) -> bool {
+    match (one, other) {
+        (Value::Object(one), Value::Object(other)) => {
+            one.len() == other.len() && one.keys().all(|key| other.contains_key(key))
+        }
+        _ => one == other,
+    }
+}
+
+/// The schema the copy in `directory` was recorded against, which `./release` puts beside it.
+/// Not the baseline's: a release moves that before its gate asks.
+fn shipped_schema(directory: &Path) -> Schema {
+    let file = directory.join("muster_api.proto");
+    assert!(
+        file.exists(),
+        "{} holds conversations and not the schema they were shipped with; ./release writes both",
+        directory.display()
+    );
+    Schema::compiled_from(directory)
 }
 
 /// The version the copy in `directory` was shipped as, which its `VERSION` file says. Its own
@@ -228,7 +310,12 @@ struct Schema {
 
 impl Schema {
     fn compiled() -> Schema {
-        let set = muster_baseline::compile(&muster_baseline::proto_dir(), "muster_api.proto");
+        Schema::compiled_from(&muster_baseline::proto_dir())
+    }
+
+    /// The `muster_api.proto` in `directory`.
+    fn compiled_from(directory: &Path) -> Schema {
+        let set = muster_baseline::compile(directory, "muster_api.proto");
         let pool = DescriptorPool::from_file_descriptor_set(set)
             .unwrap_or_else(|error| panic!("muster_api.proto makes no descriptor pool: {error}"));
         Schema { pool }
@@ -829,8 +916,10 @@ fn interpolated(text: &str, bound: &Map<String, Value>) -> Result<String, CaseEr
 #[test]
 fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_not() {
     let current = conformance::repo_root().join("corpus/conformance");
+    let schema = Schema::compiled();
     let as_shipped = Conformance::load("api-acting.json");
-    assert_eq!(changed_since(std::slice::from_ref(&as_shipped), &current), Vec::<String>::new());
+    let unchanged = changed_since(std::slice::from_ref(&as_shipped), &current, &schema);
+    assert_eq!(unchanged, Vec::<String>::new());
 
     let mut reworded = Conformance::load("api-acting.json");
     reworded.cases[0].why = "said another way".to_string();
@@ -838,7 +927,7 @@ fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_no
     answered_otherwise.cases[1].expect = json!({"conversation": []});
     let mut removed = Conformance::load("api-acting.json");
     removed.file = "api-gone.json".to_string();
-    let changed = changed_since(&[reworded, answered_otherwise, removed], &current);
+    let changed = changed_since(&[reworded, answered_otherwise, removed], &current, &schema);
     assert_eq!(
         changed,
         [
@@ -856,10 +945,42 @@ fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_no
     let requests = more.cases[0].expect.pointer_mut(features).and_then(Value::as_array_mut);
     requests.expect("the first handshake case lists the requests").push(json!("pane.fly"));
     assert_eq!(
-        changed_since(&[fewer, more], &current),
+        changed_since(&[fewer, more], &current, &schema),
         [format!("api-handshake.json: `{}` says something else now", welcomed.cases[0].name)],
         "a request added since shipping stands, and one gone since does not"
     );
+
+    // As a release before panes had adapters would have shipped the first panes case.
+    let pane = "/conversation/2/heard/0/answer/snapshot/panes/0";
+    let mut before_adapters = Conformance::load("api-panes.json");
+    let shown = before_adapters.cases[0].expect.pointer_mut(pane).and_then(Value::as_object_mut);
+    shown.expect("the first panes case shows a pane").remove("adapter");
+    let older = schema_without("  Adapter adapter = 16;\n");
+    let before_adapters = std::slice::from_ref(&before_adapters);
+    assert_eq!(
+        changed_since(before_adapters, &current, &older),
+        Vec::<String>::new(),
+        "a field the shipped schema did not have stands"
+    );
+    assert_eq!(
+        changed_since(before_adapters, &current, &schema).len(),
+        1,
+        "a field the shipped schema had, at its zero then and set now, does not"
+    );
+}
+
+/// This build's schema with `line` taken out, as an older release might have shipped it.
+fn schema_without(line: &str) -> Schema {
+    let text = std::fs::read_to_string(muster_baseline::proto_dir().join("muster_api.proto"))
+        .expect("the schema reads");
+    assert!(text.contains(line), "the schema has no line {line:?}");
+    let directory = std::env::temp_dir().join(format!("muster-api-older-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).expect("a scratch directory");
+    std::fs::write(directory.join("muster_api.proto"), text.replace(line, ""))
+        .expect("the older schema writes");
+    let schema = Schema::compiled_from(&directory);
+    let _ = std::fs::remove_dir_all(&directory);
+    schema
 }
 
 /// The end of a client told it is over is its connection closing, not its connection going quiet.

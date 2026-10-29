@@ -22,8 +22,9 @@ TAP_CASK = "Casks/muster.rb"
 // Each schema whose compatible test holds it to a baseline: the daemon's own protocol, and the
 // API for other programs (MIP-10). `version` is the Rust file declaring the schema's version as
 // `constant`. `corpus` is the conversations recorded against it, and `shipped` where a release
-// keeps them as it shipped them, which the corpus is held to until the version moves
-// (docs/testing.md); the daemon's protocol has none, since nothing outside Muster speaks it.
+// keeps them as it shipped them, with the schema they were recorded against, which the corpus is
+// held to while the daemon still serves that version (docs/testing.md); the daemon's protocol
+// has none, since nothing outside Muster speaks it.
 SCHEMAS = [
     {"name": "daemon protocol", "schema": "proto/muster_daemon.proto",
      "baseline": "proto/muster_daemon.v1.baseline.proto",
@@ -326,10 +327,13 @@ if not committed:
     // left, and replacing the copy first would compare the corpus to itself. Copied whether or
     // not the version moved: while it has not, the gate has just shown the shipped cases are
     // unchanged, and the ones added since are promised from this release on.
+    // The schema goes with them, since the check asks it which fields a shipped case could have
+    // shown: a field added since stands, and the baseline has moved on by the time it is asked.
     for schema in SHIPPED:
         shipped = schema["shipped"]
         corpus = schema["corpus"]
         $`mkdir -p {shipped} && rm -f {shipped}/*.json && cp {corpus} {shipped}/`
+        $`cp {schema["schema"]} {shipped}/`
         write_file("{shipped}/VERSION", schema_version(schema) + "\n")
         print("The {schema["name"]}'s conversations are kept as {target} ships them, in {shipped}.")
 
@@ -343,7 +347,7 @@ if not committed:
     for schema in SHIPPED:
         shipped = schema["shipped"]
         if quiet $`git status --porcelain -- {shipped}`.stdout.trim() != "":
-            message += "\nThe {schema["name"]}'s recorded conversations are kept in {shipped}\nas {target} ships them, and stand until its version moves.\n"
+            message += "\nThe {schema["name"]}'s recorded conversations are kept in {shipped}\nas {target} ships them, with its schema, and stand while that version\nis served.\n"
     message += "\nThe cask names {target} and still carries {latest}'s checksum, marked\nas such, until the notarized build gives its own.\n"
     message_file = quiet $`mktemp`.stdout.trim()
     write_file(message_file, message)
