@@ -313,6 +313,30 @@ pub fn confirm(
     })
 }
 
+/// Types `text` into `pane` as a send does from every caller that is not a window: refused
+/// before anything is typed when the prompt of the pane's agent holds something and `append`
+/// was not asked for, then typed, then confirmed by [`confirm`] when `confirmed` is asked for.
+///
+/// `prompt` reads what that prompt holds, `read(rows)` reads the pane's last `rows` rows or all
+/// of it for zero, and `typed` types the send, saying why when nothing was typed. A window
+/// sends from its own event loop, with the same rules in its own order.
+pub fn send(
+    pane: &str,
+    text: &str,
+    append: bool,
+    confirmed: bool,
+    prompt: impl FnOnce() -> Option<String>,
+    mut read: impl FnMut(u32) -> Result<String, String>,
+    typed: impl FnOnce() -> Result<(), String>,
+) -> Result<(), Unconfirmed> {
+    if checks_prompt(text, append) {
+        into_held_prompt(pane, prompt().as_deref()).map_err(Unconfirmed::Refused)?;
+    }
+    let before = if confirmed { before_sending(&mut read) } else { String::new() };
+    typed().map_err(Unconfirmed::Refused)?;
+    if confirmed { confirm(pane, text, &before, read) } else { Ok(()) }
+}
+
 /// Why [`confirm`] could not confirm a send, by what a caller should do next.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unconfirmed {
@@ -338,7 +362,9 @@ fn squeezed(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PaneText, Unconfirmed, before_sending, checks_prompt, confirm, into_held_prompt};
+    use super::{
+        PaneText, Unconfirmed, before_sending, checks_prompt, confirm, into_held_prompt, send,
+    };
 
     /// Text is checked against a prompt holding something; keys, Return and a lone space with
     /// Return are not, and a send told to append is not.
@@ -538,5 +564,36 @@ mod tests {
     fn a_backends_own_truncation_survives_a_count_that_cut_nothing() {
         assert!(read("one\ntwo\n", true).tail(50).truncated);
         assert!(read("one\ntwo\n", true).tail(0).truncated);
+    }
+
+    /// A send refused for a held prompt types nothing, a send nothing typed is not read back,
+    /// and one not asked to be confirmed reads nothing at all.
+    #[test]
+    fn a_send_types_only_into_an_empty_prompt_and_reads_back_only_what_it_typed() {
+        let typed = std::cell::Cell::new(false);
+        let reads = std::cell::Cell::new(0);
+        let read = |_| {
+            reads.set(reads.get() + 1);
+            Ok(if typed.get() { "$ hello\n" } else { "$ \n" }.to_string())
+        };
+        let type_it = || {
+            typed.set(true);
+            Ok(())
+        };
+
+        let held = send("p1", "hello", false, true, || Some("a draft".to_string()), read, type_it);
+        assert!(matches!(held, Err(Unconfirmed::Refused(_))), "{held:?}");
+        assert_eq!((typed.get(), reads.get()), (false, 0), "nothing typed or read");
+
+        let appended = send("p1", "hello", true, false, || panic!("not asked"), read, type_it);
+        assert_eq!(appended, Ok(()));
+        assert_eq!((typed.get(), reads.get()), (true, 0), "typed, and not read back");
+
+        typed.set(false);
+        let refused = send("p1", "hello", false, true, || None, read, || Err("full".to_string()));
+        assert_eq!(refused, Err(Unconfirmed::Refused("full".to_string())));
+        assert_eq!(reads.get(), 1, "only the read before typing");
+
+        assert_eq!(send("p1", "hello", false, true, || None, read, type_it), Ok(()));
     }
 }

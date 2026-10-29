@@ -406,49 +406,45 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
         Ok(_) => return not_held(socket, pane, "sent"),
         Err(trouble) => return failure(trouble.detail().to_string()),
     }
-    if pane_text::checks_prompt(&send.text, send.append)
-        && let Err(refusal) = pane_text::into_held_prompt(pane, prompt_of(socket, pane).as_deref())
-    {
-        return failure(refusal);
-    }
     let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
-    let before = if send.confirm { pane_text::before_sending(read) } else { String::new() };
-    let typed = daemon::connect_welcomed(socket, ConnectionKind::Input).and_then(
-        |(mut stream, welcome)| {
-            let keys = daemon_proto::version::KEYS_IN_A_SEND;
-            let speaks = welcome.protocol.as_ref();
-            if !send.keys.is_empty()
-                && let Some(refused) =
-                    daemon_proto::version::too_old(daemon::OURS, speaks, keys, "press keys", "sent")
-            {
-                return Err(Trouble::Refused(refused));
-            }
-            let event = daemon_proto::InputEvent {
-                pane: pane.to_string(),
-                input: Some(daemon_proto::input_event::Input::Send(
-                    daemon_proto::input_event::Send {
-                        text: send.text.clone(),
-                        enter: send.enter,
-                        keys: send.keys.clone(),
-                    },
-                )),
-            };
-            connection::send(&mut stream, &event).map_err(|error| {
-                Trouble::Unreachable(format!(
-                    "nothing was sent to {pane}: the muster-daemon at {} would not take it \
-                     ({error}).",
-                    socket.display()
-                ))
+    let prompt = || prompt_of(socket, pane);
+    let typed = || {
+        daemon::connect_welcomed(socket, ConnectionKind::Input)
+            .and_then(|(mut stream, welcome)| {
+                let keys = daemon_proto::version::KEYS_IN_A_SEND;
+                let speaks = welcome.protocol.as_ref();
+                if !send.keys.is_empty()
+                    && let Some(refused) = daemon_proto::version::too_old(
+                        daemon::OURS,
+                        speaks,
+                        keys,
+                        "press keys",
+                        "sent",
+                    )
+                {
+                    return Err(Trouble::Refused(refused));
+                }
+                let event = daemon_proto::InputEvent {
+                    pane: pane.to_string(),
+                    input: Some(daemon_proto::input_event::Input::Send(
+                        daemon_proto::input_event::Send {
+                            text: send.text.clone(),
+                            enter: send.enter,
+                            keys: send.keys.clone(),
+                        },
+                    )),
+                };
+                connection::send(&mut stream, &event).map_err(|error| {
+                    Trouble::Unreachable(format!(
+                        "nothing was sent to {pane}: the muster-daemon at {} would not take it \
+                         ({error}).",
+                        socket.display()
+                    ))
+                })
             })
-        },
-    );
-    if let Err(trouble) = typed {
-        return failure(trouble.detail().to_string());
-    }
-    if !send.confirm {
-        return ok();
-    }
-    match pane_text::confirm(pane, &send.text, &before, read) {
+            .map_err(|trouble| trouble.detail().to_string())
+    };
+    match pane_text::send(pane, &send.text, send.append, send.confirm, prompt, read, typed) {
         Ok(()) => ok(),
         Err(pane_text::Unconfirmed::Refused(refusal)) => failure(refusal),
         Err(pane_text::Unconfirmed::Unknown(reason)) => Response::unanswered(reason),
