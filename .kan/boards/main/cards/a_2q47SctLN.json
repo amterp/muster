@@ -1,0 +1,28 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-2b",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47SHmeF",
+    "a_2q47RHHrM"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793241771350,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 2, part 2 of 3: messages, acting as the human. Read docs/mip/0010-api-for-other-tools.md sections 5 and 7.\n\nWhat: post and answer a question through the API, as `muster msg post` does, acting as the human unless the request names another participant; each post records the client's name, and the conversation and `muster msg log` show it beside the author: `Alex (@human) via foreman` (decided, question D). `msg.ack`: moves the human's place in a group to a given number at the human's home if further on, never back; fetching, replying and dismissing acknowledge nothing; `muster msg read` keeps reading to the end. Today read takes only a group and moves to the head (crates/muster-msg/src/service.rs).\n\nProves: a phone-like gate client that acknowledges #10 while #11 arrives leaves #11 unread at the desk; the desk and the client answering one question at once leaves one answer (the home refuses the second); the banner and the conversation show \"via\".",
+  "id": "a_2q47SctLN",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b1Z",
+  "title": "MIP-10 stage 2b: posting as the human via a client, and msg.ack",
+  "type": "feature",
+  "updated_at_millis": 1793241772948,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793241771350}
+  ]
+}

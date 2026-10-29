@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-1e-read",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47QxaZd",
+    "a_2q47RHHrM",
+    "a_2q47RcMoU"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793241770937,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 1, part 5 of 5: the rest of stage 1. Read docs/mip/0010-api-for-other-tools.md sections 4 and 9, and How it lands.\n\nWhat: `api.read_pane`, pages of a pane's text as `muster pane read` gives them; the API corpus in corpus/ (recorded API conversations the gate replays against the daemon, failing when an answer changes unless the change bumps the API version); `muster docs api`, a docs/cli topic saying where the socket is and what each request and topic does, and `muster docs api --schema` printing muster_api.proto; and the doctrine changes in section 9 (the AGENTS.md non-goal, docs/architecture.md's protocol section). Do it last in stage 1, when parts 2-4 have landed, so the corpus and docs cover them.\n\nProves: the gate replays the corpus; `muster docs api` is reachable as the gate requires of docs/cli; a client generated from `muster docs api --schema` in another language (TypeScript or Go is enough) subscribes and reads panes.",
+  "id": "a_2q47RwXGW",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b1X",
+  "title": "MIP-10 stage 1e: read_pane, the API corpus, muster docs api and doctrine",
+  "type": "feature",
+  "updated_at_millis": 1793241772688,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793241770937}
+  ]
+}

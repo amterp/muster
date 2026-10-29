@@ -1,0 +1,27 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-3a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47Swkdz"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793241771758,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 3, part 1 of 2: other machines' panes, while a window holds the links. Read docs/mip/0010-api-for-other-tools.md sections 3 and 6.\n\nWhat: the link between daemons carries each side's pane snapshot and events and requests about panes, both ways; a client connected to one daemon sees every linked machine's panes, each naming its daemon by stable identity, with per-source status; a request about another machine's pane is carried across under section 5's rules (not sent while the link is down, unknown when the reply is lost), and the local daemon applies the other machine's change to its view before passing the answer back. Uses the link the app already dials (decision C). A devenv sees only the laptop and itself (no second hop).\n\nProves, in the --ssh tier: a client on the laptop sees and drives a devenv pane; a link dropped mid-request answers unknown; duplicate traffic from an old link is dropped.",
+  "id": "a_2q47TGEHt",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b22",
+  "title": "MIP-10 stage 3a: other machines' panes over the link",
+  "type": "feature",
+  "updated_at_millis": 1793241773212,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793241771758}
+  ]
+}

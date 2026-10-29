@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-4-spike",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793241757299,
+  "creator": "Alexander Terp",
+  "description": "Spike for MIP-10 stage 4 (docs/mip/0010-api-for-other-tools.md section 6, and MIP-4 decision 4 (b)). Measure, on macOS and on Linux: whether a muster-daemon started through Launch Services (and on Linux, by `muster msg` with no session) reaches the user's ssh agent and can open an ssh master to a configured machine; and what happens when ssh needs an interactive login (ssh runs in batch mode and refuses a password: crates/muster-ssh/src/tunnel.rs). Record the findings as an observation under docs/observations/ and on this card. Changes nothing outside a scratch setup.",
+  "id": "a_2q475xGWz",
+  "parent": "a_2q2f4W4BF",
+  "position": "b20",
+  "title": "MIP-10 stage 4 spike: can a daemon with no app open ssh links?",
+  "type": "chore",
+  "updated_at_millis": 1793241757299,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793241757299}
+  ]
+}

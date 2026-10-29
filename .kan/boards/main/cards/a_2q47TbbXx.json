@@ -1,0 +1,27 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-3b",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47RHHrM"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793241771966,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 3, part 2 of 2: following other machines' groups without joining them. Read docs/mip/0010-api-for-other-tools.md section 6 (\"Groups over the link without joining them\").\n\nWhat: a peer request that lists and follows the far daemon's groups: those that exist, those made later, policy and member changes, deletion, catching up after a reconnect, with each copy saying whether it is behind. Following makes nobody a member, and a group's home stays its only writer. Today a replica exists only for a group with a local member (crates/muster-msg/src/across.rs; `tell` in crates/muster-msg/src/service.rs sends to members' machines). Settle how a followed group behaves after a long disconnect (an open question in the MIP); record the answer on this card and in docs/architecture.md.\n\nProves, in the --ssh tier: a laptop client sees a conversation between two devenv agents, including a group made while the link was down.",
+  "id": "a_2q47TbbXx",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b23",
+  "title": "MIP-10 stage 3b: following other machines' groups without joining",
+  "type": "feature",
+  "updated_at_millis": 1793241773361,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793241771966}
+  ]
+}

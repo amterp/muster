@@ -1,0 +1,29 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-4-links",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q475xGWz",
+    "a_2q47TGEHt",
+    "a_2q47TbbXx"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793241772169,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 4: links the daemon holds, so a client sees every machine with Muster's app closed. amterp's aim (decision C): a daemon that runs, starts and links on its own, so Foreman works without Muster open. Read docs/mip/0010-api-for-other-tools.md section 6 and its stage-4 acceptance cases.\n\nWhat: the daemon keeps the list of machines the app last gave it and holds those links itself. Each of these is an acceptance case: who owns each tunnel while an app is open and how it passes to the daemon when the app closes, without contention; what the daemon keeps, and dropping a machine removed from the config; what a successor daemon restores after a handoff; two apps on one daemon; a failed login reaching a client as the machine's status; the human's home declared by the machine the app runs on rather than inferred from who dialed (crates/muster-msg/src/service.rs).\n\nBlocked by the spike that measures ssh from a daemon with no app.",
+  "id": "a_2q47TvSoj",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b24",
+  "title": "MIP-10 stage 4: links the daemon holds, so Muster can be closed",
+  "type": "feature",
+  "updated_at_millis": 1793241773494,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793241772169}
+  ]
+}

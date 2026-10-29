@@ -1,0 +1,27 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-1b-the",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47QdUGX"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793241770325,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 1, part 2 of 5: the panes topic. Read docs/mip/0010-api-for-other-tools.md sections 3 and 4 (\"Panes\").\n\nWhat: panes in the snapshot and as events (appears, changes, closes), as typed fields carrying what `muster window --json` gives today: id, callsign, given name, title, machine, directory, harness, state, facts, unread_input, context used, model, cost, session, maker, hidden, quiet, adapter reporting. And `since` as the daemon saw it: the daemon starts recording when an agent entered its current state where it publishes a state change, and carries it across a handoff. Unknown when the daemon did not see the change (after a restart), never filled with a client's first sight. Today the daemon keeps no such time: crates/muster-cli/src/windowless.rs returns since_ms 0 and the window counts from first sight (crates/muster-seam/src/session.rs). Consider having `muster window` with no window open print the daemon's `since` too.\n\nProves: a gate test client sees a pane appear, change state with a `since` that matches the transition, and close; a daemon handoff keeps `since`; a restarted daemon reports `since` as unknown.",
+  "id": "a_2q47QxaZd",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "b1U",
+  "title": "MIP-10 stage 1b: the panes topic, with a since the daemon keeps",
+  "type": "feature",
+  "updated_at_millis": 1793241772301,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793241770325}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-1a-the",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1793241770121,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 1, part 1 of 5: the foundation every other part builds on. Read docs/mip/0010-api-for-other-tools.md sections 1-3 first.\n\nWhat: the `api` connection kind (the fifth, after peer), whose Hello the daemon reads before any internal-version check (today `judge` in crates/muster-daemon/src/server.rs runs before the kind is dispatched); `proto/muster_api.proto` at version 0.1 with its baseline and test (`proto/muster_api.v0.baseline.proto`: the MIP writes v1, but the API is 0.x until Muster 1.0); the feature list in Hello's answer (requests, topics, options); a stable identity for each daemon, fixed when its install first starts; and the event rules of section 3: per-subscription numbering with an epoch, every event naming its source daemon and instance, per-source status in the snapshot (current, restoring, catching up, unreachable), answers after their events, a new epoch after a handoff. Also the per-subscription budget in queued bytes as well as messages, disconnecting a client that falls behind with the number it reached. Ship `api.subscribe` with no topics yet beyond an empty snapshot, so parts 2-4 each add one.\n\nNot here: any topic's content, acting, other machines.\n\nProves: a client in another process (a test client in the gate, not the app) connects with an API Hello while the daemon's internal version differs, subscribes, gets an empty snapshot and a numbered stream; a handoff ends the connection and a resubscribe gets a new epoch; a client that stops reading is dropped at its byte budget and resumes. Pre-1.0: breaking changes are allowed with a version bump and a release note (section 1).",
+  "id": "a_2q47QdUGX",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2q2f4W4BF",
+  "position": "a5",
+  "title": "MIP-10 stage 1a: the api connection, its schema and event rules",
+  "type": "feature",
+  "updated_at_millis": 1793241770121,
+  "history": [
+    {"field":"column","value":"next","at":1793241770121}
+  ]
+}

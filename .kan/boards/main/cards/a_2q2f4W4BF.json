@@ -18,6 +18,12 @@
       "body": "2026-10-28: Accepted (commit after 7aa295ba). All five decisions as recommended; the API's compatibility promise starts at API 1.0. Next: card stage 1 (reads on one machine) for building, when amterp wants it started.",
       "author": "Alexander Terp",
       "created_at_millis": 1793241294883
+    },
+    {
+      "id": "c_2q47zW6Sy",
+      "body": "2026-10-28: carded for building as children of this card. Stage 1 (reads on one machine): 1a a_2q47QdUGX (in next; the foundation, start here), then 1b a_2q47QxaZd, 1c a_2q47RHHrM and 1d a_2q47RcMoU in parallel, then 1e a_2q47RwXGW. Stage 2 (acting): 2a a_2q47SHmeF, then 2b a_2q47SctLN and 2c a_2q47Swkdz. Stage 3 (other machines, window-held links): 3a a_2q47TGEHt, 3b a_2q47TbbXx. Stage 4: spike a_2q475xGWz, then a_2q47TvSoj. Stage 5: a_2q476Ize2. Blocker links encode the order, so kan ready offers only what can start. Stages 1-2 are what Foreman's roadmap step 1 needs.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793241791707
     }
   ],
   "created_at_millis": 1793238296817,
@@ -27,7 +33,7 @@
   "position": "Zy",
   "title": "MIP-10: an API for other tools, served by the daemon",
   "type": "feature",
-  "updated_at_millis": 1793241295015,
+  "updated_at_millis": 1793241791707,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793238296817},
     {"field":"column","value":"backlog-hi","at":1793241295015}

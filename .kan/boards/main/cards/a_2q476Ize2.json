@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "mip-10-stage-5",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2q47Swkdz"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793241757516,
+  "creator": "Alexander Terp",
+  "description": "MIP-10 stage 5: toward the CLI's reach (docs/mip/0010-api-for-other-tools.md section 2 and How it lands). The remaining `muster` verbs as API requests, window verbs (tabs, layout, focus, zoom) carried to an attached window, an observer connection for a pane's output that never sets its size and cannot displace the window's bridge, with taking control as a separate explicit request, and `agent.report` for harnesses without a Muster adapter. Each is a minor, in the order integrations ask for them; split this card when one is wanted.",
+  "id": "a_2q476Ize2",
+  "parent": "a_2q2f4W4BF",
+  "position": "b21",
+  "title": "MIP-10 stage 5: toward the CLI's reach",
+  "type": "feature",
+  "updated_at_millis": 1793241773625,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793241757516}
+  ]
+}
