@@ -519,6 +519,8 @@ fn ended(shared: &Shared, link: &Arc<Link>, why: &str) {
     };
     if !still {
         shared.messages().service.unlinked(&link.peer.name);
+        // Helpers here whose maker is on that machine ask for the person until it is back.
+        shared.doorbell.nudge();
     }
     log::info("msg.peer.unlinked", fields! { "machine" => link.peer.name, "why" => why });
 }

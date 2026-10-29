@@ -46,6 +46,11 @@ pub const ANSWERS: u32 = 8;
 /// `before` and answers with the whole log, so a client asks first.
 pub const PAGED_LOG: u32 = 8;
 
+/// The first minor whose daemon keeps what waits on the human and their presence, and hears what
+/// the app showed them (MIP-10, section 4). An older one refuses both requests in its own words,
+/// which do not say why, so a client asks before sending either.
+pub const ATTENTION: u32 = 9;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

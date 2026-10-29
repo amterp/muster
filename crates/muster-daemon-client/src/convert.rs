@@ -48,8 +48,9 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
 }
 
 /// What an event means to the mirror. None for one the mirror holds nothing about: a setting
-/// changed, which this app sent; a clipboard a Mac does not have; and a daemon handing over,
-/// whose connection ends right after, which is what the follower acts on.
+/// changed, which this app sent; a clipboard a Mac does not have; a daemon handing over,
+/// whose connection ends right after, which is what the follower acts on; and what the daemon
+/// keeps of the human's attention, which a window works out for itself (`muster_core::attention`).
 pub fn event(event: proto::Event) -> Option<BackendEvent> {
     Some(match event.event? {
         event::Event::PaneOpened(opened) => BackendEvent::PaneOpened(pane(opened.pane?)),
@@ -84,7 +85,10 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
         }
         event::Event::SettingsChanged(_)
         | event::Event::PaneEffect(_)
-        | event::Event::Replaced(_) => return None,
+        | event::Event::Replaced(_)
+        | event::Event::Asking(_)
+        | event::Event::Presence(_)
+        | event::Event::Shown(_) => return None,
         event::Event::HumanNotice(notice) => {
             BackendEvent::HumanNotice { group: notice.group.clone(), notice: human(notice) }
         }

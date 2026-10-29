@@ -798,6 +798,7 @@ fn run(shared: &Weak<Shared>) {
         sleep = sleep.min(makers::look(&shared, &mut makers));
         // Before the next look, so a wait it ends wakes its agent on the same pass.
         sleep = sleep.min(waits::look(&shared, &mut waits));
+        sleep = sleep.min(crate::attention::look(&shared));
     }
 }
 

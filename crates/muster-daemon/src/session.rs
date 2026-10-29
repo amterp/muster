@@ -30,6 +30,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
+use muster_core::helpers::MakerHearing;
 use muster_daemon_proto as proto;
 use prost::Message;
 use proto::answer::Detail;
@@ -40,6 +41,7 @@ use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
 use crate::api::Api;
+use crate::attention::{self, Attention};
 use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
@@ -185,6 +187,7 @@ impl Shared {
                     manifests_adopted: 0,
                     subscribers: Vec::new(),
                     attending: HashSet::new(),
+                    attention: Attention::default(),
                     human: human
                         .into_iter()
                         .map(|notice| (notice.group.clone(), (0, notice)))
@@ -401,6 +404,8 @@ pub(crate) struct Session {
     /// message service decided it in: two posts decided one after the other can reach here the
     /// other way round, and the older must not overwrite the newer.
     human: BTreeMap<String, (u64, proto::msg_answer::Notice)>,
+    /// The panes asking for the human, and their presence (MIP-10, section 4).
+    attention: Attention,
     /// The agents that joined messaging by names of their own, which no pane is drawn, nor given
     /// while they are live, as messaging keeps them.
     joined: crate::messages::Joined,
@@ -1177,6 +1182,8 @@ impl Session {
                 S::Subscribe(subscribe) => {
                     return Handled::Snapshot(self.subscribe(asker, subscribe.attends));
                 }
+                S::ReportPresence(report) => self.report_presence(asker.id, &report),
+                S::Shown(shown) => self.shown(shown),
                 S::SetShell(set) => self.set_shell(set),
                 S::SetScrollback(set) => self.set_scrollback(set),
                 S::SetPalette(set) => self.set_palette(set),
@@ -1247,6 +1254,8 @@ impl Session {
     pub(crate) fn unsubscribe(&mut self, connection: u64) {
         self.subscribers.retain(|subscriber| subscriber.id != connection);
         self.attending.remove(&connection);
+        self.attention.left(connection);
+        self.tell_presence();
         if let Some(log) = &self.log {
             log.unfollow(connection);
         }
@@ -1308,6 +1317,8 @@ impl Session {
             settings: Some(self.settings.clone()),
             restoring: self.restoring,
             restored_from_file: self.restored_from_file,
+            asking: self.attention.asking(),
+            presence: Some(self.attention.presence(self.attended(), std::time::Instant::now())),
             human: self
                 .human
                 .values()
@@ -1318,13 +1329,119 @@ impl Session {
     }
 
     fn subscribe(&mut self, asker: &Outbox, attends: bool) -> Reply {
+        if attends {
+            self.attending.insert(asker.id);
+            // Told to the subscribers already here before this one joins them: its snapshot says
+            // it, and nothing reaches a subscription before its snapshot.
+            self.tell_presence_as(true);
+        }
         if !self.subscribers.iter().any(|subscriber| subscriber.id == asker.id) {
             self.subscribers.push(asker.clone());
         }
-        if attends {
-            self.attending.insert(asker.id);
-        }
         Reply { detail: Some(Box::new(Detail::Snapshot(self.snapshot()))), ..Reply::done() }
+    }
+
+    /// Takes what a window attending this daemon says of the person at the desk.
+    fn report_presence(&mut self, connection: u64, report: &proto::ReportPresence) -> Reply {
+        if !self.attending.contains(&connection) {
+            return Reply::refused(
+                "only a window attending this daemon reports the human's presence, and this \
+                 connection did not subscribe as attending, so the report was not taken: \
+                 subscribe with `attends` first",
+            );
+        }
+        self.attention.report(connection, report, std::time::Instant::now());
+        self.tell_presence();
+        Reply::done()
+    }
+
+    fn shown(&mut self, shown: proto::Shown) -> Reply {
+        if shown.about.is_none() {
+            return Reply::refused("a Shown names neither a pane nor a group, so it says nothing");
+        }
+        self.emit(Payload::Shown(shown));
+        Reply::done()
+    }
+
+    /// Lets go of presence reports that have run out by `now`, telling the subscribers if that
+    /// changed anything, and says when the next one will.
+    pub(crate) fn expire_presence(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        let next = self.attention.expire(now);
+        self.tell_presence();
+        next
+    }
+
+    /// Tells the subscribers the human's presence, when it changed.
+    fn tell_presence(&mut self) {
+        self.tell_presence_as(self.attended());
+    }
+
+    fn tell_presence_as(&mut self, attended: bool) {
+        if let Some(presence) = self.attention.presence_changed(attended, std::time::Instant::now())
+        {
+            self.emit(Payload::Presence(presence));
+        }
+    }
+
+    /// Works out again what `pane` asks of the human, and each helper it made, since a maker's
+    /// agent coming or going decides whether they ask; and tells the subscribers what changed.
+    fn reconsider_asking(&mut self, pane: &str) {
+        let helpers = self
+            .panes
+            .iter()
+            .filter(|helper| helper.record.maker.as_deref() == Some(pane))
+            .map(|helper| helper.record.pane.clone());
+        let panes: Vec<String> = std::iter::once(pane.to_string()).chain(helpers).collect();
+        for pane in panes {
+            let now = self.pane_index(&pane).and_then(|index| {
+                let record = &self.panes[index].record;
+                attention::asking(record, self.maker_hearing(record))
+            });
+            if let Some(changed) = self.attention.ask(&pane, now) {
+                self.emit(Payload::Asking(changed));
+            }
+        }
+    }
+
+    /// Whether the maker of `record`'s pane can hear from it: a maker here while it holds an
+    /// agent, one on another machine while a link reaches it and it was found there.
+    fn maker_hearing(&self, record: &proto::Pane) -> MakerHearing {
+        let Some(maker) = record.maker.as_deref().filter(|_| !record.maker_closed) else {
+            return MakerHearing::None;
+        };
+        let heard = match self.pane_index(maker) {
+            Some(index) => self.panes[index].record.agent.as_deref().is_some_and(|a| !a.is_empty()),
+            None => self.attention.heard_elsewhere(maker),
+        };
+        if heard { MakerHearing::Hears } else { MakerHearing::CannotHear }
+    }
+
+    /// Takes which makers on other machines hear from their helpers here, as the helpers' watch
+    /// found them, and works out again what each of their helpers asks.
+    pub(crate) fn set_heard_elsewhere(&mut self, heard: std::collections::BTreeSet<String>) {
+        if !self.attention.set_heard_elsewhere(heard) {
+            return;
+        }
+        let helpers: Vec<String> = self
+            .panes
+            .iter()
+            .filter(|helper| {
+                helper.record.maker.as_deref().is_some_and(|maker| self.pane_index(maker).is_none())
+            })
+            .map(|helper| helper.record.pane.clone())
+            .collect();
+        for helper in helpers {
+            let now = self.pane_index(&helper).and_then(|index| {
+                let record = &self.panes[index].record;
+                attention::asking(record, self.maker_hearing(record))
+            });
+            if let Some(changed) = self.attention.ask(&helper, now) {
+                self.emit(Payload::Asking(changed));
+            }
+        }
     }
 
     /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
@@ -1379,9 +1496,20 @@ impl Session {
                 | Payload::PasteHeld(_)
                 | Payload::HumanNotice(_)
                 | Payload::Stopping(_)
+                | Payload::Asking(_)
+                | Payload::Presence(_)
+                | Payload::Shown(_)
         ) {
             self.persister.changed();
         }
+        let pane = match &payload {
+            Payload::PaneOpened(proto::PaneOpened { pane: Some(record) })
+            | Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }) => {
+                Some(record.pane.clone())
+            }
+            Payload::PaneClosed(closed) => Some(closed.pane.clone()),
+            _ => None,
+        };
         self.seq += 1;
         let message = proto::ControlMessage {
             message: Some(proto::control_message::Message::Event(proto::Event {
@@ -1391,6 +1519,9 @@ impl Session {
         };
         let frame: Arc<[u8]> = message.encode_to_vec().into();
         self.subscribers.retain(|subscriber| subscriber.push(Arc::clone(&frame)));
+        if let Some(pane) = pane {
+            self.reconsider_asking(&pane);
+        }
     }
 
     // -----------------------------------------------------------------------------------------

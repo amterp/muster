@@ -2,6 +2,7 @@
 
 mod api;
 mod arranging;
+mod attention;
 mod attribution;
 mod claude_code;
 mod claude_code_council;

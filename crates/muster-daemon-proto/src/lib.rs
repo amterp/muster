@@ -55,6 +55,8 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::SetHumanName(_)) => "session.set_human_name",
             Some(session_request::Request::SetCompactAt(_)) => "session.set_compact_at",
             Some(session_request::Request::SetResumeAgents(_)) => "session.set_resume_agents",
+            Some(session_request::Request::ReportPresence(_)) => "session.report_presence",
+            Some(session_request::Request::Shown(_)) => "session.shown",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {

@@ -447,8 +447,9 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// Handles a request under the session's lock. One that renames a pane, reports a session's
 /// name or its context, asks for a compaction, or turns naming sessions or compacting on may
 /// leave a line to type into an agent's prompt, which the doorbell's thread does - but only if
-/// it changed something: a statusline repeats its report every few seconds. A report whose
-/// `sender` is another agent than the pane's own is refused before any of it is taken.
+/// it changed something: a statusline repeats its report every few seconds. A presence report
+/// wakes it too, which lets the report go when it runs out. A report whose `sender` is another
+/// agent than the pane's own is refused before any of it is taken.
 fn handle(
     session: &mut Session,
     service: Service,
@@ -459,7 +460,7 @@ fn handle(
     if let Some(refused) = sender.and_then(|sender| session.foreign_report(&service, sender)) {
         return Handled::Reply(refused);
     }
-    let names = matches!(
+    let wakes_doorbell = matches!(
         &service,
         Service::Pane(proto::PaneRequest {
             request: Some(
@@ -471,11 +472,14 @@ fn handle(
             request: Some(
                 session_request::Request::SetNameSessions(_)
                     | session_request::Request::SetCompactAt(_)
+                    | session_request::Request::ReportPresence(_)
             )
         })
     );
     let handled = session.handle(service, outbox);
-    if names && matches!(&handled, Handled::Reply(reply) if reply.outcome == proto::Outcome::Done) {
+    if wakes_doorbell
+        && matches!(&handled, Handled::Reply(reply) if reply.outcome == proto::Outcome::Done)
+    {
         shared.doorbell.nudge();
     }
     handled

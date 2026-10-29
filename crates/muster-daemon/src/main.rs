@@ -6,6 +6,7 @@
 //! told to stop.
 
 mod api;
+mod attention;
 mod attribution;
 mod compaction;
 mod control;

@@ -253,6 +253,9 @@ pub fn named(event: &proto::Event) -> String {
         E::Replaced(replaced) => format!("replaced:{}", replaced.daemon_version),
         E::HumanNotice(notice) => format!("human_notice:{}", notice.group),
         E::Stopping(_) => "stopping".to_string(),
+        E::Asking(asking) => format!("asking:{}", asking.pane),
+        E::Presence(_) => "presence".to_string(),
+        E::Shown(_) => "shown".to_string(),
     }
 }
 
