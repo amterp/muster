@@ -4345,7 +4345,6 @@ fn typed_line<'a>(
     Ok(Some(text))
 }
 
-/// Sets `field` to `value`, saying whether that changed it.
 /// Keeps `record` as the API describes it, and tells subscribers when it appears, or changes in
 /// something they read.
 fn api_pane(
@@ -4373,6 +4372,7 @@ fn api_pane(
     }
 }
 
+/// Sets `field` to `value`, saying whether that changed it.
 fn replaced<T: PartialEq>(field: &mut T, value: T) -> bool {
     if *field == value {
         return false;
