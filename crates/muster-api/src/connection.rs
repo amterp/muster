@@ -6,7 +6,7 @@ use std::path::Path;
 
 use prost::Message;
 
-use crate::version::API;
+use crate::version::{API, understands};
 use crate::{Client, Hello, HelloAnswer, Kind, Refused, Welcome, hello_answer};
 
 /// The most a message either way may be. A frame announcing more is refused before anything is
@@ -57,6 +57,8 @@ pub enum HandshakeError {
     Refused(Refused),
     /// Something answered that did not speak this API.
     Garbled(String),
+    /// A daemon welcomed this client and speaks an API it cannot read, for the reason given.
+    Unreadable(String),
 }
 
 impl std::fmt::Display for HandshakeError {
@@ -79,6 +81,7 @@ impl std::fmt::Display for HandshakeError {
             HandshakeError::Garbled(why) => {
                 write!(formatter, "what answered does not speak Muster's API: {why}")
             }
+            HandshakeError::Unreadable(why) => write!(formatter, "{why}"),
         }
     }
 }
@@ -100,10 +103,13 @@ pub fn open(stream: &mut (impl Read + Write), client: Client) -> Result<Welcome,
     answered(stream)
 }
 
-/// Reads the daemon's answer to a Hello already sent.
+/// Reads the daemon's answer to a Hello already sent. A Welcome from a daemon whose API this
+/// build cannot read is refused here, as the daemon refuses a client it cannot read.
 pub fn answered(stream: &mut impl Read) -> Result<Welcome, HandshakeError> {
     match receive::<HelloAnswer>(stream) {
         Ok(Some(HelloAnswer { answer: Some(hello_answer::Answer::Welcome(welcome)) })) => {
+            let speaks = welcome.api.unwrap_or_default();
+            understands(&speaks).map_err(HandshakeError::Unreadable)?;
             Ok(welcome)
         }
         Ok(Some(HelloAnswer { answer: Some(hello_answer::Answer::Refused(refused)) })) => {
@@ -116,5 +122,26 @@ pub fn answered(stream: &mut impl Read) -> Result<Welcome, HandshakeError> {
             "the daemon hung up before answering the handshake".to_string(),
         )),
         Err(error) => Err(HandshakeError::Garbled(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Version;
+
+    fn welcomed(api: Version) -> Result<Welcome, HandshakeError> {
+        let welcome = Welcome { api: Some(api), machine: None };
+        let answer = HelloAnswer { answer: Some(hello_answer::Answer::Welcome(welcome)) };
+        let mut written = Vec::new();
+        send(&mut written, &answer).unwrap();
+        answered(&mut written.as_slice())
+    }
+
+    #[test]
+    fn a_welcome_from_a_daemon_this_client_reads_is_taken_and_any_other_is_refused() {
+        assert!(welcomed(API).is_ok());
+        let other = welcomed(Version { major: API.major + 1, minor: 0 });
+        assert!(matches!(other, Err(HandshakeError::Unreadable(_))), "{other:?}");
     }
 }

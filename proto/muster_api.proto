@@ -24,7 +24,10 @@
 // ## Versions
 //
 // `Version` is a major and a minor. The daemon serves a client of its own major whose version is
-// no older than the oldest it still serves, and says its own version in Welcome and Refused.
+// no older than the oldest it still serves, and says its own version in Welcome and Refused. A
+// client makes the same check of the daemon's version in Welcome, since a daemon cannot know of a
+// break made after it was built: it reads only a daemon of its own major whose version is no older
+// than the oldest its own build serves.
 // Every change to this schema raises the minor. `muster_api.v<major>.baseline.proto` beside this
 // file is the schema as the last release shipped it, and records which version that was; a test
 // in muster-api fails when this file stops reading it or when the two versions disagree.

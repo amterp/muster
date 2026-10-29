@@ -37,6 +37,24 @@ pub fn serves(client: &Version) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a client of this build can read a daemon that speaks `daemon`, and if not, why: the
+/// client's half of the rule, since a daemon cannot know of a break made after it was built.
+pub fn understands(daemon: &Version) -> Result<(), String> {
+    if daemon.major != API.major {
+        return Err(format!(
+            "the daemon speaks API {daemon} and this client speaks {API}; a client reads only a \
+             daemon of its own major version"
+        ));
+    }
+    if daemon.minor < SERVES_FROM.minor {
+        return Err(format!(
+            "the daemon speaks API {daemon}, and this client speaks {API}, which changed \
+             incompatibly after it; update Muster"
+        ));
+    }
+    Ok(())
+}
+
 impl std::fmt::Display for Version {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}.{}", self.major, self.minor)
@@ -52,6 +70,18 @@ mod tests {
         assert!(serves(&API).is_ok());
         assert!(serves(&SERVES_FROM).is_ok());
         assert!(serves(&Version { major: API.major, minor: API.minor + 1 }).is_ok());
+    }
+
+    #[test]
+    fn a_client_reads_a_daemon_of_its_major_from_the_oldest_it_serves_on_and_no_other() {
+        assert!(understands(&API).is_ok());
+        assert!(understands(&Version { major: API.major, minor: API.minor + 1 }).is_ok());
+        let other = understands(&Version { major: API.major + 1, minor: 0 }).unwrap_err();
+        assert!(other.contains("major"), "{other}");
+        if let Some(minor) = SERVES_FROM.minor.checked_sub(1) {
+            let older = Version { major: API.major, minor };
+            assert!(understands(&older).unwrap_err().contains("update Muster"), "{older}");
+        }
     }
 
     #[test]
