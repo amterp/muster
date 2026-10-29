@@ -95,8 +95,8 @@ Muster imposes no workflow: it provides panes, states, sessions, and a scriptabl
 how you run your agents.
 
 - Not a terminal emulator - libghostty is.
-- Not a multiplexer. Muster runs a session daemon of its own, which exists only to serve Muster and has no
-  interface of its own.
+- Not a multiplexer. Muster runs a session daemon of its own, which exists to serve Muster; its one interface to other
+  programs is the API (MIP-10).
 - Not an agent framework - Muster runs whatever agents you already run.
 
 ## Shape
@@ -153,6 +153,10 @@ wrong thing to reap on a schedule.
 length, `muster msg read` it, and the daemon wakes whoever it is for, so nobody waits in a loop. It asks the daemon
 rather than the window, so it works from a plain terminal and with no window open - starting the daemon if none is
 running - and `muster docs msg` is the rest.
+
+A program that is not an agent in a pane - a dashboard, a phone's server, a notifier - uses the daemon's API instead:
+protobuf over the daemon's socket, with a schema and a version of its own, so that `--json` stays free to change for
+agents. `muster docs api` is where to start, and `muster docs api --schema` prints the schema to generate a client from.
 
 `muster docs` is the reference and it ships inside the binary, so it describes the version you are
 running. `muster --help` has the grammar, `muster completions zsh` writes a completion script.

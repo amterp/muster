@@ -365,6 +365,12 @@ between "bytes" and "control":
   daemon is the only writer to a pane.
 - **The control plane is not one connection.** A window holds two per daemon: one for requests, their answers
   and the daemon's events, in order, and one for input alone, so typing never queues behind a request.
+- **Other programs get a connection of their own: the API** (MIP-10). Its Hello names `api` and the API's own
+  version, and the daemon reads it before anything about the internal protocol, so a program is never judged by a
+  version it does not speak. Its schema is `proto/muster_api.proto`, versioned and changed apart from the internal
+  one, which changes with the app; every request it serves runs the daemon code a windowless CLI request reaches,
+  so it is a third door into the one action path rather than a second implementation. `muster docs api` is the
+  client author's guide, and its rules are in the schema's header.
 - **The app is never napped.** It hosts the command socket agents drive the window through and the reader of
   every daemon's answers, and agents drive it hardest while nobody is looking - which is when macOS naps an app
   and runs every thread at the background priority, below a niced build. So the app holds a user-initiated
@@ -542,6 +548,22 @@ built for this (MIP-3, section 9):
 - **Cross-daemon order is core order.** Streams from different daemons have no mutual order. Composition and
   attention are ordered by the core's own application sequence, and nothing may depend on cross-daemon event order
   for correctness.
+
+The API's events (MIP-10, section 3) keep these rules and add what a program that is not Muster needs:
+
+- **Numbers belong to the subscription.** Each subscription has an epoch of its own and numbers its events from 1, and
+  a topic it did not ask for takes no numbers, so a gap means exactly that this client missed something. The snapshot
+  says the number it is current to, and events published while it was gathered are held and numbered after its
+  answer, so it joins the stream without a gap.
+- **An event says who caused it, to the one who did.** An event a request caused carries the request's correlation
+  id on the connection that sent it and on no other, and arrives before the request's answer, whose `through` names
+  the last event the connection was sent. The publisher passes the cause in from under the lock the event is
+  published under, so a cause can never be read by a publisher holding another lock.
+- **A slow reader costs only itself.** Each subscription's budget is in bytes as well as messages, 32 MiB beside
+  4096, since a post's body can be a megabyte, and events held while a subscription joins count against it. A client
+  past it is ended with the number it had reached, and resumes by subscribing again.
+- **Every event names its source** by a daemon identity fixed when its install first started and an instance that
+  changes each time it starts, so events from two machines are never confused, and have no order between them.
 
 What herdr's events forced on the mirror - rejecting replayed events, remembering removals, a subscription per pane
 for agent state - is recorded in `observations/herdr-0.8.0.md` sections 10 and 11, and went with it.
