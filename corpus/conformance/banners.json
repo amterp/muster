@@ -887,6 +887,42 @@
           { "group": "g", "seq": 4, "author": "otter", "answers": "Yes / No", "held": true, "replyable": true }
         ]
       }
+    },
+    {
+      "name": "a banner held while its question was answered away from it goes once it lets go",
+      "why": "The question was settled while the human's words held the banner up, so letting go leaves nothing to ask.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ship it?", "answers": ["Yes", "No"] },
+          { "hold": "g", "seq": 4 },
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"], "answered": [4] },
+          { "hold": "g", "seq": 4, "held": false }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": []
+      }
+    },
+    {
+      "name": "a newer question answered away from a held banner is not raised once it lets go",
+      "why": "The newer question waited behind the held banner; answered elsewhere, it is settled with everything before it, as a reply from the banner would settle them.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ship it?", "answers": ["Yes", "No"] },
+          { "hold": "g", "seq": 4 },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter"] },
+          { "fetched": "g", "seq": 5, "author": "otter", "body": "and the docs?", "answers": ["Yes", "No"] },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter"], "answered": [5] },
+          { "hold": "g", "seq": 4, "held": false }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": []
+      }
     }
   ]
 }

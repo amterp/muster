@@ -134,9 +134,16 @@ impl Operations {
         self.sent.values().cloned().collect()
     }
 
+    /// Keeps the newest post under each id: one that expired is still in its group's log, and an
+    /// id reused since must not be answered with it.
     fn remember(&mut self, operated: Operated) {
         let key = (operated.client.clone(), operated.id.clone());
-        self.posted.insert(key, operated);
+        match self.posted.get(&key) {
+            Some(kept) if kept.at_ms > operated.at_ms => {}
+            _ => {
+                self.posted.insert(key, operated);
+            }
+        }
     }
 }
 

@@ -1321,3 +1321,54 @@ fn on_the_dialed_machine_a_programs_ack_is_carried_home_and_a_new_pair_is_refuse
         refused.answer
     );
 }
+
+/// A question asked of the human and a member on the far daemon is answered by that member: the
+/// near daemon's windows are told it is answered, so the desk's banner stops asking it, though
+/// the answer rings nobody here and nothing was read.
+#[test]
+fn a_question_answered_from_the_far_daemon_is_told_to_the_near_windows() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    let person = msg_request::Caller::default();
+    join(&mut near_control, &person, "@human", "plan");
+    join(&mut near_control, &named("a"), "a", "plan");
+    let there = join(&mut far_control, &named("b"), "b", "plan");
+    let mut window = near.connect();
+    expect(&mut window, attending_request(), proto::Outcome::Done);
+
+    let question = Asked::Post(msg_request::Post {
+        group: Some("plan".to_string()),
+        to: vec!["@human".to_string(), "b@far".to_string()],
+        body: "ship it?".to_string(),
+        answers: vec!["Yes".to_string(), "No".to_string()],
+        ..Default::default()
+    });
+    let asked = expect(&mut near_control, msg(&named("a"), question), proto::Outcome::Done);
+    let Some(Answer::Posted(posted)) = &msg_answer(&asked).answer else { panic!("{asked:?}") };
+    let read = Asked::Read(msg_request::Read { group: Some(there.clone()) });
+    expect(&mut far_control, msg(&named("b"), read), proto::Outcome::Done);
+    // Addressed to its asker alone, as a reply is, so it rings nobody on the near daemon.
+    let near_machine = there.trim_start_matches("plan@").to_string();
+    let answer = Asked::Post(msg_request::Post {
+        group: Some(there),
+        to: vec![format!("a@{near_machine}")],
+        body: "Answer: Yes".to_string(),
+        answering: Some(msg_request::Answering { question: posted.seq, answer: "Yes".to_string() }),
+        ..Default::default()
+    });
+    let answered = far_control.ask(msg(&named("b"), answer));
+    assert_eq!(answered.outcome(), proto::Outcome::Done, "{}", answered.answer.reason);
+
+    let told = until_some("the windows to be told it is answered", || {
+        match window.next_message(LINKING)? {
+            proto::control_message::Message::Event(proto::Event {
+                event: Some(proto::event::Event::HumanNotice(notice)),
+                ..
+            }) if !notice.answered.is_empty() => Some(notice),
+            _ => None,
+        }
+    });
+    assert_eq!((told.group.as_str(), told.answered), ("plan", vec![posted.seq]));
+}

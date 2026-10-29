@@ -256,8 +256,18 @@ impl Banners {
         if notice.answered.contains(&last) {
             let settled = self.settled.entry(group.clone()).or_insert(last);
             *settled = (*settled).max(last);
-            if self.standing.get(group).is_some_and(|standing| !standing.holding()) {
-                self.standing.remove(group);
+            match self.standing.get_mut(group) {
+                // Its words stay; let go, nothing through `last` comes back.
+                Some(standing) if standing.holding() => {
+                    standing.waiting = false;
+                    if standing.newer.as_ref().is_some_and(|newer| newer.seq() <= last) {
+                        standing.newer = None;
+                    }
+                }
+                Some(_) => {
+                    self.standing.remove(group);
+                }
+                None => {}
             }
             return None;
         }

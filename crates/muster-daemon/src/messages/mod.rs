@@ -101,6 +101,9 @@ pub(crate) struct Messages {
     /// The groups the human is in, as the windows were last told: one joined since is told of
     /// with what waits there, so a window lists it before anything is posted to it.
     human_groups: BTreeSet<String>,
+    /// The questions the windows were last told have their answer, in each of the human's groups
+    /// where any have.
+    answered_told: BTreeMap<String, Vec<u64>>,
     /// Follows of a log waiting for its next entry, woken by anything that may have appended.
     follows: Vec<Sender<()>>,
     /// Changes made by the request being handled, for the other machines with members in
@@ -155,6 +158,7 @@ impl Messages {
             told: Vec::new(),
             tellings: 0,
             human_groups,
+            answered_told: BTreeMap::new(),
             follows: Vec::new(),
             telling: Vec::new(),
             joined,
@@ -203,6 +207,21 @@ impl Messages {
         let groups = self.service.human_groups();
         for group in groups.difference(&self.human_groups) {
             self.told.push(self.for_human(&self.service.human_notice(group)));
+        }
+        // A question answered, by whomever and from wherever, may leave a banner asking it, and
+        // its answer rings nobody: tell the windows once the answered questions change.
+        self.answered_told.retain(|group, _| groups.contains(group));
+        for group in &groups {
+            let answered = self.service.human_answered(group);
+            let told =
+                self.answered_told.get(group).map_or(answered.is_empty(), |told| *told == answered);
+            if told {
+                continue;
+            }
+            if !self.told.iter().any(|notice| notice.group == *group) {
+                self.told.push(self.for_human(&self.service.human_notice(group)));
+            }
+            self.answered_told.insert(group.clone(), answered);
         }
         self.human_groups = groups;
         self.tellings += 1;
@@ -1362,27 +1381,8 @@ fn posting(
             Err(reply) => return reply,
         }
     };
-    if answering.is_some() && !delivered.posted.already {
-        tell_answered(shared, &delivered.posted.group);
-    }
     let posted = told("msg.posted", Some(post.body.len()), &delivered);
     answered(delivered.posted.author.clone(), Answer::Posted(posted))
-}
-
-/// Tells the windows what waits for the human in `group` once a question there was answered: an
-/// answer from anywhere but a banner, such as a phone, leaves the banner asking it until they do.
-fn tell_answered(shared: &Shared, group: &str) {
-    let told = {
-        let mut messages = shared.messages();
-        if !messages.service.human_is_in(group) {
-            return;
-        }
-        let notice = messages.service.human_notice(group);
-        let notice = messages.for_human(&notice);
-        messages.told.push(notice);
-        messages.take_told()
-    };
-    tell_human(shared, told);
 }
 
 /// The first protocol whose daemons post urgently. An older one ignores the field it does not

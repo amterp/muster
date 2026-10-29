@@ -130,3 +130,34 @@ fn a_reply_to_a_new_pair_is_refused_before_the_pair_is_made() {
     assert!(matches!(refused, Err(Refusal::NoSuchQuestion { question: 4, .. })), "{refused:?}");
     assert_eq!(service.groups().len(), groups);
 }
+
+/// An id reused once its first post expired names the newer post after a restart, whichever
+/// group's log the restore reads first.
+#[test]
+fn an_id_reused_after_it_expired_names_the_newer_post_after_a_restart() {
+    let mut service = Messaging::new(Memory::default());
+    service.join(&session("a"), Some("a"), Some("z"), &Everyone, 1).unwrap();
+    service.join(&Caller::default(), None, Some("z"), &Everyone, 2).unwrap();
+    service.join(&session("a"), Some("a"), Some("b"), &Everyone, 3).unwrap();
+    service.join(&Caller::default(), None, Some("b"), &Everyone, 4).unwrap();
+    let in_group = |group: &'static str| {
+        move |service: &mut Messaging<Memory>, now: u64| {
+            let draft = Draft {
+                group: Some(group),
+                body: "ship it",
+                operation: Some(&operation("x", 7)),
+                ..Draft::default()
+            };
+            service.post_draft(&Caller::default(), &draft, &Everyone, now).unwrap()
+        }
+    };
+    in_group("z")(&mut service, 10);
+    let later = 10 + OPERATION_RETENTION_MS;
+    let newer = in_group("b")(&mut service, later);
+    assert!(!newer.already);
+
+    let mut restored =
+        Messaging::restore(Memory::default(), Saved::default(), service.store().logs());
+    let again = in_group("b")(&mut restored, later + 1);
+    assert_eq!((again.already, again.group.as_str(), again.seq), (true, "b", newer.seq));
+}
