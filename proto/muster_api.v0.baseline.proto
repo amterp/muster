@@ -1,0 +1,326 @@
+// The API's schema as it was last published: what the `compatible` test in muster-api holds
+// muster_api.proto to. A copy, never edited by hand; muster_api.proto's header says when it is
+// replaced.
+//
+// Version: 0.1
+//
+// Muster's API for other programs, served by muster-daemon (MIP-10).
+//
+// A program on the same machine as a daemon reads what Muster's agents are doing through this
+// schema, and later acts on them. It is apart from the daemon's internal protocol
+// (muster_daemon.proto), which serves Muster's own app, bridges and CLI and changes with them;
+// this one changes on its own clock and has its own version. Generate bindings from this file
+// alone: it imports nothing.
+//
+// ## Connecting
+//
+// The daemon listens on a Unix socket that only its user can open. A client finds it as
+// `muster msg` does: `$MUSTER_DAEMON_SOCKET`, which every pane has, and otherwise this install's
+// daemon under `~/.muster/daemon/`. Every frame either way is a four-byte big-endian length, then
+// one message of at most 16 MiB. The client's first frame is a Hello and the daemon's is a
+// HelloAnswer; after a Welcome the client sends Requests and the daemon sends DaemonMessages,
+// until either end hangs up.
+//
+// The daemon reads a Hello's `kind` before anything else, and KIND_API is what makes the
+// connection this API's. Field 2 is the one field this Hello shares with the internal protocol's,
+// whose kinds take the values 1 to 4, so a client never names an internal version and is never
+// judged by one. A daemon that predates this API answers an API Hello with its internal refusal,
+// which reads here as a Refused with a reason.
+//
+// ## Versions
+//
+// `Version` is a major and a minor. The daemon serves a client of its own major whose version is
+// no older than the oldest it still serves, and says its own version in Welcome and Refused.
+// Every change to this schema raises the minor. `muster_api.v<major>.baseline.proto` beside this
+// file is the schema as the last release shipped it, and records which version that was; a test
+// in muster-api fails when this file stops reading it or when the two versions disagree.
+//
+// The API is 0.x until Muster's own 1.0. Until then a change may break clients: it raises the
+// minor, moves the oldest version the daemon serves up to it, and says so in the release notes.
+// From 1.0, within a major, a request that is served keeps being served, a field it filled stays
+// filled with the same meaning, an enum value keeps its meaning, and a field that should go is
+// deprecated and still filled until the next major.
+//
+// ## What a client may not know yet
+//
+// Every enum has an unspecified zero. A client treats a value it does not know as unknown, and
+// skips fields, events and messages it does not know. Welcome says what the daemon serves, down
+// to each option that came in a later minor, so a client asks Welcome rather than finding out
+// from a refusal.
+//
+// ## Requests and answers
+//
+// Every Request carries a correlation id the client chooses, which its Answer repeats. Requests
+// are namespaced by what they act on: `api.*` here, and `pane.*`, `msg.*`, `machine.*` and others
+// as they come, each an arm of Request's oneof. A request the daemon does not know is answered
+// REFUSED, and the connection stays open.
+//
+// ## Subscribing
+//
+// `api.subscribe` names the topics the client wants. Its answer carries a snapshot, and every
+// event after it follows on the same connection. One connection holds one subscription; subscribing
+// again replaces it.
+//
+// - Numbers belong to the subscription. Each subscription has an epoch, chosen when it starts,
+//   and numbers its events one after another from 1. A topic the client did not ask for takes no
+//   numbers. A gap in the numbers, or a new epoch, means the client subscribes again.
+// - The snapshot joins the stream without a gap: `Snapshot.through` is the number it is current
+//   to, and the next event carries the number after it.
+// - Every event names its source: the daemon it came from, by an identity fixed when that
+//   daemon's install first started, and that daemon's instance, which changes every time it
+//   starts or is replaced. Display names travel beside the identity and are never it.
+// - A snapshot is a view of independent sources, each with its state in `Snapshot.sources`:
+//   current, restoring, catching up or unreachable. Events from one source keep that source's
+//   order; events from different machines have no order between them.
+// - An answer comes after its events. The events a request caused reach the subscription before
+//   its answer, and `Answer.through` is the number of the last event the connection had been sent
+//   when it was answered.
+// - Reading changes nothing: subscribing moves nobody's place in any group and clears nothing.
+//
+// ## Ending
+//
+// The daemon ends a connection with an Ended saying why, when it can:
+//
+// - FELL_BEHIND: the client stopped reading, and what the daemon queued for it passed its budget
+//   of 4096 messages or 32 MiB. The daemon drops what it had queued and sends Ended after the
+//   frame it was writing, with `reached`, the number of the last event written. A client that
+//   does not read within 5 seconds of falling behind is hung up on without it.
+// - REPLACED: a newer daemon took over this one's panes (MIP-3 section 10). The client connects
+//   to the same socket, where the successor serves, and subscribes again in a new epoch.
+// - STOPPING: the daemon is exiting.
+//
+// A connection that ends without an Ended ended for a reason the daemon could not say, such as
+// the daemon being killed.
+
+syntax = "proto3";
+
+package muster.api;
+
+// ---------------------------------------------------------------------------------------------
+// Handshake
+
+message Version {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  // Values 1 to 4 are the internal protocol's kinds of connection.
+  reserved 1 to 4;
+  KIND_API = 5;
+}
+
+// The first frame on a connection, from the client.
+message Hello {
+  // The internal protocol's version and client, which an API client never sends.
+  reserved 1, 3;
+  // Always KIND_API.
+  Kind kind = 2;
+  // The API version the client speaks.
+  Version api = 4;
+  Client client = 5;
+}
+
+// Who is connecting. Attribution, not identity: anything running as the user can claim any name.
+// The daemon's log records it.
+message Client {
+  // A short, stable name for the program: "foreman", "quartermaster".
+  string name = 1;
+  // The program's own version, for a person reading the daemon's log.
+  string version = 2;
+}
+
+// The first frame on a connection, from the daemon. After a refusal the daemon hangs up.
+message HelloAnswer {
+  // The internal protocol's Welcome.
+  reserved 1;
+  oneof answer {
+    Refused refused = 2;
+    Welcome welcome = 3;
+  }
+}
+
+message Refused {
+  string reason = 1;
+  // The internal protocol's version, which a daemon older than this API sends here.
+  reserved 2;
+  // The API version the daemon speaks. Absent from a daemon older than this API.
+  Version api = 3;
+}
+
+message Welcome {
+  // The API version the daemon speaks.
+  Version api = 1;
+  // The daemon this connection reached.
+  Machine machine = 2;
+}
+
+// A daemon, and the machine it runs on.
+message Machine {
+  Source source = 1;
+  // What to call the machine, for a person: its host name. Not an identity.
+  string name = 2;
+  // The daemon's own build, for a person: Muster's version.
+  string version = 3;
+  // What this daemon serves.
+  Features features = 4;
+}
+
+// Where an event, a pane or a group comes from.
+message Source {
+  // The daemon's identity: fixed when its install first started, and never changed. A daemon
+  // that replaces another keeps it.
+  string daemon = 1;
+  // This run of the daemon. A daemon that restarts or is replaced has a new one.
+  uint64 instance = 2;
+}
+
+// What a daemon serves.
+message Features {
+  // Every request, by its namespaced name: "api.subscribe".
+  repeated string requests = 1;
+  // Every topic a subscription may name.
+  repeated Topic topics = 2;
+  // Every option of a request that came in a later minor than the request, as
+  // "<request>.<option>".
+  repeated string options = 3;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Requests
+
+message Request {
+  // Chosen by the client and repeated in the answer. The daemon never reads it, so it may be
+  // anything, empty included.
+  string correlation = 1;
+  // Namespaced by what a request acts on. A namespace added later takes the next arm.
+  oneof request {
+    ApiRequest api = 10;
+  }
+}
+
+// Requests about the connection itself.
+message ApiRequest {
+  oneof request {
+    // "api.subscribe": answered with a Snapshot, then every event after it.
+    Subscribe subscribe = 1;
+  }
+}
+
+message Subscribe {
+  // The topics to hear. None hears no topic: a snapshot of the sources, and their changes. A
+  // topic named twice counts once, and one the daemon does not serve is refused, naming it.
+  repeated Topic topics = 1;
+}
+
+enum Topic {
+  TOPIC_UNSPECIFIED = 0;
+  // Every pane and its agent's state.
+  TOPIC_PANES = 1;
+  // Every daemon this one answers for, with its features.
+  TOPIC_MACHINES = 2;
+  // Every group, its members and its posts.
+  TOPIC_MESSAGES = 3;
+  // What waits on the human, and their presence at the desk.
+  TOPIC_ATTENTION = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// From the daemon
+
+message DaemonMessage {
+  oneof message {
+    Answer answer = 1;
+    Event event = 2;
+    Ended ended = 3;
+  }
+}
+
+message Answer {
+  // The request's.
+  string correlation = 1;
+  Outcome outcome = 2;
+  // Why, for a person, when it was not done.
+  string reason = 3;
+  // The connection's subscription when the request was answered: its epoch, and the number of the
+  // last event it had been sent. Both 0 on a connection that has not subscribed.
+  uint64 epoch = 4;
+  uint64 through = 5;
+  oneof detail {
+    Snapshot snapshot = 10;
+  }
+}
+
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  OUTCOME_DONE = 1;
+  OUTCOME_REFUSED = 2;
+}
+
+// Where a subscription starts. Each topic's part is filled only when the subscription named it.
+message Snapshot {
+  uint64 epoch = 1;
+  // The number the snapshot is current to. The first event after it carries the next.
+  uint64 through = 2;
+  // The topics this subscription hears.
+  repeated Topic topics = 3;
+  // Every source the snapshot holds, with its state, whatever the topics.
+  repeated SourceStatus sources = 4;
+  // TOPIC_MACHINES: every daemon this one answers for, itself first.
+  repeated Machine machines = 10;
+}
+
+message SourceStatus {
+  Source source = 1;
+  SourceState state = 2;
+}
+
+enum SourceState {
+  SOURCE_STATE_UNSPECIFIED = 0;
+  // What the snapshot holds of this source is what it holds now.
+  SOURCE_STATE_CURRENT = 1;
+  // The daemon is bringing back the panes it held before it restarted, so some may be missing.
+  SOURCE_STATE_RESTORING = 2;
+  // The link to this source is back, and its changes since are still arriving.
+  SOURCE_STATE_CATCHING_UP = 3;
+  // The link to this source is down; what the snapshot holds is what was last known.
+  SOURCE_STATE_UNREACHABLE = 4;
+}
+
+// One change. Topics' events take arms from 20 on: panes in the 20s, messages in the 30s and
+// attention in the 40s.
+message Event {
+  uint64 epoch = 1;
+  uint64 number = 2;
+  Source source = 3;
+  oneof event {
+    // Whatever the topics.
+    SourceChanged source_changed = 10;
+  }
+}
+
+message SourceChanged {
+  SourceStatus status = 1;
+}
+
+// The daemon's last word on a connection, after which it hangs up.
+message Ended {
+  Reason reason = 1;
+  // The subscription's epoch and the number of the last event written to the connection; 0 on a
+  // connection that had not subscribed.
+  uint64 epoch = 2;
+  uint64 reached = 3;
+  // Why, for a person.
+  string detail = 4;
+
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    // The client stopped reading and passed its budget.
+    REASON_FELL_BEHIND = 1;
+    // A newer daemon took over, and serves the same socket.
+    REASON_REPLACED = 2;
+    // The daemon is exiting.
+    REASON_STOPPING = 3;
+  }
+}

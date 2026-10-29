@@ -4,6 +4,7 @@ members = [
     "crates/conformance",
     "crates/muster-bridge",
     "crates/muster-cli",
+    "crates/muster-api",
     "crates/muster-baseline",
     "crates/muster-contract",
     "crates/muster-core",
@@ -31,6 +32,7 @@ publish = false
 
 [workspace.dependencies]
 conformance = { path = "crates/conformance" }
+muster-api = { path = "crates/muster-api" }
 muster-baseline = { path = "crates/muster-baseline" }
 flexid = "0.1"
 libc = "0.2"

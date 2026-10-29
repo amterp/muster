@@ -577,6 +577,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
+name = "muster-api"
+version = "0.19.0"
+dependencies = [
+ "muster-baseline",
+ "muster-frame",
+ "prost",
+ "prost-build",
+ "protox",
+]
+
+[[package]]
 name = "muster-baseline"
 version = "0.19.0"
 dependencies = [
