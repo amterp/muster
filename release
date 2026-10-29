@@ -21,15 +21,20 @@ CASK = "packaging/homebrew/muster.rb"
 TAP_CASK = "Casks/muster.rb"
 // Each schema whose compatible test holds it to a baseline: the daemon's own protocol, and the
 // API for other programs (MIP-10). `version` is the Rust file declaring the schema's version as
-// `constant`.
+// `constant`. `corpus` is the conversations recorded against it, and `shipped` where a release
+// keeps them as it shipped them, which the corpus is held to until the version moves
+// (docs/testing.md); the daemon's protocol has none, since nothing outside Muster speaks it.
 SCHEMAS = [
     {"name": "daemon protocol", "schema": "proto/muster_daemon.proto",
      "baseline": "proto/muster_daemon.v1.baseline.proto",
-     "version": "crates/muster-daemon-proto/src/version.rs", "constant": "PROTOCOL"},
+     "version": "crates/muster-daemon-proto/src/version.rs", "constant": "PROTOCOL",
+     "corpus": "", "shipped": ""},
     {"name": "API", "schema": "proto/muster_api.proto",
      "baseline": "proto/muster_api.v0.baseline.proto",
-     "version": "crates/muster-api/src/version.rs", "constant": "API"},
+     "version": "crates/muster-api/src/version.rs", "constant": "API",
+     "corpus": "corpus/conformance/api-*.json", "shipped": "corpus/api-baseline"},
 ]
+SHIPPED = SCHEMAS.filter(fn(schema) schema["shipped"] != "")
 
 // The cask's line saying its checksum is still the last release's. Its presence is what
 // says a release is under way: the bump writes it, and pointing the cask at the published
@@ -301,6 +306,15 @@ if not resuming:
             write_file(file, join(header, "\n") + "\n" + read_file(schema["schema"]).content)
             print("The {name} baseline moves from {baseline} to {version}.")
 
+    // What the conversations say as this release ships them. Copied whether or not the version
+    // moved: while it has not, the shipped cases cannot have changed, and the ones added since
+    // are promised from this release on.
+    for schema in SHIPPED:
+        shipped = schema["shipped"]
+        corpus = schema["corpus"]
+        $`mkdir -p {shipped} && rm -f {shipped}/*.json && cp {corpus} {shipped}/`
+        print("The {schema["name"]}'s conversations are kept as {target} ships them, in {shipped}.")
+
 // A gate that went red leaves the bump in the working tree, marker and all, so a rerun has
 // to tell a bump that was committed from one that never got that far.
 pending_marker = cask_marker_line()
@@ -323,11 +337,16 @@ if not committed:
         if not quiet $`git diff --quiet HEAD -- {file}`.ok:
             version = schema_version(schema)
             message += "\nThe {name} ships as {version}, so its schema's baseline\nbecomes {version} here: from now on a change to the schema is the next\nminor.\n"
+    for schema in SHIPPED:
+        shipped = schema["shipped"]
+        if quiet $`git status --porcelain -- {shipped}`.stdout.trim() != "":
+            message += "\nThe {schema["name"]}'s recorded conversations are kept in {shipped}\nas {target} ships them, and stand until its version moves.\n"
     message += "\nThe cask names {target} and still carries {latest}'s checksum, marked\nas such, until the notarized build gives its own.\n"
     message_file = quiet $`mktemp`.stdout.trim()
     write_file(message_file, message)
     baselines = [schema["baseline"] for schema in SCHEMAS]
-    $`git add Cargo.toml Cargo.lock {CASK} {baselines} {notes}`
+    shipped = [schema["shipped"] for schema in SHIPPED]
+    $`git add Cargo.toml Cargo.lock {CASK} {baselines} {shipped} {notes}`
     $`git commit -q -F {message_file}`
 
 step("publish v{target}")
