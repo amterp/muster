@@ -51,6 +51,7 @@ impl ApiAsked {
 
 /// What came of a request whose answer may never arrive, as a client concludes it.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant, reason = "a test's result, matched at once and never held")]
 pub enum Tried {
     Answered(ApiAsked),
     /// The connection ended after the request was written and before its answer: the request
@@ -59,6 +60,7 @@ pub enum Tried {
 }
 
 /// What reading the connection came to.
+#[expect(clippy::large_enum_variant, reason = "one is read at a time and matched at once")]
 enum Read {
     Message(api::daemon_message::Message),
     TimedOut,

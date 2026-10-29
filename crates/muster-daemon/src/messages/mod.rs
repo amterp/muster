@@ -45,6 +45,7 @@ use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
 
+use crate::api::{Api, Published};
 use crate::session::{HANDING_OVER, Reply, Shared};
 use carry::Destination;
 use doorbell::{By, Now};
@@ -105,6 +106,9 @@ pub(crate) struct Messages {
     /// A lock of its own, taken last and alone, so
     /// the session reads it without this one.
     joined: Joined,
+    /// The API's subscribers, and what they were last told of the messages.
+    api: Arc<Api>,
+    published: Published,
 }
 
 /// The participants who took names for themselves, by name, as the session reads them.
@@ -120,7 +124,7 @@ enum WaitEnded {
 
 impl Messages {
     /// Whatever the store beside `socket` holds, or nothing.
-    pub(crate) fn load(socket: &Path) -> Messages {
+    pub(crate) fn load(socket: &Path, api: Arc<Api>) -> Messages {
         let files = Files::beside(socket);
         let found = files.load();
         let service = Messaging::restore(files, found.saved, found.logs);
@@ -150,6 +154,8 @@ impl Messages {
             follows: Vec::new(),
             telling: Vec::new(),
             joined,
+            api,
+            published: Published::default(),
         }
     }
 
@@ -197,11 +203,19 @@ impl Messages {
         Told { order: self.tellings, notices: std::mem::take(&mut self.told) }
     }
 
-    /// Wakes every follow of a log, each to look for entries of its own group.
+    /// Wakes every follow of a log, each to look for entries of its own group, and tells the
+    /// API's subscribers what changed. Called after everything that changes the messages.
     fn appended(&mut self) {
         for follow in self.follows.drain(..) {
             let _ = follow.send(());
         }
+        self.published.publish(&self.service, &self.api);
+    }
+
+    /// What the API's subscribers have been told of the messages, brought up to date.
+    pub(crate) fn published(&mut self) -> &Published {
+        self.published.publish(&self.service, &self.api);
+        &self.published
     }
 
     /// Marks a handoff as under way, or as over because it failed. Taken under this lock, so a
@@ -222,6 +236,7 @@ impl Messages {
             let files = self.service.store().clone();
             let found = files.load();
             self.service = Messaging::restore(files, found.saved, found.logs);
+            self.published.publish(&self.service, &self.api);
             self.human_groups = self.service.human_groups();
             // Every wake still unread is rung again, so a ring from before is not also pressed.
             self.rung.clear();
@@ -2141,7 +2156,9 @@ mod tests {
             std::env::temp_dir().join(format!("muster-messages-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).unwrap();
-        Messages::load(&directory.join("daemon.sock"))
+        let socket = directory.join("daemon.sock");
+        let api = crate::api::of_daemon(&socket, 1);
+        Messages::load(&socket, api)
     }
 
     fn session(name: &str) -> Caller {

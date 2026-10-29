@@ -167,8 +167,8 @@ impl Shared {
                 scroll_multiplier: settings.scroll_multiplier.unwrap_or(1.0),
             });
             let detecting = Detecting::start(overrides);
-            let messages = Messages::load(&socket.path);
             let api = crate::api::of_daemon(&socket.path, instance);
+            let messages = Messages::load(&socket.path, Arc::clone(&api));
             let human = messages.human();
             let joined = messages.joined();
             Shared {
@@ -1326,6 +1326,7 @@ impl Session {
     }
 
     fn snapshot(&self) -> proto::Snapshot {
+        let (asking, presence) = self.attention_now();
         proto::Snapshot {
             seq: self.seq,
             instance: self.instance,
@@ -1334,8 +1335,8 @@ impl Session {
             settings: Some(self.settings.clone()),
             restoring: self.restoring,
             restored_from_file: self.restored_from_file,
-            asking: self.attention.asking(),
-            presence: Some(self.attention.presence(self.attended(), std::time::Instant::now())),
+            asking,
+            presence: Some(presence),
             human: self
                 .human
                 .values()
@@ -1448,6 +1449,12 @@ impl Session {
         self.subscribers.iter().any(|subscriber| self.attending.contains(&subscriber.id))
     }
 
+    /// The panes asking for the human, and the human's presence, now.
+    pub(crate) fn attention_now(&self) -> (Vec<proto::Asking>, proto::Presence) {
+        let now = std::time::Instant::now();
+        (self.attention.asking(), self.attention.presence(self.attended(), now))
+    }
+
     /// Whether a restore is still bringing back the panes a previous run saved.
     pub(crate) fn restoring(&self) -> bool {
         self.restoring
@@ -1546,6 +1553,7 @@ impl Session {
             Payload::PaneClosed(closed) => Some(closed.pane.clone()),
             _ => None,
         };
+        let attention = crate::api::attention_event(&payload);
         self.seq += 1;
         let message = proto::ControlMessage {
             message: Some(proto::control_message::Message::Event(proto::Event {
@@ -1555,6 +1563,9 @@ impl Session {
         };
         let frame: Arc<[u8]> = message.encode_to_vec().into();
         self.subscribers.retain(|subscriber| subscriber.push(Arc::clone(&frame)));
+        if let Some(event) = attention {
+            self.publish(muster_api::Topic::Attention, || event);
+        }
         if let Some(pane) = pane {
             self.reconsider_asking(&pane);
         }

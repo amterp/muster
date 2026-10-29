@@ -2,6 +2,7 @@
 
 mod api;
 mod api_acting;
+mod api_attention;
 mod api_panes;
 mod arranging;
 mod attention;

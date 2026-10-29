@@ -8,22 +8,22 @@ use proto::msg_request::{self, Request as Asked};
 use proto::request::Service;
 use proto::session_request;
 
-const DONE: proto::Outcome = proto::Outcome::Done;
+pub(crate) const DONE: proto::Outcome = proto::Outcome::Done;
 
-fn msg(caller: &msg_request::Caller, asked: Asked) -> Service {
+pub(crate) fn msg(caller: &msg_request::Caller, asked: Asked) -> Service {
     Service::Msg(proto::MsgRequest { caller: Some(caller.clone()), request: Some(asked) })
 }
 
-fn named(name: &str) -> msg_request::Caller {
+pub(crate) fn named(name: &str) -> msg_request::Caller {
     msg_request::Caller { as_name: Some(name.to_string()), ..msg_request::Caller::default() }
 }
 
 /// A caller carrying no agent identity, which is the human (MIP-4, section 3).
-fn the_human() -> msg_request::Caller {
+pub(crate) fn the_human() -> msg_request::Caller {
     msg_request::Caller::default()
 }
 
-fn join(control: &mut Control, caller: &msg_request::Caller, name: &str, group: &str) {
+pub(crate) fn join(control: &mut Control, caller: &msg_request::Caller, name: &str, group: &str) {
     let asked = Asked::Join(msg_request::Join {
         name: Some(name.to_string()),
         group: Some(group.to_string()),
@@ -33,7 +33,7 @@ fn join(control: &mut Control, caller: &msg_request::Caller, name: &str, group: 
 }
 
 /// `a` writes to the human in group `g`, which both are in.
-fn a_message_for_the_human(control: &mut Control) {
+pub(crate) fn a_message_for_the_human(control: &mut Control) {
     join(control, &the_human(), "@human", "g");
     join(control, &named("a"), "a", "g");
     let post = msg_request::Post {
@@ -44,7 +44,7 @@ fn a_message_for_the_human(control: &mut Control) {
     expect(control, msg(&named("a"), Asked::Post(post)), DONE);
 }
 
-fn subscribed(control: &mut Control, service: Service) -> proto::Snapshot {
+pub(crate) fn subscribed(control: &mut Control, service: Service) -> proto::Snapshot {
     match expect(control, service, DONE).answer.detail {
         Some(proto::answer::Detail::Snapshot(snapshot)) => snapshot,
         other => panic!("a subscription answered with {other:?}"),
@@ -97,7 +97,7 @@ fn next_asking(control: &mut Control, pane: &str) -> proto::Asking {
     })
 }
 
-fn report(in_front: bool, last_input_ms: Option<u64>, lasts_ms: u64) -> Service {
+pub(crate) fn report(in_front: bool, last_input_ms: Option<u64>, lasts_ms: u64) -> Service {
     session(session_request::Request::ReportPresence(proto::ReportPresence {
         in_front,
         last_input_ms,

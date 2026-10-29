@@ -4,11 +4,14 @@
 
 mod hub;
 pub(crate) mod identity;
+mod messages;
 mod pane;
 pub(crate) mod panes;
 mod topics;
 
 pub(crate) use hub::{Api, Cause};
+pub(crate) use messages::Published;
+pub(crate) use topics::attention_event;
 
 use std::collections::BTreeSet;
 use std::net::Shutdown;
@@ -210,12 +213,15 @@ fn subscribe(shared: &Shared, connection: u64, correlation: String, asked: &api:
         };
         snapshot.sources =
             vec![api::SourceStatus { source: Some(shared.api.source()), state: state.into() }];
-        shared.api.begin(connection)
+        let joining = shared.api.begin(connection);
+        if let Some(joining) = &joining {
+            topics::join_under_session(&session, shared, joining, &topics, &mut snapshot);
+        }
+        joining
     };
     let Some(joining) = joining else { return };
-    for topic in &topics {
-        topics::join(*topic, shared, &joining, &mut snapshot);
-    }
+    topics::join_under_messages(shared, &joining, &topics, &mut snapshot);
+    topics::join_unlocked(shared, &joining, &topics, &mut snapshot);
     shared.api.go_live(&joining, correlation, snapshot);
 }
 

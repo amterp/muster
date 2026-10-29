@@ -48,10 +48,25 @@ struct Connection {
     ended: bool,
 }
 
+/// What a subscription joins: a topic, or what the messages and attention topics share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Feed {
+    Topic(api::Topic),
+    /// What the human has read of each group and what waits for them there: one event to a
+    /// subscription that hears either topic, so that the two never disagree.
+    Unread,
+}
+
+impl From<api::Topic> for Feed {
+    fn from(topic: api::Topic) -> Feed {
+        Feed::Topic(topic)
+    }
+}
+
 #[derive(Debug)]
 struct Subscription {
     epoch: u64,
-    joined: BTreeSet<api::Topic>,
+    joined: BTreeSet<Feed>,
     /// The number of the last event queued.
     last: u64,
     /// Events newer than the snapshot being gathered, until its answer is queued.
@@ -122,11 +137,11 @@ impl Api {
         Some(Joining { connection, epoch })
     }
 
-    /// From now on `topic`'s events reach the subscription. Called holding the lock they are
-    /// published under, once the topic's part of the snapshot is filled.
-    pub(crate) fn join(&self, joining: &Joining, topic: api::Topic) {
+    /// From now on `feed`'s events reach the subscription. Called holding the lock they are
+    /// published under, once its part of the snapshot is filled.
+    pub(crate) fn join(&self, joining: &Joining, feed: impl Into<Feed>) {
         if let Some(subscription) = self.connections().subscription(joining) {
-            subscription.joined.insert(topic);
+            subscription.joined.insert(feed.into());
         }
     }
 
@@ -183,16 +198,16 @@ impl Api {
         }
     }
 
-    /// Sends what `event` builds to every subscription that has joined `topic`, with `cause`'s
-    /// correlation id to the connection that sent it. Called holding the lock `topic`'s events
-    /// are published under; `event` is built only when somebody hears it.
+    /// Sends what `event` builds to every subscription that has joined `feed`, with `cause`'s
+    /// correlation id to the connection that sent it. Called holding the lock `feed`'s events are
+    /// published under; `event` is built only when somebody hears it.
     pub(crate) fn publish(
         &self,
-        topic: api::Topic,
+        feed: impl Into<Feed>,
         cause: Option<&Cause>,
         event: impl FnOnce() -> api::event::Event,
     ) {
-        self.send(Some(topic), cause, event);
+        self.send(Some(feed.into()), cause, event);
     }
 
     /// Tells every subscription this daemon's state now. Called with the session locked.
@@ -203,10 +218,10 @@ impl Api {
         });
     }
 
-    /// Delivers to subscriptions that joined `topic`, or to all of them when it is `None`.
+    /// Delivers to subscriptions that joined `feed`, or to all of them when it is `None`.
     fn send(
         &self,
-        topic: Option<api::Topic>,
+        feed: Option<Feed>,
         cause: Option<&Cause>,
         event: impl FnOnce() -> api::event::Event,
     ) {
@@ -216,7 +231,7 @@ impl Api {
         let mut built = None;
         for open in connections.open.iter_mut().filter(|open| !open.ended) {
             let Some(subscription) = open.subscription.as_mut() else { continue };
-            if topic.is_some_and(|topic| !subscription.joined.contains(&topic)) {
+            if feed.is_some_and(|feed| !subscription.joined.contains(&feed)) {
                 continue;
             }
             let event = built

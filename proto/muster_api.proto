@@ -381,6 +381,8 @@ message Snapshot {
   repeated Machine machines = 10;
   // TOPIC_PANES: every pane.
   repeated Pane panes = 11;
+  // TOPIC_ATTENTION: what waits on the human now, and their presence.
+  Attention attention = 13;
 }
 
 message SourceStatus {
@@ -416,6 +418,12 @@ message Event {
     PaneAppeared pane_appeared = 20;
     PaneChanged pane_changed = 21;
     PaneClosed pane_closed = 22;
+    // TOPIC_MESSAGES or TOPIC_ATTENTION, sent once to a subscription that hears either.
+    Unread unread = 34;
+    // TOPIC_ATTENTION.
+    Asking asking = 40;
+    Presence presence = 41;
+    Shown shown = 42;
   }
 }
 
@@ -533,6 +541,111 @@ enum Adapter {
   ADAPTER_SILENT = 3;
   // It ended a turn without reporting, and Muster ships no adapter for its harness.
   ADAPTER_NONE = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The human
+
+// What waits on the human now, and whether they are at the desk (TOPIC_ATTENTION). It is state
+// rather than a record of notifications, kept with or without Muster's app running: a client
+// that restarts finds everything still waiting here, and each change is an event that replaces
+// what the client held for the same pane or group.
+message Attention {
+  // Each pane asking for the human.
+  repeated Asking asking = 1;
+  // Each group with messages waiting for the human.
+  repeated Unread unread = 2;
+  Presence presence = 3;
+}
+
+// A pane asking for the human. As an event it replaces what the client held for the pane, and
+// ASK_UNSPECIFIED says the pane stopped asking.
+message Asking {
+  // The pane's id; the panes topic says what it is called.
+  string pane = 1;
+  Ask ask = 2;
+  // The pane is a quiet helper, which would ask its maker rather than the human, and asks the
+  // human because its maker cannot hear it: the maker closed or holds no agent. A maker on
+  // another machine counts as unable to hear until daemons carry panes between them.
+  bool unheard_helper = 3;
+}
+
+enum Ask {
+  ASK_UNSPECIFIED = 0;
+  // Its agent is waiting for a person to answer it.
+  ASK_BLOCKED = 1;
+  // Its agent's program stopped reading what is typed to it.
+  ASK_STUCK = 2;
+}
+
+// What the human has read of a group and what waits for them there. Both in one message, so a
+// client never holds a place that disagrees with what it lists as waiting. As an event it is sent
+// whenever either changes, and replaces what the client held for the group.
+message Unread {
+  // The group, as requests on this connection name it.
+  string group = 1;
+  // The number of the last entry of the group's log the human has read. Absent when the human
+  // is not in the group, when nothing waits for them there either.
+  optional uint64 place = 2;
+  // How many messages after the place would ring the human: each one addressed to them, or one
+  // the group's policy rings them with.
+  uint64 count = 3;
+  // The newest of those, oldest first: all of them, or the newest 500 when there are more.
+  repeated WaitingPost waiting = 4;
+}
+
+// A message waiting for the human, without its body.
+message WaitingPost {
+  // Its number in its group's log.
+  uint64 number = 1;
+  // When it was posted, in UTC milliseconds by the clock of the daemon that keeps the group.
+  uint64 at_ms = 2;
+  // Its author's name in the group: a participant's name, or for an agent known by its pane,
+  // the pane's id, which the panes topic says the name of.
+  string author = 3;
+  // It names the human among its addressees. Otherwise it was addressed to nobody and the group's
+  // policy rings the human with it.
+  bool addressed = 4;
+  bool urgent = 5;
+}
+
+// The human at the desk, as Muster's app on this machine reports it. The app reports every 15
+// seconds, and at once when Muster comes forward or goes behind, or is used after 15 seconds
+// unused. Each report stands for 45 seconds, and ends at once when the app's connection closes,
+// so an app that hangs reads as unknown within 45 seconds and one that quits or crashes at once.
+message Presence {
+  // A window of Muster's app is attending this daemon.
+  bool attended = 1;
+  // A report stands. When false, the fields below say nothing.
+  bool known = 2;
+  // Muster's front window has the system's focus.
+  bool in_front = 3;
+  // When the person last typed, clicked or scrolled in a window of Muster, in UTC milliseconds.
+  // Absent when they have not since the app started.
+  optional uint64 last_input_ms = 4;
+}
+
+// Muster's app showed the human a banner or posted a notification. Information only: nothing
+// waits on it, and nothing clears because of it.
+message Shown {
+  oneof about {
+    // The pane it was about, by id.
+    string pane = 1;
+    // The group whose message it showed.
+    string group = 2;
+  }
+  ShownAs shown_as = 3;
+  // What it was shown for, in the app's words: "blocked", "stuck", "done", "notified" or
+  // "message".
+  string why = 4;
+}
+
+enum ShownAs {
+  SHOWN_AS_UNSPECIFIED = 0;
+  // Muster's own banner, inside its window.
+  SHOWN_AS_BANNER = 1;
+  // A notification posted through the system.
+  SHOWN_AS_NOTIFICATION = 2;
 }
 
 // The daemon's last word on a connection, after which it hangs up.
