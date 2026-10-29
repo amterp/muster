@@ -2,9 +2,9 @@
 //! already have got never gets it twice (MIP-10, section 5).
 //!
 //! A program names an operation with an id of its choosing, scoped by the client name its Hello
-//! gave. The daemon that carries the operation out keeps a record of it for [`RETENTION_MS`],
-//! saved with the rest of what it keeps, so the record outlives a reconnect, a handoff and a
-//! restart. A repeat of a done operation gets its first result; a repeat of one whose fate is
+//! gave. The daemon that carries the operation out keeps a record of it for [`RETENTION_MS`]
+//! from when it began, and for as long as it is still under way, saved with the rest of what it
+//! keeps, so the record outlives a reconnect, a handoff and a restart. A repeat of a done operation gets its first result; a repeat of one whose fate is
 //! not known is never carried out again.
 //!
 //! The cap never forgets a record before its time: a store holding [`CAPACITY`] refuses a new
@@ -99,7 +99,12 @@ impl<R: Clone> Operations<R> {
     /// Begins the operation `client` calls `id`, which asks what `asked` fingerprints, unless it
     /// was seen within the retention period.
     pub(crate) fn begin(&mut self, client: &str, id: &str, asked: u64, now_ms: u64) -> Begun<R> {
-        self.records.retain(|record| now_ms < record.at_ms.saturating_add(RETENTION_MS));
+        // One under way is never forgotten, however long its start takes: a retry would begin it
+        // again under the same id, and the first, finishing late, would settle the second's record.
+        self.records.retain(|record| {
+            matches!(record.state, State::UnderWay)
+                || now_ms < record.at_ms.saturating_add(RETENTION_MS)
+        });
         if let Some(record) = self.find(client, id) {
             if record.asked != asked {
                 return Begun::Reused;
@@ -221,6 +226,16 @@ mod tests {
         let last = NOW + RETENTION_MS - 1;
         assert_eq!(store.begin("foreman", "a", 1, last), Begun::Done("p1".to_string()));
         assert_eq!(store.begin("foreman", "a", 1, NOW + RETENTION_MS), Begun::New);
+    }
+
+    #[test]
+    fn an_operation_still_under_way_outlives_the_retention_period() {
+        let mut store = store();
+        store.begin("foreman", "a", 1, NOW);
+        let later = NOW + 2 * RETENTION_MS;
+        assert_eq!(store.begin("foreman", "a", 1, later), Begun::UnderWay);
+        store.forget("foreman", "a");
+        assert_eq!(store.begin("foreman", "a", 1, later), Begun::New);
     }
 
     #[test]
