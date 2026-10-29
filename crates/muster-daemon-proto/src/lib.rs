@@ -105,6 +105,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(msg_request::Request::Resume(_)) => "msg.resume",
             Some(msg_request::Request::Peer(_)) => "msg.peer",
             Some(msg_request::Request::GroupDelete(_)) => "msg.group_delete",
+            Some(msg_request::Request::Ack(_)) => "msg.ack",
             None => "msg",
         },
     }

@@ -797,6 +797,8 @@ message MsgRequest {
     Peer peer = 23;
     // Since 1.3.
     GroupDelete group_delete = 24;
+    // Since 1.9.
+    Ack ack = 25;
   }
 
   message Caller {
@@ -964,6 +966,16 @@ message MsgRequest {
     string group = 1;
   }
 
+  // Moves the human's place in `group` on to `through`, the number of the last message a
+  // program showed them, and never back (MIP-10, section 5): what arrived since stays unread.
+  // Done as the human, at the human's home, whoever asks. Answered `acked`; refused as
+  // `past_newest` for a number the group has not reached, and as `not_a_member` where the human
+  // is not in the group.
+  message Ack {
+    string group = 1;
+    uint64 through = 2;
+  }
+
   // Answered once the caller has unread messages that would wake it: at once if it already
   // does. A newer wait for the same participant ends this one, refused as `superseded`.
   message Wait {
@@ -1013,6 +1025,15 @@ message MsgAnswer {
     Groups groups = 18;
     // Since 1.3.
     Deleted deleted = 19;
+    // Since 1.9.
+    Acked acked = 20;
+  }
+
+  // An acknowledgement: the human's place in `group` now, and whether it moved.
+  message Acked {
+    string group = 1;
+    uint64 place = 2;
+    bool moved = 3;
   }
 
   // A group deleted: how many entries its log held, and the members it let go, in this
@@ -1258,6 +1279,11 @@ message MsgAnswer {
     // messages are any length and are read in the group's conversation, or fetched from its log
     // for a banner (MIP-9, sections 1 and 5).
     string said = 10;
+    // Since 1.9. On a notice to the windows, the questions among the messages waiting for the
+    // human that have their answer already: answered by the human elsewhere, such as from a
+    // phone through a program, without the group being read. A banner showing one has nothing
+    // left to ask.
+    repeated uint64 answered = 11;
   }
 }
 

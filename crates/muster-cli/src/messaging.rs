@@ -959,6 +959,7 @@ fn render(
         }
         Answer::Groups(groups) => groups_text(groups, json),
         Answer::Deleted(deleted) => deleted_text(deleted, json),
+        Answer::Acked(acked) => acked_text(acked, json),
         Answer::Notices(notices) => {
             if json {
                 let notices: Vec<_> = notices.notices.iter().map(notice_json).collect();
@@ -969,6 +970,23 @@ fn render(
             }
         }
     })
+}
+
+fn acked_text(acked: &msg_answer::Acked, json: bool) -> String {
+    if json {
+        return serde_json::json!({
+            "group": acked.group,
+            "place": acked.place,
+            "moved": acked.moved,
+        })
+        .to_string();
+    }
+    let (group, place) = (&acked.group, acked.place);
+    if acked.moved {
+        format!("acknowledged {group} through #{place}")
+    } else {
+        format!("{group} was read through #{place} already, so nothing moved")
+    }
 }
 
 fn changed_text(request: &proto::MsgRequest, changed: &msg_answer::Changed, json: bool) -> String {
@@ -1716,6 +1734,7 @@ mod tests {
                 until: Until::Unblocked.into(),
                 held: None,
             }],
+            already: false,
         };
         assert_eq!(
             posted_text(&posted, true, false, &Shown::default()).unwrap(),
@@ -1742,6 +1761,7 @@ mod tests {
                 until: Until::Reading.into(),
                 held: None,
             }],
+            already: false,
         };
         assert_eq!(
             posted_text(&posted, false, false, &Shown::default()).unwrap(),
@@ -1769,6 +1789,7 @@ mod tests {
                 until: Until::Prompt.into(),
                 held: Some(box_over.to_string()),
             }],
+            already: false,
         };
         assert_eq!(
             posted_text(&posted, false, false, &Shown::default()).unwrap(),
@@ -2121,6 +2142,7 @@ mod tests {
             group: "review".to_string(),
             seq: 7,
             reached: vec![unreachable("critic@devenv"), unreachable("@human@lap")],
+            already: false,
         };
         let text = posted_text(&posted, false, false, &Shown::default())
             .expect("heard once the link returns");

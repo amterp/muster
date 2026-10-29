@@ -188,6 +188,7 @@ impl Messages {
         msg_answer::Notice {
             member: self.service.human_is_in(&notice.group),
             said: said.unwrap_or_default().to_string(),
+            answered: self.service.human_answered(&notice.group),
             ..notice_of(notice)
         }
     }
@@ -315,6 +316,19 @@ impl Messages {
             Asked::Groups(_) | Asked::GroupNew(_) | Asked::GroupSet(_) | Asked::Pause(_) => {
                 self.group(caller, asked, panes)
             }
+            Asked::Ack(ack) => self.service.ack(&ack.group, ack.through, panes).map(|acked| {
+                if acked.moved {
+                    // What came after the place still waits, so the windows are told what does.
+                    let notice = self.service.human_notice(&acked.group);
+                    self.told.push(self.for_human(&notice));
+                }
+                let answer = msg_answer::Acked {
+                    group: acked.group,
+                    place: acked.place,
+                    moved: acked.moved,
+                };
+                (muster_msg::HUMAN.to_string(), Answer::Acked(answer))
+            }),
             Asked::Join(_)
             | Asked::GroupMembers(_)
             | Asked::Leave(_)
@@ -1306,8 +1320,27 @@ fn posting(
             Err(reply) => return reply,
         }
     };
+    if answering.is_some() && !delivered.posted.already {
+        tell_answered(shared, &delivered.posted.group);
+    }
     let posted = told("msg.posted", Some(post.body.len()), &delivered);
     answered(delivered.posted.author.clone(), Answer::Posted(posted))
+}
+
+/// Tells the windows what waits for the human in `group` once a question there was answered: an
+/// answer from anywhere but a banner, such as a phone, leaves the banner asking it until they do.
+fn tell_answered(shared: &Shared, group: &str) {
+    let told = {
+        let mut messages = shared.messages();
+        if !messages.service.human_is_in(group) {
+            return;
+        }
+        let notice = messages.service.human_notice(group);
+        let notice = messages.for_human(&notice);
+        messages.told.push(notice);
+        messages.take_told()
+    };
+    tell_human(shared, told);
 }
 
 /// The first protocol whose daemons post urgently. An older one ignores the field it does not
@@ -2105,6 +2138,7 @@ pub(crate) fn notice_of(notice: &muster_msg::Notice) -> msg_answer::Notice {
         // Only the windows read these, and `Messages::for_human` says them.
         member: false,
         said: String::new(),
+        answered: Vec::new(),
     }
 }
 

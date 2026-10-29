@@ -68,12 +68,13 @@ pub(super) fn unkept_at(shared: &Shared, machine: &str, asked: &Asked) -> Option
 }
 
 fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<String> {
-    let operation = matches!(asked, Asked::Post(post) if post.operation.is_some());
+    let operation = matches!(asked, Asked::Post(post) if post.operation.is_some())
+        || matches!(asked, Asked::Ack(_));
     (operation && speaks.minor < proto::version::OPERATIONS).then(|| {
         format!(
             "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
-             cannot keep a program's name or operation id, so a retry could post twice. Update \
-             Muster there"
+             cannot acknowledge messages or keep a program's operation id, without which a retry \
+             could post twice. Nothing was sent; update Muster there"
         )
     })
 }
@@ -189,6 +190,10 @@ fn turned(
             delete.group = group(delete.group);
             Asked::GroupDelete(delete)
         }
+        Asked::Ack(mut ack) => {
+            ack.group = group(ack.group);
+            Asked::Ack(ack)
+        }
         other => other,
     }
 }
@@ -263,6 +268,7 @@ pub(super) fn verb(asked: &Asked) -> &'static str {
         Asked::Resume(_) => "resume",
         Asked::GroupDelete(_) => "group_delete",
         Asked::Peer(_) => "peer",
+        Asked::Ack(_) => "ack",
     }
 }
 

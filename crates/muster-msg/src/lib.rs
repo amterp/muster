@@ -30,9 +30,9 @@ pub use operations::{OPERATION_RETENTION_MS, Repeat};
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
-    Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding, Inbox,
-    Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page, Paged, Participant, Posted,
-    Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited, Waiting, Wake,
+    Acked, Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding,
+    Inbox, Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page, Paged, Participant,
+    Posted, Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited, Waiting, Wake,
 };
 pub use store::{GroupRecord, Log, Memory, Operated, Saved, Sent, Store};
 

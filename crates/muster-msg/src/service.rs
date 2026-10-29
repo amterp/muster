@@ -547,6 +547,14 @@ pub struct Waiting {
     pub urgent: bool,
 }
 
+/// An acknowledgement: the human's place in `group` now, and whether it moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Acked {
+    pub group: String,
+    pub place: u64,
+    pub moved: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Read {
     pub name: String,
@@ -3361,6 +3369,76 @@ impl<S: Store> Messaging<S> {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The questions among what waits for the human in `group` that have their answer already,
+    /// oldest first: the human answered from somewhere other than this group's conversation,
+    /// such as a phone, and has not read the group since.
+    pub fn human_answered(&self, group: &str) -> Vec<u64> {
+        let Some(kept) = self.groups.get(group).filter(|kept| kept.members.contains(HUMAN)) else {
+            return Vec::new();
+        };
+        let questions: BTreeSet<u64> = self
+            .ringing_under(HUMAN, group, &kept.policy)
+            .filter(|(entry, _)| {
+                matches!(&entry.what, What::Message { answers, .. } if !answers.is_empty())
+            })
+            .map(|(entry, _)| entry.seq)
+            .collect();
+        let Some(first) = questions.first() else { return Vec::new() };
+        let answered: BTreeSet<u64> = kept
+            .log
+            .iter()
+            .filter(|entry| entry.seq > *first)
+            .filter_map(|entry| match &entry.what {
+                What::Message { answering: Some(answering), .. } => Some(answering.question),
+                _ => None,
+            })
+            .filter(|question| questions.contains(question))
+            .collect();
+        answered.into_iter().collect()
+    }
+
+    /// Moves the human's place in `group` on to `through`, the last message a program showed
+    /// them, and never back (MIP-10, section 5): unlike [`Self::read`], what came after it stays
+    /// unread, and the wakes for it stand until the human's place reaches the newest message.
+    pub fn ack(
+        &mut self,
+        group: &str,
+        through: u64,
+        presence: &dyn Presence,
+    ) -> Result<Acked, Refusal> {
+        self.human_here(presence)?;
+        let group = self.locate(group)?;
+        let kept = &self.groups[&group];
+        if !kept.members.contains(HUMAN) {
+            return Err(Refusal::NotAMember { name: HUMAN.to_string(), group, permitted: None });
+        }
+        let newest = kept.head();
+        if through > newest {
+            return Err(Refusal::PastNewest { group, through, newest });
+        }
+        let place = self.cursor(HUMAN, &group);
+        if through <= place {
+            return Ok(Acked { group, place, moved: false });
+        }
+        let before = self.participants.get(HUMAN).cloned();
+        let human =
+            self.participants.entry(HUMAN.to_string()).or_insert_with(|| Participant::named(HUMAN));
+        human.cursors.insert(group.clone(), through);
+        if through >= newest {
+            human.woken.remove(&group);
+            human.rewoken.remove(&group);
+        }
+        // As a read does: a place that moved without being kept would come back after a restart.
+        if let Err(refusal) = self.save() {
+            match before {
+                Some(before) => self.participants.insert(HUMAN.to_string(), before),
+                None => self.participants.remove(HUMAN),
+            };
+            return Err(refusal);
+        }
+        Ok(Acked { group, place: through, moved: true })
     }
 
     /// The number of the last entry this machine's human has read in `group`, while they are in

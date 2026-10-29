@@ -83,6 +83,7 @@ mod tests {
             again: false,
             member: false,
             said: String::new(),
+            answered: Vec::new(),
         };
         assert_eq!(
             wake_text(&notice),
