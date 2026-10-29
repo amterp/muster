@@ -396,38 +396,7 @@ impl<'a> Conversation<'a> {
             return Ok(());
         }
         if let Some(agent) = text("agent") {
-            let mut control = self.daemon.connect();
-            let caller = if agent == "@human" { the_human() } else { named(agent) };
-            if let Some(group) = text("joins") {
-                let join = msg_request::Join {
-                    name: Some(agent.to_string()),
-                    group: Some(group.to_string()),
-                    pull: false,
-                };
-                expect(&mut control, msg(&caller, Asked::Join(join)), DONE);
-            } else if let Some(body) = text("posts") {
-                let answering = step.get("answering").map(|answering| msg_request::Answering {
-                    question: answering.get("question").and_then(Value::as_u64).unwrap_or(0),
-                    answer: answering.get("answer").and_then(Value::as_str).unwrap_or("").into(),
-                });
-                let post = msg_request::Post {
-                    group: text("group").map(ToString::to_string),
-                    to: strings(step, "to"),
-                    body: body.to_string(),
-                    answers: strings(step, "answers"),
-                    answering,
-                    ..Default::default()
-                };
-                expect(&mut control, msg(&caller, Asked::Post(post)), DONE);
-            } else if let Some(group) = text("deletes") {
-                let delete = msg_request::GroupDelete { group: group.to_string() };
-                expect(&mut control, msg(&caller, Asked::GroupDelete(delete)), DONE);
-            } else {
-                return Err(CaseError::new(
-                    "an agent's step says neither joins, posts nor deletes",
-                ));
-            }
-            return Ok(());
+            return self.agent_acts(agent, step);
         }
         if text("human") == Some("reads") {
             let window = self.app.as_mut().ok_or_else(|| {
@@ -451,6 +420,41 @@ impl<'a> Conversation<'a> {
             }
             _ => Err(CaseError::new("a step names no client, daemon, agent, pane or app")),
         }
+    }
+
+    /// An agent, or the desk as `@human`, joining, posting to or deleting a group.
+    fn agent_acts(&mut self, agent: &str, step: &Value) -> Result<(), CaseError> {
+        let text = |key: &str| step.get(key).and_then(Value::as_str);
+        let mut control = self.daemon.connect();
+        let caller = if agent == "@human" { the_human() } else { named(agent) };
+        if let Some(group) = text("joins") {
+            let join = msg_request::Join {
+                name: Some(agent.to_string()),
+                group: Some(group.to_string()),
+                pull: false,
+            };
+            expect(&mut control, msg(&caller, Asked::Join(join)), DONE);
+        } else if let Some(body) = text("posts") {
+            let answering = step.get("answering").map(|answering| msg_request::Answering {
+                question: answering.get("question").and_then(Value::as_u64).unwrap_or(0),
+                answer: answering.get("answer").and_then(Value::as_str).unwrap_or("").into(),
+            });
+            let post = msg_request::Post {
+                group: text("group").map(ToString::to_string),
+                to: strings(step, "to"),
+                body: body.to_string(),
+                answers: strings(step, "answers"),
+                answering,
+                ..Default::default()
+            };
+            expect(&mut control, msg(&caller, Asked::Post(post)), DONE);
+        } else if let Some(group) = text("deletes") {
+            let delete = msg_request::GroupDelete { group: group.to_string() };
+            expect(&mut control, msg(&caller, Asked::GroupDelete(delete)), DONE);
+        } else {
+            return Err(CaseError::new("an agent's step says neither joins, posts nor deletes"));
+        }
+        Ok(())
     }
 
     fn agent_in(&mut self, pane: &str, state: &str) -> Result<(), CaseError> {
