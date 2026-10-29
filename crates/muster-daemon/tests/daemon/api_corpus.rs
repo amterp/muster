@@ -69,6 +69,11 @@ fn acting() {
 }
 
 #[test]
+fn driving() {
+    played(&Conformance::load("api-driving.json"));
+}
+
+#[test]
 fn ending() {
     played(&Conformance::load("api-ending.json"));
 }
@@ -368,9 +373,19 @@ impl<'a> Conversation<'a> {
                 until_text(&mut control, pane, shown);
             } else if let Some(state) = text("agent") {
                 self.agent_in(pane, state)?;
+            } else if let Some(session) = text("session") {
+                // As the agent's adapter reports it, which is what makes the agent restartable.
+                let report = proto::pane_request::Report {
+                    pane: pane.to_string(),
+                    agent: "claude".to_string(),
+                    session_id: Some(session.to_string()),
+                    ..Default::default()
+                };
+                let report = proto::pane_request::Request::Report(report);
+                expect(&mut control, crate::support::pane(report), DONE);
             } else {
                 return Err(CaseError::new(
-                    "a pane's step says neither made, closed, shows nor agent",
+                    "a pane's step says neither made, closed, shows, agent nor session",
                 ));
             }
             return Ok(());

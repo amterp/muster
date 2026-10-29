@@ -1,0 +1,306 @@
+{
+  "concept": "api-driving",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 5; proto/muster_api.proto, its header's Requests and answers and Acting on a pane, and SendToPane, ClosePane, CompactAgent and RestartAgent",
+  "why": "`pane.send`, `pane.close`, `pane.compact` and `pane.restart` act on a pane that is already running, as `muster pane send`, `close`, `compact` and `restart` do. None carries an operation id, so what each answers, and which refusal code it gives, is all a client has to go on. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a close's event reaches its sender before the answer, with the request's correlation id",
+      "why": "An answer comes after its events, and an event a request caused carries the request's correlation id on that connection only (the header, Requests and answers). So a client that closed a pane can tell its own close from anybody else's, and `through` names the event it was sent before the answer. Another subscriber hears the same close with no correlation id. A pane already gone is refused NOT_FOUND, and nothing else happens: closing takes no operation id, and asking again is safe.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "b",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "*"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "epoch": "$ours", "snapshot": "*"}}]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$theirs", "snapshot": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"close": {"pane": "$pane"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$ours",
+                  "number": "1",
+                  "source": "*",
+                  "correlation": "3",
+                  "paneClosed": {"pane": "$pane"}
+                }
+              },
+              {"answer": {"correlation": "3", "outcome": "OUTCOME_DONE", "epoch": "$ours", "through": "1"}}
+            ]
+          },
+          {
+            "as": "b",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$theirs", "number": "1", "source": "*", "paneClosed": {"pane": "$pane"}}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "pane": {"close": {"pane": "$pane"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "epoch": "$ours",
+                  "through": "1",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_NOT_FOUND"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a confirmed send is done once the pane shows it, and refused when the pane never takes it",
+      "why": "A send asked to confirm reads the pane back, as `muster pane send --confirm` does, and its answer says what the read-back saw (MIP-10 section 5): DONE once the text shows on the pane more often than it did, and REFUSED when the pane shows it was not taken. `cat` reads in canonical mode, where a terminal echoes the start of a line over 1024 bytes and never delivers it. A send not asked to confirm is done once the daemon hands it to the pane, whatever becomes of it.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "shows": "$"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "1",
+              "pane": {"send": {"pane": "p1", "text": "cat", "enter": true, "confirm": true}}
+            },
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE"}}]
+          },
+          {"pane": "p1", "shows": "cat\n"},
+          {
+            "as": "a",
+            "send": {
+              "correlation": "2",
+              "pane": {
+                "send": {
+                  "pane": "p1",
+                  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxend",
+                  "enter": true,
+                  "confirm": true
+                }
+              }
+            },
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"send": {"pane": "p1", "text": "echo held", "enter": true}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_DONE"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a send that cannot be typed is refused with a code, and nothing is typed",
+      "why": "A send of nothing, and one naming a key the daemon cannot read, are refused INVALID before anything reaches the pane, so the Return after a key that went missing never answers a dialog the key was meant to move first. A pane this daemon does not run is refused NOT_FOUND (the schema's SendToPane).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"send": {"pane": "p1"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_INVALID"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "2",
+              "pane": {"send": {"pane": "p1", "keys": ["down", "no-such-key"], "enter": true}}
+            },
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_INVALID"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"send": {"pane": "p9", "text": "hello", "enter": true}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_NOT_FOUND"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a compaction is queued for an agent, and refused with a code where it cannot be",
+      "why": "`pane.compact` does what `muster pane compact` does: DONE means the compaction is queued, to be typed once the agent is idle at an empty prompt. A focus is typed as one line, so one holding a newline is refused INVALID; a pane running no agent has no context to compact; a pane this daemon does not run is refused NOT_FOUND (the schema's CompactAgent).",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "agent": "started"},
+          {"pane": "p2", "made": true},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"compact": {"pane": "p1", "focus": "keep the parser notes"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "pane": {"compact": {"pane": "p1", "focus": "keep\nthe notes"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_INVALID"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"compact": {"pane": "p2"}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "pane": {"compact": {"pane": "p9"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_NOT_FOUND"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a restart resumes an agent's session and says what it typed, and is refused with nothing ended where it cannot",
+      "why": "`pane.restart` does what `muster pane restart` does: it ends the agent and types the line that resumes its session at the shell left behind, and its answer says the program it ended, whether it had to be killed, and the line. An agent whose harness has reported no session is refused with nothing ended, a variable Muster sets on every pane is refused INVALID, and a pane this daemon does not run is refused NOT_FOUND (the schema's RestartAgent).",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "agent": "started"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"restart": {"pane": "p1"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          },
+          {"pane": "p1", "session": "s-1"},
+          {
+            "as": "a",
+            "send": {"correlation": "2", "pane": {"restart": {"pane": "p1", "env": {"MUSTER_PANE": "p2"}}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_INVALID"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"restart": {"pane": "p9"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_REFUSED",
+                  "reason": "*",
+                  "refusal": "REFUSAL_NOT_FOUND"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "pane": {"restart": {"pane": "p1"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_DONE",
+                  "restarted": {"program": "claude", "typed": "*"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

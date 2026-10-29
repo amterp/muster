@@ -314,8 +314,9 @@ conversation, played in order:
 - What happens in Muster around the client is said in Muster's terms, for each driver to bring about its own way:
   `{"daemon": "hand_off"}`, `{"daemon": "restart"}` (an orderly stop, then a start), `{"pane": "p1", "made": true}`,
   `{"pane": "p1", "closed": true}`, `{"pane": "p1", "shows": "text"}`, which waits until the pane's screen holds the
-  text, `{"pane": "p1", "agent": "started"}` and the states `working`, `blocked` and `idle`, `{"agent": "a", "joins":
-  "g"}`, `{"agent": "a", "posts": "body", "to": [...]}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app":
+  text, `{"pane": "p1", "agent": "started"}` and the states `working`, `blocked` and `idle`, `{"pane": "p1",
+  "session": "s-1"}`, the pane's agent reporting its session as its adapter does, `{"agent": "a", "joins": "g"}`,
+  `{"agent": "a", "posts": "body", "to": [...]}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app":
   "attending"}` and `{"app": "gone"}`. Each finishes before the next step starts.
 
 What differs from run to run is written as a token. `"*"` is any value that is there, and `"?"` any value or none, for
