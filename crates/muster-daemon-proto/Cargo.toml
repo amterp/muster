@@ -5,6 +5,8 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The names Muster gives what it makes, which a pane composed here takes (`making`).
+muster-core.workspace = true
 muster-frame.workspace = true
 prost.workspace = true
 serde = { workspace = true, optional = true }

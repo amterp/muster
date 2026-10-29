@@ -23,7 +23,7 @@ use muster_core::names::{Mint, Minter};
 use muster_core::pane_address::{self, Address, Candidate};
 use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
-use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection};
+use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection, making};
 use muster_proto::{Request, Response, request, response};
 
 use crate::dial::Ended;
@@ -736,58 +736,40 @@ fn make_pane(
         return Ok(failure(muster_core::making::HIDDEN_AND_FOCUSED.to_string()));
     }
     let beside = said(&split.pane_id);
-    let mut cwd = said(&split.cwd);
-    let mut cwd_inherited = false;
-    // The maker's id, and its name for the tab its hidden helpers share. One this daemon does not
-    // hold is refused as a pane to split from is: with no window, nothing can say it exists.
-    let maker = match said(&split.maker) {
-        Some(maker) => match snapshot(socket)?.panes.iter().find(|held| held.pane == maker) {
-            Some(held) => Some((maker.clone(), held.name().unwrap_or(&maker).to_string())),
-            None => return Ok(not_held(socket, &maker, "made")),
-        },
-        None => None,
-    };
-    let placement = match &beside {
-        Some(pane) if !split.hidden => {
-            daemon_proto::placement::Where::Beside(daemon_proto::placement::Beside {
-                pane: pane.clone(),
-                side: side.into(),
-                ratio: (split.ratio > 0.0).then_some(split.ratio),
-            })
-        }
-        _ => {
-            if let Some(pane) = &beside {
-                let held = snapshot(socket)?;
-                let Some(held) = held.panes.iter().find(|held| &held.pane == pane) else {
-                    return Ok(not_held(socket, pane, "made"));
-                };
-                cwd_inherited = cwd.is_none() && !held.cwd.is_empty();
-                cwd = cwd.or_else(|| said(&held.cwd));
-            }
-            in_a_tab(split.hidden, maker.as_ref().map(|(_, name)| name.as_str()))
-        }
-    };
-    let made = Minter::new(Mint::Drawn).pane().to_string();
     let window = environment
         .get(environment::WINDOW_SOCKET)
         .filter(|window| !window.is_empty())
         .map(|window| (environment::WINDOW_SOCKET.to_string(), window.clone()));
-    let create = pane_service(daemon_proto::pane_request::Request::Create(
-        daemon_proto::pane_request::Create {
-            pane: made.clone(),
-            placement: Some(daemon_proto::Placement { r#where: Some(placement) }),
-            grid: None,
-            cwd,
-            cwd_inherited,
-            env: window.into_iter().collect(),
-            command: said(&split.run),
-            label: said(&split.name),
-            quiet: split.quiet,
-            maker: maker.map(|(pane, _)| pane),
-            // With no window, nothing here sees another machine's panes.
-            callsigns_elsewhere: Vec::new(),
-        },
-    ));
+    let new = making::NewPane {
+        beside: beside.clone(),
+        side,
+        ratio: (split.ratio > 0.0).then_some(split.ratio),
+        hidden: split.hidden,
+        quiet: split.quiet,
+        cwd: said(&split.cwd),
+        run: said(&split.run),
+        name: said(&split.name),
+        maker: said(&split.maker),
+        env: window.into_iter().collect(),
+    };
+    let mut held: Option<daemon_proto::Snapshot> = None;
+    let lookup = |pane: &str| {
+        if held.is_none() {
+            held = Some(snapshot(socket)?);
+        }
+        Ok(held.iter().flat_map(|held| &held.panes).find(|held| held.pane == pane).map(|held| {
+            making::Held { name: held.name().unwrap_or(pane).to_string(), cwd: held.cwd.clone() }
+        }))
+    };
+    let mut drawn = Minter::new(Mint::Drawn);
+    let minted = making::Minted { pane: drawn.pane().to_string(), tab: drawn.tab().to_string() };
+    let made = minted.pane.clone();
+    let create = match making::create(new, lookup, minted) {
+        Ok(create) => create,
+        Err(making::Unmade::NotHeld(pane)) => return Ok(not_held(socket, &pane, "made")),
+        Err(making::Unmade::Lookup(trouble)) => return Err(trouble),
+    };
+    let create = pane_service(daemon_proto::pane_request::Request::Create(create));
     let answer = match (split.hidden, split.quiet) {
         _ if !split.maker.is_empty() => {
             asked_of_one_since(socket, create, daemon_proto::version::HELPERS, "make a helper")
@@ -823,28 +805,6 @@ fn make_pane(
         }
         _ => failure(answer.reason),
     })
-}
-
-/// A new tab of its own, hidden or not, or for a hidden helper the tab its maker's helpers share,
-/// named for the maker by `maker`, when there is one.
-fn in_a_tab(hidden: bool, maker: Option<&str>) -> daemon_proto::placement::Where {
-    let tab = Minter::new(Mint::Drawn).tab().to_string();
-    match maker {
-        Some(maker) if hidden => {
-            daemon_proto::placement::Where::Helpers(daemon_proto::placement::Helpers {
-                tab,
-                label: Some(daemon_proto::Label {
-                    text: Some(muster_core::making::helpers_tab(maker)),
-                    generation: muster_core::making::HELPERS_TAB_GENERATION,
-                }),
-            })
-        }
-        _ => daemon_proto::placement::Where::NewTab(daemon_proto::placement::NewTab {
-            tab,
-            label: Some(daemon_proto::Label::default()),
-            hidden,
-        }),
-    }
 }
 
 /// A daemon's answer to a change, as the window's own answer.
