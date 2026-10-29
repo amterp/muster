@@ -8,7 +8,15 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2q7izHnLJ",
+      "body": "Landed 2026-10-29 (a75d0870..593dc098): every group this daemon keeps or holds a replica of, as metadata in the snapshot; GroupMade/Changed/Deleted and Logged (bodies in live events); msg.history pages (after, through] newest-first within 4 MiB; Unread carries the human's place and what waits, shared with the attention topic. Design reviewed by Codex xhigh (2 P1 taken), code by Codex and Claude (P2s fixed). Stage 3 left: replica home identity, groups with no member here.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793250363673
+    }
+  ],
   "created_at_millis": 1793241770526,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 1, part 3 of 5: the messages topic. Read docs/mip/0010-api-for-other-tools.md sections 3, 4 (\"Messages\") and 7.\n\nWhat: every group this daemon keeps or holds a replica of, in the snapshot as metadata only: name, home daemon by stable identity, members, policy, paused, the number of its latest post, and the human's place in it. `msg.history` pages a group's posts, bounded by bytes per page, from any number up to the number the snapshot was current to; the live stream carries posts after it. A deleted group, or one whose earlier posts are gone, says so. Events: a post; a group made, changed or deleted; a participant joining or leaving; the human's place moving. Reading and fetching move nobody's place. Groups on other machines with no local member come in stage 3, not here.\n\nProves: a gate test client resubscribing after a disconnect fetches only the pages it lacks and misses nothing; a backlog of 1 MiB posts arrives in pages under the frame limit; a read at the desk (`muster msg read --as @human`) shows up as the human's place moving.",
@@ -17,11 +25,12 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "b1V",
+  "position": "YvJ",
   "title": "MIP-10 stage 1c: the messages topic, paged history and the human's place",
   "type": "feature",
-  "updated_at_millis": 1793241772429,
+  "updated_at_millis": 1793250363723,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793241770526}
+    {"field":"column","value":"backlog-hi","at":1793241770526},
+    {"field":"column","value":"done","at":1793250363207}
   ]
 }

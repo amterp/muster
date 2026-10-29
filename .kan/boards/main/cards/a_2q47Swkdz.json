@@ -9,7 +9,7 @@
     "a_2q47SHmeF",
     "a_2q47QxaZd"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "id": "c_2q7Wp7Yok",
@@ -26,11 +26,12 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "b1a",
+  "position": "Zw",
   "title": "MIP-10 stage 2c: making, typing into and closing panes through the API",
   "type": "feature",
-  "updated_at_millis": 1793249896143,
+  "updated_at_millis": 1793250363464,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793241771555}
+    {"field":"column","value":"backlog-hi","at":1793241771555},
+    {"field":"column","value":"in-progress","at":1793250363464}
   ]
 }

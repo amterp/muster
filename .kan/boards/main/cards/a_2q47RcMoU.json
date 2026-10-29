@@ -9,13 +9,19 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2q6BKJwu2",
       "body": "Daemon half landed 2026-10-28 (83b17100..3f859db1): pane asking as daemon state (blocked/stuck, and a quiet helper whose maker cannot hear), presence from the app, Shown events, all on the internal protocol 1.9. Presence expiry settled: the app reports every 15 s, at once when Muster comes forward or goes behind and on use after 15 s unheard; each report lasts 45 s (daemon default 45 s, capped at 10 min) and ends when its connection closes. Reason: three heartbeats per report so one late report on a loaded machine never reads as the person gone; a hung app reads unknown within 45 s, a quit or crashed one at once. Written in docs/architecture.md. Known limit until stage 3: the daemon takes a maker on another machine as unable to hear, so a quiet helper of a devenv maker asks. The API attention topic is next.",
       "author": "Alexander Terp",
       "created_at_millis": 1793246686478
+    },
+    {
+      "id": "c_2q7izV7Qn",
+      "body": "API half landed 2026-10-29 (caa3cac9): Snapshot.attention with Asking, Unread (capped at newest 500 with a count), Presence; events asking/presence/shown, Unread shared with the messages topic.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793250363811
     }
   ],
   "created_at_millis": 1793241770731,
@@ -26,12 +32,13 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "Zy",
+  "position": "YvI",
   "title": "MIP-10 stage 1d: attention and presence",
   "type": "feature",
-  "updated_at_millis": 1793246686530,
+  "updated_at_millis": 1793250363872,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241770731},
-    {"field":"column","value":"in-progress","at":1793246491647}
+    {"field":"column","value":"in-progress","at":1793246491647},
+    {"field":"column","value":"done","at":1793250363337}
   ]
 }
