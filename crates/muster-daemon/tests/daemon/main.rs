@@ -3,6 +3,7 @@
 mod api;
 mod api_acting;
 mod api_attention;
+mod api_corpus;
 mod api_driving;
 mod api_messages;
 mod api_panes;

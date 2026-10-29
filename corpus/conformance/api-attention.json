@@ -1,0 +1,141 @@
+{
+  "concept": "api-attention",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 4 (attention and presence)",
+  "why": "TOPIC_ATTENTION is what waits on the human now, as state rather than as a record of notifications: each pane asking for them, each unread message that would ring them, and their presence at the desk as Muster's app reports it. A client that restarts finds everything still waiting, with or without the app. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "with no app, a blocked agent and a message for the human wait in the snapshot",
+      "why": "Attention accumulates with Muster's app not running, so a program on its own can show what waits on the owner: the pane asking and why, and each group's unread count with the messages waiting. With no app there is no presence, which reads as nothing known (MIP-10, section 4).",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "agent": "started"},
+          {"pane": "p1", "agent": "blocked"},
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "*"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_ATTENTION"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_ATTENTION"],
+                    "sources": "*",
+                    "attention": {
+                      "asking": [{"pane": "p1", "ask": "ASK_BLOCKED"}],
+                      "unread": [
+                        {
+                          "group": "g",
+                          "place": "2",
+                          "count": "1",
+                          "waiting": [{"number": "4", "author": "a", "addressed": true, "atMs": "*"}]
+                        }
+                      ],
+                      "presence": {}
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "the human reading at the desk clears what waits, and presence goes with the app",
+      "why": "A message read at the desk moves the human's place past it and empties what waits there in one event, and presence is what the app reports: attended and in front while it is, and nothing known once it is gone (MIP-10, section 4).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"app": "attending"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "*"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_ATTENTION"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_ATTENTION"],
+                    "sources": "*",
+                    "attention": {"presence": {"known": true, "attended": true, "inFront": true}}
+                  }
+                }
+              }
+            ]
+          },
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "a",
+            "read": 2,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "1", "source": "*", "unread": {"group": "g", "place": "2"}}},
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "2",
+                  "source": "*",
+                  "unread": {
+                    "group": "g",
+                    "place": "2",
+                    "count": "1",
+                    "waiting": [{"number": "4", "author": "a", "addressed": true, "atMs": "*"}]
+                  }
+                }
+              }
+            ]
+          },
+          {"human": "reads", "group": "g"},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$epoch", "number": "3", "source": "*", "unread": {"group": "g", "place": "4"}}}]
+          },
+          {"app": "gone"},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$epoch", "number": "4", "source": "*", "presence": {}}}]
+          }
+        ]
+      }
+    }
+  ]
+}

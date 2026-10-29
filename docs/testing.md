@@ -296,3 +296,39 @@ line falls where behavior stops being expressible in Muster's vocabulary: drivin
 `NSEvent`, or proving that two processes appending to one log file never tear a line. Translation *into* the
 vocabulary is the hybrid case - a macOS driver maps `NSEvent` to a `KeyEvent` and asserts against a portable
 expectation, and a GTK shell would write its own table producing the same `KeyEvent`.
+
+**The API's corpus is conversations.** `corpus/conformance/api-*.json` holds what a program and the daemon say to each
+other over the API (MIP-10), one file per concept. Requests and answers are written in protobuf's canonical JSON for
+`muster_api.proto`, which every protobuf library reads, so a daemon or client written in another language can be held
+to the same cases with its own `protojson`. The driver, `crates/muster-daemon/tests/daemon/api_corpus.rs`, encodes and
+decodes through the schema alone rather than through the generated Rust types. A case's `given` is the daemon it starts
+on, `{"daemon": {}}` or `{"daemon": {"detecting": true}}` for one that detects agents, and its `expect` is the
+conversation, played in order:
+
+- `{"as": "a", "hello": {...}, "heard": [...]}` dials a new connection for client `a` and reads its HelloAnswer.
+- `{"as": "a", "send": {...}, "heard": [...]}` sends a Request and reads up to and including the answer carrying its
+  correlation id. With `"then": "hang_up"` instead of `heard`, it hangs up without reading.
+- `{"as": "a", "read": n, "heard": [...]}` reads `n` messages. With `"passing": {...}` it passes over any message that
+  matches that and not the next one expected, for the changes a pane makes on its own while its program starts.
+- `{"as": "a", "hang_up": true}` closes the connection.
+- What happens in Muster around the client is said in Muster's terms, for each driver to bring about its own way:
+  `{"daemon": "hand_off"}`, `{"daemon": "restart"}` (an orderly stop, then a start), `{"pane": "p1", "made": true}`,
+  `{"pane": "p1", "closed": true}`, `{"pane": "p1", "shows": "text"}`, which waits until the pane's screen holds the
+  text, `{"pane": "p1", "agent": "started"}` and the states `working`, `blocked` and `idle`, `{"agent": "a", "joins":
+  "g"}`, `{"agent": "a", "posts": "body", "to": [...]}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app":
+  "attending"}` and `{"app": "gone"}`. Each finishes before the next step starts.
+
+What differs from run to run is written as a token. `"*"` is any value that is there, and `"?"` any value or none, for
+a field a pane fills when its program gets to it, such as a title. `"$name"` binds a whole value the first time it is
+heard and must be equal every time after, and is replaced by that value in what is sent; two names never bind one
+value, so a second subscription's `"$second"` epoch that repeated `"$first"` fails. `"${name}"` inside a string is a
+bound value's text. `api`, the version the client speaks, and `scratch`, a directory of the case's own, are bound
+before the first step. Everything else is compared exactly, so a field the daemon starts filling fails the case, and
+prose a program is told not to parse, `reason` and `detail`, is written `"*"`.
+
+**An answer changes only with the API's version.** Played by the commit that wrote it, a corpus can always be edited
+to agree. So `./release` copies the API's files into `corpus/api-baseline/` when it moves the schema's baseline up to
+the version it ships, and while the API is still that version, every shipped case must be in the corpus with the same
+`given` and `expect`; its `why` may be reworded. An answer a release recorded changes, then, in the change that raises
+the API's minor, which is MIP-10's rule until 1.0. Adding a case is a conversation added to a file; a new file is a
+three-line test in the driver naming it, which is what `corpus-lint` holds it to.

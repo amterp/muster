@@ -1,0 +1,102 @@
+{
+  "concept": "api-handshake",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, sections 1 and 2; proto/muster_api.proto, its header's Connecting and Versions",
+  "why": "A program's first frame is a Hello naming the API and the version it speaks, and the daemon's first is a Welcome saying what it serves or a refusal saying why not. A client is written against these answers before it is written against anything else, so they are the first a newer daemon must not change. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a client speaking the daemon's version is welcomed with what the daemon serves",
+      "why": "Welcome is how a client learns which requests and topics this daemon has, down to the options of a later minor, so it asks the Welcome rather than finding out from a refusal (the header, What a client may not know yet). This is the one case that lists them, so a new request changes one line here.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus", "version": "1"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {
+                    "source": {"daemon": "*", "instance": "*"},
+                    "name": "*",
+                    "version": "*",
+                    "features": {
+                      "requests": [
+                        "api.read_pane",
+                        "api.subscribe",
+                        "msg.history",
+                        "pane.close",
+                        "pane.compact",
+                        "pane.new",
+                        "pane.restart",
+                        "pane.send"
+                      ],
+                      "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION"]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "another major is refused with the daemon's version",
+      "why": "A client is served only by its own major, and the refusal says the daemon's version so the client can say what it needs (MIP-10, section 1).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": {"major": 1}, "client": {"name": "corpus"}},
+            "heard": [{"refused": {"reason": "*", "api": "$api"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a version older than the oldest served is refused",
+      "why": "Before 1.0 a break moves the oldest version the daemon serves up to the new one, and a client older than that is refused rather than answered in a way it was not written for (the header, Versions). 0.0 is older than any version served.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": {}, "client": {"name": "corpus"}},
+            "heard": [{"refused": {"reason": "*", "api": "$api"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a hello naming no version is refused",
+      "why": "The version is what the daemon judges a client by, so a Hello without one cannot be served.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "client": {"name": "corpus"}},
+            "heard": [{"refused": {"reason": "*", "api": "$api"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a client newer than the daemon is welcomed and makes the check itself",
+      "why": "A daemon cannot know of a break made after it was built, so it serves a newer minor of its own major and says its own version; the client judges whether it can read that daemon (the header, Versions).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": {"minor": 999}, "client": {"name": "corpus"}},
+            "heard": [{"welcome": {"api": "$api", "machine": "*"}}]
+          }
+        ]
+      }
+    }
+  ]
+}

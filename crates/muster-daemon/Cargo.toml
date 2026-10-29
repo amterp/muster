@@ -28,9 +28,13 @@ mimalloc.workspace = true
 # The daemon's tests live here because cargo only hands `CARGO_BIN_EXE_muster-daemon` to tests
 # in the package that owns the binary, and every one of them runs the real binary.
 [dev-dependencies]
+conformance.workspace = true
 libc.workspace = true
 muster-api.workspace = true
+muster-baseline.workspace = true
 muster-harness.workspace = true
+# The API corpus is protobuf's canonical JSON, read and written through the schema alone.
+prost-reflect = { version = "0.16", features = ["serde"] }
 serde_json.workspace = true
 
 [lints]

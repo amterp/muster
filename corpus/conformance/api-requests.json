@@ -1,0 +1,96 @@
+{
+  "concept": "api-requests",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, sections 2 and 5; proto/muster_api.proto, its header's Requests and answers",
+  "why": "Every request carries a correlation id the client chooses and its answer repeats, and a request the daemon does not know is refused with a code rather than ending the connection. That is what lets a client written for a later minor talk to an earlier daemon, so it holds for every request and is pinned here once. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "an answer repeats the correlation id its request chose",
+      "why": "The id is the client's, so it can match an answer to its request without counting them; any string will do.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "first thing I asked", "api": {"subscribe": {}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "first thing I asked",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {"epoch": "$epoch", "sources": [{"source": "*", "state": "SOURCE_STATE_CURRENT"}]}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a request the daemon does not know is refused as unsupported and the connection stays open",
+      "why": "A client of a later minor may send a request this daemon predates. It hears UNSUPPORTED, which it can act on, and goes on using the connection (the header, Requests and answers). A Request with no arm and an api request with none are both what such a request decodes to here.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1"},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_UNSUPPORTED"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {}},
+            "heard": [
+              {
+                "answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_UNSUPPORTED"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "api": {"subscribe": {}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_DONE", "epoch": "*", "snapshot": "*"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a topic the daemon does not know is refused as unsupported",
+      "why": "A topic added in a later minor is a number this daemon cannot serve, and a subscription that quietly left it out would read as a topic with nothing in it.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES", 99]}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_UNSUPPORTED"}
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

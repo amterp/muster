@@ -1,0 +1,249 @@
+{
+  "concept": "api-subscribing",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 3; proto/muster_api.proto, its header's Subscribing",
+  "why": "`api.subscribe` answers with a snapshot and then sends every later event, numbered per subscription in an epoch of its own, so a client knows it has missed nothing by the numbers alone. A client's whole model of the daemon rests on these rules, and they hold for every topic, so they are pinned here rather than in each topic's file. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a snapshot names its topics and sources, and is current to nothing yet",
+      "why": "The snapshot says which topics it holds and the state of every source in it, and `through` is the number it is current to: 0, in a subscription that has numbered nothing (the header, Subscribing). Its answer and its snapshot share the subscription's epoch. The machines topic holds this daemon as Welcome described it.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": {"api": "$api", "machine": "$machine"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MACHINES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_MACHINES"],
+                    "sources": [{"source": "$here", "state": "SOURCE_STATE_CURRENT"}],
+                    "machines": ["$machine"]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "events are numbered from 1 in the subscription's epoch and name their source",
+      "why": "Numbers belong to the subscription, so a gap means the client missed something and subscribes again; every event names the daemon it came from by identity and instance (the header, Subscribing).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": {"api": "$api", "machine": {"source": "$here", "name": "*", "version": "*", "features": "*"}}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": [{"source": "$here", "state": "SOURCE_STATE_CURRENT"}]
+                  }
+                }
+              }
+            ]
+          },
+          {"pane": "p1", "made": true},
+          {"pane": "p2", "made": true},
+          {
+            "as": "a",
+            "read": 2,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "$here",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "p1",
+                      "source": "$here",
+                      "callsign": "*",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "2",
+                  "source": "$here",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "p2",
+                      "source": "$here",
+                      "callsign": "*",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a topic the client did not ask for takes no numbers",
+      "why": "A subscription to messages alone hears nothing of panes, and the panes' events leave no gap in its numbers, so its first event is 1 however many panes came and went first (the header, Subscribing).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {"epoch": "$epoch", "topics": ["TOPIC_MESSAGES"], "sources": "*"}
+                }
+              }
+            ]
+          },
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "closed": true},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$epoch", "number": "1", "source": "*", "groupMade": "*"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "subscribing again starts a new epoch whose snapshot holds what came before",
+      "why": "One connection holds one subscription, and subscribing again replaces it: a new epoch, numbered from 1 again, whose snapshot already holds what the last one heard as events (the header, Subscribing). A client resynchronizes by doing exactly this.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$first",
+                  "snapshot": {"epoch": "$first", "topics": ["TOPIC_PANES"], "sources": "*"}
+                }
+              }
+            ]
+          },
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$first",
+                  "number": "1",
+                  "source": "*",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "p1",
+                      "source": "*",
+                      "callsign": "$callsign",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "$since",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$second",
+                  "snapshot": {
+                    "epoch": "$second",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "p1",
+                        "source": "*",
+                        "callsign": "$callsign",
+                        "title": "?",
+                        "directory": "*",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "$since",
+                        "facts": {},
+                        "adapter": "*"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {"pane": "p2", "made": true},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$second", "number": "1", "source": "*", "paneAppeared": "*"}}]
+          }
+        ]
+      }
+    }
+  ]
+}

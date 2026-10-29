@@ -1,0 +1,347 @@
+{
+  "concept": "api-messages",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, sections 4 and 6 (groups and msg.history); proto/muster_api.proto, its header's Subscribing",
+  "why": "TOPIC_MESSAGES holds every group the daemon keeps, without bodies, and sends each change to a group and each entry in its log as an event; `msg.history` pages a group's log, so a client that reconnects asks only for what it lacks. Nothing a client reads moves anybody's place. In each case an agent `a` and the human are in group `g`, where `a` writes to the human. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "the snapshot holds every group and where the human is in it, without a body",
+      "why": "A client learns a group's members, policy, the number of its latest entry and the human's place from the snapshot, and fetches bodies with `msg.history` only when it wants them (MIP-10, section 4). The group's home is this daemon, by the identity Welcome gave.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "*"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_MESSAGES"],
+                    "sources": "*",
+                    "groups": [
+                      {
+                        "name": "g",
+                        "home": {"daemon": "$daemon", "machine": "*"},
+                        "members": ["@human", "a"],
+                        "policy": {
+                          "ring": {"*": {"names": ["*", "@human"]}},
+                          "allow": {"*": {"names": ["*"]}},
+                          "membership": ["*"],
+                          "urgent": ["*"]
+                        },
+                        "latest": "4",
+                        "humanPlace": "2"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "each entry in a group's log and each change to the group is an event, in order",
+      "why": "A client following a group sees it made, every entry logged with its number, the group changing as members join, and where the human is in it, in the order the daemon did them, so applying them in turn leaves it holding what a fresh snapshot would. A post arrives with its body.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "*"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {"epoch": "$epoch", "topics": ["TOPIC_MESSAGES"], "sources": "*"}
+                }
+              }
+            ]
+          },
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "a",
+            "read": 8,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "*",
+                  "groupMade": {
+                    "group": {
+                      "name": "g",
+                      "home": {"daemon": "$daemon", "machine": "*"},
+                      "members": ["@human"],
+                      "policy": {
+                        "ring": {"*": {"names": ["*", "@human"]}},
+                        "allow": {"*": {"names": ["*"]}},
+                        "membership": ["*"],
+                        "urgent": ["*"]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "2",
+                  "source": "*",
+                  "logged": {"group": "g", "entry": {"number": "1", "atMs": "*", "made": {"by": "@human"}}}
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "3",
+                  "source": "*",
+                  "logged": {"group": "g", "entry": {"number": "2", "atMs": "*", "joined": {"who": "@human"}}}
+                }
+              },
+              {"event": {"epoch": "$epoch", "number": "4", "source": "*", "unread": {"group": "g", "place": "2"}}},
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "5",
+                  "source": "*",
+                  "logged": {"group": "g", "entry": {"number": "3", "atMs": "*", "joined": {"who": "a"}}}
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "6",
+                  "source": "*",
+                  "groupChanged": {
+                    "group": {
+                      "name": "g",
+                      "home": {"daemon": "$daemon", "machine": "*"},
+                      "members": ["@human", "a"],
+                      "policy": {
+                        "ring": {"*": {"names": ["*", "@human"]}},
+                        "allow": {"*": {"names": ["*"]}},
+                        "membership": ["*"],
+                        "urgent": ["*"]
+                      },
+                      "latest": "3",
+                      "humanPlace": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "7",
+                  "source": "*",
+                  "logged": {
+                    "group": "g",
+                    "entry": {"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "need input"}}
+                  }
+                }
+              },
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "8",
+                  "source": "*",
+                  "unread": {
+                    "group": "g",
+                    "place": "2",
+                    "count": "1",
+                    "waiting": [{"number": "4", "author": "a", "addressed": true, "atMs": "*"}]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "history pages a group's log and moves nobody's place",
+      "why": "`msg.history` answers the entries after `after` up to `through`, the number a snapshot was current to, so a client asks for exactly what it lacks. A group the daemon does not keep is NOT_FOUND. Reading the log is not reading the messages: subscribing again finds the human's place where it was (MIP-10, section 4).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "*"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$first",
+                  "snapshot": {
+                    "epoch": "$first",
+                    "topics": ["TOPIC_MESSAGES"],
+                    "sources": "*",
+                    "groups": [
+                      {
+                        "name": "g",
+                        "home": {"daemon": "$daemon", "machine": "*"},
+                        "members": ["@human", "a"],
+                        "policy": {
+                          "ring": {"*": {"names": ["*", "@human"]}},
+                          "allow": {"*": {"names": ["*"]}},
+                          "membership": ["*"],
+                          "urgent": ["*"]
+                        },
+                        "latest": "4",
+                        "humanPlace": "2"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "msg": {"history": {"group": "g", "through": "4"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$first",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {"number": "1", "atMs": "*", "made": {"by": "@human"}},
+                      {"number": "2", "atMs": "*", "joined": {"who": "@human"}},
+                      {"number": "3", "atMs": "*", "joined": {"who": "a"}},
+                      {"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "need input"}}
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "msg": {"history": {"group": "g", "after": "2", "through": "4"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$first",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {"number": "3", "atMs": "*", "joined": {"who": "a"}},
+                      {"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "need input"}}
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "msg": {"history": {"group": "nope", "through": "4"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_REFUSED",
+                  "epoch": "$first",
+                  "reason": "*",
+                  "refusal": "REFUSAL_NOT_FOUND"
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "5", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "5",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$second",
+                  "snapshot": {
+                    "epoch": "$second",
+                    "topics": ["TOPIC_MESSAGES"],
+                    "sources": "*",
+                    "groups": [
+                      {
+                        "name": "g",
+                        "home": {"daemon": "$daemon", "machine": "*"},
+                        "members": ["@human", "a"],
+                        "policy": {
+                          "ring": {"*": {"names": ["*", "@human"]}},
+                          "allow": {"*": {"names": ["*"]}},
+                          "membership": ["*"],
+                          "urgent": ["*"]
+                        },
+                        "latest": "4",
+                        "humanPlace": "2"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

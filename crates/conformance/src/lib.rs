@@ -253,9 +253,15 @@ impl Conformance {
     ///
     /// Returns how many cases ran, so a driver can assert it rather than assume it.
     pub fn run(&self, mut subject: impl FnMut(&Value) -> Outcome) -> usize {
+        self.run_cases(|case| subject(&case.given))
+    }
+
+    /// [`Conformance::run`], for a driver that needs the whole case: one whose expectation is a
+    /// script it plays, such as a conversation, and answers with what came back at each step.
+    pub fn run_cases(&self, mut subject: impl FnMut(&Case) -> Outcome) -> usize {
         let mut failures: Vec<String> = Vec::new();
         for case in &self.cases {
-            match subject(&case.given) {
+            match subject(case) {
                 Err(error) => failures.push(self.report(case, None, Some(&error))),
                 Ok(actual) => {
                     if !equivalent(&actual, &case.expect, self.numbers) {
@@ -282,6 +288,16 @@ impl Conformance {
         ];
         if let Some(actual) = actual {
             lines.push(format!("  actual:   {actual}"));
+            if let Some((at, expected, actual)) =
+                first_difference(&case.expect, actual, self.numbers)
+            {
+                let shown = |value: Option<&Value>| {
+                    value.map_or_else(|| "nothing".to_string(), ToString::to_string)
+                };
+                lines.push(format!("  first difference, at {at}:"));
+                lines.push(format!("    expected {}", shown(expected)));
+                lines.push(format!("    actual   {}", shown(actual)));
+            }
         }
         if let Some(error) = error {
             lines.push(format!("  the driver could not run this case: {error}"));
@@ -361,6 +377,39 @@ fn equivalent(left: &Value, right: &Value, numbers: Numbers) -> bool {
                 && a.iter().all(|(key, a)| b.get(key).is_some_and(|b| equivalent(a, b, numbers)))
         }
         _ => left == right,
+    }
+}
+
+/// Where two values first disagree, as a JSON pointer, with what each holds there. A case whose
+/// expectation is a long script fails on one line of it, and printing both whole leaves the
+/// reader to find which.
+fn first_difference<'a>(
+    expected: &'a Value,
+    actual: &'a Value,
+    numbers: Numbers,
+) -> Option<(String, Option<&'a Value>, Option<&'a Value>)> {
+    match (expected, actual) {
+        (Value::Array(want), Value::Array(got)) => {
+            (0..want.len().max(got.len())).find_map(|index| {
+                match (want.get(index), got.get(index)) {
+                    (Some(want), Some(got)) => first_difference(want, got, numbers)
+                        .map(|(at, want, got)| (format!("/{index}{at}"), want, got)),
+                    (want, got) => Some((format!("/{index}"), want, got)),
+                }
+            })
+        }
+        (Value::Object(want), Value::Object(got)) => {
+            let mut keys: Vec<&String> = want.keys().chain(got.keys()).collect();
+            keys.sort();
+            keys.dedup();
+            keys.into_iter().find_map(|key| match (want.get(key), got.get(key)) {
+                (Some(want), Some(got)) => first_difference(want, got, numbers)
+                    .map(|(at, want, got)| (format!("/{key}{at}"), want, got)),
+                (want, got) => Some((format!("/{key}"), want, got)),
+            })
+        }
+        _ if equivalent(expected, actual, numbers) => None,
+        _ => Some((String::new(), Some(expected), Some(actual))),
     }
 }
 
@@ -500,6 +549,23 @@ mod tests {
         assert!(report.contains("what this case protects"), "no `why` in:\n{report}");
         assert!(report.contains("expected:"), "no expectation in:\n{report}");
         assert!(report.contains("actual:"), "no actual value in:\n{report}");
+    }
+
+    #[test]
+    fn a_wrong_answer_deep_in_a_script_is_pointed_at() {
+        let mut document = good();
+        document["cases"][0]["expect"] =
+            json!({ "steps": [{ "heard": "yes" }, { "heard": "no" }] });
+        let corpus = parse(&document);
+        let failure = std::panic::catch_unwind(|| {
+            corpus.run(|_| Ok(json!({ "steps": [{ "heard": "yes" }, { "heard": "maybe" }] })));
+        })
+        .expect_err("a wrong answer must fail the run");
+        let report = failure.downcast_ref::<String>().expect("the failure carries a report");
+
+        assert!(report.contains("first difference, at /steps/1/heard:"), "unplaced in:\n{report}");
+        assert!(report.contains("expected \"no\""), "no expected value in:\n{report}");
+        assert!(report.contains("actual   \"maybe\""), "no actual value in:\n{report}");
     }
 
     #[test]

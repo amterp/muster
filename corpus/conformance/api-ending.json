@@ -1,0 +1,80 @@
+{
+  "concept": "api-ending",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 3; proto/muster_api.proto, its header's Ending",
+  "why": "The daemon ends a connection with an Ended saying why when it can, with the epoch and the number of the last event the client was sent, so a client knows whether to connect again at once and where it had got to. Falling behind is held by a Rust test, since no conversation can stop reading for long enough. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a handoff ends a subscription as replaced, and the same socket serves the successor",
+      "why": "A newer daemon took over the panes, so the client connects to the same socket, where the successor answers as the same daemon in a new instance, and subscribes again (the header, Ending). The identity stays; the instance changes.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "$before"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {"daemon": "hand_off"},
+          {"as": "a", "read": 1, "heard": [{"ended": {"reason": "REASON_REPLACED", "epoch": "$epoch", "detail": "*"}}]},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [
+              {
+                "welcome": {
+                  "api": "$api",
+                  "machine": {"source": {"daemon": "$daemon", "instance": "$after"}, "name": "*", "version": "*", "features": "*"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a daemon stopping ends a subscription saying where it had got to",
+      "why": "An orderly stop ends every connection as STOPPING, with `reached`, the number of the last event written, so a client that comes back later knows what it had (the header, Ending).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$epoch", "number": "1", "source": "*", "paneAppeared": "*"}}]
+          },
+          {"daemon": "restart"},
+          {
+            "as": "a",
+            "read": 1,
+            "passing": {"event": "*"},
+            "heard": [{"ended": {"reason": "REASON_STOPPING", "epoch": "$epoch", "reached": "*", "detail": "*"}}]
+          }
+        ]
+      }
+    }
+  ]
+}

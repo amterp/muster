@@ -1,0 +1,459 @@
+{
+  "concept": "api-acting",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 5; proto/muster_api.proto, its header's Requests and answers and Operation ids",
+  "why": "`pane.new` is the API's first request that acts, and carries an operation id the client chooses, so a client that lost an answer asks again and never makes two panes. What it answers in each case is what a client retrying after its own restarts relies on. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a new pane's event reaches its maker with the request's correlation id, before the answer",
+      "why": "An answer comes after its events, and an event a request caused carries the request's correlation id on that connection only, so the maker can tell its own pane's appearing from anybody else's and `through` names the last event it was sent (the header, Subscribing). Another subscriber hears the same event with no correlation id. The pane runs its command in the directory asked, in a tab of its own, under the name asked.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "b",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$ours", "snapshot": "*"}}]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$theirs", "snapshot": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "2",
+              "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "directory": "${scratch}", "name": "made"}}
+            },
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$ours",
+                  "number": "1",
+                  "source": "*",
+                  "correlation": "2",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "$pane",
+                      "source": "*",
+                      "callsign": "$callsign",
+                      "title": "?",
+                      "directory": "${scratch}",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*",
+                      "name": "made"
+                    }
+                  }
+                }
+              },
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$ours",
+                  "through": "1",
+                  "made": {"pane": "$pane", "callsign": "$callsign"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "b",
+            "read": 1,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$theirs",
+                  "number": "1",
+                  "source": "*",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "$pane",
+                      "source": "*",
+                      "callsign": "$callsign",
+                      "title": "?",
+                      "directory": "${scratch}",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*",
+                      "name": "made"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a helper is made hidden and quiet beside its maker, in its maker's directory",
+      "why": "`helper_of` makes a pane as `muster pane new --helper` does: hidden, quiet unless asked otherwise, with its maker named, and starting in its maker's directory when no directory is given (MIP-7; the schema's NewPane).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "1",
+              "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "helperOf": "p1", "name": "helping"}}
+            },
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "p1",
+                        "source": "*",
+                        "callsign": "*",
+                        "title": "?",
+                        "directory": "$home",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "*",
+                        "facts": {},
+                        "adapter": "*"
+                      },
+                      {
+                        "pane": "$pane",
+                        "source": "*",
+                        "callsign": "$callsign",
+                        "title": "?",
+                        "directory": "$home",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "*",
+                        "facts": {},
+                        "adapter": "*",
+                        "name": "helping",
+                        "maker": "p1",
+                        "hidden": true,
+                        "quiet": true
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a new pane is refused with a code for what it lacks, and nothing is made",
+      "why": "Every refusal of a new pane happens before anything ran, so the client can put the cause right and ask again, even under the same operation id (the header, Operation ids). A request without an operation id, or with a directory that is not absolute, is INVALID; a maker or a machine this daemon does not have is NOT_FOUND; a directory the command cannot start in is refused for the reason given. The snapshot after holds no pane.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"run": "exec sleep 86400"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "2",
+              "pane": {"new": {"operation": "op-2", "run": "exec sleep 86400", "directory": "relative"}}
+            },
+            "heard": [
+              {
+                "answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"new": {"operation": "op-3", "run": "exec sleep 86400", "helperOf": "p9"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "4",
+              "pane": {"new": {"operation": "op-4", "run": "exec sleep 86400", "machine": "elsewhere"}}
+            },
+            "heard": [
+              {
+                "answer": {"correlation": "4", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "5",
+              "pane": {"new": {"operation": "op-5", "run": "exec sleep 86400", "directory": "${scratch}/missing"}}
+            },
+            "heard": [{"answer": {"correlation": "5", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "6", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "6",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {"epoch": "$epoch", "topics": ["TOPIC_PANES"], "sources": "*"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an operation id makes one pane per client, and one request",
+      "why": "A repeat is answered ALREADY_SO with the first answer's pane, and an id used for a different request is refused OPERATION_REUSED. Ids are the client's own, scoped by the name in its Hello, so another program choosing the same id makes a pane of its own (the header, Operation ids).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_ALREADY_SO",
+                  "made": {"pane": "$pane", "callsign": "$callsign"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "other"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_OPERATION_REUSED"}
+              }
+            ]
+          },
+          {
+            "as": "b",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "another program"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$theirs", "callsign": "*"}}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a lost answer asked again after a handoff makes one pane",
+      "why": "The daemon that carries a request out remembers its operation id across a handoff, so a client that hung up before its answer asks the daemon that took over with the same id and is told ALREADY_SO, with the pane that was made; the successor holds that one pane and no second (MIP-10, section 5). Another subscriber's event is how the case knows the pane was made.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "b",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "*", "snapshot": "*"}}]
+          },
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "then": "hang_up"
+          },
+          {
+            "as": "b",
+            "read": 1,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "*",
+                  "number": "1",
+                  "source": "*",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "$pane",
+                      "source": "*",
+                      "callsign": "$callsign",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*",
+                      "name": "once"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {"daemon": "hand_off"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_ALREADY_SO",
+                  "made": {"pane": "$pane", "callsign": "$callsign"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "$pane",
+                        "source": "*",
+                        "callsign": "$callsign",
+                        "title": "?",
+                        "directory": "*",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "?",
+                        "facts": {},
+                        "adapter": "*",
+                        "name": "once"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an operation id outlives an orderly restart",
+      "why": "The daemon saves the operations it remembers with its tabs, so a client asking again after the daemon was stopped and started is answered from the record, not by making a second pane (the header, Operation ids).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {"daemon": "restart"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400", "name": "once"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_ALREADY_SO",
+                  "made": {"pane": "$pane", "callsign": "$callsign"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,638 @@
+//! The API corpus: conversations a program has with the daemon (`corpus/conformance/api-*.json`),
+//! played against the daemon built from this commit.
+//!
+//! What a client sends and hears is protobuf's canonical JSON, encoded and decoded through
+//! `muster_api.proto` alone and never through the generated Rust types, so the daemon is judged
+//! as a client generated from the published schema hears it. `docs/testing.md` has the steps a
+//! conversation is made of and the tokens for what differs per run.
+//!
+//! The same conversations, as the last release shipped them, are kept in `corpus/api-baseline/`,
+//! and stand unchanged in the corpus until the API's version moves past that release's.
+
+use std::collections::BTreeMap;
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use conformance::{Case, CaseError, Conformance};
+use muster_api::connection::LARGEST_MESSAGE;
+use muster_api::version::API;
+use prost_reflect::{DescriptorPool, DynamicMessage};
+use serde_json::{Map, Value, json};
+
+use crate::attention::{DONE, msg, named, report, subscribed, the_human};
+use crate::persistence::stop;
+use crate::support::*;
+use proto::msg_request::{self, Request as Asked};
+
+/// How long a step waits for each frame it expects before giving up on it.
+const PATIENCE: Duration = Duration::from_secs(10);
+
+#[test]
+fn handshake() {
+    played(&Conformance::load("api-handshake.json"));
+}
+
+#[test]
+fn requests() {
+    played(&Conformance::load("api-requests.json"));
+}
+
+#[test]
+fn subscribing() {
+    played(&Conformance::load("api-subscribing.json"));
+}
+
+#[test]
+fn panes() {
+    played(&Conformance::load("api-panes.json"));
+}
+
+#[test]
+fn reading() {
+    played(&Conformance::load("api-reading.json"));
+}
+
+#[test]
+fn messages() {
+    played(&Conformance::load("api-messages.json"));
+}
+
+#[test]
+fn attention() {
+    played(&Conformance::load("api-attention.json"));
+}
+
+#[test]
+fn acting() {
+    played(&Conformance::load("api-acting.json"));
+}
+
+#[test]
+fn ending() {
+    played(&Conformance::load("api-ending.json"));
+}
+
+/// While the API is still the version the last release shipped, every conversation it shipped is
+/// still in the corpus as it was. The corpus is played green above, so an answer can only change
+/// by editing its case, and this is what makes that edit come with a new version: the rule until
+/// the API's 1.0, under which a break raises the version and updates the conversations in the same
+/// change (MIP-10, section 1).
+#[test]
+fn the_conversations_a_release_shipped_stand_until_the_version_moves() {
+    let directory = conformance::repo_root().join("corpus/api-baseline");
+    let shipped = shipped(&directory);
+    if shipped.is_empty() {
+        println!(
+            "{} holds no conversations: no release has shipped the API yet, and the next one \
+             copies them there",
+            directory.display()
+        );
+        return;
+    }
+    let baseline = baseline_version();
+    if (API.major, API.minor) != baseline {
+        return;
+    }
+    let changed = changed_since(&shipped, &conformance::repo_root().join("corpus/conformance"));
+    assert!(
+        changed.is_empty(),
+        "The API is still {}.{}, the version the last release shipped, and conversations that \
+         release recorded have changed:\n  {}\nImpact: a client written against {0}.{1} hears \
+         answers it was not written for, with nothing to tell it so.\nFix: give the daemon its \
+         old answers back, or raise the API's minor in crates/muster-api/src/version.rs and say \
+         what changed in the release notes; a rewording of a case's `why` alone is not a change.",
+        baseline.0,
+        baseline.1,
+        changed.join("\n  ")
+    );
+}
+
+/// Each shipped case the corpus in `current` no longer holds as it was shipped.
+fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
+    let mut changed = Vec::new();
+    for corpus in shipped {
+        let name = corpus.file.trim_start_matches("api-baseline/");
+        let Ok(text) = std::fs::read_to_string(current.join(name)) else {
+            changed.push(format!("{name} is gone from the corpus"));
+            continue;
+        };
+        let now = Conformance::parse(name, &text);
+        for case in &corpus.cases {
+            match now.cases.iter().find(|held| held.name == case.name) {
+                None => changed.push(format!("{name}: `{}` is gone", case.name)),
+                Some(held) if held.given != case.given || held.expect != case.expect => {
+                    changed.push(format!("{name}: `{}` says something else now", case.name));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    changed
+}
+
+/// The version `muster_api.v<major>.baseline.proto` says it is: the one the last release shipped.
+fn baseline_version() -> (u32, u32) {
+    let file = format!("muster_api.v{}.baseline.proto", API.major);
+    let text = std::fs::read_to_string(muster_baseline::proto_dir().join(&file))
+        .unwrap_or_else(|error| panic!("{file} could not be read: {error}"));
+    muster_baseline::recorded_version(&text)
+        .unwrap_or_else(|| panic!("{file} does not say which version it is"))
+}
+
+fn shipped(directory: &Path) -> Vec<Conformance> {
+    let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+    let mut paths: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|kind| kind == "json"))
+        .collect();
+    paths.sort();
+    paths
+        .iter()
+        .map(|path| {
+            let text = std::fs::read_to_string(path)
+                .unwrap_or_else(|error| panic!("{} could not be read: {error}", path.display()));
+            let name = path.file_name().map(|name| name.to_string_lossy().into_owned());
+            Conformance::parse(&format!("api-baseline/{}", name.unwrap_or_default()), &text)
+        })
+        .collect()
+}
+
+fn played(corpus: &Conformance) {
+    let schema = Schema::compiled();
+    let cases = corpus.run_cases(|case| Conversation::start(case, &schema)?.play(&case.expect));
+    assert!(cases > 0, "{} ran no cases", corpus.file);
+}
+
+/// The API's messages as `muster_api.proto` declares them.
+struct Schema {
+    pool: DescriptorPool,
+}
+
+impl Schema {
+    fn compiled() -> Schema {
+        let set = muster_baseline::compile(&muster_baseline::proto_dir(), "muster_api.proto");
+        let pool = DescriptorPool::from_file_descriptor_set(set)
+            .unwrap_or_else(|error| panic!("muster_api.proto makes no descriptor pool: {error}"));
+        Schema { pool }
+    }
+
+    /// This build's version, as canonical JSON spells it: a zero major is left out like any
+    /// default.
+    fn api(&self) -> Value {
+        let version = json!({"major": API.major, "minor": API.minor});
+        let encoded = self.encode("Version", &version).expect("a Version encodes");
+        self.decode("Version", &encoded).expect("a Version decodes")
+    }
+
+    fn encode(&self, message: &str, value: &Value) -> Result<Vec<u8>, CaseError> {
+        let descriptor = self.descriptor(message)?;
+        let dynamic = DynamicMessage::deserialize(descriptor, value.clone())
+            .map_err(|error| CaseError::new(format!("{value} is not a {message}: {error}")))?;
+        Ok(prost::Message::encode_to_vec(&dynamic))
+    }
+
+    fn decode(&self, message: &str, bytes: &[u8]) -> Result<Value, CaseError> {
+        let descriptor = self.descriptor(message)?;
+        let dynamic = DynamicMessage::decode(descriptor, bytes).map_err(|error| {
+            CaseError::new(format!("the daemon sent something that is not a {message}: {error}"))
+        })?;
+        serde_json::to_value(&dynamic)
+            .map_err(|error| CaseError::new(format!("a {message} has no JSON: {error}")))
+    }
+
+    fn descriptor(&self, message: &str) -> Result<prost_reflect::MessageDescriptor, CaseError> {
+        self.pool
+            .get_message_by_name(&format!("muster.api.{message}"))
+            .ok_or_else(|| CaseError::new(format!("the schema declares no {message}")))
+    }
+}
+
+/// One case played: its daemon, its clients' connections, and what has been bound so far.
+struct Conversation<'a> {
+    schema: &'a Schema,
+    daemon: Daemon,
+    clients: BTreeMap<String, UnixStream>,
+    /// Control connections standing in for Muster's app, by what they stand for.
+    app: Option<Control>,
+    bound: Map<String, Value>,
+}
+
+impl<'a> Conversation<'a> {
+    fn start(case: &Case, schema: &'a Schema) -> Result<Conversation<'a>, CaseError> {
+        let given = case.given.get("daemon").cloned().unwrap_or_else(|| json!({}));
+        let detecting = given.get("detecting").and_then(Value::as_bool).unwrap_or(false);
+        let daemon = if detecting { Daemon::start_detecting() } else { daemon() };
+        // Under the daemon's root, so it goes with it, and as the kernel names it, which is how
+        // a pane's directory comes back.
+        let scratch = daemon.root().join("scratch");
+        std::fs::create_dir_all(&scratch).map_err(|error| CaseError::new(error.to_string()))?;
+        let mut bound = Map::new();
+        bound.insert("api".to_string(), schema.api());
+        bound.insert("scratch".to_string(), json!(canonical(&scratch).to_string_lossy()));
+        Ok(Conversation { schema, daemon, clients: BTreeMap::new(), app: None, bound })
+    }
+
+    /// Plays every step of `expect`'s conversation, and answers with the same conversation
+    /// holding what each step heard, settled into the expectation's tokens where it matched.
+    fn play(mut self, expect: &Value) -> Result<Value, CaseError> {
+        let steps = expect
+            .get("conversation")
+            .and_then(Value::as_array)
+            .ok_or_else(|| CaseError::new("`expect` holds no `conversation`"))?;
+        let mut played = Vec::with_capacity(steps.len());
+        for (index, step) in steps.iter().enumerate() {
+            let heard = self.step(step).map_err(|CaseError(error)| {
+                CaseError::new(format!("step {} ({step}): {error}", index + 1))
+            })?;
+            let mut settled = step.clone();
+            // A step that expects to hear nothing, a send that hangs up, need not say so.
+            let silent = |heard: &Vec<Value>| heard.is_empty() && step.get("heard").is_none();
+            if let Some(heard) = heard.filter(|heard| !silent(heard)) {
+                let expected = step.get("heard").cloned().unwrap_or(Value::Array(Vec::new()));
+                settled["heard"] = settle(&expected, &Value::Array(heard), &mut self.bound);
+            }
+            played.push(settled);
+        }
+        Ok(json!({"conversation": played}))
+    }
+
+    /// Takes one step, and what the client heard if it was a client's.
+    fn step(&mut self, step: &Value) -> Result<Option<Vec<Value>>, CaseError> {
+        if let Some(client) = step.get("as").and_then(Value::as_str) {
+            return self.client_step(client, step).map(Some);
+        }
+        self.around_the_client(step)?;
+        Ok(None)
+    }
+
+    fn client_step(&mut self, client: &str, step: &Value) -> Result<Vec<Value>, CaseError> {
+        if let Some(hello) = step.get("hello") {
+            let hello = substitute(hello, &self.bound)?;
+            let mut stream = dial(&self.daemon);
+            write(&mut stream, &self.schema.encode("Hello", &hello)?);
+            let heard = match read(&mut stream) {
+                Some(frame) => vec![self.schema.decode("HelloAnswer", &frame)?],
+                None => Vec::new(),
+            };
+            self.clients.insert(client.to_string(), stream);
+            return Ok(heard);
+        }
+        if step.get("hang_up").and_then(Value::as_bool) == Some(true) {
+            self.clients.remove(client);
+            return Ok(Vec::new());
+        }
+        let schema = self.schema;
+        let stream = self
+            .clients
+            .get_mut(client)
+            .ok_or_else(|| CaseError::new(format!("`{client}` has not said hello")))?;
+        if let Some(request) = step.get("send") {
+            let request = substitute(request, &self.bound)?;
+            write(stream, &schema.encode("Request", &request)?);
+            if step.get("then").and_then(Value::as_str) == Some("hang_up") {
+                self.clients.remove(client);
+                return Ok(Vec::new());
+            }
+            let correlation = request.get("correlation").cloned().unwrap_or(Value::Null);
+            let mut heard = Vec::new();
+            while let Some(frame) = read(stream) {
+                let message = schema.decode("DaemonMessage", &frame)?;
+                let answered = message.pointer("/answer/correlation") == Some(&correlation);
+                heard.push(message);
+                if answered {
+                    break;
+                }
+            }
+            return Ok(heard);
+        }
+        if let Some(count) = step.get("read").and_then(Value::as_u64) {
+            let wanted = step.get("heard").and_then(Value::as_array).cloned().unwrap_or_default();
+            let passing = step.get("passing");
+            let mut heard = Vec::new();
+            while heard.len() < usize::try_from(count).unwrap_or(usize::MAX) {
+                let Some(frame) = read(stream) else { break };
+                let message = schema.decode("DaemonMessage", &frame)?;
+                let next = wanted.get(heard.len());
+                let passed = passing.is_some_and(|passing| matches(passing, &message, &self.bound))
+                    && !next.is_some_and(|next| matches(next, &message, &self.bound));
+                if !passed {
+                    heard.push(message);
+                }
+            }
+            return Ok(heard);
+        }
+        Err(CaseError::new("a client's step says neither hello, send, read nor hang_up"))
+    }
+
+    /// What happens in Muster around the clients, brought about as the daemon's own tests do.
+    fn around_the_client(&mut self, step: &Value) -> Result<(), CaseError> {
+        let text = |key: &str| step.get(key).and_then(Value::as_str);
+        if let Some(action) = text("daemon") {
+            match action {
+                "hand_off" => {
+                    let answer = self.daemon.replace(None);
+                    if answer.outcome() != proto::Outcome::Done {
+                        return Err(CaseError::new(format!("the handoff failed: {answer:?}")));
+                    }
+                }
+                "restart" => {
+                    let mut control = self.daemon.connect();
+                    stop(&mut self.daemon, &mut control);
+                    self.daemon.restart();
+                }
+                other => return Err(CaseError::new(format!("no daemon step `{other}`"))),
+            }
+            return Ok(());
+        }
+        if let Some(pane) = text("pane") {
+            let pane = substitute(&json!(pane), &self.bound)?;
+            let pane = pane.as_str().unwrap_or_default();
+            let mut control = self.daemon.connect();
+            if step.get("made").and_then(Value::as_bool) == Some(true) {
+                make(&mut control, create(pane, in_new_tab(&format!("t-{pane}"))));
+            } else if step.get("closed").and_then(Value::as_bool) == Some(true) {
+                expect(&mut control, close_request(pane), proto::Outcome::Done);
+            } else if let Some(shown) = text("shows") {
+                until_text(&mut control, pane, shown);
+            } else if let Some(state) = text("agent") {
+                self.agent_in(pane, state)?;
+            } else {
+                return Err(CaseError::new(
+                    "a pane's step says neither made, closed, shows nor agent",
+                ));
+            }
+            return Ok(());
+        }
+        if let Some(agent) = text("agent") {
+            let mut control = self.daemon.connect();
+            let caller = if agent == "@human" { the_human() } else { named(agent) };
+            if let Some(group) = text("joins") {
+                let join = msg_request::Join {
+                    name: Some(agent.to_string()),
+                    group: Some(group.to_string()),
+                    pull: false,
+                };
+                expect(&mut control, msg(&caller, Asked::Join(join)), DONE);
+            } else if let Some(body) = text("posts") {
+                let post = msg_request::Post {
+                    group: text("group").map(ToString::to_string),
+                    to: strings(step, "to"),
+                    body: body.to_string(),
+                    ..Default::default()
+                };
+                expect(&mut control, msg(&caller, Asked::Post(post)), DONE);
+            } else {
+                return Err(CaseError::new("an agent's step says neither joins nor posts"));
+            }
+            return Ok(());
+        }
+        if text("human") == Some("reads") {
+            let window = self.app.as_mut().ok_or_else(|| {
+                CaseError::new("the human reads at the desk, so the app has to be attending")
+            })?;
+            let read = msg_request::Read { group: text("group").map(ToString::to_string) };
+            expect(window, msg(&the_human(), Asked::Read(read)), DONE);
+            return Ok(());
+        }
+        match text("app") {
+            Some("attending") => {
+                let mut window = self.daemon.connect();
+                subscribed(&mut window, attending_request());
+                expect(&mut window, report(true, None, 60_000), DONE);
+                self.app = Some(window);
+                Ok(())
+            }
+            Some("gone") => {
+                self.app = None;
+                Ok(())
+            }
+            _ => Err(CaseError::new("a step names no client, daemon, agent, pane or app")),
+        }
+    }
+
+    fn agent_in(&mut self, pane: &str, state: &str) -> Result<(), CaseError> {
+        let state = match state {
+            "started" => {
+                self.daemon.run_agent(pane);
+                return Ok(());
+            }
+            "working" => proto::AgentState::Working,
+            "blocked" => proto::AgentState::Blocked,
+            "idle" => proto::AgentState::Idle,
+            other => return Err(CaseError::new(format!("no agent state `{other}`"))),
+        };
+        self.daemon.set_agent_state(pane, state);
+        Ok(())
+    }
+}
+
+fn strings(step: &Value, key: &str) -> Vec<String> {
+    let items = step.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    items.iter().filter_map(Value::as_str).map(ToString::to_string).collect()
+}
+
+fn dial(daemon: &Daemon) -> UnixStream {
+    let stream = UnixStream::connect(daemon.socket_path())
+        .unwrap_or_else(|error| panic!("the daemon's socket would not connect: {error}"));
+    stream.set_read_timeout(Some(PATIENCE)).expect("a read timeout");
+    stream
+}
+
+fn write(stream: &mut UnixStream, frame: &[u8]) {
+    // A daemon that hung up is heard as the end of the connection by the next read.
+    let _ = muster_frame::write_frame(stream, frame);
+}
+
+/// The next frame, or nothing once the connection has ended or stays quiet past [`PATIENCE`].
+fn read(stream: &mut UnixStream) -> Option<Vec<u8>> {
+    muster_frame::read_frame_or_end(stream, LARGEST_MESSAGE).ok().flatten()
+}
+
+/// `value` with every `$name` replaced by what it is bound to, and every `${name}` inside a
+/// string by its text.
+fn substitute(value: &Value, bound: &Map<String, Value>) -> Result<Value, CaseError> {
+    Ok(match value {
+        Value::String(text) => match variable(text) {
+            Some(name) => bound
+                .get(name)
+                .cloned()
+                .ok_or_else(|| CaseError::new(format!("`${name}` is sent before it is bound")))?,
+            None => Value::String(interpolated(text, bound)?),
+        },
+        Value::Array(items) => Value::Array(
+            items.iter().map(|item| substitute(item, bound)).collect::<Result<_, _>>()?,
+        ),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| Ok((key.clone(), substitute(item, bound)?)))
+                .collect::<Result<_, CaseError>>()?,
+        ),
+        other => other.clone(),
+    })
+}
+
+/// What was heard, in the expectation's tokens wherever it matches them: `*` for anything that
+/// is there, `?` for anything or nothing, `$name` for what a name is bound to (binding it on first
+/// sight, and never to a value another name holds), and the expected
+/// text for a `${name}` string that comes out equal. Everything else is left as heard, so the
+/// comparison after this shows exactly where the two differ.
+fn settle(expected: &Value, heard: &Value, bound: &mut Map<String, Value>) -> Value {
+    match (expected, heard) {
+        (Value::String(token), _) if token == "*" => expected.clone(),
+        (Value::String(token), _) if variable(token).is_some() => {
+            let name = variable(token).unwrap_or_default();
+            match bound.get(name) {
+                Some(value) if value == heard => expected.clone(),
+                Some(_) => heard.clone(),
+                // A second name says the value is another one: a new epoch is not the old.
+                None if bound.values().any(|value| value == heard) => heard.clone(),
+                None => {
+                    bound.insert(name.to_string(), heard.clone());
+                    expected.clone()
+                }
+            }
+        }
+        (Value::String(text), Value::String(said)) if text.contains("${") => {
+            match interpolated(text, bound) {
+                Ok(meant) if &meant == said => expected.clone(),
+                _ => heard.clone(),
+            }
+        }
+        (Value::String(token), _) if token == "?" => expected.clone(),
+        (Value::Object(want), Value::Object(got)) => {
+            let mut settled: Map<String, Value> = got
+                .iter()
+                .map(|(key, value)| {
+                    let settled = match want.get(key) {
+                        Some(wanted) => settle(wanted, value, bound),
+                        None => value.clone(),
+                    };
+                    (key.clone(), settled)
+                })
+                .collect();
+            for (key, wanted) in want {
+                if wanted == "?" && !got.contains_key(key) {
+                    settled.insert(key.clone(), wanted.clone());
+                }
+            }
+            Value::Object(settled)
+        }
+        (Value::Array(want), Value::Array(got)) => Value::Array(
+            got.iter()
+                .enumerate()
+                .map(|(index, value)| match want.get(index) {
+                    Some(wanted) => settle(wanted, value, bound),
+                    None => value.clone(),
+                })
+                .collect(),
+        ),
+        _ => heard.clone(),
+    }
+}
+
+/// Whether `message` is what `pattern` expects, binding nothing.
+fn matches(pattern: &Value, message: &Value, bound: &Map<String, Value>) -> bool {
+    settle(pattern, message, &mut bound.clone()) == *pattern
+}
+
+/// The name in a `$name` token: a whole value that is a dollar and a name.
+fn variable(text: &str) -> Option<&str> {
+    let name = text.strip_prefix('$')?;
+    let named = !name.is_empty()
+        && name.chars().all(|character| character.is_ascii_alphanumeric() || character == '_');
+    named.then_some(name)
+}
+
+fn interpolated(text: &str, bound: &Map<String, Value>) -> Result<String, CaseError> {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let end =
+            after.find('}').ok_or_else(|| CaseError::new(format!("`{text}` leaves a ${{ open")))?;
+        let name = &after[..end];
+        match bound.get(name) {
+            Some(Value::String(value)) => out.push_str(value),
+            Some(value) => out.push_str(&value.to_string()),
+            None => {
+                return Err(CaseError::new(format!("`${{{name}}}` is used before it is bound")));
+            }
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// The check above, on a shipped copy the test makes: no release has shipped one yet.
+#[test]
+fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_not() {
+    let current = conformance::repo_root().join("corpus/conformance");
+    let as_shipped = Conformance::load("api-acting.json");
+    assert_eq!(changed_since(std::slice::from_ref(&as_shipped), &current), Vec::<String>::new());
+
+    let mut reworded = Conformance::load("api-acting.json");
+    reworded.cases[0].why = "said another way".to_string();
+    let mut answered_otherwise = Conformance::load("api-acting.json");
+    answered_otherwise.cases[1].expect = json!({"conversation": []});
+    let mut removed = Conformance::load("api-acting.json");
+    removed.file = "api-gone.json".to_string();
+    let changed = changed_since(&[reworded, answered_otherwise, removed], &current);
+    assert_eq!(
+        changed,
+        [
+            format!("api-acting.json: `{}` says something else now", as_shipped.cases[1].name),
+            "api-gone.json is gone from the corpus".to_string(),
+        ]
+    );
+}
+
+mod matching {
+    use serde_json::{Map, Value, json};
+
+    use super::settle;
+
+    /// What `expected` makes of `heard`, and whether they agree.
+    fn agrees(expected: &Value, heard: &Value, bound: &mut Map<String, Value>) -> bool {
+        settle(expected, heard, bound) == *expected
+    }
+
+    #[test]
+    fn a_name_binds_once_and_two_names_never_bind_one_value() {
+        let mut bound = Map::new();
+        assert!(agrees(&json!({"epoch": "$first"}), &json!({"epoch": "7"}), &mut bound));
+        assert!(agrees(&json!({"epoch": "$first"}), &json!({"epoch": "7"}), &mut bound));
+        assert!(!agrees(&json!({"epoch": "$first"}), &json!({"epoch": "8"}), &mut bound));
+        assert!(
+            !agrees(&json!({"epoch": "$second"}), &json!({"epoch": "7"}), &mut bound),
+            "a daemon reusing the first epoch for the second subscription is caught"
+        );
+        assert!(agrees(&json!({"epoch": "$second"}), &json!({"epoch": "8"}), &mut bound));
+    }
+
+    #[test]
+    fn a_star_needs_a_value_a_question_mark_does_not_and_nothing_else_is_spared() {
+        let mut bound = Map::new();
+        assert!(agrees(&json!({"title": "*"}), &json!({"title": "zsh"}), &mut bound));
+        assert!(!agrees(&json!({"title": "*"}), &json!({}), &mut bound));
+        assert!(agrees(&json!({"title": "?"}), &json!({}), &mut bound));
+        assert!(agrees(&json!({"title": "?"}), &json!({"title": "zsh"}), &mut bound));
+        assert!(
+            !agrees(&json!({}), &json!({"title": "zsh"}), &mut bound),
+            "a field the case does not name is an answer that changed"
+        );
+        assert!(!agrees(&json!(["a"]), &json!(["a", "b"]), &mut bound));
+    }
+
+    #[test]
+    fn a_name_inside_a_string_is_its_text() {
+        let mut bound = Map::new();
+        bound.insert("scratch".to_string(), json!("/tmp/s"));
+        assert!(agrees(&json!("${scratch}/work"), &json!("/tmp/s/work"), &mut bound));
+        assert!(!agrees(&json!("${scratch}/work"), &json!("/tmp/s/play"), &mut bound));
+    }
+}
