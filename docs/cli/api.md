@@ -84,6 +84,29 @@ the snapshot's `latest` as `through`, since the live stream carries every entry 
 reconnecting it fetches only what it lacks. A group deleted, or whose earlier entries are gone,
 says so rather than answering nothing.
 
+### msg.post
+
+Posts as `muster msg post` does: as the human unless `as` names another participant, to the group
+it names or, naming none, the group the author and `to` share, made for it when there is none.
+Every post records the client's name from its Hello, shown beside the author as `Alex (@human) via
+foreman`. That name is attribution, not identity: any program can give any name. A post offering
+`answers` is a question, and one with `answering` answers a question. A question takes one
+answer, so a second is refused ANSWERED, and a phone can say it was answered at the desk.
+
+It carries a required operation id, as `pane.new` does. The group's home keeps it in the post's
+own log entry, so a repeat is ALREADY_SO with the first post's group and number, across a
+reconnect, a handoff and a restart, and after the group is deleted. A post to a group kept on
+another machine is NOT_SENT when it never left this daemon, and UNKNOWN when it was sent and the
+reply was lost; asking again under the same id is safe in both. Where the human is homed on
+another machine, a post as them is refused UNSUPPORTED: post through that machine's daemon.
+
+### msg.ack
+
+Moves the human's place in a group on to `through`, the number of the last message the client
+showed them, and never back. What arrived since stays unread at the desk, and an Unread event says
+the new place before the answer. Only this acknowledges anything: fetching history, replying and
+dismissing a notification read nothing for the human.
+
 ### pane.new
 
 Makes a pane as `muster pane new --run` does: a command in a directory, which must be absolute, in
@@ -174,6 +197,6 @@ fetches the pages it lacks.
 
 ## What the API does not do yet
 
-The CLI reaches further. Posting as the human, layout, tabs, windows and focus, and other machines'
-panes are later requests and topics (MIP-10, "How it lands"). A `muster` verb added later that
-reads or acts on agents comes to the API in the same change, or the change says why not.
+The CLI reaches further. Layout, tabs, windows and focus, and other machines' panes are later
+requests and topics (MIP-10, "How it lands"). A `muster` verb added later that reads or acts on
+agents comes to the API in the same change, or the change says why not.
