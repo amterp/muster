@@ -675,6 +675,13 @@ since three heartbeats fit in a report. That answers MIP-10's open question on h
 there is no presence, and what waits keeps accumulating. When the app shows a banner or posts a notification, it tells
 the daemon holding what asked, which passes it on as an event; nothing depends on it.
 
+**Programs read all of it through the API** (`proto/muster_api.proto`): the attention topic carries the panes asking,
+the messages waiting and the presence, and the messages topic every group's metadata, each entry of its log as an event,
+and `msg.history` for pages of it. The human's place in a group and what waits for them there are one event, sent once
+to a subscription hearing either topic, and a subscription gathers its snapshot one lock at a time, everything kept
+under the session's lock in one acquisition and everything under the messages lock in another, so the two topics never
+disagree about what the human has read.
+
 **Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
 pane most likely to have finished unnoticed is the one the window is not showing - so a roster travels beside the view:
 every pane every attached daemon holds, ordered and named for a reader, each row saying whether anything is showing

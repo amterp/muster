@@ -113,6 +113,10 @@
 //   its answer, and `Answer.through` is the number of the last event the connection had been sent
 //   when it was answered.
 // - Reading changes nothing: subscribing moves nobody's place in any group and clears nothing.
+// - A group's posts arrive with their bodies, each up to 1 MiB, so a burst of them is what most
+//   often passes a client's budget (below). A client ended for it subscribes again and fetches
+//   what it lacks with `msg.history`: the entries after the last it holds, up to the new
+//   snapshot's `latest`.
 //
 // ## Panes
 //
