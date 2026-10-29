@@ -122,6 +122,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     let p2 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p2"));
     let p2 = p2.unwrap_or_else(|| panic!("p2 is listed: {listed}"));
     assert_eq!((&p2["tab"], &p2["state"]), (&json!("t1"), &json!("idle")), "{listed}");
+    the_daemon_says_since_when(&here, p2, &text);
     the_layout_is_the_daemons_trees(&here);
 
     ok(&here.muster(&["pane", "send", "--pane", "p1", "--enter", "--confirm", "echo typed-in"]));
@@ -185,6 +186,30 @@ fn made_id(here: &Here, args: &[&str]) -> String {
     let said = ok(&here.muster(&[&["--json", "pane", "new"][..], args].concat()));
     let said: Value = serde_json::from_str(&said).unwrap();
     said["pane"].as_str().unwrap_or_else(|| panic!("no pane: {said}")).to_string()
+}
+
+/// With no window, how long an agent has been in its state is the daemon's to say, as the moment
+/// it saw the agent enter it: the same number a window gives, rather than none.
+fn the_daemon_says_since_when(here: &Here, p2: &Value, text: &str) {
+    let held = snapshot(&mut here.daemon.connect());
+    let record = held.panes.iter().find(|record| record.pane == "p2").expect("the daemon holds p2");
+    let since_ms = record.state_since_ms.expect("the daemon saw p2's agent go idle");
+    #[expect(clippy::cast_precision_loss, reason = "milliseconds since 1970 fit an f64 exactly")]
+    let since = since_ms as f64 / 1000.0;
+    assert_eq!(p2["since"], json!(since), "`since` is not the daemon's: {p2}");
+
+    let callsign = callsign_of(here, "p2");
+    let row = text.lines().find(|line| line.contains(&callsign));
+    let row = row.unwrap_or_else(|| panic!("{callsign} is not listed:\n{text}"));
+    let held_for = |word: &str| {
+        word.len() > 1
+            && word.ends_with(['s', 'm', 'h', 'd'])
+            && word[..word.len() - 1].chars().all(|c| c.is_ascii_digit())
+    };
+    assert!(
+        row.split_whitespace().any(held_for),
+        "p2's row says no time in its state, though its daemon knows it:\n{row}"
+    );
 }
 
 /// The callsign `pane`'s daemon drew it.

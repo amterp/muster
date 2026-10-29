@@ -892,8 +892,8 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         state: state_of(pane).as_str().to_string(),
         // Read from the daemon itself, so it answered.
         last_state: String::new(),
-        // The daemon does not say since when, and a window says when it first saw a pane.
-        since_ms: 0,
+        // Zero, which reads as no time, while the daemon did not see the state begin.
+        since_ms: pane.state_since_ms.map_or(0, |since| i64::try_from(since).unwrap_or(i64::MAX)),
         label: label_of(pane),
         reported: pane.state_reported,
         unreadable: pane.screen_unreadable,

@@ -1205,8 +1205,8 @@ fn facts_json(facts: &muster_proto::AgentFacts) -> Value {
 ///
 /// One unit, because a row read at a glance wants "blocked 40m" and nothing finer - somebody
 /// deciding which agent has waited longest is comparing orders of magnitude. Empty for zero,
-/// which is a window too old to say, and a clock that has gone backwards reads as `0s` rather
-/// than as a negative.
+/// which is a window too old to say or a daemon that did not see the state begin, and a clock
+/// that has gone backwards reads as `0s` rather than as a negative.
 fn held_for(since_ms: i64, now_ms: i64) -> String {
     if since_ms == 0 {
         return String::new();
@@ -1227,7 +1227,8 @@ fn now_ms() -> i64 {
         .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// Seconds since the epoch, to the millisecond, or null for a window too old to say.
+/// Seconds since the epoch, to the millisecond, or null for a window too old to say or a daemon
+/// that did not see the state begin.
 ///
 /// Seconds, like `started` in `muster daemons`, so `now - .since` in jq is how long a pane has
 /// been in its state. The fraction keeps two changes inside one second from reading as one.
