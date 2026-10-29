@@ -207,7 +207,8 @@ message Hello {
 // Who is connecting. Attribution, not identity: anything running as the user can claim any name.
 // The daemon's log records it.
 message Client {
-  // A short, stable name for the program: "foreman", "quartermaster".
+  // A short, stable name for the program: "foreman", "quartermaster". A request with an
+  // operation id needs one, since its id is kept by this name, and is refused INVALID without.
   string name = 1;
   // The program's own version, for a person reading the daemon's log.
   string version = 2;

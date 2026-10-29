@@ -115,6 +115,14 @@ fn checked(
                 .to_string(),
         );
     }
+    if operation.client.is_empty() {
+        return refuse(
+            api::Refusal::Invalid,
+            "operation ids are kept by the name of the program that chose them, and this \
+             connection's Hello gave none; nothing was made"
+                .to_string(),
+        );
+    }
     let this = shared.api.source().daemon;
     if !asked.machine.is_empty() && asked.machine != this {
         return refuse(

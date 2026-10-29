@@ -175,7 +175,7 @@
     },
     {
       "name": "a new pane is refused with a code for what it lacks, and nothing is made",
-      "why": "Every refusal of a new pane happens before anything ran, so the client can put the cause right and ask again, even under the same operation id (the header, Operation ids). A request without an operation id, or with a directory that is not absolute, is INVALID; a maker or a machine this daemon does not have is NOT_FOUND; a directory the command cannot start in is refused for the reason given. The snapshot after holds no pane.",
+      "why": "Every refusal of a new pane happens before anything ran, so the client can put the cause right and ask again, even under the same operation id (the header, Operation ids). A request without an operation id, with a directory that is not absolute, or from a client whose Hello gave no name to keep its ids by, is INVALID; a maker or a machine this daemon does not have is NOT_FOUND; a directory the command cannot start in is refused for the reason given. The snapshot after holds no pane.",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -233,6 +233,20 @@
               "pane": {"new": {"operation": "op-5", "run": "exec sleep 86400", "directory": "${scratch}/missing"}}
             },
             "heard": [{"answer": {"correlation": "5", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          },
+          {
+            "as": "b",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "b",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}
+              }
+            ]
           },
           {
             "as": "a",

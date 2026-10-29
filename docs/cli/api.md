@@ -116,7 +116,8 @@ a tab of its own and hidden if asked. As a helper of another pane it is hidden a
 helpers, quiet unless asked otherwise, and in its maker's directory unless given one.
 
 It carries an operation id the client chooses, a UUID will do, which the daemon remembers for 24
-hours by the client's name, across a reconnect, a handoff and an orderly restart. A repeat is never
+hours by the client's name, across a reconnect, a handoff and an orderly restart, so a client that
+gives no name in its Hello is refused INVALID. A repeat is never
 carried out again: it is ALREADY_SO with the first pane, or UNKNOWN when the first may have run and
 lost its result. The header's "Operation ids" has the rest.
 
