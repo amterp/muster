@@ -3442,6 +3442,11 @@ impl<S: Store> Messaging<S> {
         Ok(Acked { group, place: through, moved: true })
     }
 
+    /// The number of the newest entry in `group`'s log.
+    pub fn latest(&self, group: &str) -> Option<u64> {
+        self.groups.get(group).map(Group::head)
+    }
+
     /// The number of the last entry this machine's human has read in `group`, while they are in
     /// it.
     pub fn human_place(&self, group: &str) -> Option<u64> {

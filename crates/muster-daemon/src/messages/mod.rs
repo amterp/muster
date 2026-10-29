@@ -101,9 +101,8 @@ pub(crate) struct Messages {
     /// The groups the human is in, as the windows were last told: one joined since is told of
     /// with what waits there, so a window lists it before anything is posted to it.
     human_groups: BTreeSet<String>,
-    /// The questions the windows were last told have their answer, in each of the human's groups
-    /// where any have.
-    answered_told: BTreeMap<String, Vec<u64>>,
+    /// The questions the windows were last told have their answer, in each of the human's groups.
+    answered_told: BTreeMap<String, AnsweredTold>,
     /// Follows of a log waiting for its next entry, woken by anything that may have appended.
     follows: Vec<Sender<()>>,
     /// Changes made by the request being handled, for the other machines with members in
@@ -212,16 +211,19 @@ impl Messages {
         // its answer rings nobody: tell the windows once the answered questions change.
         self.answered_told.retain(|group, _| groups.contains(group));
         for group in &groups {
-            let answered = self.service.human_answered(group);
-            let told =
-                self.answered_told.get(group).map_or(answered.is_empty(), |told| *told == answered);
-            if told {
+            // Reading which are answered scans the group's log, and only an entry logged or the
+            // human's place moving can change it, so a group with neither is not read again.
+            let read_at = (self.service.latest(group), self.service.human_place(group));
+            let told = self.answered_told.get(group);
+            if told.is_some_and(|told| told.read_at == read_at) {
                 continue;
             }
-            if !self.told.iter().any(|notice| notice.group == *group) {
+            let questions = self.service.human_answered(group);
+            let changed = told.map_or(!questions.is_empty(), |told| told.questions != questions);
+            if changed && !self.told.iter().any(|notice| notice.group == *group) {
                 self.told.push(self.for_human(&self.service.human_notice(group)));
             }
-            self.answered_told.insert(group.clone(), answered);
+            self.answered_told.insert(group.clone(), AnsweredTold { read_at, questions });
         }
         self.human_groups = groups;
         self.tellings += 1;
@@ -706,6 +708,14 @@ fn deleting(shared: &Arc<Shared>, caller: &Caller, group: &str, panes: &Panes) -
         let_go: deleted.let_go,
     });
     answered(deleted.by, answer)
+}
+
+/// The questions in one of the human's groups the windows were told have their answer, and the
+/// group's newest number and the human's place there when they were read.
+#[derive(Debug)]
+struct AnsweredTold {
+    read_at: (Option<u64>, Option<u64>),
+    questions: Vec<u64>,
 }
 
 /// What waits for the human, as the service decided it, for the windows to be told.
