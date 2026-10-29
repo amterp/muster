@@ -8,7 +8,7 @@ use proto::{pane_request, session_request};
 
 /// The fake agent in `p1` of a fresh detecting daemon, started with `arguments`, its session
 /// reported as `session` and saved.
-fn reported(arguments: &str, session: &str) -> (Daemon, Control) {
+pub(crate) fn reported(arguments: &str, session: &str) -> (Daemon, Control) {
     let daemon = Daemon::start_detecting();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
@@ -24,7 +24,7 @@ fn reported(arguments: &str, session: &str) -> (Daemon, Control) {
     (daemon, control)
 }
 
-fn restarted(daemon: &mut Daemon, control: &mut Control) -> Control {
+pub(crate) fn restarted(daemon: &mut Daemon, control: &mut Control) -> Control {
     stop(daemon, control);
     daemon.restart();
     let mut control = daemon.connect();

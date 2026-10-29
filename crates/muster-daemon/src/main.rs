@@ -33,6 +33,7 @@ mod session_name;
 mod shell_integration;
 mod spawn;
 mod ssh;
+mod state_since;
 mod stream;
 mod tree;
 mod unread;

@@ -1517,6 +1517,13 @@ message Pane {
   // it keeps through a rename, nor its present name. Kept while the daemon runs, and never
   // written to the state file: a restored pane's programs are started under its present name.
   repeated string former_labels = 23;
+  // Since 1.9. When this daemon saw the pane's agent enter the state a view shows it in, in
+  // milliseconds since the Unix epoch by the daemon's clock: `agent_state`, or stuck while the
+  // pane has an agent and `unread_input`. Waiting and a finish being seen do not move it. Absent
+  // when the daemon did not see that state begin: an agent a restart resumed keeps none until
+  // its state next changes, and a daemon that predates it sends none. Kept across a handoff, and
+  // never written to the state file.
+  optional uint64 state_since_ms = 24;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

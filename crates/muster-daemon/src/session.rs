@@ -53,6 +53,7 @@ use crate::pty::{self, Grid, Launch};
 use crate::screen::{self, Appearance, Screen, Settled};
 use crate::server::Socket;
 use crate::spawn;
+use crate::state_since;
 use crate::tree::{self, Node, Resized};
 use muster_detect::Manifests;
 
@@ -1561,6 +1562,8 @@ impl Session {
             command: starting.command,
             quiet: starting.quiet,
             maker: starting.maker,
+            // It starts with no agent in it, which this daemon sees.
+            state_since_ms: Some(state_since::now_ms()),
             ..proto::Pane::default()
         };
         if let Err(reply) = self.open(record, starting.grid, master, child, program) {
@@ -2433,6 +2436,7 @@ impl Session {
         let name = self.panes[index].record.pane.clone();
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
+        let shown = state_since::shown(record);
         // What sets one field of the record, and is news only when it changes it.
         let set = match report.what {
             Reported::Title(title) => Ok(replaced(&mut record.title, title)),
@@ -2446,6 +2450,7 @@ impl Session {
         let what = match set {
             Ok(changed) => {
                 if changed {
+                    state_since::dated(shown, record, state_since::now_ms());
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
                 }
@@ -2524,6 +2529,7 @@ impl Session {
                 record.set_agent_state(state);
                 record.state_reported = reported;
                 record.screen_unreadable = unreadable;
+                state_since::dated(shown, record, state_since::now_ms());
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());
                 }
@@ -3473,6 +3479,9 @@ impl Session {
                 maker_closed: pane.saved.maker_closed,
                 session_id: resume.as_ref().map(|resume| resume.session.clone()),
                 resume: resume.as_ref().map(persist::Resume::record),
+                // A resumed agent was in its state before the restart, which this daemon did not
+                // see; a shell it started, it did.
+                state_since_ms: resume.is_none().then(state_since::now_ms),
                 ..proto::Pane::default()
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {

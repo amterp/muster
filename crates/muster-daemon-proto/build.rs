@@ -46,6 +46,12 @@ fn main() {
         ".muster.daemon.Handoff.Detection",
         "#[expect(clippy::struct_excessive_bools, reason = \"the detector's flags, one each\")]",
     );
+    // An event carrying a pane's record outweighs an answer, and a control message is taken
+    // apart as soon as it is read, so none is held long enough for its size to matter.
+    config.enum_attribute(
+        ".muster.daemon.ControlMessage.message",
+        "#[expect(clippy::large_enum_variant, reason = \"read and taken apart at once\")]",
+    );
     config.message_attribute(
         ".muster.daemon.Pane",
         "#[expect(clippy::struct_excessive_bools, reason = \"independent facts, one each\")]",
