@@ -71,6 +71,29 @@ fn a_client_makes_a_shell_types_into_it_reads_the_confirmation_and_closes_it() {
     refused_as(&api.ask(close(&made.pane)), api::Refusal::NotFound);
 }
 
+/// A line over 1024 bytes into `cat`, which reads in canonical mode, is never delivered: the
+/// confirmed send is refused for it, while one not asked to confirm is done once it is handed to
+/// the pane, whatever became of it.
+#[test]
+fn a_confirmed_send_the_pane_does_not_take_is_refused() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    let mut api = daemon.api();
+    assert_eq!(api.ask(send("p1", "cat", false)).outcome(), api::Outcome::Done);
+    until_text(&mut control, "p1", "cat\n");
+
+    let long = format!("{}end", "x".repeat(1100));
+    let confirmed = api.ask(send("p1", &long, true));
+    refused_as(&confirmed, api::Refusal::Unspecified);
+    assert!(confirmed.answer.reason.contains("only its start shows"), "{:?}", confirmed.answer);
+
+    // The terminal drops everything after what fit of that line, so this never arrives either.
+    assert_eq!(api.ask(send("p1", "echo held", false)).outcome(), api::Outcome::Done);
+    refused_as(&api.ask(send("p1", "echo held", true)), api::Refusal::Unspecified);
+}
+
 /// A close made on one connection is heard on another as nobody's request of its own.
 #[test]
 fn another_connection_hears_a_close_with_no_correlation() {
