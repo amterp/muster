@@ -142,7 +142,10 @@ mod tests {
         let mut shipped: Vec<String> = std::fs::read_dir(&extras)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|name| !name.starts_with('.') && name != "skill")
+            // The skill is for any harness and the API's client for none.
+            .filter(|name| {
+                !name.starts_with('.') && !["skill", "api-client-go"].contains(&name.as_str())
+            })
             .collect();
         shipped.sort();
         let mut listed: Vec<String> =

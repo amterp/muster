@@ -1,0 +1,10 @@
+$ ./try    # go1.26.1, libprotoc 36.0, protoc-gen-go v1.36.11, on macOS 26.4.1, at 72207648
+welcomed by a daemon speaking API 0.2
+  it serves api.read_pane, api.subscribe, msg.history, pane.new
+  and the topics [TOPIC_PANES TOPIC_MACHINES TOPIC_MESSAGES TOPIC_ATTENTION]
+subscribed: OUTCOME_DONE, epoch 10669997910991735077, current to 0
+  0 pane(s), 1 machine(s), 0 group(s), 0 pane(s) asking for the human
+  event 1: pane p2fdp1a7j6 appeared, caused by request 2
+pane.new: OUTCOME_DONE, pane p2fdp1a7j6 (oyster), through 1
+api.read_pane: OUTCOME_DONE, rows 1 from row 0:
+  "hello from a pane made in Go"

@@ -1,0 +1,39 @@
+#!/bin/bash
+# Generates this client's bindings from `muster docs api --schema`, starts a muster-daemon of this
+# checkout's build on a socket of its own, runs the client against it and stops the daemon.
+# Needs Go, protoc and protoc-gen-go, and the network once, for Go to fetch its protobuf module.
+# Build first with `./dev -b`, or `cargo build -p muster-cli -p muster-daemon`.
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+muster="${MUSTER_BINARY:-$repo/target/debug/muster}"
+daemon="${MUSTER_DAEMON_BINARY:-$repo/target/debug/muster-daemon}"
+data="${MUSTER_DAEMON_DATA:-$repo/deps/ghostty/zig-out/muster-daemon-data}"
+module="github.com/amterp/muster/extras/api-client-go"
+
+cd "$here"
+"$muster" docs api --schema > muster_api.proto
+mkdir -p musterapi
+protoc --go_out=. --go_opt=module="$module" --go_opt=Mmuster_api.proto="$module/musterapi" muster_api.proto
+go mod tidy
+go build -o api-client-go .
+
+scratch="$(mktemp -d)"
+mkdir -p "$scratch/home"
+env -i PATH="$PATH" HOME="$scratch/home" SHELL=/bin/sh \
+    "$daemon" --socket "$scratch/daemon.sock" --data "$data" > "$scratch/daemon.log" 2>&1 &
+pid=$!
+trap 'kill "$pid" 2>/dev/null || true' EXIT
+for _ in $(seq 1 100); do
+    [ -S "$scratch/daemon.sock" ] && break
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "try: the daemon did not start:" >&2
+        cat "$scratch/daemon.log" >&2
+        exit 1
+    fi
+    sleep 0.1
+done
+
+cd "$scratch"
+"$here/api-client-go" "$scratch/daemon.sock"

@@ -9,7 +9,7 @@ and makes no promise to a program; the API does.
 
 prints the schema this `muster` was built with. Generate bindings from that file alone, in any
 language: it imports nothing. Its header has every rule a client needs, and this page is the way
-in.
+in. `extras/api-client-go/` in Muster's repository is a client generated from it, in Go.
 
 ## Connecting
 

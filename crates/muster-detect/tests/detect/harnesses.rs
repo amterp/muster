@@ -75,13 +75,17 @@ fn words(wiring: &str) -> String {
 }
 
 /// What each harness's directory under `extras/` holds, by the manifest id its name resolves
-/// to. Every directory but the skill, which is for any harness, names one.
+/// to. Every directory names one but the skill, which is for any harness, and the API's client,
+/// which is for no harness.
 fn extras(manifests: &Manifests) -> Vec<(Agent, String)> {
     let root = conformance::repo_root().join("extras");
     let mut found = Vec::new();
     for entry in std::fs::read_dir(&root).unwrap().map(Result::unwrap) {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !entry.path().is_dir() || name.starts_with('.') || name == "skill" {
+        if !entry.path().is_dir()
+            || name.starts_with('.')
+            || ["skill", "api-client-go"].contains(&name.as_str())
+        {
             continue;
         }
         let agent = manifests.agent_named(&name).unwrap_or_else(|| {

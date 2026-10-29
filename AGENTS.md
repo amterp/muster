@@ -396,9 +396,10 @@ regenerates on demand; a normal build does it only when the schema's hash change
   rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
   the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
 - `extras/` holds things that are Muster-adjacent rather than Muster: a Claude Code skill pointing an agent at
-  `muster docs`, and each harness's wiring that reports a session's state and its context to the daemon that owns
+  `muster docs`, each harness's wiring that reports a session's state and its context to the daemon that owns
   its pane - `extras/claude-code`, `extras/codex` and `extras/opencode`, plugins each harness installs from this
-  directory (MIP-5).
+  directory (MIP-5) - and `extras/api-client-go`, a client of the API generated from its published schema, which
+  the gate neither builds nor runs.
 - `packaging/` is everything that exists only so that Muster can leave this machine: the icon and its source, the
   entitlements a release is signed with, the Homebrew cask - which lives here rather than only in the tap because
   it changes when the app does, and should be reviewed beside it - and `release-notes/<version>.md`, what somebody
