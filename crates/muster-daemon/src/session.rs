@@ -3296,20 +3296,8 @@ impl Session {
                 compact.pane
             ));
         };
-        let focus = match typed_line(
-            compact.focus.as_deref(),
-            "a focus",
-            "a longer brief belongs in a message (`muster msg post`)",
-        ) {
-            Ok(focus) => focus,
-            Err(refused) => return refused,
-        };
-        let then = match typed_line(
-            compact.then.as_deref(),
-            "a prompt to carry on with",
-            "a longer brief belongs in a file the prompt names",
-        ) {
-            Ok(then) => then,
+        let (focus, then) = match compact_lines(compact) {
+            Ok(lines) => lines,
             Err(refused) => return refused,
         };
         let Some(manifests) = self.detecting.manifests() else {
@@ -4343,6 +4331,24 @@ fn unreadable_warning(pane: &str, agent: Option<&str>) {
 
 /// `text` trimmed, or none when it is blank, when it can be typed at an agent's prompt as one
 /// line; refused otherwise, `what` naming it and `longer` saying where a longer one belongs.
+/// A compaction's focus and the prompt to carry on with, each typed as one line, or why one
+/// cannot be.
+pub(crate) fn compact_lines(
+    compact: &pane_request::Compact,
+) -> Result<(Option<&str>, Option<&str>), Reply> {
+    let focus = typed_line(
+        compact.focus.as_deref(),
+        "a focus",
+        "a longer brief belongs in a message (`muster msg post`)",
+    )?;
+    let then = typed_line(
+        compact.then.as_deref(),
+        "a prompt to carry on with",
+        "a longer brief belongs in a file the prompt names",
+    )?;
+    Ok((focus, then))
+}
+
 fn typed_line<'a>(
     text: Option<&'a str>,
     what: &str,

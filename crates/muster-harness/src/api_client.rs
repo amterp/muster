@@ -63,6 +63,14 @@ impl ApiAsked {
             _ => panic!("the answer carries no pane text: {:?}", self.answer),
         }
     }
+
+    /// What a done `pane.restart` says it did.
+    pub fn restarted(&self) -> &api::RestartedAgent {
+        match &self.answer.detail {
+            Some(api::answer::Detail::Restarted(restarted)) => restarted,
+            _ => panic!("the answer says no restart: {:?}", self.answer),
+        }
+    }
 }
 
 /// A page of `group`'s log: the newest entries after `after` and through `through`.
@@ -113,6 +121,12 @@ pub fn new_pane(asked: api::NewPane) -> api::request::Request {
     api::request::Request::Pane(api::PaneRequest {
         request: Some(api::pane_request::Request::New(asked)),
     })
+}
+
+/// A `pane.*` request acting on a pane: `pane.send`, `pane.close`, `pane.compact` or
+/// `pane.restart`.
+pub fn on_pane(asked: api::pane_request::Request) -> api::request::Request {
+    api::request::Request::Pane(api::PaneRequest { request: Some(asked) })
 }
 
 /// A read of one page of `pane`'s text, its rows chosen by `rows`.

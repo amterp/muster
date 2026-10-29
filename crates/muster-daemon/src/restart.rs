@@ -246,10 +246,21 @@ pub(crate) enum Failed {
 
 impl Restarting {
     pub(crate) fn run(self) -> Reply {
+        self.carried_out().0
+    }
+
+    /// The answer to the restart, and whether it changed the pane: true unless it stopped before
+    /// ending anything.
+    pub(crate) fn carried_out(self) -> (Reply, bool) {
         let Restarting { pane, program, session, line, target } = self;
         let outcome = restart(&target, &line, Timing::daemon());
-        said(&pane, &program, &session, &line, &outcome)
+        (said(&pane, &program, &session, &line, &outcome), changed_the_pane(&outcome))
     }
+}
+
+/// Whether a restart that came to `outcome` signalled or ended its agent.
+fn changed_the_pane(outcome: &Result<Ended, Failed>) -> bool {
+    !matches!(outcome, Err(Failed::NotFlushed(_)))
 }
 
 /// Restarts the agent `target` holds, typing `line` at its shell once it has gone.
@@ -555,5 +566,14 @@ mod tests {
         assert_eq!(restart(&busy, "claude --resume s-5", FAST), Ok(Ended::Asked));
         assert!(started.elapsed() >= FAST.prompt_within, "it waited for the prompt");
         assert!(busy.0.steps().contains(&"type claude --resume s-5".to_string()));
+    }
+
+    #[test]
+    fn a_restart_changed_its_pane_unless_it_stopped_before_ending_anything() {
+        assert!(!changed_the_pane(&Err(Failed::NotFlushed("gone".to_string()))));
+        assert!(changed_the_pane(&Err(Failed::StillRunning)));
+        assert!(changed_the_pane(&Err(Failed::ShellAway)));
+        assert!(changed_the_pane(&Err(Failed::NotTyped("full".to_string()))));
+        assert!(changed_the_pane(&Ok(Ended::Asked)));
     }
 }

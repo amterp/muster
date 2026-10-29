@@ -2,6 +2,7 @@
 //! `proto/muster_api.proto`'s header is the API's documentation; `hub.rs` keeps every
 //! connection's subscription, and `topics.rs` what each topic holds.
 
+mod acting;
 mod hub;
 pub(crate) mod identity;
 mod messages;
@@ -32,7 +33,16 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 4] = ["api.read_pane", "api.subscribe", "msg.history", "pane.new"];
+const REQUESTS: [&str; 8] = [
+    "api.read_pane",
+    "api.subscribe",
+    "msg.history",
+    "pane.close",
+    "pane.compact",
+    "pane.new",
+    "pane.restart",
+    "pane.send",
+];
 
 /// Every topic a subscription may name.
 const TOPICS: [api::Topic; 4] =
@@ -168,9 +178,16 @@ fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
         })) => {
             subscribe(shared, caller.connection, correlation, &asked);
         }
-        Some(Namespace::Pane(api::PaneRequest {
-            request: Some(api::pane_request::Request::New(asked)),
-        })) => pane::new(shared, caller, correlation, &asked),
+        Some(Namespace::Pane(api::PaneRequest { request: Some(asked) })) => {
+            use api::pane_request::Request as Pane;
+            match asked {
+                Pane::New(asked) => pane::new(shared, caller, correlation, &asked),
+                Pane::Send(asked) => acting::send(shared, caller, correlation, &asked),
+                Pane::Close(asked) => acting::close(shared, caller, correlation, &asked),
+                Pane::Compact(asked) => acting::compact(shared, caller, correlation, &asked),
+                Pane::Restart(asked) => acting::restart(shared, caller, correlation, &asked),
+            }
+        }
         Some(Namespace::Msg(api::MsgRequest {
             request: Some(api::msg_request::Request::History(asked)),
         })) => {

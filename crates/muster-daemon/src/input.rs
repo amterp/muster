@@ -130,7 +130,7 @@ pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
             position: position(wheel.x, wheel.y),
         })),
         Event::Paste(paste) => Some(Input::Paste { text: paste.text, confirmed: paste.confirmed }),
-        Event::Send(send) => sent(send),
+        Event::Send(send) => sent(&send),
         Event::Focus(focus) => Some(Input::Focus(focus.focused)),
         Event::Perform(input_event::Perform { action: Some(action), key }) => match action {
             perform::Action::Raw(bytes) => Some(Input::Bound(bytes)),
@@ -144,10 +144,9 @@ pub(crate) fn input_of(input: input_event::Input) -> Option<Input> {
 /// A `pane send`, with its keys read the way the config reads a chord, or nothing at all when
 /// one of them does not read: a Return after a key that went missing would answer a dialog the
 /// key was meant to move first.
-fn sent(send: input_event::Send) -> Option<Input> {
-    let keys = send.keys.iter().map(|name| Chord::parse(name).map(Chord::pressed));
-    match keys.collect::<Result<Vec<_>, _>>() {
-        Ok(keys) => Some(Input::Send { text: send.text, keys, enter: send.enter }),
+fn sent(send: &input_event::Send) -> Option<Input> {
+    match sent_input(send) {
+        Ok(input) => Some(input),
         Err(refusal) => {
             log::warn(
                 "daemon.input.unread_key",
@@ -163,6 +162,13 @@ fn sent(send: input_event::Send) -> Option<Input> {
             None
         }
     }
+}
+
+/// What a `pane send` types, or why one of its keys does not read as a chord.
+pub(crate) fn sent_input(send: &input_event::Send) -> Result<Input, String> {
+    let keys = send.keys.iter().map(|name| Chord::parse(name).map(Chord::pressed));
+    let keys = keys.collect::<Result<Vec<_>, _>>()?;
+    Ok(Input::Send { text: send.text.clone(), keys, enter: send.enter })
 }
 
 fn owned_key(key: input_event::Key) -> OwnedKey {

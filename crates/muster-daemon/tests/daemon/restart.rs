@@ -9,7 +9,11 @@ use proto::pane_request;
 
 /// The fake agent in `p1` of a fresh detecting daemon, started with `arguments`, its session
 /// reported as `session`.
-fn reported(environment: &[(&str, &str)], arguments: &str, session: &str) -> (Daemon, Control) {
+pub(crate) fn reported(
+    environment: &[(&str, &str)],
+    arguments: &str,
+    session: &str,
+) -> (Daemon, Control) {
     let daemon = Daemon::start_detecting_with(environment);
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));

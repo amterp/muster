@@ -450,7 +450,7 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// it changed something: a statusline repeats its report every few seconds. A presence report
 /// wakes it too, which lets the report go when it runs out. A report whose `sender` is another
 /// agent than the pane's own is refused before any of it is taken.
-fn handle(
+pub(crate) fn handle(
     session: &mut Session,
     service: Service,
     sender: Option<&attribution::Sender>,
