@@ -74,11 +74,12 @@ When no window answers, this machine's daemon does (`muster docs overview`, "Wit
       this machine · already running · 2 panes in /home/you/src/muster
       /home/you/.muster/daemon/release.sock
 
-The same rows, less what only a window has: no places, no `▸`, no `(off screen)`, and no time in a
-state, which a window counts from when it first saw the pane. `done` is still a finish nobody has
-seen, as the daemon records it. In `--json`, `answered_by` is `"daemon"`; `name`, `keyboard`,
-`showing` and every `since` and `rect` are null; no tab has a `layout` unless `--layout` asked;
-every `place` is 0 and every `on_screen` false.
+The same rows, less what only a window has: no places, no `▸` and no `(off screen)`. The time in
+a state is the daemon's, and a pane has none while the daemon did not see its state begin, as
+after a restart (`muster docs limits`). `done` is still a finish nobody has seen, as the daemon
+records it. In `--json`, `answered_by` is `"daemon"`; `name`, `keyboard`, `showing` and every
+`rect` are null, and so is `since` where the daemon has no time; no tab has a `layout` unless
+`--layout` asked; every `place` is 0 and every `on_screen` false.
 
 ## Other windows
 
@@ -229,8 +230,10 @@ One entry per pane every followed daemon holds, on screen or not.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a
-  `done` pane does not move it: the agent has been resting since it finished. `null` from a window
-  older than this field.
+  `done` pane does not move it: the agent has been resting since it finished. It is the pane's
+  daemon's time, so windows agree on it. When the daemon did not see the state begin, as after a
+  restart, a window gives the moment it first saw the pane, and an answer with no window gives
+  `null`.
 - `on_screen` - whether the window is showing it right now.
 - `keyboard` - whether the window's keyboard is on it.
 - `rect` - where it sits, as fractions of the window: `x` and `y` from the top left, `width` and

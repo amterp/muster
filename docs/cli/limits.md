@@ -443,13 +443,18 @@ would not make does exit non-zero with what it said on stderr.
 Everything `muster window` reports is Muster's picture of each daemon rather than the daemon's
 own answer. `daemons[].state` says how much of that picture to trust.
 
-## `since` starts when the window first saw the pane
+## `since` is unknown when the daemon did not see the state begin
 
-A daemon's events carry no time, so Muster stamps a pane's `since` when it hears the agent change
-state. A pane whose agent was already working before this window opened says it has been working
-since the window first saw it. A window that loses a daemon and reconnects stamps any pane whose
-state changed during the gap with the moment it got back, since nothing says when in the gap it
-changed. Two windows can therefore give one pane two different `since` values.
+A pane's `since` is when its daemon saw the agent enter its state, so every window and `muster
+window` with no window open give one pane the same time. A daemon that did not see the state
+begin has no time to give: an agent a restart resumed was already in its state before the new
+daemon started, and a daemon from a Muster older than this keeps no times at all. With no window
+open, such a pane shows no time and its `since` is `null` until its state next changes. A window counts from
+when it first saw the pane instead, so two windows can give such a pane two different `since`
+values.
+
+The times are by the clock of the machine the pane is on. A devenv whose clock runs ahead of this
+machine's shows its panes as held for `0s` until the gap has passed.
 
 ## A watch hears nothing about a stale daemon's panes
 
@@ -458,8 +463,8 @@ changed. Two windows can therefore give one pane two different `since` values.
 does a watch. A watch prints a line when the daemon goes stale, then each of its panes as
 `unreachable`, and the same again when it is back; a wait on one of its panes exits 4, however
 briefly the daemon was gone. When the daemon comes back,
-a pane that changed during the gap is heard as one change, stamped with the moment the window got
-back, and anything it did in between - a finish followed by new work - is not heard at all. If the
+a pane that changed during the gap is heard as one change, with the time its daemon saw it, and
+anything it did in between - a finish followed by new work - is not heard at all. If the
 window quits, a watch ends with exit 3.
 
 `pane new` and `tab new` print a pane's callsign once the window has heard of the pane, so the
