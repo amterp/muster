@@ -5,9 +5,9 @@
 //! `docs/cli/` and fails on anything the binary cannot print - the same rule `corpus-lint`
 //! applies to a corpus file no driver loads, for the same reason.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use muster_cli::docs;
+use muster_cli::{args, docs};
 
 #[test]
 fn every_document_in_the_repo_is_one_this_binary_can_print() {
@@ -81,5 +81,41 @@ fn all_of_them_is_all_of_them() {
              answers less than it says",
             topic.name
         );
+    }
+}
+
+/// What `muster <words>` prints, or why it refused.
+fn printed(words: &[&str]) -> Result<String, String> {
+    let argv: Vec<String> = words.iter().map(ToString::to_string).collect();
+    match args::parse(&argv, &BTreeMap::new(), None) {
+        Ok(args::Invocation { asking: args::Asking::Print(text), .. }) => Ok(text),
+        Ok(_) => {
+            Err(format!("`muster {}` asked for something other than printing", words.join(" ")))
+        }
+        Err(args::Failure::Refused(refusal)) => Err(refusal),
+        Err(other) => Err(format!("{other:?}")),
+    }
+}
+
+#[test]
+fn the_api_schema_printed_is_the_schema_in_the_repo() {
+    let path = conformance::repo_root().join("proto/muster_api.proto");
+    let schema = std::fs::read_to_string(&path).expect("the API's schema is in the repo");
+    let printed = printed(&["docs", "api", "--schema"]).expect("the schema prints");
+    assert_eq!(
+        printed,
+        schema.trim_end(),
+        "a client generated from `muster docs api --schema` must be generated from the schema the \
+         daemon beside this binary speaks"
+    );
+}
+
+#[test]
+fn only_the_api_topic_has_a_schema() {
+    for words in
+        [&["docs", "--schema"][..], &["docs", "msg", "--schema"], &["docs", "all", "--schema"]]
+    {
+        let refused = printed(words).expect_err("only `api` has a schema");
+        assert!(refused.contains("muster docs api --schema"), "{refused}");
     }
 }

@@ -42,6 +42,11 @@ pub const TOPICS: &[Topic] = &[
         text: include_str!("../../../docs/cli/msg.md"),
     },
     Topic {
+        name: "api",
+        about: "the daemon's API, for a program rather than an agent; --schema prints it",
+        text: include_str!("../../../docs/cli/api.md"),
+    },
+    Topic {
         name: "harnesses",
         about: "what Muster gets from Claude Code, Codex and every other harness",
         text: include_str!("../../../docs/cli/harnesses.md"),
@@ -52,6 +57,10 @@ pub const TOPICS: &[Topic] = &[
         text: include_str!("../../../docs/cli/limits.md"),
     },
 ];
+
+/// `muster_api.proto`, which `muster docs api --schema` prints so that a client in any language
+/// can generate its bindings from the version of the API this binary was built with.
+pub const API_SCHEMA: &str = include_str!("../../../proto/muster_api.proto");
 
 /// What `muster docs` prints on its own: what there is to read.
 pub fn listing() -> String {

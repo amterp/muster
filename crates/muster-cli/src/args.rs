@@ -376,6 +376,10 @@ enum What {
     Docs {
         /// A topic, or `all` for every one of them. Omit for the list.
         topic: Option<String>,
+
+        /// With `api`: print the API's schema, muster_api.proto, to generate a client from
+        #[arg(long)]
+        schema: bool,
     },
 
     /// Print a completion script for a shell
@@ -1099,7 +1103,7 @@ pub fn parse(
             change: change.wire().to_string(),
         })),
         What::Harness { verb } => installing(verb)?,
-        What::Docs { topic } => Asking::Print(documentation(topic.as_deref())?),
+        What::Docs { topic, schema } => Asking::Print(documentation(topic.as_deref(), *schema)?),
         What::Completions { shell } => Asking::Print(completions(*shell)),
     };
 
@@ -1809,7 +1813,15 @@ fn send(payload: request::Payload) -> Asking {
 ///
 /// A topic nobody has is refused here rather than left to clap, because the topics are data in
 /// `docs.rs` and a clap value list would be a second copy of them to keep in agreement.
-fn documentation(topic: Option<&str>) -> Result<String, Failure> {
+fn documentation(topic: Option<&str>, schema: bool) -> Result<String, Failure> {
+    if schema {
+        return match topic {
+            Some("api") => Ok(docs::API_SCHEMA.trim_end().to_string()),
+            _ => Err(Failure::Refused(
+                "only the `api` topic has a schema: `muster docs api --schema`".to_string(),
+            )),
+        };
+    }
     match topic {
         None => Ok(docs::listing()),
         Some("all") => Ok(docs::everything()),
