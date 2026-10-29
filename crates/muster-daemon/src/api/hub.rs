@@ -492,9 +492,19 @@ mod tests {
     #[test]
     fn events_held_on_top_of_a_backlog_past_the_message_budget_end_the_subscription() {
         let hub = hub();
-        let (connection, _client) = connect_within(&hub, Budget { messages: 6, bytes: 64 << 20 });
+        let (connection, mut client) =
+            connect_within(&hub, Budget { messages: 6, bytes: 64 << 20 });
         let live = subscribe(&hub, connection);
         hub.go_live(&live, "s1".to_string(), api::Snapshot::default());
+        // Read, and wait for the writer to take the answer off its count, so the backlog below
+        // is the whole of what is queued.
+        assert!(matches!(next(&mut client), api::daemon_message::Message::Answer(_)));
+        let outbox = hub.connections().open[0].outbox.clone();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while outbox.would_overrun(0, 6) {
+            assert!(Instant::now() < deadline, "the answer was read and is still counted");
+            std::thread::yield_now();
+        }
         // Larger than the socket holds, so the writer is still on it while the rest queue.
         hub.publish(api::Topic::Panes, None, || closed(&"p".repeat(4 << 20)));
         for _ in 0..3 {
