@@ -90,8 +90,10 @@ Posts as `muster msg post` does: as the human unless `as` names another particip
 it names or, naming none, the group the author and `to` share, made for it when there is none.
 Every post records the client's name from its Hello, shown beside the author as `Alex (@human) via
 foreman`. That name is attribution, not identity: any program can give any name. A post offering
-`answers` is a question, and one with `answering` answers a question. A question takes one
-answer, so a second is refused ANSWERED, and a phone can say it was answered at the desk.
+`answers` is a question, and one with `answering` answers a question. An answer is composed as the
+CLI composes one, `Answer: Yes` and then the post's body as a note, and goes to whoever asked
+unless `to` names others. A question takes one answer, so a second is refused ANSWERED, and a
+phone can say it was answered at the desk.
 
 It carries a required operation id, as `pane.new` does. The group's home keeps it in the post's
 own log entry, so a repeat is ALREADY_SO with the first post's group and number, across a
