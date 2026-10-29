@@ -3372,8 +3372,9 @@ impl<S: Store> Messaging<S> {
     }
 
     /// The questions among what waits for the human in `group` that have their answer already,
-    /// oldest first: the human answered from somewhere other than this group's conversation,
-    /// such as a phone, and has not read the group since.
+    /// oldest first, whoever gave it: the human from somewhere other than this group's
+    /// conversation, such as a phone, or another member a question asked of both, before the
+    /// human read the group.
     pub fn human_answered(&self, group: &str) -> Vec<u64> {
         let Some(kept) = self.groups.get(group).filter(|kept| kept.members.contains(HUMAN)) else {
             return Vec::new();
@@ -3633,6 +3634,14 @@ impl<S: Store> Messaging<S> {
             return Ok(());
         }
         self.store.save(&saved).map_err(|error| Refusal::Store { error })?;
+        self.kept = saved;
+        Ok(())
+    }
+
+    /// [`Self::save`], through a power loss too: see [`Store::save_durably`].
+    pub(crate) fn save_durably(&mut self) -> Result<(), Refusal> {
+        let saved = self.snapshot();
+        self.store.save_durably(&saved).map_err(|error| Refusal::Store { error })?;
         self.kept = saved;
         Ok(())
     }

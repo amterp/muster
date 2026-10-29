@@ -1095,6 +1095,7 @@ fn a_programs_retry_goes_where_its_post_went_and_is_answered_from_the_home() {
     let Route::Away(away) = laptop.route_post(&human(), &draft, sessions).unwrap() else {
         panic!("review is kept on the devenv")
     };
+    assert_eq!(wire.laptop.store().durable_saves, 1, "kept through a power loss before it is sent");
     let reply = wire.answer_unheard(Side::Laptop, &away.call);
     let Reply::Posted { seq, .. } = reply else { panic!("{reply:?}") };
 
@@ -1104,6 +1105,7 @@ fn a_programs_retry_goes_where_its_post_went_and_is_answered_from_the_home() {
 
     let again = wire.post_draft(Side::Laptop, &human(), draft).unwrap();
     assert_eq!((again.already, again.seq), (true, seq));
+    assert_eq!(wire.laptop.store().durable_saves, 1, "a retry records nothing new");
     assert!(wire.laptop.groups().is_empty(), "{:?}", wire.laptop.groups());
 }
 

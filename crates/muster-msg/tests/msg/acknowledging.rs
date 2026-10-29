@@ -100,3 +100,29 @@ fn a_question_answered_without_reading_is_listed_as_answered() {
     assert_eq!(service.human_answered("g"), [question]);
     assert_eq!(service.human_notice("g").count, 4);
 }
+
+/// A question asked of the human and another member is answered once, by either: one answered
+/// by the other member has nothing left to ask the human either.
+#[test]
+fn a_question_answered_by_another_it_was_asked_of_is_listed_as_answered() {
+    let (mut service, _) = three_waiting();
+    service.join(&session("b"), Some("b"), Some("g"), &Everyone, 6).unwrap();
+    let (to, answers) =
+        ([HUMAN.to_string(), "b".to_string()], ["Yes".to_string(), "No".to_string()]);
+    let draft =
+        Draft { group: Some("g"), to: &to, body: "Ship?", answers: &answers, ..Draft::default() };
+    let question = service.post_draft(&session("a"), &draft, &Everyone, 7).unwrap().seq;
+    service.read(&session("b"), Some("g"), &Everyone).unwrap();
+
+    let answering = Answering { question, answer: "No".to_string() };
+    let to = ["a".to_string()];
+    let reply = Draft {
+        group: Some("g"),
+        to: &to,
+        body: "Answer: No",
+        answering: Some(&answering),
+        ..Draft::default()
+    };
+    service.post_draft(&session("b"), &reply, &Everyone, 8).unwrap();
+    assert_eq!(service.human_answered("g"), [question]);
+}

@@ -224,6 +224,15 @@ impl Store for Files {
         persist::replace(&self.state(), &bytes).map_err(describe)
     }
 
+    /// [`Store::save`], with the directory synced after the rename as well.
+    fn save_durably(&mut self, saved: &Saved) -> Result<(), String> {
+        let describe = |error: std::io::Error| format!("{}: {error}", self.state().display());
+        self.ensure_directories().map_err(describe)?;
+        let kept = Kept { version: VERSION, saved: saved.clone() };
+        let bytes = serde_json::to_vec_pretty(&kept).map_err(|error| error.to_string())?;
+        persist::write(&self.state(), &bytes).map_err(describe)
+    }
+
     /// Replaced whole, so the file holds the old log or the line, never part of either.
     fn retire(&mut self, group: &str, last: u64, operated: &[Operated]) -> Result<(), String> {
         let describe = |error: std::io::Error| format!("{}: {error}", self.log_of(group).display());

@@ -102,15 +102,17 @@ impl Operations {
         });
     }
 
-    /// `operation` is being sent as `away` to the group's home elsewhere.
-    pub(crate) fn sending(&mut self, operation: &Operation, away: &Away, now_ms: u64) {
+    /// `operation` is being sent as `away` to the group's home elsewhere. Says whether this is
+    /// its first sending, which nothing here recorded before.
+    pub(crate) fn sending(&mut self, operation: &Operation, away: &Away, now_ms: u64) -> bool {
         self.sent.retain(|_, sent| live(sent.at_ms, now_ms));
         let key = (operation.client.clone(), operation.id.clone());
-        self.sent.entry(key).or_insert_with(|| Sent {
-            operation: operation.clone(),
-            at_ms: now_ms,
-            away: away.clone(),
-        });
+        if self.sent.contains_key(&key) {
+            return false;
+        }
+        let sent = Sent { operation: operation.clone(), at_ms: now_ms, away: away.clone() };
+        self.sent.insert(key, sent);
+        true
     }
 
     /// The posts made in `group` that a retry may still ask about, for its retired log to keep.

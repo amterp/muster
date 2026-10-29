@@ -825,11 +825,13 @@ impl<S: Store> Messaging<S> {
             operation: draft.operation.cloned().map(Box::new),
         };
         let away = Away { machine, call };
-        if let Some(operation) = draft.operation {
-            self.operations.sending(operation, &away, caller.at_ms);
-        }
-        // Kept before it is sent, so a retry after a restart goes where this did.
-        self.save()?;
+        let first = draft
+            .operation
+            .is_some_and(|operation| self.operations.sending(operation, &away, caller.at_ms));
+        // Kept before it is sent, so a retry after a restart goes where this did, whatever
+        // groups are here by then. Through a power loss too: lost, the record would let a retry
+        // post again where the home already has it.
+        if first { self.save_durably() } else { self.save() }?;
         Ok(Route::Away(away))
     }
 

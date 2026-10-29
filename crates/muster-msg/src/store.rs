@@ -9,6 +9,12 @@ use crate::{Entry, HumanHome, Operation, Participant, Policy, across::Away};
 pub trait Store {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String>;
     fn save(&mut self, state: &Saved) -> Result<(), String>;
+    /// [`Self::save`], kept through a power loss too: for a change that, once lost, could let
+    /// something already done be done again. A store whose every save is that durable has
+    /// nothing more to do.
+    fn save_durably(&mut self, state: &Saved) -> Result<(), String> {
+        self.save(state)
+    }
     /// Forgets a deleted group's log, keeping only `last`, the number of its last entry, so a
     /// group made again under the name numbers on from it and never issues a number twice, and
     /// `operated`, the posts programs made in it that a retry may still ask about. One step, so
@@ -92,6 +98,8 @@ pub struct Memory {
     pub saved: Option<Saved>,
     /// How many times the state was saved.
     pub saves: usize,
+    /// How many of those saves were to outlast a power loss.
+    pub durable_saves: usize,
     /// Groups whose log was retired, with the last number each issued, in order.
     pub retired: Vec<(String, u64)>,
     /// Groups whose log was renamed, from and to, in order.
@@ -128,6 +136,12 @@ impl Store for Memory {
         }
         self.saved = Some(state.clone());
         self.saves += 1;
+        Ok(())
+    }
+
+    fn save_durably(&mut self, state: &Saved) -> Result<(), String> {
+        self.save(state)?;
+        self.durable_saves += 1;
         Ok(())
     }
 
