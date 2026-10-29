@@ -22,14 +22,23 @@ impl Pane {
     /// What detection read, with stuck laid over it while the pane has an agent whose program
     /// has stopped reading: the state `state_since_ms` dates. Never waiting or done.
     pub fn state(&self) -> PaneState {
-        if self.agent.is_some() && self.unread_input.is_some() {
-            return PaneState::Stuck;
-        }
-        match self.agent_state() {
-            AgentState::Working => PaneState::Working,
-            AgentState::Blocked => PaneState::Blocked,
-            AgentState::Idle => PaneState::Idle,
-            AgentState::Unknown => PaneState::Unknown,
+        use muster_core::AgentState as Shown;
+        let detected = match self.agent_state() {
+            AgentState::Working => Shown::Working,
+            AgentState::Blocked => Shown::Blocked,
+            AgentState::Idle => Shown::Idle,
+            AgentState::Unknown => Shown::Unknown,
+        };
+        match Shown::of_pane(detected, self.agent.is_some(), self.unread_input.is_some()) {
+            Shown::Working => PaneState::Working,
+            Shown::Blocked => PaneState::Blocked,
+            Shown::Idle => PaneState::Idle,
+            Shown::Stuck => PaneState::Stuck,
+            // Waiting, done and unreachable are never detected, and of_pane lays only stuck
+            // over what was.
+            Shown::Waiting | Shown::Done | Shown::Unknown | Shown::Unreachable => {
+                PaneState::Unknown
+            }
         }
     }
 
