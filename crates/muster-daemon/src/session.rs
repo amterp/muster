@@ -1515,9 +1515,12 @@ impl Session {
     /// Tells the API's subscribers what `payload` changed about a pane as they read it.
     fn tell_api(&mut self, payload: &Payload) {
         match payload {
-            Payload::PaneOpened(proto::PaneOpened { pane: Some(record) })
-            | Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }) => {
-                let hidden = self.hidden(&record.pane);
+            // A pane opens before it is placed, and whether it is hidden is its tab's to say, so
+            // a client hears of it from the tab event that places it.
+            Payload::PaneChanged(proto::PaneChanged { pane: Some(record) })
+                if let Some(tab) = self.tab_of(&record.pane) =>
+            {
+                let hidden = self.tabs[tab].hidden;
                 api_pane(&mut self.api_panes, &self.api, record, hidden);
             }
             Payload::PaneClosed(closed) => {
@@ -1528,7 +1531,6 @@ impl Session {
                     });
                 }
             }
-            // Whether a pane is hidden is its tab's to say.
             Payload::TabOpened(proto::TabOpened { tab: Some(tab) })
             | Payload::TabChanged(proto::TabChanged { tab: Some(tab) }) => {
                 let panes: Vec<String> = self

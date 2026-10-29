@@ -116,6 +116,25 @@ fn a_snapshot_carries_what_a_pane_says_and_who_made_it() {
     assert_eq!((p2.maker.as_str(), p2.hidden), ("p1", true), "{p2:?}");
 }
 
+/// A pane is made before it is placed, and a client hears of it once it is in its tab, so a helper
+/// made into a hidden tab never reads as shown.
+#[test]
+fn a_helper_made_hidden_appears_hidden() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let (mut api, _) = subscribed(&daemon);
+
+    make(&mut control, helper("p2", "p1", in_new_hidden_tab("t2")));
+
+    let appeared = api.event_matching("p2 to appear", |event| {
+        matches!(&event.event, Some(Event::PaneAppeared(_)))
+            && carried(event).is_some_and(|held| held.pane == "p2")
+    });
+    let p2 = carried(&appeared).expect("the pane");
+    assert!(p2.hidden, "a hidden helper appeared as shown: {p2:?}");
+}
+
 /// A harness redraws its title while it works, so a title is carried but never news on its own.
 /// Proved without waiting: every pane event up to the rename that followed a new title changed
 /// something else, and the rename's carries the title.
