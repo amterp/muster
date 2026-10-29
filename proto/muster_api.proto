@@ -134,6 +134,13 @@
 // `first_row` to read back. Like every read, it changes nothing: a pane read is not a pane seen,
 // so it stays DONE.
 //
+// Two things renumber a pane's rows: a change of width, which rewraps them, and a full-screen
+// program such as an editor, whose alternate screen holds no history and numbers its rows from 0
+// until the program ends. A page whose `end_row` is below a row the client has read says its rows
+// were renumbered. The old numbers coming back when the program ends cannot be told from the
+// numbers alone, so a client showing what a pane holds now reads the newest page rather than
+// paging on from where it last read.
+//
 // ## Ending
 //
 // The daemon ends a connection with an Ended saying why, when it can:
@@ -345,8 +352,9 @@ message ReadPane {
   }
 }
 
-// Rows from `row` on, to the last row the pane holds. A row already trimmed off the top reads
-// from the oldest row held.
+// Rows from `row` on, to the last row the pane holds. Rows already trimmed off the top are gone,
+// so the page starts at the oldest row held, and still ends by `row + count` when `count` is set:
+// a range trimmed whole answers no rows.
 message RowsFrom {
   uint64 row = 1;
   // At most this many rows. Zero is as many as a page holds.
@@ -888,8 +896,8 @@ message PaneText {
   // One line per row, oldest first, joined by newlines.
   string text = 1;
   // The row of the first line. Rows are numbered from the start of the pane's history, so a row
-  // keeps its number as older rows are trimmed off the top, until a change of width rewraps
-  // them.
+  // keeps its number as older rows are trimmed off the top, until the pane's rows are renumbered
+  // (see "Reading a pane" above).
   uint64 first_row = 2;
   // Rows in this page, which can be fewer than were asked for.
   uint32 rows = 3;
