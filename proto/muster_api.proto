@@ -715,7 +715,8 @@ enum Change {
 }
 
 // A group appeared: made here, or a replica first heard of from its home. Its `latest` is the
-// number before its first entry, and a Logged event follows for each entry it already holds.
+// number before its first entry, and a Logged event follows for each entry it already holds;
+// the human's place in it comes in the Unread event after them.
 message GroupMade {
   Group group = 1;
 }

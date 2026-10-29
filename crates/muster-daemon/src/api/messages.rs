@@ -181,7 +181,8 @@ fn same_but_where_read(before: &api::Group, now: &api::Group) -> bool {
 /// Tells the subscribers of a group that appeared, then of each of its entries, so that a post
 /// that made its group arrives with its body like any other.
 fn made<S: Store>(api: &Api, service: &Messaging<S>, group: api::Group) -> Kept {
-    let before_its_entries = api::Group { latest: group.held_after, ..group.clone() };
+    let before_its_entries =
+        api::Group { latest: group.held_after, human_place: None, ..group.clone() };
     api.publish(api::Topic::Messages, None, || {
         api::event::Event::GroupMade(api::GroupMade { group: Some(before_its_entries) })
     });
