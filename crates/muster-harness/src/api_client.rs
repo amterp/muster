@@ -55,6 +55,14 @@ impl ApiAsked {
             _ => panic!("the answer carries no page: {:?}", self.answer),
         }
     }
+
+    /// The page of a pane's text the answer carries, which a done `api.read_pane`'s does.
+    pub fn pane_text(&self) -> &api::PaneText {
+        match &self.answer.detail {
+            Some(api::answer::Detail::PaneText(text)) => text,
+            _ => panic!("the answer carries no pane text: {:?}", self.answer),
+        }
+    }
 }
 
 /// A page of `group`'s log: the newest entries after `after` and through `through`.
@@ -104,6 +112,16 @@ pub fn subscribe_to(topics: &[api::Topic]) -> api::request::Request {
 pub fn new_pane(asked: api::NewPane) -> api::request::Request {
     api::request::Request::Pane(api::PaneRequest {
         request: Some(api::pane_request::Request::New(asked)),
+    })
+}
+
+/// A read of one page of `pane`'s text, its rows chosen by `rows`.
+pub fn read_pane(pane: &str, rows: Option<api::read_pane::Rows>) -> api::request::Request {
+    api::request::Request::Api(api::ApiRequest {
+        request: Some(api::api_request::Request::ReadPane(api::ReadPane {
+            pane: pane.to_string(),
+            rows,
+        })),
     })
 }
 

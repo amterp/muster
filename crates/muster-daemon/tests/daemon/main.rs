@@ -5,6 +5,7 @@ mod api_acting;
 mod api_attention;
 mod api_messages;
 mod api_panes;
+mod api_read;
 mod arranging;
 mod attention;
 mod attribution;

@@ -126,6 +126,14 @@
 // output, and a title on its own fires nothing either, since a harness redraws its title while it
 // works; every event and snapshot carries the latest title.
 //
+// ## Reading a pane
+//
+// `api.read_pane` answers one page of a pane's text, at most 4 MiB, the pages `muster pane read`
+// reads. Rows are numbered from the start of the pane's history, so a page's rows say where the
+// next one starts: ask `from` its `first_row + rows` to read on, and from a row before its
+// `first_row` to read back. Like every read, it changes nothing: a pane read is not a pane seen,
+// so it stays DONE.
+//
 // ## Ending
 //
 // The daemon ends a connection with an Ended saying why, when it can:
@@ -256,6 +264,8 @@ message ApiRequest {
   oneof request {
     // "api.subscribe": answered with a Snapshot, then every event after it.
     Subscribe subscribe = 1;
+    // "api.read_pane": answered with a PaneText.
+    ReadPane read_pane = 2;
   }
 }
 
@@ -318,6 +328,33 @@ message MadePane {
   string callsign = 2;
 }
 
+// One page of a pane's text. Refused for a pane this daemon does not run.
+message ReadPane {
+  // The pane's id.
+  string pane = 1;
+  // Which rows. None set is the newest page: as many of the pane's newest rows as a page holds.
+  oneof rows {
+    // The newest this many rows, ending at the last row with anything on it, so not the blank
+    // rest of a screen beneath a prompt. Zero is the newest page.
+    uint32 newest = 2;
+    RowsFrom from = 3;
+    // What the pane's agent printed since it last went to work, to the last row with anything on
+    // it, the newest rows kept when that passes a page. Refused when no turn has started since
+    // the daemon began watching the pane.
+    LastTurn turn = 4;
+  }
+}
+
+// Rows from `row` on, to the last row the pane holds. A row already trimmed off the top reads
+// from the oldest row held.
+message RowsFrom {
+  uint64 row = 1;
+  // At most this many rows. Zero is as many as a page holds.
+  uint32 count = 2;
+}
+
+message LastTurn {}
+
 // ---------------------------------------------------------------------------------------------
 // From the daemon
 
@@ -346,6 +383,7 @@ message Answer {
     MadePane made = 11;
     // "msg.history".
     Page page = 12;
+    PaneText pane_text = 13;
   }
 }
 
@@ -843,6 +881,28 @@ enum ShownAs {
   SHOWN_AS_BANNER = 1;
   // A notification posted through the system.
   SHOWN_AS_NOTIFICATION = 2;
+}
+
+// One page of a pane's text.
+message PaneText {
+  // One line per row, oldest first, joined by newlines.
+  string text = 1;
+  // The row of the first line. Rows are numbered from the start of the pane's history, so a row
+  // keeps its number as older rows are trimmed off the top, until a change of width rewraps
+  // them.
+  uint64 first_row = 2;
+  // Rows in this page, which can be fewer than were asked for.
+  uint32 rows = 3;
+  // The oldest row the pane still holds. Rows before it are gone for every reader.
+  uint64 oldest_row = 4;
+  // The row after the last one the pane holds.
+  uint64 end_row = 5;
+  // For a read of the turn, the row it began at. A `first_row` past it means the page was cut
+  // short at its top.
+  optional uint64 turn_row = 6;
+  // For a read of the turn, the pane's rows have moved since it began, rewrapped to another width
+  // or erased, so the turn may begin above `turn_row`.
+  bool turn_moved = 7;
 }
 
 // The daemon's last word on a connection, after which it hangs up.

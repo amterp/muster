@@ -12,7 +12,9 @@ pub mod requests;
 mod stream;
 mod until;
 
-pub use api_client::{Api, ApiAsked, Tried, history, new_pane, subscribe_to, test_client};
+pub use api_client::{
+    Api, ApiAsked, Tried, history, new_pane, read_pane, subscribe_to, test_client,
+};
 pub use control::{Asked, Control};
 pub use daemon::{
     DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing, built_daemon, built_linux_daemons,

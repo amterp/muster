@@ -7,6 +7,7 @@ pub(crate) mod identity;
 mod messages;
 mod pane;
 pub(crate) mod panes;
+mod reading;
 mod topics;
 
 pub(crate) use hub::{Api, Cause};
@@ -31,7 +32,7 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 3] = ["api.subscribe", "msg.history", "pane.new"];
+const REQUESTS: [&str; 4] = ["api.read_pane", "api.subscribe", "msg.history", "pane.new"];
 
 /// Every topic a subscription may name.
 const TOPICS: [api::Topic; 4] =
@@ -184,6 +185,9 @@ fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
             };
             shared.api.answer(caller.connection, answer);
         }
+        Some(Namespace::Api(api::ApiRequest {
+            request: Some(api::api_request::Request::ReadPane(asked)),
+        })) => read_pane(shared, caller.connection, correlation, &asked),
         _ => shared.api.answer(
             caller.connection,
             refused(
@@ -237,6 +241,37 @@ fn subscribe(shared: &Shared, connection: u64, correlation: String, asked: &api:
     topics::join_under_messages(shared, &joining, &topics, &mut snapshot);
     topics::join_unlocked(shared, &joining, &topics, &mut snapshot);
     shared.api.go_live(&joining, correlation, snapshot);
+}
+
+/// Reads the page outside the session's lock, as the control connection's `pane.read` does: a
+/// page of 4 MiB takes a while to format, and nothing else should wait on it.
+fn read_pane(shared: &Shared, connection: u64, correlation: String, asked: &api::ReadPane) {
+    let reading = shared.lock().reading(&reading::asked(asked));
+    let answer = match reading {
+        None => refused(
+            correlation,
+            api::Refusal::NotFound,
+            format!("no pane {} on this daemon", asked.pane),
+        ),
+        Some(reading) => match reading.page() {
+            Some(text) => api::Answer {
+                correlation,
+                outcome: api::Outcome::Done.into(),
+                detail: Some(api::answer::Detail::PaneText(reading::page(text))),
+                ..api::Answer::default()
+            },
+            None => refused(
+                correlation,
+                api::Refusal::Unspecified,
+                format!(
+                    "no turn has started in pane {} since this daemon began watching it, so there \
+                     is no last turn to read; read its newest rows instead",
+                    asked.pane
+                ),
+            ),
+        },
+    };
+    shared.api.answer(connection, answer);
 }
 
 /// The topics a subscribe names, once each, or why it is refused.

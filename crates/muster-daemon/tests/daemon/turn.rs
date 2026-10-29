@@ -11,7 +11,7 @@ use muster_harness::Input;
 /// Typed once more if the agent has not read it after a few seconds: a signal that put the fake
 /// agent to work just before can cut its shell's `read` short and drop the line, and a line never
 /// read is never printed twice.
-fn say(daemon: &Daemon, control: &mut Control, text: &str) {
+pub(crate) fn say(daemon: &Daemon, control: &mut Control, text: &str) {
     let line = format!("say {text}");
     type_line(daemon, &line);
     let typed = std::time::Instant::now();

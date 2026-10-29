@@ -671,14 +671,21 @@ pub(crate) struct Reading {
 
 impl Reading {
     pub(crate) fn read(&self) -> Reply {
+        let Some(text) = self.page() else {
+            return Reply::refused(
+                "no turn has started in this pane since this daemon began watching it, so there \
+                 is no last turn to read; read its newest rows with --rows instead",
+            );
+        };
+        Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
+    }
+
+    /// The page asked for, or None for a turn when none has started since this daemon began
+    /// watching the pane.
+    pub(crate) fn page(&self) -> Option<proto::PaneText> {
         let rows = |first, count| self.io.screen().rows(first, count);
         let text = if self.turn {
-            let Some(start) = self.io.turn_start() else {
-                return Reply::refused(
-                    "no turn has started in this pane since this daemon began watching it, so \
-                     there is no last turn to read; read its newest rows with --rows instead",
-                );
-            };
+            let start = self.io.turn_start()?;
             proto::PaneText {
                 turn: Some(start.row),
                 turn_moved: start.moved,
@@ -695,8 +702,7 @@ impl Reading {
         let prompt = self.prompt.as_ref().and_then(|(agent, detecting)| {
             crate::messages::prompt_holds(&self.io, agent, detecting)
         });
-        let text = proto::PaneText { prompt, ..text };
-        Reply { detail: Some(Box::new(Detail::Text(text))), ..Reply::done() }
+        Some(proto::PaneText { prompt, ..text })
     }
 }
 
@@ -1244,22 +1250,9 @@ impl Session {
                     Ok(restarting) => return Handled::Restart(Box::new(restarting)),
                     Err(refused) => refused,
                 },
-                P::Read(read) => match self.pane_index(&read.pane) {
+                P::Read(read) => match self.reading(&read) {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
-                    Some(index) => {
-                        return Handled::Read(Box::new(Reading {
-                            io: Arc::clone(&self.panes[index].io),
-                            first_row: read.first_row,
-                            rows: read.rows,
-                            last: read.last,
-                            turn: read.turn,
-                            prompt: read
-                                .prompt
-                                .then(|| self.panes[index].record.agent.clone())
-                                .flatten()
-                                .map(|agent| (agent, Arc::clone(&self.detecting))),
-                        }));
-                    }
+                    Some(reading) => return Handled::Read(Box::new(reading)),
                 },
             },
             _ => Reply::unsupported(),
@@ -4080,6 +4073,23 @@ impl Session {
         if let Some(index) = self.pane_index(pane) {
             self.panes[index].session_name.typed(name);
         }
+    }
+
+    /// What reads the page `read` asks for, outside the lock; None when there is no such pane.
+    pub(crate) fn reading(&self, read: &pane_request::Read) -> Option<Reading> {
+        let pane = &self.panes[self.pane_index(&read.pane)?];
+        Some(Reading {
+            io: Arc::clone(&pane.io),
+            first_row: read.first_row,
+            rows: read.rows,
+            last: read.last,
+            turn: read.turn,
+            prompt: read
+                .prompt
+                .then(|| pane.record.agent.clone())
+                .flatten()
+                .map(|agent| (agent, Arc::clone(&self.detecting))),
+        })
     }
 
     fn pane_index(&self, pane: &str) -> Option<usize> {
