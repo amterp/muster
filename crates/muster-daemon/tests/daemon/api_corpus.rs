@@ -331,28 +331,11 @@ impl<'a> Conversation<'a> {
     /// over, as in its reads.
     fn finish(&mut self, name: &str) -> Result<(), CaseError> {
         let Some(mut client) = self.clients.remove(name) else { return Ok(()) };
-        let last = json!(AFTER_THE_LAST_STEP);
         if !client.over {
-            let request = self.schema.encode("Request", &json!({"correlation": last}))?;
-            write(&mut client.stream, &request);
+            let request = json!({"correlation": AFTER_THE_LAST_STEP});
+            write(&mut client.stream, &self.schema.encode("Request", &request)?);
         }
-        let mut unheard = Vec::new();
-        loop {
-            let Some(frame) = read(&mut client.stream) else {
-                if !client.over {
-                    unheard.push(json!("the connection's end, with no answer"));
-                }
-                break;
-            };
-            let message = self.schema.decode("DaemonMessage", &frame)?;
-            client.hear(&message);
-            if message.pointer("/answer/correlation") == Some(&last) {
-                break;
-            }
-            if !client.passing.iter().any(|passing| matches(passing, &message, &self.bound)) {
-                unheard.push(message);
-            }
-        }
+        let unheard = client.rest(self.schema, &self.bound)?;
         self.gone(name, &client, unheard);
         Ok(())
     }
@@ -601,6 +584,44 @@ impl Client {
         Client { stream, numbered: None, misnumbered: Vec::new(), over, passing: Vec::new() }
     }
 
+    /// What the client hears that it should not, through the answer to the request it was sent
+    /// after its last step, or through its connection's end when it was told it is over. Only an
+    /// end between frames is an end: a connection left open past [`PATIENCE`], or a frame cut
+    /// short or too long, is heard as a fault.
+    fn rest(
+        &mut self,
+        schema: &Schema,
+        bound: &Map<String, Value>,
+    ) -> Result<Vec<Value>, CaseError> {
+        let last = json!(AFTER_THE_LAST_STEP);
+        let mut unheard = Vec::new();
+        loop {
+            let frame = match muster_frame::read_frame_or_end(&mut self.stream, LARGEST_MESSAGE) {
+                Ok(Some(frame)) => frame,
+                Ok(None) if self.over => return Ok(unheard),
+                Ok(None) => {
+                    unheard.push(json!("the connection's end, with no answer"));
+                    return Ok(unheard);
+                }
+                Err(error) => {
+                    let wanted = if self.over { "the connection's end" } else { "an answer" };
+                    unheard.push(json!(format!(
+                        "no frame and no end, where {wanted} was due: {error}"
+                    )));
+                    return Ok(unheard);
+                }
+            };
+            let message = schema.decode("DaemonMessage", &frame)?;
+            self.hear(&message);
+            if message.pointer("/answer/correlation") == Some(&last) {
+                return Ok(unheard);
+            }
+            if !self.passing.iter().any(|passing| matches(passing, &message, bound)) {
+                unheard.push(message);
+            }
+        }
+    }
+
     /// Holds `message` to the numbering the header promises, whatever the case expects of it:
     /// each event is one past the last in its subscription's epoch, an answer is through the
     /// last event heard, and a subscribe's answer starts the count again.
@@ -839,6 +860,22 @@ fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_no
         [format!("api-handshake.json: `{}` says something else now", welcomed.cases[0].name)],
         "a request added since shipping stands, and one gone since does not"
     );
+}
+
+/// The end of a client told it is over is its connection closing, not its connection going quiet.
+#[test]
+fn a_client_told_it_is_over_hears_its_connection_end_and_not_a_silence() {
+    let schema = Schema::compiled();
+    let bound = Map::new();
+    let (ours, theirs) = UnixStream::pair().expect("a socket pair");
+    ours.set_read_timeout(Some(Duration::from_millis(50))).expect("a read timeout");
+    let mut quiet = Client::new(ours, true);
+    let unheard = quiet.rest(&schema, &bound).expect("nothing to decode");
+    assert_eq!(unheard.len(), 1, "a peer left open is not an end: {unheard:?}");
+
+    drop(theirs);
+    let unheard = quiet.rest(&schema, &bound).expect("nothing to decode");
+    assert_eq!(unheard, Vec::<Value>::new(), "a peer that hung up is");
 }
 
 mod matching {
