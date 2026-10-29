@@ -19,9 +19,17 @@ REPO = "amterp/muster"
 TAP = "amterp/homebrew-tap"
 CASK = "packaging/homebrew/muster.rb"
 TAP_CASK = "Casks/muster.rb"
-SCHEMA = "proto/muster_daemon.proto"
-BASELINE = "proto/muster_daemon.v1.baseline.proto"
-PROTOCOL_RS = "crates/muster-daemon-proto/src/version.rs"
+// Each schema whose compatible test holds it to a baseline: the daemon's own protocol, and the
+// API for other programs (MIP-10). `version` is the Rust file declaring the schema's version as
+// `constant`.
+SCHEMAS = [
+    {"name": "daemon protocol", "schema": "proto/muster_daemon.proto",
+     "baseline": "proto/muster_daemon.v1.baseline.proto",
+     "version": "crates/muster-daemon-proto/src/version.rs", "constant": "PROTOCOL"},
+    {"name": "API", "schema": "proto/muster_api.proto",
+     "baseline": "proto/muster_api.v0.baseline.proto",
+     "version": "crates/muster-api/src/version.rs", "constant": "API"},
+]
 
 // The cask's line saying its checksum is still the last release's. Its presence is what
 // says a release is under way: the bump writes it, and pointing the cask at the published
@@ -88,21 +96,26 @@ fn cask_marker_line():
             return line
     return ""
 
-fn protocol_version():
-    for line in read_file(PROTOCOL_RS).content.split_lines():
-        if line.starts_with("pub const PROTOCOL: Version"):
+fn schema_version(schema):
+    file = schema["version"]
+    constant = schema["constant"]
+    name = schema["name"]
+    for line in read_file(file).content.split_lines():
+        if line.starts_with("pub const {constant}: Version"):
             return replace(line, ".*major: (\\d+), minor: (\\d+).*", "$1.$2", regex=true)
-    fail(["{PROTOCOL_RS} declares no PROTOCOL, so the baseline cannot be brought up to it.",
-          "Impact: the release would ship without saying which daemon protocol it speaks.",
-          "Restore the `pub const PROTOCOL: Version` line."])
+    fail(["{file} declares no {constant}, so the {name}'s baseline cannot be brought up to it.",
+          "Impact: the release would ship without saying which {name} version it speaks.",
+          "Restore the `pub const {constant}: Version` line."])
 
-fn baseline_version():
-    for line in read_file(BASELINE).content.split_lines():
+fn baseline_version(schema):
+    baseline = schema["baseline"]
+    name = schema["name"]
+    for line in read_file(baseline).content.split_lines():
         if line.starts_with("// Version: "):
             return line.trim_prefix("// Version: ").trim()
-    fail(["{BASELINE} has no '// Version:' line in its header.",
-          "Impact: nothing says which protocol the last release shipped, so the compatible",
-          "test's baseline cannot be moved forward. Restore the header from git history."])
+    fail(["{baseline} has no '// Version:' line in its header.",
+          "Impact: nothing says which {name} version the last release shipped, so its",
+          "compatible test's baseline cannot be moved forward. Restore the header from git history."])
 
 fn push_main():
     $`git push origin HEAD:main` catch:
@@ -275,15 +288,18 @@ if not resuming:
               "Impact: brew would keep offering the old version. Fix the cask's version line by hand."])
     write_file(CASK, cask.replace(old_version, "  version \"{target}\"\n{marker(latest, target)}\n"))
 
-    // A protocol minor that ships becomes the baseline the compatible test holds the schema
-    // to, so a later change to the schema is the next minor rather than this one again.
-    protocol = protocol_version()
-    baseline = baseline_version()
-    if protocol != baseline:
-        header = read_file(BASELINE).content.split_lines()[:6]
-        header = header.map(fn(l) (l == "// Version: {baseline}" ? "// Version: {protocol}" : l))
-        write_file(BASELINE, join(header, "\n") + "\n" + read_file(SCHEMA).content)
-        print("The protocol baseline moves from {baseline} to {protocol}.")
+    // A schema's minor that ships becomes the baseline its compatible test holds it to, so a
+    // later change to the schema is the next minor rather than this one again.
+    for schema in SCHEMAS:
+        version = schema_version(schema)
+        baseline = baseline_version(schema)
+        if version != baseline:
+            file = schema["baseline"]
+            name = schema["name"]
+            header = read_file(file).content.split_lines()[:6]
+            header = header.map(fn(l) (l == "// Version: {baseline}" ? "// Version: {version}" : l))
+            write_file(file, join(header, "\n") + "\n" + read_file(schema["schema"]).content)
+            print("The {name} baseline moves from {baseline} to {version}.")
 
 // A gate that went red leaves the bump in the working tree, marker and all, so a rerun has
 // to tell a bump that was committed from one that never got that far.
@@ -301,13 +317,17 @@ if not committed:
               "git checkout the bumped files to abandon the release."])
 
     message = "chore: {target}\n\nWhat somebody updating has to know is in\n{notes}, which the release\nworkflow puts above the install lines.\n"
-    if not quiet $`git diff --quiet HEAD -- {BASELINE}`.ok:
-        protocol = protocol_version()
-        message += "\nThe daemon's protocol ships as {protocol}, so the schema's baseline\nbecomes {protocol} here: from now on a change to the schema is the next\nminor.\n"
+    for schema in SCHEMAS:
+        file = schema["baseline"]
+        name = schema["name"]
+        if not quiet $`git diff --quiet HEAD -- {file}`.ok:
+            version = schema_version(schema)
+            message += "\nThe {name} ships as {version}, so its schema's baseline\nbecomes {version} here: from now on a change to the schema is the next\nminor.\n"
     message += "\nThe cask names {target} and still carries {latest}'s checksum, marked\nas such, until the notarized build gives its own.\n"
     message_file = quiet $`mktemp`.stdout.trim()
     write_file(message_file, message)
-    $`git add Cargo.toml Cargo.lock {CASK} {BASELINE} {notes}`
+    baselines = [schema["baseline"] for schema in SCHEMAS]
+    $`git add Cargo.toml Cargo.lock {CASK} {baselines} {notes}`
     $`git commit -q -F {message_file}`
 
 step("publish v{target}")
