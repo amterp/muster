@@ -38,8 +38,9 @@ use muster_daemon_proto as proto;
 use muster_daemon_proto::messaging::{self, GROUP, JOIN, LOG, READ, WHO};
 use muster_msg::{
     Action, Activity, AnsweredWait, Answering, Away, Caller, Change, Changed, Draft, Entry, Found,
-    Inbox, LARGEST_BODY, LONGEST_ANSWER, LONGEST_GROUP, Liveness, MOST_ANSWERS, Messaging, Page,
-    Paged, Participant, Policy, Presence, Reach, Refusal, Route, Settled, Tell, Via, Wake, What,
+    Inbox, LARGEST_BODY, LONGEST_ANSWER, LONGEST_GROUP, Liveness, MOST_ANSWERS, Messaging,
+    Operation, Page, Paged, Participant, Policy, Presence, Reach, Refusal, Repeat, Route, Settled,
+    Tell, Via, Wake, What,
 };
 use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
@@ -396,6 +397,13 @@ pub(crate) struct Carrying {
 impl Carrying {
     pub(crate) fn run(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> Reply {
         let Self { destination, asked, fallback, panes } = self;
+        let machine = match &destination {
+            Destination::HumanHome(home) => &home.machine,
+            Destination::GroupHome(machine) => machine,
+        };
+        if let Some(refusal) = carry::unkept_at(shared, machine, &asked) {
+            return refusal;
+        }
         let reply = match destination {
             Destination::HumanHome(home) => {
                 peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(fallback)
@@ -1247,15 +1255,27 @@ fn posting(
     panes: &Panes,
 ) -> Reply {
     let answering = post.answering.clone().map(answering_from);
+    let operation = post.operation.clone().map(operation_from);
+    // A program's repeat is answered before anything that could refuse it, a handoff included:
+    // a post that happened is never told it did not.
+    if let Some(operation) = &operation {
+        let repeat = shared.messages().service.repeat(operation, now_ms());
+        match repeat {
+            Ok(Some(Repeat::Posted { group, seq })) => {
+                let posted = msg_answer::Posted { group, seq, already: true, ..Default::default() };
+                return answered(String::new(), Answer::Posted(posted));
+            }
+            Ok(_) => {}
+            Err(refusal) => return refused("", &refusal),
+        }
+    }
     let routed = finding(shared, panes, &post.to, |found| {
         let mut messages = shared.messages();
         if messages.handing_over {
             return Ok(None);
         }
-        messages
-            .service
-            .route_post(caller, &draft_of(post, answering.as_ref(), found), panes)
-            .map(Some)
+        let draft = draft_of(post, answering.as_ref(), operation.as_ref(), found);
+        messages.service.route_post(caller, &draft, panes).map(Some)
     });
     let (route, found) = match routed {
         Err(refusal) => return refused("", &refusal),
@@ -1278,7 +1298,8 @@ fn posting(
         }
     } else {
         let delivered = delivering(shared, panes, |service| {
-            service.post_draft(caller, &draft_of(post, answering.as_ref(), &found), panes, now_ms())
+            let draft = draft_of(post, answering.as_ref(), operation.as_ref(), &found);
+            service.post_draft(caller, &draft, panes, now_ms())
         });
         match delivered {
             Ok(delivered) => delivered,
@@ -1312,6 +1333,13 @@ fn unsupported(
 ) -> Option<(&'static str, String)> {
     let kept_on =
         format!("{group} is kept on {machine}, whose muster-daemon speaks protocol {speaks}");
+    if post.operation.is_some() && speaks.minor < proto::version::OPERATIONS {
+        let words = format!(
+            "{kept_on}, which cannot keep the program's name or its operation id, so a retry \
+             could post twice. Update Muster there"
+        );
+        return Some(("operations_unsupported", words));
+    }
     if post.urgent && speaks.minor < URGENT_SINCE {
         let words = format!(
             "{kept_on}, which cannot post urgently. Update Muster there, or post without --urgent"
@@ -1331,6 +1359,7 @@ fn unsupported(
 fn draft_of<'a>(
     post: &'a proto::msg_request::Post,
     answering: Option<&'a Answering>,
+    operation: Option<&'a Operation>,
     found: &'a [Found],
 ) -> Draft<'a> {
     Draft {
@@ -1341,6 +1370,7 @@ fn draft_of<'a>(
         urgent: post.urgent,
         answers: &post.answers,
         answering,
+        operation,
     }
 }
 
@@ -1571,7 +1601,12 @@ fn told(event: &'static str, bytes: Option<usize>, delivered: &Delivered) -> msg
             "paused" => named(Reach::Paused),
         },
     );
-    msg_answer::Posted { group: posted.group.clone(), seq: posted.seq, reached }
+    msg_answer::Posted {
+        group: posted.group.clone(),
+        seq: posted.seq,
+        reached,
+        already: posted.already,
+    }
 }
 
 /// A change to a group, as its answer and the daemon's log say it. What other machines must
@@ -1970,6 +2005,14 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "#{question} in {group} is answered already: {by} picked \"{answer}\". A question \
              takes one answer; post an ordinary reply to say more"
         ),
+        Refusal::OperationReused { id } => format!(
+            "the operation id {id:?} named another post in the last day; a retry asks exactly \
+             what the first request asked, and a new post takes a new id. Nothing was posted"
+        ),
+        Refusal::PastNewest { group, through, newest } => format!(
+            "{group} has no message #{through} yet: its newest is #{newest}, so nothing was \
+             acknowledged"
+        ),
         Refusal::Store { error } => format!("the daemon could not keep this: {error}"),
     }
 }
@@ -2021,7 +2064,7 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
 pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering } => {
+        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
             Said::Message(msg_answer::Message {
                 author: author.clone(),
                 to: to.clone(),
@@ -2029,6 +2072,7 @@ pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
                 urgent: *urgent,
                 answers: answers.clone(),
                 answering: answering.as_ref().map(answering_of),
+                via: via.clone(),
             })
         }
         What::Created { by } => Said::Created(by.clone()),
@@ -2112,6 +2156,18 @@ pub(super) fn answering_of(answering: &Answering) -> proto::msg_request::Answeri
 
 pub(super) fn answering_from(answering: proto::msg_request::Answering) -> Answering {
     Answering { question: answering.question, answer: answering.answer }
+}
+
+pub(super) fn operation_of(operation: &Operation) -> proto::msg_request::Operation {
+    proto::msg_request::Operation {
+        client: operation.client.clone(),
+        id: operation.id.clone(),
+        asked: operation.asked,
+    }
+}
+
+pub(super) fn operation_from(operation: proto::msg_request::Operation) -> Operation {
+    Operation { client: operation.client, id: operation.id, asked: operation.asked }
 }
 
 pub(super) fn policy_of(policy: &Policy) -> proto::msg_request::Policy {

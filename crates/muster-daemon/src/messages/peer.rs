@@ -843,6 +843,15 @@ fn answer(shared: &Arc<Shared>, link: &Arc<Link>, call: proto::PeerCall) -> (Rep
     let panes = Panes::of(shared);
     let (answered, holding) = {
         let mut messages = shared.messages();
+        // A program's repeat is answered from the post it names even while this daemon hands
+        // over: refused as unreachable, a post that happened would read as never sent.
+        if messages.handing_over
+            && let Call::Post { operation, .. } = &call
+            && let Some(repeated) = messages.service.repeated_post(operation.as_deref(), now_ms())
+        {
+            let called = messages.service.callsigns_of(repeated.names(), &panes);
+            return (wire::reply_to(repeated), called.into_iter().collect());
+        }
         if messages.handing_over {
             let group = format!("{}@{}", call.group(), link.peer.calls_us);
             let machine = link.peer.calls_us.clone();

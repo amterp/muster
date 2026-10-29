@@ -6,9 +6,11 @@ use crate::across::{Away, Call, Folded, Found, HumanHome, Peer, Tell, base};
 use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_muster, split_machine, title_says,
 };
+use crate::operations::{Operations, Repeat};
 use crate::{
     Action, Answering, Change, Entry, GroupRecord, HUMAN, LARGEST_BODY, LONGEST_ANSWER, Log,
-    MOST_ANSWERS, MUSTER, Policy, Refusal, Saved, Store, What, default_name, pair_group,
+    MOST_ANSWERS, MUSTER, OperationId, Policy, Refusal, Saved, Store, What, default_name,
+    pair_group,
 };
 
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
@@ -271,6 +273,19 @@ pub struct Draft<'a> {
     pub answers: &'a [String],
     /// The question it answers, and the answer it picks.
     pub answering: Option<&'a Answering>,
+    /// The program posting it, and the id it names the post by, for a post made through the API.
+    pub operation: Option<&'a Operation>,
+}
+
+/// A program's post under an operation id of its choosing (MIP-10, section 5). The group's home
+/// keeps the id in the post's entry, so asking again under it never posts twice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Operation {
+    /// The program's name, which scopes its ids and is shown beside the post's author.
+    pub client: String,
+    pub id: String,
+    /// A fingerprint of what the program asked, the same for the same request in every build.
+    pub asked: u64,
 }
 
 /// What an author wrote, beside whom it is for and where: what a post appends wherever it came
@@ -281,6 +296,7 @@ pub(crate) struct Content<'a> {
     pub urgent: bool,
     pub answers: &'a [String],
     pub answering: Option<&'a Answering>,
+    pub operation: Option<&'a Operation>,
 }
 
 /// Which of a group's entries a log asks for: those after `since` and below `before`, and of
@@ -397,6 +413,25 @@ pub struct Posted {
     /// the log regardless, so the post happened; what is at risk is only who was woken, which
     /// costs at most a wake too many after a restart.
     pub unsaved: Option<String>,
+    /// A program asked again under an operation id it posted `seq` by already: nothing was
+    /// appended this time, and nobody woken.
+    pub already: bool,
+}
+
+impl Posted {
+    pub(crate) fn repeated(group: String, seq: u64) -> Posted {
+        Posted {
+            author: String::new(),
+            group,
+            seq,
+            reached: Vec::new(),
+            wakes: Vec::new(),
+            answered: Vec::new(),
+            tell: Vec::new(),
+            unsaved: None,
+            already: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -609,6 +644,8 @@ pub struct Messaging<S: Store> {
     pub(crate) called_elsewhere: BTreeMap<String, String>,
     /// Names of groups deleted here and not made again, with the last number each issued.
     pub(crate) retired: BTreeMap<String, u64>,
+    /// The operation ids programs named their posts by.
+    pub(crate) operations: Operations,
 }
 
 impl<S: Store> Messaging<S> {
@@ -622,11 +659,12 @@ impl<S: Store> Messaging<S> {
     /// its last write (`muster-daemon`'s store does not sync the directory after replacing it, so
     /// a power loss can undo the last replace).
     pub fn restore(store: S, saved: Saved, logs: BTreeMap<String, Log>) -> Messaging<S> {
+        let operations = Operations::restore(&logs, saved.sent);
         let mut policies: BTreeMap<String, Policy> =
             saved.groups.into_iter().map(|record| (record.name, record.policy)).collect();
         let mut groups = BTreeMap::new();
         let mut retired = BTreeMap::new();
-        for (name, Log { after, entries: log }) in logs {
+        for (name, Log { after, entries: log, .. }) in logs {
             if log.is_empty() {
                 retired.insert(name, after);
                 continue;
@@ -720,6 +758,7 @@ impl<S: Store> Messaging<S> {
             human_home: saved.human_home,
             called_elsewhere: saved.called_elsewhere,
             retired,
+            operations,
         };
         messaging.kept = messaging.snapshot();
         messaging
@@ -931,12 +970,39 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Posted, Refusal> {
+        // Before anything that could refuse it: a repeat was posted, whatever has changed since.
+        if let Some(operation) = draft.operation {
+            match self.operations.repeat(operation, now_ms)? {
+                Some(Repeat::Posted { group, seq }) => return Ok(Posted::repeated(group, seq)),
+                Some(Repeat::Sent(away)) => {
+                    return Err(Refusal::KeptElsewhere {
+                        group: away.call.group().to_string(),
+                        machine: away.machine,
+                    });
+                }
+                None => {}
+            }
+        }
         check_body(draft.body)?;
         check_answers(draft.answers)?;
+        if draft.answering.is_some() && !draft.answers.is_empty() {
+            return Err(Refusal::AnswerOffersAnswers);
+        }
         let author = self.acting(caller, presence)?;
         let group = draft.group.map(|group| self.locate(group)).transpose()?;
         let addressees =
             self.addressees(&author, draft.to, draft.found, group.as_deref(), presence)?;
+        if let Some(answering) = draft.answering
+            && group.is_none()
+            && self.shared_group(&author, &addressees)?.is_none()
+        {
+            // The pair a post makes holds no question yet; refused before it is made, so a
+            // refused reply leaves nothing behind.
+            let mut everyone: Vec<&str> = vec![&author];
+            everyone.extend(addressees.iter().map(String::as_str));
+            let group = self.pair_name(&everyone)?;
+            return Err(Refusal::NoSuchQuestion { group, question: answering.question });
+        }
         let group = self.resolve_group(&author, &addressees, group.as_deref(), now_ms)?;
         self.here(&group)?;
         let cursor = self.cursor(&author, &group);
@@ -945,6 +1011,7 @@ impl<S: Store> Messaging<S> {
             urgent: draft.urgent,
             answers: draft.answers,
             answering: draft.answering,
+            operation: draft.operation,
         };
         self.post_as(&author, &group, addressees, &content, cursor, None, presence, now_ms)
     }
@@ -1001,8 +1068,15 @@ impl<S: Store> Messaging<S> {
             urgent,
             answers: content.answers.to_vec(),
             answering: content.answering.cloned(),
+            via: content.operation.map(|operation| operation.client.clone()),
+            operation: content
+                .operation
+                .map(|operation| OperationId { id: operation.id.clone(), asked: operation.asked }),
         };
         let seq = self.append(group, message, now_ms)?;
+        if let Some(operation) = content.operation {
+            self.operations.posted(operation, group, seq, now_ms);
+        }
         Ok(self.posted(author, group, seq, addressees, urgent, from, presence, now_ms))
     }
 
@@ -1030,6 +1104,7 @@ impl<S: Store> Messaging<S> {
             answered: Vec::new(),
             tell: self.tell(group, seq - 1, from),
             unsaved: None,
+            already: false,
         };
         for tell in &mut posted.tell {
             tell.targets = targets
@@ -1078,6 +1153,8 @@ impl<S: Store> Messaging<S> {
             urgent: false,
             answers: Vec::new(),
             answering: None,
+            via: None,
+            operation: None,
         };
         let seq = self.append(group, message, now_ms)?;
         Ok(self.posted(MUSTER, group, seq, to, false, None, presence, now_ms))
@@ -1186,6 +1263,12 @@ impl<S: Store> Messaging<S> {
         self.add_member(&group, one, now_ms)?;
         self.add_member(&group, other, now_ms)?;
         Ok(group)
+    }
+
+    /// What a program asking again under `operation` asked before, if it did within the
+    /// retention period, or the refusal for an id it used for another request.
+    pub fn repeat(&self, operation: &Operation, now_ms: u64) -> Result<Option<Repeat>, Refusal> {
+        self.operations.repeat(operation, now_ms)
     }
 
     /// The body of the message at `seq` in `group`, when there is one.
@@ -1674,6 +1757,7 @@ impl<S: Store> Messaging<S> {
             answered: Vec::new(),
             tell: Vec::new(),
             unsaved: None,
+            already: false,
         };
         if !self.groups[group].policy.paused {
             return Ok(posted);
@@ -1712,7 +1796,8 @@ impl<S: Store> Messaging<S> {
         let let_go: Vec<String> = record.members.iter().cloned().collect();
         let forget = self.tell(group, 0, None).into_iter().map(|tell| tell.machine).collect();
         let last = record.head();
-        self.store.retire(group, last).map_err(|error| Refusal::Store { error })?;
+        let operated = self.operations.of_group(group, caller.at_ms);
+        self.store.retire(group, last, &operated).map_err(|error| Refusal::Store { error })?;
         let ended = self.drop_group(group);
         self.retired.insert(group.to_string(), last);
         let mut deleted =
@@ -3488,6 +3573,7 @@ impl<S: Store> Messaging<S> {
                 .collect(),
             human_home: self.human_home.clone(),
             called_elsewhere: self.called_elsewhere.clone(),
+            sent: self.operations.sent(),
         }
     }
 }

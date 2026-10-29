@@ -187,6 +187,18 @@ pub enum Refusal {
         by: String,
         answer: String,
     },
+    /// A program named a post by an operation id it used for another request in the retention
+    /// period: a retry must ask exactly what it asked the first time.
+    OperationReused {
+        id: String,
+    },
+    /// An acknowledgement named a number past the newest in its group, which nobody can have
+    /// been shown.
+    PastNewest {
+        group: String,
+        through: u64,
+        newest: u64,
+    },
     /// The store could not keep what was asked, so it was not done.
     Store {
         error: String,
@@ -234,6 +246,8 @@ impl Refusal {
             Refusal::NotOffered { .. } => "not_offered",
             Refusal::NotAskedOf { .. } => "not_asked_of",
             Refusal::AlreadyAnswered { .. } => "already_answered",
+            Refusal::OperationReused { .. } => "operation_reused",
+            Refusal::PastNewest { .. } => "past_newest",
             Refusal::Store { .. } => "store",
         }
     }

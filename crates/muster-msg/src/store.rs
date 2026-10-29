@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Entry, HumanHome, Participant, Policy};
+use crate::{Entry, HumanHome, Operation, Participant, Policy, across::Away};
 
 /// Where the host keeps what must outlive it. Both calls happen before the request that caused
 /// them is answered, so an answer never reports something the store did not take.
@@ -10,8 +10,10 @@ pub trait Store {
     fn append(&mut self, group: &str, entry: &Entry) -> Result<(), String>;
     fn save(&mut self, state: &Saved) -> Result<(), String>;
     /// Forgets a deleted group's log, keeping only `last`, the number of its last entry, so a
-    /// group made again under the name numbers on from it and never issues a number twice.
-    fn retire(&mut self, group: &str, last: u64) -> Result<(), String>;
+    /// group made again under the name numbers on from it and never issues a number twice, and
+    /// `operated`, the posts programs made in it that a retry may still ask about. One step, so
+    /// whatever a crash interrupts, the log or what replaces it remembers them.
+    fn retire(&mut self, group: &str, last: u64, operated: &[Operated]) -> Result<(), String>;
     /// Moves a retired name's log, and the number it keeps, to the same name spelled with other
     /// letter case, which is being made again: a file system that ignores case would otherwise
     /// keep the new group's log under the old spelling. One step, so the number is kept on disk
@@ -26,12 +28,36 @@ pub trait Store {
 pub struct Log {
     pub after: u64,
     pub entries: Vec<Entry>,
+    /// Posts programs made in the group deleted under this name, as its retiring kept them.
+    pub operated: Vec<Operated>,
 }
 
 impl From<Vec<Entry>> for Log {
     fn from(entries: Vec<Entry>) -> Log {
-        Log { after: 0, entries }
+        Log { entries, ..Log::default() }
     }
+}
+
+/// A post a program made under an operation id, as the group's home remembers it: read from the
+/// post's own entry while its group lives, and from the record its retired log keeps after.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Operated {
+    pub client: String,
+    pub id: String,
+    pub asked: u64,
+    pub group: String,
+    pub seq: u64,
+    pub at_ms: u64,
+}
+
+/// A post a program made under an operation id that this machine sent to the group's home on
+/// another, as it sent it: a retry goes to the same home with the same call, whatever this
+/// machine's groups say by then, and the home says whether it was posted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sent {
+    pub operation: Operation,
+    pub at_ms: u64,
+    pub away: Away,
 }
 
 /// Everything but the logs. A group's members are not here: they are read back from its log's
@@ -48,6 +74,9 @@ pub struct Saved {
     /// a group's log is, and nothing else here can say what its authors there are called.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub called_elsewhere: BTreeMap<String, String>,
+    /// Programs' posts sent from here to another machine's group, within the retention period.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sent: Vec<Sent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,12 +131,13 @@ impl Store for Memory {
         Ok(())
     }
 
-    fn retire(&mut self, group: &str, last: u64) -> Result<(), String> {
+    fn retire(&mut self, group: &str, last: u64, operated: &[Operated]) -> Result<(), String> {
         if self.failing() {
             return Err("the store is failing on purpose".to_string());
         }
         self.retired.push((group.to_string(), last));
-        self.kept.insert(group.to_string(), Log { after: last, entries: Vec::new() });
+        let log = Log { after: last, entries: Vec::new(), operated: operated.to_vec() };
+        self.kept.insert(group.to_string(), log);
         Ok(())
     }
 

@@ -4,6 +4,7 @@ mod across;
 mod conformance;
 mod delivery;
 mod held;
+mod operations;
 mod participant_names;
 mod store;
 mod telling;

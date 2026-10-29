@@ -211,6 +211,10 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::AlreadyAnswered { group, question, by, answer } => {
             format!("{group} #{question} by {by}: {answer}")
         }
+        Refusal::OperationReused { id } => id.clone(),
+        Refusal::PastNewest { group, through, newest } => {
+            format!("{group} #{through} (newest #{newest})")
+        }
         Refusal::Store { error } => error.clone(),
         Refusal::AddressedSelf
         | Refusal::NoGroup
@@ -237,7 +241,8 @@ fn action_word(action: Action) -> &'static str {
 
 fn entry(entry: &muster_msg::Entry) -> String {
     match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering } => {
+        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
+            let author = via.as_ref().map_or(author.clone(), |via| format!("{author} via {via}"));
             let to = if to.is_empty() { String::new() } else { format!("->{}", to.join(",")) };
             let urgent = if *urgent { " (urgent)" } else { "" };
             let answering = answering.as_ref().map_or(String::new(), |answering| {

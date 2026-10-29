@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use muster_msg::{
     Action, Answering, Call, Caller, Caught, Draft, Entry, Found, HUMAN, Inbox, Joined, Liveness,
-    MUSTER, Member, Memory, Messaging, Participant, Peer, Policy, Posted, Presence, Reach, Refusal,
-    Reply, Route, Settled, Tell, Unread, Via, Wake, What,
+    MUSTER, Member, Memory, Messaging, Operation, Participant, Peer, Policy, Posted, Presence,
+    Reach, Refusal, Reply, Route, Settled, Tell, Unread, Via, Wake, What,
 };
 
 #[derive(Default)]
@@ -214,7 +214,7 @@ impl Wire {
 
     /// Sends `call` from `side`, and the other machine answers it, but the answer is lost: `side`
     /// settles nothing, as when a reply never arrives in time.
-    fn answer_unheard(&mut self, side: Side, call: &Call) {
+    fn answer_unheard(&mut self, side: Side, call: &Call) -> Reply {
         let now = self.tick();
         let from = side.other().peer();
         let said = self.callsigns(side, call.names());
@@ -223,9 +223,9 @@ impl Wire {
             home.heard_callsigns(&from, said);
             home.answer(&from, call.clone(), sessions, now)
         };
-        assert!(matches!(answered.reply, Reply::Joined { .. }), "{:?}", answered.reply);
         self.wakes.extend(answered.wakes.into_iter().map(|wake| (side.other(), wake)));
         self.tell(side.other(), &answered.tell);
+        answered.reply
     }
 
     /// Sends a home's new entries on to the machines it named. A machine that holds too little
@@ -1077,6 +1077,36 @@ fn a_pair_whose_name_is_taken_by_another_pair_takes_the_next() {
     assert_eq!(woke(&posted), [("critic@devenv", Reach::Woken)]);
 }
 
+/// A program's post as the laptop's human to a group kept on the devenv, whose answer was lost,
+/// is asked for again after that group was deleted and the laptop let its copy go: the retry
+/// goes where the first went, rather than making a group of its own here, and the home answers
+/// it from the post it kept.
+#[test]
+fn a_programs_retry_goes_where_its_post_went_and_is_answered_from_the_home() {
+    let mut wire = Wire::new();
+    let critic = session("critic");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    let operation = Operation { client: "foreman".to_string(), id: "x".to_string(), asked: 7 };
+    let to = ["critic@devenv".to_string()];
+    let draft = Draft { to: &to, body: "ship it", operation: Some(&operation), ..Draft::default() };
+
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let Route::Away(away) = laptop.route_post(&human(), &draft, sessions).unwrap() else {
+        panic!("review is kept on the devenv")
+    };
+    let reply = wire.answer_unheard(Side::Laptop, &away.call);
+    let Reply::Posted { seq, .. } = reply else { panic!("{reply:?}") };
+
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.group_delete(&critic, "review", sessions).unwrap();
+    wire.laptop.forget_replica(&Side::Laptop.peer(), "review").unwrap();
+
+    let again = wire.post_draft(Side::Laptop, &human(), draft).unwrap();
+    assert_eq!((again.already, again.seq), (true, seq));
+    assert!(wire.laptop.groups().is_empty(), "{:?}", wire.laptop.groups());
+}
+
 /// A laptop human in a group kept on the devenv is woken by the laptop, through the same
 /// reach a post made on the laptop would use: the human's home is where the app runs.
 #[test]
@@ -1579,6 +1609,7 @@ fn a_call_acting_as_this_machines_own_or_naming_no_name_is_refused() {
         answering: None,
         cursor: 99,
         head: 0,
+        operation: None,
     };
     let forged = [
         Call::Join {
@@ -1636,6 +1667,8 @@ fn entries_from_a_home_with_names_no_participant_could_have_are_refused() {
             urgent: false,
             answers: Vec::new(),
             answering: None,
+            via: None,
+            operation: None,
         },
     };
     let caught = |group: &str, author: &str| Caught {
@@ -2694,7 +2727,8 @@ fn a_join_taking_a_panes_place_whose_answer_is_lost_keeps_the_place() {
     let (devenv, sessions) = wire.split(Side::Devenv);
     let route = devenv.route_join(&agent, Some("tracer"), Some("review@lap"), sessions);
     let Route::Away(away) = route.unwrap() else { panic!("review is kept on the laptop") };
-    wire.answer_unheard(Side::Devenv, &away.call);
+    let reply = wire.answer_unheard(Side::Devenv, &away.call);
+    assert!(matches!(reply, Reply::Joined { .. }), "{reply:?}");
 
     // What a daemon does with a change it sent and heard nothing back about.
     wire.devenv.unanswered("review@lap");

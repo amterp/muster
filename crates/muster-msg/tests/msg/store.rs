@@ -231,7 +231,7 @@ fn a_group_whose_log_was_removed_before_a_crash_stays_deleted() {
     first.join(&session("a"), Some("a"), Some("kept"), &Everyone, 2).unwrap();
     let saved = first.store().saved.clone().expect("the service saved its state");
     let mut logs = first.store().logs();
-    logs.insert("g".to_string(), muster_msg::Log { after: 2, entries: Vec::new() });
+    logs.insert("g".to_string(), muster_msg::Log { after: 2, ..muster_msg::Log::default() });
 
     let second = Messaging::restore(Memory::default(), saved, logs);
     assert_eq!(second.log("g", 0), Err(Refusal::NoSuchGroup { group: "g".to_string() }));

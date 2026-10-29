@@ -275,7 +275,7 @@ fn answers(entries: &[Entry]) -> BTreeMap<u64, u64> {
 fn entry_of(entry: &Entry, answered_by: Option<u64>) -> api::Entry {
     use api::entry::What as Is;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering } => Is::Post(api::Post {
+        What::Message { author, to, body, urgent, answers, answering, .. } => Is::Post(api::Post {
             author: author.clone(),
             to: to.clone(),
             body: body.clone(),

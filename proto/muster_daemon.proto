@@ -853,6 +853,21 @@ message MsgRequest {
     repeated string answers = 5;
     // Since 1.8. The question this post answers, and which of its answers it picks.
     optional Answering answering = 6;
+    // Since 1.9. The program posting it through the API, and the id it names the post by: the
+    // group's home keeps both in the post's entry, shows the program beside the author, and
+    // answers a repeat of the id with the first post rather than posting again. Refused as
+    // `operations_unsupported` when the post would go to a machine whose daemon speaks a
+    // protocol before 1.9, which would drop both.
+    optional Operation operation = 7;
+  }
+
+  // A program's operation id for a post (MIP-10, section 5).
+  message Operation {
+    // The program's name from its API Hello, which scopes its ids.
+    string client = 1;
+    string id = 2;
+    // A fingerprint of what the program asked, which tells a repeat from a reused id.
+    uint64 asked = 3;
   }
 
   // A reply's pick of an answer a question offered. Refused as `no_such_question`,
@@ -1046,6 +1061,9 @@ message MsgAnswer {
     string group = 1;
     uint64 seq = 2;
     repeated Reached reached = 3;
+    // Since 1.9. A program asked again under an operation id it posted `seq` by already, so
+    // nothing was posted this time and nobody was woken.
+    bool already = 4;
   }
 
   message Reached {
@@ -1171,6 +1189,9 @@ message MsgAnswer {
     repeated string answers = 5;
     // Since 1.8.
     optional MsgRequest.Answering answering = 6;
+    // Since 1.9. The program that posted it for its author, shown beside the author:
+    // "Alex (@human) via foreman".
+    optional string via = 7;
   }
 
   message Members {
@@ -2322,6 +2343,8 @@ message PeerCall {
     repeated string answers = 8;
     // Since 1.8.
     optional MsgRequest.Answering answering = 9;
+    // Since 1.9.
+    optional MsgRequest.Operation operation = 10;
   }
 
   message Since {
@@ -2357,6 +2380,14 @@ message PeerReply {
     // Since 1.2.
     Named named = 18;
     Carried carried = 19;
+    // Since 1.9. A post asked for again under an operation id, posted before as `seq` in `group`.
+    // Carries no catch-up: the group may have been deleted since.
+    Repeated repeated = 20;
+  }
+
+  message Repeated {
+    string group = 1;
+    uint64 seq = 2;
   }
 
   // Who a `whom` names, if anybody.

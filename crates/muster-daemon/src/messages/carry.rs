@@ -59,6 +59,25 @@ pub(super) fn destination(
     }
 }
 
+/// A refusal for carrying `asked` to `machine`, whose daemon would drop part of it without a word:
+/// a program's post loses its operation id there, so a retry would post twice.
+pub(super) fn unkept_at(shared: &Shared, machine: &str, asked: &Asked) -> Option<Reply> {
+    let speaks = shared.peers.to(machine)?.speaks;
+    let words = unkept(asked, speaks, machine)?;
+    Some(super::refused_as("", "operations_unsupported", &words))
+}
+
+fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<String> {
+    let operation = matches!(asked, Asked::Post(post) if post.operation.is_some());
+    (operation && speaks.minor < proto::version::OPERATIONS).then(|| {
+        format!(
+            "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
+             cannot keep a program's name or operation id, so a retry could post twice. Update \
+             Muster there"
+        )
+    })
+}
+
 /// Whether `asked` may be carried if this machine refuses it, which is what it is kept for.
 pub(super) fn may_carry(
     service: &Messaging<Files>,
@@ -244,5 +263,25 @@ pub(super) fn verb(asked: &Asked) -> &'static str {
         Asked::Resume(_) => "resume",
         Asked::GroupDelete(_) => "group_delete",
         Asked::Peer(_) => "peer",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn post(operation: Option<proto::msg_request::Operation>) -> Asked {
+        Asked::Post(proto::msg_request::Post { operation, ..Default::default() })
+    }
+
+    #[test]
+    fn a_programs_post_is_not_carried_to_a_daemon_that_would_drop_its_operation_id() {
+        let operation =
+            proto::msg_request::Operation { client: "foreman".into(), ..Default::default() };
+        let older = proto::Version { major: 1, minor: proto::version::OPERATIONS - 1 };
+        let current = proto::Version { major: 1, minor: proto::version::OPERATIONS };
+        assert!(unkept(&post(Some(operation.clone())), older, "lap").is_some());
+        assert!(unkept(&post(Some(operation)), current, "lap").is_none());
+        assert!(unkept(&post(None), older, "lap").is_none());
     }
 }

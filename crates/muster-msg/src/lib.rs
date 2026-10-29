@@ -11,6 +11,7 @@
 mod across;
 mod entry;
 mod names;
+mod operations;
 mod policy;
 mod refusal;
 mod service;
@@ -20,19 +21,20 @@ pub use across::{
     Answered, Applied, Away, CAUGHT_BYTES, Call, Caught, Folded, Found, HumanHome, Peer, Reply,
     Route, Settle, Settled, Tell, heard,
 };
-pub use entry::{Answering, Change, Entry, What};
+pub use entry::{Answering, Change, Entry, OperationId, What};
 pub use names::{
     HUMAN, LONGEST_GROUP, MUSTER, asked_of, default_name, is_human, is_machine, is_muster,
     pair_group, split_machine,
 };
+pub use operations::{OPERATION_RETENTION_MS, Repeat};
 pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
     Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding, Inbox,
-    Joined, Left, Liveness, Member, Messaging, Notice, Page, Paged, Participant, Posted, Presence,
-    Reach, Read, Removed, Ringable, Unread, Via, Waited, Waiting, Wake,
+    Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page, Paged, Participant, Posted,
+    Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited, Waiting, Wake,
 };
-pub use store::{GroupRecord, Log, Memory, Saved, Store};
+pub use store::{GroupRecord, Log, Memory, Operated, Saved, Sent, Store};
 
 /// The largest message body, in bytes. A daemon frame may be 16 MiB, and a message is meant to
 /// be read by a model, so this leaves room for everything else a frame carries.

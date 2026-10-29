@@ -51,6 +51,11 @@ pub const PAGED_LOG: u32 = 8;
 /// which do not say why, so a client asks before sending either.
 pub const ATTENTION: u32 = 9;
 
+/// The first minor whose daemon keeps a program's operation id and name on a post, and answers a
+/// repeat of the id with the first post (MIP-10, section 5). An older one drops both and posts the
+/// repeat again, so a post carrying an id is refused rather than sent to one.
+pub const OPERATIONS: u32 = 9;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

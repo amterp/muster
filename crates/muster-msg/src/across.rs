@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_machine, split_machine,
 };
-use crate::service::{Content, Draft, Group, check_answers, check_body};
+use crate::operations::Repeat;
+use crate::service::{Content, Draft, Group, Operation, check_answers, check_body};
 use crate::{
     Action, AnsweredWait, Answering, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER,
     Member, Messaging, Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake,
@@ -86,14 +87,18 @@ impl Peer {
 
     fn entry(&self, entry: Entry) -> Entry {
         let what = match entry.what {
-            What::Message { author, to, body, urgent, answers, answering } => What::Message {
-                author: self.inward(&author),
-                to: to.iter().map(|name| self.inward(name)).collect(),
-                body,
-                urgent,
-                answers,
-                answering,
-            },
+            What::Message { author, to, body, urgent, answers, answering, via, operation } => {
+                What::Message {
+                    author: self.inward(&author),
+                    to: to.iter().map(|name| self.inward(name)).collect(),
+                    body,
+                    urgent,
+                    answers,
+                    answering,
+                    via,
+                    operation,
+                }
+            }
             What::Created { by } => What::Created { by: self.inward(&by) },
             What::Joined { who } => What::Joined { who: self.inward(&who) },
             What::Left { who } => What::Left { who: self.inward(&who) },
@@ -195,7 +200,7 @@ pub struct Tell {
 
 /// What one machine asks of another. Groups are named as their home names them, and every
 /// other name as the asker writes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Call {
     /// Whether a group by this name is kept there.
     Find {
@@ -226,6 +231,8 @@ pub enum Call {
         answering: Option<Answering>,
         cursor: u64,
         head: u64,
+        /// The program that made the post, and its id for it, which the home remembers.
+        operation: Option<Box<Operation>>,
     },
     Since {
         group: String,
@@ -306,7 +313,7 @@ impl Call {
 }
 
 /// A call for the host to send to the machine a group is kept on.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Away {
     pub machine: String,
     pub call: Call,
@@ -401,6 +408,13 @@ pub enum Reply {
         reached: Vec<(String, Reach)>,
         caught: Caught,
     },
+    /// A post a program asked for again under an operation id: it was posted before, as `seq` in
+    /// `group`, as the home names it, and nothing was done this time. Carries no catch-up,
+    /// since the group may be gone since.
+    Repeated {
+        group: String,
+        seq: u64,
+    },
     Caught(Caught),
     Members(Vec<Member>),
     /// The participant a [`Call::Whom`] asked about, if there is one.
@@ -415,7 +429,7 @@ impl Reply {
     /// Every participant the reply names, as the machine answering writes them.
     pub fn names(&self) -> BTreeSet<&str> {
         match self {
-            Reply::Found(_) => BTreeSet::new(),
+            Reply::Found(_) | Reply::Repeated { .. } => BTreeSet::new(),
             Reply::Joined { caught, .. } | Reply::Left { caught } | Reply::Caught(caught) => {
                 caught.names()
             }
@@ -440,6 +454,7 @@ impl Reply {
     pub fn check(&self) -> Result<(), Refusal> {
         match self {
             Reply::Found(_) => Ok(()),
+            Reply::Repeated { group, .. } => check_group(group),
             Reply::Joined { caught, .. } | Reply::Left { caught } | Reply::Caught(caught) => {
                 caught.check()
             }
@@ -761,6 +776,15 @@ impl<S: Store> Messaging<S> {
         draft: &Draft<'_>,
         presence: &dyn Presence,
     ) -> Result<Route, Refusal> {
+        // A program's retry goes where it went the first time, whatever the groups here say
+        // now: a group made since could otherwise take, and post, what was posted elsewhere.
+        if let Some(operation) = draft.operation {
+            match self.operations.repeat(operation, caller.at_ms)? {
+                Some(Repeat::Posted { .. }) => return Ok(Route::Here),
+                Some(Repeat::Sent(away)) => return Ok(Route::Away(*away)),
+                None => {}
+            }
+        }
         check_body(draft.body)?;
         check_answers(draft.answers)?;
         let author = self.acting(caller, presence)?;
@@ -788,7 +812,6 @@ impl<S: Store> Messaging<S> {
         if unread > 0 {
             return Err(Refusal::Unread { group: key, count: unread });
         }
-        self.save()?;
         let call = Call::Post {
             cursor: self.cursor(&author, &key),
             head: self.head_of(&key),
@@ -799,8 +822,15 @@ impl<S: Store> Messaging<S> {
             urgent: draft.urgent,
             answers: draft.answers.to_vec(),
             answering: draft.answering.cloned(),
+            operation: draft.operation.cloned().map(Box::new),
         };
-        Ok(Route::Away(Away { machine, call }))
+        let away = Away { machine, call };
+        if let Some(operation) = draft.operation {
+            self.operations.sending(operation, &away, caller.at_ms);
+        }
+        // Kept before it is sent, so a retry after a restart goes where this did.
+        self.save()?;
+        Ok(Route::Away(away))
     }
 
     /// The call that has the home of `key` post Muster's notice `body` to `to`, members as this
@@ -1060,8 +1090,10 @@ impl<S: Store> Messaging<S> {
                     answered: Vec::new(),
                     tell: Vec::new(),
                     unsaved: None,
+                    already: false,
                 }))
             }
+            Reply::Repeated { group, seq } => repeated(peer, call, &group, seq),
         }
     }
 
@@ -1125,6 +1157,7 @@ impl<S: Store> Messaging<S> {
             answered: Vec::new(),
             tell: Vec::new(),
             unsaved: None,
+            already: false,
         };
         let carried = posted.reached.len();
         let mut resumed = None;
@@ -1396,9 +1429,30 @@ impl<S: Store> Messaging<S> {
             Call::Leave { name, group, head } => self
                 .leave_from(peer, &name, &group, head, now_ms, &mut answered)
                 .unwrap_or_else(refused),
-            Call::Post { author, group, to, body, urgent, answers, answering, cursor, head } => {
-                let post =
-                    Forwarded { author, group, to, body, urgent, answers, answering, cursor, head };
+            Call::Post {
+                author,
+                group,
+                to,
+                body,
+                urgent,
+                answers,
+                answering,
+                cursor,
+                head,
+                operation,
+            } => {
+                let post = Forwarded {
+                    author,
+                    group,
+                    to,
+                    body,
+                    urgent,
+                    answers,
+                    answering,
+                    cursor,
+                    head,
+                    operation,
+                };
                 self.post_from(peer, post, presence, now_ms, &mut answered)
             }
             Call::Muster { group, to, body, head } => {
@@ -1407,6 +1461,18 @@ impl<S: Store> Messaging<S> {
             }
         };
         answered
+    }
+
+    /// The answer to a post another machine asked for again under an operation id, when it was
+    /// posted here before, or one refusing an id used for another request: answered before
+    /// anything that could refuse it, so a post that happened is never told it did not. The host
+    /// asks this even while it hands over, when it refuses every other call.
+    pub fn repeated_post(&self, operation: Option<&Operation>, now_ms: u64) -> Option<Reply> {
+        match self.operations.repeat(operation?, now_ms) {
+            Ok(Some(Repeat::Posted { group, seq })) => Some(Reply::Repeated { group, seq }),
+            Ok(_) => None,
+            Err(refusal) => Some(Reply::Refused { refusal, caught: None }),
+        }
     }
 
     /// The participant `name` means on this machine, for another that has nobody by it: the one
@@ -1596,8 +1662,22 @@ impl<S: Store> Messaging<S> {
         now_ms: u64,
         answered: &mut Answered,
     ) -> Reply {
-        let Forwarded { author, group, to, body, urgent, answers, answering, cursor, head } = post;
+        let Forwarded {
+            author,
+            group,
+            to,
+            body,
+            urgent,
+            answers,
+            answering,
+            cursor,
+            head,
+            operation,
+        } = post;
         let refused = |refusal| Reply::Refused { refusal, caught: None };
+        if let Some(repeated) = self.repeated_post(operation.as_deref(), now_ms) {
+            return repeated;
+        }
         if !self.kept_here(&group) {
             return refused(Refusal::NoSuchGroup { group });
         }
@@ -1611,8 +1691,13 @@ impl<S: Store> Messaging<S> {
         }
         let caught = |service: &Self| service.since(&group, head).ok();
         let from = Some(peer.name.as_str());
-        let content =
-            Content { body: &body, urgent, answers: &answers, answering: answering.as_ref() };
+        let content = Content {
+            body: &body,
+            urgent,
+            answers: &answers,
+            answering: answering.as_ref(),
+            operation: operation.as_deref(),
+        };
         let posting =
             self.post_as(&author, &group, addressees, &content, cursor, from, presence, now_ms);
         match posting {
@@ -1771,6 +1856,16 @@ struct Forwarded {
     answering: Option<Answering>,
     cursor: u64,
     head: u64,
+    operation: Option<Box<Operation>>,
+}
+
+/// A post a program asked for again, as the home answered it: posted before, as `seq` in `group`.
+fn repeated(peer: &Peer, call: &Call, group: &str, seq: u64) -> Result<Settled, Refusal> {
+    let Call::Post { author, .. } = call else { return Err(mismatched(call)) };
+    Ok(Settled::Posted(Posted {
+        author: author.clone(),
+        ..Posted::repeated(peer.inward(group), seq)
+    }))
 }
 
 /// A member a replica's new messages are for: the policy it is reached under, none when every

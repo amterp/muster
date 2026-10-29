@@ -9,8 +9,8 @@ use proto::peer_call::{self, Call as Called};
 use proto::peer_reply::{self, Reply as Replied};
 
 use super::{
-    activity_of, answering_from, answering_of, entry_of, member_of, policy_from, policy_of,
-    reach_of,
+    activity_of, answering_from, answering_of, entry_of, member_of, operation_from, operation_of,
+    policy_from, policy_of, reach_of,
 };
 
 pub(super) fn call_to(call: &Call) -> Called {
@@ -20,19 +20,29 @@ pub(super) fn call_to(call: &Call) -> Called {
             Called::Join(peer_call::Join { name, group, head, was })
         }
         Call::Leave { name, group, head } => Called::Leave(peer_call::Leave { name, group, head }),
-        Call::Post { author, group, to, body, urgent, answers, answering, cursor, head } => {
-            Called::Post(peer_call::Post {
-                author,
-                group,
-                to,
-                body,
-                cursor,
-                head,
-                urgent,
-                answers,
-                answering: answering.as_ref().map(answering_of),
-            })
-        }
+        Call::Post {
+            author,
+            group,
+            to,
+            body,
+            urgent,
+            answers,
+            answering,
+            cursor,
+            head,
+            operation,
+        } => Called::Post(peer_call::Post {
+            author,
+            group,
+            to,
+            body,
+            cursor,
+            head,
+            urgent,
+            answers,
+            answering: answering.as_ref().map(answering_of),
+            operation: operation.as_deref().map(operation_of),
+        }),
         Call::Since { group, after } => Called::Since(peer_call::Since { group, after }),
         Call::Who { group } => Called::Who(peer_call::Who { group }),
         Call::Whom { name } => Called::Whom(peer_call::Whom { name }),
@@ -63,6 +73,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
             answering: post.answering.map(answering_from),
             cursor: post.cursor,
             head: post.head,
+            operation: post.operation.map(operation_from).map(Box::new),
         },
         Called::Since(since) => Call::Since { group: since.group, after: since.after },
         Called::Who(who) => Call::Who { group: who.group },
@@ -105,6 +116,8 @@ fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
             urgent: message.urgent,
             answers: message.answers,
             answering: message.answering.map(answering_from),
+            via: message.via,
+            operation: None,
         },
         Said::Created(by) => What::Created { by },
         Said::Joined(who) => What::Joined { who },
@@ -213,6 +226,7 @@ pub(super) fn reply_to(reply: Reply) -> Replied {
             reached: reached_to(&reached),
             caught: Some(caught_to(&caught)),
         }),
+        Reply::Repeated { group, seq } => Replied::Repeated(peer_reply::Repeated { group, seq }),
         Reply::Caught(caught) => Replied::Caught(caught_to(&caught)),
         Reply::Members(members) => Replied::Members(msg_answer::Members {
             members: members.into_iter().map(member_of).collect(),
@@ -239,6 +253,9 @@ pub(super) fn reply_from(replied: Replied) -> Option<Reply> {
             reached: reached_from(posted.reached),
             caught: caught(posted.caught),
         },
+        Replied::Repeated(repeated) => {
+            Reply::Repeated { group: plain(&repeated.group), seq: repeated.seq }
+        }
         Replied::Caught(got) => Reply::Caught(caught_from(got)),
         Replied::Members(members) => {
             Reply::Members(members.members.into_iter().map(member_from).collect())
@@ -327,6 +344,12 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
         Refusal::Unread { group, count } => {
             refused.group = group;
             refused.count = count;
+        }
+        Refusal::OperationReused { id } => refused.existing = id,
+        Refusal::PastNewest { group, through, newest } => {
+            refused.group = group;
+            refused.count = through;
+            refused.existing = newest.to_string();
         }
         Refusal::BodyTooLarge { bytes } => refused.count = bytes as u64,
         Refusal::TooManyAnswers { count } => refused.count = count as u64,
@@ -435,6 +458,10 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "not_asked_of" => Refusal::NotAskedOf { name, group, question: count },
         "already_answered" => {
             Refusal::AlreadyAnswered { group, question: count, by: name, answer: existing }
+        }
+        "operation_reused" => Refusal::OperationReused { id: existing },
+        "past_newest" => {
+            Refusal::PastNewest { group, through: count, newest: existing.parse().unwrap_or(0) }
         }
         "store" => Refusal::Store { error: existing },
         _ => Refusal::Store { error: format!("the other machine refused this: {words}") },
@@ -571,9 +598,9 @@ mod tests {
     }
 
     /// A forwarded post keeps the answers it offers and the one it picks, which the group's home
-    /// holds the reply to.
+    /// holds the reply to, and the program that made it with its operation id.
     #[test]
-    fn a_post_crosses_the_link_with_its_answers() {
+    fn a_post_crosses_the_link_with_its_answers_and_operation() {
         let call = Call::Post {
             author: "a".into(),
             group: "g".into(),
@@ -584,8 +611,15 @@ mod tests {
             answering: Some(muster_msg::Answering { question: 4, answer: "Yes".into() }),
             cursor: 6,
             head: 7,
+            operation: Some(Box::new(muster_msg::Operation {
+                client: "foreman".into(),
+                id: "x".into(),
+                asked: 9,
+            })),
         };
         assert_eq!(call_from(call_to(&call)), Some(call));
+        let repeated = Reply::Repeated { group: "g".into(), seq: 4 };
+        assert_eq!(reply_from(reply_to(repeated.clone())), Some(repeated));
     }
 
     #[test]
@@ -605,6 +639,8 @@ mod tests {
                         urgent: true,
                         answers: vec!["Yes".into(), "No".into()],
                         answering: None,
+                        via: None,
+                        operation: None,
                     },
                 },
                 Entry {
@@ -620,6 +656,8 @@ mod tests {
                             question: 4,
                             answer: "Yes".into(),
                         }),
+                        via: Some("foreman".into()),
+                        operation: None,
                     },
                 },
                 Entry {

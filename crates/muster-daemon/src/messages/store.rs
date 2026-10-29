@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Entry, Log, Saved, Store};
+use muster_msg::{Entry, Log, Operated, Saved, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::persist;
@@ -25,6 +25,10 @@ const VERSION: u32 = 1;
 #[derive(Serialize, Deserialize)]
 struct Retired {
     deleted_after: u64,
+    /// Posts programs made in the group under operation ids still remembered, which the log
+    /// that held them no longer does.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    operated: Vec<Operated>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -221,10 +225,10 @@ impl Store for Files {
     }
 
     /// Replaced whole, so the file holds the old log or the line, never part of either.
-    fn retire(&mut self, group: &str, last: u64) -> Result<(), String> {
+    fn retire(&mut self, group: &str, last: u64, operated: &[Operated]) -> Result<(), String> {
         let describe = |error: std::io::Error| format!("{}: {error}", self.log_of(group).display());
-        let mut line = serde_json::to_vec(&Retired { deleted_after: last })
-            .map_err(|error| error.to_string())?;
+        let retired = Retired { deleted_after: last, operated: operated.to_vec() };
+        let mut line = serde_json::to_vec(&retired).map_err(|error| error.to_string())?;
         line.push(b'\n');
         persist::replace(&self.log_of(group), &line).map_err(describe)
     }
@@ -283,7 +287,8 @@ fn read_log(path: &Path) -> Log {
             continue;
         }
         if let Ok(retired) = serde_json::from_str::<Retired>(line) {
-            kept = Log { after: retired.deleted_after, entries: Vec::new() };
+            let Retired { deleted_after: after, operated } = retired;
+            kept = Log { after, entries: Vec::new(), operated };
             continue;
         }
         match serde_json::from_str::<Entry>(line) {
@@ -343,6 +348,8 @@ mod tests {
                 urgent: false,
                 answers: Vec::new(),
                 answering: None,
+                via: None,
+                operation: None,
             },
         }
     }
@@ -393,23 +400,33 @@ mod tests {
         );
     }
 
-    /// A deleted group's log keeps only the last number it issued, and a group made again under
-    /// the name appends after it, so a restart finds the new group numbering on from the old.
+    /// A deleted group's log keeps only the last number it issued and the operation ids of the
+    /// posts programs made in it, and a group made again under the name appends after it, so a
+    /// restart finds the new group numbering on from the old and every id still remembered.
     #[test]
-    fn a_retired_log_keeps_its_last_number_and_a_new_group_appends_after_it() {
+    fn a_retired_log_keeps_its_last_number_and_ids_and_a_new_group_appends_after_it() {
         let socket = scratch("retired");
         let mut files = Files::beside(&socket);
         files.append("g", &message(1, "gone")).unwrap();
         files.append("g", &message(2, "gone too")).unwrap();
-        files.retire("g", 2).unwrap();
+        let operated = vec![Operated {
+            client: "foreman".to_string(),
+            id: "x".to_string(),
+            asked: 7,
+            group: "g".to_string(),
+            seq: 2,
+            at_ms: 2,
+        }];
+        files.retire("g", 2, &operated).unwrap();
         let retired = Files::beside(&socket).load().logs.remove("g").unwrap();
-        assert_eq!(retired, Log { after: 2, entries: Vec::new() });
+        assert_eq!(retired, Log { after: 2, entries: Vec::new(), operated: operated.clone() });
         let text = std::fs::read_to_string(files.log_of("g")).unwrap();
         assert!(!text.contains("gone"), "the messages went with the group: {text}");
 
         files.append("g", &message(3, "made again")).unwrap();
         let again = Files::beside(&socket).load().logs.remove("g").unwrap();
-        assert_eq!(again, Log { after: 2, entries: vec![message(3, "made again")] });
+        let entries = vec![message(3, "made again")];
+        assert_eq!(again, Log { after: 2, entries, operated });
     }
 
     /// A retired name made again spelled with other letter case takes the old log over, number
@@ -420,10 +437,10 @@ mod tests {
         let socket = scratch("renamed");
         let mut files = Files::beside(&socket);
         files.append("Review", &message(1, "gone")).unwrap();
-        files.retire("Review", 1).unwrap();
+        files.retire("Review", 1, &[]).unwrap();
         files.rename("Review", "review").unwrap();
         let mut logs = Files::beside(&socket).load().logs;
-        assert_eq!(logs.remove("review"), Some(Log { after: 1, entries: Vec::new() }));
+        assert_eq!(logs.remove("review"), Some(Log { after: 1, ..Log::default() }));
         assert!(logs.is_empty(), "the old spelling is left behind: {logs:?}");
         files.rename("Gone", "gone").unwrap();
     }
