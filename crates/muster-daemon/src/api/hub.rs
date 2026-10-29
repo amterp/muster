@@ -22,7 +22,9 @@ use std::time::{Duration, Instant};
 
 use flexid::{OsRandom, RandomSource};
 use muster_api as api;
-use muster_core::diagnostics::poison;
+use muster_api::connection::LARGEST_MESSAGE;
+use muster_core::diagnostics::{log, poison};
+use muster_core::fields;
 use prost::Message;
 
 use crate::control::{Outbox, Position};
@@ -187,17 +189,40 @@ impl Api {
         };
         snapshot.epoch = subscription.epoch;
         snapshot.through = subscription.last;
-        let answer = api::Answer {
-            correlation,
+        let answer = api::daemon_message::Message::Answer(api::Answer {
+            correlation: correlation.clone(),
             outcome: api::Outcome::Done.into(),
             epoch: subscription.epoch,
             through: subscription.last,
             detail: Some(api::answer::Detail::Snapshot(snapshot)),
             ..api::Answer::default()
-        };
+        });
+        if let Some(size) = too_large(&answer) {
+            open.subscription = None;
+            log::warn(
+                "daemon.api.snapshot_too_large",
+                fields! {
+                    "connection" => joining.connection,
+                    "bytes" => size,
+                    "impact" => "the subscribe is refused and the connection holds no \
+                                 subscription; its program has to subscribe to fewer topics on \
+                                 each connection",
+                    "check" => "which topic's snapshot grew so large, and whether it should have",
+                },
+            );
+            let reason = format!(
+                "the snapshot of these topics came to {size} bytes, past the {LARGEST_MESSAGE} a \
+                 message may be, so this connection now holds no subscription; subscribe to \
+                 fewer topics on each of several connections"
+            );
+            let refused = super::refused(correlation, api::Refusal::Unspecified, reason);
+            let at = Position::default();
+            open.ended |=
+                !open.outbox.push_at(frame(api::daemon_message::Message::Answer(refused)), at);
+            return;
+        }
         let at = Position { epoch: subscription.epoch, number: subscription.last };
-        let mut delivered =
-            open.outbox.push_at(frame(api::daemon_message::Message::Answer(answer)), at);
+        let mut delivered = open.outbox.push_at(frame(answer), at);
         for held in subscription.held.take().unwrap_or_default().events {
             delivered = delivered
                 && deliver(&open.outbox, subscription, &source, held.event, held.correlation);
@@ -217,7 +242,7 @@ impl Api {
             .unwrap_or_default();
         answer.epoch = at.epoch;
         answer.through = at.number;
-        if !open.outbox.push_at(frame(api::daemon_message::Message::Answer(answer)), at) {
+        if !open.outbox.push_at(answer_frame(connection, answer), at) {
             open.ended = true;
         }
     }
@@ -332,7 +357,62 @@ fn deliver(
         event: Some(event),
     };
     let at = Position { epoch: subscription.epoch, number: subscription.last };
-    outbox.push_at(frame(api::daemon_message::Message::Event(numbered)), at)
+    let numbered = api::daemon_message::Message::Event(numbered);
+    if let Some(size) = too_large(&numbered) {
+        log::warn(
+            "daemon.api.event_too_large",
+            fields! {
+                "connection" => outbox.id,
+                "epoch" => at.epoch,
+                "number" => at.number,
+                "bytes" => size,
+                "impact" => "the event is not sent, and the gap it leaves in the numbers tells \
+                             the program to subscribe again",
+                "check" => "which pane or group grew so large: nothing a topic sends is meant \
+                            to come near the limit",
+            },
+        );
+        return true;
+    }
+    outbox.push_at(frame(numbered), at)
+}
+
+/// `answer` as a frame a client can read. One past [`LARGEST_MESSAGE`] is replaced by an answer
+/// saying so, which keeps a refusal's code and is otherwise UNKNOWN, since what was asked may
+/// have been done.
+fn answer_frame(connection: u64, answer: api::Answer) -> Arc<[u8]> {
+    let refused = answer.outcome() == api::Outcome::Refused;
+    let mut instead = api::Answer {
+        correlation: answer.correlation.clone(),
+        outcome: if refused { answer.outcome } else { api::Outcome::Unknown.into() },
+        refusal: answer.refusal,
+        epoch: answer.epoch,
+        through: answer.through,
+        ..api::Answer::default()
+    };
+    let answer = api::daemon_message::Message::Answer(answer);
+    let Some(size) = too_large(&answer) else { return frame(answer) };
+    log::warn(
+        "daemon.api.answer_too_large",
+        fields! {
+            "connection" => connection,
+            "bytes" => size,
+            "impact" => "the program is answered that its answer could not be sent, in its place",
+            "check" => "which request it answered: a refusal repeating a name the request gave, \
+                        or a detail larger than it should be",
+        },
+    );
+    instead.reason = format!(
+        "the answer came to {size} bytes, past the {LARGEST_MESSAGE} a message may be, so this \
+         was sent in its place"
+    );
+    frame(api::daemon_message::Message::Answer(instead))
+}
+
+/// What `message` comes to as a DaemonMessage, when that is more than a client may read.
+fn too_large(message: &api::daemon_message::Message) -> Option<usize> {
+    let size = message.encoded_len();
+    (size > LARGEST_MESSAGE as usize).then_some(size)
 }
 
 fn end(open: &mut Connection, reason: api::ended::Reason) {
@@ -468,6 +548,93 @@ mod tests {
         assert!(matches!(next(&mut asking), api::daemon_message::Message::Answer(_)));
         let event = next_event(&mut asking);
         assert_eq!((event.number, event.correlation.as_str()), (1, "c1"));
+    }
+
+    fn next_answer(client: &mut UnixStream) -> api::Answer {
+        match next(client) {
+            api::daemon_message::Message::Answer(answer) => answer,
+            other => panic!("expected an answer, got {other:?}"),
+        }
+    }
+
+    /// One byte more than a frame may hold, once it is wrapped in anything at all.
+    fn past_the_limit() -> String {
+        "x".repeat(LARGEST_MESSAGE as usize)
+    }
+
+    #[test]
+    fn an_answer_too_large_to_read_is_replaced_by_one_saying_so_that_keeps_a_refusals_code() {
+        let hub = hub();
+        let (connection, mut client) = connect(&hub);
+        let refused =
+            super::super::refused("1".to_string(), api::Refusal::NotFound, past_the_limit());
+        hub.answer(connection, refused);
+        let done = api::Answer {
+            correlation: "2".to_string(),
+            outcome: api::Outcome::Done.into(),
+            detail: Some(api::answer::Detail::PaneText(api::PaneText {
+                text: past_the_limit(),
+                ..api::PaneText::default()
+            })),
+            ..api::Answer::default()
+        };
+        hub.answer(connection, done);
+
+        let refused = next_answer(&mut client);
+        assert_eq!(
+            (refused.correlation.as_str(), refused.outcome(), refused.refusal()),
+            ("1", api::Outcome::Refused, api::Refusal::NotFound)
+        );
+        assert!(refused.reason.contains("past the"), "{}", refused.reason);
+        let done = next_answer(&mut client);
+        assert_eq!(
+            (done.correlation.as_str(), done.outcome(), done.detail),
+            ("2", api::Outcome::Unknown, None),
+            "a done answer that cannot be sent may have done what it was asked"
+        );
+    }
+
+    #[test]
+    fn a_snapshot_too_large_to_read_refuses_the_subscribe_and_leaves_no_subscription() {
+        let hub = hub();
+        let (connection, mut client) = connect(&hub);
+        let joining = subscribe(&hub, connection);
+        hub.publish(api::Topic::Panes, None, changed);
+        let snapshot = api::Snapshot {
+            panes: vec![api::Pane { name: past_the_limit(), ..api::Pane::default() }],
+            ..api::Snapshot::default()
+        };
+        hub.go_live(&joining, "s1".to_string(), snapshot);
+        hub.publish(api::Topic::Panes, None, changed);
+        hub.answer(
+            connection,
+            api::Answer { correlation: "2".to_string(), ..api::Answer::default() },
+        );
+
+        let refused = next_answer(&mut client);
+        assert_eq!(
+            (refused.correlation.as_str(), refused.outcome(), refused.epoch),
+            ("s1", api::Outcome::Refused, 0)
+        );
+        let after = next_answer(&mut client);
+        assert_eq!(
+            (after.correlation.as_str(), after.epoch),
+            ("2", 0),
+            "no event, held or new, reached a subscription that never started"
+        );
+    }
+
+    #[test]
+    fn an_event_too_large_to_read_takes_its_number_and_is_not_sent() {
+        let hub = hub();
+        let (connection, mut client) = connect(&hub);
+        let joining = subscribe(&hub, connection);
+        hub.go_live(&joining, "s1".to_string(), api::Snapshot::default());
+        let _ = next_answer(&mut client);
+        hub.publish(api::Topic::Panes, None, || closed(&past_the_limit()));
+        hub.publish(api::Topic::Panes, None, changed);
+
+        assert_eq!(next_event(&mut client).number, 2, "the gap says to subscribe again");
     }
 
     /// A connection on `hub` whose outbox has `budget`, and the client's end of it.

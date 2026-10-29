@@ -51,6 +51,11 @@ const REQUESTS: [&str; 10] = [
 const TOPICS: [api::Topic; 4] =
     [api::Topic::Panes, api::Topic::Machines, api::Topic::Messages, api::Topic::Attention];
 
+/// The longest correlation id a request may carry, which the schema promises. Its answer and its
+/// events repeat it, so with no bound a request that fits in a frame could be answered in one
+/// past [`connection::LARGEST_MESSAGE`].
+const LONGEST_CORRELATION: usize = 1024;
+
 /// What a client may have waiting before it is dropped. Twice the largest message, so that one
 /// snapshot alone never trips it; the schema's header promises these numbers.
 const BUDGET: Budget = Budget { messages: 4096, bytes: 2 * connection::LARGEST_MESSAGE as usize };
@@ -175,6 +180,15 @@ struct Caller {
 fn handle(shared: &Arc<Shared>, caller: &Caller, request: api::Request) {
     use api::request::Request as Namespace;
     let correlation = request.correlation;
+    if correlation.len() > LONGEST_CORRELATION {
+        let reason = format!(
+            "a correlation id is at most {LONGEST_CORRELATION} bytes and this one is {}, so this \
+             answer carries none; nothing was done",
+            correlation.len()
+        );
+        let answer = refused(String::new(), api::Refusal::Invalid, reason);
+        return shared.api.answer(caller.connection, answer);
+    }
     match request.request {
         Some(Namespace::Api(api::ApiRequest {
             request: Some(api::api_request::Request::Subscribe(asked)),

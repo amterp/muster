@@ -178,6 +178,30 @@ fn a_topic_or_request_the_daemon_does_not_serve_is_refused_and_the_connection_st
     api.subscribe(&[]);
 }
 
+/// Every answer repeats its request's correlation id, so a request that fits in a frame could
+/// otherwise be answered in one no client can read.
+#[test]
+fn a_correlation_id_past_its_bound_is_refused_with_none_and_one_at_it_is_repeated() {
+    let daemon = daemon();
+    let mut api = daemon.api();
+    let mut writer = api.writer();
+    let unknown = |correlation: String| api::Request { correlation, request: None };
+    connection::send(&mut writer, &unknown("x".repeat(1025))).expect("the request is sent");
+    connection::send(&mut writer, &unknown("y".repeat(1024))).expect("the request is sent");
+
+    let answers: Vec<_> = (0..2)
+        .map(|_| match api.next_message(Duration::from_secs(10)) {
+            Some(api::daemon_message::Message::Answer(answer)) => answer,
+            other => panic!("expected an answer, got {other:?}"),
+        })
+        .collect();
+    let said =
+        |answer: &api::Answer| (answer.correlation.len(), answer.outcome(), answer.refusal());
+    assert_eq!(said(&answers[0]), (0, api::Outcome::Refused, api::Refusal::Invalid));
+    assert!(answers[0].reason.contains("1024"), "{}", answers[0].reason);
+    assert_eq!(said(&answers[1]), (1024, api::Outcome::Refused, api::Refusal::Unsupported));
+}
+
 /// A daemon bringing back the tabs it saved says so as a source, and that it is current once it
 /// has: the first event in the subscription.
 #[test]

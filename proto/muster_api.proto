@@ -72,6 +72,12 @@
 // request it wrote on a connection that ended before its answer arrived is unknown, even when
 // the connection ended with an Ended.
 //
+// No frame the daemon sends is past 16 MiB. An answer that would be is replaced by one whose
+// reason says so: REFUSED with the same refusal code when the request was refused, and UNKNOWN
+// otherwise, since the request may have been carried out. A subscribe whose snapshot would be is
+// refused and leaves the connection with no subscription, and an event that would be is not
+// sent, so its number is a gap and the client subscribes again.
+//
 // ## Operation ids
 //
 // A request that makes something carries an operation id the client chooses, unique among its
@@ -274,8 +280,10 @@ message Features {
 // Requests
 
 message Request {
-  // Chosen by the client and repeated in the answer. The daemon never reads it, so it may be
-  // anything, empty included.
+  // Chosen by the client and repeated in the answer, at most 1024 bytes. The daemon reads only
+  // its length, so it may be anything within that, empty included. A longer one is refused
+  // INVALID, and the refusal carries an empty correlation id: answers come in the order their
+  // requests were sent, so the client still knows which request it answers.
   string correlation = 1;
   // Namespaced by what a request acts on. A namespace added later takes the next arm.
   oneof request {

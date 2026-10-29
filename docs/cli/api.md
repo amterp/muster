@@ -49,10 +49,11 @@ asks the Welcome rather than finding out from a refusal.
     ← Event            number 2: a message is waiting for the human
     ...
 
-Every request carries a correlation id the client chooses, and its answer repeats it. Every
-answer is one of five outcomes: DONE, ALREADY_SO, REFUSED with a refusal code and a reason,
-NOT_SENT, or UNKNOWN, which may have happened and is never read as refused. The header's
-"Requests and answers" says what each promises.
+Every request carries a correlation id the client chooses, of at most 1024 bytes, and its answer
+repeats it. Every answer is one of five outcomes: DONE, ALREADY_SO, REFUSED with a refusal code
+and a reason, NOT_SENT, or UNKNOWN, which may have happened and is never read as refused. The
+header's "Requests and answers" says what each promises, and what the daemon sends in place of an
+answer or a snapshot past 16 MiB.
 
 ## Requests
 
