@@ -702,7 +702,9 @@ the messages waiting and the presence, and the messages topic every group's meta
 and `msg.history` for pages of it. The human's place in a group and what waits for them there are one event, sent once
 to a subscription hearing either topic, and a subscription gathers its snapshot one lock at a time, everything kept
 under the session's lock in one acquisition and everything under the messages lock in another, so the two topics never
-disagree about what the human has read.
+disagree about what the human has read. Programs act on messages through it too, through the requests `muster msg`
+sends: `msg.post` posts as the human, with the program's name kept beside the author, and `msg.ack` moves the human's
+place only as far as the message the program showed, so whatever arrived since stays unread at the desk.
 
 **Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
 pane most likely to have finished unnoticed is the one the window is not showing - so a roster travels beside the view:
@@ -1380,7 +1382,11 @@ records are saved in the state file, so they ride a handoff with the tabs, and t
 daemon answers anything rather than with the tabs it brings back. A repeat of a done operation gets the first answer's
 result. One whose command started and whose result was then lost is answered unknown every time, never run again. A
 daemon holding 4096 records refuses new operations rather than forget one early. A daemon that is killed may forget
-its last second, since the file is written about a second after a change.
+its last second, since the file is written about a second after a change. A post is kept more strictly, because its log
+is synced before the state beside it is written, and a gap between the two could forget the id of a post that was kept:
+the group's home writes the id into the post's own log entry, and into what a deleted group's log leaves behind, so it
+needs no cap and no record beside the log. A daemon that sends a post to another machine's home writes down where it
+sent it, synced through a power loss before the post leaves, so a retry goes to the same home.
 
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
 attached, which tabs the window holds and in what order, which of them is on screen, and how each divides between the
