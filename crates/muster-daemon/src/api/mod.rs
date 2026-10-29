@@ -4,10 +4,11 @@
 
 mod hub;
 pub(crate) mod identity;
+mod pane;
 pub(crate) mod panes;
 mod topics;
 
-pub(crate) use hub::Api;
+pub(crate) use hub::{Api, Cause};
 
 use std::collections::BTreeSet;
 use std::net::Shutdown;
@@ -27,7 +28,7 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 1] = ["api.subscribe"];
+const REQUESTS: [&str; 2] = ["api.subscribe", "pane.new"];
 
 /// Every topic a subscription may name.
 const TOPICS: [api::Topic; 4] =
@@ -71,6 +72,7 @@ pub(crate) fn serve(mut stream: UnixStream, hello: &[u8], shared: &Arc<Shared>) 
         }
     };
     let client = hello.client.unwrap_or_default();
+    let name = client.name.clone();
     let client = format!("{} {}", client.name, client.version).trim().to_string();
     let judged = hello
         .api
@@ -118,9 +120,10 @@ pub(crate) fn serve(mut stream: UnixStream, hello: &[u8], shared: &Arc<Shared>) 
     let id = outbox.id;
     shared.api.open(outbox.clone());
     log::info("daemon.api.opened", fields! { "connection" => id, "client" => client });
+    let caller = Caller { connection: id, client: name, outbox: outbox.clone() };
     loop {
         match connection::receive::<api::Request>(&mut stream) {
-            Ok(Some(request)) => handle(shared, id, request),
+            Ok(Some(request)) => handle(shared, &caller, request),
             Ok(None) => break,
             Err(error) => {
                 log::warn(
@@ -144,18 +147,30 @@ pub(crate) fn serve(mut stream: UnixStream, hello: &[u8], shared: &Arc<Shared>) 
     log::info("daemon.api.closed", fields! { "connection" => id });
 }
 
-fn handle(shared: &Shared, connection: u64, request: api::Request) {
-    use api::api_request::Request as Asked;
+/// The connection a request came in on.
+struct Caller {
+    connection: u64,
+    /// The client's name from its Hello, which scopes its operation ids.
+    client: String,
+    outbox: Outbox,
+}
+
+fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
+    use api::request::Request as Namespace;
+    let correlation = request.correlation;
     match request.request {
-        Some(api::request::Request::Api(api::ApiRequest {
-            request: Some(Asked::Subscribe(asked)),
+        Some(Namespace::Api(api::ApiRequest {
+            request: Some(api::api_request::Request::Subscribe(asked)),
         })) => {
-            subscribe(shared, connection, request.correlation, &asked);
+            subscribe(shared, caller.connection, correlation, &asked);
         }
+        Some(Namespace::Pane(api::PaneRequest {
+            request: Some(api::pane_request::Request::New(asked)),
+        })) => pane::new(shared, caller, correlation, &asked),
         _ => shared.api.answer(
-            connection,
+            caller.connection,
             refused(
-                request.correlation,
+                correlation,
                 api::Refusal::Unsupported,
                 "this daemon serves no such request; its Welcome lists the ones it does",
             ),

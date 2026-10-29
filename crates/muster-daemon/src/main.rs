@@ -20,6 +20,7 @@ mod handoff;
 mod hold;
 mod input;
 mod messages;
+mod operations;
 mod pane;
 mod persist;
 mod priority;
@@ -408,8 +409,11 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
         }
     };
     let settings = state.as_ref().map(|state| state.settings.clone());
+    let pane_operations =
+        state.as_ref().map(|state| state.pane_operations.clone()).unwrap_or_default();
     let restoring = state.is_some();
-    (Saved { persister: Persister::new(path, disabled), settings, restoring }, state)
+    let persister = Persister::new(path, disabled);
+    (Saved { persister, settings, pane_operations, restoring }, state)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is

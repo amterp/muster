@@ -44,9 +44,18 @@ impl ApiAsked {
     pub fn snapshot(&self) -> &api::Snapshot {
         match &self.answer.detail {
             Some(api::answer::Detail::Snapshot(snapshot)) => snapshot,
-            None => panic!("the answer carries no snapshot: {:?}", self.answer),
+            _ => panic!("the answer carries no snapshot: {:?}", self.answer),
         }
     }
+}
+
+/// What came of a request whose answer may never arrive, as a client concludes it.
+#[derive(Debug)]
+pub enum Tried {
+    Answered(ApiAsked),
+    /// The connection ended after the request was written and before its answer: the request
+    /// may have happened. The ending, when the daemon sent one.
+    Unknown(Option<api::Ended>),
 }
 
 /// What reading the connection came to.
@@ -70,6 +79,13 @@ pub fn subscribe_to(topics: &[api::Topic]) -> api::request::Request {
     })
 }
 
+/// A `pane.new` asking for `asked`.
+pub fn new_pane(asked: api::NewPane) -> api::request::Request {
+    api::request::Request::Pane(api::PaneRequest {
+        request: Some(api::pane_request::Request::New(asked)),
+    })
+}
+
 impl Api {
     /// Connects and says hello, panicking if the daemon will not serve this client.
     pub fn connect(socket: &Path) -> Api {
@@ -79,7 +95,18 @@ impl Api {
     }
 
     pub fn try_connect(socket: &Path) -> Result<Api, HandshakeError> {
-        let (stream, welcome) = connection::connect(socket, test_client())?;
+        Api::try_connect_as(socket, test_client())
+    }
+
+    /// Connects as `client`, whose name scopes the operation ids it sends.
+    pub fn connect_as(socket: &Path, client: api::Client) -> Api {
+        Api::try_connect_as(socket, client).unwrap_or_else(|error| {
+            panic!("could not open an API connection to {}: {error}", socket.display())
+        })
+    }
+
+    fn try_connect_as(socket: &Path, client: api::Client) -> Result<Api, HandshakeError> {
+        let (stream, welcome) = connection::connect(socket, client)?;
         Ok(Api { stream, welcome, next: 0 })
     }
 
@@ -139,6 +166,38 @@ impl Api {
                 ),
             }
         }
+    }
+
+    /// Sends a request and reads until its answer or the connection's end, which leaves the
+    /// request's fate unknown. Events that arrive first are kept with the answer.
+    pub fn try_ask(&mut self, request: api::request::Request) -> Tried {
+        let correlation = self.send(request);
+        let mut events = Vec::new();
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            match self.read(deadline) {
+                Read::Message(api::daemon_message::Message::Event(event)) => events.push(event),
+                Read::Message(api::daemon_message::Message::Answer(answer))
+                    if answer.correlation == correlation =>
+                {
+                    return Tried::Answered(ApiAsked { answer, events });
+                }
+                Read::Message(api::daemon_message::Message::Ended(ended)) => {
+                    return Tried::Unknown(Some(ended));
+                }
+                Read::HungUp => return Tried::Unknown(None),
+                Read::Message(other) => {
+                    panic!("waiting for the answer to {correlation}, the daemon sent {other:?}")
+                }
+                Read::TimedOut => panic!("{correlation} was not answered within {PATIENCE:?}"),
+            }
+        }
+    }
+
+    /// Sends a request and hangs up without reading, so its answer is lost.
+    pub fn send_and_hang_up(mut self, request: api::request::Request) {
+        self.send(request);
+        let _ = self.stream.shutdown(std::net::Shutdown::Both);
     }
 
     /// Subscribes to `topics`, which the daemon has to do.

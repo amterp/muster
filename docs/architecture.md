@@ -1343,6 +1343,16 @@ not. The daemon writes down what someone would ask for again - tabs, trees, name
 an observation such as a title or an agent's state, then rebuilds from that file when it starts (MIP-3, section 2). A
 window reads the result the way it reads any other daemon state.
 
+**A request a program asks again after losing its answer is carried out once.** A request through the API that makes
+something carries an operation id the program chooses (MIP-10, section 5), and the daemon that carries it out keeps a
+record of it for 24 hours, which settles the period the MIP left open. It is a time rather than a count because a
+program can plan its retries around a time, while a count would make the window depend on other programs' traffic. The
+records are saved in the state file, so they ride a handoff with the tabs, and they are read before a restarted
+daemon answers anything rather than with the tabs it brings back. A repeat of a done operation gets the first answer's
+result. One whose command started and whose result was then lost is answered unknown every time, never run again. A
+daemon holding 4096 records refuses new operations rather than forget one early. A daemon that is killed may forget
+its last second, since the file is written about a second after a change.
+
 **Muster's own durable state is composition, plus what the window looks like.** Composition is which daemons are
 attached, which tabs the window holds and in what order, which of them is on screen, and how each divides between the
 machines holding panes in it. Beside it, in the same file and under a table of its own, is the window's own chrome: whether the roster is open and how wide, how far the text is sized from what the

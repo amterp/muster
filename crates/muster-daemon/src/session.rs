@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::helpers::MakerHearing;
-use muster_daemon_proto as proto;
+use muster_daemon_proto::{self as proto, making};
 use prost::Message;
 use proto::answer::Detail;
 
@@ -40,7 +40,7 @@ use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
-use crate::api::Api;
+use crate::api::{Api, Cause};
 use crate::attention::{self, Attention};
 use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
@@ -50,6 +50,7 @@ use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
 use crate::messages::{Declared, Doorbell, Messages, Need, Over, Peers};
+use crate::operations::{Operations, Record};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
 use crate::pty::{self, Grid, Launch};
@@ -82,6 +83,10 @@ pub(crate) struct Places {
 pub(crate) struct Saved {
     pub(crate) persister: Arc<Persister>,
     pub(crate) settings: Option<proto::Settings>,
+    /// The panes the API made, by operation id. Loaded with the settings, before the socket is
+    /// served, so that a program's first request after a restart already finds them; [`restore`]
+    /// runs once serving has begun.
+    pub(crate) pane_operations: Vec<Record<persist::Made>>,
     /// Whether saved tabs are to come back ([`restore`]).
     pub(crate) restoring: bool,
 }
@@ -128,7 +133,7 @@ impl Shared {
         socket: Socket,
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
-        let Saved { persister, settings, restoring } = saved;
+        let Saved { persister, settings, pane_operations, restoring } = saved;
         let built = Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -214,6 +219,8 @@ impl Shared {
                     stop_deferred: false,
                     api: Arc::clone(&api),
                     api_panes: BTreeMap::new(),
+                    cause: None,
+                    pane_operations: Operations::from_saved(pane_operations),
                 }),
                 stopping,
                 instance,
@@ -403,6 +410,11 @@ pub(crate) struct Session {
     /// Each pane as the API last described it, which the snapshot holds and a change is weighed
     /// against (`api::panes::news`).
     api_panes: BTreeMap<String, muster_api::Pane>,
+    /// The API request being carried out under this lock, whose events carry its correlation id
+    /// to the connection that sent it.
+    pub(crate) cause: Option<Cause>,
+    /// The panes the API made, by operation id.
+    pub(crate) pane_operations: Operations<persist::Made>,
     /// The subscribers that are windows telling the human what waits for them, by connection.
     attending: HashSet<u64>,
     /// What waits for the human, per group, as last told to the windows, with the order the
@@ -1441,6 +1453,42 @@ impl Session {
         self.restoring
     }
 
+    /// Why the session takes no change now, if it does not: it is stopping, or handing its panes
+    /// to a newer daemon.
+    pub(crate) fn unavailable(&self) -> Option<&'static str> {
+        if self.stopping {
+            Some("the daemon is stopping")
+        } else if self.replacing != Replacing::No {
+            Some(HANDING_OVER)
+        } else {
+            None
+        }
+    }
+
+    /// Saves what the session holds, soon: for a change the session's own requests do not save.
+    pub(crate) fn state_changed(&self) {
+        self.persister.changed();
+    }
+
+    /// What a pane to make from `pane` needs to know of it, if this daemon holds it.
+    pub(crate) fn held(&self, pane: &str) -> Option<making::Held> {
+        let record = &self.panes[self.pane_index(pane)?].record;
+        Some(making::Held {
+            name: record.name().unwrap_or(pane).to_string(),
+            cwd: record.cwd.clone(),
+        })
+    }
+
+    /// Sends what `event` builds to the API's subscriptions to `topic`, carrying the correlation
+    /// id of the API request being carried out under this lock to the connection that sent it.
+    pub(crate) fn publish(
+        &self,
+        topic: muster_api::Topic,
+        event: impl FnOnce() -> muster_api::event::Event,
+    ) {
+        self.api.publish(topic, self.cause.as_ref(), event);
+    }
+
     /// Each pane a tab's zoom hides, with the pane its tab is zoomed on.
     pub(crate) fn zoomed_away(&self) -> Vec<(String, String)> {
         let mut hidden = Vec::new();
@@ -1521,12 +1569,12 @@ impl Session {
                 if let Some(tab) = self.tab_of(&record.pane) =>
             {
                 let hidden = self.tabs[tab].hidden;
-                api_pane(&mut self.api_panes, &self.api, record, hidden);
+                api_pane(&mut self.api_panes, &self.api, self.cause.as_ref(), record, hidden);
             }
             Payload::PaneClosed(closed) => {
                 if self.api_panes.remove(&closed.pane).is_some() {
                     let pane = closed.pane.clone();
-                    self.api.publish(muster_api::Topic::Panes, None, || {
+                    self.publish(muster_api::Topic::Panes, || {
                         muster_api::event::Event::PaneClosed(muster_api::PaneClosed { pane })
                     });
                 }
@@ -1550,7 +1598,7 @@ impl Session {
         for name in panes {
             let hidden = self.hidden(name);
             if let Some(pane) = self.panes.iter().find(|pane| pane.record.pane == *name) {
-                api_pane(&mut self.api_panes, &self.api, &pane.record, hidden);
+                api_pane(&mut self.api_panes, &self.api, self.cause.as_ref(), &pane.record, hidden);
             }
         }
     }
@@ -3538,6 +3586,7 @@ impl Session {
                 })
                 .collect(),
             released_callsigns: self.released.iter().cloned().collect(),
+            pane_operations: self.pane_operations.saved(),
         }
     }
 
@@ -4302,18 +4351,19 @@ fn typed_line<'a>(
 fn api_pane(
     held: &mut BTreeMap<String, muster_api::Pane>,
     api: &Api,
+    cause: Option<&Cause>,
     record: &proto::Pane,
     hidden: bool,
 ) {
     let now = crate::api::panes::pane(record, hidden, &api.source());
     match held.insert(record.pane.clone(), now.clone()) {
-        None => api.publish(muster_api::Topic::Panes, None, || {
+        None => api.publish(muster_api::Topic::Panes, cause, || {
             muster_api::event::Event::PaneAppeared(muster_api::PaneAppeared {
                 pane: Some(Box::new(now)),
             })
         }),
         Some(before) if crate::api::panes::news(&before, &now) => {
-            api.publish(muster_api::Topic::Panes, None, || {
+            api.publish(muster_api::Topic::Panes, cause, || {
                 muster_api::event::Event::PaneChanged(muster_api::PaneChanged {
                     pane: Some(Box::new(now)),
                 })
@@ -4652,7 +4702,8 @@ mod tests {
             log: None,
         };
         let persister = Persister::new(file.to_path_buf(), false);
-        let saved = Saved { persister, settings: None, restoring: true };
+        let saved =
+            Saved { persister, settings: None, pane_operations: Vec::new(), restoring: true };
         let (stopping, _) = std::sync::mpsc::channel();
         let path = file.with_extension("sock");
         let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();

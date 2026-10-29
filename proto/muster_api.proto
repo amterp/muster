@@ -49,8 +49,8 @@
 //
 // Every Request carries a correlation id the client chooses. Its Answer repeats it, and so does
 // every event the request caused, on this connection only. Requests are namespaced by what they
-// act on: `api.*` here, and `pane.*`, `msg.*`, `machine.*` and others as they come, each an arm
-// of Request's oneof. A request the daemon does not know is refused, and the connection
+// act on: `api.*` and `pane.*` here, and `msg.*`, `machine.*` and others as they come, each an
+// arm of Request's oneof. A request the daemon does not know is refused, and the connection
 // stays open.
 //
 // An answer is one of five outcomes:
@@ -71,6 +71,26 @@
 // A client has the same two cases of its own. A request it could not write is not sent. A
 // request it wrote on a connection that ended before its answer arrived is unknown, even when
 // the connection ended with an Ended.
+//
+// ## Operation ids
+//
+// A request that makes something carries an operation id the client chooses, unique among its
+// own requests: a UUID will do. The daemon that carries the request out remembers the id for
+// 24 hours, by the client's name in its Hello, across a reconnect, a handoff and an orderly
+// restart. A repeat within that time is never carried out again:
+//
+// - one that was done is answered ALREADY_SO, with the first answer's result, even if what it
+//   made is gone since;
+// - one still being carried out is answered UNKNOWN; ask again later with the same id;
+// - one that started and lost its result, such as a pane whose command ran and whose daemon
+//   then handed over before the pane was placed, is answered UNKNOWN every time, since running
+//   it again could do twice what it did; a new id carries it out anew;
+// - an id used for a different request is refused OPERATION_REUSED.
+//
+// A request refused before anything happened is forgotten, so the client can put the cause
+// right and ask again with the same id. A daemon holding 4096 operations refuses a new one as
+// UNAVAILABLE rather than forget one early. A daemon that is killed or crashes may forget the
+// operations of its last second, since it saves what it holds about a second after a change.
 //
 // ## Subscribing
 //
@@ -222,6 +242,7 @@ message Request {
   // Namespaced by what a request acts on. A namespace added later takes the next arm.
   oneof request {
     ApiRequest api = 10;
+    PaneRequest pane = 11;
   }
 }
 
@@ -251,6 +272,47 @@ enum Topic {
   TOPIC_ATTENTION = 4;
 }
 
+// Requests about panes.
+message PaneRequest {
+  oneof request {
+    // "pane.new": answered with Made.
+    NewPane new = 1;
+  }
+}
+
+// A pane running a command in a directory, as `muster pane new --run` makes one. It gets a tab
+// of its own, which a window shows as soon as one is open, unless it is a helper or hidden.
+message NewPane {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The daemon to make it on, by its identity (`Source.daemon`). Empty is the daemon answering;
+  // any other is refused NOT_FOUND by a daemon that answers for no other.
+  string machine = 2;
+  // A shell line for the pane's shell to run as it starts. Empty starts the shell alone.
+  string run = 3;
+  // An absolute path to start in. Empty is the maker's directory for a helper, else the daemon's
+  // home.
+  string directory = 4;
+  // What to call the pane. Empty gives it its callsign alone.
+  string name = 5;
+  // The pane, by its id, that this one is a helper of: it is hidden in the tab its maker's
+  // helpers share and listed under its maker, as `muster pane new --helper` makes one.
+  string helper_of = 6;
+  // In a hidden tab of its own, which no window shows until a person shows it.
+  bool hidden = 7;
+  // Raises nothing for the person: no notification. Unset is quiet for a helper, whose maker is
+  // told when it needs somebody, and not quiet for any other pane.
+  optional bool quiet = 8;
+}
+
+// What a pane.new made.
+message Made {
+  // The pane's id, which names it in every request.
+  string pane = 1;
+  // The word Muster calls it by (`otter`).
+  string callsign = 2;
+}
+
 // ---------------------------------------------------------------------------------------------
 // From the daemon
 
@@ -276,6 +338,7 @@ message Answer {
   Refusal refusal = 6;
   oneof detail {
     Snapshot snapshot = 10;
+    Made made = 11;
   }
 }
 

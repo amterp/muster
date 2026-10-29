@@ -43,6 +43,7 @@ use muster_core::fields;
 use muster_daemon_proto as proto;
 use serde::{Deserialize, Serialize};
 
+use crate::operations::Record;
 use crate::pty::Grid;
 use crate::session::{Shared, valid_name, valid_ratio};
 use crate::tree::Node;
@@ -71,6 +72,18 @@ pub(crate) struct State {
     /// goes on passing over them. Absent from a file written before it was kept.
     #[serde(default)]
     pub(crate) released_callsigns: Vec<String>,
+    /// The panes made for programs through the API in the last day, by operation id, so that a
+    /// repeat after a restart or a handoff makes none (`crate::operations`). Absent from a file
+    /// written before it was kept, or while none is remembered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) pane_operations: Vec<Record<Made>>,
+}
+
+/// A pane the API made, as a repeat of its operation is answered.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Made {
+    pub(crate) pane: String,
+    pub(crate) callsign: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -728,6 +741,7 @@ mod tests {
             }],
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
             released_callsigns: vec!["otter".to_string()],
+            pane_operations: Vec::new(),
         }
     }
 
@@ -989,6 +1003,7 @@ mod tests {
                 pane("p4", Some("B")),
             ],
             released_callsigns: Vec::new(),
+            pane_operations: Vec::new(),
         }
     }
 

@@ -670,6 +670,7 @@ fn build(
     let saved = Saved {
         persister: Arc::clone(&persister),
         settings: Some(state.settings.clone()),
+        pane_operations: state.pane_operations.clone(),
         restoring: false,
     };
     let places = Places::of_this_process(&socket.path, data, log);
