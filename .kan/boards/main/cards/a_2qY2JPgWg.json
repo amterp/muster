@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "a-codex-helper-that",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793313071869,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-28 on 0.19.0 with a Codex helper reviewing for its maker in a group, twice in a row. The helper posted its review to the maker at the end of a 3m 30s turn. A few minutes later @muster told the maker \"\u003chelper\u003e went idle without posting to you since it went to work 57s ago: its turn may have ended on an error\". The helper's pane showed no turn after the one that posted. Its next review went the same way: a 1m 26s turn that ended with a post, then the notice with \"went to work 47s ago\". Both times the \"went to work\" age is shorter than the turn the pane shows, so something after the post counted as going to work. Each false notice cost the maker a pane read to rule out a failed turn.\n\n`need()` in crates/muster-daemon/src/messages/makers.rs raises `Need::Unreported` when the helper's last post to its maker is older than the start of its latest stretch of work, so any reading of Working after the post re-arms the notice. Guess, unconfirmed: the Codex footer was showing a warning at the time, and a footer change read as Working.\n\nNot a_2mSyvanM4 (a helper told to stay idle, which posted nothing), and not the cases a_2luQuOfD1 and a_2nUsIZXNY fixed (compactions and declared waits).\n\nPossibly: capture the Codex screen at the moment the stretch starts to find what read as Working, and start no stretch of work when nothing new reached the pane.",
+  "id": "a_2qY2JPgWg",
+  "position": "b28",
+  "related": [
+    "a_2mSyvanM4",
+    "a_2luQuOfD1",
+    "a_2nUsIZXNY"
+  ],
+  "title": "A Codex helper that posted at the end of its turn is reported idle without posting",
+  "type": "bug",
+  "updated_at_millis": 1793313075635,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793313071869}
+  ]
+}
