@@ -144,15 +144,17 @@ fn begun(
     operation: &Operation<'_>,
     asked: &api::NewPane,
 ) -> Result<(), Box<api::Answer>> {
-    if let Some(why) = session.unavailable() {
-        let reason = format!("{why}; nothing was made");
-        return Err(Box::new(operation.refused(api::Refusal::Unavailable, reason)));
-    }
     let asked_for = operations::fingerprint(&asked.encode_to_vec());
     let now = operations::now_ms();
     let correlation = operation.cause.correlation.clone();
+    // A repeat is answered from its record whatever the session is doing: refusing it while the
+    // daemon hands over would say nothing happened of an operation that did.
     Err(Box::new(match session.pane_operations.begin(operation.client, operation.id, asked_for, now) {
-        Begun::New => return Ok(()),
+        Begun::New => {
+            let Some(why) = session.unavailable() else { return Ok(()) };
+            operation.forget(session);
+            operation.refused(api::Refusal::Unavailable, format!("{why}; nothing was made"))
+        }
         Begun::Done(made) => made_answer(correlation, api::Outcome::AlreadySo, made),
         Begun::UnderWay => unknown(
             correlation,

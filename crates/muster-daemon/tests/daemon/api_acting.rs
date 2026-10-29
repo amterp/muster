@@ -311,3 +311,64 @@ fn a_request_whose_connection_ends_before_its_answer_is_unknown_to_the_client() 
     let answer = handing.join().unwrap();
     assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
 }
+
+/// While a handoff is under way a repeat is still answered from its record, and only an operation
+/// not seen before is turned away, leaving nothing behind for the daemon taking over.
+#[test]
+fn during_a_handoff_a_repeat_gets_its_result_and_only_a_new_operation_is_unavailable() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-hold")]);
+    let out = daemon.root().join("out");
+    let mut api = daemon.api();
+    let first = api.ask(new_pane(writing("op-1", "once", &out)));
+    assert_eq!(first.outcome(), api::Outcome::Done, "{:?}", first.answer);
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    let again = api.ask(new_pane(writing("op-1", "once", &out)));
+    assert_eq!(again.outcome(), api::Outcome::AlreadySo, "{:?}", again.answer);
+    assert_eq!(made(&again), made(&first));
+    let turned_away = api.ask(new_pane(writing("op-2", "later", &out)));
+    assert_eq!(
+        (turned_away.outcome(), turned_away.refusal()),
+        (api::Outcome::Refused, api::Refusal::Unavailable),
+        "{:?}",
+        turned_away.answer
+    );
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    let later = daemon.api().ask(new_pane(writing("op-2", "later", &out)));
+    assert_eq!(later.outcome(), api::Outcome::Done, "{:?}", later.answer);
+}
+
+/// A repeat of an operation still starting when a handoff begins is unknown, never refused: its
+/// command has run.
+#[test]
+fn during_a_handoff_a_repeat_of_an_operation_under_way_is_unknown() {
+    let mut daemon = daemon_with(&[
+        ("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-hold"),
+        ("MUSTER_DAEMON_API_STARTED_DELAY", "3000"),
+    ]);
+    let out = daemon.root().join("out");
+    let starting = daemon.api();
+    let mut writer = starting.writer();
+    let asked = writing("op-1", "lost", &out);
+    let request =
+        api::Request { correlation: "c1".to_string(), request: Some(new_pane(asked.clone())) };
+    muster_api::connection::send(&mut writer, &request).unwrap();
+    until_some("the command to run", || (runs(&out) == 1).then_some(()));
+    let mut api = daemon.api();
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    let again = api.ask(new_pane(asked.clone()));
+    assert_eq!(again.outcome(), api::Outcome::Unknown, "{:?}", again.answer);
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    let after = answered(daemon.api().try_ask(new_pane(asked)));
+    assert_eq!(after.outcome(), api::Outcome::Unknown, "{:?}", after.answer);
+    assert_eq!(runs(&out), 1);
+}
