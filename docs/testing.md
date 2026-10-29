@@ -343,8 +343,9 @@ be edited to agree. So `./release`, once its gate has passed, copies the API's f
 the schema they were recorded against and a `VERSION` naming the API version it ships them as, and while the daemon
 still serves clients of that version (`SERVES_FROM` in `crates/muster-api/src/version.rs` is no newer), every shipped
 case must be in the corpus with the same `given` and `expect`, but for what a client of that version skips. Its `why`
-may be reworded; a message may hold a field the shipped schema did not have; and a list under `features` may gain
-entries, since a client asks the Welcome what is served. A field the shipped schema had and the case did not show was
+may be reworded; a message the daemon sends may hold a field the shipped schema did not have, while what the client
+sends stays as shipped, since an old client cannot send a new field; and a list under `features` may gain entries,
+since a client asks the Welcome what is served. A field the shipped schema had and the case did not show was
 at its zero, so its being set now is a change, and so is a message the shipped conversation did not hear, even an event
 of a kind that schema lacked, since it takes a number and moves every number after it. An answer a release recorded
 changes, then, in the change that moves the oldest version served past it, which is MIP-10's rule until 1.0: raising

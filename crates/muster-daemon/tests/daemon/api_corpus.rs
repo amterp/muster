@@ -155,8 +155,8 @@ fn changed_since(shipped: &[Conformance], current: &Path, schema: &Schema) -> Ve
 }
 
 /// Whether a shipped expectation is still what the corpus expects: the same conversation, step
-/// for step and message for message, where a message may hold a field the shipped `schema` did
-/// not have, since a client skips a field it does not know, and a features list may have gained
+/// for step and message for message, where a message the daemon sent may hold a field the
+/// shipped `schema` did not have, since a client skips a field it does not know, and a features list may have gained
 /// entries, since a client asks the Welcome what is served. A field the schema had and the case
 /// did not show was at its zero, so its now being set is a change. A message the shipped
 /// conversation did not hear is a change too, even of an event kind that schema did not have:
@@ -172,9 +172,9 @@ fn stands(shipped: &Value, now: &Value, schema: &Schema) -> bool {
 fn step_stands(was: &Value, is: &Value, schema: &Schema) -> bool {
     let (Value::Object(was), Value::Object(is)) = (was, is) else { return was == is };
     let heard = if was.contains_key("hello") { "HelloAnswer" } else { "DaemonMessage" };
+    // Only what the daemon says: what a client sends is the scenario, and a field added to it is
+    // one the old client cannot send.
     let message_of = |key: &str| match key {
-        "hello" => schema.descriptor("Hello").ok(),
-        "send" => schema.descriptor("Request").ok(),
         "passing" => schema.descriptor("DaemonMessage").ok(),
         "heard" => schema.descriptor(heard).ok(),
         _ => None,
@@ -966,6 +966,17 @@ fn a_shipped_conversation_that_changed_or_went_is_named_and_a_reworded_why_is_no
         changed_since(before_adapters, &current, &schema).len(),
         1,
         "a field the shipped schema had, at its zero then and set now, does not"
+    );
+
+    // As a release before helpers would have shipped the helper case, had it sent no maker.
+    let mut before_helpers = Conformance::load("api-acting.json");
+    let asked = before_helpers.cases[1].expect.pointer_mut("/conversation/2/send/pane/new");
+    asked.and_then(Value::as_object_mut).expect("the helper case makes a pane").remove("helperOf");
+    let older = schema_without("  string helper_of = 6;\n");
+    assert_eq!(
+        changed_since(std::slice::from_ref(&before_helpers), &current, &older).len(),
+        1,
+        "a field added to what a client sends is a scenario the old client cannot send"
     );
 }
 
