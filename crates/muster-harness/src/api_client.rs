@@ -47,6 +47,25 @@ impl ApiAsked {
             _ => panic!("the answer carries no snapshot: {:?}", self.answer),
         }
     }
+
+    /// The page of history the answer carries.
+    pub fn page(&self) -> &api::Page {
+        match &self.answer.detail {
+            Some(api::answer::Detail::Page(page)) => page,
+            _ => panic!("the answer carries no page: {:?}", self.answer),
+        }
+    }
+}
+
+/// A page of `group`'s log: the newest entries after `after` and through `through`.
+pub fn history(group: &str, after: u64, through: u64) -> api::request::Request {
+    api::request::Request::Msg(api::MsgRequest {
+        request: Some(api::msg_request::Request::History(api::History {
+            group: group.to_string(),
+            after,
+            through,
+        })),
+    })
 }
 
 /// What came of a request whose answer may never arrive, as a client concludes it.

@@ -31,7 +31,7 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 2] = ["api.subscribe", "pane.new"];
+const REQUESTS: [&str; 3] = ["api.subscribe", "msg.history", "pane.new"];
 
 /// Every topic a subscription may name.
 const TOPICS: [api::Topic; 4] =
@@ -170,6 +170,20 @@ fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
         Some(Namespace::Pane(api::PaneRequest {
             request: Some(api::pane_request::Request::New(asked)),
         })) => pane::new(shared, caller, correlation, &asked),
+        Some(Namespace::Msg(api::MsgRequest {
+            request: Some(api::msg_request::Request::History(asked)),
+        })) => {
+            let answer = match shared.messages().history(&asked) {
+                Ok(page) => api::Answer {
+                    correlation,
+                    outcome: api::Outcome::Done.into(),
+                    detail: Some(api::answer::Detail::Page(page)),
+                    ..api::Answer::default()
+                },
+                Err(reason) => refused(correlation, api::Refusal::NotFound, reason),
+            };
+            shared.api.answer(caller.connection, answer);
+        }
         _ => shared.api.answer(
             caller.connection,
             refused(

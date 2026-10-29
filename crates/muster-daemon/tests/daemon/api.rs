@@ -45,7 +45,7 @@ fn an_api_client_is_welcomed_by_its_own_version_whatever_the_internal_one_says()
     assert!(!machine.name.is_empty());
     assert!(!machine.version.is_empty());
     let features = machine.features.as_ref().expect("its features");
-    assert_eq!(features.requests, ["api.subscribe", "pane.new"]);
+    assert_eq!(features.requests, ["api.subscribe", "msg.history", "pane.new"]);
     let topics: Vec<i32> = every_topic().iter().map(|topic| (*topic).into()).collect();
     assert_eq!(features.topics, topics);
 }

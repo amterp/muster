@@ -154,8 +154,8 @@ impl Messages {
             follows: Vec::new(),
             telling: Vec::new(),
             joined,
+            published: Published::new(&api),
             api,
-            published: Published::default(),
         }
     }
 
@@ -216,6 +216,15 @@ impl Messages {
     pub(crate) fn published(&mut self) -> &Published {
         self.published.publish(&self.service, &self.api);
         &self.published
+    }
+
+    /// The page of a group's log an API client asked for, or why there is none.
+    pub(crate) fn history(
+        &mut self,
+        asked: &muster_api::History,
+    ) -> Result<muster_api::Page, String> {
+        self.published.publish(&self.service, &self.api);
+        self.published.history(&self.service, asked)
     }
 
     /// Marks a handoff as under way, or as over because it failed. Taken under this lock, so a

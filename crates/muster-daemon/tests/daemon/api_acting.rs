@@ -17,7 +17,7 @@ fn writing(id: &str, name: &str, out: &Path) -> api::NewPane {
     }
 }
 
-fn made(asked: &ApiAsked) -> api::Made {
+fn made(asked: &ApiAsked) -> api::MadePane {
     match &asked.answer.detail {
         Some(api::answer::Detail::Made(made)) => made.clone(),
         _ => panic!("the answer names no pane: {:?}", asked.answer),

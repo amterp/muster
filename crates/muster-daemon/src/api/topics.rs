@@ -54,6 +54,7 @@ pub(super) fn join_under_messages(
         snapshot.attention.get_or_insert_default().unread = published.waiting();
     }
     if hears(api::Topic::Messages) {
+        snapshot.groups = published.groups();
         shared.api.join(joining, api::Topic::Messages);
     }
     shared.api.join(joining, Feed::Unread);

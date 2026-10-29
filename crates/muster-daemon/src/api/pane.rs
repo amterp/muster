@@ -278,7 +278,7 @@ fn made_answer(correlation: String, outcome: api::Outcome, made: Made) -> api::A
     api::Answer {
         correlation,
         outcome: outcome.into(),
-        detail: Some(api::answer::Detail::Made(api::Made {
+        detail: Some(api::answer::Detail::Made(api::MadePane {
             pane: made.pane,
             callsign: made.callsign,
         })),

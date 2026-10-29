@@ -1181,3 +1181,39 @@ fn an_agent_named_while_the_link_is_down_takes_its_panes_place_once_it_is_back()
     let (messages, _) = read(&mut near_control, &named("builder"));
     assert!(messages.contains(&"review critic@far: done".to_string()), "{messages:?}");
 }
+
+/// A program reading the API of a daemon holding a replica sees the group under the name it has
+/// here, kept on the machine it came from, whose identity this daemon does not know, and hears
+/// the posts that reach the replica.
+#[test]
+fn a_replica_is_on_the_api_with_its_home_and_its_posts() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+    let there = join(&mut far_control, &named("critic"), "critic", "review");
+
+    let mut program = far.api();
+    let asked = program.subscribe(&[api::Topic::Messages]);
+    let replica = asked.snapshot().groups.iter().find(|group| group.name == there).cloned();
+    let home = replica.and_then(|group| group.home).expect("the replica, with its home");
+    assert_eq!(
+        (home.daemon.as_str(), home.machine.as_str()),
+        ("", there.trim_start_matches("review@"))
+    );
+
+    expect(
+        &mut near_control,
+        post(&named("builder"), None, &[], "rebase first"),
+        proto::Outcome::Done,
+    );
+    let logged = program.event_matching("the post reaching the replica", |event| {
+        matches!(&event.event, Some(api::event::Event::Logged(logged)) if logged.group == there)
+    });
+    let Some(api::event::Event::Logged(logged)) = logged.event else { unreachable!() };
+    let Some(api::entry::What::Post(posted)) = logged.entry.and_then(|entry| entry.what) else {
+        panic!("a post");
+    };
+    assert_eq!(posted.body, "rebase first");
+}
