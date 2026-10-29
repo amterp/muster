@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "the-painting-problem",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793307631136,
+  "creator": "Alexander Terp",
+  "description": "When the ssh link to a remote daemon stalls, every pane on that daemon stops painting together, and the app raises its painting problem for each pane that was typed into:\n\n\u003e Input reached the pane devenv/\u003cid\u003e over 10s ago and it has painted nothing since. ... Usual causes: the bridge carrying this pane's output has wedged or gone without saying so, or its daemon has stopped sending this one pane's output while it goes on answering everything else.\n\nNeither cause applied in the stall `a_2qVkK9qfJ` describes. The bridges and the daemon were fine, and the link delivered nothing for about 40 s and then everything at once. The problem text sends the reader to the bridge and to the daemon's log on the far machine. The `daemon.answer.late` logged in the same seconds names the machine's load as the thing to check, and the remote machine was idle. Finding the cause took reading the run log by hand.\n\nThe run log already shows a late link. Each remote daemon line carries the daemon's own monotonic clock (`daemon_mono_ns`) beside the time it was logged here (`mono_ns`). On a healthy link the difference stays within about 50 ms of a constant, and in each stall it jumped by 15-38 s. The daemon's `daemon.request.answered` for the request the app gave up on said it answered in 0.1 ms.\n\nMuster could use that. When a remote pane trips the painting problem or an answer comes back late, check whether the daemon's lines are arriving late too, and if so raise one problem for the link instead of one per pane: \"the link to devenv delivered nothing for 38 s; the daemon answered on time\". That would also tell a stalled link from a busy remote machine, which today takes the run log and a shell on the far machine.",
+  "id": "a_2qVklzQsX",
+  "position": "b29",
+  "title": "🔎 The painting problem blames a pane's bridge when the whole link to its daemon is late",
+  "type": "enhancement",
+  "updated_at_millis": 1793307631136,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793307631136}
+  ]
+}

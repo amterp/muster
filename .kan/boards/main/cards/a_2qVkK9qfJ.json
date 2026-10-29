@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-tunnel-opened-on",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793307613870,
+  "creator": "Alexander Terp",
+  "description": "Muster's ssh master to a remote machine is one long-lived TCP connection, and macOS keeps a connection on the interface it was opened on. So if the laptop was on wifi when the master opened and ethernet is plugged in later, new connections to that host go over ethernet but the master stays on wifi for as long as wifi stays associated. On 2026-10-29 (0.19.0) that had lasted two days. Every time the wifi channel got busy, every remote pane froze at once for up to 40 s: typed characters did not appear, then all the output arrived in one burst.\n\nNothing else on the machine looked wrong. A separate health checker that logs into the same host over ssh every 6 s took about 700 ms per login throughout, because its connections are new and go over ethernet. The remote daemon was idle.\n\n## Evidence\n\n- `lsof -nP -a -p \u003cmaster pid\u003e -i` showed the master on the wifi address (en0). `route -n get \u003chost\u003e` said en8 (ethernet), and the health checker's ssh was on en8.\n- The remote daemon answered a `pane.seen` in 0.1 ms by its own clock, and the app logged `daemon.answer.late` (`waited_ms` 10000) for it. The answer reached the laptop 15.5 s after the daemon sent it.\n- For the remote daemon's lines in the run log, `mono_ns - daemon_mono_ns` stays within about 50 ms of a constant while the link is healthy. That afternoon it jumped by 38 s, 33 s, 7 s and 36 s. Each jump began within seconds of the wifi channel's busy airtime rising from about 30% to about 85%, as the health checker recorded it.\n\nEnding the master with `ssh -O exit -S \u003ccontrol path\u003e` cured it. Muster reopened it 0.7 s later on the ethernet address, all eight remote bridges reattached on their own, and no agent was lost.\n\n## What Muster could do\n\nMuster could notice when the interface the OS would now use for a host differs from the one its master is on, and reopen the master. The pieces, none of them tried yet:\n\n- macOS's `NWPathMonitor` reports a change of preferred interface even when the old interface stays up. That event is per-OS and belongs in the shell; the decision to reopen can stay with the tunnel supervisor.\n- The interface the OS would pick for a host can be read portably: connect a UDP socket to the host's address and read its local address with `getsockname`. Connecting a UDP socket sends nothing.\n- The master's own local address is harder, since ssh holds the socket. `lsof` or `proc_pidfdinfo` on the master's pid works on macOS. Reading `$SSH_CONNECTION` over the master does not work behind NAT.\n\nA reopen blanks every remote pane for under a second, so it should fire only when the interfaces actually differ, and should not follow a link that flaps. Whether a make-before-break reopen could avoid the blank is open: both masters would need the same forwarded socket path, which the adapter and every bridge dial.\n\nRelated: `a_2HrmSyRAQ` covers the other kind of network change, where the old interface goes away and the connection dies with it.\n\n## Validating a fix\n\n1. Open a remote pane with the laptop on wifi only.\n2. Plug in ethernet and leave wifi on.\n3. Within a few seconds `lsof` shows the master on the ethernet address, and the remote pane kept rendering with at most a sub-second gap.\n4. Unplugging ethernet again is the case `a_2HrmSyRAQ` fixed, and must still recover.",
+  "id": "a_2qVkK9qfJ",
+  "position": "b28",
+  "title": "🐢 A tunnel opened on wifi stays on wifi after ethernet is plugged in",
+  "type": "enhancement",
+  "updated_at_millis": 1793307613870,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793307613870}
+  ]
+}
