@@ -10,6 +10,11 @@
 //! the topic before letting go. An event published for a topic after it joined is newer than
 //! that topic's part of the snapshot, and is held unnumbered until the snapshot's answer is
 //! queued; [`Api::go_live`] then numbers what was held from 1, after the answer.
+//!
+//! An event a request caused carries the request's correlation id to the connection that sent
+//! it, and to nobody else. The cause is passed in by whoever publishes, from what it holds under
+//! the same lock as the event: a cause kept here would be read by a publisher under another
+//! lock, at the same moment, and given to the wrong event.
 
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -50,7 +55,21 @@ struct Subscription {
     /// The number of the last event queued.
     last: u64,
     /// Events newer than the snapshot being gathered, until its answer is queued.
-    held: Option<Vec<api::event::Event>>,
+    held: Option<Vec<Held>>,
+}
+
+/// An event held unnumbered, with the correlation id it carries to this subscription.
+#[derive(Debug)]
+struct Held {
+    event: api::event::Event,
+    correlation: String,
+}
+
+/// The request whose events are being published: on which connection, and its correlation id.
+#[derive(Debug, Clone)]
+pub(crate) struct Cause {
+    pub(crate) connection: u64,
+    pub(crate) correlation: String,
 }
 
 /// A subscription being gathered on a connection, from [`Api::begin`] to [`Api::go_live`].
@@ -140,20 +159,16 @@ impl Api {
         let at = Position { epoch: subscription.epoch, number: subscription.last };
         let mut delivered =
             open.outbox.push_at(frame(api::daemon_message::Message::Answer(answer)), at);
-        for event in subscription.held.take().unwrap_or_default() {
-            delivered = delivered && deliver(&open.outbox, subscription, &source, event);
+        for held in subscription.held.take().unwrap_or_default() {
+            delivered = delivered
+                && deliver(&open.outbox, subscription, &source, held.event, held.correlation);
         }
         open.ended |= !delivered;
     }
 
-    /// Answers a request on `connection` that carries no snapshot.
-    pub(crate) fn answer(
-        &self,
-        connection: u64,
-        correlation: String,
-        outcome: api::Outcome,
-        reason: String,
-    ) {
+    /// Queues `answer` on `connection`, as of the last event its subscription has been sent.
+    /// Called after the request's events were published, so they reach the client first.
+    pub(crate) fn answer(&self, connection: u64, mut answer: api::Answer) {
         let mut connections = self.connections();
         let Some(open) = connections.find(connection) else { return };
         let at = open
@@ -161,36 +176,40 @@ impl Api {
             .as_ref()
             .map(|subscription| Position { epoch: subscription.epoch, number: subscription.last })
             .unwrap_or_default();
-        let answer = api::Answer {
-            correlation,
-            outcome: outcome.into(),
-            reason,
-            epoch: at.epoch,
-            through: at.number,
-            detail: None,
-        };
+        answer.epoch = at.epoch;
+        answer.through = at.number;
         if !open.outbox.push_at(frame(api::daemon_message::Message::Answer(answer)), at) {
             open.ended = true;
         }
     }
 
-    /// Sends what `event` builds to every subscription that has joined `topic`. Called holding
-    /// the lock `topic`'s events are published under; `event` is built only when somebody hears
-    /// it.
-    pub(crate) fn publish(&self, topic: api::Topic, event: impl FnOnce() -> api::event::Event) {
-        self.send(Some(topic), event);
+    /// Sends what `event` builds to every subscription that has joined `topic`, with `cause`'s
+    /// correlation id to the connection that sent it. Called holding the lock `topic`'s events
+    /// are published under; `event` is built only when somebody hears it.
+    pub(crate) fn publish(
+        &self,
+        topic: api::Topic,
+        cause: Option<&Cause>,
+        event: impl FnOnce() -> api::event::Event,
+    ) {
+        self.send(Some(topic), cause, event);
     }
 
     /// Tells every subscription this daemon's state now. Called with the session locked.
     pub(crate) fn source_changed(&self, state: api::SourceState) {
         let status = api::SourceStatus { source: Some(self.source()), state: state.into() };
-        self.send(None, || {
+        self.send(None, None, || {
             api::event::Event::SourceChanged(api::SourceChanged { status: Some(status) })
         });
     }
 
     /// Delivers to subscriptions that joined `topic`, or to all of them when it is `None`.
-    fn send(&self, topic: Option<api::Topic>, event: impl FnOnce() -> api::event::Event) {
+    fn send(
+        &self,
+        topic: Option<api::Topic>,
+        cause: Option<&Cause>,
+        event: impl FnOnce() -> api::event::Event,
+    ) {
         let mut connections = self.connections();
         let source = self.source();
         let mut make = Some(event);
@@ -203,9 +222,15 @@ impl Api {
             let event = built
                 .get_or_insert_with(|| make.take().expect("an event is built at most once")())
                 .clone();
+            let correlation = cause
+                .filter(|cause| cause.connection == open.outbox.id)
+                .map(|cause| cause.correlation.clone())
+                .unwrap_or_default();
             match subscription.held.as_mut() {
-                Some(held) => held.push(event),
-                None => open.ended |= !deliver(&open.outbox, subscription, &source, event),
+                Some(held) => held.push(Held { event, correlation }),
+                None => {
+                    open.ended |= !deliver(&open.outbox, subscription, &source, event, correlation);
+                }
             }
         }
     }
@@ -249,12 +274,14 @@ fn deliver(
     subscription: &mut Subscription,
     source: &api::Source,
     event: api::event::Event,
+    correlation: String,
 ) -> bool {
     subscription.last += 1;
     let numbered = api::Event {
         epoch: subscription.epoch,
         number: subscription.last,
         source: Some(source.clone()),
+        correlation,
         event: Some(event),
     };
     let at = Position { epoch: subscription.epoch, number: subscription.last };
@@ -312,5 +339,86 @@ fn draw_epoch() -> u64 {
         if epoch != 0 {
             return epoch;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::net::UnixStream;
+
+    use super::*;
+
+    fn hub() -> Arc<Api> {
+        Api::new(api::Machine {
+            source: Some(api::Source { daemon: "d1".to_string(), instance: 1 }),
+            ..api::Machine::default()
+        })
+    }
+
+    /// A connection on `hub`, and the client's end of it.
+    fn connect(hub: &Api) -> (u64, UnixStream) {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        let outbox = Outbox::open(&ours).unwrap();
+        let id = outbox.id;
+        hub.open(outbox);
+        theirs.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        (id, theirs)
+    }
+
+    fn subscribe(hub: &Api, connection: u64) -> Joining {
+        let joining = hub.begin(connection).unwrap();
+        hub.join(&joining, api::Topic::Panes);
+        joining
+    }
+
+    fn next(client: &mut UnixStream) -> api::daemon_message::Message {
+        let frame = muster_frame::read_frame_or_end(client, 1 << 24).unwrap().unwrap();
+        api::DaemonMessage::decode(frame.as_slice()).unwrap().message.unwrap()
+    }
+
+    fn next_event(client: &mut UnixStream) -> api::Event {
+        match next(client) {
+            api::daemon_message::Message::Event(event) => event,
+            other => panic!("expected an event, got {other:?}"),
+        }
+    }
+
+    fn changed() -> api::event::Event {
+        api::event::Event::SourceChanged(api::SourceChanged::default())
+    }
+
+    #[test]
+    fn an_event_carries_its_cause_to_the_connection_that_asked_and_to_nobody_else() {
+        let hub = hub();
+        let (asker, mut asking) = connect(&hub);
+        let (other, mut watching) = connect(&hub);
+        for connection in [asker, other] {
+            let joining = subscribe(&hub, connection);
+            hub.go_live(&joining, String::new(), api::Snapshot::default());
+        }
+        let _ = (next(&mut asking), next(&mut watching));
+
+        let cause = Cause { connection: asker, correlation: "c1".to_string() };
+        hub.publish(api::Topic::Panes, Some(&cause), changed);
+        hub.publish(api::Topic::Panes, None, changed);
+
+        assert_eq!(next_event(&mut asking).correlation, "c1");
+        assert_eq!(next_event(&mut asking).correlation, "");
+        assert_eq!(next_event(&mut watching).correlation, "");
+        assert_eq!(next_event(&mut watching).correlation, "");
+    }
+
+    #[test]
+    fn an_event_held_while_a_subscription_joins_keeps_its_cause() {
+        let hub = hub();
+        let (asker, mut asking) = connect(&hub);
+        let joining = subscribe(&hub, asker);
+        let cause = Cause { connection: asker, correlation: "c1".to_string() };
+        hub.publish(api::Topic::Panes, Some(&cause), changed);
+        hub.go_live(&joining, "s1".to_string(), api::Snapshot::default());
+
+        assert!(matches!(next(&mut asking), api::daemon_message::Message::Answer(_)));
+        let event = next_event(&mut asking);
+        assert_eq!((event.number, event.correlation.as_str()), (1, "c1"));
     }
 }

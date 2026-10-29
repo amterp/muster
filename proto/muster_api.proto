@@ -47,10 +47,30 @@
 //
 // ## Requests and answers
 //
-// Every Request carries a correlation id the client chooses, which its Answer repeats. Requests
-// are namespaced by what they act on: `api.*` here, and `pane.*`, `msg.*`, `machine.*` and others
-// as they come, each an arm of Request's oneof. A request the daemon does not know is answered
-// REFUSED, and the connection stays open.
+// Every Request carries a correlation id the client chooses. Its Answer repeats it, and so does
+// every event the request caused, on this connection only. Requests are namespaced by what they
+// act on: `api.*` here, and `pane.*`, `msg.*`, `machine.*` and others as they come, each an arm
+// of Request's oneof. A request the daemon does not know is refused, and the connection
+// stays open.
+//
+// An answer is one of five outcomes:
+//
+// - DONE.
+// - ALREADY_SO: nothing needed doing. A repeated operation id gets this, with the first answer's
+//   result.
+// - REFUSED: not done, and nothing happened. `refusal` says why in a word a program can act on,
+//   NOT_FOUND when the thing named does not exist, and `reason` says it for a person. A refusal
+//   code the client does not know means "for the reason given".
+// - NOT_SENT: the request had to go to another machine and never left this daemon. Nothing
+//   happened, and asking again is safe.
+// - UNKNOWN: the request may have happened. It went to another machine and the reply was lost,
+//   or it is still being carried out, or it started and its result was lost. A client never
+//   treats unknown as refused. A request that makes something can be asked again with the same
+//   operation id, which never makes it twice.
+//
+// A client has the same two cases of its own. A request it could not write is not sent. A
+// request it wrote on a connection that ended before its answer arrived is unknown, even when
+// the connection ended with an Ended.
 //
 // ## Subscribing
 //
@@ -252,15 +272,37 @@ message Answer {
   // last event it had been sent. Both 0 on a connection that has not subscribed.
   uint64 epoch = 4;
   uint64 through = 5;
+  // Why it was refused, when it was.
+  Refusal refusal = 6;
   oneof detail {
     Snapshot snapshot = 10;
   }
 }
 
+// The schema's header says what each outcome promises.
 enum Outcome {
   OUTCOME_UNSPECIFIED = 0;
   OUTCOME_DONE = 1;
   OUTCOME_REFUSED = 2;
+  OUTCOME_ALREADY_SO = 3;
+  OUTCOME_NOT_SENT = 4;
+  OUTCOME_UNKNOWN = 5;
+}
+
+enum Refusal {
+  // For the reason the answer gives.
+  REFUSAL_UNSPECIFIED = 0;
+  // A pane, machine or other thing the request names does not exist.
+  REFUSAL_NOT_FOUND = 1;
+  // This daemon serves no such request, topic or option. Welcome lists what it serves.
+  REFUSAL_UNSUPPORTED = 2;
+  // The request is missing something it needs, or holds something it cannot.
+  REFUSAL_INVALID = 3;
+  // The operation id was used for a different request, which the daemon still remembers.
+  REFUSAL_OPERATION_REUSED = 4;
+  // The daemon cannot take the request now: it is stopping, handing over to a newer daemon, or
+  // remembering as many operations as it holds. Ask again shortly.
+  REFUSAL_UNAVAILABLE = 5;
 }
 
 // Where a subscription starts. Each topic's part is filled only when the subscription named it.
@@ -301,6 +343,9 @@ message Event {
   uint64 epoch = 1;
   uint64 number = 2;
   Source source = 3;
+  // The correlation id of the request on this connection that caused the event. Empty for an
+  // event that no request of this connection caused.
+  string correlation = 4;
   oneof event {
     // Whatever the topics.
     SourceChanged source_changed = 10;

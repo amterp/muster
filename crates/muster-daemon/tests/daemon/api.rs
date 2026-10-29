@@ -149,11 +149,17 @@ fn a_topic_or_request_the_daemon_does_not_serve_is_refused_and_the_connection_st
         request: Some(api::api_request::Request::Subscribe(api::Subscribe { topics: vec![99] })),
     });
     let asked = api.ask(unknown);
-    assert_eq!(asked.outcome(), api::Outcome::Refused);
+    assert_eq!(
+        (asked.outcome(), asked.refusal()),
+        (api::Outcome::Refused, api::Refusal::Unsupported)
+    );
     assert!(asked.answer.reason.contains("99"), "{}", asked.answer.reason);
 
     let empty = api.ask(api::request::Request::Api(api::ApiRequest { request: None }));
-    assert_eq!(empty.outcome(), api::Outcome::Refused);
+    assert_eq!(
+        (empty.outcome(), empty.refusal()),
+        (api::Outcome::Refused, api::Refusal::Unsupported)
+    );
     assert!(empty.answer.correlation.starts_with("harness-"), "{:?}", empty.answer);
     assert_eq!((empty.answer.epoch, empty.answer.through), (0, 0), "nothing was subscribed");
 

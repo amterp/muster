@@ -154,10 +154,23 @@ fn handle(shared: &Shared, connection: u64, request: api::Request) {
         }
         _ => shared.api.answer(
             connection,
-            request.correlation,
-            api::Outcome::Refused,
-            "this daemon serves no such request; its Welcome lists the ones it does".to_string(),
+            refused(
+                request.correlation,
+                api::Refusal::Unsupported,
+                "this daemon serves no such request; its Welcome lists the ones it does",
+            ),
         ),
+    }
+}
+
+/// An answer saying a request was refused, for `reason`.
+fn refused(correlation: String, refusal: api::Refusal, reason: impl Into<String>) -> api::Answer {
+    api::Answer {
+        correlation,
+        outcome: api::Outcome::Refused.into(),
+        refusal: refusal.into(),
+        reason: reason.into(),
+        ..api::Answer::default()
     }
 }
 
@@ -165,7 +178,8 @@ fn subscribe(shared: &Shared, connection: u64, correlation: String, asked: &api:
     let topics = match topics_of(asked) {
         Ok(topics) => topics,
         Err(reason) => {
-            return shared.api.answer(connection, correlation, api::Outcome::Refused, reason);
+            let answer = refused(correlation, api::Refusal::Unsupported, reason);
+            return shared.api.answer(connection, answer);
         }
     };
     let mut snapshot = api::Snapshot {

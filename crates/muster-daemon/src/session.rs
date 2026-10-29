@@ -1526,7 +1526,7 @@ impl Session {
             Payload::PaneClosed(closed) => {
                 if self.api_panes.remove(&closed.pane).is_some() {
                     let pane = closed.pane.clone();
-                    self.api.publish(muster_api::Topic::Panes, || {
+                    self.api.publish(muster_api::Topic::Panes, None, || {
                         muster_api::event::Event::PaneClosed(muster_api::PaneClosed { pane })
                     });
                 }
@@ -4307,13 +4307,13 @@ fn api_pane(
 ) {
     let now = crate::api::panes::pane(record, hidden, &api.source());
     match held.insert(record.pane.clone(), now.clone()) {
-        None => api.publish(muster_api::Topic::Panes, || {
+        None => api.publish(muster_api::Topic::Panes, None, || {
             muster_api::event::Event::PaneAppeared(muster_api::PaneAppeared {
                 pane: Some(Box::new(now)),
             })
         }),
         Some(before) if crate::api::panes::news(&before, &now) => {
-            api.publish(muster_api::Topic::Panes, || {
+            api.publish(muster_api::Topic::Panes, None, || {
                 muster_api::event::Event::PaneChanged(muster_api::PaneChanged {
                     pane: Some(Box::new(now)),
                 })

@@ -36,6 +36,10 @@ impl ApiAsked {
         self.answer.outcome()
     }
 
+    pub fn refusal(&self) -> api::Refusal {
+        self.answer.refusal()
+    }
+
     /// The snapshot the answer carries, which a subscription's always does.
     pub fn snapshot(&self) -> &api::Snapshot {
         match &self.answer.detail {
