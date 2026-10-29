@@ -19,6 +19,8 @@ func recordedBoard() -> (BannerBoard, BannerRecorder) {
 @MainActor
 final class BannerRecorder {
   var sent: [String] = []
+  /// The banners reported shown, apart from what the person did with them.
+  var shown: [String] = []
 
   var requests: BannerRequests {
     BannerRequests(
@@ -26,7 +28,8 @@ final class BannerRecorder {
       dismiss: { [self] in sent.append("dismiss \($0)/\($1)#\($2)") },
       hold: { [self] in sent.append("hold \($0)/\($1)#\($2) \($3)") },
       pick: { [self] in sent.append("pick \($0)/\($1)#\($2) \($3.map(String.init) ?? "none")") },
-      open: { [self] in sent.append("open \($0)/\($1)") })
+      open: { [self] in sent.append("open \($0)/\($1)") },
+      shown: { [self] in shown.append("\($0)/\($1)") })
   }
 }
 
@@ -65,6 +68,17 @@ func bannerStack(_ banners: Muster_Banner...) -> Muster_BannersChanged {
 
 @Suite("the banners for messages")
 struct BannerTests {
+  @MainActor
+  @Test("a banner is reported shown once for each message it comes up on")
+  func shownOncePerMessage() {
+    let (board, recorder) = recordedBoard()
+    board.apply(bannerStack(aBanner("g", seq: 4)))
+    board.apply(bannerStack(aBanner("g", seq: 4), aBanner("h", seq: 2)))
+    board.apply(bannerStack(aBanner("g", seq: 5), aBanner("h", seq: 2)))
+
+    #expect(recorder.shown == ["local/g", "local/h", "local/g"])
+  }
+
   @MainActor
   @Test("the core hears that a reply is being written only when the field fills or empties")
   func holdingFollowsTheFieldFillingAndEmptying() {

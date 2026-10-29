@@ -30,6 +30,7 @@ mod one_app;
 mod pane_focus;
 mod pane_gone;
 mod perform_on_pane;
+mod presence;
 mod presentation;
 mod publish_order;
 mod quitting;

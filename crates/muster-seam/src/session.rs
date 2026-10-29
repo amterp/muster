@@ -1436,6 +1436,10 @@ impl Session {
         if let Some(settings) = poison::lock(&SETTINGS, "daemon-settings").as_ref() {
             follower.configure(settings);
         }
+        // The human is homed on the machine the app runs on (MIP-4, section 11).
+        if reached.tunnel.is_none() {
+            follower.report_presence_from(crate::presence::source());
+        }
         let connection = follower.connection();
         let description = match &reached.tunnel {
             Some(tunnel) => format!("the daemon {id} on {}", tunnel.host()),
@@ -7092,6 +7096,41 @@ fn announce_presentation(window: &WindowName, presentation: Presentation) {
     );
 }
 
+/// Reports the person at the desk to every daemon on this machine now, rather than at the next
+/// heartbeat: Muster coming forward or going behind, or somebody back at it, is soon acted on.
+pub(crate) fn report_presence_now() {
+    let session = poison::lock(&SESSION, "session");
+    for backend in session.backends.values().filter(|backend| backend.tunnel.is_none()) {
+        backend.follower.report_presence_now();
+    }
+}
+
+/// Tells the daemon holding what asked that the shell showed the person it (MIP-10, section 4).
+/// Information for the daemon's clients, so a daemon that is not there, or too old to keep it,
+/// is told nothing and the shell is answered Ok all the same.
+pub(crate) fn attention_shown(shown: &crate::proto::AttentionShown) {
+    use muster_daemon_proto::shown::About;
+    let about = if shown.group.is_empty() {
+        About::Pane(shown.pane_id.clone())
+    } else {
+        About::Group(shown.group.clone())
+    };
+    let shown_as = match shown.shown_as() {
+        crate::proto::AttentionShownAs::Banner => muster_daemon_proto::ShownAs::Banner,
+        crate::proto::AttentionShownAs::Notification => muster_daemon_proto::ShownAs::Notification,
+        crate::proto::AttentionShownAs::Unspecified => muster_daemon_proto::ShownAs::Unspecified,
+    };
+    let daemon = DaemonId::new(&shown.daemon_id);
+    let session = poison::lock(&SESSION, "session");
+    if let Some(backend) = session.backends.get(&daemon) {
+        backend.follower.shown(muster_daemon_proto::Shown {
+            about: Some(about),
+            shown_as: shown_as.into(),
+            why: shown.why.clone(),
+        });
+    }
+}
+
 /// The window gained or lost the OS's focus.
 ///
 /// The one thing about attention no daemon can tell the core and no core can observe. What
@@ -7099,7 +7138,7 @@ fn announce_presentation(window: &WindowName, presentation: Presentation) {
 /// re-announced and reported to their daemons - an agent-state change costs that change
 /// rather than a walk of every pane (`architecture.md`, fast is a feature).
 pub(crate) fn window_focused(window: WindowId, focused: bool) {
-    let (noticed, focus) = {
+    let (noticed, focus, in_front) = {
         let mut session = poison::lock(&SESSION, "session");
         log::info(
             "window.focus",
@@ -7132,8 +7171,9 @@ pub(crate) fn window_focused(window: WindowId, focused: bool) {
         noticed.withdrawn.extend(focusing.withdrawn);
         session.report_seen(&noticed.reported);
         told.extend(session.pane_focus.window_focused(focused));
-        (noticed, session.focus_reports(told))
+        (noticed, session.focus_reports(told), session.attention.focused())
     };
+    crate::presence::in_front(in_front);
     tell_focus(focus);
     for pane in &noticed.settled {
         announce_state(pane);

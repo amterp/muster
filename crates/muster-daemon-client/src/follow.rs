@@ -21,6 +21,7 @@ use muster_core::fields;
 use muster_core::input::NotSent;
 use muster_core::mirror::backend::PaneId;
 use muster_core::mirror::{BackendEvent, Change, Mirror};
+use muster_core::presence::{self, Report};
 use muster_core::reconnect::Attempts;
 use muster_daemon_proto::{self as proto, answer};
 
@@ -58,6 +59,24 @@ pub enum Notice {
     Reconnected,
 }
 
+/// Where a follower reads what it reports of the person at the desk, at every connect and every
+/// heartbeat ([`presence::HEARTBEAT`]): the app's one account of them, shared by every daemon it
+/// attends.
+#[derive(Clone)]
+pub struct PresenceSource(Arc<dyn Fn() -> Report + Send + Sync>);
+
+impl PresenceSource {
+    pub fn new(read: impl Fn() -> Report + Send + Sync + 'static) -> PresenceSource {
+        PresenceSource(Arc::new(read))
+    }
+}
+
+impl std::fmt::Debug for PresenceSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PresenceSource")
+    }
+}
+
 /// What to follow, and how to say who is following it.
 #[derive(Debug, Clone)]
 pub struct Following {
@@ -86,6 +105,8 @@ pub struct Connection {
     /// `settings` says it has: a daemon partway through a handoff refuses every change, and a
     /// handoff that fails keeps this connection, so no reconnect puts it right.
     settings_sent: Mutex<Vec<Pending>>,
+    /// What to report of the person at the desk, for a daemon this window attends.
+    presence: Mutex<Option<PresenceSource>>,
     stopping: AtomicBool,
     /// Which connection is current. A reader ending after its connection was replaced says
     /// nothing about the one that replaced it.
@@ -228,6 +249,32 @@ impl Follower {
             );
         }
         true
+    }
+
+    /// Reports the person at the desk to this daemon from `source`, now and at every connect and
+    /// heartbeat after, for a daemon on the machine the app runs on: the human is homed there
+    /// (MIP-4, section 11).
+    pub fn report_presence_from(&self, source: PresenceSource) {
+        *lock(&self.connection.presence) = Some(source);
+        self.report_presence_now();
+    }
+
+    /// Reports the person at the desk now, rather than at the next heartbeat, if connected.
+    pub fn report_presence_now(&self) {
+        if let Some(control) = self.connection.control() {
+            send_presence(&self.connection, &control);
+        }
+    }
+
+    /// Tells the daemon the app showed the human something, if connected and the daemon keeps
+    /// what waits on the human. Not held for a later connection: it is information, and late
+    /// it would be wrong.
+    pub fn shown(&self, shown: proto::Shown) {
+        if let Some(control) = self.connection.control()
+            && speaks_attention(&control)
+        {
+            drop(control.shown(shown));
+        }
     }
 
     /// Reads a group as the human, who is looking at its conversation, and says whether it was
@@ -431,6 +478,7 @@ fn connect(
     if let Some(settings) = settings {
         *lock(&connection.settings_sent) = send_settings(&control, None, &settings);
     }
+    send_presence(connection, &control);
     // At every connect, a reconnect after a handoff included: the daemon keeps its panes across
     // an update of the app, and this is how the rules the new app carries reach them. The daemon
     // reads its override directory again at the same moment, and changes nothing in a pane
@@ -518,6 +566,11 @@ fn hold(following: &Following, connection: &Arc<Connection>) -> String {
     loop {
         match wait_for_end(connection) {
             Woke::Ended(why) => return why,
+            Woke::Heartbeat => {
+                if let Some(control) = connection.control() {
+                    send_presence(connection, &control);
+                }
+            }
             Woke::InputClosed => match open_input(following, connection) {
                 Ok(input) => {
                     *lock(&connection.input) = Some(input);
@@ -537,6 +590,8 @@ fn hold(following: &Following, connection: &Arc<Connection>) -> String {
 enum Woke {
     Ended(String),
     InputClosed,
+    /// A heartbeat has gone by with nothing else to wake for.
+    Heartbeat,
 }
 
 fn wait_for_end(connection: &Connection) -> Woke {
@@ -548,8 +603,37 @@ fn wait_for_end(connection: &Connection) -> Woke {
         if connection.input_closed.swap(false, Ordering::Relaxed) {
             return Woke::InputClosed;
         }
-        ended = connection.wake.wait(ended).unwrap_or_else(PoisonError::into_inner);
+        let (guard, waited) = connection
+            .wake
+            .wait_timeout(ended, presence::HEARTBEAT)
+            .unwrap_or_else(PoisonError::into_inner);
+        ended = guard;
+        if waited.timed_out() {
+            return Woke::Heartbeat;
+        }
     }
+}
+
+/// Reports the person at the desk on `control`, for a daemon this window attends that keeps
+/// their presence; nothing for any other.
+fn send_presence(connection: &Connection, control: &Control) {
+    let Some(source) = lock(&connection.presence).clone() else { return };
+    if !speaks_attention(control) {
+        return;
+    }
+    let report = (source.0)();
+    drop(control.report_presence(proto::ReportPresence {
+        in_front: report.in_front,
+        last_input_ms: report.last_input_ms,
+        lasts_ms: u64::try_from(presence::LASTS.as_millis()).unwrap_or(u64::MAX),
+    }));
+}
+
+/// Whether the daemon keeps what waits on the human and their presence. An older one refuses
+/// both requests, so nothing is sent it.
+fn speaks_attention(control: &Control) -> bool {
+    let speaks = control.welcome().protocol.unwrap_or_default();
+    speaks.minor >= muster_daemon_proto::version::ATTENTION
 }
 
 fn sleep_unless_stopping(connection: &Connection, wait: Duration) {

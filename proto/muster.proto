@@ -108,6 +108,7 @@ message Request {
     OpenFold open_fold = 97;
     LeaveConversation leave_conversation = 98;
     ShowConversation show_conversation = 99;
+    AttentionShown attention_shown = 102;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -908,6 +909,28 @@ message AdoptOldState {
 // cursor and already travels on the view.
 message WindowFocus {
   bool focused = 1;
+}
+
+// The shell showed the person something that asks for them: Muster's own banner for a message,
+// or the operating system's notification. The core tells the daemon holding what asked, which
+// passes it on to its clients as information they may use (MIP-10, section 4); nothing depends on
+// it. Answered Ok whatever the daemon makes of it.
+message AttentionShown {
+  string daemon_id = 1;
+  // The pane that asked, for anything but a message.
+  string pane_id = 2;
+  // The group a message waits in, for a message.
+  string group = 3;
+  AttentionShownAs shown_as = 4;
+  // What it was shown for, as the core named it: "blocked", "stuck", "done", "notified",
+  // "message".
+  string why = 5;
+}
+
+enum AttentionShownAs {
+  ATTENTION_SHOWN_AS_UNSPECIFIED = 0;
+  ATTENTION_SHOWN_AS_BANNER = 1;
+  ATTENTION_SHOWN_AS_NOTIFICATION = 2;
 }
 
 // Splits a pane, putting the new one beside or below it.

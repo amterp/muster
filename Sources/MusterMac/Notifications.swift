@@ -236,8 +236,14 @@ public final class PaneNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     // No trigger: posted now. A request with the same identifier replaces the one on screen,
     // which is what a pane that asks twice should do.
+    let why = group.isEmpty ? state : "message"
     center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { error in
-      guard let error else { return }
+      guard let error else {
+        Task { @MainActor in
+          Core.shown(daemonID: daemon, paneID: pane, group: group, as: .notification, why: why)
+        }
+        return
+      }
       Task { @MainActor in
         Core.warn(
           "notifications.post.failed",

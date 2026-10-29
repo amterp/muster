@@ -58,6 +58,9 @@ final class BannerBoard: ObservableObject {
     for banner in changed.shown {
       let key = Self.key(daemon: banner.daemonID, group: banner.group)
       let was = before[key]
+      if was?.seq != banner.seq {
+        core.shown(banner.daemonID, banner.group)
+      }
       switch banner.sent.state {
       case .posted:
         replies[key] = nil
@@ -162,13 +165,20 @@ struct BannerRequests {
   var hold: @MainActor (String, String, UInt64, Bool) -> Void
   var pick: @MainActor (String, String, UInt64, UInt32?) -> Void
   var open: @MainActor (String, String) -> Void
+  /// A banner came up on a message it was not showing.
+  var shown: @MainActor (String, String) -> Void
 
   static let core = BannerRequests(
     reply: { Core.replyToBanner(daemonID: $0, group: $1, seq: $2, body: $3) },
     dismiss: { Core.dismissBanner(daemonID: $0, group: $1, seq: $2) },
     hold: { Core.holdBanner(daemonID: $0, group: $1, seq: $2, held: $3) },
     pick: { Core.pickBannerAnswer(daemonID: $0, group: $1, seq: $2, answer: $3) },
-    open: { Core.openConversation(daemonID: $0, group: $1) })
+    open: { Core.openConversation(daemonID: $0, group: $1) },
+    shown: { daemon, group in
+      // Only drawn while a window draws banners; otherwise the system's notification says it.
+      guard MessageNotification.bannerOnScreen else { return }
+      Core.shown(daemonID: daemon, group: group, as: .banner, why: "message")
+    })
 }
 
 /// When a message was posted, as a banner says it: the time of day with seconds, the date in

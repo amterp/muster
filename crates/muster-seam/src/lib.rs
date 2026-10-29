@@ -23,6 +23,7 @@ pub mod ffi;
 mod handler;
 mod holding;
 mod peering;
+mod presence;
 mod session;
 pub mod testing;
 mod watch;

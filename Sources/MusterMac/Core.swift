@@ -1500,6 +1500,23 @@ public enum Core {
     send(setWindowFrame(rect: rect, fullScreen: fullScreen))
   }
 
+  /// Tells the daemon holding what asked that the person was shown it: Muster's own banner or the
+  /// system's notification, about a pane or, with `group`, a message (MIP-10, section 4).
+  static func shown(
+    daemonID: String, paneID: String = "", group: String = "", as shownAs: Muster_AttentionShownAs,
+    why: String
+  ) {
+    var shown = Muster_AttentionShown()
+    shown.daemonID = daemonID
+    shown.paneID = paneID
+    shown.group = group
+    shown.shownAs = shownAs
+    shown.why = why
+    var request = Muster_Request()
+    request.attentionShown = shown
+    send(request)
+  }
+
   public static func windowFocused(_ focused: Bool) {
     var focus = Muster_WindowFocus()
     focus.focused = focused
@@ -1635,6 +1652,7 @@ public enum Core {
     case .pickBannerAnswer: return "pick_banner_answer"
     case .pickConversationAnswer: return "pick_conversation_answer"
     case .showConversation: return "show_conversation"
+    case .attentionShown: return "attention_shown"
     case .leaveConversation: return "leave_conversation"
     case .openFold: return "open_fold"
     case .showWholeMessage: return "show_whole_message"

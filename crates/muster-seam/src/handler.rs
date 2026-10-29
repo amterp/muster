@@ -141,6 +141,10 @@ fn handle(mut request: Request, origin: Origin) -> Response {
         }
     }
 
+    if origin == Origin::Window && crate::presence::is_use(&payload) {
+        crate::presence::used();
+    }
+
     let leaves = leaves_the_conversation(&payload, origin);
     let goes_to_a_tab = goes_to_a_tab(&payload);
     let response = route(resolved.to, payload);
@@ -206,6 +210,7 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
             | request::Payload::ReadBindings(_)
             | request::Payload::ReadAppearance(_)
             | request::Payload::ReportFontFamily(_)
+            | request::Payload::AttentionShown(_)
             | request::Payload::ReloadConfig(_)
             | request::Payload::ReadDaemons(_)
             | request::Payload::Quitting(_)
@@ -350,6 +355,10 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         }
         request::Payload::WindowFocus(focus) => {
             session::window_focused(window, focus.focused);
+            Response::ok()
+        }
+        request::Payload::AttentionShown(shown) => {
+            session::attention_shown(&shown);
             Response::ok()
         }
         request::Payload::FocusRelative(step) => focus_relative(window, &step.direction),

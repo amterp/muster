@@ -358,6 +358,16 @@ impl Control {
         }))
     }
 
+    /// Says what a window attending this daemon knows of the person at the desk (MIP-10,
+    /// section 4).
+    pub fn report_presence(&self, report: proto::ReportPresence) -> Pending {
+        self.ask(session(session_request::Request::ReportPresence(report)))
+    }
+
+    pub fn shown(&self, shown: proto::Shown) -> Pending {
+        self.ask(session(session_request::Request::Shown(shown)))
+    }
+
     /// Reads a group's messages as the human, which is what the human looking at the group's
     /// conversation is: the daemon then says nothing waits for them there (MIP-4, section 10).
     pub fn read_as_human(&self, group: &str) -> Pending {
