@@ -714,13 +714,15 @@ enum Change {
   CHANGE_RESUMED = 3;
 }
 
-// A group appeared: made here, or a replica first heard of from its home.
+// A group appeared: made here, or a replica first heard of from its home. Its `latest` is the
+// number before its first entry, and a Logged event follows for each entry it already holds.
 message GroupMade {
   Group group = 1;
 }
 
-// A group's members, policy, home or `held_after` changed. Replaces what the client held of it,
-// but for `latest` and `human_place`, which Logged and Unread events move.
+// A group's members, policy, paused or home changed. Replaces what the client held of it, but
+// for `latest` and `human_place`, which Logged and Unread events move. A group made again under
+// a deleted group's name comes as GroupDeleted, then GroupMade.
 message GroupChanged {
   Group group = 1;
 }

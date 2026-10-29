@@ -68,7 +68,7 @@ impl Published {
             let kept = match self.groups.remove(&summary.name) {
                 Some(kept) if replaced(&kept.group, &group) => {
                     deleted(api, kept);
-                    made(api, &group)
+                    made(api, service, group)
                 }
                 Some(mut kept) => {
                     logged(api, service, &summary.name, kept.group.latest);
@@ -83,7 +83,7 @@ impl Published {
                     kept.group = group;
                     kept
                 }
-                None => made(api, &group),
+                None => made(api, service, group),
             };
             let unread = unread(api, service, &summary, place, kept.unread);
             self.groups.insert(summary.name, Kept { unread, ..kept });
@@ -171,16 +171,23 @@ fn replaced(before: &api::Group, now: &api::Group) -> bool {
 
 /// Whether two states of a group differ only in what Logged and Unread events move.
 fn same_but_where_read(before: &api::Group, now: &api::Group) -> bool {
-    let unmoved = |group: &api::Group| api::Group { latest: 0, human_place: None, ..group.clone() };
-    unmoved(before) == unmoved(now)
+    before.name == now.name
+        && before.home == now.home
+        && before.members == now.members
+        && before.policy == now.policy
+        && before.paused == now.paused
+        && before.held_after == now.held_after
 }
 
-fn made(api: &Api, group: &api::Group) -> Kept {
-    let made = group.clone();
+/// Tells the subscribers of a group that appeared, then of each of its entries, so that a post
+/// that made its group arrives with its body like any other.
+fn made<S: Store>(api: &Api, service: &Messaging<S>, group: api::Group) -> Kept {
+    let before_its_entries = api::Group { latest: group.held_after, ..group.clone() };
     api.publish(api::Topic::Messages, None, || {
-        api::event::Event::GroupMade(api::GroupMade { group: Some(made) })
+        api::event::Event::GroupMade(api::GroupMade { group: Some(before_its_entries) })
     });
-    Kept { group: group.clone(), unread: None }
+    logged(api, service, &group.name, group.held_after);
+    Kept { group, unread: None }
 }
 
 /// Tells the subscribers `kept` is gone, and that nothing waits for the human there.
@@ -199,7 +206,8 @@ fn deleted(api: &Api, kept: Kept) {
 /// Publishes each entry of `group` after `after`.
 fn logged<S: Store>(api: &Api, service: &Messaging<S>, group: &str, after: u64) {
     let entries = service.entries(group).unwrap_or_default();
-    for entry in entries.iter().filter(|entry| entry.seq > after) {
+    let new = entries.partition_point(|entry| entry.seq <= after);
+    for entry in &entries[new..] {
         api.publish(api::Topic::Messages, None, || {
             api::event::Event::Logged(api::Logged {
                 group: group.to_string(),

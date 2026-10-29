@@ -109,11 +109,14 @@ fn each_change_to_a_group_is_an_event() {
         _ => None,
     });
     assert_eq!((made.name.as_str(), made.members.as_slice()), ("g", &["a".to_string()][..]));
+    let first = [next_logged(&mut program), next_logged(&mut program)];
+    assert_eq!(numbers(&first), [made.latest + 1, made.latest + 2], "the entries it was made with");
+    assert!(matches!(first[0].what, Some(api::entry::What::Made(_))), "{first:?}");
 
     post(&mut control, &named("a"), said("g", "hello"));
     let posted = next_logged(&mut program);
     assert_eq!(body(&posted), Some("hello"), "a post comes with its body");
-    assert_eq!(posted.number, made.latest + 1);
+    assert_eq!(posted.number, made.latest + 3);
 
     join(&mut control, &named("b"), "b", "g");
     let joined = next_logged(&mut program);
@@ -305,4 +308,35 @@ fn a_question_in_a_page_says_which_post_answered_it() {
         _ => None,
     });
     assert_eq!(answered_by, Some(Some(latest + 1)));
+}
+
+/// A post to the human that makes its own group arrives as a Logged event with its body, after
+/// the group's own entries, like a post to a group that was already there.
+#[test]
+fn a_post_that_makes_its_group_arrives_with_its_body() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let joined =
+        Asked::Join(msg_request::Join { name: Some("a".to_string()), group: None, pull: false });
+    expect(&mut control, msg(&named("a"), joined), DONE);
+    let mut program = daemon.api();
+    program.subscribe(&[api::Topic::Messages]);
+
+    let to_the_human = msg_request::Post {
+        to: vec!["@human".to_string()],
+        body: "need input".to_string(),
+        ..Default::default()
+    };
+    post(&mut control, &named("a"), to_the_human);
+    let made = next(&mut program, "the group the post made", |event| match event {
+        api::event::Event::GroupMade(made) => made.group,
+        _ => None,
+    });
+    let mut entries = Vec::new();
+    while entries.last().and_then(body).is_none() {
+        entries.push(next_logged(&mut program));
+    }
+    let expected: Vec<u64> = (made.latest + 1..made.latest + 1 + entries.len() as u64).collect();
+    assert_eq!(numbers(&entries), expected, "every entry from the group's first, in order");
+    assert_eq!(entries.last().and_then(body), Some("need input"));
 }
