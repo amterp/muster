@@ -495,10 +495,31 @@ fn attend(sessions: &Sessions, attending: bool) -> String {
     if attending { "attended" } else { "unattended" }.to_string()
 }
 
+/// The messages listed as waiting for the human in a group are the ones its notice counts, so a
+/// window's notice and an API client's list of what waits never disagree.
+fn agrees_with_what_waits(service: &Messaging<Memory>, notice: &Notice) {
+    let waiting = service.human_waiting(&notice.group);
+    let count = |pick: fn(&muster_msg::Waiting) -> bool| {
+        waiting.iter().filter(|each| pick(each)).count() as u64
+    };
+    let listed = (
+        waiting.len() as u64,
+        waiting.first().map_or(0, |first| first.seq),
+        waiting.last().map_or(0, |last| last.seq),
+        count(|each| each.addressed),
+        count(|each| each.urgent),
+    );
+    let counted = (notice.count, notice.first, notice.last, notice.to_you, notice.urgent);
+    assert_eq!(listed, counted, "in {}: listed {waiting:?}, counted {notice:?}", notice.group);
+}
+
 /// What the windows would be told waits for the human: the groups where anything does, of
 /// those the human is in.
 fn waits_for_the_human(service: &Messaging<Memory>) -> String {
     let mut notices = service.human_notices();
+    for notice in &notices {
+        agrees_with_what_waits(service, notice);
+    }
     notices.retain(|notice| notice.count > 0);
     if notices.is_empty() {
         return "nothing waits for @human".to_string();

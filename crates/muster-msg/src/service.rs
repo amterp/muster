@@ -492,6 +492,24 @@ pub struct GroupSummary {
     pub name: String,
     pub members: Vec<String>,
     pub policy: Policy,
+    /// The machine the group is kept on, when this is a replica of it.
+    pub home: Option<String>,
+    /// The number of its newest entry.
+    pub latest: u64,
+    /// The last number a group deleted under the same name issued, which this one numbers on
+    /// from: no entry at or below it is this group's.
+    pub held_after: u64,
+}
+
+/// A message waiting for the human to read it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Waiting {
+    pub seq: u64,
+    pub at_ms: u64,
+    pub author: String,
+    /// It names the human among its addressees, rather than ringing them by the group's policy.
+    pub addressed: bool,
+    pub urgent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1448,8 +1466,22 @@ impl<S: Store> Messaging<S> {
                 name: name.clone(),
                 members: group.members.iter().cloned().collect(),
                 policy: group.policy.clone(),
+                home: group.home.clone(),
+                latest: group.head(),
+                held_after: group.after,
             })
             .collect()
+    }
+
+    /// A group's log as this machine holds it, named as [`Self::groups`] names it. Reading it
+    /// moves nobody's place.
+    pub fn entries(&self, group: &str) -> Option<&[Entry]> {
+        self.groups.get(group).map(|kept| kept.log.as_slice())
+    }
+
+    /// Whether `group` names a group deleted here and not made again.
+    pub fn deleted(&self, group: &str) -> bool {
+        !self.groups.contains_key(group) && self.retired.contains_key(group)
     }
 
     /// A group's policy, while this machine keeps or holds a copy of the group.
@@ -3007,20 +3039,9 @@ impl<S: Store> Messaging<S> {
 
     /// [`Self::notice`], read under `policy` rather than the group's own.
     fn notice_under(&self, name: &str, group: &str, policy: &Policy) -> Option<Notice> {
-        let kept = self.groups.get(group)?;
-        let (cursor, until) = self.span(name, group);
-        // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
-        if policy.paused && name != HUMAN {
-            return None;
-        }
         let mut notice: Option<Notice> = None;
-        for entry in kept.log.iter().filter(|entry| entry.seq > cursor && entry.seq < until) {
-            let What::Message { author, to, urgent, .. } = &entry.what else { continue };
-            let addressed = to.iter().any(|addressee| addressee == name);
-            let wakes = if to.is_empty() { policy.rings(author, name) } else { addressed };
-            if author == name || !wakes {
-                continue;
-            }
+        for (entry, addressed) in self.ringing_under(name, group, policy) {
+            let What::Message { author, urgent, .. } = &entry.what else { continue };
             let notice = notice.get_or_insert_with(|| Notice {
                 group: group.to_string(),
                 first: entry.seq,
@@ -3042,6 +3063,31 @@ impl<S: Store> Messaging<S> {
             }
         }
         notice
+    }
+
+    /// The messages in `group` after `name`'s place that would wake it under `policy`, each with
+    /// whether it names `name` among its addressees: what a notice counts, and what waits for
+    /// the human.
+    fn ringing_under<'a>(
+        &'a self,
+        name: &'a str,
+        group: &str,
+        policy: &'a Policy,
+    ) -> impl Iterator<Item = (&'a Entry, bool)> + 'a {
+        let (cursor, until) = self.span(name, group);
+        // A paused group wakes nobody but the human, however it would (MIP-4, section 8).
+        let log = match self.groups.get(group) {
+            Some(kept) if !(policy.paused && name != HUMAN) => kept.log.as_slice(),
+            _ => &[],
+        };
+        log.iter().filter(move |entry| entry.seq > cursor && entry.seq < until).filter_map(
+            move |entry| {
+                let What::Message { author, to, .. } = &entry.what else { return None };
+                let addressed = to.iter().any(|addressee| addressee == name);
+                let wakes = if to.is_empty() { policy.rings(author, name) } else { addressed };
+                (author != name && wakes).then_some((entry, addressed))
+            },
+        )
     }
 
     /// Reaches a member a new message is for: as [`Self::reach`] does, unless the group is
@@ -3210,6 +3256,32 @@ impl<S: Store> Messaging<S> {
             from: Vec::new(),
             again: false,
         })
+    }
+
+    /// Each message waiting for this machine's human in `group`: those [`Self::human_notice`]
+    /// counts, oldest first.
+    pub fn human_waiting(&self, group: &str) -> Vec<Waiting> {
+        let Some(kept) = self.groups.get(group).filter(|kept| kept.members.contains(HUMAN)) else {
+            return Vec::new();
+        };
+        self.ringing_under(HUMAN, group, &kept.policy)
+            .filter_map(|(entry, addressed)| match &entry.what {
+                What::Message { author, urgent, .. } => Some(Waiting {
+                    seq: entry.seq,
+                    at_ms: entry.at_ms,
+                    author: author.clone(),
+                    addressed,
+                    urgent: *urgent,
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The number of the last entry this machine's human has read in `group`, while they are in
+    /// it.
+    pub fn human_place(&self, group: &str) -> Option<u64> {
+        self.human_is_in(group).then(|| self.cursor(HUMAN, group))
     }
 
     /// What waits for the human in each group it is in, a count of 0 where nothing does, for a
