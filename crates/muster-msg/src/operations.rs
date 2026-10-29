@@ -115,6 +115,11 @@ impl Operations {
         true
     }
 
+    /// `operation` was recorded as sent and then not sent after all.
+    pub(crate) fn unsend(&mut self, operation: &Operation) {
+        self.sent.remove(&(operation.client.clone(), operation.id.clone()));
+    }
+
     /// The posts made in `group` that a retry may still ask about, for its retired log to keep.
     pub(crate) fn of_group(&self, group: &str, now_ms: u64) -> Vec<Operated> {
         self.posted

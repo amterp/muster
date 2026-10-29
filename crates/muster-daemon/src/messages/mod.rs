@@ -279,6 +279,16 @@ impl Messages {
         if changes && self.handing_over {
             return refused_as("", "handing_over", HANDING_OVER);
         }
+        // An agent acknowledging would move the human's place, believing it read its own.
+        if matches!(asked, Asked::Ack(_)) && !self.service.is_person(caller, panes) {
+            let read = messaging::command(READ, "");
+            let reason = format!(
+                "`ack` marks the human's messages read, and this came from an agent, so nothing \
+                 was acknowledged. An agent reads its own with `{read}`; a person's shell, or \
+                 `--as @human`, acknowledges the human's"
+            );
+            return refused_as("", "not_the_human", &reason);
+        }
         let result = match asked {
             Asked::Who(who) => {
                 self.service.who(who.group.as_deref(), panes).and_then(|mut members| {

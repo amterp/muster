@@ -831,7 +831,16 @@ impl<S: Store> Messaging<S> {
         // Kept before it is sent, so a retry after a restart goes where this did, whatever
         // groups are here by then. Through a power loss too: lost, the record would let a retry
         // post again where the home already has it.
-        if first { self.save_durably() } else { self.save() }?;
+        if !first {
+            self.save()?;
+        } else if let Err(refusal) = self.save_durably() {
+            // Not sent, so not remembered: a retry routes afresh rather than going on a record
+            // nothing kept.
+            if let Some(operation) = draft.operation {
+                self.operations.unsend(operation);
+            }
+            return Err(refusal);
+        }
         Ok(Route::Away(away))
     }
 

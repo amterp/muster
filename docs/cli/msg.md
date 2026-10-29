@@ -548,8 +548,8 @@ shows the program's name beside the author, `Alex (@human) via foreman`, and `yo
 the window, with `via` in `--json`. A question it answers comes down from the banner without the
 group being read, as one answered by anybody else it was asked of does. `ack G --through N` is
 what such a program sends once the human has seen #N: it moves the human's place in G there, so
-what came after stays unread at the desk, and a place already past #N stays where it is. It
-always acts for the human, whoever runs it.
+what came after stays unread at the desk, and a place already past #N stays where it is. It is
+the human's alone: an agent running it is refused, since it reads its own with `read`.
 
 ## Every verb
 

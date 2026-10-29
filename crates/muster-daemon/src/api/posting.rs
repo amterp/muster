@@ -172,7 +172,8 @@ fn refusal_of(code: &str) -> Result<api::Refusal, api::Outcome> {
         }
         "already_answered" => api::Refusal::Answered,
         "operation_reused" => api::Refusal::OperationReused,
-        "handing_over" => api::Refusal::Unavailable,
+        // A replica waiting to be fetched again: nothing was sent, and it is soon over.
+        "handing_over" | "unchecked" => api::Refusal::Unavailable,
         "urgent_unsupported" | "answers_unsupported" | "operations_unsupported" => {
             api::Refusal::Unsupported
         }

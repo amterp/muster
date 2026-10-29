@@ -1109,6 +1109,28 @@ fn a_programs_retry_goes_where_its_post_went_and_is_answered_from_the_home() {
     assert!(wire.laptop.groups().is_empty(), "{:?}", wire.laptop.groups());
 }
 
+/// A program's post whose route could not be kept is not sent, and nothing remembers sending it:
+/// a retry routes afresh once the store takes it.
+#[test]
+fn a_programs_post_whose_route_could_not_be_kept_is_not_remembered() {
+    let mut wire = Wire::new();
+    wire.join(Side::Devenv, &session("critic"), Some("critic"), "review");
+    wire.join(Side::Laptop, &human(), None, "review");
+    let operation = Operation { client: "foreman".to_string(), id: "x".to_string(), asked: 7 };
+    let to = ["critic@devenv".to_string()];
+    let draft = Draft { to: &to, body: "ship it", operation: Some(&operation), ..Draft::default() };
+
+    wire.laptop.store_mut().failing_saves = true;
+    let (laptop, sessions) = wire.split(Side::Laptop);
+    let refused = laptop.route_post(&human(), &draft, sessions);
+    assert!(matches!(refused, Err(Refusal::Store { .. })), "{refused:?}");
+    assert_eq!(wire.laptop.repeat(&operation, 0), Ok(None));
+
+    wire.laptop.store_mut().failing_saves = false;
+    let posted = wire.post_draft(Side::Laptop, &human(), draft).unwrap();
+    assert!(!posted.already);
+}
+
 /// A laptop human in a group kept on the devenv is woken by the laptop, through the same
 /// reach a post made on the laptop would use: the human's home is where the app runs.
 #[test]

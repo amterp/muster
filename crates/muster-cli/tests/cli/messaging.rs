@@ -1128,6 +1128,13 @@ fn ack_marks_the_humans_messages_read_through_one_message() {
     assert_eq!(said(&shown).lines().next(), Some("posted #4 to review"), "{}", complained(&shown));
     muster(&daemon, &["msg", "--as", "a", "post", "--to", "@human", "the eleventh"]);
 
+    let by_an_agent = muster(&daemon, &["msg", "--as", "a", "ack", "review", "--through", "4"]);
+    assert_eq!(by_an_agent.status.code(), Some(1));
+    assert!(
+        complained(&by_an_agent).contains("came from an agent"),
+        "{}",
+        complained(&by_an_agent)
+    );
     let acked = ok(&muster(&daemon, &["msg", "ack", "review", "--through", "4"]));
     assert_eq!(acked, "acknowledged review through #4");
     let again = ok(&muster(&daemon, &["msg", "ack", "review", "--through", "3"]));
