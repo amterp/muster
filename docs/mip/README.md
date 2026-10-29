@@ -29,4 +29,4 @@ corrections get a superseding MIP, and the History section records the transitio
 | [MIP-7](0007-helpers.md) | An agent's helpers - panes an agent makes as its own, kept out of the way | Product | Accepted |
 | [MIP-8](0008-panes-across-machines.md) | Panes from any machine, anywhere in a tab | Architecture | Draft |
 | [MIP-9](0009-group-conversation.md) | A group's conversation and a banner, drawn by Muster for the human | Product | Implemented |
-| [MIP-10](0010-api-for-other-tools.md) | An API for other tools, served by the daemon | Architecture | Draft |
+| [MIP-10](0010-api-for-other-tools.md) | An API for other tools, served by the daemon | Architecture | Accepted |

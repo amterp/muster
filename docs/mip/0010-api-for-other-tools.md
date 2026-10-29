@@ -1,10 +1,10 @@
 ---
 mip: 10
 title: An API for other tools, served by the daemon
-status: Draft
+status: Accepted
 kind: Architecture
 created: 2026-10-28
-decided:
+decided: 2026-10-28
 supersedes:
 superseded-by:
 related: 3, 4, 5, 7, 9
@@ -37,8 +37,8 @@ the first cases, not the scope.
 The API is local. It listens only on the daemon's socket, which only the user can open, so it
 grants nothing that a program running as the user cannot already do through `muster`. This
 reverses the non-goal in `AGENTS.md` that the daemon "has no interface of its own", and builds the
-API that the desideratum "AI-native surface" already names beside the GUI and the CLI. Five
-questions for amterp end the document.
+API that the desideratum "AI-native surface" already names beside the GUI and the CLI. amterp
+decided its five questions on 2026-10-28, all as recommended.
 
 ## Context / Motivation
 
@@ -125,7 +125,11 @@ daemon's internal protocol: a major and a minor, a client served only by its own
 every change, and `proto/muster_api.v1.baseline.proto` with a test that fails when the schema
 stops reading it.
 
-That test protects decoding, and a public API has to promise behavior as well. Within a major:
+That test protects decoding, and a public API has to promise behavior as well. The promise
+starts at API 1.0, which ships no earlier than Muster's own 1.0. Until then the API is 0.x and may
+break whenever there is a reason to: each break raises the version, says so in the release notes,
+and updates the recorded conversations below in the same change. The aim is still to change it
+rarely. From 1.0, within a major:
 
 - A request that is served keeps being served, and a field it populated stays populated, with the
   same meaning, units and default. A field that should go is marked deprecated and still filled
@@ -331,11 +335,13 @@ This needs three things the daemon does not do today:
   members, deletion, and catching up after a reconnect, with each copy saying whether it is
   behind. Following makes nobody a member, and a group's home stays the only daemon that writes
   its log.
-- **A link that does not need a window.** Today the app dials, and a link lasts as long as the
-  app's request for it. For a client to see every machine with no window open, the daemon keeps
-  the list of machines the app last gave it and holds those links itself. This is MIP-4's decision
-  4 (b), and it has to settle more than MIP-4's two unmeasured questions (whether a daemon started
-  through Launch Services reaches the user's ssh agent, and what happens when ssh needs an
+- **A link that does not need a window.** Today the app dials, and a link lasts as long as the app's
+  request for it. amterp's aim is a daemon that runs, starts and links on its own, so that Foreman
+  works with Muster closed; the daemon already runs without the app, and a `muster msg` verb starts
+  it when nothing is listening. For a client to see every machine with no window open, the daemon
+  keeps the list of machines the app last gave it and holds those links itself. This is MIP-4's
+  decision 4 (b), and it has to settle more than MIP-4's two unmeasured questions (whether a daemon
+  started through Launch Services reaches the user's ssh agent, and what happens when ssh needs an
   interactive login):
 
   - who owns each tunnel while an app is open, and how that passes to the daemon when the app
@@ -450,8 +456,8 @@ and a phone app, which are Foreman's job. Muster stays on the machine.
 ## Consequences & Trade-offs
 
 - Muster keeps a second contract, for programs it does not ship, and it grows with the CLI: a new
-  verb is also a new request. Each change to the API is a deliberate minor, and an incompatible one
-  is a new major.
+  verb is also a new request. Before 1.0 a break costs a version and a release note; from 1.0 an
+  incompatible change is a new major.
 - The daemon does more: it relays another machine's panes and groups, remembers operation ids, and
   at stage 4 holds ssh links. A bug there now reaches outside clients as well as the window.
 - The API's events are per state change and per post, never per byte of pane output, and message
@@ -494,6 +500,8 @@ client restarting while something waits on the human; and Muster's app not runni
 Recommendation: (a). It is a second schema to keep, but (b) makes every internal minor a question
 about outside clients, which is the coupling this MIP exists to remove.
 
+Decided 2026-10-28: (a).
+
 **Question B. Which messages a client reads.**
 
 - (a) Every group on every linked machine, followed without joining (sections 4 and 6).
@@ -503,6 +511,9 @@ Recommendation: (a). It is what was asked ("all the various Muster messages goin
 the logs are already files the user can read. (b) would hide the agents' own conversations, which
 Foreman needs to show what a team is doing.
 
+Decided 2026-10-28: (a). amterp: "There's no reason to hide this stuff ... the client can decide
+what they want to do, it's not like it's secret information."
+
 **Question C. Whether stage 3 ships before the daemon holds its own links.**
 
 - (a) Yes: a client sees other machines only while a window is open, until stage 4.
@@ -510,6 +521,9 @@ Foreman needs to show what a team is doing.
 
 Recommendation: (a). The home Mac usually runs Muster, so Foreman loses little, and stage 4 waits on
 measurement that may take a while.
+
+Decided 2026-10-28: (a), as a first step. The goal stays a daemon that runs, starts and links on its
+own, so Foreman works without Muster open; it is not needed on day one (section 6).
 
 **Question D. How a post a tool made for the human shows in the log.**
 
@@ -519,6 +533,8 @@ measurement that may take a while.
 Recommendation: (a). An agent that is told something it did not expect can see where it came from,
 and so can amterp reading the log later. It costs one field on a post.
 
+Decided 2026-10-28: (a).
+
 **Question E. Whether the CLI's `--json` gets a stability promise as well.**
 
 - (a) No: programs use the API, and the CLI's output stays free to change (section 8).
@@ -526,6 +542,10 @@ and so can amterp reading the log later. It costs one field on a post.
 
 Recommendation: (a). (b) holds still output written for agents, to spare two tools a migration
 their owner can do when he chooses.
+
+Decided 2026-10-28: (a). amterp: Muster is pre-1.0 and has no outside users, so neither the CLI nor
+the API should carry compatibility burden yet; breaking changes are fine with a reason, and the
+promises start at 1.0. Section 1 says how that applies to the API.
 
 ## Open Questions
 
@@ -556,3 +576,5 @@ their owner can do when he chooses.
   answers with operation ids, paged history and byte budgets, behavioral compatibility and
   per-option features, the lifecycle questions for daemon-held links, and an observer for a pane's
   output that cannot displace the window.
+- 2026-10-28 Accepted, with every decision as recommended. The API's compatibility promise starts at
+  API 1.0, no earlier than Muster's own 1.0 (question E). Nothing is built yet.
