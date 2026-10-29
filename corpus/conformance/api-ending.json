@@ -46,7 +46,7 @@
     },
     {
       "name": "a daemon stopping ends a subscription saying where it had got to",
-      "why": "An orderly stop ends every connection as STOPPING, with `reached`, the number of the last event written, so a client that comes back later knows what it had (the header, Ending).",
+      "why": "An orderly stop ends every connection as STOPPING, with `reached`, the number of the last event written, so a client that comes back later knows what it had (the header, Ending). A group made by an agent joining it is three events, a number nothing else on the daemon adds to, so `reached` is exact.",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -57,21 +57,24 @@
           },
           {
             "as": "a",
-            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
             "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
           },
-          {"pane": "p1", "made": true},
+          {"agent": "a", "joins": "g"},
           {
             "as": "a",
-            "read": 1,
-            "heard": [{"event": {"epoch": "$epoch", "number": "1", "source": "*", "paneAppeared": "*"}}]
+            "read": 3,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "1", "source": "*", "groupMade": "*"}},
+              {"event": {"epoch": "$epoch", "number": "2", "source": "*", "logged": "*"}},
+              {"event": {"epoch": "$epoch", "number": "3", "source": "*", "logged": "*"}}
+            ]
           },
           {"daemon": "restart"},
           {
             "as": "a",
             "read": 1,
-            "passing": {"event": "*"},
-            "heard": [{"ended": {"reason": "REASON_STOPPING", "epoch": "$epoch", "reached": "*", "detail": "*"}}]
+            "heard": [{"ended": {"reason": "REASON_STOPPING", "epoch": "$epoch", "reached": "3", "detail": "*"}}]
           }
         ]
       }
