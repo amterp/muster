@@ -90,7 +90,7 @@ fn the_conversations_a_release_shipped_stand_until_the_version_moves() {
         );
         return;
     }
-    let baseline = baseline_version();
+    let baseline = shipped_version(&directory);
     if (API.major, API.minor) != baseline {
         return;
     }
@@ -131,13 +131,23 @@ fn changed_since(shipped: &[Conformance], current: &Path) -> Vec<String> {
     changed
 }
 
-/// The version `muster_api.v<major>.baseline.proto` says it is: the one the last release shipped.
-fn baseline_version() -> (u32, u32) {
-    let file = format!("muster_api.v{}.baseline.proto", API.major);
-    let text = std::fs::read_to_string(muster_baseline::proto_dir().join(&file))
-        .unwrap_or_else(|error| panic!("{file} could not be read: {error}"));
-    muster_baseline::recorded_version(&text)
-        .unwrap_or_else(|| panic!("{file} does not say which version it is"))
+/// The version the copy in `directory` was shipped as, which its `VERSION` file says. Its own
+/// rather than the schema baseline's, which a release moves before its gate runs: judged by that,
+/// the last release's conversations would be held to the next release's version.
+fn shipped_version(directory: &Path) -> (u32, u32) {
+    let file = directory.join("VERSION");
+    let text = std::fs::read_to_string(&file).unwrap_or_else(|error| {
+        panic!(
+            "{} holds conversations and no VERSION saying which release shipped them ({error}); \
+             ./release writes both",
+            directory.display()
+        )
+    });
+    let version = text
+        .trim()
+        .split_once('.')
+        .and_then(|(major, minor)| Some((major.parse().ok()?, minor.parse().ok()?)));
+    version.unwrap_or_else(|| panic!("{} says {text:?}, not a major.minor", file.display()))
 }
 
 fn shipped(directory: &Path) -> Vec<Conformance> {

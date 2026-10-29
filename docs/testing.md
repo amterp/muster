@@ -327,8 +327,8 @@ before the first step. Everything else is compared exactly, so a field the daemo
 prose a program is told not to parse, `reason` and `detail`, is written `"*"`.
 
 **An answer changes only with the API's version.** Played by the commit that wrote it, a corpus can always be edited
-to agree. So `./release` copies the API's files into `corpus/api-baseline/` when it moves the schema's baseline up to
-the version it ships, and while the API is still that version, every shipped case must be in the corpus with the same
-`given` and `expect`; its `why` may be reworded. An answer a release recorded changes, then, in the change that raises
+to agree. So `./release`, once its gate has passed, copies the API's files into `corpus/api-baseline/` with a
+`VERSION` naming the API version it ships them as, and while the API is still that version, every shipped case must be
+in the corpus with the same `given` and `expect`; its `why` may be reworded. An answer a release recorded changes, then, in the change that raises
 the API's minor, which is MIP-10's rule until 1.0. Adding a case is a conversation added to a file; a new file is a
 three-line test in the driver naming it, which is what `corpus-lint` holds it to.

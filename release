@@ -306,15 +306,6 @@ if not resuming:
             write_file(file, join(header, "\n") + "\n" + read_file(schema["schema"]).content)
             print("The {name} baseline moves from {baseline} to {version}.")
 
-    // What the conversations say as this release ships them. Copied whether or not the version
-    // moved: while it has not, the shipped cases cannot have changed, and the ones added since
-    // are promised from this release on.
-    for schema in SHIPPED:
-        shipped = schema["shipped"]
-        corpus = schema["corpus"]
-        $`mkdir -p {shipped} && rm -f {shipped}/*.json && cp {corpus} {shipped}/`
-        print("The {schema["name"]}'s conversations are kept as {target} ships them, in {shipped}.")
-
 // A gate that went red leaves the bump in the working tree, marker and all, so a rerun has
 // to tell a bump that was committed from one that never got that far.
 pending_marker = cask_marker_line()
@@ -329,6 +320,18 @@ if not committed:
         fail(["The contract tier is red on the {target} tree.",
               "The bump is left in the working tree. Fix what failed and run this again, or",
               "git checkout the bumped files to abandon the release."])
+
+    // What the conversations say as this release ships them, with the version they ship as. Only
+    // once the gate has passed: the gate is what holds the corpus to the copy the last release
+    // left, and replacing the copy first would compare the corpus to itself. Copied whether or
+    // not the version moved: while it has not, the gate has just shown the shipped cases are
+    // unchanged, and the ones added since are promised from this release on.
+    for schema in SHIPPED:
+        shipped = schema["shipped"]
+        corpus = schema["corpus"]
+        $`mkdir -p {shipped} && rm -f {shipped}/*.json && cp {corpus} {shipped}/`
+        write_file("{shipped}/VERSION", schema_version(schema) + "\n")
+        print("The {schema["name"]}'s conversations are kept as {target} ships them, in {shipped}.")
 
     message = "chore: {target}\n\nWhat somebody updating has to know is in\n{notes}, which the release\nworkflow puts above the install lines.\n"
     for schema in SCHEMAS:
