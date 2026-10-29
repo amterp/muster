@@ -45,11 +45,19 @@ impl Presence {
 
     /// The person used Muster at `now_ms`. Whether to report at once: when the daemons last
     /// heard of no use for a heartbeat or more. Otherwise the next heartbeat carries it.
+    ///
+    /// Taken as reported once it says so, whether or not a daemon takes the report: with no
+    /// daemon taking one, every keystroke would otherwise ask again.
     pub fn used(&mut self, now_ms: u64) -> bool {
         self.now.last_input_ms = Some(now_ms);
         let heartbeat_ms = u64::try_from(HEARTBEAT.as_millis()).unwrap_or(u64::MAX);
-        self.reported_input_ms
-            .is_none_or(|reported| now_ms.saturating_sub(reported) >= heartbeat_ms)
+        let news = self
+            .reported_input_ms
+            .is_none_or(|reported| now_ms.saturating_sub(reported) >= heartbeat_ms);
+        if news {
+            self.reported_input_ms = Some(now_ms);
+        }
+        news
     }
 
     /// The report to send now, which the daemons are then taken to have heard.
@@ -62,6 +70,14 @@ impl Presence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_use_reported_at_once_is_not_news_again_until_a_heartbeat_passes() {
+        let mut presence = Presence::default();
+        assert!(presence.used(100_000));
+        assert!(!presence.used(100_500), "nothing took a report, and it still is not news");
+        assert!(presence.used(115_000));
+    }
 
     #[test]
     fn coming_forward_and_going_behind_are_news_once_each() {
