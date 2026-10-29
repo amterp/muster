@@ -1298,8 +1298,8 @@ fn on_the_dialed_machine_a_programs_ack_is_carried_home_and_a_new_pair_is_refuse
 
     let client = api::Client { name: "foreman".to_string(), version: String::new() };
     let mut program = Api::connect_as(far.socket_path(), client);
-    let acked = program.ask(ack("review", posted.seq));
-    assert_eq!(acked.outcome(), api::Outcome::Done, "{:?}", acked.answer);
+    let moved = program.ask(ack("review", posted.seq));
+    assert_eq!(moved.outcome(), api::Outcome::Done, "{:?}", moved.answer);
     assert_eq!(waiting(&mut near_control), Some(0), "the place moved where the human is homed");
 
     let to_group = |id: &str, group: &str, to: &[&str]| {
