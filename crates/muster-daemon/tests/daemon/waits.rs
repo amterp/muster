@@ -261,16 +261,19 @@ fn a_wait_its_jobs_end_has_no_limit_until_it_is_carried() {
     std::thread::sleep(PAST_THE_LIMIT);
     assert_eq!(p1.waiting_on(), Some(("the full gate".to_string(), None)), "it ran out");
 
+    // With `work` in its focus the fake agent would read working on screen for good while its
+    // hook says idle; whether the pane then read idle as the wait ran out would turn on whether
+    // detection had read that screen before the hook's report came.
     let compact = proto::pane_request::Compact {
         pane: "p1".to_string(),
-        focus: Some("keep the work notes".to_string()),
+        focus: Some("keep the notes".to_string()),
         then: None,
     };
     let asked = p1.control.ask(pane(proto::pane_request::Request::Compact(compact)));
     assert_eq!(asked.outcome(), proto::Outcome::Done, "{}", asked.answer.reason);
     until_some("the compaction to be typed", || {
         let heard = std::fs::read_to_string(p1.daemon.root().join("home/fake-agent-heard"));
-        heard.ok().filter(|heard| heard.contains("/compact keep the work notes"))
+        heard.ok().filter(|heard| heard.contains("/compact keep the notes"))
     });
     p1.hook_reports(Working);
     p1.hook_reports(Idle);
