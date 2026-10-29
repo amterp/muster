@@ -287,7 +287,7 @@ fn banner(banner: &Banner) -> proto::Banner {
     };
     match &banner.shown {
         Shown::Message(message) => {
-            drawn.author = banner.named(&message.author);
+            drawn.author = banner.author(message);
             drawn.urgent = message.urgent;
             drawn.at_ms = message.at_ms;
             drawn.body = markdown(&message.body);

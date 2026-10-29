@@ -77,6 +77,16 @@ pub fn shown(name: &str, called: &std::collections::BTreeMap<String, String>) ->
     }
 }
 
+/// What a window calls the author of a post a program made for them: `shown`, with the program
+/// beside it, "you via foreman". The program's name is attribution, as MIP-10 decided (question
+/// D): an agent told something it did not expect can see where it came from.
+pub fn with_via(shown: String, via: Option<&str>) -> String {
+    match via {
+        Some(via) => format!("{shown} via {via}"),
+        None => shown,
+    }
+}
+
 /// Whether `name` is the human, on this machine or, as `@human@laptop`, on another.
 pub fn is_human(name: &str) -> bool {
     is_named(name, HUMAN)

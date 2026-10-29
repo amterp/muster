@@ -129,6 +129,8 @@ pub struct HumanNotice {
     /// The words of the one message waiting, when it is Muster's own, for a banner to say:
     /// empty otherwise.
     pub said: String,
+    /// The questions waiting that have their answer already, given away from the window.
+    pub answered: Vec<u64>,
 }
 
 impl HumanNotice {

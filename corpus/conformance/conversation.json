@@ -346,6 +346,24 @@
           { "message": 2, "author": "you", "to": ["otter"], "by_you": true, "no_reply": true, "answering": 1 }
         ]
       }
+    },
+    {
+      "name": "a post a program made shows the program beside its author",
+      "why": "Every post records the program that sent it, which the conversation shows beside the author (MIP-10, section 5, question D): the human's answer from a phone reads as you via foreman, and the question it answers says so.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Yes", "No"] },
+          { "seq": 2, "author": "@human", "to": ["otter"], "via": "foreman", "body": "Answer: Yes", "answering": { "question": 1, "answer": "Yes" } }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "answers": "Yes / No", "answered": "you: Yes" },
+          { "message": 2, "author": "you via foreman", "to": ["otter"], "by_you": true, "no_reply": true, "answering": 1 }
+        ]
+      }
     }
   ]
 }

@@ -808,6 +808,85 @@
           { "group": "g", "seq": 4, "author": "otter", "sent": "refused: otter left g (keeps \"yes\")", "replyable": true }
         ]
       }
+    },
+    {
+      "name": "a message a program posted shows the program beside its author",
+      "why": "Every post records the program that sent it, shown beside the author (MIP-10, section 5, question D): an agent posting through Foreman reads as otter via foreman.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "via": "foreman", "body": "done" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter via foreman", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "a question answered away from the window takes its banner down",
+      "why": "A question answered from a phone shows as answered (MIP-10, section 7). The daemon's notice says which waiting questions have their answer, without the group being read, and the banner settles as a reply from it would.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ship it?", "answers": ["Yes", "No"] },
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"], "answered": [4] }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": []
+      }
+    },
+    {
+      "name": "a question answered away from the window before its banner rose raises none",
+      "why": "The phone answered before the window heard of the question, so there is nothing left to ask.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"], "answered": [4] }
+        ]
+      },
+      "expect": {
+        "stack": []
+      }
+    },
+    {
+      "name": "a message after a question answered away from the window still raises a banner",
+      "why": "Only the answered question is settled: a newer message waiting is the human's to see.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ship it?", "answers": ["Yes", "No"] },
+          { "notice": "g", "last": 5, "count": 2, "from": ["otter"], "answered": [4] },
+          { "fetched": "g", "seq": 5, "author": "otter", "body": "shipped" }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4", "g#5"],
+        "stack": [
+          { "group": "g", "seq": 5, "author": "otter", "replyable": true }
+        ]
+      }
+    },
+    {
+      "name": "a banner holding the human's reply stays when its question is answered away from it",
+      "why": "Taken down, the words the human was writing would be lost; their send meets the home's refusal for a question answered already, which the banner shows.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "ship it?", "answers": ["Yes", "No"] },
+          { "hold": "g", "seq": 4 },
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"], "answered": [4] }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Yes / No", "held": true, "replyable": true }
+        ]
+      }
     }
   ]
 }

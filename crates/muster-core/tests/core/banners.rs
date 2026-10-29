@@ -56,6 +56,11 @@ fn take(
             count: number(step, "count").unwrap_or(0),
             from: strings(step, "from"),
             member: true,
+            answered: step
+                .get("answered")
+                .and_then(Value::as_array)
+                .map(|numbers| numbers.iter().filter_map(Value::as_u64).collect())
+                .unwrap_or_default(),
             ..HumanNotice::default()
         };
         let looking = step.get("looking").and_then(Value::as_bool).unwrap_or(false);
@@ -72,6 +77,7 @@ fn take(
         } else {
             let message = conversation::Message {
                 answers: strings(step, "answers"),
+                via: text(step, "via").map(str::to_string),
                 ..conversation::Message::new(
                     text(step, "author").unwrap_or_default().to_string(),
                     vec!["@human".to_string()],
@@ -146,7 +152,7 @@ fn banner_json(banner: &Banner) -> Value {
     fields.insert("seq".into(), json!(banner.shown.seq()));
     match &banner.shown {
         Shown::Message(message) => {
-            fields.insert("author".into(), json!(banner.named(&message.author)));
+            fields.insert("author".into(), json!(banner.author(message)));
             if message.urgent {
                 fields.insert("urgent".into(), json!(true));
             }

@@ -37,6 +37,7 @@ pub fn entry(entry: &msg_answer::Entry) -> Option<Entry> {
     let what = match entry.what.as_ref()? {
         Logged::Message(message) => What::Message(Message {
             answers: message.answers.clone(),
+            via: message.via.clone(),
             answering: message.answering.as_ref().map(|answering| Answering {
                 question: answering.question,
                 answer: answering.answer.clone(),

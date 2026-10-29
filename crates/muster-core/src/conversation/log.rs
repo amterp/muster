@@ -47,13 +47,24 @@ pub struct Message {
     pub answers: Vec<String>,
     /// The question it answers, when it is a reply that picked one of a question's answers.
     pub answering: Option<Answering>,
+    /// The program that posted it for its author, which is shown beside the author.
+    pub via: Option<String>,
 }
 
 impl Message {
-    /// A message offering no answers and answering none.
+    /// A message offering no answers and answering none, which its author posted themselves.
     pub fn new(author: String, to: Vec<String>, body: String, urgent: bool) -> Message {
         let blocks = markdown::parse(&body);
-        Message { author, to, body, urgent, blocks, answers: Vec::new(), answering: None }
+        Message {
+            author,
+            to,
+            body,
+            urgent,
+            blocks,
+            answers: Vec::new(),
+            answering: None,
+            via: None,
+        }
     }
 }
 

@@ -81,6 +81,7 @@ pub(crate) fn read_human_notice(given: &Value) -> HumanNotice {
         from: collect(given, "from", |from| from.as_str().unwrap_or_default().to_string()),
         member: given.get("member").and_then(Value::as_bool).unwrap_or_default(),
         said: String::new(),
+        answered: Vec::new(),
     }
 }
 

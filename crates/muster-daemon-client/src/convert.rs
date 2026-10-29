@@ -105,6 +105,7 @@ fn human(notice: proto::msg_answer::Notice) -> HumanNotice {
         from: notice.from,
         member: notice.member,
         said: notice.said,
+        answered: notice.answered,
     }
 }
 

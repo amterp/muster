@@ -42,6 +42,8 @@ pub struct Message {
     pub more: bool,
     /// The answers it offers, which make it a question (MIP-9, section 6).
     pub answers: Vec<String>,
+    /// The program that posted it for its author.
+    pub via: Option<String>,
 }
 
 impl Message {
@@ -56,6 +58,7 @@ impl Message {
             body,
             more,
             answers: message.answers.clone(),
+            via: message.via.clone(),
         }
     }
 }
@@ -162,6 +165,11 @@ impl Banner {
     pub fn named(&self, name: &str) -> String {
         posting::shown(name, &self.called)
     }
+
+    /// What the banner calls `message`'s author: named, with the program that posted it beside.
+    pub fn author(&self, message: &Message) -> String {
+        posting::with_via(self.named(&message.author), message.via.as_deref())
+    }
 }
 
 /// A reply from a banner, ready to post: to the author it shows, with the body composed from the
@@ -242,6 +250,17 @@ impl Banners {
             return None;
         };
         let last = notice.last;
+        // A question answered elsewhere, from a phone say, has nothing left to ask: settled as a
+        // reply from its banner settles it, and a banner holding the human's words keeps them,
+        // for their send to hear it was answered.
+        if notice.answered.contains(&last) {
+            let settled = self.settled.entry(group.clone()).or_insert(last);
+            *settled = (*settled).max(last);
+            if self.standing.get(group).is_some_and(|standing| !standing.holding()) {
+                self.standing.remove(group);
+            }
+            return None;
+        }
         // The newest waiting message can move back while the group lives, when a change to its
         // policy stops a newer one from ringing the human, and that is not a new message.
         if self.settled.get(group).is_some_and(|settled| *settled >= last) {

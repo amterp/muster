@@ -184,6 +184,7 @@ fn entry(given: &Value) -> Result<Entry, CaseError> {
         What::Message(Message {
             answers: strings(given, "answers"),
             answering: given.get("answering").map(answering),
+            via: text(given, "via").map(str::to_string),
             ..Message::new(
                 text(given, "author")
                     .ok_or_else(|| CaseError::new("a message needs `author`"))?

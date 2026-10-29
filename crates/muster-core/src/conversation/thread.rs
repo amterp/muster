@@ -199,7 +199,7 @@ fn message_row(made: &Made, entry: &Entry, message: &Message) -> Row {
     Row::Message(Box::new(MessageRow {
         seq: entry.seq,
         at_ms: entry.at_ms,
-        author: group.shown(&message.author),
+        author: posting::with_via(group.shown(&message.author), message.via.as_deref()),
         author_name: message.author.clone(),
         author_pane,
         to: message.to.iter().map(|to| group.shown(to)).collect(),

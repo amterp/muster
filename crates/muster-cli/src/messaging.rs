@@ -1391,6 +1391,11 @@ fn entries_text(
                         format!(", answering #{}", answering.question)
                     });
                     let author = shown.name(&message.author);
+                    // The program that posted it for its author, as MIP-10 decided it is shown.
+                    let author = match &message.via {
+                        Some(via) => format!("{author} via {via}"),
+                        None => author,
+                    };
                     let head = format!("--- {name} #{seq} | {author}{to}{urgent}{answering} ---");
                     format!(
                         "{head}\n{}{}\n--- end {name} #{seq} | {author} ---",
@@ -1488,6 +1493,9 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
                     "question": answering.question,
                     "answer": answering.answer,
                 });
+            }
+            if let Some(via) = &message.via {
+                value["via"] = via.clone().into();
             }
         }
         Some(What::Created(by)) => value["created"] = by.clone().into(),
@@ -1799,6 +1807,35 @@ mod tests {
             serde_json::from_str(&posted_text(&posted, false, true, &Shown::default()).unwrap())
                 .unwrap();
         assert_eq!(json["held"]["lead"], box_over);
+    }
+
+    /// A post a program made for its author shows the program beside the author, as MIP-10
+    /// decided (question D), and `--json` says it.
+    #[test]
+    fn a_programs_post_shows_the_program_beside_its_author() {
+        let message = msg_answer::Message {
+            author: "@human".to_string(),
+            to: vec!["builder".to_string()],
+            body: "ship it".to_string(),
+            via: Some("foreman".to_string()),
+            ..Default::default()
+        };
+        let entry = msg_answer::Entry { seq: 3, at_ms: 0, what: Some(What::Message(message)) };
+        let entries = msg_answer::Entries {
+            groups: vec![msg_answer::GroupEntries {
+                group: "review".to_string(),
+                entries: vec![entry.clone()],
+                behind: None,
+                earlier: false,
+            }],
+        };
+        let shown = Shown { human: "Alex".to_string(), ..Shown::default() };
+        assert_eq!(
+            entries_text(&entries, true, false, &shown),
+            "--- review #3 | Alex (@human) via foreman -> builder ---\nship it\n\
+             --- end review #3 | Alex (@human) via foreman ---"
+        );
+        assert_eq!(entry_json(&entry)["via"], "foreman");
     }
 
     /// The human is shown by the name the app set, beside the address an agent writes in `--to`,
