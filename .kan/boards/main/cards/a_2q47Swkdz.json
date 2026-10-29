@@ -9,13 +9,19 @@
     "a_2q47SHmeF",
     "a_2q47QxaZd"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2q7Wp7Yok",
       "body": "2026-10-28: making a pane (pane.new with an operation id) landed with 2a (1a9b9e50). Left for this card: typing into a pane with the --confirm read-back, closing a pane, compacting and restarting its agent.",
       "author": "Alexander Terp",
       "created_at_millis": 1793249896094
+    },
+    {
+      "id": "c_2q8ao6WD6",
+      "body": "Landed 2026-10-29 (fcdc2f96..98a8d674): pane.send (with confirm read-back, never retried; refused when the pane drops it), pane.close (its PaneClosed before the answer, carrying the correlation), pane.compact, pane.restart (a restart that ended the agent but could not resume it answers UNKNOWN with what was done). Send order shared with windowless muster pane send via muster_core::pane_text::send; Pane::state() now takes stuck from AgentState::of_pane. Reviewed by Codex and Claude (one P2 test gap, fixed). Full gate green.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793252432506
     }
   ],
   "created_at_millis": 1793241771555,
@@ -26,12 +32,13 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "Zw",
+  "position": "YvH",
   "title": "MIP-10 stage 2c: making, typing into and closing panes through the API",
   "type": "feature",
-  "updated_at_millis": 1793250363464,
+  "updated_at_millis": 1793252432562,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241771555},
-    {"field":"column","value":"in-progress","at":1793250363464}
+    {"field":"column","value":"in-progress","at":1793250363464},
+    {"field":"column","value":"done","at":1793252432408}
   ]
 }
