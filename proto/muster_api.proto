@@ -92,6 +92,12 @@
 // UNAVAILABLE rather than forget one early. A daemon that is killed or crashes may forget the
 // operations of its last second, since it saves what it holds about a second after a change.
 //
+// A post is kept differently. Its group's home writes the operation id into the post's own entry
+// in the group's log, and into what the log leaves behind when the group is deleted, so a crash
+// never forgets the id of a post that was kept, and posts count toward no cap. A post sent to a
+// group kept on another machine is also remembered by the daemon that sent it, which sends a
+// retry to the same home; that record, like the panes', may lose its last second to a crash.
+//
 // ## Subscribing
 //
 // `api.subscribe` names the topics the client wants. Its answer carries a snapshot, and every
@@ -479,6 +485,8 @@ message Answer {
     PaneText pane_text = 13;
     // "pane.restart".
     RestartedAgent restarted = 14;
+    // "msg.post".
+    Posted posted = 15;
   }
 }
 
@@ -506,6 +514,9 @@ enum Refusal {
   // The daemon cannot take the request now: it is stopping, handing over to a newer daemon, or
   // remembering as many operations as it holds. Ask again shortly.
   REFUSAL_UNAVAILABLE = 5;
+  // A question the request answers has its answer already, from somebody else or the human
+  // elsewhere; `reason` says whose. Nothing was posted.
+  REFUSAL_ANSWERED = 6;
 }
 
 // Where a subscription starts. Each topic's part is filled only when the subscription named it.
@@ -698,7 +709,62 @@ message MsgRequest {
   oneof request {
     // "msg.history": answered with a Page.
     History history = 1;
+    // "msg.post": answered with a Posted.
+    NewPost post = 2;
+    // "msg.ack": answered DONE when the human's place moved, ALREADY_SO when it was there or
+    // further on already.
+    Ack ack = 3;
   }
+}
+
+// A post, made as `muster msg post` makes one: as the human unless `as` names another
+// participant, and shown with the client's name from its Hello beside its author
+// ("Alex (@human) via foreman"). The group's home keeps the operation id with the post, so a
+// repeat is answered ALREADY_SO with the first post's group and number, and never posted twice.
+//
+// A post refused for a reason the client can act on says so: NOT_FOUND for a group, participant
+// or question that does not exist, ANSWERED for a question that has its answer already, INVALID
+// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer).
+// One kept on another machine is NOT_SENT when it never left this daemon and UNKNOWN when it
+// was sent and the reply was lost; asking again under the same id is safe in both. Its Logged
+// and Unread events carry the request's correlation id when the group is kept on this daemon;
+// one kept elsewhere arrives without it, when this daemon's copy catches up.
+message NewPost {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The group, as the snapshot names it. Empty is the one group the author and `to` share, or
+  // the group of exactly them, made for this post, as a post with no group is.
+  string group = 2;
+  // Whom it is for, as the group's members are named. Empty: the group's policy says whom it
+  // rings.
+  repeated string to = 3;
+  // At most 1 MiB.
+  string body = 4;
+  // To reach its addressees while they work, where the group's policy lets its author.
+  bool urgent = 5;
+  // Answers to offer, which make it a question: at most six, each one line of at most 120 bytes.
+  repeated string answers = 6;
+  // The question it answers and the answer it picks. A question takes one answer, from somebody
+  // it was asked of: the home refuses a second with ANSWERED.
+  optional Answering answering = 7;
+  // The participant to post as. Empty is the human.
+  string as = 8;
+}
+
+// What a post came to: its group, and its number there.
+message Posted {
+  string group = 1;
+  uint64 number = 2;
+}
+
+// Moves the human's place in `group` on to `through`, the number of the last message the client
+// showed them, at the human's home, and never back: what arrived since stays unread there. An
+// Unread event says the new place before the answer. Refused NOT_FOUND for a group the human is
+// not in, and INVALID for a number past the group's newest. Reading, replying and dismissing
+// acknowledge nothing; only this does.
+message Ack {
+  string group = 1;
+  uint64 through = 2;
 }
 
 // The newest entries of a group's log in a range of numbers. Reading them moves nobody's place.
@@ -808,6 +874,9 @@ message Post {
   // answer. Absent from a Logged event, which comes before any answer; the answer's own Logged
   // event says what it answers.
   optional uint64 answered_by = 7;
+  // The program that posted it for its author, by the name from its Hello: "foreman". Shown
+  // beside the author, as attribution rather than identity: any program can give any name.
+  optional string via = 8;
 }
 
 message Answering {

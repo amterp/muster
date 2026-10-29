@@ -8,7 +8,7 @@ use muster_api as api;
 use muster_msg::{Entry, GroupSummary, Messaging, Policy, Store, What};
 use prost::Message;
 
-use super::hub::{Api, Feed};
+use super::hub::{Api, Cause, Feed};
 
 /// How many of a group's waiting messages an `Unread` lists. A backlog past it is still counted,
 /// and keeps every frame bounded however long the human stays away.
@@ -49,7 +49,13 @@ impl Published {
 
     /// Publishes whatever changed in `service` since the last call: for each group, its entries
     /// since, then a change to it, then the human's unread state, which changes with both.
-    pub(crate) fn publish<S: Store>(&mut self, service: &Messaging<S>, api: &Api) {
+    pub(crate) fn publish<S: Store>(
+        &mut self,
+        service: &Messaging<S>,
+        api: &Api,
+        cause: Option<&Cause>,
+    ) {
+        let api = &Telling { api, cause };
         let summaries = service.groups();
         let held: BTreeSet<&str> = summaries.iter().map(|summary| summary.name.as_str()).collect();
         let gone: Vec<String> =
@@ -73,7 +79,7 @@ impl Published {
                     }
                     if !same_but_where_read(&kept.group, &group) {
                         let changed = group.clone();
-                        api.publish(api::Topic::Messages, None, || {
+                        api.publish(api::Topic::Messages, || {
                             api::event::Event::GroupChanged(api::GroupChanged {
                                 group: Some(changed),
                             })
@@ -162,6 +168,18 @@ impl Published {
     }
 }
 
+/// The subscribers being told, and the API request that caused what they are told, if one did.
+struct Telling<'a> {
+    api: &'a Api,
+    cause: Option<&'a Cause>,
+}
+
+impl Telling<'_> {
+    fn publish(&self, feed: impl Into<Feed>, event: impl FnOnce() -> api::event::Event) {
+        self.api.publish(feed, self.cause, event);
+    }
+}
+
 /// Whether `now` is another group under the name `before` had: one deleted and made again, or a
 /// replica its home started over.
 fn replaced(before: &api::Group, now: &api::Group) -> bool {
@@ -180,10 +198,10 @@ fn same_but_where_read(before: &api::Group, now: &api::Group) -> bool {
 
 /// Tells the subscribers of a group that appeared, then of each of its entries, so that a post
 /// that made its group arrives with its body like any other.
-fn made<S: Store>(api: &Api, service: &Messaging<S>, group: api::Group) -> Kept {
+fn made<S: Store>(api: &Telling<'_>, service: &Messaging<S>, group: api::Group) -> Kept {
     let before_its_entries =
         api::Group { latest: group.held_after, human_place: None, ..group.clone() };
-    api.publish(api::Topic::Messages, None, || {
+    api.publish(api::Topic::Messages, || {
         api::event::Event::GroupMade(api::GroupMade { group: Some(before_its_entries) })
     });
     logged(api, service, &group.name, group.held_after);
@@ -191,24 +209,24 @@ fn made<S: Store>(api: &Api, service: &Messaging<S>, group: api::Group) -> Kept 
 }
 
 /// Tells the subscribers `kept` is gone, and that nothing waits for the human there.
-fn deleted(api: &Api, kept: Kept) {
+fn deleted(api: &Telling<'_>, kept: Kept) {
     let name = kept.group.name;
     let group = name.clone();
-    api.publish(api::Topic::Messages, None, || {
+    api.publish(api::Topic::Messages, || {
         api::event::Event::GroupDeleted(api::GroupDeleted { group })
     });
     if kept.unread.is_some() {
         let unread = api::Unread { group: name, ..api::Unread::default() };
-        api.publish(Feed::Unread, None, || api::event::Event::Unread(unread));
+        api.publish(Feed::Unread, || api::event::Event::Unread(unread));
     }
 }
 
 /// Publishes each entry of `group` after `after`.
-fn logged<S: Store>(api: &Api, service: &Messaging<S>, group: &str, after: u64) {
+fn logged<S: Store>(api: &Telling<'_>, service: &Messaging<S>, group: &str, after: u64) {
     let entries = service.entries(group).unwrap_or_default();
     let new = entries.partition_point(|entry| entry.seq <= after);
     for entry in &entries[new..] {
-        api.publish(api::Topic::Messages, None, || {
+        api.publish(api::Topic::Messages, || {
             api::event::Event::Logged(api::Logged {
                 group: group.to_string(),
                 entry: Some(entry_of(entry, None)),
@@ -219,7 +237,7 @@ fn logged<S: Store>(api: &Api, service: &Messaging<S>, group: &str, after: u64) 
 
 /// The human's unread state in a group, published when it changed since `told`.
 fn unread<S: Store>(
-    api: &Api,
+    api: &Telling<'_>,
     service: &Messaging<S>,
     summary: &GroupSummary,
     place: Option<u64>,
@@ -235,7 +253,7 @@ fn unread<S: Store>(
     let unread = unread_of(service, &summary.name, place);
     if told.is_none_or(|told| told.unread != unread) {
         let event = unread.clone();
-        api.publish(Feed::Unread, None, || api::event::Event::Unread(event));
+        api.publish(Feed::Unread, || api::event::Event::Unread(event));
     }
     place.map(|_| Told { from, unread })
 }
@@ -275,18 +293,21 @@ fn answers(entries: &[Entry]) -> BTreeMap<u64, u64> {
 fn entry_of(entry: &Entry, answered_by: Option<u64>) -> api::Entry {
     use api::entry::What as Is;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering, .. } => Is::Post(api::Post {
-            author: author.clone(),
-            to: to.clone(),
-            body: body.clone(),
-            urgent: *urgent,
-            answers: answers.clone(),
-            answering: answering.as_ref().map(|answering| api::Answering {
-                question: answering.question,
-                answer: answering.answer.clone(),
-            }),
-            answered_by,
-        }),
+        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
+            Is::Post(api::Post {
+                author: author.clone(),
+                to: to.clone(),
+                body: body.clone(),
+                urgent: *urgent,
+                answers: answers.clone(),
+                answering: answering.as_ref().map(|answering| api::Answering {
+                    question: answering.question,
+                    answer: answering.answer.clone(),
+                }),
+                answered_by,
+                via: via.clone(),
+            })
+        }
         What::Created { by } => Is::Made(api::Made { by: by.clone() }),
         What::Joined { who } => Is::Joined(api::Joined { who: who.clone() }),
         What::Left { who } => Is::Left(api::Left { who: who.clone() }),

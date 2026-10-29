@@ -25,7 +25,9 @@
                       "requests": [
                         "api.read_pane",
                         "api.subscribe",
+                        "msg.ack",
                         "msg.history",
+                        "msg.post",
                         "pane.close",
                         "pane.compact",
                         "pane.new",

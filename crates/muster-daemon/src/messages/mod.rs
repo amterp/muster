@@ -46,7 +46,7 @@ use proto::answer::Detail;
 use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
 
-use crate::api::{Api, Published};
+use crate::api::{Api, Cause, Published};
 use crate::session::{HANDING_OVER, Reply, Shared};
 use carry::Destination;
 use doorbell::{By, Now};
@@ -59,6 +59,9 @@ pub(crate) const LOOK_UP: Duration = Duration::from_millis(500);
 #[derive(Debug)]
 pub(crate) struct Messages {
     service: Messaging<Files>,
+    /// The API request whose change is being made under this lock, for the events it causes to
+    /// carry its correlation id; none for every other change. Set and cleared within one hold.
+    cause: Option<Cause>,
     /// A handoff is under way: what is kept on disk is what the new daemon will read, so
     /// nothing may change it.
     handing_over: bool,
@@ -157,6 +160,7 @@ impl Messages {
             joined,
             published: Published::new(&api),
             api,
+            cause: None,
         }
     }
 
@@ -211,12 +215,12 @@ impl Messages {
         for follow in self.follows.drain(..) {
             let _ = follow.send(());
         }
-        self.published.publish(&self.service, &self.api);
+        self.published.publish(&self.service, &self.api, self.cause.as_ref());
     }
 
     /// What the API's subscribers have been told of the messages, brought up to date.
     pub(crate) fn published(&mut self) -> &Published {
-        self.published.publish(&self.service, &self.api);
+        self.published.publish(&self.service, &self.api, None);
         &self.published
     }
 
@@ -225,7 +229,7 @@ impl Messages {
         &mut self,
         asked: &muster_api::History,
     ) -> Result<muster_api::Page, String> {
-        self.published.publish(&self.service, &self.api);
+        self.published.publish(&self.service, &self.api, None);
         self.published.history(&self.service, asked)
     }
 
@@ -247,7 +251,7 @@ impl Messages {
             let files = self.service.store().clone();
             let found = files.load();
             self.service = Messaging::restore(files, found.saved, found.logs);
-            self.published.publish(&self.service, &self.api);
+            self.published.publish(&self.service, &self.api, None);
             self.human_groups = self.service.human_groups();
             // Every wake still unread is rung again, so a ring from before is not also pressed.
             self.rung.clear();
@@ -410,24 +414,28 @@ pub(crate) struct Carrying {
 
 impl Carrying {
     pub(crate) fn run(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> Reply {
+        self.run_reaching(shared, hung_up).0
+    }
+
+    /// [`Self::run`], also saying whether the request reached the other machine: one that did
+    /// not is answered with the refusal made here, which says nothing of what that machine holds.
+    pub(crate) fn run_reaching(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> (Reply, bool) {
         let Self { destination, asked, fallback, panes } = self;
         let machine = match &destination {
             Destination::HumanHome(home) => &home.machine,
             Destination::GroupHome(machine) => machine,
         };
         if let Some(refusal) = carry::unkept_at(shared, machine, &asked) {
-            return refusal;
+            return (refusal, false);
         }
-        let reply = match destination {
-            Destination::HumanHome(home) => {
-                peer::carry(shared, &home.machine, asked, hung_up).unwrap_or(fallback)
-            }
+        let carried = match destination {
+            Destination::HumanHome(home) => peer::carry(shared, &home.machine, asked, hung_up),
             Destination::GroupHome(machine) => peer::carry(shared, &machine, asked, hung_up)
-                .map(|carried| peer::named_here(shared, &machine, carried))
-                .unwrap_or(fallback),
+                .map(|carried| peer::named_here(shared, &machine, carried)),
         };
-        let reply = naming_the_human(shared, reply);
-        naming_the_panes(shared, reply, &panes)
+        let reached = carried.is_some();
+        let reply = naming_the_human(shared, carried.unwrap_or(fallback));
+        (naming_the_panes(shared, reply, &panes), reached)
     }
 }
 
@@ -443,6 +451,18 @@ pub(crate) fn handle(
     request: proto::MsgRequest,
     hung_up: &dyn Fn() -> bool,
 ) -> Handled {
+    handle_caused(shared, request, None, hung_up)
+}
+
+/// [`handle`], for the API request `cause`: the events of a post or an acknowledgement done
+/// here carry its correlation id. One carried to another machine causes none here; its entries
+/// arrive as that machine sends them.
+pub(crate) fn handle_caused(
+    shared: &Arc<Shared>,
+    request: proto::MsgRequest,
+    cause: Option<&Cause>,
+    hung_up: &dyn Fn() -> bool,
+) -> Handled {
     let caller = caller_of(request.caller.unwrap_or_default());
     let Some(asked) = request.request else { return Handled::Reply(Reply::unsupported()) };
     if let Asked::Peer(peer) = &asked {
@@ -453,7 +473,7 @@ pub(crate) fn handle(
     shared.messages().service.called(&panes);
     let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);
     let kept = carriable.then(|| asked.clone());
-    let reply = respond(shared, &caller, asked, hung_up, &panes);
+    let reply = respond(shared, &caller, asked, hung_up, &panes, cause);
     shared.messages().note_joined();
     if let Some(asked) = kept
         && let Some(destination) = carry::destination(shared, &caller, &asked, &reply, &panes)
@@ -560,7 +580,7 @@ pub(crate) fn carried(
     log::info("msg.carried", fields! { "machine" => peer.name, "verb" => carry::verb(&asked) });
     let panes = Panes::of(shared);
     let human = Caller { at_ms: now_ms(), ..Caller::default() };
-    let reply = respond(shared, &human, asked, hung_up, &panes);
+    let reply = respond(shared, &human, asked, hung_up, &panes, None);
     naming_the_panes(shared, reply, &panes)
 }
 
@@ -571,9 +591,10 @@ fn respond(
     asked: Asked,
     hung_up: &dyn Fn() -> bool,
     panes: &Panes,
+    cause: Option<&Cause>,
 ) -> Reply {
     match asked {
-        Asked::Post(post) => posting(shared, caller, &post, panes),
+        Asked::Post(post) => posting(shared, caller, &post, panes, cause),
         Asked::Resume(resume) => resuming(shared, caller, &resume.group, panes),
         Asked::Wait(wait) => waiting(shared, caller, &wait, hung_up, panes),
         Asked::Log(log) if log.follow => following(shared, log, hung_up),
@@ -589,8 +610,10 @@ fn respond(
             let read = matches!(asked, Asked::Read(_));
             let (reply, told, telling) = {
                 let mut messages = shared.messages();
+                messages.cause = cause.cloned();
                 let reply = messages.answer(caller, asked, panes);
                 messages.appended();
+                messages.cause = None;
                 // A ring still in a prompt is taken back once what it was for is read, before the
                 // next Return anybody presses sends it.
                 if read && !(messages.left.is_empty() && messages.rung.is_empty()) {
@@ -1267,6 +1290,7 @@ fn posting(
     caller: &Caller,
     post: &proto::msg_request::Post,
     panes: &Panes,
+    cause: Option<&Cause>,
 ) -> Reply {
     let answering = post.answering.clone().map(answering_from);
     let operation = post.operation.clone().map(operation_from);
@@ -1311,7 +1335,7 @@ fn posting(
             Err(refusal) => return refused("", &refusal),
         }
     } else {
-        let delivered = delivering(shared, panes, |service| {
+        let delivered = delivering_caused(shared, panes, cause, |service| {
             let draft = draft_of(post, answering.as_ref(), operation.as_ref(), &found);
             service.post_draft(caller, &draft, panes, now_ms())
         });
@@ -1538,20 +1562,33 @@ fn delivering(
     panes: &Panes,
     act: impl FnOnce(&mut Messaging<Files>) -> Result<muster_msg::Posted, Refusal>,
 ) -> Result<Delivered, Reply> {
+    delivering_caused(shared, panes, None, act)
+}
+
+/// [`delivering`], for the API request `cause`, whose correlation the events it causes carry.
+fn delivering_caused(
+    shared: &Shared,
+    panes: &Panes,
+    cause: Option<&Cause>,
+    act: impl FnOnce(&mut Messaging<Files>) -> Result<muster_msg::Posted, Refusal>,
+) -> Result<Delivered, Reply> {
     let (mut posted, holding) = {
         let mut messages = shared.messages();
         if messages.handing_over {
             return Err(refused_as("", "handing_over", HANDING_OVER));
         }
+        messages.cause = cause.cloned();
         let posted = match act(&mut messages.service) {
             Ok(posted) => posted,
             Err(refusal) => {
                 // A post refused after making the group it was for leaves that group made.
                 messages.appended();
+                messages.cause = None;
                 return Err(refused("", &refusal));
             }
         };
         let holding = messages.hold(&posted.wakes, &posted.answered, panes);
+        messages.cause = None;
         (posted, holding)
     };
     let rang = ring(shared, holding);

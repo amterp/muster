@@ -8,6 +8,7 @@ pub(crate) mod identity;
 mod messages;
 mod pane;
 pub(crate) mod panes;
+mod posting;
 mod reading;
 mod topics;
 
@@ -33,10 +34,12 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 8] = [
+const REQUESTS: [&str; 10] = [
     "api.read_pane",
     "api.subscribe",
+    "msg.ack",
     "msg.history",
+    "msg.post",
     "pane.close",
     "pane.compact",
     "pane.new",
@@ -169,7 +172,7 @@ struct Caller {
     outbox: Outbox,
 }
 
-fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
+fn handle(shared: &Arc<Shared>, caller: &Caller, request: api::Request) {
     use api::request::Request as Namespace;
     let correlation = request.correlation;
     match request.request {
@@ -202,6 +205,12 @@ fn handle(shared: &Shared, caller: &Caller, request: api::Request) {
             };
             shared.api.answer(caller.connection, answer);
         }
+        Some(Namespace::Msg(api::MsgRequest {
+            request: Some(api::msg_request::Request::Post(asked)),
+        })) => posting::post(shared, caller, correlation, &asked),
+        Some(Namespace::Msg(api::MsgRequest {
+            request: Some(api::msg_request::Request::Ack(asked)),
+        })) => posting::ack(shared, caller, correlation, &asked),
         Some(Namespace::Api(api::ApiRequest {
             request: Some(api::api_request::Request::ReadPane(asked)),
         })) => read_pane(shared, caller.connection, correlation, &asked),

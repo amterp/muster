@@ -9,7 +9,8 @@ pub use muster_api as api;
 pub use muster_daemon_proto as proto;
 pub use muster_harness::requests::*;
 pub use muster_harness::{
-    Api, ApiAsked, Tried, history, new_pane, on_pane, read_pane, subscribe_to, test_client,
+    Api, ApiAsked, Tried, ack, history, new_pane, on_pane, post, read_pane, subscribe_to,
+    test_client,
 };
 pub use muster_harness::{Asked, Control, DAEMON_DATA, Daemon, until, until_file, until_some};
 

@@ -1217,3 +1217,53 @@ fn a_replica_is_on_the_api_with_its_home_and_its_posts() {
     };
     assert_eq!(posted.body, "rebase first");
 }
+
+/// A program's post as the human to a group kept on the far daemon is kept there, with the
+/// program beside its author, and asked for again under its id it is answered from there rather
+/// than posted twice. With the link down it never leaves, which the program is told.
+#[test]
+fn a_programs_post_to_a_group_kept_on_the_far_daemon_is_kept_there_once() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let holding = link(&near, &far, &mut near_log, 1);
+    join(&mut far_control, &named("critic"), "critic", "plan");
+    let here = join(&mut near_control, &msg_request::Caller::default(), "@human", "plan");
+    assert!(here.starts_with("plan@"), "the near daemon holds the far one's plan: {here}");
+    let client = api::Client { name: "foreman".to_string(), version: String::new() };
+    let mut program = Api::connect_as(near.socket_path(), client);
+    let asked = |id: &str| {
+        muster_harness::post(api::NewPost {
+            operation: id.to_string(),
+            group: here.clone(),
+            body: "ship it".to_string(),
+            ..api::NewPost::default()
+        })
+    };
+    let kept_there = |control: &mut Control| {
+        let log = Asked::Log(msg_request::Log { group: "plan".to_string(), ..Default::default() });
+        let answered = expect(control, msg(&named("critic"), log), proto::Outcome::Done);
+        let Some(Answer::Entries(entries)) = &msg_answer(&answered).answer else { panic!() };
+        let entries = entries.groups.iter().flat_map(|group| &group.entries);
+        entries
+            .filter_map(|entry| match &entry.what {
+                Some(msg_answer::entry::What::Message(message)) => message.via.clone(),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let first = program.ask(asked("op-1"));
+    assert_eq!(first.outcome(), api::Outcome::Done, "{:?}", first.answer);
+    assert_eq!(first.posted().group, here);
+    assert_eq!(kept_there(&mut far_control), ["foreman"]);
+    let again = program.ask(asked("op-1"));
+    assert_eq!(again.outcome(), api::Outcome::AlreadySo, "{:?}", again.answer);
+    assert_eq!(again.posted(), first.posted());
+    assert_eq!(kept_there(&mut far_control), ["foreman"]);
+
+    cut(holding, &mut near_log, &mut far_log, 1);
+    let unsent = program.ask(asked("op-2"));
+    assert_eq!(unsent.outcome(), api::Outcome::NotSent, "{:?}", unsent.answer);
+    assert_eq!(kept_there(&mut far_control), ["foreman"]);
+}

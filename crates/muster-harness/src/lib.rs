@@ -13,7 +13,8 @@ mod stream;
 mod until;
 
 pub use api_client::{
-    Api, ApiAsked, Tried, history, new_pane, on_pane, read_pane, subscribe_to, test_client,
+    Api, ApiAsked, Tried, ack, history, new_pane, on_pane, post, read_pane, subscribe_to,
+    test_client,
 };
 pub use control::{Asked, Control};
 pub use daemon::{

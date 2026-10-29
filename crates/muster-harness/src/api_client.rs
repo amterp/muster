@@ -56,6 +56,14 @@ impl ApiAsked {
         }
     }
 
+    /// The post the answer carries, which a done or already-so `msg.post`'s does.
+    pub fn posted(&self) -> &api::Posted {
+        match &self.answer.detail {
+            Some(api::answer::Detail::Posted(posted)) => posted,
+            _ => panic!("the answer carries no post: {:?}", self.answer),
+        }
+    }
+
     /// The page of a pane's text the answer carries, which a done `api.read_pane`'s does.
     pub fn pane_text(&self) -> &api::PaneText {
         match &self.answer.detail {
@@ -79,6 +87,23 @@ pub fn history(group: &str, after: u64, through: u64) -> api::request::Request {
         request: Some(api::msg_request::Request::History(api::History {
             group: group.to_string(),
             after,
+            through,
+        })),
+    })
+}
+
+/// A post as `asked` says, under its operation id.
+pub fn post(asked: api::NewPost) -> api::request::Request {
+    api::request::Request::Msg(api::MsgRequest {
+        request: Some(api::msg_request::Request::Post(asked)),
+    })
+}
+
+/// An acknowledgement of the human's messages in `group` through `through`.
+pub fn ack(group: &str, through: u64) -> api::request::Request {
+    api::request::Request::Msg(api::MsgRequest {
+        request: Some(api::msg_request::Request::Ack(api::Ack {
+            group: group.to_string(),
             through,
         })),
     })

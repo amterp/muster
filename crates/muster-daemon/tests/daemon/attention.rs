@@ -75,7 +75,10 @@ fn presence(snapshot: &proto::Snapshot) -> proto::Presence {
 }
 
 /// Reads events until one `pick` takes, failing if none does within the suite's patience each.
-fn until_event<T>(control: &mut Control, pick: impl Fn(proto::event::Event) -> Option<T>) -> T {
+pub(crate) fn until_event<T>(
+    control: &mut Control,
+    pick: impl Fn(proto::event::Event) -> Option<T>,
+) -> T {
     loop {
         if let Some(found) = control.next_event().event.and_then(&pick) {
             return found;

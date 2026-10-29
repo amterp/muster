@@ -7,6 +7,7 @@ mod api_corpus;
 mod api_driving;
 mod api_messages;
 mod api_panes;
+mod api_posting;
 mod api_read;
 mod arranging;
 mod attention;
