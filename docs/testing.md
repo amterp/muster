@@ -316,8 +316,10 @@ conversation, played in order:
   `{"pane": "p1", "closed": true}`, `{"pane": "p1", "shows": "text"}`, which waits until the pane's screen holds the
   text, `{"pane": "p1", "agent": "started"}` and the states `working`, `blocked` and `idle`, `{"pane": "p1",
   "session": "s-1"}`, the pane's agent reporting its session as its adapter does, `{"agent": "a", "joins": "g"}`,
-  `{"agent": "a", "posts": "body", "to": [...]}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app":
-  "attending"}` and `{"app": "gone"}`. Each finishes before the next step starts.
+  `{"agent": "a", "posts": "body", "to": [...]}`, which may also offer `"answers": [...]` or answer with
+  `"answering": {"question": 4, "answer": "Yes"}`, and as `"agent": "@human"` is the desk's post, `{"agent": "a",
+  "deletes": "g"}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app": "attending"}` and `{"app": "gone"}`.
+  Each finishes before the next step starts.
 
 What differs from run to run is written as a token. `"*"` is any value that is there, and `"?"` any value or none, for
 a field a pane fills when its program gets to it, such as a title. `"$name"` binds a whole value the first time it is

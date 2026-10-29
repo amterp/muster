@@ -1,0 +1,515 @@
+{
+  "concept": "api-posting",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, sections 5 and 7; proto/muster_api.proto, its NewPost, Ack and Posted, and its header's Operation ids",
+  "why": "`msg.post` posts as the human, as `muster msg post` does, with the client's name from its Hello shown beside the author, and `msg.ack` acknowledges the human's messages only as far as the one a client showed them. A post carries an operation id the client chooses, so a client that lost an answer asks again and never posts twice. In each case the human and an agent `a` are in group `g`: entries 1 to 3 are its making and the two joins, and the human's place is 2. A post across machines, NOT_SENT and UNKNOWN when its reply is lost, UNSUPPORTED where the human is homed on another machine, and UNAVAILABLE while a handoff holds the messages, take two daemons or a held handoff, and are the daemon's Rust tests (api_posting.rs, linked.rs). Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a post as the human is logged with the program's name, and its event carries the request's correlation id",
+      "why": "A program posts as the human, and every post records the program by the name in its Hello, shown beside the author as `Alex (@human) via foreman`: attribution, not identity (MIP-10, section 5). The post's events reach the poster before the answer, with the request's correlation id, and the answer gives the post's group and number.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "*",
+                  "correlation": "2",
+                  "logged": {
+                    "group": "g",
+                    "entry": {"number": "4", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "go ahead", "via": "foreman"}}
+                  }
+                }
+              },
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "through": "1",
+                  "posted": {"group": "g", "number": "4"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a post asked again after a lost answer is posted once, across a reconnect, a handoff and a restart",
+      "why": "The group's home keeps a post's operation id in the post's own log entry, so a client that hung up before its answer asks again under the same id, of the same daemon or the one that took over or started after it, and is told ALREADY_SO with the first post's group and number; nothing is posted twice (the header, Operation ids). Another subscriber's event is how the case knows the first post was made.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "watcher",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "watcher"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "watcher",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "then": "hang_up"
+          },
+          {
+            "as": "watcher",
+            "read": 1,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "*",
+                  "logged": {
+                    "group": "g",
+                    "entry": {"number": "4", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "go ahead", "via": "foreman"}}
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {"daemon": "hand_off"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {"daemon": "restart"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "4", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "4", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "5", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "5",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {"number": "4", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "go ahead", "via": "foreman"}}
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an operation id is the client's own and names one request",
+      "why": "An id used again for a different post is refused OPERATION_REUSED, and nothing is posted. Ids are scoped by the client's name from its Hello, so another program choosing the same id posts its own. A post needs an id, which is what makes asking again safe, and a Hello with a name, which the post is shown with; without either it is INVALID (the header, Operation ids).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "hold off"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_OPERATION_REUSED"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "msg": {"post": {"group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "other",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "another program"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "other",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+          },
+          {
+            "as": "nameless",
+            "hello": {"kind": "KIND_API", "api": "$api"},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "nameless",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-2", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "4", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {"number": "4", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "go ahead", "via": "foreman"}},
+                      {"number": "5", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "go ahead", "via": "another program"}}
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a repeat after its group was deleted is answered with the first post, and makes no group",
+      "why": "A deleted group's operation ids stay with its retired log, so a post asked again after the group is gone is ALREADY_SO with the number it had, rather than posted into a group made for it (the header, Operation ids). A subscription after holds no group.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {"agent": "a", "deletes": "g"},
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_ALREADY_SO", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {"epoch": "$epoch", "topics": ["TOPIC_MESSAGES"], "sources": "*"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "the desk and a program answering one question leave one answer",
+      "why": "A question takes one answer, from somebody it was asked of, and the group's home refuses a second with ANSWERED, so a phone answering a question the human already answered at the desk can say so (MIP-10, section 7). The history marks the question with the post that answered it.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "Ship?", "group": "g", "to": ["@human"], "answers": ["Yes", "No"]},
+          {"agent": "@human", "posts": "Answer: Yes", "group": "g", "to": ["a"], "answering": {"question": 4, "answer": "Yes"}},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "1",
+              "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "Answer: No", "answering": {"question": "4", "answer": "No"}}}
+            },
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_ANSWERED"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {
+                        "number": "4",
+                        "atMs": "*",
+                        "post": {"author": "a", "to": ["@human"], "body": "Ship?", "answers": ["Yes", "No"], "answeredBy": "5"}
+                      },
+                      {
+                        "number": "5",
+                        "atMs": "*",
+                        "post": {"author": "@human", "to": ["a"], "body": "Answer: Yes", "answering": {"question": "4", "answer": "Yes"}}
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a program posts as the participant it names",
+      "why": "A post is the human's unless `as` names another participant, and is shown with the program's name either way (MIP-10, section 5).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "to": ["@human"], "body": "done", "as": "a"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "done", "via": "foreman"}}
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a post refused for what it names or holds posts nothing",
+      "why": "A group, addressee or question that does not exist is NOT_FOUND, and a post that could never be taken, an empty body or an answer the question does not offer, is INVALID, so a client can tell what to put right before asking again (the header, NewPost). None of them is posted.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "Ship?", "group": "g", "to": ["@human"], "answers": ["Yes", "No"]},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "elsewhere", "to": ["a"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"post": {"operation": "op-2", "group": "g", "to": ["nobody"], "body": "go ahead"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "3",
+              "msg": {"post": {"operation": "op-3", "group": "g", "to": ["a"], "body": "Answer: Yes", "answering": {"question": "9", "answer": "Yes"}}}
+            },
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "4", "msg": {"post": {"operation": "op-4", "group": "g", "to": ["a"]}}},
+            "heard": [{"answer": {"correlation": "4", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "5",
+              "msg": {"post": {"operation": "op-5", "group": "g", "to": ["a"], "body": "Answer: Maybe", "answering": {"question": "4", "answer": "Maybe"}}}
+            },
+            "heard": [{"answer": {"correlation": "5", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "6", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "6",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [{"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "Ship?", "answers": ["Yes", "No"]}}]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "acknowledging what a phone showed leaves what arrived since unread, and never moves back",
+      "why": "`msg.ack` moves the human's place on to the number the client showed them, at their home, and what arrived since stays unread at the desk; the move reaches subscribers as an Unread event before the answer. Already there or further on is ALREADY_SO, a number past the newest is INVALID, and a group the human is not in is NOT_FOUND. Only an acknowledgement moves the place for a program: reading at the desk still reads to the end (MIP-10, section 5).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "b", "joins": "other"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {"agent": "a", "posts": "one", "group": "g", "to": ["@human"]},
+          {"agent": "a", "posts": "two", "group": "g", "to": ["@human"]},
+          {
+            "as": "foreman",
+            "read": 4,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "1", "source": "*", "logged": {"group": "g", "entry": {"number": "4", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "one"}}}}},
+              {"event": {"epoch": "$epoch", "number": "2", "source": "*", "unread": {"group": "g", "place": "2", "count": "1", "waiting": [{"number": "4", "atMs": "*", "author": "a", "addressed": true}]}}},
+              {"event": {"epoch": "$epoch", "number": "3", "source": "*", "logged": {"group": "g", "entry": {"number": "5", "atMs": "*", "post": {"author": "a", "to": ["@human"], "body": "two"}}}}},
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "4",
+                  "source": "*",
+                  "unread": {
+                    "group": "g",
+                    "place": "2",
+                    "count": "2",
+                    "waiting": [{"number": "4", "atMs": "*", "author": "a", "addressed": true}, {"number": "5", "atMs": "*", "author": "a", "addressed": true}]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"ack": {"group": "g", "through": "4"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "5",
+                  "source": "*",
+                  "correlation": "2",
+                  "unread": {"group": "g", "place": "4", "count": "1", "waiting": [{"number": "5", "atMs": "*", "author": "a", "addressed": true}]}
+                }
+              },
+              {"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "through": "5"}}
+            ]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "msg": {"ack": {"group": "g", "through": "4"}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_ALREADY_SO", "epoch": "$epoch", "through": "5"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "4", "msg": {"ack": {"group": "g", "through": "3"}}},
+            "heard": [{"answer": {"correlation": "4", "outcome": "OUTCOME_ALREADY_SO", "epoch": "$epoch", "through": "5"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "5", "msg": {"ack": {"group": "g", "through": "9"}}},
+            "heard": [{"answer": {"correlation": "5", "outcome": "OUTCOME_REFUSED", "epoch": "$epoch", "through": "5", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "6", "msg": {"ack": {"group": "other", "through": "1"}}},
+            "heard": [{"answer": {"correlation": "6", "outcome": "OUTCOME_REFUSED", "epoch": "$epoch", "through": "5", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "7", "msg": {"ack": {"group": "nowhere", "through": "1"}}},
+            "heard": [{"answer": {"correlation": "7", "outcome": "OUTCOME_REFUSED", "epoch": "$epoch", "through": "5", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
+          },
+          {"app": "attending"},
+          {"human": "reads", "group": "g"},
+          {
+            "as": "foreman",
+            "read": 1,
+            "heard": [{"event": {"epoch": "$epoch", "number": "6", "source": "*", "unread": {"group": "g", "place": "5"}}}]
+          }
+        ]
+      }
+    }
+  ]
+}

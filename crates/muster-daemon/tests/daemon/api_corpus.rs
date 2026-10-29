@@ -74,6 +74,11 @@ fn driving() {
 }
 
 #[test]
+fn posting() {
+    played(&Conformance::load("api-posting.json"));
+}
+
+#[test]
 fn ending() {
     played(&Conformance::load("api-ending.json"));
 }
@@ -401,15 +406,26 @@ impl<'a> Conversation<'a> {
                 };
                 expect(&mut control, msg(&caller, Asked::Join(join)), DONE);
             } else if let Some(body) = text("posts") {
+                let answering = step.get("answering").map(|answering| msg_request::Answering {
+                    question: answering.get("question").and_then(Value::as_u64).unwrap_or(0),
+                    answer: answering.get("answer").and_then(Value::as_str).unwrap_or("").into(),
+                });
                 let post = msg_request::Post {
                     group: text("group").map(ToString::to_string),
                     to: strings(step, "to"),
                     body: body.to_string(),
+                    answers: strings(step, "answers"),
+                    answering,
                     ..Default::default()
                 };
                 expect(&mut control, msg(&caller, Asked::Post(post)), DONE);
+            } else if let Some(group) = text("deletes") {
+                let delete = msg_request::GroupDelete { group: group.to_string() };
+                expect(&mut control, msg(&caller, Asked::GroupDelete(delete)), DONE);
             } else {
-                return Err(CaseError::new("an agent's step says neither joins nor posts"));
+                return Err(CaseError::new(
+                    "an agent's step says neither joins, posts nor deletes",
+                ));
             }
             return Ok(());
         }
