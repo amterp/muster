@@ -105,8 +105,10 @@ daemon cannot read, or a send of nothing, is refused INVALID before anything is 
 With `confirm`, the daemon reads the pane back: DONE once the text shows more often than it did,
 REFUSED when the pane shows it was not taken, and UNKNOWN when the pane changed without showing it
 or could not be read. That says the text arrived, not that it was submitted. Without `confirm`,
-DONE means the daemon handed the send to the pane. A send is never retried for the client: one
-answered UNKNOWN may have been typed, and sending it again may type it twice.
+DONE means the daemon handed the send to the pane. Either way, a send is refused with nothing typed
+while the pane's agent is restarting, or while its program has stopped reading and the daemon holds
+as much of its input as it will, and sending it again later is safe. A send is never retried for
+the client: one answered UNKNOWN may have been typed, and sending it again may type it twice.
 
 ### pane.close
 
