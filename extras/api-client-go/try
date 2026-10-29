@@ -24,7 +24,8 @@ mkdir -p "$scratch/home"
 env -i PATH="$PATH" HOME="$scratch/home" SHELL=/bin/sh \
     "$daemon" --socket "$scratch/daemon.sock" --data "$data" > "$scratch/daemon.log" 2>&1 &
 pid=$!
-trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rm -rf "$scratch"' EXIT
+# Under set -e a failing kill or wait would end the trap early, and the daemon may be gone.
+trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$scratch"' EXIT
 for _ in $(seq 1 100); do
     [ -S "$scratch/daemon.sock" ] && break
     if ! kill -0 "$pid" 2>/dev/null; then
