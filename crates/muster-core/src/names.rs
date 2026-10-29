@@ -99,6 +99,12 @@ impl Minter {
         self.draw('w')
     }
 
+    /// A name for a daemon, drawn once when its install first starts and kept for good, so that
+    /// other programs tell one machine's daemon from another's by it (MIP-10).
+    pub fn daemon(&mut self) -> String {
+        self.draw('d')
+    }
+
     /// A name this has never handed out. Re-drawn on a collision rather than accepted, which is
     /// what "never reused" costs.
     fn draw(&mut self, prefix: char) -> String {

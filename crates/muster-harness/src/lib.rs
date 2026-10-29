@@ -1,7 +1,8 @@
 //! What a test needs to drive a real daemon: the daemon itself, waiting without sleeping, a
-//! relay that loses answers on request, and a fake agent the daemon detects.
+//! relay that loses answers on request, a fake agent the daemon detects, and a client of the API.
 
 mod agents;
+mod api_client;
 mod control;
 mod daemon;
 mod input;
@@ -11,6 +12,7 @@ pub mod requests;
 mod stream;
 mod until;
 
+pub use api_client::{Api, ApiAsked, subscribe_to, test_client};
 pub use control::{Asked, Control};
 pub use daemon::{
     DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing, built_daemon, built_linux_daemons,

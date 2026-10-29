@@ -5,6 +5,7 @@
 //! a test harness - decides how it is detached; this binary only serves its socket until it is
 //! told to stop.
 
+mod api;
 mod attribution;
 mod compaction;
 mod control;
@@ -70,6 +71,9 @@ const ALREADY_SERVING: u8 = 3;
 
 /// How long a stopping daemon waits for its state to be written before it exits anyway.
 const LAST_WRITE: Duration = Duration::from_secs(5);
+
+/// How long a stopping daemon waits for every API connection to be told it is stopping.
+const API_FLUSH: Duration = Duration::from_secs(1);
 
 /// How long a daemon that has handed its panes over, and is asked to stop, waits for the handoff
 /// thread to finish telling its subscribers: that thread's own flush, and its requester's.
@@ -319,6 +323,8 @@ fn wait(shared: &Shared, stop: &Receiver<Stop>, persister: &Persister) {
             }
         }
     }
+    // Closing every pane ended every API connection, saying why; this lets that be read.
+    shared.api.flush(API_FLUSH);
     persister.wait_until_stopped(LAST_WRITE);
     pane::wait_for_kills(pane::KILL_GRACE + Duration::from_secs(1));
     let _ = std::fs::remove_file(socket);

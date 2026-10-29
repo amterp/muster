@@ -10,14 +10,17 @@
 // Every connection to the daemon's socket carries frames as muster-frame writes them: a
 // four-byte big-endian length, then a message. The first frame each way is the handshake: the
 // client sends a Hello naming the kind of connection and the protocol version it speaks, and
-// the daemon answers with a HelloAnswer before anything else. There are three kinds:
+// the daemon answers with a HelloAnswer before anything else. There are five kinds:
 //
 // - control, one per app per daemon: Request in, ControlMessage (answers and events) out;
 // - input, one per app per daemon: InputEvent in, nothing out. Never acknowledged, and never
 //   queued behind a large answer on the control connection;
 // - stream, one per bridge: StreamRequest in, StreamMessage out, for one pane's bytes;
 // - peer, one per pair of linked daemons on different machines: PeerFrame both ways, so that
-//   either can call the other over a connection only one of them could dial.
+//   either can call the other over a connection only one of them could dial;
+// - api, for other programs (MIP-10): everything after `kind` is muster_api.proto's, whose own
+//   Hello shares only that field with this one. The daemon reads the kind before the version,
+//   so an API client is never judged by this protocol's version.
 //
 // ## Answers and events
 //
@@ -79,6 +82,8 @@ enum ConnectionKind {
   CONNECTION_KIND_INPUT = 2;
   CONNECTION_KIND_STREAM = 3;
   CONNECTION_KIND_PEER = 4;
+  // Since 1.9. The rest of the connection is muster_api.proto's, its Hello included.
+  CONNECTION_KIND_API = 5;
 }
 
 // The first frame on every connection, from the client.

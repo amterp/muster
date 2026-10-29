@@ -9,7 +9,9 @@ name = "muster-daemon"
 path = "src/main.rs"
 
 [dependencies]
+flexid.workspace = true
 libc.workspace = true
+muster-api.workspace = true
 muster-core.workspace = true
 muster-daemon-proto = { workspace = true, features = ["serde"] }
 muster-detect.workspace = true
@@ -27,6 +29,7 @@ mimalloc.workspace = true
 # in the package that owns the binary, and every one of them runs the real binary.
 [dev-dependencies]
 libc.workspace = true
+muster-api.workspace = true
 muster-harness.workspace = true
 serde_json.workspace = true
 

@@ -662,8 +662,10 @@ dependencies = [
 name = "muster-daemon"
 version = "0.19.0"
 dependencies = [
+ "flexid",
  "libc",
  "mimalloc",
+ "muster-api",
  "muster-core",
  "muster-daemon-proto",
  "muster-detect",
@@ -739,6 +741,7 @@ name = "muster-harness"
 version = "0.19.0"
 dependencies = [
  "libc",
+ "muster-api",
  "muster-daemon-proto",
  "muster-frame",
  "prost",

@@ -177,6 +177,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
         Ok(accepted) => {
             let pid = successor.as_ref().map_or(0, Child::id);
             let subscribers = shared.lock().replaced(pid, accepted.daemon_version.clone());
+            shared.api.end_all(muster_api::ended::Reason::Replaced);
             faults.pause("after-serving", &shared.socket.path);
             let mut detaches = Vec::new();
             for pane in &handing.panes {
@@ -204,6 +205,7 @@ pub(crate) fn hand_over(shared: &Arc<Shared>, replacement: &Replacement) -> Repl
             for subscriber in subscribers {
                 subscriber.flush(deadline.saturating_duration_since(Instant::now()));
             }
+            shared.api.flush(deadline.saturating_duration_since(Instant::now()));
             for detach in detaches {
                 detach.wait(deadline.saturating_duration_since(Instant::now()));
             }

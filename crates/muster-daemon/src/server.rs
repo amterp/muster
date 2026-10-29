@@ -13,6 +13,7 @@ use muster_core::fields;
 use muster_daemon_proto::connection;
 use muster_daemon_proto::version::{PROTOCOL, compatible};
 use muster_daemon_proto::{self as proto, ConnectionKind, hello_answer, install};
+use prost::Message;
 
 use crate::control;
 use crate::hold::{Hold, Leaving};
@@ -122,8 +123,23 @@ pub(crate) fn accept(shared: &Arc<Shared>) {
 
 fn open(mut stream: UnixStream, shared: &Arc<Shared>) {
     let _ = stream.set_read_timeout(Some(HELLO_PATIENCE));
-    let hello = match connection::receive::<proto::Hello>(&mut stream) {
-        Ok(Some(hello)) => hello,
+    // Read as bytes first: an API Hello is muster_api.proto's, and shares only its kind with this
+    // protocol's (`proto/muster_daemon.proto`, connections).
+    let hello = muster_frame::read_frame_or_end(&mut stream, connection::LARGEST_MESSAGE).and_then(
+        |frame| {
+            let Some(frame) = frame else { return Ok(None) };
+            let hello = proto::Hello::decode(frame.as_slice())
+                .map_err(|error| format!("a {}-byte hello did not decode: {error}", frame.len()))?;
+            Ok(Some((hello, frame)))
+        },
+    );
+    let hello = match hello {
+        Ok(Some((hello, frame))) => {
+            if hello.kind == i32::from(ConnectionKind::Api) {
+                return crate::api::serve(stream, &frame, shared);
+            }
+            hello
+        }
         Ok(None) => return,
         Err(error) => {
             log::warn(
@@ -192,7 +208,8 @@ fn judge(hello: &proto::Hello) -> Result<(), String> {
             | ConnectionKind::Input
             | ConnectionKind::Peer,
         ) => Ok(()),
-        Ok(ConnectionKind::Unspecified) | Err(_) => {
+        // Served before the version is judged, so never judged here.
+        Ok(ConnectionKind::Unspecified | ConnectionKind::Api) | Err(_) => {
             Err("the hello names no kind of connection this daemon knows".to_string())
         }
     }
@@ -207,7 +224,7 @@ pub(crate) const VERSION_SAID: &str = "MUSTER_DAEMON_VERSION_SAID";
 
 /// The version this daemon says it is: its own, or in a debug build whatever [`VERSION_SAID`]
 /// names.
-fn said_version() -> String {
+pub(crate) fn said_version() -> String {
     if cfg!(debug_assertions)
         && let Ok(said) = std::env::var(VERSION_SAID)
         && !said.is_empty()

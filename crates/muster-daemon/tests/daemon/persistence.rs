@@ -34,7 +34,7 @@ fn type_line(input: &mut Input, pane: &str, text: &str) {
     );
 }
 
-fn directory(daemon: &Daemon, name: &str) -> PathBuf {
+pub(crate) fn directory(daemon: &Daemon, name: &str) -> PathBuf {
     let path = daemon.root().join(name);
     std::fs::create_dir_all(&path).unwrap();
     canonical(&path)
@@ -317,7 +317,7 @@ fn a_write_that_never_finishes_holds_up_no_request() {
 
 /// A state file of `tabs` tabs of one pane each, `t<n>` holding `p<n>`, every pane in `cwd`,
 /// with `shell` as the configured shell if one is given.
-fn saved(tabs: usize, cwd: &Path, shell: Option<&str>) -> String {
+pub(crate) fn saved(tabs: usize, cwd: &Path, shell: Option<&str>) -> String {
     let shell = shell.map_or("null".to_string(), |shell| format!("{shell:?}"));
     let tab =
         |n| format!(r#"{{"tab":"t{n}","label":{{"generation":0}},"root":{{"pane":"p{n}"}}}}"#);
@@ -335,7 +335,7 @@ fn saved(tabs: usize, cwd: &Path, shell: Option<&str>) -> String {
 }
 
 /// Stops the daemon, puts `file` where its state is kept, and starts it again on it.
-fn restarted_from(daemon: &mut Daemon, file: &str) -> Control {
+pub(crate) fn restarted_from(daemon: &mut Daemon, file: &str) -> Control {
     let mut control = daemon.connect();
     stop(daemon, &mut control);
     std::fs::write(state_file(daemon), file).unwrap();

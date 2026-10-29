@@ -39,6 +39,7 @@ use proto::event::Event as Payload;
 use proto::request::Service;
 use proto::{Outcome, pane_request, session_request, tab_request};
 
+use crate::api::Api;
 use crate::compaction::{Compaction, Pending};
 use crate::control::Outbox;
 use crate::daemon_log::DaemonLog;
@@ -109,9 +110,13 @@ pub(crate) struct Shared {
     pub(crate) stopping: Sender<Stop>,
     pub(crate) instance: u64,
     pub(crate) socket: Socket,
+    /// Every API connection and its subscription, which code holding either lock above publishes
+    /// to (MIP-10).
+    pub(crate) api: Arc<Api>,
 }
 
 impl Shared {
+    #[expect(clippy::too_many_lines, reason = "one field for each thing the daemon holds")]
     pub(crate) fn new(
         instance: u64,
         stopping: Sender<Stop>,
@@ -156,6 +161,7 @@ impl Shared {
             });
             let detecting = Detecting::start(overrides);
             let messages = Messages::load(&socket.path);
+            let api = crate::api::of_daemon(&socket.path, instance);
             let human = messages.human();
             let joined = messages.joined();
             Shared {
@@ -203,10 +209,12 @@ impl Shared {
                     restored_from_file: false,
                     replacing: Replacing::No,
                     stop_deferred: false,
+                    api: Arc::clone(&api),
                 }),
                 stopping,
                 instance,
                 socket,
+                api,
             }
         });
         // Not from inside `new_cyclic`: until it returns, the weak handle cannot be upgraded, and
@@ -385,6 +393,8 @@ pub(crate) struct Session {
     manifest_loads: u64,
     manifests_adopted: u64,
     subscribers: Vec<Outbox>,
+    /// The API's connections, told when this daemon's state as a source changes.
+    api: Arc<Api>,
     /// The subscribers that are windows telling the human what waits for them, by connection.
     attending: HashSet<u64>,
     /// What waits for the human, per group, as last told to the windows, with the order the
@@ -987,6 +997,7 @@ fn finish_restore(shared: &Shared, lost: Lost, failed: Option<&str>) {
         lost_panes: panes,
         saving_stopped: !saving,
     }));
+    session.api.source_changed(muster_api::SourceState::Current);
     if saving {
         persister.arm();
     } else {
@@ -1279,6 +1290,7 @@ impl Session {
         if !self.stopping {
             self.persister.stopping(self.persisted());
             self.emit(Payload::Stopping(proto::Stopping {}));
+            self.api.end_all(muster_api::ended::Reason::Stopping);
         }
         self.stopping = true;
         while let Some(tab) = self.tabs.first() {

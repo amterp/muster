@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use muster_daemon_proto::{self as proto, request::Service, session_request};
 
+use crate::api_client::Api;
 use crate::control::Control;
 use crate::relay::{Holding, Relay};
 use crate::relay_daemon::DaemonPump;
@@ -348,6 +349,11 @@ impl Daemon {
     /// A new control connection, welcomed.
     pub fn connect(&self) -> Control {
         Control::connect(&self.socket_path)
+    }
+
+    /// A new API connection, welcomed.
+    pub fn api(&self) -> Api {
+        Api::connect(&self.socket_path)
     }
 
     /// A relay in front of this daemon that never delivers the answer to any request `withheld`

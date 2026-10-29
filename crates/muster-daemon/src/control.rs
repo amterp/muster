@@ -7,11 +7,12 @@
 
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, atomic::AtomicBool, atomic::AtomicU64, atomic::Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, pane_request, request::Service, session_request};
@@ -22,7 +23,7 @@ use crate::restart::Restarting;
 use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
 use crate::{handoff, messages};
 
-/// How many messages a connection may have waiting before the daemon gives up on it.
+/// How many messages a control connection may have waiting before the daemon gives up on it.
 ///
 /// A client reading at all keeps this near empty: events are a few hundred bytes and arrive
 /// at the rate panes change. Filling it means the client has stopped reading, and holding more
@@ -39,35 +40,117 @@ const MANIFESTS_PATIENCE: Duration = Duration::from_secs(1);
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
+/// How much a connection may have waiting before the daemon gives up on it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Budget {
+    pub(crate) messages: usize,
+    pub(crate) bytes: usize,
+}
+
+impl Budget {
+    /// A control connection's, which counts messages alone: what it carries is small and the
+    /// app reads it.
+    pub(crate) const CONTROL: Budget = Budget { messages: QUEUE_DEPTH, bytes: usize::MAX };
+}
+
+impl std::fmt::Display for Budget {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.bytes == usize::MAX {
+            write!(formatter, "{} messages", self.messages)
+        } else {
+            write!(formatter, "{} messages or {} bytes", self.messages, self.bytes)
+        }
+    }
+}
+
+/// Where a frame stands in its connection's numbered stream: the subscription's epoch, and the
+/// number of the last event sent once the frame is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Position {
+    pub(crate) epoch: u64,
+    pub(crate) number: u64,
+}
+
+/// What a connection that fell behind is told before it is hung up: a frame built from the last
+/// position written, written after the frame the writer was on.
+pub(crate) struct Farewell {
+    pub(crate) words: Box<dyn Fn(Position) -> Vec<u8> + Send>,
+    /// How long the client has to read again before it is hung up on without them.
+    pub(crate) patience: Duration,
+}
+
 /// What a connection has to send, in order.
 #[derive(Debug, Clone)]
 pub(crate) struct Outbox {
     pub(crate) id: u64,
     sender: SyncSender<Outbound>,
     stream: Arc<UnixStream>,
+    budget: Budget,
+    queued: Arc<Queued>,
+}
+
+/// What the pushing threads and the writer share about a connection's queue.
+#[derive(Debug)]
+struct Queued {
+    bytes: AtomicUsize,
+    /// The connection fell behind: nothing more is queued, and its writer stops at the next
+    /// frame.
+    overrun: AtomicBool,
+    /// Disconnected once the writer has ended, which a farewell's patience waits for.
+    writer_ended: Mutex<Option<mpsc::Receiver<()>>>,
+    patience: Option<Duration>,
 }
 
 #[derive(Debug)]
 enum Outbound {
-    Frame(Arc<[u8]>),
+    Frame(Arc<[u8]>, Option<Position>),
     /// A request's answer, and how it came about, logged once it is written.
     Answer(Arc<[u8]>, Answered),
     /// Answered once everything queued before it has been written.
     Flushed(mpsc::Sender<()>),
+    /// Wakes a writer waiting for frames, to say its connection fell behind.
+    Overrun,
 }
 
 impl Outbox {
+    /// A control connection's outbox: [`Budget::CONTROL`], hung up on the moment it falls
+    /// behind.
     pub(crate) fn open(stream: &UnixStream) -> std::io::Result<Outbox> {
+        Outbox::open_with(stream, Budget::CONTROL, None)
+    }
+
+    pub(crate) fn open_with(
+        stream: &UnixStream,
+        budget: Budget,
+        farewell: Option<Farewell>,
+    ) -> std::io::Result<Outbox> {
         let id = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed);
-        let (sender, receiver) = mpsc::sync_channel(QUEUE_DEPTH);
+        let (sender, receiver) = mpsc::sync_channel(budget.messages);
+        let (ending, writer_ended) = mpsc::channel::<()>();
+        let queued = Arc::new(Queued {
+            bytes: AtomicUsize::new(0),
+            overrun: AtomicBool::new(false),
+            writer_ended: Mutex::new(Some(writer_ended)),
+            patience: farewell.as_ref().map(|farewell| farewell.patience),
+        });
         let mut writing = stream.try_clone()?;
+        let written = Arc::clone(&queued);
         std::thread::Builder::new().name(format!("write {id}")).spawn(move || {
+            let _ending = ending;
+            let mut reached = Position::default();
             for outbound in receiver {
+                if written.overrun.load(Ordering::Acquire) {
+                    break;
+                }
                 match outbound {
-                    Outbound::Frame(frame) => {
+                    Outbound::Frame(frame, position) => {
                         if muster_frame::write_frame(&mut writing, &frame).is_err() {
                             let _ = writing.shutdown(Shutdown::Both);
                             return;
+                        }
+                        written.bytes.fetch_sub(frame.len(), Ordering::AcqRel);
+                        if let Some(position) = position {
+                            reached = position;
                         }
                     }
                     Outbound::Answer(frame, answered) => {
@@ -75,42 +158,92 @@ impl Outbox {
                             let _ = writing.shutdown(Shutdown::Both);
                             return;
                         }
+                        written.bytes.fetch_sub(frame.len(), Ordering::AcqRel);
                         answered.log(id);
                     }
                     Outbound::Flushed(done) => {
                         let _ = done.send(());
                     }
+                    Outbound::Overrun => break,
                 }
             }
+            if written.overrun.load(Ordering::Acquire) {
+                if let Some(farewell) = farewell {
+                    let _ = muster_frame::write_frame(&mut writing, &(farewell.words)(reached));
+                }
+                let _ = writing.shutdown(Shutdown::Both);
+            }
         })?;
-        Ok(Outbox { id, sender, stream: Arc::new(stream.try_clone()?) })
+        Ok(Outbox { id, sender, stream: Arc::new(stream.try_clone()?), budget, queued })
     }
 
     /// Queues a frame. False when the connection is gone or has fallen too far behind, in which
     /// case it is hung up.
     pub(crate) fn push(&self, frame: Arc<[u8]>) -> bool {
-        self.queue(Outbound::Frame(frame))
+        self.queue(Outbound::Frame(frame, None), false)
     }
 
-    fn queue(&self, outbound: Outbound) -> bool {
-        match self.sender.try_send(outbound) {
-            Ok(()) => true,
-            Err(TrySendError::Full(_)) => {
-                log::warn(
-                    "daemon.connection.overrun",
-                    fields! {
-                        "connection" => self.id,
-                        "queued" => QUEUE_DEPTH,
-                        "impact" => "the connection is dropped; its client misses nothing it \
-                                     cannot recover by subscribing again",
-                        "check" => "whether the client stopped reading its socket",
-                    },
-                );
-                let _ = self.stream.shutdown(Shutdown::Both);
-                false
-            }
-            Err(TrySendError::Disconnected(_)) => false,
+    /// Queues a frame that stands at `position` in the connection's numbered stream, which is
+    /// what its farewell says was reached once the frame is written.
+    pub(crate) fn push_at(&self, frame: Arc<[u8]>, position: Position) -> bool {
+        self.queue(Outbound::Frame(frame, Some(position)), false)
+    }
+
+    fn queue(&self, outbound: Outbound, quiet: bool) -> bool {
+        if self.queued.overrun.load(Ordering::Acquire) {
+            return false;
         }
+        let bytes = match &outbound {
+            Outbound::Frame(frame, _) | Outbound::Answer(frame, _) => frame.len(),
+            Outbound::Flushed(_) | Outbound::Overrun => 0,
+        };
+        let queued = self.queued.bytes.fetch_add(bytes, Ordering::AcqRel) + bytes;
+        if queued <= self.budget.bytes {
+            match self.sender.try_send(outbound) {
+                Ok(()) => return true,
+                Err(TrySendError::Disconnected(_)) => return false,
+                Err(TrySendError::Full(_)) => {}
+            }
+        }
+        self.fell_behind(queued, quiet);
+        false
+    }
+
+    /// Gives up on a connection that has more waiting than its budget: hung up on now, or once
+    /// its farewell is written.
+    fn fell_behind(&self, queued: usize, quiet: bool) {
+        if self.queued.overrun.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if !quiet {
+            log::warn(
+                "daemon.connection.overrun",
+                fields! {
+                    "connection" => self.id,
+                    "budget" => self.budget,
+                    "bytes" => queued,
+                    "impact" => "the connection is dropped; its client misses nothing it \
+                                 cannot recover by subscribing again",
+                    "check" => "whether the client stopped reading its socket",
+                },
+            );
+        }
+        let Some(patience) = self.queued.patience else {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return;
+        };
+        let _ = self.sender.try_send(Outbound::Overrun);
+        let ended =
+            poison::lock(&self.queued.writer_ended, "daemon.connection.writer_ended").take();
+        let stream = Arc::clone(&self.stream);
+        // A writer blocked on a client that never reads again is unblocked only by this.
+        let _ = std::thread::Builder::new().name(format!("hang up {}", self.id)).spawn(move || {
+            if let Some(ended) = ended
+                && ended.recv_timeout(patience) == Err(mpsc::RecvTimeoutError::Timeout)
+            {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+        });
     }
 
     /// Queues a frame as [`Outbox::push`] does, and says nothing when it cannot: the daemon's
@@ -118,14 +251,7 @@ impl Outbox {
     /// back into the log. A connection that far behind is still hung up, and its closing is
     /// logged by the thread serving it.
     pub(crate) fn offer(&self, frame: Arc<[u8]>) -> bool {
-        match self.sender.try_send(Outbound::Frame(frame)) {
-            Ok(()) => true,
-            Err(TrySendError::Full(_)) => {
-                let _ = self.stream.shutdown(Shutdown::Both);
-                false
-            }
-            Err(TrySendError::Disconnected(_)) => false,
-        }
+        self.queue(Outbound::Frame(frame, None), true)
     }
 
     /// Waits until everything queued so far has been written, or `within` has passed.
@@ -555,5 +681,124 @@ fn answer(session: &Session, outbox: &Outbox, reply: Reply, answered: Answered) 
         })
         .encode_to_vec();
     }
-    outbox.queue(Outbound::Answer(frame.into(), Answered { queued: Instant::now(), ..answered }));
+    outbox.queue(
+        Outbound::Answer(frame.into(), Answered { queued: Instant::now(), ..answered }),
+        false,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FRAME: usize = 1024;
+
+    /// A frame of `FRAME` bytes saying which it was.
+    fn numbered(number: u64) -> Arc<[u8]> {
+        let mut frame = vec![0u8; FRAME];
+        frame[..8].copy_from_slice(&number.to_le_bytes());
+        frame.into()
+    }
+
+    fn number_of(frame: &[u8]) -> u64 {
+        u64::from_le_bytes(frame[..8].try_into().unwrap())
+    }
+
+    fn farewell(patience: Duration) -> Farewell {
+        Farewell {
+            words: Box::new(|at: Position| format!("bye {} {}", at.epoch, at.number).into_bytes()),
+            patience,
+        }
+    }
+
+    /// Pushes numbered frames at epoch 7 until the outbox refuses one, which it has to within
+    /// far more than any kernel buffers, and returns how many it took.
+    fn push_until_refused(outbox: &Outbox) -> u64 {
+        for number in 1..=100_000 {
+            if !outbox.push_at(numbered(number), Position { epoch: 7, number }) {
+                return number - 1;
+            }
+        }
+        panic!("the outbox never refused a frame from a client that reads nothing");
+    }
+
+    /// Everything the client end reads until the daemon's end hangs up.
+    fn read_to_end(client: &mut UnixStream) -> Vec<Vec<u8>> {
+        client.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let mut frames = Vec::new();
+        while let Ok(Some(frame)) = muster_frame::read_frame_or_end(client, 1 << 24) {
+            frames.push(frame);
+        }
+        frames
+    }
+
+    /// The frames read before the farewell say where the client got to, and the farewell says
+    /// the same: nothing, when the budget ran out before the writer wrote a frame.
+    fn check_farewell(frames: &[Vec<u8>]) {
+        let (last, numbered) = frames.split_last().expect("something was read");
+        let numbers: Vec<u64> = numbered.iter().map(|frame| number_of(frame)).collect();
+        let reached = numbers.last().copied().unwrap_or(0);
+        assert_eq!(numbers, (1..=reached).collect::<Vec<_>>(), "the frames written, in order");
+        let epoch = if reached == 0 { 0 } else { 7 };
+        assert_eq!(String::from_utf8_lossy(last), format!("bye {epoch} {reached}"));
+    }
+
+    #[test]
+    fn a_connection_past_its_byte_budget_is_told_where_it_got_to_and_hung_up_on() {
+        let (daemon_end, mut client) = UnixStream::pair().unwrap();
+        let budget = Budget { messages: 100_000, bytes: 8 * FRAME };
+        let outbox =
+            Outbox::open_with(&daemon_end, budget, Some(farewell(Duration::from_secs(10))))
+                .unwrap();
+        push_until_refused(&outbox);
+        assert!(!outbox.push(numbered(0)), "nothing more is queued once it fell behind");
+        check_farewell(&read_to_end(&mut client));
+    }
+
+    #[test]
+    fn a_connection_past_its_message_budget_is_told_where_it_got_to_and_hung_up_on() {
+        let (daemon_end, mut client) = UnixStream::pair().unwrap();
+        let budget = Budget { messages: 4, bytes: usize::MAX };
+        let outbox =
+            Outbox::open_with(&daemon_end, budget, Some(farewell(Duration::from_secs(10))))
+                .unwrap();
+        push_until_refused(&outbox);
+        check_farewell(&read_to_end(&mut client));
+    }
+
+    /// A client that never reads again cannot hold the writer forever: it is hung up on without
+    /// its farewell once the patience has passed. A frame larger than any socket buffer is what
+    /// holds the writer.
+    #[test]
+    fn a_connection_that_never_reads_again_is_hung_up_on_without_its_farewell() {
+        let (daemon_end, mut client) = UnixStream::pair().unwrap();
+        let budget = Budget { messages: 4, bytes: usize::MAX };
+        let outbox =
+            Outbox::open_with(&daemon_end, budget, Some(farewell(Duration::from_millis(100))))
+                .unwrap();
+        let mut number = 0;
+        while outbox.push(vec![0u8; 4 << 20].into()) {
+            number += 1;
+            assert!(number < 100, "the outbox never refused a frame");
+        }
+        muster_harness::until(
+            "the writer to be hung up on",
+            || Arc::strong_count(&outbox.queued) == 1,
+            (),
+        );
+        let frames = read_to_end(&mut client);
+        assert!(
+            frames.iter().all(|frame| !frame.starts_with(b"bye")),
+            "the farewell was written to a client that was not reading"
+        );
+    }
+
+    #[test]
+    fn a_control_connection_is_hung_up_on_at_once_and_told_nothing() {
+        let (daemon_end, mut client) = UnixStream::pair().unwrap();
+        let outbox = Outbox::open(&daemon_end).unwrap();
+        push_until_refused(&outbox);
+        let frames = read_to_end(&mut client);
+        assert!(frames.iter().all(|frame| frame.len() == FRAME), "only the frames queued");
+    }
 }
