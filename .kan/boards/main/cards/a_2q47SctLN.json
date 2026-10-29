@@ -9,7 +9,15 @@
     "a_2q47SHmeF",
     "a_2q47RHHrM"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2q9iQOnIi",
+      "body": "Landed 2026-10-29 (98fc02bd..8896201e): msg.post and msg.ack through the API, as the human unless a participant is named; a required operation id kept in the post's own log entry at the group's home, with an index rebuilt from the logs at restart (so a crash cannot lead to a second post), no cap; posts record the client's name and the banner, conversation and muster msg log show 'via \u003cclient\u003e'; msg.ack moves the human's place forward only, carried to the human's home; a question answered from anywhere settles the desk's banner; REFUSAL_ANSWERED for a second answer; muster msg ack on the CLI. Design reviewed by Codex xhigh (7 P1, 5 P2 over two rounds), code by Codex and Claude (2 P1, 2 P2, minors; all fixed). Full gate green.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793255108603
+    }
+  ],
   "created_at_millis": 1793241771350,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 2, part 2 of 3: messages, acting as the human. Read docs/mip/0010-api-for-other-tools.md sections 5 and 7.\n\nWhat: post and answer a question through the API, as `muster msg post` does, acting as the human unless the request names another participant; each post records the client's name, and the conversation and `muster msg log` show it beside the author: `Alex (@human) via foreman` (decided, question D). `msg.ack`: moves the human's place in a group to a given number at the human's home if further on, never back; fetching, replying and dismissing acknowledge nothing; `muster msg read` keeps reading to the end. Today read takes only a group and moves to the head (crates/muster-msg/src/service.rs).\n\nProves: a phone-like gate client that acknowledges #10 while #11 arrives leaves #11 unread at the desk; the desk and the client answering one question at once leaves one answer (the home refuses the second); the banner and the conversation show \"via\".",
@@ -18,12 +26,13 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "Zv",
+  "position": "YvF",
   "title": "MIP-10 stage 2b: posting as the human via a client, and msg.ack",
   "type": "feature",
-  "updated_at_millis": 1793250363587,
+  "updated_at_millis": 1793255108655,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793241771350},
-    {"field":"column","value":"in-progress","at":1793250363587}
+    {"field":"column","value":"in-progress","at":1793250363587},
+    {"field":"column","value":"done","at":1793255108515}
   ]
 }
