@@ -726,9 +726,14 @@ message MsgRequest {
 // or question that does not exist, ANSWERED for a question that has its answer already, INVALID
 // for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer).
 // One kept on another machine is NOT_SENT when it never left this daemon and UNKNOWN when it
-// was sent and the reply was lost; asking again under the same id is safe in both. Its Logged
-// and Unread events carry the request's correlation id when the group is kept on this daemon;
-// one kept elsewhere arrives without it, when this daemon's copy catches up.
+// was sent and the reply was lost; asking again under the same id is safe in both. A post that
+// would make a group where the human is homed, when that is another machine, is refused
+// UNSUPPORTED: post through that machine's daemon. Its Logged and Unread events carry the
+// request's correlation id when the group is kept on this daemon; one kept elsewhere arrives
+// without it, when this daemon's copy catches up.
+//
+// A refused post was not posted. One refused because the daemon could not write to its disk
+// may still have made the group of exactly its author and addressees, which a GroupMade says.
 message NewPost {
   // Required: the header's "Operation ids" says why.
   string operation = 1;

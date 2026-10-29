@@ -1267,3 +1267,57 @@ fn a_programs_post_to_a_group_kept_on_the_far_daemon_is_kept_there_once() {
     assert_eq!(unsent.outcome(), api::Outcome::NotSent, "{:?}", unsent.answer);
     assert_eq!(kept_there(&mut far_control), ["foreman"]);
 }
+
+/// On a machine whose human is homed on the one that dialed it, a program's acknowledgement is
+/// carried to the human's home, where their place is kept, and a post to a group kept here is
+/// posted here, where its operation id is kept. A post that would make a group is refused
+/// rather than carried, since the human's groups are made at their home: carried, it would be
+/// posted by a daemon this one keeps no record of sending it to, so a retry after the human's
+/// home moved could post it twice.
+#[test]
+fn on_the_dialed_machine_a_programs_ack_is_carried_home_and_a_new_pair_is_refused() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    let person = msg_request::Caller::default();
+    join(&mut far_control, &named("critic"), "critic", "review");
+    join(&mut far_control, &named("builder"), "builder", "other");
+    assert_eq!(join(&mut far_control, &person, "@human", "review"), "review@far");
+    let asked = expect(
+        &mut far_control,
+        post(&named("critic"), None, &["@human"], "a question"),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Posted(posted)) = &msg_answer(&asked).answer else { panic!("{asked:?}") };
+    let waiting = |control: &mut Control| {
+        let held = snapshot(control);
+        held.human.iter().find(|notice| notice.group == "review@far").map(|notice| notice.count)
+    };
+    assert_eq!(waiting(&mut near_control), Some(1));
+
+    let client = api::Client { name: "foreman".to_string(), version: String::new() };
+    let mut program = Api::connect_as(far.socket_path(), client);
+    let acked = program.ask(ack("review", posted.seq));
+    assert_eq!(acked.outcome(), api::Outcome::Done, "{:?}", acked.answer);
+    assert_eq!(waiting(&mut near_control), Some(0), "the place moved where the human is homed");
+
+    let to_group = |id: &str, group: &str, to: &[&str]| {
+        muster_harness::post(api::NewPost {
+            operation: id.to_string(),
+            group: group.to_string(),
+            to: to.iter().map(ToString::to_string).collect(),
+            body: "ship it".to_string(),
+            ..api::NewPost::default()
+        })
+    };
+    let here = program.ask(to_group("op-1", "review", &[]));
+    assert_eq!(here.outcome(), api::Outcome::Done, "{:?}", here.answer);
+    let refused = program.ask(to_group("op-2", "", &["builder"]));
+    assert_eq!(
+        (refused.outcome(), refused.refusal()),
+        (api::Outcome::Refused, api::Refusal::Unsupported),
+        "{:?}",
+        refused.answer
+    );
+}

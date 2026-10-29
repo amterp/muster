@@ -417,6 +417,14 @@ impl Carrying {
         self.run_reaching(shared, hung_up).0
     }
 
+    /// The machine the request is to be carried to.
+    pub(crate) fn machine(&self) -> &str {
+        match &self.destination {
+            Destination::HumanHome(home) => &home.machine,
+            Destination::GroupHome(machine) => machine,
+        }
+    }
+
     /// [`Self::run`], also saying whether the request reached the other machine: one that did
     /// not is answered with the refusal made here, which says nothing of what that machine holds.
     pub(crate) fn run_reaching(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> (Reply, bool) {

@@ -53,25 +53,37 @@ pub(super) fn post(
             operation: Some(operation),
         };
         let author = if asked.r#as.is_empty() { HUMAN.to_string() } else { asked.r#as.clone() };
-        let (reply, reached) = handled(shared, caller, &correlation, author, Asked::Post(post));
-        outcome(correlation, reply, reached, |said| match said {
-            Said::Posted(posted) => Some((
-                posted.already,
-                Some(api::answer::Detail::Posted(api::Posted {
-                    group: posted.group.clone(),
-                    number: posted.seq,
-                })),
-            )),
-            _ => None,
-        })
+        match handled(shared, caller, &correlation, author, Asked::Post(post), false) {
+            Ok((reply, reached)) => outcome(correlation, reply, reached, |said| match said {
+                Said::Posted(posted) => Some((
+                    posted.already,
+                    Some(api::answer::Detail::Posted(api::Posted {
+                        group: posted.group.clone(),
+                        number: posted.seq,
+                    })),
+                )),
+                _ => None,
+            }),
+            // Carried there, the post would be posted by a daemon this one keeps no record of
+            // sending it to, so a retry after the human's home moved could post it twice.
+            Err(machine) => refused(
+                correlation,
+                api::Refusal::Unsupported,
+                format!(
+                    "the human is homed on {machine}, whose daemon posts as them; post through \
+                     that daemon's API, where the post's operation id is kept. Nothing was posted"
+                ),
+            ),
+        }
     };
     shared.api.answer(caller.connection, answer);
 }
 
 pub(super) fn ack(shared: &Arc<Shared>, caller: &Caller, correlation: String, asked: &api::Ack) {
-    let ack = proto::msg_request::Ack { group: asked.group.clone(), through: asked.through };
-    let (reply, reached) =
-        handled(shared, caller, &correlation, HUMAN.to_string(), Asked::Ack(ack));
+    let ack =
+        Asked::Ack(proto::msg_request::Ack { group: asked.group.clone(), through: asked.through });
+    let handled = handled(shared, caller, &correlation, HUMAN.to_string(), ack, true);
+    let Ok((reply, reached)) = handled else { unreachable!("an acknowledgement may be carried") };
     let answer = outcome(correlation, reply, reached, |said| match said {
         Said::Acked(done) => Some((!done.moved, None)),
         _ => None,
@@ -80,14 +92,16 @@ pub(super) fn ack(shared: &Arc<Shared>, caller: &Caller, correlation: String, as
 }
 
 /// The daemon's answer to `asked`, made as `author`, and whether it reached the machine it had
-/// to be carried to, when it had to be.
+/// to be carried to, when it had to be; or, where it would be carried and `may_carry` says not,
+/// that machine, with nothing done.
 fn handled(
     shared: &Arc<Shared>,
     caller: &Caller,
     correlation: &str,
     author: String,
     asked: Asked,
-) -> (Reply, bool) {
+    may_carry: bool,
+) -> Result<(Reply, bool), String> {
     let request = proto::MsgRequest {
         caller: Some(proto::msg_request::Caller {
             as_name: Some(author),
@@ -100,8 +114,9 @@ fn handled(
     // the link's own patience.
     let hung_up = || false;
     match messages::handle_caused(shared, request, Some(&cause), &hung_up) {
-        Handled::Reply(reply) => (reply, true),
-        Handled::Carrying(carrying) => carrying.run_reaching(shared, &hung_up),
+        Handled::Reply(reply) => Ok((reply, true)),
+        Handled::Carrying(carrying) if may_carry => Ok(carrying.run_reaching(shared, &hung_up)),
+        Handled::Carrying(carrying) => Err(carrying.machine().to_string()),
     }
 }
 
