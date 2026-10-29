@@ -858,29 +858,18 @@ fn changed(answer: daemon_proto::Answer) -> Response {
 // ---------------------------------------------------------------------------------------------
 // What the daemon holds, as a window would describe it
 
-/// The word a window paints for a pane, from the daemon's record alone.
-///
-/// The window's rule (`Pane::state` and `Pane::presented_state`, then `Attention::presented`):
-/// an agent whose program has stopped reading is `stuck`, an idle agent that said what it is
-/// waiting on is `waiting`, and a finish nobody has seen is `done` unless the agent is busy
-/// again. A window also clears `done` for a pane it shows with the keyboard; with no window,
-/// nobody has.
+/// The word a window paints for a pane, from the daemon's record alone
+/// ([`daemon_proto::Pane::shown_state`]). With no window, nobody has shown a finished pane.
 pub fn state_of(pane: &daemon_proto::Pane) -> AgentState {
-    let waiting = pane.facts.as_ref().is_some_and(|facts| facts.waiting.is_some());
-    let stuck = pane.agent.is_some() && pane.unread_input.is_some();
-    let state = match pane.agent_state() {
-        _ if stuck => AgentState::Stuck,
-        daemon_proto::AgentState::Working => AgentState::Working,
-        daemon_proto::AgentState::Blocked => AgentState::Blocked,
-        daemon_proto::AgentState::Idle if waiting => AgentState::Waiting,
-        daemon_proto::AgentState::Idle => AgentState::Idle,
-        daemon_proto::AgentState::Unknown => AgentState::Unknown,
-    };
-    let busy = matches!(
-        state,
-        AgentState::Working | AgentState::Blocked | AgentState::Waiting | AgentState::Stuck
-    );
-    if !busy && pane.finished_unseen { AgentState::Done } else { state }
+    match pane.shown_state() {
+        daemon_proto::PaneState::Unknown => AgentState::Unknown,
+        daemon_proto::PaneState::Working => AgentState::Working,
+        daemon_proto::PaneState::Blocked => AgentState::Blocked,
+        daemon_proto::PaneState::Idle => AgentState::Idle,
+        daemon_proto::PaneState::Waiting => AgentState::Waiting,
+        daemon_proto::PaneState::Stuck => AgentState::Stuck,
+        daemon_proto::PaneState::Done => AgentState::Done,
+    }
 }
 
 fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneStateChanged {

@@ -2561,7 +2561,7 @@ impl Session {
         let name = self.panes[index].record.pane.clone();
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
-        let shown = state_since::shown(record);
+        let shown = record.state();
         // What sets one field of the record, and is news only when it changes it.
         let set = match report.what {
             Reported::Title(title) => Ok(replaced(&mut record.title, title)),
