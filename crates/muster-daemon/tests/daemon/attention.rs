@@ -272,3 +272,33 @@ fn a_quiet_pane_that_is_no_helper_never_asks() {
     daemon.set_agent_state("p1", proto::AgentState::Blocked);
     assert_eq!(asking(&snapshot(&mut control)), []);
 }
+
+/// A quiet helper whose maker is on another machine asks as unheard: this daemon cannot see
+/// whether anything there holds an agent to hear it.
+#[test]
+fn a_quiet_helper_whose_maker_is_elsewhere_asks_as_unheard() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, quiet_helper("p2", "far1"));
+    daemon.run_agent("p2");
+    daemon.set_agent_state("p2", proto::AgentState::Blocked);
+    assert_eq!(asking(&snapshot(&mut control)), [("p2".to_string(), proto::Ask::Blocked, true)]);
+}
+
+/// A daemon that takes over another's panes finds a pane already asking, with nothing having
+/// changed in it since.
+#[test]
+fn a_pane_asking_before_a_handoff_asks_after_it() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    drop(control);
+
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), DONE, "{}", answer.reason);
+    let mut client = daemon.connect();
+    let after = subscribed(&mut client, subscribe_request());
+    assert_eq!(asking(&after), [("p1".to_string(), proto::Ask::Blocked, false)]);
+}

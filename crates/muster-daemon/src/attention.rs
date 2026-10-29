@@ -7,7 +7,7 @@
 //! (`muster_core::attention`, `muster_core::helpers`); what is here is this daemon's reading of its
 //! own panes by them, kept as state so that a change is an event.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
 use muster_core::AgentState;
@@ -64,9 +64,6 @@ fn detected(state: proto::AgentState) -> AgentState {
 pub(crate) struct Attention {
     /// Every pane asking for the human now, by the pane.
     asking: BTreeMap<String, proto::Asking>,
-    /// Makers on other machines that hear from their helpers here: each found there by the
-    /// helpers' watch, over a link that is up.
-    heard_elsewhere: BTreeSet<String>,
     /// Each attending connection's standing report, by the connection.
     reports: HashMap<u64, Report>,
     /// Presence as the subscribers were last told it.
@@ -100,21 +97,6 @@ impl Attention {
                 .remove(pane)
                 .map(|_| proto::Asking { pane: pane.to_string(), ..proto::Asking::default() }),
         }
-    }
-
-    /// Whether `maker`, a pane on another machine, hears from its helpers here.
-    pub(crate) fn heard_elsewhere(&self, maker: &str) -> bool {
-        self.heard_elsewhere.contains(maker)
-    }
-
-    /// Takes which makers on other machines hear from their helpers here, and says whether that
-    /// changed.
-    pub(crate) fn set_heard_elsewhere(&mut self, heard: BTreeSet<String>) -> bool {
-        if heard == self.heard_elsewhere {
-            return false;
-        }
-        self.heard_elsewhere = heard;
-        true
     }
 
     /// Takes `connection`'s report, which replaces any it made before.

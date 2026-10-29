@@ -1395,6 +1395,12 @@ impl Session {
             .filter(|helper| helper.record.maker.as_deref() == Some(pane))
             .map(|helper| helper.record.pane.clone());
         let panes: Vec<String> = std::iter::once(pane.to_string()).chain(helpers).collect();
+        self.reconsider_each(panes);
+    }
+
+    /// Works out again what each of `panes` asks of the human, and tells the subscribers what
+    /// changed.
+    fn reconsider_each(&mut self, panes: Vec<String>) {
         for pane in panes {
             let now = self.pane_index(&pane).and_then(|index| {
                 let record = &self.panes[index].record;
@@ -1407,41 +1413,17 @@ impl Session {
     }
 
     /// Whether the maker of `record`'s pane can hear from it: a maker here while it holds an
-    /// agent, one on another machine while a link reaches it and it was found there.
+    /// agent. A maker on another machine is taken not to, since this daemon cannot see whether its
+    /// pane holds an agent; of the two ways to be wrong, a helper asking needlessly only asks the
+    /// person to look.
     fn maker_hearing(&self, record: &proto::Pane) -> MakerHearing {
         let Some(maker) = record.maker.as_deref().filter(|_| !record.maker_closed) else {
             return MakerHearing::None;
         };
-        let heard = match self.pane_index(maker) {
-            Some(index) => self.panes[index].record.agent.as_deref().is_some_and(|a| !a.is_empty()),
-            None => self.attention.heard_elsewhere(maker),
-        };
+        let heard = self.pane_index(maker).is_some_and(|index| {
+            self.panes[index].record.agent.as_deref().is_some_and(|agent| !agent.is_empty())
+        });
         if heard { MakerHearing::Hears } else { MakerHearing::CannotHear }
-    }
-
-    /// Takes which makers on other machines hear from their helpers here, as the helpers' watch
-    /// found them, and works out again what each of their helpers asks.
-    pub(crate) fn set_heard_elsewhere(&mut self, heard: std::collections::BTreeSet<String>) {
-        if !self.attention.set_heard_elsewhere(heard) {
-            return;
-        }
-        let helpers: Vec<String> = self
-            .panes
-            .iter()
-            .filter(|helper| {
-                helper.record.maker.as_deref().is_some_and(|maker| self.pane_index(maker).is_none())
-            })
-            .map(|helper| helper.record.pane.clone())
-            .collect();
-        for helper in helpers {
-            let now = self.pane_index(&helper).and_then(|index| {
-                let record = &self.panes[index].record;
-                attention::asking(record, self.maker_hearing(record))
-            });
-            if let Some(changed) = self.attention.ask(&helper, now) {
-                self.emit(Payload::Asking(changed));
-            }
-        }
     }
 
     /// Whether a window is attending, which is what wakes the human (MIP-4, section 10).
@@ -3922,6 +3904,9 @@ impl Session {
                 layout_generation: tab.layout_generation,
             });
         }
+        // Adopted panes arrive with no event, which is where asking is otherwise worked out.
+        let panes = self.panes.iter().map(|pane| pane.record.pane.clone()).collect();
+        self.reconsider_each(panes);
         Ok(())
     }
 

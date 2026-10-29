@@ -362,7 +362,6 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
     if fresh.is_empty() && makers.held.is_empty() && !helping {
         makers.watches.clear();
         keep_told(shared, makers);
-        keep_heard(shared, makers);
         return NOTHING_DUE;
     }
     let panes = Panes::of(shared);
@@ -416,25 +415,7 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         }
     }
     keep_told(shared, makers);
-    keep_heard(shared, makers);
     makers.due(now_ms())
-}
-
-/// Gives the session the makers on other machines that hear from their helpers here: each found
-/// there, over a link that is up now. A helper whose maker no link reaches asks for the person,
-/// since nobody else can be told it needs somebody (MIP-7, section 4).
-fn keep_heard(shared: &Shared, makers: &Makers) {
-    let linked = shared.peers.machines();
-    let heard = makers
-        .there
-        .iter()
-        .filter(|(_, there)| {
-            muster_msg::split_machine(there)
-                .is_some_and(|(_, machine)| linked.iter().any(|up| up == machine))
-        })
-        .map(|(maker, _)| maker.clone())
-        .collect();
-    shared.lock().set_heard_elsewhere(heard);
 }
 
 /// Gives the session what each helper's maker has been told, when that has changed, for a

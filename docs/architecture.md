@@ -659,11 +659,11 @@ decides what interrupts a person in front of Muster; a program reading the daemo
 to push, needs the same facts while Muster is closed. So the daemon keeps them as state, in its snapshot and as events:
 every group where a message waits for the human, which it already kept, and every pane asking for them. A pane asks
 while its agent is blocked or stuck and it is not quiet, and a quiet helper asks anyway while its maker cannot hear it,
-because the maker's pane holds no agent or no link reaches the maker's machine. These are the window's rules, kept once
-in the core (`Alert::asked_by`, `AgentState::of_pane`, `helpers::quiet_in_effect`) and read by both. The two still
-differ where only a window can know: `done` and a program's own notification ask only in a window, the daemon has no
-idea what is on screen, and a window judges a maker on another machine from its mirror where the daemon has only its
-link.
+because the maker's pane holds no agent. These are the window's rules, kept once in the core (`Alert::asked_by`,
+`AgentState::of_pane`, `helpers::quiet_in_effect`) and read by both. The two still differ where only a window can know:
+`done` and a program's own notification ask only in a window, the daemon has no idea what is on screen, and a daemon
+cannot see whether a maker on another machine holds an agent, so in the daemon its helpers ask until panes travel over
+the link (MIP-10, stage 3).
 
 **Beside it, the human's presence, which only the app can report.** A window attending a daemon reports whether Muster
 is in front and when somebody last used it: the last keystroke, paste, scroll or click the shell sent the core, never
