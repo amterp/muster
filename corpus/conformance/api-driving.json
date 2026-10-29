@@ -241,7 +241,7 @@
     },
     {
       "name": "a restart resumes an agent's session and says what it typed, and is refused with nothing ended where it cannot",
-      "why": "`pane.restart` does what `muster pane restart` does: it ends the agent and types the line that resumes its session at the shell left behind, and its answer says the program it ended, whether it had to be killed, and the line. An agent whose harness has reported no session is refused with nothing ended, a variable Muster sets on every pane is refused INVALID, and a pane this daemon does not run is refused NOT_FOUND (the schema's RestartAgent).",
+      "why": "`pane.restart` does what `muster pane restart` does: it ends the agent and types the line that resumes its session at the shell left behind, and its answer says the program it ended, whether it had to be killed, and the line: the agent's own command with `--resume` and its session, run by the daemon's shell, which this driver makes `/bin/sh`. An agent whose harness has reported no session is refused with nothing ended, a variable Muster sets on every pane is refused INVALID, and a pane this daemon does not run is refused NOT_FOUND (the schema's RestartAgent).",
       "given": {"daemon": {"detecting": true}},
       "expect": {
         "conversation": [
@@ -294,7 +294,7 @@
                 "answer": {
                   "correlation": "4",
                   "outcome": "OUTCOME_DONE",
-                  "restarted": {"program": "claude", "typed": "*"}
+                  "restarted": {"program": "claude", "typed": "'/bin/sh' '-c' 'exec \"$HOME/.muster/bin/claude\" \"$@\"' 'claude' '--resume' 's-1'"}
                 }
               }
             ]
