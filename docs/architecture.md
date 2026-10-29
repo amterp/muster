@@ -654,6 +654,27 @@ them - the exact failure notifying exists to prevent, arriving one step later. A
 the window attached raises nothing at all: Muster witnessed no transition there, so a banner would be Muster
 announcing history at launch.
 
+**The daemon keeps what waits on the human too, with or without a window** (MIP-10, section 4). The window's attention
+decides what interrupts a person in front of Muster; a program reading the daemon, such as a phone tool deciding whether
+to push, needs the same facts while Muster is closed. So the daemon keeps them as state, in its snapshot and as events:
+every group where a message waits for the human, which it already kept, and every pane asking for them. A pane asks
+while its agent is blocked or stuck and it is not quiet, and a quiet helper asks anyway while its maker cannot hear it,
+because the maker's pane holds no agent or no link reaches the maker's machine. These are the window's rules, kept once
+in the core (`Alert::asked_by`, `AgentState::of_pane`, `helpers::quiet_in_effect`) and read by both. The two still
+differ where only a window can know: `done` and a program's own notification ask only in a window, the daemon has no
+idea what is on screen, and a window judges a maker on another machine from its mirror where the daemon has only its
+link.
+
+**Beside it, the human's presence, which only the app can report.** A window attending a daemon reports whether Muster
+is in front and when somebody last used it: the last keystroke, paste, scroll or click the shell sent the core, never
+input through the command socket. It reports every 15 seconds, and at once when Muster comes forward or goes behind or
+somebody uses it after the daemon last heard of no use for 15 seconds. Each report lasts 45 seconds unless it says
+otherwise, never more than ten minutes, and ends when its connection closes. So a quit or crashed app reads as unknown
+at once and a hung one within 45 seconds, while one report delayed on a loaded machine never reads as the person gone,
+since three heartbeats fit in a report. That answers MIP-10's open question on how long a report lasts. With no window
+there is no presence, and what waits keeps accumulating. When the app shows a banner or posts a notification, it tells
+the daemon holding what asked, which passes it on as an event; nothing depends on it.
+
 **Everything the daemons hold is published as well as everything on screen.** A window shows what fits in it, and the
 pane most likely to have finished unnoticed is the one the window is not showing - so a roster travels beside the view:
 every pane every attached daemon holds, ordered and named for a reader, each row saying whether anything is showing
