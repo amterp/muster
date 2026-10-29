@@ -18,8 +18,11 @@ pub(super) fn send(shared: &Shared, caller: &Caller, correlation: String, asked:
 
 pub(super) fn close(shared: &Shared, caller: &Caller, correlation: String, asked: &api::ClosePane) {
     let close = pane_request::Close { pane: asked.pane.clone() };
-    let handled = handled(shared, caller, &correlation, pane_request::Request::Close(close));
-    answer_after(shared, caller, answered(correlation, &replied(handled)));
+    let answer = match handled(shared, caller, &correlation, pane_request::Request::Close(close)) {
+        Ok(handled) => answered(correlation, &replied(handled)),
+        Err(unavailable) => *unavailable,
+    };
+    answer_after(shared, caller, answer);
 }
 
 pub(super) fn compact(
@@ -37,9 +40,10 @@ pub(super) fn compact(
     let answer = if let Err(refusal) = crate::session::compact_lines(&compact) {
         refused(correlation, api::Refusal::Invalid, refusal.reason)
     } else {
-        let handled =
-            handled(shared, caller, &correlation, pane_request::Request::Compact(compact));
-        answered(correlation, &replied(handled))
+        match handled(shared, caller, &correlation, pane_request::Request::Compact(compact)) {
+            Ok(handled) => answered(correlation, &replied(handled)),
+            Err(unavailable) => *unavailable,
+        }
     };
     answer_after(shared, caller, answer);
 }
@@ -63,14 +67,15 @@ pub(super) fn restart(
     };
     let answer =
         match handled(shared, caller, &correlation, pane_request::Request::Restart(restart)) {
-            Handled::Reply(reply) => answered(correlation, &reply),
+            Err(unavailable) => *unavailable,
+            Ok(Handled::Reply(reply)) => answered(correlation, &reply),
             // On this connection's thread, with the session let go: a restart waits seconds on its
             // agent to end, and the connection carries out its requests one at a time.
-            Handled::Restart(restarting) => {
+            Ok(Handled::Restart(restarting)) => {
                 let (reply, changed) = restarting.carried_out();
                 restarted(correlation, reply, changed)
             }
-            other => unreachable!("a restart is carried out or refused, never {other:?}"),
+            Ok(other) => unreachable!("a restart is carried out or refused, never {other:?}"),
         };
     answer_after(shared, caller, answer);
 }
@@ -155,20 +160,26 @@ fn sent_answer(correlation: String, outcome: Result<(), Unconfirmed>) -> api::An
 }
 
 /// Handles `request` as a control connection's would be, under the session's lock, with the
-/// events it causes carrying `correlation` to the caller's subscription.
+/// events it causes carrying `correlation` to the caller's subscription; or refuses it as
+/// UNAVAILABLE while the daemon stops or hands over, as `pane.new` is, so the client asks again
+/// shortly rather than giving up.
 fn handled(
     shared: &Shared,
     caller: &Caller,
     correlation: &str,
     request: pane_request::Request,
-) -> Handled {
+) -> Result<Handled, Box<api::Answer>> {
     let service = proto::request::Service::Pane(proto::PaneRequest { request: Some(request) });
     let mut session = shared.lock();
+    if let Some(why) = session.unavailable() {
+        let reason = format!("{why}; nothing was done, and asking again shortly is safe");
+        return Err(Box::new(refused(correlation.to_string(), api::Refusal::Unavailable, reason)));
+    }
     session.cause =
         Some(Cause { connection: caller.connection, correlation: correlation.to_string() });
     let handled = crate::control::handle(&mut session, service, None, &caller.outbox, shared);
     session.cause = None;
-    handled
+    Ok(handled)
 }
 
 fn replied(handled: Handled) -> Reply {

@@ -219,3 +219,26 @@ fn an_agent_with_no_session_to_resume_is_left_running() {
     let p1 = snapshot(&mut control).panes.into_iter().find(|record| record.pane == "p1");
     assert_eq!(p1.and_then(|record| record.agent).as_deref(), Some("claude"), "{asked:?}");
 }
+
+/// While a handoff is under way, closing, compacting and restarting are turned away as
+/// UNAVAILABLE, as a new pane is, so a program asks again rather than giving up; nothing was done,
+/// and the pane closes on the daemon that took over.
+#[test]
+fn during_a_handoff_acting_on_a_pane_is_unavailable_and_does_nothing() {
+    let mut daemon = daemon_with(&[("MUSTER_DAEMON_HANDOFF_FAULT", "pause-before-hold")]);
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let mut api = daemon.api();
+
+    let replacing = daemon.start_replacing(None);
+    daemon.paused();
+    for request in [close("p1"), compact("p1", ""), restart("p1")] {
+        refused_as(&api.ask(request), api::Refusal::Unavailable);
+    }
+    daemon.resume();
+    let answer = daemon.finish_replacing(replacing);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+
+    let closed = daemon.api().ask(close("p1"));
+    assert_eq!(closed.outcome(), api::Outcome::Done, "{:?}", closed.answer);
+}
