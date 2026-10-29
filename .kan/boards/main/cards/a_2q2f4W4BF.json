@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2q3WrY2w9",
+      "body": "2026-10-28: reviewed by Codex gpt-6.1-sol at xhigh; all 11 findings accepted and the draft revised (commit 7aa295ba, History in the MIP). Still Draft, with questions A-E for amterp.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793240364489
+    }
+  ],
   "created_at_millis": 1793238296817,
   "creator": "Alexander Terp",
   "description": "Draft written 2026-10-28 from a Foreman design session: docs/mip/0010-api-for-other-tools.md. amterp asked for a formal Muster API that the daemons provide, so other tools can subscribe to every pane's state and every message, send messages, and have the daemon route them, with linked daemons answering as one cluster. Foreman's phone app is the first new consumer (~/src/foreman/docs/roadmap.md, step 1); Quartermaster, Scribe and Lectern drive Muster through the CLI's --json today. The MIP ends with five questions for amterp (A-E). A cross-model review is under way.",
@@ -13,7 +21,7 @@
   "position": "b20",
   "title": "MIP-10: an API for other tools, served by the daemon",
   "type": "feature",
-  "updated_at_millis": 1793238296817,
+  "updated_at_millis": 1793240364489,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793238296817}
   ]
