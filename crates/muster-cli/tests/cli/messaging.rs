@@ -1115,3 +1115,27 @@ fn a_daemon_that_accepts_and_never_answers_fails_the_verb_within_seconds() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `ack` moves the human's place through the message it names and no further, and never back;
+/// `read` still reads the rest.
+#[test]
+fn ack_marks_the_humans_messages_read_through_one_message() {
+    let daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "@human", "join", "--group", "review"]));
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "review"]));
+    let shown = ["msg", "--as", "a", "post", "--to", "@human", "the tenth"];
+    let shown = muster(&daemon, &shown);
+    assert_eq!(said(&shown).lines().next(), Some("posted #4 to review"), "{}", complained(&shown));
+    muster(&daemon, &["msg", "--as", "a", "post", "--to", "@human", "the eleventh"]);
+
+    let acked = ok(&muster(&daemon, &["msg", "ack", "review", "--through", "4"]));
+    assert_eq!(acked, "acknowledged review through #4");
+    let again = ok(&muster(&daemon, &["msg", "ack", "review", "--through", "3"]));
+    assert_eq!(again, "review was read through #4 already, so nothing moved");
+    let past = muster(&daemon, &["msg", "ack", "review", "--through", "9"]);
+    assert_eq!(past.status.code(), Some(1));
+    assert!(complained(&past).contains("no message #9"), "{}", complained(&past));
+
+    let read = ok(&muster(&daemon, &["msg", "--as", "@human", "read"]));
+    assert_eq!(read, "--- review #5 | a -> @human ---\nthe eleventh\n--- end review #5 | a ---");
+}

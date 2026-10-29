@@ -543,6 +543,14 @@ is `muster msg group delete G` and asks first. A group kept on a devenv is delet
 still `@human`, and `--json` keeps it, with the name under `human_name`. A daemon no Muster
 window has attached to shows `@human` alone.
 
+A program can post as the human through the daemon's API, as a phone's server does. Its post
+shows the program's name beside the author, `Alex (@human) via foreman`, and `you via foreman` in
+the window, with `via` in `--json`. A question it answers comes down from the banner without the
+group being read, as one answered by anybody else it was asked of does. `ack G --through N` is
+what such a program sends once the human has seen #N: it moves the human's place in G there, so
+what came after stays unread at the desk, and a place already past #N stays where it is. It
+always acts for the human, whoever runs it.
+
 ## Every verb
 
 | verb | does |
@@ -553,6 +561,7 @@ window has attached to shows `@human` alone.
 | `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
 | `read [--group G] [--if-unread] [--from-hook]` | prints your unread messages and moves your place |
+| `ack G --through N` | marks the human's messages in G read through #N and no further |
 | `log --group G [--since N] [--last N] [--before N] [--follow]` | the group's log, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |
 | `wait [--group G] [--timeout S] [--due]` | blocks until a message would wake you |
 | `groups` | every group, its members, and whether it is paused; `--json` has each policy |

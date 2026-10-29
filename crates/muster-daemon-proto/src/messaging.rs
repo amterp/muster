@@ -12,6 +12,9 @@ pub const LEAVE: &str = "leave";
 pub const WHO: &str = "who";
 pub const POST: &str = "post";
 pub const READ: &str = "read";
+/// Moves the human's place in a group to a given message, never back, as a program that showed
+/// them that message does (MIP-10, section 5).
+pub const ACK: &str = "ack";
 pub const LOG: &str = "log";
 pub const WAIT: &str = "wait";
 pub const GROUPS: &str = "groups";
@@ -27,8 +30,8 @@ pub const OPEN: &str = "open";
 pub const CLOSE: &str = "close";
 
 /// Every verb, in the order `--help` lists them.
-pub const VERBS: [&str; 13] =
-    [JOIN, LEAVE, WHO, POST, READ, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN, CLOSE];
+pub const VERBS: [&str; 14] =
+    [JOIN, LEAVE, WHO, POST, READ, ACK, LOG, WAIT, GROUPS, GROUP, PAUSE, RESUME, OPEN, CLOSE];
 
 /// `muster msg <verb>`, followed by `arguments` when there are any.
 pub fn command(verb: &str, arguments: &str) -> String {

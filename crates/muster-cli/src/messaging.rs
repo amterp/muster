@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use clap::{Args, Subcommand};
 use muster_daemon_proto::connection;
 use muster_daemon_proto::messaging::{
-    self as spelling, CLOSE, GROUP, GROUPS, JOIN, LEAVE, LOG, OPEN, PAUSE, POST, READ, RESUME,
+    self as spelling, ACK, CLOSE, GROUP, GROUPS, JOIN, LEAVE, LOG, OPEN, PAUSE, POST, READ, RESUME,
     WAIT, WHO,
 };
 use muster_daemon_proto::msg_answer::{self, Answer, Until, entry::What};
@@ -156,6 +156,17 @@ pub enum Verb {
         /// Read hook JSON from stdin and skip internal subagent events
         #[arg(long)]
         from_hook: bool,
+    },
+
+    /// Mark the human's messages in a group read through message N, and no further: what came
+    /// after stays unread. For a program that showed the human those messages elsewhere
+    #[command(name = ACK)]
+    Ack {
+        #[arg(value_name = "GROUP")]
+        group: String,
+        /// The number of the last message the human was shown; a place already past it stays
+        #[arg(long, value_name = "N")]
+        through: u64,
     },
 
     /// Print a group's log, moving nothing
@@ -357,6 +368,7 @@ pub fn parse(
             })
         }
         Verb::Read { group, .. } => Asked::Read(msg_request::Read { group: group.clone() }),
+        Verb::Ack { group, through } => acking(group, *through),
         Verb::Log { group, since, last, before, follow: following } => {
             follow = *following;
             Asked::Log(msg_request::Log {
@@ -408,6 +420,10 @@ pub fn parse(
     };
     let request = proto::MsgRequest { caller: Some(caller), request: Some(asked) };
     Ok(Messaging { request, body_from, policy_from, if_unread, from_hook, follow, answer })
+}
+
+fn acking(group: &str, through: u64) -> Asked {
+    Asked::Ack(msg_request::Ack { group: group.to_string(), through })
 }
 
 /// Sends the request to this machine's daemon and renders its answer.
