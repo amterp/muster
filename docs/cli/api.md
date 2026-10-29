@@ -57,7 +57,9 @@ NOT_SENT, or UNKNOWN, which may have happened and is never read as refused. The 
 ## Requests
 
 Requests are namespaced by what they act on, each an arm of `Request`'s oneof. A request the daemon
-does not know is refused as UNSUPPORTED and the connection stays open.
+does not know is refused as UNSUPPORTED and the connection stays open. A connection carries out its
+requests one at a time, in the order sent, so a program that wants to read while a confirmed send or
+a restart runs does so on a second connection.
 
 ### api.subscribe
 
@@ -92,6 +94,41 @@ It carries an operation id the client chooses, a UUID will do, which the daemon 
 hours by the client's name, across a reconnect, a handoff and an orderly restart. A repeat is never
 carried out again: it is ALREADY_SO with the first pane, or UNKNOWN when the first may have run and
 lost its result. The header's "Operation ids" has the rest.
+
+### pane.send
+
+Types into a pane as `muster pane send` does: the text, then each key as a keystroke a dialog or
+menu reads, then Return if asked. Text sent to an agent whose prompt already holds a draft is
+refused unless the request asks to append, since the next Return would submit both. A key the
+daemon cannot read, or a send of nothing, is refused INVALID before anything is typed.
+
+With `confirm`, the daemon reads the pane back: DONE once the text shows more often than it did,
+REFUSED when the pane shows it was not taken, and UNKNOWN when the pane changed without showing it
+or could not be read. That says the text arrived, not that it was submitted. Without `confirm`,
+DONE means the daemon handed the send to the pane. A send is never retried for the client: one
+answered UNKNOWN may have been typed, and sending it again may type it twice.
+
+### pane.close
+
+Closes a pane, ending whatever runs in it. The pane's PaneClosed event reaches the subscription
+before the answer, carrying the request's correlation id. A pane already gone is refused NOT_FOUND,
+so asking again is safe without an operation id.
+
+### pane.compact
+
+Compacts the context of the agent in a pane, as `muster pane compact` does, with an optional focus
+and a prompt to carry on with, each one line. DONE means the compaction is queued: the daemon types
+it once the agent is idle at an empty prompt, never in the middle of a turn. A pane running no
+agent, or one whose harness Muster cannot compact, is refused.
+
+### pane.restart
+
+Ends the agent in a pane and resumes its session at the shell left behind, with the flags it ran
+with, as `muster pane restart` does. The answer names the program ended, whether it had to be
+killed, and the line typed. An agent whose harness reported no session is refused with nothing
+ended. An agent that was ended but whose session could not be resumed is answered UNKNOWN, since
+REFUSED would say nothing happened: the reason says what was done and gives the line that resumes
+the session.
 
 ## Topics
 
@@ -135,7 +172,6 @@ fetches the pages it lacks.
 
 ## What the API does not do yet
 
-The CLI reaches further. Typing into a pane, closing, compacting and restarting one, posting as the
-human, layout, tabs, windows and focus, and other machines' panes are later requests and topics
-(MIP-10, "How it lands"). A `muster` verb added later that reads or acts on agents comes to the API
-in the same change, or the change says why not.
+The CLI reaches further. Posting as the human, layout, tabs, windows and focus, and other machines'
+panes are later requests and topics (MIP-10, "How it lands"). A `muster` verb added later that
+reads or acts on agents comes to the API in the same change, or the change says why not.
