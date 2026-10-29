@@ -65,6 +65,15 @@ impl AgentState {
         }
     }
 
+    /// What a pane's daemon says its agent is doing, from what detection read (`detected`):
+    /// `stuck` once the agent's program has stopped reading its input, whatever detection read -
+    /// its screen shows what it showed before it stopped. A pane running no agent is never stuck:
+    /// what its program left unread is for the painting watch to explain.
+    #[must_use]
+    pub fn of_pane(detected: AgentState, agent: bool, stopped_reading: bool) -> AgentState {
+        if agent && stopped_reading { AgentState::Stuck } else { detected }
+    }
+
     /// Whether a pane in this state has got where a caller waiting for `wanted` is waiting.
     ///
     /// The same state, or `Done` for a caller waiting on `Idle`. `done` is an idle nobody has

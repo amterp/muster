@@ -58,6 +58,18 @@ pub enum Alert {
 }
 
 impl Alert {
+    /// What an agent in `state` asks for by being in it, whoever is watching: `blocked` and
+    /// `stuck`. A window adds what only it can know, such as `done` - a finish nobody has seen -
+    /// and a program's notification; a daemon keeps these two alone (MIP-10, section 4).
+    #[must_use]
+    pub fn asked_by(state: AgentState) -> Option<Alert> {
+        match state {
+            AgentState::Blocked => Some(Alert::Blocked),
+            AgentState::Stuck => Some(Alert::Stuck),
+            _ => None,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Alert::Blocked => "blocked",
@@ -466,10 +478,8 @@ impl Attention {
             let reported = finished && self.reported.insert(pane.clone());
             return Observed { attend: self.withdraw(pane), reported };
         }
-        let attend = if state == AgentState::Blocked {
-            self.raise(pane, Alert::Blocked)
-        } else if state == AgentState::Stuck {
-            self.raise(pane, Alert::Stuck)
+        let attend = if let Some(alert) = Alert::asked_by(state) {
+            self.raise(pane, alert)
         } else if self.alert(pane) == Some(Alert::Notified) {
             // A program's request stands until somebody looks, whatever its agent does next.
             None
@@ -507,10 +517,8 @@ impl Attention {
 
     /// Asks, without a banner, for whatever a pane that Muster did not watch get there is in.
     fn ask_silently_for(&mut self, pane: &PaneKey, state: AgentState, finished: bool) {
-        if state == AgentState::Blocked {
-            self.ask_silently(pane, Alert::Blocked);
-        } else if state == AgentState::Stuck {
-            self.ask_silently(pane, Alert::Stuck);
+        if let Some(alert) = Alert::asked_by(state) {
+            self.ask_silently(pane, alert);
         } else if finished {
             self.ask_silently(pane, Alert::Done);
         }

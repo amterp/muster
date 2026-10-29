@@ -196,16 +196,9 @@ impl Pane {
         self.callsign.clone().or_else(|| self.name.clone())
     }
 
-    /// What the daemon says the pane's agent is doing: what detection read, or `stuck` once the
-    /// agent's program has stopped reading its input, whatever detection read - its screen
-    /// shows what it showed before it stopped. A pane running no agent is never stuck: what
-    /// its program left unread is for the painting watch to explain.
+    /// What the daemon says the pane's agent is doing ([`AgentState::of_pane`]).
     pub fn state(&self) -> AgentState {
-        if self.agent.is_some() && self.unread_input.is_some() {
-            AgentState::Stuck
-        } else {
-            self.agent_state
-        }
+        AgentState::of_pane(self.agent_state, self.agent.is_some(), self.unread_input.is_some())
     }
 
     /// The state a window paints for this pane before attention lays `done` over it: `waiting`

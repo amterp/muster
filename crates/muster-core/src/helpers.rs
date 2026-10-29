@@ -1,6 +1,26 @@
 //! Which helpers a list of panes shows under their maker (MIP-7, section 3), decided once for
 //! the agent list and for `muster window`, so that the two never disagree about where a helper
-//! is.
+//! is. And whether a quiet helper asks for the person after all, decided once for a window and
+//! for the daemon keeping what waits on the human (MIP-10, section 4).
+
+/// Whether a pane's maker can hear from it, as whoever asks can tell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MakerHearing {
+    /// The pane is no helper, or its maker has closed.
+    None,
+    /// The maker's pane holds an agent, on a machine that answers.
+    Hears,
+    /// The maker's pane holds no agent, or its machine is not answering.
+    CannotHear,
+}
+
+/// Whether a pane asks for nobody: it is quiet, and it is not a helper whose maker cannot hear
+/// it. Such a helper asks for the person as if it were not quiet, since nobody else can act
+/// (MIP-7, section 4).
+#[must_use]
+pub fn quiet_in_effect(quiet: bool, maker: MakerHearing) -> bool {
+    quiet && maker != MakerHearing::CannotHear
+}
 
 /// A helper listed under a pane rather than where its tab would put it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +98,14 @@ mod tests {
         let listed = ["p2"];
         let hidden = [("p2", Some("p1"))];
         assert!(nest(&listed, &hidden).is_empty());
+    }
+
+    #[test]
+    fn a_quiet_helper_asks_only_while_its_maker_cannot_hear_it() {
+        assert!(quiet_in_effect(true, MakerHearing::None));
+        assert!(quiet_in_effect(true, MakerHearing::Hears));
+        assert!(!quiet_in_effect(true, MakerHearing::CannotHear));
+        assert!(!quiet_in_effect(false, MakerHearing::Hears));
     }
 
     #[test]

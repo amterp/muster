@@ -29,6 +29,7 @@ use muster_core::diagnostics::{clock, log, poison};
 use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
+use muster_core::helpers::{MakerHearing, quiet_in_effect};
 use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Branch, Grid, InTree, Maker, MoveDestination, Outcome, Refusal,
@@ -1794,7 +1795,6 @@ impl Session {
         })
     }
 
-    /// Whether a pane's daemon holds it quiet: nothing about it asks for the person.
     /// Whether the person is told nothing about a pane: its daemon says it is quiet, and, for a
     /// helper, its maker can be reached to hear from it instead. A helper whose maker's machine
     /// is not answering asks the person as if it were not quiet (MIP-7, section 4).
@@ -1805,7 +1805,14 @@ impl Session {
             let Some(record) = mirror.pane(&pane.pane) else { return false };
             (record.quiet, record.maker.clone().filter(|_| !record.maker_closed))
         };
-        quiet && maker.is_none_or(|maker| !self.out_of_reach(&maker) && !self.agentless(&maker))
+        let maker = match maker {
+            None => MakerHearing::None,
+            Some(maker) if self.out_of_reach(&maker) || self.agentless(&maker) => {
+                MakerHearing::CannotHear
+            }
+            Some(_) => MakerHearing::Hears,
+        };
+        quiet_in_effect(quiet, maker)
     }
 
     /// Whether a pane this window can see holds no agent, so nothing there hears what its
