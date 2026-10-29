@@ -9,7 +9,15 @@
   "blocked_by": [
     "a_2q47QdUGX"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
+  "comments": [
+    {
+      "id": "c_2q6BKJwu2",
+      "body": "Daemon half landed 2026-10-28 (83b17100..3f859db1): pane asking as daemon state (blocked/stuck, and a quiet helper whose maker cannot hear), presence from the app, Shown events, all on the internal protocol 1.9. Presence expiry settled: the app reports every 15 s, at once when Muster comes forward or goes behind and on use after 15 s unheard; each report lasts 45 s (daemon default 45 s, capped at 10 min) and ends when its connection closes. Reason: three heartbeats per report so one late report on a loaded machine never reads as the person gone; a hung app reads unknown within 45 s, a quit or crashed one at once. Written in docs/architecture.md. Known limit until stage 3: the daemon takes a maker on another machine as unable to hear, so a quiet helper of a devenv maker asks. The API attention topic is next.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793246686478
+    }
+  ],
   "created_at_millis": 1793241770731,
   "creator": "Alexander Terp",
   "description": "MIP-10 stage 1, part 4 of 5: attention and presence. Read docs/mip/0010-api-for-other-tools.md sections 4 (\"Attention\") and 7.\n\nWhat: what waits on the human, as state in the snapshot and as changes: each unread message that would ring the human (addressed to them, or rung by a group's policy) and each pane asking for them (blocked, stuck, or a quiet helper whose maker cannot hear it). Beside it, presence: the app reports to the daemon whether a window attends, whether Muster is in front, and when the person last used it, and the report expires after a set time so a crashed app reads as unknown. With the app quit there is no presence and attention still accumulates. When the app shows a banner or posts a notification it tells the daemon, which emits an informational event. Today those facts stay in the app (crates/muster-core/src/attention.rs, Sources/MusterMac/Notifications.swift) and the daemon knows only whether a window attends (crates/muster-daemon/src/session.rs). Touches the Swift shell and the core as well as the daemon. Settle the presence expiry (an open question in the MIP); record the answer on this card and in docs/architecture.md, since the accepted MIP is frozen.\n\nProves: with Muster quit, a post to @human appears as attention for a gate test client; a client restarting finds it still waiting; reading at the desk clears it; killing the app turns presence to unknown after the expiry.",
@@ -18,11 +26,12 @@
     "ai-lo"
   ],
   "parent": "a_2q2f4W4BF",
-  "position": "b1W",
+  "position": "Zy",
   "title": "MIP-10 stage 1d: attention and presence",
   "type": "feature",
-  "updated_at_millis": 1793241772558,
+  "updated_at_millis": 1793246686530,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793241770731}
+    {"field":"column","value":"backlog-hi","at":1793241770731},
+    {"field":"column","value":"in-progress","at":1793246491647}
   ]
 }
