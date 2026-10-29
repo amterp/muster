@@ -1,0 +1,13 @@
+[package]
+name = "muster-baseline"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Only ever a dev-dependency: what a schema's compatibility test checks it with.
+[dependencies]
+prost-types = "0.14"
+protox = "0.9"
+
+[lints]
+workspace = true

@@ -20,8 +20,7 @@ protox = "0.9"
 sha2.workspace = true
 
 [dev-dependencies]
-prost-types = "0.14"
-protox = "0.9"
+muster-baseline.workspace = true
 
 [lints]
 workspace = true
