@@ -49,7 +49,7 @@
 //
 // Every Request carries a correlation id the client chooses. Its Answer repeats it, and so does
 // every event the request caused, on this connection only. Requests are namespaced by what they
-// act on: `api.*` and `pane.*` here, and `msg.*`, `machine.*` and others as they come, each an
+// act on: `api.*`, `pane.*` and `msg.*` here, and `machine.*` and others as they come, each an
 // arm of Request's oneof. A request the daemon does not know is refused, and the connection
 // stays open.
 //
@@ -740,17 +740,19 @@ message NewPost {
   // The group, as the snapshot names it. Empty is the one group the author and `to` share, or
   // the group of exactly them, made for this post, as a post with no group is.
   string group = 2;
-  // Whom it is for, as the group's members are named. Empty: the group's policy says whom it
-  // rings.
+  // Whom it is for, as the group's members are named. Empty: whoever asked the question it
+  // answers, and for any other post, whom the group's policy rings.
   repeated string to = 3;
-  // At most 1 MiB.
+  // At most 1 MiB. In a post answering a question, a note after the answer, and may be empty.
   string body = 4;
   // To reach its addressees while they work, where the group's policy lets its author.
   bool urgent = 5;
   // Answers to offer, which make it a question: at most six, each one line of at most 120 bytes.
   repeated string answers = 6;
-  // The question it answers and the answer it picks. A question takes one answer, from somebody
-  // it was asked of: the home refuses a second with ANSWERED.
+  // The question it answers and the answer it picks. Its body is composed as `muster msg post
+  // --answer` composes one, the answer first so the asker reads it with no parsing: "Answer:
+  // Yes", then a blank line and `body` when there is one. A question takes one answer, from
+  // somebody it was asked of: the home refuses a second with ANSWERED.
   optional Answering answering = 7;
   // The participant to post as. Empty is the human.
   string as = 8;

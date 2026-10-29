@@ -280,7 +280,7 @@
             "as": "foreman",
             "send": {
               "correlation": "1",
-              "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "Answer: No", "answering": {"question": "4", "answer": "No"}}}
+              "msg": {"post": {"operation": "op-1", "group": "g", "answering": {"question": "4", "answer": "No"}}}
             },
             "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_ANSWERED"}}]
           },
@@ -304,6 +304,64 @@
                         "number": "5",
                         "atMs": "*",
                         "post": {"author": "@human", "to": ["a"], "body": "Answer: Yes", "answering": {"question": "4", "answer": "Yes"}}
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a program's answer is composed as the CLI's and goes to whoever asked",
+      "why": "An answer reads the same whichever way it was given, the answer first so its asker reads it with no parsing (MIP-9, section 6). A program sends the answer it picks and any note, and the daemon composes the body as `muster msg post --answer` does: `Answer: Yes`, then a blank line and the note. With no `to`, it is for whoever asked the question (the schema, NewPost).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "Ship?", "group": "g", "to": ["@human"], "answers": ["Yes", "No"]},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "1",
+              "msg": {"post": {"operation": "op-1", "group": "g", "body": "ship it today", "answering": {"question": "4", "answer": "Yes"}}}
+            },
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "2", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {
+                        "number": "4",
+                        "atMs": "*",
+                        "post": {"author": "a", "to": ["@human"], "body": "Ship?", "answers": ["Yes", "No"], "answeredBy": "5"}
+                      },
+                      {
+                        "number": "5",
+                        "atMs": "*",
+                        "post": {
+                          "author": "@human",
+                          "to": ["a"],
+                          "body": "Answer: Yes\n\nship it today",
+                          "answering": {"question": "4", "answer": "Yes"},
+                          "via": "foreman"
+                        }
                       }
                     ]
                   }
@@ -381,7 +439,7 @@
             "as": "foreman",
             "send": {
               "correlation": "3",
-              "msg": {"post": {"operation": "op-3", "group": "g", "to": ["a"], "body": "Answer: Yes", "answering": {"question": "9", "answer": "Yes"}}}
+              "msg": {"post": {"operation": "op-3", "group": "g", "answering": {"question": "9", "answer": "Yes"}}}
             },
             "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}]
           },
@@ -394,7 +452,7 @@
             "as": "foreman",
             "send": {
               "correlation": "5",
-              "msg": {"post": {"operation": "op-5", "group": "g", "to": ["a"], "body": "Answer: Maybe", "answering": {"question": "4", "answer": "Maybe"}}}
+              "msg": {"post": {"operation": "op-5", "group": "g", "answering": {"question": "4", "answer": "Maybe"}}}
             },
             "heard": [{"answer": {"correlation": "5", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
           },

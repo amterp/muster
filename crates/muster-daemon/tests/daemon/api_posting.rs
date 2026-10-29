@@ -203,7 +203,7 @@ fn the_desk_and_a_program_answering_one_question_leave_one_answer() {
         let question = a_question(&mut control);
         let answering = |answer: &str| api::NewPost {
             answering: Some(api::Answering { question, answer: answer.to_string() }),
-            ..post_as_human(&format!("op-{question}"), &format!("Answer: {answer}"))
+            ..post_as_human(&format!("op-{question}"), "")
         };
         let at_the_desk = Asked::Post(msg_request::Post {
             group: Some("g".to_string()),
@@ -246,7 +246,7 @@ fn a_program_answering_tells_the_desk_the_question_is_answered() {
     let question = a_question(&mut control);
     let answering = api::NewPost {
         answering: Some(api::Answering { question, answer: "Yes".to_string() }),
-        ..post_as_human("op-1", "Answer: Yes")
+        ..post_as_human("op-1", "")
     };
     let answered = foreman(&daemon).ask(post(answering));
     assert_eq!(answered.outcome(), api::Outcome::Done, "{:?}", answered.answer);
@@ -255,6 +255,48 @@ fn a_program_answering_tells_the_desk_the_question_is_answered() {
         _ => None,
     });
     assert_eq!((notice.answered, notice.count), (vec![question], 1));
+}
+
+/// MIP-9, section 6: an answer reads the same whichever door it came through. A program sends
+/// the answer it picks and any note, and the daemon composes the body as `muster msg post
+/// --answer` does, for whoever asked unless the post names whom it is for.
+#[test]
+fn a_programs_answer_is_composed_as_the_clis_and_goes_to_the_asker() {
+    let daemon = daemon();
+    let mut control = crew(&daemon);
+    let mut program = foreman(&daemon);
+    for (note, body) in [("", "Answer: Yes"), ("ship it today", "Answer: Yes\n\nship it today")] {
+        let question = a_question(&mut control);
+        let answering = api::NewPost {
+            to: Vec::new(),
+            answering: Some(api::Answering { question, answer: "Yes".to_string() }),
+            ..post_as_human(&format!("op-{question}"), note)
+        };
+        let answered = program.ask(post(answering));
+        assert_eq!(answered.outcome(), api::Outcome::Done, "{:?}", answered.answer);
+        let number = answered.posted().number;
+        let log = Asked::Log(msg_request::Log { group: "g".to_string(), ..Default::default() });
+        let logged = expect(&mut control, msg(&named("a"), log), DONE).answer;
+        let Some(proto::answer::Detail::Msg(proto::MsgAnswer {
+            answer: Some(proto::msg_answer::Answer::Entries(entries)),
+            ..
+        })) = logged.detail
+        else {
+            panic!("a log answered with {:?}", logged.detail)
+        };
+        let entry = entries.groups.into_iter().flat_map(|group| group.entries);
+        let message = entry
+            .filter(|entry| entry.seq == number)
+            .find_map(|entry| match entry.what {
+                Some(proto::msg_answer::entry::What::Message(message)) => Some(message),
+                _ => None,
+            })
+            .expect("the answer is logged");
+        assert_eq!(
+            (message.body.as_str(), message.to.as_slice()),
+            (body, ["a".to_string()].as_slice())
+        );
+    }
 }
 
 fn subscribed_window(window: &mut Control) {
@@ -308,7 +350,7 @@ fn a_refused_reply_makes_no_group() {
         group: String::new(),
         to: vec!["b".to_string()],
         answering: Some(api::Answering { question: 3, answer: "Yes".to_string() }),
-        ..post_as_human("op-1", "Answer: Yes")
+        ..post_as_human("op-1", "")
     };
     let refused = program.ask(post(reply));
     assert_eq!(

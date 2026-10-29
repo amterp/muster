@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use muster_api as api;
+use muster_core::posting;
 use muster_daemon_proto as proto;
 use muster_msg::HUMAN;
 use prost::Message;
@@ -40,10 +41,14 @@ pub(super) fn post(
             id: asked.operation.clone(),
             asked: operations::fingerprint(&asked.encode_to_vec()),
         };
+        let (body, to) = match &asked.answering {
+            Some(answering) => answer_of(shared, asked, answering),
+            None => (asked.body.clone(), asked.to.clone()),
+        };
         let post = proto::msg_request::Post {
             group: (!asked.group.is_empty()).then(|| asked.group.clone()),
-            to: asked.to.clone(),
-            body: asked.body.clone(),
+            to,
+            body,
             urgent: asked.urgent,
             answers: asked.answers.clone(),
             answering: asked.answering.as_ref().map(|answering| proto::msg_request::Answering {
@@ -77,6 +82,22 @@ pub(super) fn post(
         }
     };
     shared.api.answer(caller.connection, answer);
+}
+
+/// The body and addressees of a post answering a question, as `muster msg post --answer` makes
+/// them: the answer first and the post's body after it as a note, and for whoever asked, unless
+/// the post names whom it is for.
+fn answer_of(
+    shared: &Shared,
+    asked: &api::NewPost,
+    answering: &api::Answering,
+) -> (String, Vec<String>) {
+    let body = posting::answer_body(&answering.answer, &asked.body);
+    if !asked.to.is_empty() {
+        return (body, asked.to.clone());
+    }
+    let questioner = shared.messages().asker(&asked.group, answering.question);
+    (body, questioner.into_iter().collect())
 }
 
 pub(super) fn ack(shared: &Arc<Shared>, caller: &Caller, correlation: String, asked: &api::Ack) {

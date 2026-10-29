@@ -176,6 +176,16 @@ impl Messages {
         *poison::lock(&self.joined, "daemon.messages.joined") = self.service.joined();
     }
 
+    /// Who asked question `question` in `group`, where this daemon holds the group's log.
+    pub(crate) fn asker(&self, group: &str, question: u64) -> Option<String> {
+        let entries = self.service.entries(group)?;
+        let entry = entries.iter().rev().find(|entry| entry.seq == question)?;
+        match &entry.what {
+            What::Message { author, .. } => Some(author.clone()),
+            _ => None,
+        }
+    }
+
     /// What waits for the human, in each group with anything waiting.
     pub(crate) fn human(&self) -> Vec<msg_answer::Notice> {
         self.service.human_notices().iter().map(|notice| self.for_human(notice)).collect()
