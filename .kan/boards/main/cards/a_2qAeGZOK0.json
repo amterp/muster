@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "two-seam-window",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793257332079,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-10-29 in two consecutive full gates at load 9.6 on the 10-core Mac (three agent builds beside the gate): windows::a_window_asked_for_onto_a_tab_takes_it ('timed out after 20s waiting for the third window to open onto the tab it asked for; window-3 shows Some(t2fe2bgpt2)') and then surface_input::a_programs_clipboard_write_reaches_the_window ('timed out after 20s waiting for the write to reach the window; the window heard []'). Each passed alone in 0.25-0.32 s, and the whole gate passed at load 2.7. Find what these two wait on that load can starve for 20 s, or whether something is lost rather than late.",
+  "id": "a_2qAeGZOK0",
+  "position": "b27",
+  "title": "🎲 Two seam window tests time out at 20 s when the machine's fast cores are committed",
+  "type": "bug",
+  "updated_at_millis": 1793257332079,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793257332079}
+  ]
+}

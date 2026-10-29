@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "the-windowless-cli-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793255610322,
+  "creator": "Alexander Terp",
+  "description": "From the MIP-10 range review (2026-10-29, Claude reviewer, P2, deferred by the integrator). The API's pane.send queues the input itself through acting::sent and answers REFUSED when io.queue fails (agent restarting, or the program stopped reading with its input full). The windowless CLI hands the same send to the input connection, where input.rs makes the same io.queue call but only logs and drops on failure, so during a restart 'muster pane send --pane p hi --enter' exits 0 with nothing typed. The CLI half predates the API; the API added a second implementation of the final step beside it, against the 'same daemon code' claim in docs/architecture.md and the schema's 'Acting on a pane'. Fix: give the control connection a send request that runs acting::sent's typing step, and have the windowless CLI use it.",
+  "id": "a_2q9vTXJH7",
+  "position": "b1U",
+  "title": "The windowless CLI's pane send drops input the daemon could not queue, where the API's refuses it",
+  "type": "bug",
+  "updated_at_millis": 1793255610322,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793255610322}
+  ]
+}

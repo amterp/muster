@@ -24,6 +24,12 @@
       "body": "2026-10-28: carded for building as children of this card. Stage 1 (reads on one machine): 1a a_2q47QdUGX (in next; the foundation, start here), then 1b a_2q47QxaZd, 1c a_2q47RHHrM and 1d a_2q47RcMoU in parallel, then 1e a_2q47RwXGW. Stage 2 (acting): 2a a_2q47SHmeF, then 2b a_2q47SctLN and 2c a_2q47Swkdz. Stage 3 (other machines, window-held links): 3a a_2q47TGEHt, 3b a_2q47TbbXx. Stage 4: spike a_2q475xGWz, then a_2q47TvSoj. Stage 5: a_2q476Ize2. Blocker links encode the order, so kan ready offers only what can start. Stages 1-2 are what Foreman's roadmap step 1 needs.",
       "author": "Alexander Terp",
       "created_at_millis": 1793241791707
+    },
+    {
+      "id": "c_2qAiBCHML",
+      "body": "2026-10-29: stages 1 and 2 landed on main (a8397fb5..a67eb289), which is what Foreman's roadmap step 1 waits on. API 0.2: the api connection, subscriptions with epochs and per-source state, topics panes/machines/messages/attention, msg.history, api.read_pane; five answer outcomes with refusal codes, operation ids (pane.new, msg.post), pane.send/close/compact/restart, msg.post and msg.ack as the human with 'via \u003cclient\u003e'; the API corpus in corpus/conformance/api-*.json, muster docs api (--schema), extras/api-client-go. Settled open questions: operation ids kept 24 h (panes' store capped at 4096, refusing UNAVAILABLE; posts' ids in their log entries, uncapped); presence reports every 15 s lasting 45 s. Reviewed per assignment (Codex + Claude) and as a whole range (Codex + Claude, findings fixed; one deferred as a_2q9vTXJH7). Next: stage 3 (a_2q47TGEHt, a_2q47TbbXx) and the stage 4 spike (a_2q475xGWz).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793257482462
     }
   ],
   "created_at_millis": 1793238296817,
@@ -33,7 +39,7 @@
   "position": "Zy",
   "title": "MIP-10: an API for other tools, served by the daemon",
   "type": "feature",
-  "updated_at_millis": 1793241791707,
+  "updated_at_millis": 1793257482462,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793238296817},
     {"field":"column","value":"backlog-hi","at":1793241295015}
