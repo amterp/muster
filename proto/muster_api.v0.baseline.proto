@@ -2,7 +2,7 @@
 // muster_api.proto to. A copy, never edited by hand; muster_api.proto's header says when it is
 // replaced.
 //
-// Version: 0.1
+// Version: 0.2
 //
 // Muster's API for other programs, served by muster-daemon (MIP-10).
 //
@@ -53,10 +53,62 @@
 //
 // ## Requests and answers
 //
-// Every Request carries a correlation id the client chooses, which its Answer repeats. Requests
-// are namespaced by what they act on: `api.*` here, and `pane.*`, `msg.*`, `machine.*` and others
-// as they come, each an arm of Request's oneof. A request the daemon does not know is answered
-// REFUSED, and the connection stays open.
+// Every Request carries a correlation id the client chooses. Its Answer repeats it, and so does
+// every event the request caused, on this connection only. Requests are namespaced by what they
+// act on: `api.*`, `pane.*` and `msg.*` here, and `machine.*` and others as they come, each an
+// arm of Request's oneof. A request the daemon does not know is refused, and the connection
+// stays open.
+//
+// An answer is one of five outcomes:
+//
+// - DONE.
+// - ALREADY_SO: nothing needed doing. A repeated operation id gets this, with the first answer's
+//   result.
+// - REFUSED: not done, and nothing happened. `refusal` says why in a word a program can act on,
+//   NOT_FOUND when the thing named does not exist, and `reason` says it for a person. A refusal
+//   code the client does not know means "for the reason given".
+// - NOT_SENT: the request had to go to another machine and never left this daemon. Nothing
+//   happened, and asking again is safe.
+// - UNKNOWN: the request may have happened. It went to another machine and the reply was lost,
+//   or it is still being carried out, or it started and its result was lost. A client never
+//   treats unknown as refused. A request that makes something can be asked again with the same
+//   operation id, which never makes it twice.
+//
+// A client has the same two cases of its own. A request it could not write is not sent. A
+// request it wrote on a connection that ended before its answer arrived is unknown, even when
+// the connection ended with an Ended.
+//
+// No frame the daemon sends is past 16 MiB. An answer that would be is replaced by one whose
+// reason says so: REFUSED with the same refusal code when the request was refused, and UNKNOWN
+// otherwise, since the request may have been carried out. A subscribe whose snapshot would be is
+// refused and leaves the connection with no subscription, and an event that would be is not
+// sent, so its number is a gap and the client subscribes again.
+//
+// ## Operation ids
+//
+// A request that makes something carries an operation id the client chooses, unique among its
+// own requests: a UUID will do. The daemon that carries the request out remembers the id for
+// 24 hours, by the client's name in its Hello, across a reconnect, a handoff and an orderly
+// restart. A repeat within that time is never carried out again:
+//
+// - one that was done is answered ALREADY_SO, with the first answer's result, even if what it
+//   made is gone since;
+// - one still being carried out is answered UNKNOWN; ask again later with the same id;
+// - one that started and lost its result, such as a pane whose command ran and whose daemon
+//   then handed over before the pane was placed, is answered UNKNOWN every time, since running
+//   it again could do twice what it did; a new id carries it out anew;
+// - an id used for a different request is refused OPERATION_REUSED.
+//
+// A request refused before anything happened is forgotten, so the client can put the cause
+// right and ask again with the same id. A daemon holding 4096 operations refuses a new one as
+// UNAVAILABLE rather than forget one early. A daemon that is killed or crashes may forget the
+// operations of its last second, since it saves what it holds about a second after a change.
+//
+// A post is kept differently. Its group's home writes the operation id into the post's own entry
+// in the group's log, and into what the log leaves behind when the group is deleted, so a crash
+// never forgets the id of a post that was kept, and posts count toward no cap. A post sent to a
+// group kept on another machine is also remembered by the daemon that sent it, which sends a
+// retry to the same home; that record, like the panes', may lose its last second to a crash.
 //
 // ## Subscribing
 //
@@ -79,6 +131,45 @@
 //   its answer, and `Answer.through` is the number of the last event the connection had been sent
 //   when it was answered.
 // - Reading changes nothing: subscribing moves nobody's place in any group and clears nothing.
+// - A group's posts arrive with their bodies, each up to 1 MiB, so a burst of them is what most
+//   often passes a client's budget (below). A client ended for it subscribes again and fetches
+//   what it lacks with `msg.history`: the entries after the last it holds, up to the new
+//   snapshot's `latest`.
+//
+// ## Panes
+//
+// TOPIC_PANES holds every pane its daemon runs, each as a whole Pane: in the snapshot, and again
+// in an event when it appears, when anything a client reads of it changes, and an id when it
+// closes. A client replaces what it holds of a pane with each event's. Nothing fires for a pane's
+// output, and a title on its own fires nothing either, since a harness redraws its title while it
+// works; every event and snapshot carries the latest title.
+//
+// ## Reading a pane
+//
+// `api.read_pane` answers one page of a pane's text, at most 4 MiB, the pages `muster pane read`
+// reads. Rows are numbered from the start of the pane's history, so a page's rows say where the
+// next one starts: ask `from` its `first_row + rows` to read on, and from a row before its
+// `first_row` to read back. Like every read, it changes nothing: a pane read is not a pane seen,
+// so it stays DONE.
+//
+// Two things renumber a pane's rows: a change of width, which rewraps them, and a full-screen
+// program such as an editor, whose alternate screen holds no history and numbers its rows from 0
+// until the program ends. A page whose `end_row` is below a row the client has read says its rows
+// were renumbered. The old numbers coming back when the program ends cannot be told from the
+// numbers alone, so a client showing what a pane holds now reads the newest page rather than
+// paging on from where it last read.
+//
+// ## Acting on a pane
+//
+// `pane.send`, `pane.close`, `pane.compact` and `pane.restart` do what `muster pane send`,
+// `close`, `compact` and `restart` do, through the same code in the daemon. None takes an
+// operation id. A send is never retried for the client, a close of a pane already gone is
+// refused NOT_FOUND, and a compaction or restart asked twice is either carried out twice or
+// refused saying why.
+//
+// A connection carries out its requests one at a time, in the order they were sent. A confirmed
+// send takes up to a second and a restart several, so a program that wants to read meanwhile
+// does so on a second connection.
 //
 // ## Ending
 //
@@ -128,7 +219,8 @@ message Hello {
 // Who is connecting. Attribution, not identity: anything running as the user can claim any name.
 // The daemon's log records it.
 message Client {
-  // A short, stable name for the program: "foreman", "quartermaster".
+  // A short, stable name for the program: "foreman", "quartermaster". A request with an
+  // operation id needs one, since its id is kept by this name, and is refused INVALID without.
   string name = 1;
   // The program's own version, for a person reading the daemon's log.
   string version = 2;
@@ -194,12 +286,16 @@ message Features {
 // Requests
 
 message Request {
-  // Chosen by the client and repeated in the answer. The daemon never reads it, so it may be
-  // anything, empty included.
+  // Chosen by the client and repeated in the answer, at most 1024 bytes. The daemon reads only
+  // its length, so it may be anything within that, empty included. A longer one is refused
+  // INVALID, and the refusal carries an empty correlation id: answers come in the order their
+  // requests were sent, so the client still knows which request it answers.
   string correlation = 1;
   // Namespaced by what a request acts on. A namespace added later takes the next arm.
   oneof request {
     ApiRequest api = 10;
+    PaneRequest pane = 11;
+    MsgRequest msg = 12;
   }
 }
 
@@ -208,6 +304,8 @@ message ApiRequest {
   oneof request {
     // "api.subscribe": answered with a Snapshot, then every event after it.
     Subscribe subscribe = 1;
+    // "api.read_pane": answered with a PaneText.
+    ReadPane read_pane = 2;
   }
 }
 
@@ -228,6 +326,148 @@ enum Topic {
   // What waits on the human, and their presence at the desk.
   TOPIC_ATTENTION = 4;
 }
+
+// Requests about panes.
+message PaneRequest {
+  oneof request {
+    // "pane.new": answered with MadePane.
+    NewPane new = 1;
+    // "pane.send": answered DONE, REFUSED or UNKNOWN.
+    SendToPane send = 2;
+    // "pane.close": answered DONE, or REFUSED NOT_FOUND for a pane already gone.
+    ClosePane close = 3;
+    // "pane.compact": answered DONE once the compaction is queued.
+    CompactAgent compact = 4;
+    // "pane.restart": answered with RestartedAgent.
+    RestartAgent restart = 5;
+  }
+}
+
+// A pane running a command in a directory, as `muster pane new --run` makes one. It gets a tab
+// of its own, which a window shows as soon as one is open, unless it is a helper or hidden.
+message NewPane {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The daemon to make it on, by its identity (`Source.daemon`). Empty is the daemon answering;
+  // any other is refused NOT_FOUND by a daemon that answers for no other.
+  string machine = 2;
+  // A shell line for the pane's shell to run as it starts. Empty starts the shell alone.
+  string run = 3;
+  // An absolute path to start in. Empty is the maker's directory for a helper, else the daemon's
+  // home.
+  string directory = 4;
+  // What to call the pane. Empty gives it its callsign alone.
+  string name = 5;
+  // The pane, by its id, that this one is a helper of: it is hidden in the tab its maker's
+  // helpers share and listed under its maker, as `muster pane new --helper` makes one.
+  string helper_of = 6;
+  // In a hidden tab of its own, which no window shows until a person shows it.
+  bool hidden = 7;
+  // Raises nothing for the person: no notification. Unset is quiet for a helper, whose maker is
+  // told when it needs somebody, and not quiet for any other pane.
+  optional bool quiet = 8;
+}
+
+// What a pane.new made.
+message MadePane {
+  // The pane's id, which names it in every request.
+  string pane = 1;
+  // The word Muster calls it by (`otter`).
+  string callsign = 2;
+}
+
+// Typing into a pane, as `muster pane send` types: the text, then the keys, then Return. Refused
+// NOT_FOUND for a pane this daemon does not run, and INVALID for a send of nothing. Never retried
+// for the client: one whose fate is unknown is answered UNKNOWN, and sending it again may type it
+// twice.
+message SendToPane {
+  // The pane's id.
+  string pane = 1;
+  string text = 2;
+  // Keys pressed after the text as keystrokes rather than pasted, so a dialog or menu reads
+  // them, each named as a keybinding in Muster's config is: "down", "esc", "shift+tab",
+  // "ctrl+c". A name the daemon cannot read refuses the send INVALID, and nothing is typed.
+  repeated string keys = 3;
+  // Return, pressed last. Whether that submits is the harness's to decide.
+  bool enter = 4;
+  // Add the text to whatever the prompt of the pane's agent holds. Without it, text sent to an
+  // agent whose prompt holds anything is refused and nothing is typed, since the next Return
+  // would submit both as one prompt.
+  bool append = 5;
+  // Read the pane back until the text shows on it more often than before the send, or, for keys
+  // alone, until the pane changes. DONE when it does, REFUSED when the pane shows it was not
+  // taken, and UNKNOWN when the pane changed without showing it or could not be read. It says
+  // whether the text arrived, not whether it was submitted. Without it, DONE means the daemon
+  // handed the send to the pane's terminal.
+  bool confirm = 6;
+}
+
+// Closing a pane, which ends whatever runs in it.
+message ClosePane {
+  // The pane's id.
+  string pane = 1;
+}
+
+// Compacting the context of the agent in a pane, typed once the agent is idle at an empty
+// prompt and never in the middle of a turn. Refused for a pane with no agent, or one whose
+// harness Muster cannot compact, and INVALID for a focus or prompt of more than one line.
+message CompactAgent {
+  // The pane's id.
+  string pane = 1;
+  // What the compaction should keep, handed to the harness's compact command. Empty is none.
+  string focus = 2;
+  // A prompt typed once the compaction has run. Empty is none.
+  string then = 3;
+}
+
+// Ending the agent in a pane and starting its session again, with the flags it ran with, as
+// `muster pane restart` does. Refused, with nothing ended, for an agent whose harness reported no
+// session to resume. Answered UNKNOWN when the agent was ended or signalled and its session could
+// not be resumed: the reason says what was done, and the line that resumes it.
+message RestartAgent {
+  // The pane's id.
+  string pane = 1;
+  // Variables changed for the resumed agent alone. An empty value unsets one.
+  map<string, string> env = 2;
+}
+
+// What a pane.restart did.
+message RestartedAgent {
+  // The program that was ended.
+  string program = 1;
+  // It did not end when asked, and was killed.
+  bool killed = 2;
+  // The line typed at the pane's shell to resume the session.
+  string typed = 3;
+}
+
+// One page of a pane's text. Refused for a pane this daemon does not run.
+message ReadPane {
+  // The pane's id.
+  string pane = 1;
+  // Which rows. None set is the newest page: as many of the pane's newest rows as a page holds.
+  oneof rows {
+    // The newest this many rows, ending at the last row with anything on it, so not the blank
+    // rest of a screen beneath a prompt. Zero is the newest page.
+    uint32 newest = 2;
+    RowsFrom from = 3;
+    // What the pane's agent printed since it last went to work, to the last row with anything on
+    // it, the newest rows kept when that passes a page. Refused when no turn has started since
+    // the daemon began watching the pane.
+    LastTurn turn = 4;
+  }
+}
+
+// Rows from `row` on, to the last row the pane holds. Rows already trimmed off the top are gone,
+// so the page starts at the oldest row held, and still ends by `row + count` when `count` is set:
+// a range trimmed whole answers no rows.
+message RowsFrom {
+  uint64 row = 1;
+  // At most this many rows. Zero is as many as a page holds.
+  uint32 count = 2;
+}
+
+message LastTurn {}
 
 // ---------------------------------------------------------------------------------------------
 // From the daemon
@@ -250,15 +490,48 @@ message Answer {
   // last event it had been sent. Both 0 on a connection that has not subscribed.
   uint64 epoch = 4;
   uint64 through = 5;
+  // Why it was refused, when it was.
+  Refusal refusal = 6;
   oneof detail {
     Snapshot snapshot = 10;
+    MadePane made = 11;
+    // "msg.history".
+    Page page = 12;
+    PaneText pane_text = 13;
+    // "pane.restart".
+    RestartedAgent restarted = 14;
+    // "msg.post".
+    Posted posted = 15;
   }
 }
 
+// The schema's header says what each outcome promises.
 enum Outcome {
   OUTCOME_UNSPECIFIED = 0;
   OUTCOME_DONE = 1;
   OUTCOME_REFUSED = 2;
+  OUTCOME_ALREADY_SO = 3;
+  OUTCOME_NOT_SENT = 4;
+  OUTCOME_UNKNOWN = 5;
+}
+
+enum Refusal {
+  // For the reason the answer gives.
+  REFUSAL_UNSPECIFIED = 0;
+  // A pane, machine or other thing the request names does not exist.
+  REFUSAL_NOT_FOUND = 1;
+  // This daemon serves no such request, topic or option. Welcome lists what it serves.
+  REFUSAL_UNSUPPORTED = 2;
+  // The request is missing something it needs, or holds something it cannot.
+  REFUSAL_INVALID = 3;
+  // The operation id was used for a different request, which the daemon still remembers.
+  REFUSAL_OPERATION_REUSED = 4;
+  // The daemon cannot take the request now: it is stopping, handing over to a newer daemon, or
+  // remembering as many operations as it holds. Ask again shortly.
+  REFUSAL_UNAVAILABLE = 5;
+  // A question the request answers has its answer already, from somebody else or the human
+  // elsewhere; `reason` says whose. Nothing was posted.
+  REFUSAL_ANSWERED = 6;
 }
 
 // Where a subscription starts. Each topic's part is filled only when the subscription named it.
@@ -272,6 +545,12 @@ message Snapshot {
   repeated SourceStatus sources = 4;
   // TOPIC_MACHINES: every daemon this one answers for, itself first.
   repeated Machine machines = 10;
+  // TOPIC_PANES: every pane.
+  repeated Pane panes = 11;
+  // TOPIC_MESSAGES: every group this daemon keeps or holds a replica of.
+  repeated Group groups = 12;
+  // TOPIC_ATTENTION: what waits on the human now, and their presence.
+  Attention attention = 13;
 }
 
 message SourceStatus {
@@ -297,14 +576,520 @@ message Event {
   uint64 epoch = 1;
   uint64 number = 2;
   Source source = 3;
+  // The correlation id of the request on this connection that caused the event. Empty for an
+  // event that no request of this connection caused.
+  string correlation = 4;
   oneof event {
     // Whatever the topics.
     SourceChanged source_changed = 10;
+    // TOPIC_PANES.
+    PaneAppeared pane_appeared = 20;
+    PaneChanged pane_changed = 21;
+    PaneClosed pane_closed = 22;
+    // TOPIC_MESSAGES.
+    GroupMade group_made = 30;
+    GroupChanged group_changed = 31;
+    GroupDeleted group_deleted = 32;
+    Logged logged = 33;
+    // TOPIC_MESSAGES or TOPIC_ATTENTION, sent once to a subscription that hears either.
+    Unread unread = 34;
+    // TOPIC_ATTENTION.
+    Asking asking = 40;
+    Presence presence = 41;
+    Shown shown = 42;
   }
 }
 
 message SourceChanged {
   SourceStatus status = 1;
+}
+
+message PaneAppeared {
+  Pane pane = 1;
+}
+
+// The pane as it is now, whole.
+message PaneChanged {
+  Pane pane = 1;
+}
+
+message PaneClosed {
+  string pane = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Panes
+
+// A terminal its daemon runs, and the agent in it, if any.
+message Pane {
+  // Its id, which no other pane has on any machine and which it keeps for life.
+  string pane = 1;
+  // The daemon running it.
+  Source source = 2;
+  // A short word its daemon drew for it (`otter`), which `muster` takes wherever it takes a
+  // pane, and which no other live pane on that machine holds. Kept through a rename.
+  string callsign = 3;
+  // The name somebody gave it. Empty while nobody has.
+  string name = 4;
+  // What the program in it last called itself.
+  string title = 5;
+  // Its program's working directory.
+  string directory = 6;
+  // The agent running in it, by the name of the harness its daemon recognized (`claude`,
+  // `codex`). Empty while it runs none that its daemon recognizes.
+  string harness = 7;
+  PaneState state = 8;
+  // When its daemon saw the agent enter its state, in milliseconds since the Unix epoch by that
+  // daemon's clock. Waiting and done are laid over the state this dates, so a waiting pane's
+  // `since_ms` is when it went idle, and a done one's when it finished. Absent when the daemon
+  // did not see the state begin: an agent a restart resumed has none until its state next
+  // changes.
+  optional uint64 since_ms = 9;
+  // What the agent says about itself, through its harness's adapter.
+  Facts facts = 10;
+  // Input its program has left unread, while it has stopped reading. Absent while it reads.
+  UnreadInput unread_input = 11;
+  // The id the agent's harness gives its session. Empty while it has reported none.
+  string session = 12;
+  // The pane that made this one as its helper, by id, which may be on another machine. Empty for
+  // a pane nobody made as one.
+  string maker = 13;
+  // No window shows it; it goes on running.
+  bool hidden = 14;
+  // Nothing about it asks for the human: no banner, and no notification.
+  bool quiet = 15;
+  Adapter adapter = 16;
+}
+
+// What a pane's agent is doing, as Muster's window shows it.
+enum PaneState {
+  PANE_STATE_UNSPECIFIED = 0;
+  // No agent its daemon recognizes, or one not yet read.
+  PANE_STATE_UNKNOWN = 1;
+  PANE_STATE_WORKING = 2;
+  // Waiting on the human, at a dialog or a question.
+  PANE_STATE_BLOCKED = 3;
+  PANE_STATE_IDLE = 4;
+  // Idle, having said what it waits on (`Facts.waiting`).
+  PANE_STATE_WAITING = 5;
+  // Its program has stopped reading its input (`Pane.unread_input`).
+  PANE_STATE_STUCK = 6;
+  // It finished something - stopped working, or ended - that no window has shown anybody.
+  PANE_STATE_DONE = 7;
+}
+
+// What a pane's agent says about itself. Each field is absent or empty until it says it.
+message Facts {
+  // How full its context is, as a percentage.
+  optional float context_used = 1;
+  // How many sub-agents it is running.
+  uint32 subagents = 2;
+  string model = 3;
+  // What its session has cost so far, in US dollars.
+  optional double cost_usd = 4;
+  // What it waits on while idle, in its own words.
+  string waiting = 5;
+  // Anything else it says, by name.
+  map<string, string> other = 6;
+}
+
+message UnreadInput {
+  // Bytes waiting for the program to read: whole lines only, when the terminal is line by line.
+  uint32 bytes = 1;
+  // Since when, in milliseconds since the Unix epoch by the daemon's clock.
+  uint64 since_ms = 2;
+  // The program holding the terminal, and its process id.
+  string program = 3;
+  int32 pid = 4;
+}
+
+// Whether a pane's agent reports itself through its harness's adapter, which is where its facts,
+// and its state when it says it, come from.
+enum Adapter {
+  ADAPTER_UNSPECIFIED = 0;
+  // Nothing to say yet: no agent, or one that has not ended a turn.
+  ADAPTER_UNSAID = 1;
+  ADAPTER_REPORTING = 2;
+  // It ended a turn without reporting, and Muster ships an adapter for its harness: install it.
+  ADAPTER_SILENT = 3;
+  // It ended a turn without reporting, and Muster ships no adapter for its harness.
+  ADAPTER_NONE = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Messages
+
+// Requests about groups and their messages.
+message MsgRequest {
+  oneof request {
+    // "msg.history": answered with a Page.
+    History history = 1;
+    // "msg.post": answered with a Posted.
+    NewPost post = 2;
+    // "msg.ack": answered DONE when the human's place moved, ALREADY_SO when it was there or
+    // further on already.
+    Ack ack = 3;
+  }
+}
+
+// A post, made as `muster msg post` makes one: as the human unless `as` names another
+// participant, and shown with the client's name from its Hello beside its author
+// ("Alex (@human) via foreman"). The group's home keeps the operation id with the post, so a
+// repeat is answered ALREADY_SO with the first post's group and number, and never posted twice.
+//
+// A post refused for a reason the client can act on says so: NOT_FOUND for a group, participant
+// or question that does not exist, ANSWERED for a question that has its answer already, INVALID
+// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer).
+// One kept on another machine is NOT_SENT when it never left this daemon and UNKNOWN when it
+// was sent and the reply was lost; asking again under the same id is safe in both. A post that
+// would make a group where the human is homed, when that is another machine, is refused
+// UNSUPPORTED: post through that machine's daemon. Its Logged and Unread events carry the
+// request's correlation id when the group is kept on this daemon; one kept elsewhere arrives
+// without it, when this daemon's copy catches up.
+//
+// A refused post was not posted. One refused because the daemon could not write to its disk
+// may still have made the group of exactly its author and addressees, which a GroupMade says.
+message NewPost {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The group, as the snapshot names it. Empty is the one group the author and `to` share, or
+  // the group of exactly them, made for this post, as a post with no group is.
+  string group = 2;
+  // Whom it is for, as the group's members are named. Empty: whoever asked the question it
+  // answers, where this daemon holds a copy of the group, and otherwise whom the group's policy
+  // rings.
+  repeated string to = 3;
+  // At most 1 MiB. In a post answering a question, a note after the answer, and may be empty.
+  string body = 4;
+  // To reach its addressees while they work, where the group's policy lets its author.
+  bool urgent = 5;
+  // Answers to offer, which make it a question: at most six, each one line of at most 120 bytes.
+  repeated string answers = 6;
+  // The question it answers and the answer it picks. Its body is composed as `muster msg post
+  // --answer` composes one, the answer first so the asker reads it with no parsing: "Answer:
+  // Yes", then a blank line and `body` when there is one. A question takes one answer, from
+  // somebody it was asked of: the home refuses a second with ANSWERED.
+  optional Answering answering = 7;
+  // The participant to post as. Empty is the human.
+  string as = 8;
+}
+
+// What a post came to: its group, and its number there.
+message Posted {
+  string group = 1;
+  uint64 number = 2;
+}
+
+// Moves the human's place in `group` on to `through`, the number of the last message the client
+// showed them, at the human's home, and never back: what arrived since stays unread there. An
+// Unread event says the new place before the answer. Refused NOT_FOUND for a group the human is
+// not in, and INVALID for a number past the group's newest. Reading, replying and dismissing
+// acknowledge nothing; only this does.
+message Ack {
+  string group = 1;
+  uint64 through = 2;
+}
+
+// The newest entries of a group's log in a range of numbers. Reading them moves nobody's place.
+message History {
+  // The group, as the snapshot names it.
+  string group = 1;
+  // Entries after this number; 0 is from the first.
+  uint64 after = 2;
+  // Entries up to and including this number; 0 is up to the newest. A client passes the
+  // snapshot's `latest`, since the live stream carries every entry after it.
+  uint64 through = 3;
+}
+
+// A page of a group's log: the newest entries of the range asked for that fit in 4 MiB, and
+// always at least one, so a client fetching a range resumes from where it left off with
+// `through` one below the page's first entry. A client resuming after a disconnect fetches the
+// range after the last entry it holds; one starting afresh fetches the newest page first.
+message Page {
+  string group = 1;
+  // Oldest first.
+  repeated Entry entries = 2;
+  // Older entries of the range were left for another page.
+  bool more = 3;
+  // As the group's own: no entry at or below it is held.
+  uint64 held_after = 4;
+  // The group was deleted, and nothing of it is held.
+  bool deleted = 5;
+}
+
+// A group this daemon keeps, or a replica it holds of a group kept on another machine. Its
+// entries are fetched with msg.history up to `latest`, and arrive as Logged events after it.
+message Group {
+  // As requests on this daemon name it: a replica as `name@machine`.
+  string name = 1;
+  Home home = 2;
+  // Each member as the group names it: a participant's name, `@human` for the human, a pane's id
+  // for an agent known by its pane, which the panes topic says the name of, and `name@machine`
+  // for a member on another machine.
+  repeated string members = 3;
+  Policy policy = 4;
+  // A paused group's posts ring nobody but the human.
+  bool paused = 5;
+  // The number of the newest entry. Logged events carry each entry after it.
+  uint64 latest = 6;
+  // The number of the last entry the human has read; absent when they are not in the group.
+  // Unread events carry each move.
+  optional uint64 human_place = 7;
+  // No entry at or below this number is held: they were a group's of the same name that was
+  // deleted before this one was made. 0 when every entry is held.
+  uint64 held_after = 8;
+}
+
+// The daemon that keeps a group.
+message Home {
+  // Its identity, as a Source names it. Empty for a group kept on another machine, whose daemon
+  // this one knows by machine name alone.
+  string daemon = 1;
+  // What to call its machine, for a person.
+  string machine = 2;
+}
+
+// A group's rules. Names are the group's names for its members; `*` is anyone, and `@human` the
+// human.
+message Policy {
+  // Whom a post addressed to nobody rings, by its author.
+  map<string, Names> ring = 1;
+  // Whom each author may address.
+  map<string, Names> allow = 2;
+  // Who may add or remove members and change the policy.
+  repeated string membership = 3;
+  // Who may post urgently, which reaches an agent while it works.
+  repeated string urgent = 4;
+}
+
+message Names {
+  repeated string names = 1;
+}
+
+// One entry of a group's log. Posts and notices share one sequence of numbers, so a log reads in
+// the order things happened and a client can account for every number.
+message Entry {
+  uint64 number = 1;
+  // UTC milliseconds, by the clock of the daemon that keeps the group.
+  uint64 at_ms = 2;
+  oneof what {
+    Post post = 10;
+    Made made = 11;
+    Joined joined = 12;
+    Left left = 13;
+    Changed changed = 14;
+  }
+}
+
+message Post {
+  string author = 1;
+  // Whom it is for. Empty: the group's policy says whom it rings.
+  repeated string to = 2;
+  // At most 1 MiB.
+  string body = 3;
+  // Its author asked for it to reach its addressees while they work.
+  bool urgent = 4;
+  // Answers its author offers, which make it a question: at most six.
+  repeated string answers = 5;
+  // The question it answers, and the answer it picks.
+  Answering answering = 6;
+  // For a question in a Page: the number of the post that answered it. A question takes one
+  // answer. Absent from a Logged event, which comes before any answer; the answer's own Logged
+  // event says what it answers.
+  optional uint64 answered_by = 7;
+  // The program that posted it for its author, by the name from its Hello: "foreman". Shown
+  // beside the author, as attribution rather than identity: any program can give any name.
+  optional string via = 8;
+}
+
+message Answering {
+  // The question's number in the group.
+  uint64 question = 1;
+  // The answer it picks, as the question offered it.
+  string answer = 2;
+}
+
+// The group was made.
+message Made {
+  string by = 1;
+}
+
+// A member joined the group.
+message Joined {
+  string who = 1;
+}
+
+// A member left the group, or was removed from it.
+message Left {
+  string who = 1;
+}
+
+// A change to the group itself.
+message Changed {
+  string by = 1;
+  Change change = 2;
+  // The policy CHANGE_POLICY_SET set, where the log recorded it.
+  Policy policy = 3;
+}
+
+enum Change {
+  CHANGE_UNSPECIFIED = 0;
+  CHANGE_POLICY_SET = 1;
+  CHANGE_PAUSED = 2;
+  CHANGE_RESUMED = 3;
+}
+
+// A group appeared: made here, or a replica first heard of from its home. Its `latest` is the
+// number before its first entry, and a Logged event follows for each entry it already holds;
+// the human's place in it comes in the Unread event after them.
+message GroupMade {
+  Group group = 1;
+}
+
+// A group's members, policy, paused or home changed. Replaces what the client held of it, but
+// for `latest` and `human_place`, which Logged and Unread events move. A group made again under
+// a deleted group's name comes as GroupDeleted, then GroupMade.
+message GroupChanged {
+  Group group = 1;
+}
+
+// A group was deleted, or this daemon stopped holding its replica.
+message GroupDeleted {
+  string group = 1;
+}
+
+// An entry was added to a group's log: a post, with its body, a member joining or leaving, or a
+// change to the group. Each entry after the snapshot's `latest` comes as one, in order.
+message Logged {
+  string group = 1;
+  Entry entry = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The human
+
+// What waits on the human now, and whether they are at the desk (TOPIC_ATTENTION). It is state
+// rather than a record of notifications, kept with or without Muster's app running: a client
+// that restarts finds everything still waiting here, and each change is an event that replaces
+// what the client held for the same pane or group.
+message Attention {
+  // Each pane asking for the human.
+  repeated Asking asking = 1;
+  // Each group with messages waiting for the human.
+  repeated Unread unread = 2;
+  Presence presence = 3;
+}
+
+// A pane asking for the human. As an event it replaces what the client held for the pane, and
+// ASK_UNSPECIFIED says the pane stopped asking.
+message Asking {
+  // The pane's id; the panes topic says what it is called.
+  string pane = 1;
+  Ask ask = 2;
+  // The pane is a quiet helper, which would ask its maker rather than the human, and asks the
+  // human because its maker cannot hear it: the maker closed or holds no agent. A maker on
+  // another machine counts as unable to hear until daemons carry panes between them.
+  bool unheard_helper = 3;
+}
+
+enum Ask {
+  ASK_UNSPECIFIED = 0;
+  // Its agent is waiting for a person to answer it.
+  ASK_BLOCKED = 1;
+  // Its agent's program stopped reading what is typed to it.
+  ASK_STUCK = 2;
+}
+
+// What the human has read of a group and what waits for them there. Both in one message, so a
+// client never holds a place that disagrees with what it lists as waiting. As an event it is sent
+// whenever either changes, and replaces what the client held for the group.
+message Unread {
+  // The group, as requests on this connection name it.
+  string group = 1;
+  // The number of the last entry of the group's log the human has read. Absent when the human
+  // is not in the group, when nothing waits for them there either.
+  optional uint64 place = 2;
+  // How many messages after the place would ring the human: each one addressed to them, or one
+  // the group's policy rings them with.
+  uint64 count = 3;
+  // The newest of those, oldest first: all of them, or the newest 500 when there are more.
+  repeated WaitingPost waiting = 4;
+}
+
+// A message waiting for the human, without its body.
+message WaitingPost {
+  // Its number in its group's log.
+  uint64 number = 1;
+  // When it was posted, in UTC milliseconds by the clock of the daemon that keeps the group.
+  uint64 at_ms = 2;
+  // Its author's name in the group: a participant's name, or for an agent known by its pane,
+  // the pane's id, which the panes topic says the name of.
+  string author = 3;
+  // It names the human among its addressees. Otherwise it was addressed to nobody and the group's
+  // policy rings the human with it.
+  bool addressed = 4;
+  bool urgent = 5;
+}
+
+// The human at the desk, as Muster's app on this machine reports it. The app reports every 15
+// seconds, and at once when Muster comes forward or goes behind, or is used after 15 seconds
+// unused. Each report stands for 45 seconds, and ends at once when the app's connection closes,
+// so an app that hangs reads as unknown within 45 seconds and one that quits or crashes at once.
+message Presence {
+  // A window of Muster's app is attending this daemon.
+  bool attended = 1;
+  // A report stands. When false, the fields below say nothing.
+  bool known = 2;
+  // Muster's front window has the system's focus.
+  bool in_front = 3;
+  // When the person last typed, clicked or scrolled in a window of Muster, in UTC milliseconds.
+  // Absent when they have not since the app started.
+  optional uint64 last_input_ms = 4;
+}
+
+// Muster's app showed the human a banner or posted a notification. Information only: nothing
+// waits on it, and nothing clears because of it.
+message Shown {
+  oneof about {
+    // The pane it was about, by id.
+    string pane = 1;
+    // The group whose message it showed.
+    string group = 2;
+  }
+  ShownAs shown_as = 3;
+  // What it was shown for, in the app's words: "blocked", "stuck", "done", "notified" or
+  // "message".
+  string why = 4;
+}
+
+enum ShownAs {
+  SHOWN_AS_UNSPECIFIED = 0;
+  // Muster's own banner, inside its window.
+  SHOWN_AS_BANNER = 1;
+  // A notification posted through the system.
+  SHOWN_AS_NOTIFICATION = 2;
+}
+
+// One page of a pane's text.
+message PaneText {
+  // One line per row, oldest first, joined by newlines.
+  string text = 1;
+  // The row of the first line. Rows are numbered from the start of the pane's history, so a row
+  // keeps its number as older rows are trimmed off the top, until the pane's rows are renumbered
+  // (see "Reading a pane" above).
+  uint64 first_row = 2;
+  // Rows in this page, which can be fewer than were asked for.
+  uint32 rows = 3;
+  // The oldest row the pane still holds. Rows before it are gone for every reader.
+  uint64 oldest_row = 4;
+  // The row after the last one the pane holds.
+  uint64 end_row = 5;
+  // For a read of the turn, the row it began at. A `first_row` past it means the page was cut
+  // short at its top.
+  optional uint64 turn_row = 6;
+  // For a read of the turn, the pane's rows have moved since it began, rewrapped to another width
+  // or erased, so the turn may begin above `turn_row`.
+  bool turn_moved = 7;
 }
 
 // The daemon's last word on a connection, after which it hangs up.

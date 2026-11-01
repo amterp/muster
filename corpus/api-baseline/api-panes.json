@@ -1,0 +1,185 @@
+{
+  "concept": "api-panes",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 4; proto/muster_api.proto, its header's Panes",
+  "why": "TOPIC_PANES holds every pane the daemon runs as a whole Pane, in the snapshot and again in an event whenever anything a client reads of it changes, so a client replaces what it holds of a pane with each event's and never merges. A pane changes on its own as its program starts and its agent is detected, so the cases that follow an agent name the changes they pass over rather than counting them. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "a pane made before subscribing is in the snapshot whole",
+      "why": "A client that subscribes late learns every pane from the snapshot alone, in the same shape an event carries. A shell with no agent in it is in no known state, has no harness, and was in that state since the daemon made it.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": {"api": "$api", "machine": {"source": "$here", "name": "*", "version": "*", "features": "*"}}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": [{"source": "$here", "state": "SOURCE_STATE_CURRENT"}],
+                    "panes": [
+                      {
+                        "pane": "p1",
+                        "source": "$here",
+                        "callsign": "*",
+                        "title": "?",
+                        "directory": "*",
+                        "state": "PANE_STATE_UNKNOWN",
+                        "sinceMs": "*",
+                        "facts": {},
+                        "adapter": "*"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pane appearing and closing are an event each, and a close names only the pane",
+      "why": "A pane appears whole, and closing it sends its id and nothing else, since there is nothing left to describe (the header, Panes). Changes its shell makes in between are passed over: what this case is about is the two ends.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "read": 1,
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "1",
+                  "source": "*",
+                  "paneAppeared": {
+                    "pane": {
+                      "pane": "p1",
+                      "source": "*",
+                      "callsign": "*",
+                      "title": "?",
+                      "directory": "*",
+                      "state": "PANE_STATE_UNKNOWN",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {"pane": "p1", "closed": true},
+          {
+            "as": "a",
+            "read": 1,
+            "passing": {"event": {"epoch": "$epoch", "number": "*", "source": "*", "paneChanged": {"pane": "*"}}},
+            "heard": [{"event": {"epoch": "$epoch", "number": "*", "source": "*", "paneClosed": {"pane": "p1"}}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an agent's state reaches a client as its pane changing",
+      "why": "Agent state travels with the pane, so a client following agents subscribes to panes and nothing else. A detected agent's pane names its harness, and each state it enters is a PaneChanged carrying the whole pane with that state (MIP-10, section 4).",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "epoch": "$epoch", "snapshot": "*"}}]
+          },
+          {"pane": "p1", "agent": "started"},
+          {
+            "as": "a",
+            "read": 1,
+            "passing": {"event": {"epoch": "$epoch", "number": "*", "source": "*", "paneChanged": {"pane": "*"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "*",
+                  "source": "*",
+                  "paneChanged": {
+                    "pane": {
+                      "pane": "p1",
+                      "source": "*",
+                      "callsign": "*",
+                      "title": "?",
+                      "directory": "*",
+                      "harness": "claude",
+                      "state": "PANE_STATE_IDLE",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {"pane": "p1", "agent": "blocked"},
+          {
+            "as": "a",
+            "read": 1,
+            "passing": {"event": {"epoch": "$epoch", "number": "*", "source": "*", "paneChanged": {"pane": "*"}}},
+            "heard": [
+              {
+                "event": {
+                  "epoch": "$epoch",
+                  "number": "*",
+                  "source": "*",
+                  "paneChanged": {
+                    "pane": {
+                      "pane": "p1",
+                      "source": "*",
+                      "callsign": "*",
+                      "title": "?",
+                      "directory": "*",
+                      "harness": "claude",
+                      "state": "PANE_STATE_BLOCKED",
+                      "sinceMs": "*",
+                      "facts": {},
+                      "adapter": "*"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

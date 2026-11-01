@@ -1,0 +1,213 @@
+{
+  "concept": "api-reading",
+  "source": "authored",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 4; proto/muster_api.proto, its header's Reading a pane",
+  "why": "`api.read_pane` answers one page of a pane's text, the pages `muster pane read` reads, with row numbers that say where the next page starts. A client pages through a pane by those numbers alone, so they are pinned here with the text. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
+  "cases": [
+    {
+      "name": "pages of a pane's rows say where they start, how many they hold and where the pane ends",
+      "why": "A page's `firstRow` and `rows` say where the next page starts, and `endRow` is the row after the last the pane holds, blank rows of its screen included (the header, Reading a pane). The newest rows end at the last row with text in it. With no rows asked for, the read is the page `muster pane read` gives on its own: here, everything from row 0.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {
+              "correlation": "1",
+              "pane": {
+                "new": {
+                  "operation": "op-1",
+                  "run": "printf 'one\\ntwo\\nthree\\nfour\\n'; exec sleep 86400",
+                  "directory": "${scratch}",
+                  "name": "counted"
+                }
+              }
+            },
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "*"}}}]
+          },
+          {"pane": "$pane", "shows": "four"},
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"readPane": {"pane": "$pane", "newest": 3}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "2",
+                  "outcome": "OUTCOME_DONE",
+                  "paneText": {"text": "two\nthree\nfour", "firstRow": "1", "rows": 3, "endRow": "24"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "api": {"readPane": {"pane": "$pane", "from": {"row": "1", "count": 2}}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_DONE",
+                  "paneText": {"text": "two\nthree", "firstRow": "1", "rows": 2, "endRow": "24"}
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "api": {"readPane": {"pane": "$pane"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_DONE",
+                  "paneText": {"text": "one\ntwo\nthree\nfour", "rows": 4, "endRow": "24"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "reading a pane this daemon does not run is refused as not found",
+      "why": "A pane id names a pane on one daemon, and one this daemon does not run is NOT_FOUND, which a client tells apart from a pane with no text.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"readPane": {"pane": "p9"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a turn read before the agent has had a turn is refused",
+      "why": "A turn is what an agent printed since it last went to work, so before its first there is nothing to read; the refusal says so for a person and carries no code of its own.",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "agent": "started"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"readPane": {"pane": "p1", "turn": {}}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*"}}]
+          }
+        ]
+      }
+    },
+    {
+      "name": "reading a done pane leaves it done",
+      "why": "A pane read is not a pane seen: a finish nobody has looked at stays DONE through a read of its rows and of its turn, as reading anything changes nothing (MIP-10, section 4). The text is the fake agent's screen, which it redraws as it ticks, so the case is about the state alone.",
+      "given": {"daemon": {"detecting": true}},
+      "expect": {
+        "conversation": [
+          {"pane": "p1", "made": true},
+          {"pane": "p1", "agent": "started"},
+          {"pane": "p1", "agent": "working"},
+          {"pane": "p1", "agent": "idle"},
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$first",
+                  "snapshot": {
+                    "epoch": "$first",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "p1",
+                        "source": "*",
+                        "callsign": "*",
+                        "title": "?",
+                        "directory": "*",
+                        "harness": "claude",
+                        "state": "PANE_STATE_DONE",
+                        "sinceMs": "$since",
+                        "facts": {},
+                        "adapter": "*"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "api": {"readPane": {"pane": "p1"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "epoch": "$first", "paneText": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "api": {"readPane": {"pane": "p1", "turn": {}}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_DONE", "epoch": "$first", "paneText": "*"}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "api": {"subscribe": {"topics": ["TOPIC_PANES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "4",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$second",
+                  "snapshot": {
+                    "epoch": "$second",
+                    "topics": ["TOPIC_PANES"],
+                    "sources": "*",
+                    "panes": [
+                      {
+                        "pane": "p1",
+                        "source": "*",
+                        "callsign": "*",
+                        "title": "?",
+                        "directory": "*",
+                        "harness": "claude",
+                        "state": "PANE_STATE_DONE",
+                        "sinceMs": "$since",
+                        "facts": {},
+                        "adapter": "*"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
