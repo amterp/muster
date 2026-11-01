@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "four-daemon-tests",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "testing"
+  ],
+  "column": "next",
+  "created_at_millis": 1793556437393,
+  "creator": "Alexander Terp",
+  "description": "Four daemon tests fail on Linux every time, on x86_64 and aarch64 alike, and they block the 0.20.0 release. CI's `linux` job (gate.yml) has failed on every main run since `62cae2f5` on 2026-10-28, when the API landed: on `62cae2f5`, `a5cce8c4` and `c44a075a`. The macOS gate stays green, and the `linux` job was green on every run before that. Latest run: https://github.com/amterp/muster/actions/runs/41329125224\n\n- `api_driving::a_confirmed_send_the_pane_does_not_take_is_refused` (crates/muster-daemon/tests/daemon/api_driving.rs:37): a confirmed `pane.send` to a pane that never takes the text is answered DONE, where REFUSED is expected (`left: (Done, Unspecified)`, `right: (Refused, Unspecified)`).\n- `api_corpus::driving`: the same behavior as a recorded case in `corpus/conformance/api-driving.json`, \"a confirmed send is done once the pane shows it, and refused when the pane never takes it\".\n- `control::tests::a_connection_that_never_reads_again_is_hung_up_on_without_its_farewell` (crates/muster-daemon/src/control.rs:812): \"the farewell was written to a client that was not reading\". On macOS it failed once in CI at a load of 14.4 against 3 performance cores, and passed on a rerun and in local gates. On Linux it fails every time. One unchecked guess: Linux Unix-socket buffers are large enough that the test's 4 MiB frames do not hold the writer, so the writer never blocks and the farewell gets through. Whether a CPU-starved writer on macOS can produce the same outcome is open.\n- `linked::ending_the_control_reader_cancels_a_carried_wait_while_the_client_stays_open` (crates/muster-daemon/tests/daemon/linked.rs:200): unwrap on `Err(\"Connection reset by peer (os error 104)\")`.\n\n`./dev --linux` runs these suites locally.\n\nRelease state while this is open: `c44a075a chore: 0.20.0` is pushed to main, with the cask naming 0.20.0, still carrying 0.19.0's checksum and its \"release under way\" marker. Nothing is tagged, there is no GitHub release, and the tap's cask is untouched. Once main's `linux` job is green, `qm run -- ./release minor` resumes the release and tags HEAD at that point.",
+  "id": "a_2sC9MUeZK",
+  "position": "a3",
+  "title": "Four daemon tests fail on Linux since the API landed, blocking 0.20.0",
+  "type": "bug",
+  "updated_at_millis": 1793556437393,
+  "history": [
+    {"field":"column","value":"next","at":1793556437393}
+  ]
+}
