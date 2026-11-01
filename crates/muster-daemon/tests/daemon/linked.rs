@@ -197,7 +197,14 @@ fn ending_the_control_reader_cancels_a_carried_wait_while_the_client_stays_open(
             .any(|line| { line.line.contains("msg.wait.ended") }),
         "ending the reader must cancel the wait without the client closing its socket"
     );
-    assert!(proto::connection::receive::<proto::ControlMessage>(&mut client).unwrap().is_none());
+    // The daemon hangs up with request 43 unread, which Linux reports to the client as a reset
+    // and macOS as the end of the stream.
+    let mut after = [0u8; 1];
+    match std::io::Read::read(&mut client, &mut after) {
+        Ok(0) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => {}
+        other => panic!("the daemon must hang up without answering request 43: read {other:?}"),
+    }
 }
 
 /// A Claude session's inbox socket, which keeps its participant alive while it is bound.
