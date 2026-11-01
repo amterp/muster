@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "confirm-reports-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793558181848,
+  "creator": "Alexander Terp",
+  "description": "On a Linux pane, `muster pane send --confirm` and the API's confirmed `pane.send` answer done for a line over 4095 bytes sent to a program reading in canonical mode, though the program received the line cut short. Measured 2026-11-01 in the Debian container `./dev --linux` uses: a line of 4200 x's and `end`, sent to `cat`, reached it as its first 4095 bytes and a newline, while the terminal echoed the whole line, `end` included. The read-back finds the line's tail in that echo, so it confirms a line that did not arrive whole. Lines of up to 4095 bytes arrive whole, and so do the lines sent after a long one.\n\nmacOS behaves as `docs/cli/limits.md` says: it echoes the first 1024 bytes, delivers none of the line, and drops what is sent after it. That page and the refusal reason in `crates/muster-core/src/pane_text.rs` give macOS's 1024 bytes as every terminal's limit, so both are wrong for a Linux devenv pane.\n\nFound while fixing a_2sC9MUeZK, whose test sent `cat` a 1103-byte line and expected the macOS refusal.",
+  "id": "a_2sCsk8TK6",
+  "position": "b2A",
+  "title": "--confirm reports a long line done on a Linux pane that received only its first 4095 bytes",
+  "type": "bug",
+  "updated_at_millis": 1793558181848,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793558181848}
+  ]
+}
