@@ -81,7 +81,7 @@
     },
     {
       "name": "a confirmed send is done once the pane shows it, and refused when the pane never takes it",
-      "why": "A send asked to confirm reads the pane back, as `muster pane send --confirm` does, and its answer says what the read-back saw (MIP-10 section 5): DONE once the text shows on the pane more often than it did, and REFUSED when the pane shows it was not taken. `cat` reads in canonical mode, where a terminal echoes the start of a line over 1024 bytes and never delivers it. A send not asked to confirm is done once the daemon hands it to the pane, whatever becomes of it.",
+      "why": "A send asked to confirm reads the pane back, as `muster pane send --confirm` does, and its answer says what the read-back saw (MIP-10 section 5): DONE once the text shows on the pane more often than it did, and REFUSED when the pane shows it was not taken. The command the pane runs turns echo off, reads one line, prints its first 600 characters and reads nothing more, so a longer line shows only its start. A line past a terminal's canonical-mode limit does not do this everywhere: macOS echoes the start of one and drops it at 1024 bytes, while Linux echoes it whole. A send not asked to confirm is done once the daemon hands it to the pane, whatever becomes of it.",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -96,11 +96,18 @@
             "as": "a",
             "send": {
               "correlation": "1",
-              "pane": {"send": {"pane": "p1", "text": "cat", "enter": true, "confirm": true}}
+              "pane": {
+                "send": {
+                  "pane": "p1",
+                  "text": "stty -echo; echo taking-$((6*7)); IFS= read -r line; printf '%.600s\\n' \"$line\"; sleep 600",
+                  "enter": true,
+                  "confirm": true
+                }
+              }
             },
             "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE"}}]
           },
-          {"pane": "p1", "shows": "cat\n"},
+          {"pane": "p1", "shows": "taking-42"},
           {
             "as": "a",
             "send": {
@@ -108,7 +115,7 @@
               "pane": {
                 "send": {
                   "pane": "p1",
-                  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxend",
+                  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxend",
                   "enter": true,
                   "confirm": true
                 }

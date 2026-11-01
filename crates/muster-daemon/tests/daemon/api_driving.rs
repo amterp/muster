@@ -71,9 +71,18 @@ fn a_client_makes_a_shell_types_into_it_reads_the_confirmation_and_closes_it() {
     refused_as(&api.ask(close(&made.pane)), api::Refusal::NotFound);
 }
 
-/// A line over 1024 bytes into `cat`, which reads in canonical mode, is never delivered: the
-/// confirmed send is refused for it, while one not asked to confirm is done once it is handed to
-/// the pane, whatever became of it.
+/// Turns echo off, reads one line, prints its first 600 characters, and reads nothing again.
+/// The pane shows `taking-42` only once echo is off, since the command as typed says `$((6*7))`.
+const TAKES_THE_START_OF_A_LINE: &str =
+    r#"stty -echo; echo taking-$((6*7)); IFS= read -r line; printf '%.600s\n' "$line"; sleep 600"#;
+
+/// A pane that takes only the start of a line shows only that much of it: the confirmed send is
+/// refused for it, while one not asked to confirm is done once it is handed to the pane, whatever
+/// became of it.
+///
+/// A line past a terminal's canonical-mode limit does this only on macOS, which echoes its first
+/// 1024 bytes and drops it. Linux echoes the whole line and delivers up to 4095 bytes of it, so
+/// the send is done there.
 #[test]
 fn a_confirmed_send_the_pane_does_not_take_is_refused() {
     let daemon = daemon();
@@ -81,15 +90,15 @@ fn a_confirmed_send_the_pane_does_not_take_is_refused() {
     make(&mut control, create("p1", in_new_tab("t1")));
     until_text(&mut control, "p1", "$");
     let mut api = daemon.api();
-    assert_eq!(api.ask(send("p1", "cat", false)).outcome(), api::Outcome::Done);
-    until_text(&mut control, "p1", "cat\n");
+    assert_eq!(api.ask(send("p1", TAKES_THE_START_OF_A_LINE, false)).outcome(), api::Outcome::Done);
+    until_text(&mut control, "p1", "taking-42");
 
-    let long = format!("{}end", "x".repeat(1100));
+    let long = format!("{}end", "x".repeat(700));
     let confirmed = api.ask(send("p1", &long, true));
     refused_as(&confirmed, api::Refusal::Unspecified);
     assert!(confirmed.answer.reason.contains("only its start shows"), "{:?}", confirmed.answer);
 
-    // The terminal drops everything after what fit of that line, so this never arrives either.
+    // Nothing reads the pane or echoes what it is sent now, so this never shows either.
     assert_eq!(api.ask(send("p1", "echo held", false)).outcome(), api::Outcome::Done);
     refused_as(&api.ask(send("p1", "echo held", true)), api::Refusal::Unspecified);
 }
