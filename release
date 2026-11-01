@@ -96,6 +96,13 @@ fn raises(version, target, bump):
         return b[0] == a[0] and b[1] > a[1] and b[2] == 0
     return b[0] == a[0] and b[1] == a[1] and b[2] > a[2]
 
+// The files directly in `dir` that a one-star `pattern` such as "api-*.json" names.
+fn matching(dir, pattern):
+    halves = pattern.split("*")
+    names = find_paths(dir, depth=1)
+    names = names.filter(fn(n) n.starts_with(halves[0]) and n.ends_with(halves[1]))
+    return sort(names).map(fn(n) join_paths(dir, n))
+
 fn cask_marker_line():
     for line in read_file(CASK).content.split_lines():
         if line.starts_with("  # Still ") and "'s checksum, until the notarized " in line:
@@ -332,7 +339,11 @@ if not committed:
     for schema in SHIPPED:
         shipped = schema["shipped"]
         corpus = schema["corpus"]
-        $`mkdir -p {shipped} && rm -f {shipped}/*.json && cp {corpus} {shipped}/`
+        // Rad quotes what it interpolates, so a glob handed to the shell would never expand.
+        $`mkdir -p {shipped}`
+        for old in matching(shipped, "*.json"):
+            delete_path(old)
+        $`cp {matching(dir_name(corpus), base_name(corpus))} {shipped}/`
         $`cp {schema["schema"]} {shipped}/`
         write_file("{shipped}/VERSION", schema_version(schema) + "\n")
         print("The {schema["name"]}'s conversations are kept as {target} ships them, in {shipped}.")
