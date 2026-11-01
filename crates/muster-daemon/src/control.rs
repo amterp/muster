@@ -788,9 +788,28 @@ mod tests {
         check_farewell(&read_to_end(&mut client));
     }
 
+    /// Whether bytes are waiting at `client`, peeked so that they stay there unread.
+    fn unread_bytes_at(client: &UnixStream) -> bool {
+        use std::os::fd::AsRawFd;
+        let mut byte = 0u8;
+        // SAFETY: `byte` is a valid, writable one-byte buffer for the length given, and the
+        // descriptor is the stream's, open for as long as `client` is borrowed.
+        let peeked = unsafe {
+            libc::recv(
+                client.as_raw_fd(),
+                (&raw mut byte).cast(),
+                1,
+                libc::MSG_PEEK | libc::MSG_DONTWAIT,
+            )
+        };
+        peeked > 0
+    }
+
     /// A client that never reads again cannot hold the writer forever: it is hung up on without
     /// its farewell once the patience has passed. A frame larger than any socket buffer is what
-    /// holds the writer.
+    /// holds the writer. The queue is filled only once the writer has started on one, because a
+    /// writer that has not yet taken a frame when the queue fills finds the socket empty and
+    /// rightly writes the farewell to it.
     #[test]
     fn a_connection_that_never_reads_again_is_hung_up_on_without_its_farewell() {
         let (daemon_end, mut client) = UnixStream::pair().unwrap();
@@ -798,8 +817,15 @@ mod tests {
         let outbox =
             Outbox::open_with(&daemon_end, budget, Some(farewell(Duration::from_millis(100))))
                 .unwrap();
-        let mut number = 0;
-        while outbox.push(vec![0u8; 4 << 20].into()) {
+        let larger_than_any_socket_buffer = || vec![0u8; 4 << 20].into();
+        assert!(outbox.push(larger_than_any_socket_buffer()));
+        muster_harness::until(
+            "the writer to start on the first frame",
+            || unread_bytes_at(&client),
+            (),
+        );
+        let mut number = 1;
+        while outbox.push(larger_than_any_socket_buffer()) {
             number += 1;
             assert!(number < 100, "the outbox never refused a frame");
         }
