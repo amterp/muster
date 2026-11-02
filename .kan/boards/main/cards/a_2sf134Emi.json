@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2siYBvmrV",
+      "body": "Landed as 249259f1, gate green, reviewed by Claude opus medium (no findings). Shape: daemon protocol 1.10 AgentFacts.effort and API 0.3 Facts.effort (= 7), a string in the harness's own words (Claude Code low/medium/high/xhigh/max, Codex minimal/low/medium/high/xhigh), empty for none; muster-daemon report --effort LEVEL, empty clears. Claude Code's statusline reports .effort.level and clears it when the JSON has none. Codex's Stop hook reads the last turn_context's payload.effort from the transcript (17 ms on a 52 MB transcript), once a turn. OpenCode reports none (docs/cli/harnesses.md). Shown in the agent list's details as 'Opus 4.5 · high' and in muster window --json facts.effort.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793633656750
+    }
+  ],
   "created_at_millis": 1793625232962,
   "creator": "Alexander Terp",
   "description": "amterp via cactus, 2026-11-02, from the phone: \"wherever we show the model. So, for example, Opus 5.5. I'm also interested in the effort level. So we should just show it all together.\"\n\nA pane's facts carry the agent's model (`Facts.model`, \"Opus 4.5\"), reported by its harness's adapter, and the API serves it in its Facts. The effort the agent runs at (Claude Code's low/medium/high/xhigh/max) is not reported anywhere, so nothing that shows the model can show it beside it. Foreman's phone app wants both together.\n\nClaude Code's statusline JSON carries it at `.effort.level`, present only for models that support effort; `extras/claude-code/statusline.sh` forwards only `/model/display_name` today. For Codex, find whether its hooks or transcript carry the reasoning effort; if neither does, leave Codex out and say so in `muster docs harnesses`.\n\nWanted: the effort as a fact beside the model, through the daemon protocol and the API's Facts (a minor addition to API 0.3 while 0.21 is unreleased), and shown in the agent list beside the model if it reads well there. Planned for 0.21.0, after a_2sQ4KIXD9.",
   "id": "a_2sf134Emi",
-  "position": "a9",
+  "position": "YvB",
   "title": "An agent's effort level is one of its pane's facts, beside its model",
   "type": "feature",
-  "updated_at_millis": 1793625232962,
+  "updated_at_millis": 1793633656882,
   "history": [
-    {"field":"column","value":"next","at":1793625232962}
+    {"field":"column","value":"next","at":1793625232962},
+    {"field":"column","value":"done","at":1793633656882}
   ]
 }
