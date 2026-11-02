@@ -20,7 +20,7 @@ use prost::Message;
 
 use crate::attribution;
 use crate::restart::Restarting;
-use crate::session::{Handled, Replacement, Reply, Session, Shared, Stop};
+use crate::session::{Handled, Replacement, Reply, Session, Shared, Starting, Stop};
 use crate::{handoff, messages};
 
 /// How many messages a control connection may have waiting before the daemon gives up on it.
@@ -418,6 +418,13 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         };
         let reply = match handled {
             Handled::Reply(reply) | Handled::Snapshot(reply) => reply,
+            // Off this connection's thread, as a restart is: a reopen waits seconds on what the
+            // pane ran to end.
+            Handled::Start(starting) if starting.waits() => {
+                let answered = Answered::after(request.id, name, received, lock);
+                start_later(shared, &outbox, starting, answered);
+                continue;
+            }
             // Outside the lock: starting a process waits for it to change directory and exec,
             // and a directory on a hung mount would otherwise stall every connection with it.
             Handled::Start(mut starting) => {
@@ -627,6 +634,27 @@ fn answer_later(shared: &Arc<Shared>, outbox: &Outbox, restarting: Restarting, a
              done"
         ));
         answer(&shared.lock(), &outbox, reply, answered);
+    }
+}
+
+/// Starts a pane on a thread of its own, and answers once it is placed. Without a thread the
+/// start is refused, which leaves a reopened pane remembered as it was.
+fn start_later(shared: &Arc<Shared>, outbox: &Outbox, starting: Box<Starting>, answered: Answered) {
+    let slot = Arc::new(Mutex::new(Some(starting)));
+    let started = std::thread::Builder::new().name("start".to_string()).spawn({
+        let (shared, outbox, slot) = (Arc::clone(shared), outbox.clone(), Arc::clone(&slot));
+        move || {
+            let Some(mut starting) = poison::lock(&slot, "start").take() else { return };
+            let started = starting.start();
+            let reply = shared.lock().started(*starting, started);
+            answer(&shared.lock(), &outbox, reply, answered);
+        }
+    });
+    if let Err(error) = started
+        && let Some(starting) = poison::lock(&slot, "start").take()
+    {
+        let reply = shared.lock().started(*starting, Err(error));
+        answer(&shared.lock(), outbox, reply, answered);
     }
 }
 

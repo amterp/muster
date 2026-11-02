@@ -150,7 +150,21 @@ the client: one answered UNKNOWN may have been typed, and sending it again may t
 
 Closes a pane, ending whatever runs in it. The pane's PaneClosed event reaches the subscription
 before the answer, carrying the request's correlation id. A pane already gone is refused NOT_FOUND,
-so asking again is safe without an operation id.
+so asking again is safe without an operation id, until somebody reopens the pane: a close sent
+again after that closes the reopened pane. The DONE answer carries `closed.reopen_until_ms`, the
+latest `pane.reopen` can bring the pane back, on the daemon's clock, and leaves it out when the
+pane is not remembered. A pane can be pushed out sooner, when 64 more close after it.
+
+### pane.reopen
+
+Brings back a pane closed within the hour, or the time the person's config gives, as `muster pane
+reopen` does: under its id and callsign, in its directory, where it was in its tab, running its
+agent's session again with the flags it ran with. It names the pane by its id or its callsign as
+it closed, and carries an operation id, as `pane.new` does, so asking again after a lost answer is
+answered ALREADY_SO with the same pane. Answered with MadePane, as `pane.new` is. A pane no longer
+remembered, because it was never closed here, its time is up or it was reopened already, is
+refused NOT_FOUND. The answer can take a few seconds: the pane starts once what ran in it has
+ended. Welcome's features list it from API 0.3.
 
 ### pane.compact
 

@@ -177,6 +177,8 @@ message SessionRequest {
     ReportPresence report_presence = 18;
     // Since 1.9.
     Shown shown = 19;
+    // Since 1.10.
+    SetReopenClosed set_reopen_closed = 20;
   }
 
   message Snapshot {}
@@ -294,6 +296,8 @@ message PaneRequest {
     Restart restart = 13;
     // Since 1.6.
     MakerClosed maker_closed = 14;
+    // Since 1.10.
+    Reopen reopen = 15;
   }
 
   // Sets whether the pane is quiet: whether a view raises anything for the person about it.
@@ -391,9 +395,33 @@ message PaneRequest {
     bool cwd_inherited = 11;
   }
 
-  // Hangs the pane up: SIGHUP to its process groups, then the PTY closed.
+  // Hangs the pane up: SIGHUP to its process groups, then the PTY closed. Since 1.10 the
+  // daemon also remembers the pane for `Settings.reopen_closed_minutes`, unless it is stopping,
+  // so that a Reopen brings it back (`ClosedPane`); a pane whose process ended on its own is not
+  // remembered.
   message Close {
     string pane = 1;
+  }
+
+  // Brings back a pane closed within `Settings.reopen_closed_minutes` (`ClosedPane`), under its
+  // old id: its shell starts in its old directory, running its agent's session again with the
+  // flags it ran with when its agent reported one, as a restart brings it back, though
+  // `resume_agents` does not apply, since somebody asked. It starts only once what ran in it
+  // when it closed has ended, which takes up to the 3 seconds a closed pane's processes are
+  // given. It goes back in its tab, where it was when that is unchanged and beside a pane it was
+  // beside otherwise, or else in a new tab named `tab`, with its old tab's name and whether that
+  // was hidden; a helper whose tab is gone goes among its maker's helpers. Its callsign and name
+  // come back unless an open pane holds either now: then the callsign is drawn afresh and the
+  // name is left off, and `Reopened` says so. Helpers of it here, and its own maker when open
+  // here, are joined again (`Pane.maker_closed` cleared and their quiet put back).
+  //
+  // DONE with `Reopened`. NOT_THERE when nothing is remembered by that name; REFUSED when a pane
+  // of that id is open or starting, or the pane could not start. Since 1.10.
+  message Reopen {
+    // The pane's id or its callsign as it closed.
+    string pane = 1;
+    // A fresh tab name, used only if the pane needs a new tab.
+    string tab = 2;
   }
 
   // Moves the nearest divider on `direction`'s axis in that direction, preferring one on that
@@ -624,6 +652,12 @@ message SetNameSessions {
 // was running with. Off: the pane comes back as a shell, as every pane did before.
 message SetResumeAgents {
   bool resume = 1;
+}
+
+// How long a pane closed from now on can be reopened (`PaneRequest.Reopen`), in minutes; 0
+// remembers none. ALREADY_SO when it already is. Since 1.10.
+message SetReopenClosed {
+  uint32 minutes = 1;
 }
 
 // How full an agent's context gets before the daemon compacts it, as a Compact for its pane
@@ -1326,6 +1360,8 @@ message Answer {
     Restarted restarted = 15;
     // Since 1.6.
     Created created = 16;
+    // Since 1.10.
+    Reopened reopened = 17;
   }
 }
 
@@ -1333,6 +1369,22 @@ message Answer {
 // once, before the pane's record reaches it on the events it follows.
 message Created {
   string callsign = 1;
+}
+
+// What a reopen brought back, on its DONE.
+message Reopened {
+  string pane = 1;
+  string callsign = 2;
+  // The tab it went into.
+  string tab = 3;
+  // That tab was made for it: the Reopen's `tab`.
+  bool made_tab = 4;
+  // Its shell started its agent's session again.
+  bool resumed = 5;
+  // Its callsign as it closed, now held by an open pane, when it was given another.
+  optional string callsign_taken = 6;
+  // Its name as it closed, now held by an open pane, when it came back without it.
+  optional string name_taken = 7;
 }
 
 // What a restart did, on its DONE.
@@ -1393,6 +1445,30 @@ message Snapshot {
   repeated Asking asking = 9;
   // Since 1.9.
   Presence presence = 10;
+  // Since 1.10. Every closed pane a Reopen can still bring back, newest first.
+  repeated ClosedPane closed = 11;
+}
+
+// A closed pane the daemon remembers, so that a Reopen can bring it back (`PaneRequest.Reopen`).
+// Forgotten once reopened, at `until_ms`, or sooner when 64 later closes push it out, which no
+// event announces. Since 1.10.
+message ClosedPane {
+  string pane = 1;
+  // As it closed.
+  string callsign = 2;
+  optional string label = 3;
+  string cwd = 4;
+  // The agent it ran, as `Pane.agent` named it; absent for none.
+  optional string agent = 5;
+  // Reopening it starts its agent's session again: its agent had reported one.
+  bool resumes = 6;
+  optional string maker = 7;
+  // When it closed, and the latest it can be reopened: milliseconds since 1970 on this daemon's
+  // clock.
+  uint64 closed_at_ms = 8;
+  uint64 until_ms = 9;
+  // The tab it was in as it closed, which may be gone.
+  string tab = 10;
 }
 
 message PaneText {
@@ -1500,6 +1576,9 @@ message PaneClosed {
   // How its process ended, when it ended on its own and the daemon saw it end: its exit code,
   // or 128 plus the signal that ended it, as a shell reports it in $?.
   optional int32 exit_status = 3;
+  // Since 1.10. The pane as the daemon remembers it for a Reopen; absent when it is not
+  // remembered.
+  optional ClosedPane remembered = 4;
 }
 
 enum CloseReason {
@@ -1842,6 +1921,9 @@ message Settings {
   optional float compact_at = 9;
   // Since 1.3. Absent: agents are resumed.
   optional bool resume_agents = 10;
+  // Since 1.10. How long a closed pane can be reopened, in minutes. 0 remembers none. Absent:
+  // 60. A change applies to panes closed after it.
+  optional uint32 reopen_closed_minutes = 11;
 }
 
 // ---------------------------------------------------------------------------------------------

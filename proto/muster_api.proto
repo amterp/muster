@@ -161,6 +161,14 @@
 // refused NOT_FOUND, and a compaction or restart asked twice is either carried out twice or
 // refused saying why.
 //
+// A pane closed when somebody asked is remembered for a while, an hour unless the person's
+// config says otherwise, and `pane.reopen` brings it back as `muster pane reopen` does: under
+// the same id and callsign, in its directory, running its agent's session again with the flags
+// it ran with, and back where it was in its tab. `pane.close` answers until when that can be
+// done. A reopened pane is the same pane, so a close sent again after its answer was lost, and
+// after somebody reopened the pane, closes it again: only a close whose fate is unknown is worth
+// sending again, and only soon after. A reopen carries an operation id, as `pane.new` does.
+//
 // A connection carries out its requests one at a time, in the order they were sent. A confirmed
 // send takes up to a second and a restart several, so a program that wants to read meanwhile
 // does so on a second connection.
@@ -334,6 +342,8 @@ message PaneRequest {
     CompactAgent compact = 4;
     // "pane.restart": answered with RestartedAgent.
     RestartAgent restart = 5;
+    // "pane.reopen", since 0.3: answered with MadePane.
+    ReopenPane reopen = 6;
   }
 }
 
@@ -396,10 +406,29 @@ message SendToPane {
   bool confirm = 6;
 }
 
-// Closing a pane, which ends whatever runs in it.
+// Closing a pane, which ends whatever runs in it. Its DONE carries ClosedPane when the pane can
+// be reopened.
 message ClosePane {
   // The pane's id.
   string pane = 1;
+}
+
+// What a pane.close leaves to undo, since 0.3.
+message ClosedPane {
+  // The latest a pane.reopen can bring the pane back, in milliseconds since 1970 on the daemon's
+  // clock. Sooner when 64 panes closed after it push it out.
+  uint64 reopen_until_ms = 1;
+}
+
+// Bringing back a pane closed within the last hour, or what the person's config says, since 0.3.
+// Refused NOT_FOUND when no pane closed on this daemon is remembered by that name: never closed
+// here, its time up, or reopened already. It starts once what ran in it has ended, which takes
+// up to the few seconds a closed pane's programs are given, so its answer can take that long.
+message ReopenPane {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The pane's id, or its callsign as it closed.
+  string pane = 2;
 }
 
 // Compacting the context of the agent in a pane, typed once the agent is idle at an empty
@@ -496,6 +525,8 @@ message Answer {
     RestartedAgent restarted = 14;
     // "msg.post".
     Posted posted = 15;
+    // "pane.close", when the pane can be reopened.
+    ClosedPane closed = 16;
   }
 }
 

@@ -46,7 +46,7 @@ use serde::{Deserialize, Serialize};
 use crate::operations::Record;
 use crate::pty::Grid;
 use crate::session::{Shared, valid_name, valid_ratio};
-use crate::tree::Node;
+use crate::tree::{Neighbours, Node};
 
 /// The file's format. A daemon reads every version up to its own and refuses a newer one.
 pub(crate) const VERSION: u32 = 2;
@@ -77,6 +77,66 @@ pub(crate) struct State {
     /// written before it was kept, or while none is remembered.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) pane_operations: Vec<Record<Made>>,
+    /// The closed panes a reopen can bring back, oldest first ([`ClosedPane`]). Absent from a file
+    /// written before they were kept, or while none is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) closed_panes: Vec<ClosedPane>,
+}
+
+/// A closed pane, remembered so that a reopen brings it back (`proto::ClosedPane`): the pane as
+/// a restart would bring it back, and where it was.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClosedPane {
+    pub(crate) pane: Pane,
+    /// The agent it ran, as its record named it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent: Option<String>,
+    /// Milliseconds since 1970, on this machine's clock.
+    pub(crate) closed_at_ms: u64,
+    pub(crate) until_ms: u64,
+    pub(crate) tab: ClosedTab,
+    /// The process groups its close hung up, which a reopen waits to be gone. Written down so that
+    /// a handoff's successor waits on them too. A restart reading the file drops them, since its
+    /// predecessor's processes are gone and their numbers may have been given to others.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) groups: Vec<i32>,
+    /// A reopen is starting it. It stays remembered until the pane opens, so that a handoff or a
+    /// restart meanwhile keeps it, and is not offered to a second reopen.
+    #[serde(skip)]
+    pub(crate) reopening: bool,
+}
+
+impl ClosedPane {
+    /// The pane as a client is told of it.
+    pub(crate) fn record(&self) -> proto::ClosedPane {
+        proto::ClosedPane {
+            pane: self.pane.name.clone(),
+            callsign: self.pane.callsign.clone().unwrap_or_default(),
+            label: self.pane.label.clone(),
+            cwd: self.pane.cwd.display().to_string(),
+            agent: self.agent.clone(),
+            resumes: self.pane.resume.is_some(),
+            maker: self.pane.maker.clone(),
+            closed_at_ms: self.closed_at_ms,
+            until_ms: self.until_ms,
+            tab: self.tab.name.clone(),
+        }
+    }
+}
+
+/// The tab a closed pane was in, as it closed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClosedTab {
+    #[serde(rename = "tab")]
+    pub(crate) name: String,
+    pub(crate) label: proto::Label,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) hidden: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) helpers_of: Option<String>,
+    /// Where in it the pane was; absent when it was the tab's only pane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) neighbours: Option<Neighbours>,
 }
 
 /// A pane the API made, as a repeat of its operation is answered.
@@ -134,6 +194,10 @@ pub(crate) struct Pane {
     /// Its maker has closed (`proto::Pane::maker_closed`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) maker_closed: bool,
+    /// Whether it was quiet before its maker closed, which made it ask for the person; put back
+    /// when its maker is reopened. Absent while its maker has not closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) quiet_before_orphaned: Option<bool>,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -714,6 +778,7 @@ mod tests {
             quiet: false,
             maker: None,
             maker_closed: false,
+            quiet_before_orphaned: None,
         }
     }
 
@@ -742,6 +807,7 @@ mod tests {
             panes: vec![Pane { label: Some("A".to_string()), ..pane("p1") }, pane("p2")],
             released_callsigns: vec!["otter".to_string()],
             pane_operations: Vec::new(),
+            closed_panes: Vec::new(),
         }
     }
 
@@ -899,7 +965,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 11] = [
+    const FIXTURES: [(&str, &[&str]); 12] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -918,6 +984,9 @@ mod tests {
         // No setting: version 2, the first to hold a pane on another machine and a tab's layout
         // generation (MIP-8).
         ("state-v2-foreign-leaves.json", &[]),
+        // Also the first to hold closed panes a reopen can bring back, and a helper's quiet from
+        // before its maker closed.
+        ("state-v2-reopen-closed.json", &["reopen_closed_minutes"]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -943,6 +1012,7 @@ mod tests {
             quiet: false,
             maker: None,
             maker_closed: false,
+            quiet_before_orphaned: None,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,
@@ -1004,6 +1074,7 @@ mod tests {
             ],
             released_callsigns: Vec::new(),
             pane_operations: Vec::new(),
+            closed_panes: Vec::new(),
         }
     }
 

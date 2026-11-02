@@ -6,7 +6,8 @@
 //! whose header is the protocol's documentation), the version rule, where an install's daemon
 //! listens, how long a daemon just started is given, the handshake that opens every connection,
 //! how the messaging commands are spelled, how a pane is asked for when no window places it, how
-//! a pane's newest rows are read through pages, and what state a pane's record shows its agent in.
+//! a pane's newest rows are read through pages, what state a pane's record shows its agent in,
+//! and how many closed panes a daemon remembers.
 
 pub mod connection;
 pub mod install;
@@ -18,6 +19,10 @@ pub mod pane_text;
 pub mod version;
 
 pub use pane_state::PaneState;
+
+/// The most closed panes a daemon remembers for a reopen. A close past it forgets the oldest and
+/// sends no event for it, so a client keeping the list keeps no more than this either.
+pub const CLOSED_PANES_KEPT: usize = 64;
 
 include!(concat!(env!("OUT_DIR"), "/muster.daemon.rs"));
 
@@ -62,6 +67,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::SetResumeAgents(_)) => "session.set_resume_agents",
             Some(session_request::Request::ReportPresence(_)) => "session.report_presence",
             Some(session_request::Request::Shown(_)) => "session.shown",
+            Some(session_request::Request::SetReopenClosed(_)) => "session.set_reopen_closed",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {
@@ -87,6 +93,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Quiet(_)) => "pane.quiet",
             Some(pane_request::Request::MakerClosed(_)) => "pane.maker_closed",
             Some(pane_request::Request::Restart(_)) => "pane.restart",
+            Some(pane_request::Request::Reopen(_)) => "pane.reopen",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

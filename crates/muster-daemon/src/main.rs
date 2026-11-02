@@ -411,9 +411,18 @@ fn saved(socket: &Path) -> (Saved, Option<persist::State>) {
     let settings = state.as_ref().map(|state| state.settings.clone());
     let pane_operations =
         state.as_ref().map(|state| state.pane_operations.clone()).unwrap_or_default();
+    // The process groups a closed pane's close hung up were this daemon's predecessor's, and are
+    // gone with it; their numbers may be another program's by now.
+    let closed_panes = state
+        .as_ref()
+        .map(|state| {
+            let closed = state.closed_panes.iter().cloned();
+            closed.map(|closed| persist::ClosedPane { groups: Vec::new(), ..closed }).collect()
+        })
+        .unwrap_or_default();
     let restoring = state.is_some();
     let persister = Persister::new(path, disabled);
-    (Saved { persister, settings, pane_operations, restoring }, state)
+    (Saved { persister, settings, pane_operations, closed_panes, restoring }, state)
 }
 
 /// Refuses a path that holds something other than a socket, because binding replaces what is

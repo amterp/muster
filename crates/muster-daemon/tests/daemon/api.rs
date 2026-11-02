@@ -54,6 +54,7 @@ fn an_api_client_is_welcomed_by_its_own_version_whatever_the_internal_one_says()
         "pane.close",
         "pane.compact",
         "pane.new",
+        "pane.reopen",
         "pane.restart",
         "pane.send",
     ];

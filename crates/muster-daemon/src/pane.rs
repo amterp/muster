@@ -971,6 +971,8 @@ pub(crate) struct Pane {
     /// What its maker has been told it needs and it still needs, as the maker watch
     /// (`messages::makers`) last said, for a handoff to carry.
     pub(crate) maker_told: Option<Need>,
+    /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
+    pub(crate) quiet_before_orphaned: Option<bool>,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -1203,11 +1205,19 @@ impl Pane {
             resume: None,
             resume_missed: None,
             maker_told: None,
+            quiet_before_orphaned: None,
         })
     }
 
     pub(crate) fn process(&self) -> Option<i32> {
         self.process
+    }
+
+    /// The process groups a hang-up signals: its shell's, and whatever holds its terminal's
+    /// foreground.
+    pub(crate) fn groups(&self) -> Vec<i32> {
+        let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
+        self.process.into_iter().chain(foreground).collect()
     }
 
     /// Whether the agent holds a wait it declared, rather than one its screen shows.

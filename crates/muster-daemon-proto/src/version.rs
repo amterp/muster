@@ -61,6 +61,10 @@ pub const OPERATIONS: u32 = 9;
 /// nothing of why, so a client asks first.
 pub const ANSWERS_IN_WORDS: u32 = 10;
 
+/// The first minor whose daemon remembers a closed pane and reopens it. An older one remembers
+/// none and does not know the request, so a client asks first.
+pub const REOPENS_PANES: u32 = 10;
+
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no
 /// protocol is read as the oldest there is. `done` says what was therefore not done.

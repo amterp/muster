@@ -19,7 +19,16 @@ pub(super) fn send(shared: &Shared, caller: &Caller, correlation: String, asked:
 pub(super) fn close(shared: &Shared, caller: &Caller, correlation: String, asked: &api::ClosePane) {
     let close = pane_request::Close { pane: asked.pane.clone() };
     let answer = match handled(shared, caller, &correlation, pane_request::Request::Close(close)) {
-        Ok(handled) => answered(correlation, &replied(handled)),
+        Ok(handled) => {
+            let mut answer = answered(correlation, &replied(handled));
+            if answer.outcome() == api::Outcome::Done
+                && let Some(until) = shared.lock().reopen_until(&asked.pane)
+            {
+                let closed = api::ClosedPane { reopen_until_ms: until };
+                answer.detail = Some(api::answer::Detail::Closed(closed));
+            }
+            answer
+        }
         Err(unavailable) => *unavailable,
     };
     answer_after(shared, caller, answer);

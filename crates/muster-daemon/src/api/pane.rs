@@ -52,7 +52,8 @@ fn made(
 ) -> Result<api::Answer, Box<api::Answer>> {
     checked(shared, operation, asked)?;
     let mut session = shared.lock();
-    begun(&mut session, operation, asked)?;
+    let asked_for = operations::fingerprint(&asked.encode_to_vec());
+    begun(&mut session, operation, asked_for, "nothing was made")?;
     let (mut starting, pane) = match starting(&mut session, caller, operation, asked) {
         Ok(starting) => starting,
         Err(refusal) => {
@@ -146,13 +147,14 @@ fn checked(
     Ok(())
 }
 
-/// Begins the operation, or answers a repeat of it.
+/// Begins the operation, which asks for what `asked_for` fingerprints, or answers a repeat of it.
+/// `undone` says what a refusal leaves undone.
 fn begun(
     session: &mut Session,
     operation: &Operation<'_>,
-    asked: &api::NewPane,
+    asked_for: u64,
+    undone: &str,
 ) -> Result<(), Box<api::Answer>> {
-    let asked_for = operations::fingerprint(&asked.encode_to_vec());
     let now = operations::now_ms();
     let correlation = operation.cause.correlation.clone();
     // A repeat is answered from its record whatever the session is doing: refusing it while the
@@ -161,7 +163,7 @@ fn begun(
         Begun::New => {
             let Some(why) = session.unavailable() else { return Ok(()) };
             operation.forget(session);
-            operation.refused(api::Refusal::Unavailable, format!("{why}; nothing was made"))
+            operation.refused(api::Refusal::Unavailable, format!("{why}; {undone}"))
         }
         Begun::Done(made) => made_answer(correlation, api::Outcome::AlreadySo, made),
         Begun::UnderWay => unknown(
@@ -178,9 +180,8 @@ fn begun(
         Begun::Reused => operation.refused(
             api::Refusal::OperationReused,
             format!(
-                "the operation id {:?} was used for a different request in the last day; nothing \
-                 was made",
-                asked.operation
+                "the operation id {:?} was used for a different request in the last day; {undone}",
+                operation.id
             ),
         ),
         Begun::Full => {
@@ -198,12 +199,122 @@ fn begun(
                 api::Refusal::Unavailable,
                 format!(
                     "this daemon remembers {} operations from the last day, as many as it holds, \
-                     and forgets none early; ask again later. Nothing was made",
+                     and forgets none early; ask again later, {undone}",
                     operations::CAPACITY
                 ),
             )
         }
     }))
+}
+
+/// `pane.reopen`: a closed pane brought back for a program, under an operation id as `pane.new`
+/// makes one, through the session's own reopen, so the API and `muster pane reopen` bring back the
+/// same pane.
+pub(super) fn reopen(
+    shared: &Shared,
+    caller: &Caller,
+    correlation: String,
+    asked: &api::ReopenPane,
+) {
+    let operation = Operation {
+        client: &caller.client,
+        id: &asked.operation,
+        cause: Cause { connection: caller.connection, correlation },
+    };
+    let answer = reopened(shared, caller, &operation, asked).unwrap_or_else(|answer| *answer);
+    let _session = shared.lock();
+    shared.api.answer(caller.connection, answer);
+}
+
+fn reopened(
+    shared: &Shared,
+    caller: &Caller,
+    operation: &Operation<'_>,
+    asked: &api::ReopenPane,
+) -> Result<api::Answer, Box<api::Answer>> {
+    let refuse =
+        |refusal, reason: &str| Err(Box::new(operation.refused(refusal, reason.to_string())));
+    if asked.operation.is_empty() {
+        return refuse(
+            api::Refusal::Invalid,
+            "a reopen needs an operation id, which makes asking again safe; nothing was reopened",
+        );
+    }
+    if operation.client.is_empty() {
+        return refuse(
+            api::Refusal::Invalid,
+            "operation ids are kept by the name of the program that chose them, and this \
+             connection's Hello gave none; nothing was reopened",
+        );
+    }
+    if asked.pane.is_empty() {
+        return refuse(
+            api::Refusal::Invalid,
+            "a reopen names the pane by its id or callsign; nothing was reopened",
+        );
+    }
+    // Apart from a new pane's: the two requests' bytes could otherwise read alike.
+    let asked_for =
+        operations::fingerprint(&[b"pane.reopen\0".as_slice(), &asked.encode_to_vec()].concat());
+    let mut session = shared.lock();
+    begun(&mut session, operation, asked_for, "nothing was reopened")?;
+    let reopen = proto::pane_request::Reopen {
+        pane: asked.pane.clone(),
+        tab: Minter::new(Mint::Drawn).tab().to_string(),
+    };
+    let service = proto::request::Service::Pane(proto::PaneRequest {
+        request: Some(proto::pane_request::Request::Reopen(reopen)),
+    });
+    session.cause = Some(operation.cause.clone());
+    let handled = session.handle(service, &caller.outbox);
+    session.cause = None;
+    let mut starting = match handled {
+        Handled::Start(starting) => starting,
+        Handled::Reply(reply) => {
+            operation.forget(&mut session);
+            let refusal = match reply.outcome {
+                proto::Outcome::NotThere => api::Refusal::NotFound,
+                _ => api::Refusal::Unspecified,
+            };
+            return Err(Box::new(operation.refused(refusal, reply.reason)));
+        }
+        other => unreachable!("a reopen is started or refused, never {other:?}"),
+    };
+    drop(session);
+
+    // Outside the lock: the pane starts once what ran in it has ended, which takes seconds.
+    let started = starting.start();
+    let ran = started.is_ok();
+    let mut session = shared.lock();
+    session.cause = Some(operation.cause.clone());
+    let reply = session.started(*starting, started);
+    session.cause = None;
+    let correlation = operation.cause.correlation.clone();
+    let answer = match reply.detail.as_deref() {
+        Some(proto::answer::Detail::Reopened(reopened)) => {
+            let made = Made { pane: reopened.pane.clone(), callsign: reopened.callsign.clone() };
+            session.pane_operations.done(operation.client, operation.id, made.clone());
+            made_answer(correlation, api::Outcome::Done, made)
+        }
+        _ if ran => {
+            session.pane_operations.uncertain(operation.client, operation.id);
+            unknown(
+                correlation,
+                &format!(
+                    "the pane started again, and was then lost: {}. Whether its agent did \
+                     anything meanwhile is unknown; the pane can be reopened again with a new \
+                     operation id",
+                    reply.reason
+                ),
+            )
+        }
+        _ => {
+            operation.forget(&mut session);
+            refused(correlation, api::Refusal::Unspecified, reply.reason)
+        }
+    };
+    session.state_changed();
+    Ok(answer)
 }
 
 /// The pane's create, checked and its names reserved by the session's own create, with the

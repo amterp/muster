@@ -544,12 +544,12 @@ pub(crate) fn take_over(
     send(&mut link, handoff::Message::Accept(accept))?;
     faults.pause("after-accept", socket);
 
-    let Built { shared, stopping, stop, persister, tabs, resumes, app_manifests } =
+    let Built { shared, stopping, stop, persister, tabs, resumes, orphaned_quiet, app_manifests } =
         build(&mut link, socket, data, log)?;
     if !app_manifests.is_empty() {
         shared.adopt_manifests(app_manifests);
     }
-    adopt_panes(&mut link, &shared, offer.panes, &resumes)?;
+    adopt_panes(&mut link, &shared, offer.panes, &resumes, &orphaned_quiet)?;
     let tabs = shared.lock().adopt_tabs(tabs);
     if let Err(problem) = tabs {
         return refuse(&mut link, problem);
@@ -618,6 +618,8 @@ struct Built {
     tabs: Vec<persist::Tab>,
     /// What starts each pane's agent session again, by pane, from the state handed over.
     resumes: HashMap<String, persist::Resume>,
+    /// Whether each helper whose maker has closed was quiet before, by pane, from the same.
+    orphaned_quiet: HashMap<String, bool>,
     app_manifests: Vec<proto::Manifest>,
 }
 
@@ -671,6 +673,7 @@ fn build(
         persister: Arc::clone(&persister),
         settings: Some(state.settings.clone()),
         pane_operations: state.pane_operations.clone(),
+        closed_panes: state.closed_panes.clone(),
         restoring: false,
     };
     let places = Places::of_this_process(&socket.path, data, log);
@@ -684,6 +687,11 @@ fn build(
         stop,
         persister,
         tabs: state.tabs,
+        orphaned_quiet: state
+            .panes
+            .iter()
+            .filter_map(|pane| Some((pane.name.clone(), pane.quiet_before_orphaned?)))
+            .collect(),
         resumes: state
             .panes
             .into_iter()
@@ -699,6 +707,7 @@ fn adopt_panes(
     shared: &Shared,
     panes: u32,
     resumes: &HashMap<String, persist::Resume>,
+    orphaned_quiet: &HashMap<String, bool>,
 ) -> Result<(), String> {
     for _ in 0..panes {
         let master = fds::receive(link, 1)
@@ -730,6 +739,7 @@ fn adopt_panes(
         );
         let record = pane.record.unwrap_or_default();
         let resume = resumes.get(&record.pane);
+        let quiet_before_orphaned = orphaned_quiet.get(&record.pane).copied();
         let adopted = shared.lock().adopt(
             record,
             grid,
@@ -750,6 +760,7 @@ fn adopt_panes(
                 oldest_row: pane.oldest_row,
                 maker_told,
                 turn,
+                quiet_before_orphaned,
             },
         );
         if let Err(problem) = adopted {

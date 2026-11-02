@@ -39,6 +39,7 @@ mod pane_names;
 mod panes;
 mod persistence;
 mod relay;
+mod reopen;
 mod restart;
 mod resume;
 mod session_names;

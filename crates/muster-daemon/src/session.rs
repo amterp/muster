@@ -87,6 +87,9 @@ pub(crate) struct Saved {
     /// served, so that a program's first request after a restart already finds them; [`restore`]
     /// runs once serving has begun.
     pub(crate) pane_operations: Vec<Record<persist::Made>>,
+    /// The closed panes a reopen can still bring back, loaded with the settings for the same
+    /// reason.
+    pub(crate) closed_panes: Vec<persist::ClosedPane>,
     /// Whether saved tabs are to come back ([`restore`]).
     pub(crate) restoring: bool,
 }
@@ -133,7 +136,7 @@ impl Shared {
         socket: Socket,
     ) -> Arc<Shared> {
         let Places { home, overrides, reachable, executable, data, log } = places;
-        let Saved { persister, settings, pane_operations, restoring } = saved;
+        let Saved { persister, settings, pane_operations, closed_panes, restoring } = saved;
         let built = Arc::new_cyclic(|shared: &Weak<Shared>| {
             let (reports, received) = Reports::channel();
             let publishing = shared.clone();
@@ -210,6 +213,7 @@ impl Shared {
                     reserved: HashSet::new(),
                     naming: HashMap::new(),
                     released: VecDeque::new(),
+                    closed: closed_panes,
                     persister,
                     log,
                     stopping: false,
@@ -450,6 +454,10 @@ pub(crate) struct Session {
     /// The words of the panes that closed most recently, oldest first, which a draw passes over
     /// while it can.
     released: VecDeque<String>,
+    /// The closed panes a reopen can still bring back, oldest first, at most
+    /// [`muster_daemon_proto::CLOSED_PANES_KEPT`].
+    /// One past its time is dropped whenever the list is next looked at.
+    closed: Vec<persist::ClosedPane>,
     /// Writes down what a restart needs, whenever it changes.
     persister: Arc<Persister>,
     /// The daemon's own log, which a connection can follow. None when logging is off.
@@ -610,6 +618,7 @@ pub(crate) struct Resuming<'a> {
     pub(crate) maker_told: Option<Need>,
     /// Who typed what started the agent's turn, and when it started.
     pub(crate) turn: (Option<TypedBy>, Option<std::time::Instant>),
+    pub(crate) quiet_before_orphaned: Option<bool>,
 }
 
 pub(crate) struct HandedPane {
@@ -845,6 +854,9 @@ fn flag_names(arguments: &[String]) -> String {
         .join(" ")
 }
 
+/// How long a closed pane is remembered for a reopen when no setting says, in minutes.
+const REOPEN_CLOSED_MINUTES: u32 = 60;
+
 /// How many closed panes' words a draw passes over, newest first. Under half the list, so a
 /// machine with a few dozen panes open still has most words to draw from.
 const RELEASED_CALLSIGNS: usize = 128;
@@ -898,6 +910,22 @@ fn start_launched((argv, environment): &Launched, cwd: &Path, grid: Grid) -> Res
         program: argv[0].clone(),
         started: pty::start(&launch),
         resumed: false,
+    }
+}
+
+/// A pane as the state file keeps it.
+fn saved_pane(pane: &Pane) -> persist::Pane {
+    persist::Pane {
+        name: pane.record.pane.clone(),
+        label: pane.record.label.clone(),
+        callsign: pane.record.callsign.clone(),
+        cwd: PathBuf::from(&pane.record.cwd),
+        grid: pane.io.grid(),
+        resume: pane.resume.clone(),
+        quiet: pane.record.quiet,
+        maker: pane.record.maker.clone(),
+        maker_closed: pane.record.maker_closed,
+        quiet_before_orphaned: pane.quiet_before_orphaned,
     }
 }
 
@@ -967,6 +995,12 @@ pub(crate) fn restore(shared: &Shared, state: persist::State) {
             .or_else(|| panic.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "a panic with no message".to_string())
     });
+    {
+        let mut session = shared.lock();
+        let open: HashSet<String> =
+            session.panes.iter().map(|pane| pane.record.pane.clone()).collect();
+        session.closed.retain(|closed| !open.contains(&closed.pane.name));
+    }
     {
         // Taken apart from the session's lock, which is never held with it. Wakes for panes
         // brought back waited for them, and wait now for their agents.
@@ -1090,9 +1124,66 @@ pub(crate) struct Starting {
     home_instead: Option<PathBuf>,
     argv: Vec<String>,
     environment: Vec<(OsString, OsString)>,
+    /// What a reopen brings back beyond what a create does.
+    reopening: Option<Box<Reopening>>,
+}
+
+/// A closed pane being brought back ([`Session::prepare_reopen`]).
+#[derive(Debug)]
+struct Reopening {
+    /// What was remembered of it, kept again if it does not start.
+    closed: persist::ClosedPane,
+    /// The shell running nothing, for when its directory is gone: its agent's session, resumed
+    /// anywhere else, would find no conversation.
+    plain: Launched,
+    home: PathBuf,
+    /// What starts its agent's session again, when it starts with that.
+    resume: Option<persist::Resume>,
+    /// Its callsign and its given name as it closed, when an open pane holds either now.
+    callsign_taken: Option<String>,
+    name_taken: Option<String>,
+}
+
+/// What of a create a reopened pane's placing needs once its process has started.
+struct StartedPane<'a> {
+    grid: Grid,
+    program: &'a str,
+    target: Target,
+}
+
+impl Reopening {
+    /// Waits for what ran in the pane when it closed to end, as its hang-up makes it within
+    /// [`crate::pane::KILL_GRACE`], so that its agent's session is never resumed beside the agent
+    /// still writing to it. A second past the grace it goes ahead, and says so.
+    fn wait_for_closing(&self, pane: &str) {
+        let deadline =
+            std::time::Instant::now() + crate::pane::KILL_GRACE + std::time::Duration::from_secs(1);
+        let running = || self.closed.groups.iter().any(|&group| pty::group_exists(group));
+        while running() {
+            if std::time::Instant::now() >= deadline {
+                log::warn(
+                    "daemon.pane.reopen_overlaps",
+                    fields! {
+                        "pane" => pane,
+                        "impact" => "a process the pane ran when it closed is still running, \
+                                     after it was killed, as the pane starts again",
+                        "check" => "whether that process is stuck in the kernel; `ps -g` with \
+                                    the group shows it",
+                    },
+                );
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
 }
 
 impl Starting {
+    /// Whether starting it can take seconds: a reopen first waits for what the pane ran to end.
+    pub(crate) fn waits(&self) -> bool {
+        self.reopening.is_some()
+    }
+
     /// Opens the pane's PTY and starts its process. Waits for the process to change directory
     /// and exec, which is why the session is not locked while this runs.
     ///
@@ -1101,6 +1192,26 @@ impl Starting {
     /// way: the pane starts at home, and `cwd` says so. Asked only once a start has failed, so a
     /// directory on a hung mount costs no more than the start that found it.
     pub(crate) fn start(&mut self) -> std::io::Result<(OwnedFd, Child)> {
+        if let Some(reopening) = self.reopening.as_deref_mut() {
+            reopening.wait_for_closing(&self.pane);
+            if !self.cwd.is_dir() {
+                log::warn(
+                    "daemon.pane.reopened_elsewhere",
+                    fields! {
+                        "pane" => self.pane,
+                        "cwd" => self.cwd.display(),
+                        "impact" => "the reopened pane starts as a shell in the home directory, \
+                                     and its agent's session is not resumed, since it would find \
+                                     no conversation anywhere else",
+                        "check" => "whether the directory was removed or its mount is gone",
+                    },
+                );
+                self.cwd.clone_from(&reopening.home);
+                (self.argv, self.environment) = reopening.plain.clone();
+                self.command = None;
+                reopening.resume = None;
+            }
+        }
         let started = self.start_in_cwd();
         let Err(error) = &started else { return started };
         let Some(home) = self.home_instead.take().filter(|home| *home != self.cwd) else {
@@ -1168,13 +1279,22 @@ enum Target {
         label: proto::Label,
         hidden: bool,
     },
+    /// Where a reopened pane was, decided as it is placed ([`Session::place_reopened`]): the tab
+    /// it closed out of may have changed or closed while it started. `fresh` names the tab it
+    /// gets when it needs one.
+    Reopened {
+        tab: persist::ClosedTab,
+        fresh: String,
+    },
 }
 
 impl Target {
     /// The name of the tab this may make, reserved from when it is checked until it is placed.
     fn new_tab(&self) -> Option<&str> {
         match self {
-            Target::NewTab { name, .. } | Target::Helpers { name, .. } => Some(name),
+            Target::NewTab { name, .. }
+            | Target::Helpers { name, .. }
+            | Target::Reopened { fresh: name, .. } => Some(name),
             Target::InTree { tab, makes: true, .. } => Some(tab),
             Target::Beside { .. } | Target::InTree { .. } => None,
         }
@@ -1216,6 +1336,7 @@ impl Session {
                 S::SetScrollMultiplier(set) => self.set_scroll_multiplier(set.multiplier),
                 S::SetNameSessions(set) => self.set_name_sessions(set.name),
                 S::SetResumeAgents(set) => self.set_resume_agents(set.resume),
+                S::SetReopenClosed(set) => self.set_reopen_closed(set.minutes),
                 S::SetHumanName(set) => self.set_human_name(set.name),
                 S::SetCompactAt(set) => self.set_compact_at(set.percent),
                 S::ReadGrids(_) => self.grids(),
@@ -1235,6 +1356,7 @@ impl Session {
             },
             Service::Pane(proto::PaneRequest { request: Some(request) }) => match request {
                 P::Create(create) => return self.create(create),
+                P::Reopen(reopen) => return self.reopen(reopen),
                 P::Close(close) => self.close_pane(&close.pane),
                 P::Resize(resize) => self.resize(&resize),
                 P::Zoom(zoom) => self.zoom(&zoom),
@@ -1335,6 +1457,11 @@ impl Session {
                 .values()
                 .filter(|(_, notice)| notice.count > 0 || notice.member)
                 .map(|(_, notice)| notice.clone())
+                .collect(),
+            closed: self
+                .remembered(state_since::now_ms())
+                .rev()
+                .map(persist::ClosedPane::record)
                 .collect(),
         }
     }
@@ -1661,7 +1788,10 @@ impl Session {
         let target = self.target(create.placement, &create.pane, maker.as_deref())?;
         let neighbour = match &target {
             Target::Beside { pane, .. } => self.pane_index(pane).map(|index| &self.panes[index]),
-            Target::NewTab { .. } | Target::Helpers { .. } | Target::InTree { .. } => None,
+            Target::NewTab { .. }
+            | Target::Helpers { .. }
+            | Target::InTree { .. }
+            | Target::Reopened { .. } => None,
         };
         let grid = match create.grid.map(grid) {
             Some(grid) => grid.map_err(Reply::refused)?,
@@ -1698,7 +1828,125 @@ impl Session {
             home_instead: (!named).then(|| self.home.clone()),
             argv,
             environment,
+            reopening: None,
         })
+    }
+
+    /// Checks a reopen and reserves its names, as [`Session::prepare`] does a create's. The pane
+    /// starts outside the lock once what ran in it has ended ([`Starting::start`]), and
+    /// [`Session::started`] places it.
+    fn reopen(&mut self, reopen: pane_request::Reopen) -> Handled {
+        match self.prepare_reopen(reopen) {
+            Ok(starting) => Handled::Start(Box::new(starting)),
+            Err(reply) => Handled::Reply(reply),
+        }
+    }
+
+    fn prepare_reopen(&mut self, reopen: pane_request::Reopen) -> Result<Starting, Reply> {
+        if self.stopping {
+            return Err(Reply::refused("the daemon is stopping"));
+        }
+        valid_name("tab", &reopen.tab).map_err(Reply::refused)?;
+        let now_ms = state_since::now_ms();
+        self.closed.retain(|closed| closed.until_ms > now_ms);
+        let asked = reopen.pane.as_str();
+        let Some(index) = self.closed.iter().rposition(|closed| {
+            closed.pane.name == asked || closed.pane.callsign.as_deref() == Some(asked)
+        }) else {
+            return Err(Reply::not_there(format!(
+                "no pane closed on this daemon is remembered as {asked}: it was not closed here, \
+                 its time to be reopened is up, or it was reopened already"
+            )));
+        };
+        let pane = self.closed[index].pane.name.clone();
+        if self.closed[index].reopening
+            || self.pane_index(&pane).is_some()
+            || self.reserved.contains(&pane)
+        {
+            return Err(Reply::refused(format!(
+                "pane {pane} is open, or being started, so there is nothing to reopen"
+            )));
+        }
+        self.free_tab(&reopen.tab)?;
+        self.closed[index].reopening = true;
+        let closed = self.closed[index].clone();
+        let saved = closed.pane.clone();
+
+        let name_taken = given_name(saved.label.as_deref())
+            .filter(|given| self.name_taken(given, &pane).is_some())
+            .map(str::to_string);
+        let label = if name_taken.is_some() { None } else { saved.label.clone() };
+        let callsign_taken =
+            saved.callsign.clone().filter(|callsign| self.callsign_clashes(callsign, &pane));
+        let callsign = match saved.callsign.clone().filter(|_| callsign_taken.is_none()) {
+            Some(callsign) => callsign,
+            None => self.draw_callsign(given_name(label.as_deref()), Some(&saved.cwd), &[]),
+        };
+        let called = given_name(label.as_deref()).unwrap_or(&callsign).to_string();
+        let which = spawn::Which { pane: &pane, name: &called, callsign: &callsign };
+        let shell = self.settings.shell.clone().unwrap_or_default();
+        let resume = saved.resume.clone();
+        let line = resume.as_ref().map(|resume| {
+            spawn::command_line(
+                &pty::shell(shell.command.as_deref(), &self.inherited),
+                &resume.command,
+            )
+        });
+        let (argv, environment) = self.launch_with(&shell, which, line.as_deref(), &HashMap::new());
+        let plain = self.launch_with(&shell, which, None, &HashMap::new());
+
+        let target = Target::Reopened { tab: closed.tab.clone(), fresh: reopen.tab };
+        self.reserved.insert(pane.clone());
+        if let Some(fresh) = target.new_tab() {
+            self.reserved.insert(fresh.to_string());
+        }
+        self.naming.insert(callsign.clone(), pane.clone());
+        Ok(Starting {
+            pane,
+            label,
+            callsign,
+            command: resume.as_ref().map(|resume| resume.command.join(" ")),
+            quiet: saved.quiet,
+            maker: saved.maker.clone(),
+            target,
+            grid: saved.grid,
+            cwd: saved.cwd.clone(),
+            home_instead: None,
+            argv,
+            environment,
+            reopening: Some(Box::new(Reopening {
+                closed,
+                plain,
+                home: self.home.clone(),
+                resume,
+                callsign_taken,
+                name_taken,
+            })),
+        })
+    }
+
+    /// Whether `callsign`, a closed pane's, would now mean another pane too: one open here, or
+    /// starting, holds it as its callsign or its name, or an agent joined messaging by it.
+    fn callsign_clashes(&self, callsign: &str, pane: &str) -> bool {
+        self.callsign_holder(callsign, pane).is_some()
+            || self
+                .panes
+                .iter()
+                .any(|open| given_name(open.record.label.as_deref()) == Some(callsign))
+            || self.closed.iter().any(|closed| {
+                closed.reopening
+                    && closed.pane.name != pane
+                    && given_name(closed.pane.label.as_deref()) == Some(callsign)
+            })
+            || poison::lock(&self.joined, "daemon.messages.joined").contains_key(callsign)
+    }
+
+    /// Leaves a pane a reopen did not bring back to be reopened again.
+    fn reopen_failed(&mut self, closed: &persist::ClosedPane) {
+        match self.closed.iter_mut().find(|kept| kept.pane.name == closed.pane.name) {
+            Some(kept) => kept.reopening = false,
+            None => self.closed.push(persist::ClosedPane { reopening: false, ..closed.clone() }),
+        }
     }
 
     /// The program a pane starts, and its environment: the configured shell, running `command`
@@ -1747,7 +1995,7 @@ impl Session {
     /// released either way, and a pane whose place went away while it started is ended again.
     pub(crate) fn started(
         &mut self,
-        starting: Starting,
+        mut starting: Starting,
         started: std::io::Result<(OwnedFd, Child)>,
     ) -> Reply {
         self.reserved.remove(&starting.pane);
@@ -1755,11 +2003,20 @@ impl Session {
             self.reserved.remove(name);
         }
         self.naming.retain(|_, pane| *pane != starting.pane);
+        let reopening = starting.reopening.take();
+        // A reopen that does not come to a pane leaves the pane to be reopened again.
+        let unopened = |session: &mut Session, reply: Reply| {
+            if let Some(reopening) = &reopening {
+                session.reopen_failed(&reopening.closed);
+            }
+            reply
+        };
         let program = &starting.argv[0];
         let (master, child) = match started {
             Ok(started) => started,
             Err(error) => {
-                return Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+                let reply = Self::could_not_start(&starting.pane, program, &starting.cwd, &error);
+                return unopened(self, reply);
             }
         };
         let gone = match &starting.target {
@@ -1785,7 +2042,7 @@ impl Session {
         if let Some(reply) = gone {
             drop(master);
             pty::abandon(child.id().cast_signed());
-            return reply;
+            return unopened(self, reply);
         }
 
         let created = proto::Created { callsign: starting.callsign.clone() };
@@ -1801,11 +2058,163 @@ impl Session {
             state_since_ms: Some(state_since::now_ms()),
             ..proto::Pane::default()
         };
-        if let Err(reply) = self.open(record, starting.grid, master, child, program) {
+        let Some(reopening) = reopening else {
+            if let Err(reply) = self.open(record, starting.grid, master, child, program) {
+                return reply;
+            }
+            self.place(&starting.pane, starting.target);
+            return Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() };
+        };
+
+        let started = StartedPane { grid: starting.grid, program, target: starting.target };
+        self.finish_reopen(record, started, *reopening, master, child)
+    }
+
+    /// Opens and places a reopened pane once its process has started: joined with its maker again
+    /// when that is open here, and running its agent's session when it resumes one, as a restored
+    /// pane is.
+    fn finish_reopen(
+        &mut self,
+        mut record: proto::Pane,
+        started: StartedPane<'_>,
+        reopening: Reopening,
+        master: OwnedFd,
+        child: Child,
+    ) -> Reply {
+        let StartedPane { grid, program, target } = started;
+        let saved = &reopening.closed.pane;
+        let maker = saved.maker.as_deref();
+        let maker_open = maker.is_some_and(|maker| self.pane_index(maker).is_some());
+        // A helper can close before its maker, as when a client closes a maker's helpers deepest
+        // first, and come back before it: it comes back as its maker's close would have left it,
+        // asking for the person, until its maker is reopened and takes it back.
+        let maker_closed_here = !maker_open
+            && maker
+                .is_some_and(|maker| self.closed.iter().any(|closed| closed.pane.name == maker));
+        let mut quiet_before_orphaned = saved.quiet_before_orphaned;
+        if maker_open {
+            if saved.maker_closed {
+                record.quiet = saved.quiet_before_orphaned.unwrap_or(saved.quiet);
+            }
+            record.maker_closed = false;
+            quiet_before_orphaned = None;
+        } else if maker_closed_here && !saved.maker_closed {
+            record.maker_closed = true;
+            quiet_before_orphaned = Some(saved.quiet);
+            record.quiet = false;
+        } else {
+            record.maker_closed = saved.maker_closed;
+        }
+        if let Some(resume) = &reopening.resume {
+            record.session_id = Some(resume.session.clone());
+            record.resume = Some(resume.record());
+            // In its state before it closed, which this run of the agent did not see begin.
+            record.state_since_ms = None;
+        }
+        if let Err(reply) = self.open(record.clone(), grid, master, child, program) {
+            self.reopen_failed(&reopening.closed);
             return reply;
         }
-        self.place(&starting.pane, starting.target);
-        Reply { detail: Some(Box::new(Detail::Created(created))), ..Reply::done() }
+        self.closed.retain(|closed| closed.pane.name != record.pane);
+        let index = self.pane_index(&record.pane).expect("the pane just opened");
+        self.panes[index].quiet_before_orphaned = quiet_before_orphaned;
+        if let Some(resume) = &reopening.resume {
+            self.panes[index].session_id = Some(resume.session.clone());
+            self.panes[index].resume = Some(resume.clone());
+        }
+        let Target::Reopened { tab, fresh } = target else {
+            unreachable!("a reopen is placed where the pane was")
+        };
+        let (tab, made_tab) = self.place_reopened(&record.pane, &tab, fresh);
+        self.adopt_helpers(&record.pane);
+        let resumed = reopening.resume.is_some();
+        log::info(
+            "daemon.pane.reopened",
+            fields! {
+                "pane" => record.pane,
+                "tab" => tab,
+                "made_tab" => made_tab,
+                "agent" => reopening.closed.agent.as_deref().unwrap_or_default(),
+                "resumed" => resumed,
+                "flags" => reopening.resume.as_ref().map(|resume| {
+                    flag_names(resume.command.get(1..).unwrap_or_default())
+                }).unwrap_or_default(),
+                "callsign_taken" => reopening.callsign_taken.is_some(),
+                "name_taken" => reopening.name_taken.is_some(),
+            },
+        );
+        let reopened = proto::Reopened {
+            pane: record.pane,
+            callsign: record.callsign.clone().unwrap_or_default(),
+            tab,
+            made_tab,
+            resumed,
+            callsign_taken: reopening.callsign_taken,
+            name_taken: reopening.name_taken,
+        };
+        Reply { detail: Some(Box::new(Detail::Reopened(reopened))), ..Reply::done() }
+    }
+
+    /// Puts a reopened pane back in the tab it closed out of: where it was when that is
+    /// unchanged, else beside a pane it was beside, else at the tab's end. A tab spanning
+    /// machines is the window's to arrange, so it goes elsewhere. With that tab gone, a helper
+    /// joins its maker's helpers; anything else gets a tab of its own, `fresh`, named and hidden
+    /// as the old one was. Says which tab it went into, and whether it made it.
+    fn place_reopened(
+        &mut self,
+        pane: &str,
+        closed: &persist::ClosedTab,
+        fresh: String,
+    ) -> (String, bool) {
+        let in_old_tab =
+            self.tab_index(&closed.name).filter(|&index| !self.tabs[index].root.has_foreign());
+        let among_helpers =
+            || closed.helpers_of.as_deref().and_then(|maker| self.helpers_tab(maker));
+        if let Some(index) = in_old_tab.or_else(among_helpers) {
+            let tab = &mut self.tabs[index];
+            let back = in_old_tab.is_some()
+                && closed.neighbours.as_ref().is_some_and(|beside| tab.root.put_back(pane, beside));
+            if !back {
+                tab.root.append_column(pane);
+            }
+            let (name, record) = (tab.name.clone(), tab.record());
+            self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
+            return (name, false);
+        }
+        let tab = Tab {
+            name: fresh.clone(),
+            label: closed.label.clone(),
+            root: Node::Pane(pane.to_string()),
+            zoomed: None,
+            hidden: closed.hidden,
+            helpers_of: closed.helpers_of.clone(),
+            layout_generation: 0,
+        };
+        let record = tab.record();
+        self.tabs.push(tab);
+        self.emit(Payload::TabOpened(proto::TabOpened { tab: Some(record) }));
+        (fresh, true)
+    }
+
+    /// Joins `maker`, open here again, with its helpers here that its close left marked: each
+    /// is its helper again, with the quiet it had, and the person is not told of a close that has
+    /// been undone.
+    fn adopt_helpers(&mut self, maker: &str) {
+        let mut adopted = Vec::new();
+        for helper in &mut self.panes {
+            if helper.record.maker.as_deref() != Some(maker) || !helper.record.maker_closed {
+                continue;
+            }
+            helper.record.maker_closed = false;
+            if let Some(quiet) = helper.quiet_before_orphaned.take() {
+                helper.record.quiet = quiet;
+            }
+            adopted.push(helper.record.clone());
+        }
+        self.orphans.retain(|orphaned| orphaned.maker != maker);
+        for record in adopted {
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
     }
 
     /// Watches a pane whose process has started, and announces it. It is in no tab yet.
@@ -2092,6 +2501,9 @@ impl Session {
                     self.place(pane, Target::NewTab { name, label, hidden: true });
                     self.tabs.last_mut().expect("a tab was just made").helpers_of = Some(maker);
                 }
+            }
+            Target::Reopened { tab, fresh } => {
+                self.place_reopened(pane, &tab, fresh);
             }
             Target::InTree { tab: name, root, generation, label, hidden, .. } => {
                 if let Some(index) = self.tab_index(&name) {
@@ -2658,8 +3070,54 @@ impl Session {
         if self.pane_index(pane).is_none() {
             return Reply::not_there(format!("no pane {pane} on this daemon"));
         }
+        self.remember_closing(pane);
         self.remove(pane, proto::CloseReason::Requested, None);
         Reply::done()
+    }
+
+    /// Keeps `pane`, about to close because a client asked, for a reopen to bring back
+    /// ([`persist::ClosedPane`]), for as long as the setting says. Not while the daemon stops or
+    /// hands over, whose panes are saved or handed over whole.
+    fn remember_closing(&mut self, pane: &str) {
+        let minutes = self.settings.reopen_closed_minutes.unwrap_or(REOPEN_CLOSED_MINUTES);
+        if minutes == 0 || self.stopping || self.replacing != Replacing::No {
+            return;
+        }
+        let (Some(index), Some(tab)) = (self.pane_index(pane), self.tab_of(pane)) else { return };
+        let (held, tab) = (&self.panes[index], &self.tabs[tab]);
+        let closed_at_ms = state_since::now_ms();
+        let closed = persist::ClosedPane {
+            pane: saved_pane(held),
+            agent: held.record.agent.clone(),
+            closed_at_ms,
+            until_ms: closed_at_ms.saturating_add(u64::from(minutes) * 60_000),
+            tab: persist::ClosedTab {
+                name: tab.name.clone(),
+                label: tab.label.clone(),
+                hidden: tab.hidden,
+                helpers_of: tab.helpers_of.clone(),
+                neighbours: tab.root.neighbours(pane),
+            },
+            groups: held.groups(),
+            reopening: false,
+        };
+        self.closed.retain(|kept| kept.until_ms > closed_at_ms && kept.pane.name != pane);
+        self.closed.push(closed);
+        let excess = self.closed.len().saturating_sub(muster_daemon_proto::CLOSED_PANES_KEPT);
+        self.closed.drain(..excess);
+        log::info("daemon.pane.remembered", fields! { "pane" => pane, "minutes" => minutes });
+    }
+
+    /// The latest a reopen can bring `pane` back, while it is remembered.
+    pub(crate) fn reopen_until(&self, pane: &str) -> Option<u64> {
+        self.remembered(state_since::now_ms())
+            .find(|closed| closed.pane.name == pane)
+            .map(|closed| closed.until_ms)
+    }
+
+    /// The closed panes a reopen can still bring back at `now_ms`, oldest first.
+    fn remembered(&self, now_ms: u64) -> impl DoubleEndedIterator<Item = &persist::ClosedPane> {
+        self.closed.iter().filter(move |closed| closed.until_ms > now_ms)
     }
 
     /// Something a pane's program asked for, from the publisher. Nothing to do if the pane has
@@ -2810,10 +3268,16 @@ impl Session {
         let maker = &removed.record;
         self.orphan(&maker.pane, maker.callsign.as_deref().unwrap_or(&maker.pane));
         removed.io.mark_closed();
+        let remembered = self
+            .closed
+            .iter()
+            .find(|closed| closed.pane.name == pane)
+            .map(persist::ClosedPane::record);
         self.emit(Payload::PaneClosed(proto::PaneClosed {
             pane: pane.to_string(),
             reason: reason.into(),
             exit_status,
+            remembered,
         }));
         let reason = match reason {
             proto::CloseReason::Exited => proto::DetachReason::Exited,
@@ -2835,10 +3299,12 @@ impl Session {
         }
         let mut helpers = Vec::new();
         for index in 0..self.panes.len() {
-            let record = &mut self.panes[index].record;
-            if record.maker.as_deref() != Some(maker) || record.maker_closed {
+            let helper = &mut self.panes[index];
+            if helper.record.maker.as_deref() != Some(maker) || helper.record.maker_closed {
                 continue;
             }
+            helper.quiet_before_orphaned = Some(helper.record.quiet);
+            let record = &mut helper.record;
             let callsign = record.callsign.as_deref().unwrap_or(&record.pane).to_string();
             helpers.push((record.pane.clone(), callsign));
             record.maker_closed = true;
@@ -3036,6 +3502,11 @@ impl Session {
         let Some(index) = self.tab_index(name) else {
             return Reply::not_there(format!("no tab {name} on this daemon"));
         };
+        for pane in
+            self.tabs[index].root.panes().into_iter().map(str::to_string).collect::<Vec<_>>()
+        {
+            self.remember_closing(&pane);
+        }
         let tab = self.tabs.remove(index);
         self.emit(Payload::TabClosed(proto::TabClosed { tab: tab.name.clone() }));
         for pane in tab.root.panes() {
@@ -3230,6 +3701,14 @@ impl Session {
             return Reply::already();
         }
         self.settings.resume_agents = Some(resume);
+        self.settings_changed()
+    }
+
+    fn set_reopen_closed(&mut self, minutes: u32) -> Reply {
+        if self.settings.reopen_closed_minutes.unwrap_or(REOPEN_CLOSED_MINUTES) == minutes {
+            return Reply::already();
+        }
+        self.settings.reopen_closed_minutes = Some(minutes);
         self.settings_changed()
     }
 
@@ -3562,23 +4041,10 @@ impl Session {
             daemon: env!("CARGO_PKG_VERSION").to_string(),
             settings: self.settings.clone(),
             tabs,
-            panes: self
-                .panes
-                .iter()
-                .map(|pane| persist::Pane {
-                    name: pane.record.pane.clone(),
-                    label: pane.record.label.clone(),
-                    callsign: pane.record.callsign.clone(),
-                    cwd: PathBuf::from(&pane.record.cwd),
-                    grid: pane.io.grid(),
-                    resume: pane.resume.clone(),
-                    quiet: pane.record.quiet,
-                    maker: pane.record.maker.clone(),
-                    maker_closed: pane.record.maker_closed,
-                })
-                .collect(),
+            panes: self.panes.iter().map(saved_pane).collect(),
             released_callsigns: self.released.iter().cloned().collect(),
             pane_operations: self.pane_operations.saved(),
+            closed_panes: self.remembered(state_since::now_ms()).cloned().collect(),
         }
     }
 
@@ -3709,6 +4175,8 @@ impl Session {
                 ..proto::Pane::default()
             };
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
+                let index = self.pane_index(&name).expect("the pane just opened");
+                self.panes[index].quiet_before_orphaned = pane.saved.quiet_before_orphaned;
                 if let Some(resume) = resume {
                     Self::resumed(&name, &resume);
                     let index = self.pane_index(&name).expect("the pane just opened");
@@ -3966,6 +4434,7 @@ impl Session {
         pane.session_id = resuming.session_id.map(str::to_string);
         pane.resume = resuming.resume.cloned();
         pane.maker_told = resuming.maker_told;
+        pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
         let (by, at) = resuming.turn;
         pane.io.resume_turn(by, at);
         if let Some(need) = resuming.maker_told {
@@ -4134,6 +4603,10 @@ impl Session {
                     || self.callsign_holder(word, "").is_some()
                     || self.panes.iter().any(|pane| pane.record.label.as_deref() == Some(word))
                     || joined.contains_key(word)
+                    || self.closed.iter().any(|closed| {
+                        closed.pane.callsign.as_deref() == Some(word)
+                            || given_name(closed.pane.label.as_deref()) == Some(word)
+                    })
             },
             |word| {
                 around.contains(word)
@@ -4729,8 +5202,13 @@ mod tests {
             log: None,
         };
         let persister = Persister::new(file.to_path_buf(), false);
-        let saved =
-            Saved { persister, settings: None, pane_operations: Vec::new(), restoring: true };
+        let saved = Saved {
+            persister,
+            settings: None,
+            pane_operations: Vec::new(),
+            closed_panes: Vec::new(),
+            restoring: true,
+        };
         let (stopping, _) = std::sync::mpsc::channel();
         let path = file.with_extension("sock");
         let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();

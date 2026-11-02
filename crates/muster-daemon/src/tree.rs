@@ -18,7 +18,8 @@ pub(crate) enum Axis {
     Rows,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Side {
     Left,
     Right,
@@ -93,6 +94,15 @@ pub(crate) enum Node {
         first: Box<Node>,
         second: Box<Node>,
     },
+}
+
+/// Where a pane sat in its tab, for putting it back after it closes: the panes on the other side
+/// of the split that held it, which side of them it was on, and their share of that split.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Neighbours {
+    pub(crate) leaves: Vec<String>,
+    pub(crate) side: Side,
+    pub(crate) ratio: f32,
 }
 
 /// What a resize did.
@@ -203,6 +213,66 @@ impl Node {
                 }
             }
         }
+    }
+
+    /// Where `pane` sits ([`Neighbours`]). None when it is the whole tree, or not here.
+    pub(crate) fn neighbours(&self, pane: &str) -> Option<Neighbours> {
+        let path = self.path_to(pane)?;
+        let (last, above) = path.split_last()?;
+        let Some(Node::Split { axis, ratio, first, second }) = self.at(above) else {
+            unreachable!("a pane's parent is a split")
+        };
+        let (sibling, after) = match last {
+            Branch::First => (second, false),
+            Branch::Second => (first, true),
+        };
+        let side = match (axis, after) {
+            (Axis::Columns, false) => Side::Left,
+            (Axis::Columns, true) => Side::Right,
+            (Axis::Rows, false) => Side::Up,
+            (Axis::Rows, true) => Side::Down,
+        };
+        let ratio = if after { *ratio } else { 1.0 - *ratio };
+        let leaves = sibling.leaves().into_iter().map(str::to_string).collect();
+        Some(Neighbours { leaves, side, ratio })
+    }
+
+    /// Puts `pane` back where [`Node::neighbours`] said it was. Exactly there when a subtree
+    /// holds just those leaves, in that order; beside the first of them still here when the tree
+    /// has changed since; false, changing nothing, when none of them is here.
+    pub(crate) fn put_back(&mut self, pane: &str, neighbours: &Neighbours) -> bool {
+        let Neighbours { leaves, side, ratio } = neighbours;
+        if let Some(path) = self.path_holding_exactly(leaves) {
+            let node = self.at_mut(&path).expect("the path was just found");
+            let existing = std::mem::replace(node, Node::Pane(String::new()));
+            let added = Node::Pane(pane.to_string());
+            *node = if side.is_after() {
+                split(side.axis(), *ratio, existing, added)
+            } else {
+                split(side.axis(), 1.0 - *ratio, added, existing)
+            };
+            return true;
+        }
+        let present = self.leaves().into_iter().find(|leaf| leaves.iter().any(|held| held == leaf));
+        match present.map(str::to_string) {
+            Some(beside) => self.insert(&beside, pane, *side, *ratio),
+            None => false,
+        }
+    }
+
+    /// The path to the node whose leaves are exactly `leaves`, in order.
+    fn path_holding_exactly(&self, leaves: &[String]) -> Option<Vec<Branch>> {
+        if self.leaves() == leaves.iter().map(String::as_str).collect::<Vec<_>>() {
+            return Some(Vec::new());
+        }
+        let Node::Split { first, second, .. } = self else { return None };
+        for (branch, child) in [(Branch::First, first), (Branch::Second, second)] {
+            if let Some(mut path) = child.path_holding_exactly(leaves) {
+                path.insert(0, branch);
+                return Some(path);
+            }
+        }
+        None
     }
 
     /// Exchanges two panes' places. False unless both are here.
@@ -492,5 +562,51 @@ mod tests {
         assert_eq!(json, r#"{"foreign":{"pane":"x","daemon":"devenv"}}"#);
         let back: Node = serde_json::from_str(&json).expect("and reads back");
         assert_eq!(back, foreign("x"));
+    }
+
+    /// A pane closed out of an unchanged tab goes back exactly where it was, whichever side of
+    /// its split it was on and however deep.
+    #[test]
+    fn a_closed_pane_goes_back_exactly_where_it_was() {
+        let trees = [
+            columns(0.3, pane("a"), rows(0.6, pane("b"), pane("c"))),
+            columns(0.3, rows(0.6, pane("b"), pane("c")), pane("a")),
+            rows(0.25, pane("a"), columns(0.5, pane("b"), pane("c"))),
+            columns(0.7, pane("b"), rows(0.4, pane("a"), pane("c"))),
+        ];
+        for tree in trees {
+            for closing in ["a", "b", "c"] {
+                let neighbours = tree.neighbours(closing).expect("each pane shares its tab");
+                let (rest, found) = tree.clone().without(closing);
+                assert!(found);
+                let mut rest = rest.expect("two panes are left");
+                assert!(rest.put_back(closing, &neighbours), "{closing} out of {tree:?}");
+                assert_shaped(&rest, &tree);
+            }
+        }
+    }
+
+    /// Once the panes beside it have moved, it goes beside the first of them that is still
+    /// there, and nowhere when none is.
+    #[test]
+    fn a_closed_pane_goes_beside_a_neighbour_left_once_its_place_is_gone() {
+        let tree = columns(0.3, pane("a"), rows(0.6, pane("b"), pane("c")));
+        let neighbours = tree.neighbours("a").unwrap();
+        assert_eq!(neighbours.leaves, ["b", "c"]);
+        assert_eq!(neighbours.side, Side::Left);
+
+        let mut rearranged = columns(0.5, pane("c"), pane("d"));
+        assert!(rearranged.put_back("a", &neighbours));
+        assert_shaped(&rearranged, &columns(0.5, columns(0.3, pane("a"), pane("c")), pane("d")));
+
+        let mut elsewhere = columns(0.5, pane("d"), pane("e"));
+        assert!(!elsewhere.put_back("a", &neighbours));
+        assert_shaped(&elsewhere, &columns(0.5, pane("d"), pane("e")));
+    }
+
+    #[test]
+    fn a_pane_alone_in_its_tab_has_no_neighbours() {
+        assert_eq!(pane("a").neighbours("a"), None);
+        assert_eq!(columns(0.5, pane("a"), pane("b")).neighbours("z"), None);
     }
 }
