@@ -2,9 +2,9 @@
 
 Claude Code configuration that reports what a session is doing to the Muster daemon that owns its
 pane. The hooks report whether it is working, waiting on you or idle, and how many sub-agents it
-runs. The statusline reports how full its context window is, which model it runs, and what it has
-cost. The daemon keeps all of it on the pane's record, so it outlasts the app and arrives from a
-devenv the same as from this machine.
+runs. The statusline reports how full its context window is, which model it runs and at what effort,
+and what it has cost. The daemon keeps all of it on the pane's record, so it outlasts the app and
+arrives from a devenv the same as from this machine.
 
 Everything here calls `"$MUSTER_DAEMON" report`, which every Muster pane can reach:
 `$MUSTER_DAEMON` is the daemon's own executable, and `$MUSTER_DAEMON_SOCKET` says where it
@@ -80,9 +80,9 @@ A plugin cannot set a statusline, so that is a step of its own either way.
 ## The statusline: context, model, cost and the session's name
 
 Claude Code runs its statusline command after every message, with the session's state as JSON on
-stdin. `statusline.sh` reads the context used, the model, the cost and the session's name from
-that JSON, reports them in the background, and then draws your statusline. Put your own command
-after it:
+stdin. `statusline.sh` reads the context used, the model and its effort, the cost and the session's
+name from that JSON, reports them in the background, and then draws your statusline. Put your own
+command after it:
 
 ```json
 {

@@ -76,9 +76,12 @@ Codex has no statusline command, but every hook is handed its transcript and its
 tool call and when a turn ends, a hook reads the last token count from the transcript's final 64 KB
 and reports how full the context is, counted as Codex counts its own "N% context left": the first
 12,000 tokens are not counted as used. It reports in the background, so a slow daemon never holds
-Codex up. It needs `jq`, which macOS ships in `/usr/bin` and a Linux devenv may not, since it
-works the percent out of the transcript rather than reading one field; so do the messaging hooks
-below, which hand the model JSON they build.
+Codex up. When a turn ends, the hook also reports the reasoning effort the model ran at, from the
+transcript's last `turn_context`: Codex hands its hooks the model but not the effort, and writes the
+effort only as a turn starts, so the hook searches the whole transcript, once a turn rather than
+after every tool call. It needs `jq`, which macOS ships in `/usr/bin` and a Linux devenv may not,
+since it works the percent out of the transcript rather than reading one field; so do the messaging
+hooks below, which hand the model JSON they build.
 
 ## Messages through hooks
 

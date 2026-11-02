@@ -39,6 +39,8 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   public var contextUsed: Float?
   public var subagents = 0
   public var model = ""
+  /// The reasoning effort its model runs at, as its harness names it, empty when it has not said.
+  public var effort = ""
   public var costUSD: Double?
   /// What it ended its turn to wait on, empty when it is waiting on nothing.
   public var waiting = ""
@@ -71,6 +73,7 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
       contextUsed = facts.hasContextUsed ? facts.contextUsed : nil
       subagents = Int(facts.subagents)
       model = facts.model
+      effort = facts.effort
       costUSD = facts.hasCostUsd ? facts.costUsd : nil
       waiting = facts.waiting
     }

@@ -543,6 +543,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
             context_used: Some(12.0),
             subagents: 0,
             model: Some("opus".to_string()),
+            effort: Some("high".to_string()),
             cost_usd: Some(0.42),
             other: std::collections::BTreeMap::new(),
             waiting: None,

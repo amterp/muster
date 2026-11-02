@@ -529,6 +529,9 @@ message PaneRequest {
     // when idle long enough: the turn that compaction shows as is a chore, not the agent going to
     // work. Needs its agent, and counts only while detection finds that agent in the pane.
     bool compacting = 15;
+    // Since 1.10. The reasoning effort the agent's model runs at (`AgentFacts.effort`). Empty
+    // removes it.
+    optional string effort = 16;
   }
 }
 
@@ -1815,6 +1818,9 @@ message AgentFacts {
   // agent, in a message from @muster, which wakes it. A turn ending does not clear such a wait,
   // nor does the empty wait a harness's prompt hook reports with its state.
   optional uint32 waiting_until_exits = 7;
+  // Since 1.10. The reasoning effort the agent's model runs at, as its harness names it: "high",
+  // "xhigh". At most 32 bytes. Absent for a model that takes none.
+  optional string effort = 8;
 }
 
 enum AgentState {

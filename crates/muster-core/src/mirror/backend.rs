@@ -252,6 +252,8 @@ pub struct AgentFacts {
     /// How many sub-agents it has running.
     pub subagents: u32,
     pub model: Option<String>,
+    /// The reasoning effort its model runs at, as its harness names it: "high".
+    pub effort: Option<String>,
     /// What its session has cost, in US dollars.
     pub cost_usd: Option<f64>,
     /// Anything else it chose to say, by name.

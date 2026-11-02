@@ -64,6 +64,7 @@ fn facts(facts: &AgentFacts) -> proto::AgentFacts {
         context_used: facts.context_used,
         subagents: facts.subagents,
         model: facts.model.clone().unwrap_or_default(),
+        effort: facts.effort.clone().unwrap_or_default(),
         cost_usd: facts.cost_usd,
         waiting: facts.waiting.clone().unwrap_or_default(),
         other: facts.other.clone().into_iter().collect(),

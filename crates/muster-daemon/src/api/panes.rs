@@ -22,6 +22,7 @@ pub(crate) fn pane(record: &proto::Pane, hidden: bool, source: &api::Source) -> 
             context_used: facts.context_used,
             subagents: facts.subagents,
             model: facts.model.unwrap_or_default(),
+            effort: facts.effort.unwrap_or_default(),
             cost_usd: facts.cost_usd,
             waiting: facts.waiting.unwrap_or_default(),
             other: facts.other.into_iter().collect(),

@@ -33,8 +33,9 @@ use crate::session::{self, DaemonHealth, PaneAgent};
 /// Something a watch may have to say.
 #[derive(Debug, Clone)]
 pub(crate) enum Seen {
-    /// What a pane's agent is doing, as the window paints it.
-    State(PaneAgent),
+    /// What a pane's agent is doing, as the window paints it. Boxed, since it is several times
+    /// the size of every other variant.
+    State(Box<PaneAgent>),
     /// A pane is gone.
     Closed(PaneKey),
     /// How much of a daemon's truth the window has. Said again on every attempt to reconnect and

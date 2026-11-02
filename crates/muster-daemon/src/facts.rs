@@ -1,4 +1,5 @@
-//! What an agent says about itself: its context, its sub-agents, its model and cost, what it is
+//! What an agent says about itself: its context, its sub-agents, its model, its model's effort
+//! and its cost, what it is
 //! waiting on, and whatever else its harness passes on (`PaneRequest.Report`).
 //!
 //! The daemon keeps these on the pane's record because the view is a function of the daemon's
@@ -9,6 +10,7 @@ use muster_daemon_proto as proto;
 use proto::pane_request::Report;
 
 const MODEL_BYTES: usize = 128;
+const EFFORT_BYTES: usize = 32;
 const OTHER_KEYS: usize = 16;
 const KEY_BYTES: usize = 64;
 const VALUE_BYTES: usize = 256;
@@ -35,6 +37,10 @@ pub(crate) fn apply(
     if let Some(model) = report.model {
         text("model", &model, MODEL_BYTES)?;
         facts.model = Some(model).filter(|model| !model.is_empty());
+    }
+    if let Some(effort) = report.effort {
+        text("effort", &effort, EFFORT_BYTES)?;
+        facts.effort = Some(effort).filter(|effort| !effort.is_empty());
     }
     if let Some(cost_usd) = report.cost_usd {
         if !cost_usd.is_finite() || cost_usd < 0.0 {
@@ -181,6 +187,16 @@ mod tests {
     }
 
     #[test]
+    fn an_effort_is_kept_beside_the_model_until_an_empty_one_clears_it() {
+        let both = Report { model: Some("Opus".into()), effort: Some("high".into()), ..report() };
+        let set = applied(None, both);
+        let model_alone = applied(Some(&set), Report { model: Some("Opus".into()), ..report() });
+        let cleared = applied(Some(&set), Report { effort: Some(String::new()), ..report() });
+        assert_eq!(model_alone.effort.as_deref(), Some("high"));
+        assert_eq!((cleared.model.as_deref(), cleared.effort), (Some("Opus"), None));
+    }
+
+    #[test]
     fn other_facts_are_set_and_removed_by_name() {
         let set = applied(
             None,
@@ -202,6 +218,7 @@ mod tests {
         refused(Report { cost_usd: Some(-1.0), ..report() });
         refused(Report { model: Some("m".repeat(MODEL_BYTES + 1)), ..report() });
         refused(Report { model: Some("tab\there".into()), ..report() });
+        refused(Report { effort: Some("e".repeat(EFFORT_BYTES + 1)), ..report() });
         refused(Report { facts: [(String::new(), "v".into())].into(), ..report() });
         refused(Report { facts: [("k".into(), "v".repeat(VALUE_BYTES + 1))].into(), ..report() });
         let many = (0..=OTHER_KEYS).map(|key| (format!("k{key}"), "v".to_string())).collect();

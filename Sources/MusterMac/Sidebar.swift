@@ -825,7 +825,9 @@ public enum SidebarModel {
     case 1: lines.append("1 sub-agent running")
     default: lines.append("\(agent.subagents) sub-agents running")
     }
-    if !agent.model.isEmpty { lines.append(agent.model) }
+    if !agent.model.isEmpty {
+      lines.append(agent.effort.isEmpty ? agent.model : "\(agent.model) · \(agent.effort)")
+    }
     if let cost = agent.costUSD { lines.append(String(format: "$%.2f so far", cost)) }
     if agent.rang { lines.append("the bell rang") }
     if row.member { lines.append("in the conversation shown") }

@@ -716,6 +716,10 @@ message Facts {
   string waiting = 5;
   // Anything else it says, by name.
   map<string, string> other = 6;
+  // Since 0.3. The reasoning effort its model runs at, as its harness names it: Claude Code's
+  // low, medium, high, xhigh or max, Codex's minimal, low, medium, high or xhigh. Empty for a
+  // model that takes none. Shown beside `model`: "Opus 4.5 · high".
+  string effort = 7;
 }
 
 message UnreadInput {

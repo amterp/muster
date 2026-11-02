@@ -1263,6 +1263,7 @@ fn facts_json(facts: &muster_proto::AgentFacts) -> Value {
         "context_used": facts.context_used,
         "subagents": facts.subagents,
         "model": said(&facts.model),
+        "effort": said(&facts.effort),
         "cost_usd": facts.cost_usd,
         "waiting": said(&facts.waiting),
         "other": facts.other,

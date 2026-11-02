@@ -220,9 +220,15 @@ fn only_a_session_in_a_muster_pane_is_told_how_to_say_it_is_waiting() {
 const ROLLOUT_TAIL: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/codex-0.154.0/rollout-tail.jsonl");
 
+/// What a Codex 0.166.0 rollout transcript records as a turn starts, at medium effort.
+const TURN_CONTEXT: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/codex-0.166.0/turn-context.jsonl");
+
 /// Codex has no statusline, so its hooks read how full its context is from the last token count
 /// in its transcript, as Codex's own "N% context left" counts it: past a baseline of 12,000
 /// tokens it does not count as used. The last of the tail's counts is 19,313 tokens of 258,400.
+/// Once a turn ends they also report the effort its model ran at, which only the turn's opening
+/// context in the transcript says.
 #[test]
 fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     let scratch = Scratch::new("codex-context");
@@ -239,7 +245,11 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     )
     .unwrap();
     std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let input = serde_json::json!({ "transcript_path": ROLLOUT_TAIL, "model": "gpt-5.6-luna" });
+    // A turn's context opens it, far from the transcript's tail once the turn has run tools.
+    let transcript = scratch.0.join("rollout.jsonl");
+    let turn = std::fs::read_to_string(TURN_CONTEXT).unwrap();
+    std::fs::write(&transcript, turn + &std::fs::read_to_string(ROLLOUT_TAIL).unwrap()).unwrap();
+    let input = serde_json::json!({ "transcript_path": transcript, "model": "gpt-5.6-luna" });
     for (event, shell) in ["PostToolUse", "Stop"]
         .into_iter()
         .flat_map(|event| shells().into_iter().map(move |shell| (event, shell)))
@@ -267,7 +277,14 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
         );
         let said = std::fs::read_to_string(&arguments).unwrap();
         assert!(said.starts_with("[report][--context-used][2.96"), "{event} in {shell}: {said}");
-        assert!(said.ends_with("[--model][gpt-5.6-luna]"), "{event} in {shell}: {said}");
+        // The effort changes only between turns, so it is read once a turn ends rather than
+        // after every tool call.
+        let model = if event == "Stop" {
+            "[--model][gpt-5.6-luna][--effort][medium]"
+        } else {
+            "[--model][gpt-5.6-luna]"
+        };
+        assert!(said.ends_with(model), "{event} in {shell}: {said}");
     }
 }
 

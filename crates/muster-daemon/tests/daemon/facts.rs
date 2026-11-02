@@ -72,8 +72,8 @@ fn a_report_for_no_pane_or_out_of_bounds_is_refused() {
 fn a_program_in_a_pane_reports_through_the_environment_its_daemon_gave_it() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let command = "\"$MUSTER_DAEMON\" report --model Sonnet --context-used 7 --subagent-started \
-                   && echo reported";
+    let command = "\"$MUSTER_DAEMON\" report --model Sonnet --effort high --context-used 7 \
+                   --subagent-started && echo reported";
     make(
         &mut control,
         proto::pane_request::Create {
@@ -84,8 +84,8 @@ fn a_program_in_a_pane_reports_through_the_environment_its_daemon_gave_it() {
     until_text(&mut control, "p1", "reported");
     let facts = facts_of(&mut control, "p1").expect("the report arrived");
     assert_eq!(
-        (facts.model.as_deref(), facts.context_used, facts.subagents),
-        (Some("Sonnet"), Some(7.0), 1)
+        (facts.model.as_deref(), facts.effort.as_deref(), facts.context_used, facts.subagents),
+        (Some("Sonnet"), Some("high"), Some(7.0), 1)
     );
 }
 

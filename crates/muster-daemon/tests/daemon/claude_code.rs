@@ -76,8 +76,9 @@ fn a_daemon_that_never_answers_never_holds_the_statusline_up() {
 }
 
 /// The statusline reports through the real `muster-daemon report`, which reads Claude Code's JSON
-/// itself: with no jq anywhere on the PATH, the pane still takes the context, model and cost, and
-/// the session's name - and a session that says it has no name leaves the pane's name alone.
+/// itself: with no jq anywhere on the PATH, the pane still takes the context, model, effort and
+/// cost, and the session's name - and a session that says it has no name leaves the pane's name
+/// alone, while one whose model says no effort leaves the pane none.
 #[test]
 fn the_statusline_reports_the_session_with_no_jq_installed() {
     let scratch = Scratch::new("statusline-report");
@@ -108,7 +109,8 @@ fn the_statusline_reports_the_session_with_no_jq_installed() {
         snapshot(control).panes.into_iter().find(|record| record.pane == "p1").unwrap()
     };
 
-    run(&STATUS.replace("{\"model\"", "{\"session_name\":\"🤖 A\",\"model\""));
+    let effort = "\"effort\":{\"level\":\"high\"}";
+    run(&STATUS.replace("{\"model\"", &format!("{{\"session_name\":\"🤖 A\",{effort},\"model\"")));
     let named = until_some("the report to land", || {
         let record = pane(&mut control);
         record
@@ -118,7 +120,10 @@ fn the_statusline_reports_the_session_with_no_jq_installed() {
             .then_some(record)
     });
     let facts = named.facts.unwrap();
-    assert_eq!((facts.model.as_deref(), facts.cost_usd), (Some("Opus"), Some(1.5)));
+    assert_eq!(
+        (facts.model.as_deref(), facts.effort.as_deref(), facts.cost_usd),
+        (Some("Opus"), Some("high"), Some(1.5))
+    );
     assert_eq!(named.label.as_deref(), Some("🤖 A"), "the pane took the session's name");
 
     run(&STATUS.replace("42", "50"));
@@ -131,6 +136,7 @@ fn the_statusline_reports_the_session_with_no_jq_installed() {
             .then_some(record)
     });
     assert_eq!(unnamed.label.as_deref(), Some("🤖 A"), "no name took the pane's away");
+    assert_eq!(unnamed.facts.unwrap().effort, None, "no effort left the last one standing");
 }
 
 /// `/clear` starts a session with a new id, whose statusline JSON says nothing of its context

@@ -6840,7 +6840,7 @@ fn announce_state(pane: &PaneKey) {
     let Some(agent) = presented(pane) else { return };
     conversation::member_moved(pane);
     ffi::emit(&Event::new(event::Payload::PaneStateChanged(convert::pane_state(&agent))));
-    watch::publish(&Seen::State(agent));
+    watch::publish(&Seen::State(Box::new(agent)));
 }
 
 /// What the window should show for a pane, which is not always what the daemon said.

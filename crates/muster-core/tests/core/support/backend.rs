@@ -219,6 +219,7 @@ fn read_facts(given: &Value) -> AgentFacts {
             .and_then(|count| u32::try_from(count).ok())
             .unwrap_or_default(),
         model: optional(given, "model"),
+        effort: optional(given, "effort"),
         cost_usd: given.get("costUsd").and_then(Value::as_f64),
         other: given
             .get("other")

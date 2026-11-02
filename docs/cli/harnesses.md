@@ -39,9 +39,10 @@ kimi, kiro, maki, pi, qodercli.
   a harness update that changes its screen does not change what Muster shows. Needs the
   adapter's hooks installed.
 - **Context used, model and cost**: shown on the pane's record. Claude Code reports all three
-  through the statusline in its adapter. Codex has no statusline command, so its hooks report its
-  context, read off its transcript, and its model, but not its cost. OpenCode's plugin reports
-  all three after each assistant message.
+  through the statusline in its adapter, with the effort its model runs at. Codex has no
+  statusline command, so its hooks report its context, read off its transcript, and its model,
+  and once each turn ends the effort its model runs at, but not its cost. OpenCode's plugin
+  reports all three after each assistant message, and no effort.
 - **Sub-agents counted**: how many sub-agents the session runs, from its hooks. Codex's are wired
   and have not yet been seen firing.
 - **Rung at an empty prompt**: `muster msg post` types a one-line wake into the agent's pane once

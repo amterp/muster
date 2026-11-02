@@ -189,6 +189,7 @@ pub fn pane(record: proto::Pane) -> Pane {
             context_used: facts.context_used,
             subagents: facts.subagents,
             model: facts.model,
+            effort: facts.effort,
             cost_usd: facts.cost_usd,
             other: facts.other.into_iter().collect(),
             waiting: facts.waiting,

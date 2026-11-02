@@ -23,10 +23,11 @@ use crate::session::HANDING_OVER;
 const STDIN_BYTES: u64 = 1 << 20;
 
 /// The flags `--from` may fill: each one that takes one value.
-const FROM_FLAGS: [&str; 9] = [
+const FROM_FLAGS: [&str; 10] = [
     "context-used",
     "context-session",
     "model",
+    "effort",
     "cost-usd",
     "waiting",
     "session-name",
@@ -40,13 +41,14 @@ const FROM_FLAGS: [&str; 9] = [
 const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
-    [--context-session ID] [--model NAME] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
+    [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID] [--compacting]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
-    $MUSTER_DAEMON_SOCKET. An empty model or fact value removes it; --clear forgets everything \
+    $MUSTER_DAEMON_SOCKET. --effort is the reasoning effort the model runs at, as the harness \
+    names it (high). An empty model, effort or fact value removes it; --clear forgets everything \
     reported before, and applies first. --context-session is the harness's id for the session \
     the context and cost belong to: a report naming another session than the last forgets the \
     context and cost reported before it, as a statusline naming a new session after /clear \
@@ -224,6 +226,7 @@ fn parse(
             }
             "--context-session" => report.context_session = Some(value("--context-session")?),
             "--model" => report.model = Some(value("--model")?),
+            "--effort" => report.effort = Some(value("--effort")?),
             "--cost-usd" => {
                 let given = value("--cost-usd")?;
                 report.cost_usd =
@@ -375,7 +378,7 @@ mod tests {
     }
 
     /// Claude Code's statusline JSON, cut down to what its statusline reports.
-    const STATUS: &str = r#"{"model":{"display_name":"Opus"},"context_window":{"used_percentage":42.5},"cost":{"total_cost_usd":1.5},"session_name":null}"#;
+    const STATUS: &str = r#"{"model":{"display_name":"Opus"},"effort":{"level":"high"},"context_window":{"used_percentage":42.5},"cost":{"total_cost_usd":1.5},"session_name":null}"#;
 
     #[test]
     fn from_fills_each_flag_out_of_the_json_on_stdin() {
@@ -388,6 +391,8 @@ mod tests {
             "context-used=/context_window/used_percentage",
             "--from",
             "model=/model/display_name",
+            "--from",
+            "effort=/effort/level",
             "--from",
             "cost-usd=/cost/total_cost_usd",
             "--from",
@@ -406,6 +411,8 @@ mod tests {
                 "42.5",
                 "--model",
                 "Opus",
+                "--effort",
+                "high",
                 "--cost-usd",
                 "1.5",
             ],

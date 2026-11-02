@@ -31,7 +31,7 @@ own progress, `(40% done)` or `(progress failed)`, a compaction queued and what 
 `(compaction queued, waiting for its 1 sub-agent and its turn to end)`, or the prompt it was asked
 to carry on with, `(follow-up queued, waiting for an empty prompt)`, and `(quiet)` for a pane that
 raises nothing for you. A waiting agent's second line is what it waits on.
-The model and the cost are in `--json`.
+The model, its effort and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
@@ -198,9 +198,10 @@ One entry per pane every followed daemon holds, on screen or not.
   then only what the agent reports, and `unknown` while it has reported nothing: said rather than
   guessed.
 - `facts` - what the agent says about itself, `null` while it has said nothing: `context_used`
-  (0 to 100), `subagents`, `model`, `cost_usd`, `waiting` (what it ended its turn to wait on) and
-  `other`, its own keys. `context_used`, `model`, `cost_usd` and `waiting` are `null` until the
-  agent says them, since an agent that never reported its context has not used none of it;
+  (0 to 100), `subagents`, `model`, `effort` (the reasoning effort its model runs at, as its
+  harness names it: `high`), `cost_usd`, `waiting` (what it ended its turn to wait on) and
+  `other`, its own keys. `context_used`, `model`, `effort`, `cost_usd` and `waiting` are `null`
+  until the agent says them, since an agent that never reported its context has not used none of it;
   `subagents` is `0` and `other` is `{}` until then.
 - `progress` - what a program in the pane says of its progress, `{"state", "percent"}`, or `null`.
   `state` is `running`, `error`, `indeterminate` or `paused`; `percent` is `null` when the program

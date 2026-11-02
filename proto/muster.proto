@@ -3587,6 +3587,9 @@ message AgentFacts {
   string waiting = 5;
   // Anything else it chose to say, by name.
   map<string, string> other = 6;
+  // The reasoning effort its model runs at, as its harness names it: "high". Empty when it has
+  // not said, or its model takes none.
+  string effort = 7;
 }
 
 // How much of the backend's truth the core currently has.

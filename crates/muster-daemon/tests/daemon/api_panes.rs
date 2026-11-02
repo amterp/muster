@@ -92,6 +92,7 @@ fn a_snapshot_carries_what_a_pane_says_and_who_made_it() {
         agent: "claude".to_string(),
         context_used: Some(42.0),
         model: Some("Opus".to_string()),
+        effort: Some("xhigh".to_string()),
         cost_usd: Some(1.25),
         waiting: Some("a build".to_string()),
         session_id: Some("s-1".to_string()),
@@ -105,10 +106,11 @@ fn a_snapshot_carries_what_a_pane_says_and_who_made_it() {
     let p1 = in_snapshot(&snapshot, "p1");
     let facts = p1.facts.clone().unwrap_or_default();
     assert_eq!(
-        (facts.context_used, facts.model.as_str(), facts.cost_usd, facts.waiting.as_str()),
-        (Some(42.0), "Opus", Some(1.25), "a build"),
+        (facts.context_used, facts.model.as_str(), facts.effort.as_str(), facts.cost_usd),
+        (Some(42.0), "Opus", "xhigh", Some(1.25)),
         "{p1:?}"
     );
+    assert_eq!(facts.waiting, "a build");
     assert_eq!(p1.session, "s-1");
     assert_eq!(p1.state(), api::PaneState::Waiting, "idle, having said what it waits on");
     assert_eq!(p1.adapter(), api::Adapter::Reporting);
