@@ -265,6 +265,60 @@
       }
     },
     {
+      "name": "a program's question names the answer its author recommends, which must be one it offers",
+      "why": "Foreman's phone draws the answer an agent recommends apart from the others, so the post carries it as a field, the text of one offered answer, and the history gives it back. One not among the answers is refused INVALID, as an answer a question does not offer is. A daemon that serves it lists the option msg.post.recommended in its Welcome.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "1",
+              "msg": {"post": {"operation": "op-1", "group": "g", "to": ["a"], "body": "Ship?", "answers": ["Yes", "No"], "recommended": "No"}}
+            },
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "4"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "2",
+              "msg": {"post": {"operation": "op-2", "group": "g", "to": ["a"], "body": "Again?", "answers": ["Yes", "No"], "recommended": "Maybe"}}
+            },
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {
+                        "number": "4",
+                        "atMs": "*",
+                        "post": {"author": "@human", "to": ["a"], "body": "Ship?", "answers": ["Yes", "No"], "via": "foreman", "recommended": "No"}
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "the desk and a program answering one question leave one answer",
       "why": "A question takes one answer, from somebody it was asked of, and the group's home refuses a second with ANSWERED, so a phone answering a question the human already answered at the desk can say so (MIP-10, section 7). The history marks the question with the post that answered it.",
       "given": {"daemon": {}},

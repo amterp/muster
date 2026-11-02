@@ -813,6 +813,12 @@ message NewPost {
   optional Answering answering = 7;
   // The participant to post as. Empty is the human.
   string as = 8;
+  // Since 0.3. The offered answer its author recommends, as written in `answers`, for a view to
+  // draw apart; empty for none. It changes nothing about which answers settle the question, and
+  // one that is not among `answers` is refused INVALID. A daemon serves it when its Welcome lists
+  // the option "msg.post.recommended"; one before 0.3 ignores the field and posts the question
+  // without it, so a client asks there first.
+  string recommended = 9;
 }
 
 // What a post came to: its group, and its number there.
@@ -941,6 +947,9 @@ message Post {
   // The program that posted it for its author, by the name from its Hello: "foreman". Shown
   // beside the author, as attribution rather than identity: any program can give any name.
   optional string via = 8;
+  // Since 0.3. The offered answer its author recommends, as written in `answers`; empty for
+  // none.
+  string recommended = 9;
 }
 
 message Answering {

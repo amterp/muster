@@ -293,21 +293,22 @@ fn answers(entries: &[Entry]) -> BTreeMap<u64, u64> {
 fn entry_of(entry: &Entry, answered_by: Option<u64>) -> api::Entry {
     use api::entry::What as Is;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
-            Is::Post(api::Post {
-                author: author.clone(),
-                to: to.clone(),
-                body: body.clone(),
-                urgent: *urgent,
-                answers: answers.clone(),
-                answering: answering.as_ref().map(|answering| api::Answering {
-                    question: answering.question,
-                    answer: answering.answer.clone(),
-                }),
-                answered_by,
-                via: via.clone(),
-            })
-        }
+        What::Message {
+            author, to, body, urgent, answers, recommended, answering, via, ..
+        } => Is::Post(api::Post {
+            author: author.clone(),
+            to: to.clone(),
+            body: body.clone(),
+            urgent: *urgent,
+            answers: answers.clone(),
+            answering: answering.as_ref().map(|answering| api::Answering {
+                question: answering.question,
+                answer: answering.answer.clone(),
+            }),
+            answered_by,
+            via: via.clone(),
+            recommended: recommended.clone().unwrap_or_default(),
+        }),
         What::Created { by } => Is::Made(api::Made { by: by.clone() }),
         What::Joined { who } => Is::Joined(api::Joined { who: who.clone() }),
         What::Left { who } => Is::Left(api::Left { who: who.clone() }),

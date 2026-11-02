@@ -53,7 +53,7 @@ pub(super) fn post(
             }
         };
         let post = proto::msg_request::Post {
-            recommended: None,
+            recommended: (!asked.recommended.is_empty()).then(|| asked.recommended.clone()),
             group: (!asked.group.is_empty()).then(|| asked.group.clone()),
             to,
             body,
@@ -214,6 +214,7 @@ fn refusal_of(code: &str) -> Result<api::Refusal, api::Outcome> {
         "urgent_unsupported"
         | "answers_unsupported"
         | "in_words_unsupported"
+        | "recommended_unsupported"
         | "operations_unsupported" => api::Refusal::Unsupported,
         "empty_body"
         | "body_too_large"
@@ -222,6 +223,7 @@ fn refusal_of(code: &str) -> Result<api::Refusal, api::Outcome> {
         | "bad_answer"
         | "answer_offers_answers"
         | "not_offered"
+        | "recommended_not_offered"
         | "bad_name"
         | "addressed_self"
         | "past_newest" => api::Refusal::Invalid,

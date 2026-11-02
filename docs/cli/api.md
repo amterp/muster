@@ -105,6 +105,13 @@ option `msg.post.answer_in_words` in its Welcome; one before 0.3 refuses it INVA
 nothing. A question kept on another machine whose daemon is too old to keep it is refused
 UNSUPPORTED.
 
+Since 0.3, a question may name in `recommended` the offered answer its author recommends, as written
+in `answers`, which a client can draw apart from the others; history gives it back. It changes
+nothing about which answers settle the question, and one not among `answers` is refused INVALID. A
+daemon that serves it lists the option `msg.post.recommended` in its Welcome. One before 0.3 ignores
+the field and posts the question without it, so ask there first. A question kept on another machine
+whose daemon is too old to keep it is refused UNSUPPORTED.
+
 It carries a required operation id, as `pane.new` does. The group's home keeps it in the post's
 own log entry, so a repeat is ALREADY_SO with the first post's group and number, across a
 reconnect, a handoff and a restart, and after the group is deleted. A post to a group kept on
