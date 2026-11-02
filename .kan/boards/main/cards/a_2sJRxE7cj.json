@@ -2,16 +2,25 @@
   "_v": 4,
   "alias": "api-answer-a",
   "alias_explicit": false,
-  "column": "uncommitted",
+  "column": "next",
+  "comments": [
+    {
+      "id": "c_2sQMKDWPX",
+      "body": "2026-11-01: the owner decided (in the Foreman session) that a reply in his own words removes a question, and that the work belongs in Muster rather than in a record Foreman keeps. Being designed and built by a helper of the Foreman session in ~/src/muster-answer (branch answer-in-words); the owner approved cutting a 0.21 release once it is reviewed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793590301575
+    }
+  ],
   "created_at_millis": 1793573835063,
   "creator": "Alexander Terp",
   "description": "Foreman's phone app (Foreman FEP-3, ~/src/foreman/docs/fep/0003-phone-app-v1.md) lets the owner reply to an agent's question in his own words, typed or dictated, without picking one of its offered answers. msg.post's answering takes only an offered answer, so such a reply is an ordinary post: the question stays unanswered in Muster, the desk keeps showing it open, and Foreman has to keep its own record of which questions the owner replied to so its inbox can drop them.\n\nIf msg.post could answer a question with a note and no offered answer (an 'answered in words' outcome), the desk and every client would see the question settled, and Foreman would retire its record. Open: whether the CLI gets the same (muster msg post --answering N with no --answer), how the asker sees it, and whether one answer per question still holds.\n\nRaised 2026-11-01 by the Foreman session (cactus) from the FEP-3 design review.",
   "id": "a_2sJRxE7cj",
-  "position": "ai",
+  "position": "a3",
   "title": "API: answer a question in the human's own words",
   "type": "feature",
-  "updated_at_millis": 1793589627826,
+  "updated_at_millis": 1793590301716,
   "history": [
-    {"field":"column","value":"uncommitted","at":1793573835063}
+    {"field":"column","value":"uncommitted","at":1793573835063},
+    {"field":"column","value":"next","at":1793590301716}
   ]
 }
