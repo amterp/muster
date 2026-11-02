@@ -95,7 +95,9 @@ pub struct Answered {
     /// As the conversation names them.
     pub by: String,
     pub by_name: String,
-    pub answer: String,
+    /// The answer picked, as the question offered it; none for an answer in the reply's own
+    /// words.
+    pub answer: Option<String>,
 }
 
 /// The rows of `group`'s thread as a window with this view of it shows them.
@@ -194,7 +196,7 @@ fn message_row(made: &Made, entry: &Entry, message: &Message) -> Row {
     let answered = made.answered.get(&entry.seq).map(|(by, answer)| Answered {
         by: group.shown(by),
         by_name: (*by).to_string(),
-        answer: (*answer).to_string(),
+        answer: (!answer.is_empty()).then(|| (*answer).to_string()),
     });
     Row::Message(Box::new(MessageRow {
         seq: entry.seq,

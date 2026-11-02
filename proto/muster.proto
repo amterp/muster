@@ -2640,13 +2640,15 @@ message ConversationMessage {
   // `answerable`.
   repeated string answers = 16;
   // Who answered it, as the conversation names them, and with which answer; empty while
-  // nobody has.
+  // nobody has, and `answered_with` empty for an answer in words.
   string answered_by = 17;
   string answered_with = 18;
-  // The question it answers, when it is a reply that picked one; 0 when it answers none.
+  // The question it answers, when it is a reply to one; 0 when it answers none.
   uint64 answering = 19;
   // Whether the human may pick one of its answers now: asked of them, and not answered yet.
   bool answerable = 20;
+  // Its answer picked none of its answers, and is the reply's own words.
+  bool answered_in_words = 21;
 }
 
 message ConversationMember {

@@ -500,7 +500,8 @@ fn conversation_message(
             .unwrap_or_default(),
         answers: message.answers.clone(),
         answered_by: message.answered.as_ref().map(|a| a.by.clone()).unwrap_or_default(),
-        answered_with: message.answered.as_ref().map(|a| a.answer.clone()).unwrap_or_default(),
+        answered_with: message.answered.as_ref().and_then(|a| a.answer.clone()).unwrap_or_default(),
+        answered_in_words: message.answered.as_ref().is_some_and(|a| a.answer.is_none()),
         answering: message.answering.unwrap_or(0),
         answerable: message.answerable,
     }

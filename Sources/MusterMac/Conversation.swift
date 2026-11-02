@@ -903,9 +903,13 @@ struct QuestionAnswersView: View {
 
   var body: some View {
     if !message.answeredBy.isEmpty {
-      Text("Answered by \(message.answeredBy): \(message.answeredWith)")
-        .font(.callout)
-        .foregroundStyle(.secondary)
+      Text(
+        message.answeredInWords
+          ? "Answered by \(message.answeredBy) in words"
+          : "Answered by \(message.answeredBy): \(message.answeredWith)"
+      )
+      .font(.callout)
+      .foregroundStyle(.secondary)
     } else if message.answerable {
       let question = message.seq
       AnswerButtons(

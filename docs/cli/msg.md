@@ -537,7 +537,7 @@ their own, which sends the same request. A question in the conversation draws it
 buttons while it is asked of the human and unanswered. Tab from the message box reaches the newest
 one's, and Space or Return picks one, which fills the box as the banner's pick fills its reply:
 ⌘↩ posts the answer with anything written. An answered question says who answered it and with
-which answer.
+which answer, or that they answered in words.
 
 The window lists the groups you are in under its tabs. Right-clicking one offers Leave Group,
 which is `muster msg leave --group G` and takes the group off the list, and Delete Group, which

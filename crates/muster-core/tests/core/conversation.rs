@@ -219,10 +219,10 @@ fn row_json(row: &Row) -> Value {
             ("answerable", message.answerable.then_some(json!(true))),
             (
                 "answered",
-                message
-                    .answered
-                    .as_ref()
-                    .map(|answered| json!(format!("{}: {}", answered.by, answered.answer))),
+                message.answered.as_ref().map(|answered| match &answered.answer {
+                    Some(answer) => json!(format!("{}: {answer}", answered.by)),
+                    None => json!(format!("{} in words", answered.by)),
+                }),
             ),
             ("answering", message.answering.map(|question| json!(question))),
         ]),

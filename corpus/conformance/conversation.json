@@ -348,6 +348,24 @@
       }
     },
     {
+      "name": "a question answered in words says who answered it, and in words",
+      "why": "A reply may answer a question in its own words, typed or dictated, picking none of the answers it offered. That settles the question as a picked answer does, so its buttons go; there is no offered answer to name, so the row says it was answered in words, and the reply beneath says what they were.",
+      "given": {
+        "members": ["otter", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"] },
+          { "seq": 2, "author": "@human", "to": ["otter"], "via": "foreman", "body": "Answer: after the tests pass", "answering": { "question": 1, "answer": "" } }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "answers": "Run it now / Skip it", "answered": "you in words" },
+          { "message": 2, "author": "you via foreman", "to": ["otter"], "by_you": true, "no_reply": true, "answering": 1 }
+        ]
+      }
+    },
+    {
       "name": "a post a program made shows the program beside its author",
       "why": "Every post records the program that sent it, which the conversation shows beside the author (MIP-10, section 5, question D): the human's answer from a phone reads as you via foreman, and the question it answers says so.",
       "given": {

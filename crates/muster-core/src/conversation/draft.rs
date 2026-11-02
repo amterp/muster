@@ -194,8 +194,9 @@ pub fn pick(
         ));
     };
     if let Some((by, given)) = group.answers_given().get(&question) {
+        let given = if given.is_empty() { " in words".to_string() } else { format!(": {given}") };
         return Err(format!(
-            "#{question} was answered already, by {}: {given}; nothing was picked",
+            "#{question} was answered already, by {}{given}; nothing was picked",
             group.shown(by)
         ));
     }
