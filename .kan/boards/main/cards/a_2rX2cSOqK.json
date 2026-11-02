@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "study-herdr-and",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793458463735,
+  "creator": "Alexander Terp",
+  "description": "Herdr shipped a native desktop app on 2026-10-16. `herdr-app` is a GPUI window that draws terminals from libghostty-vt on macOS, Linux and Windows, and it runs on `herdr-core` (`hc`), a daemon that owns the terminals and serves an OpenRPC API. That gives herdr the combination `docs/origin.md` says no project had: a native window, daemon-owned sessions, agent states, and local and remote agents in one list. origin.md's finding that herdr had \"no native app plans\" is out of date. Herdr 2 also removes MIP-3's main costs: `hc` forwards a program's raw bytes instead of re-rendering its screen, and a native window no longer competes with the host terminal for shortcuts.\n\nThe two projects now differ mostly on choices Muster made on purpose, so we should know which way herdr went and why. A first read of their READMEs and docs, without running anything, found:\n\n- Agent state: `hc` stores only what a program reports through OSC 7501, its \"Program Status Protocol\", and never reads the screen. Neither repo sets Claude Code or Codex up to report. Muster's detection is a port of herdr v1's screen reading.\n- Orchestration: `hc` keeps agents in a parent/child tree. Children end with their parent unless started with `--outlive-parent`, and a parent gets notes when a child needs attention or ends. It also has role templates and `hc send`/`read`/`wait --children`. Compare MIP-4 messaging and MIP-7 helpers.\n- Extensibility: trusted JavaScript mods draw panels. Herdr ships git Changes and Files panels, layouts, and a command palette.\n- Several windows: connected screens share a machine's spaces and tabs, each with its own focus. In Muster a tab is in exactly one window.\n- Client API: `hc schema` prints OpenRPC, `hc connect` carries the protocol over stdio or SSH, and attach streams use credit-based flow control.\n\nTo dig into:\n\n- Why herdr dropped screen detection, and whether herdr v1 and its detection catalog (`herdr.dev/agent-detection/index.toml`) will stay maintained. a_2XO9XaBwG depends on that catalog.\n- Whether Muster should read OSC 7501 alongside screen detection, or have its own agents emit it.\n- What `hc`'s client API and parent/child lifecycle mean for MIP-10 and Foreman.\n- Whether drawing cells in GPUI costs herdr terminal fidelity compared with Muster's libghostty surfaces. Their changelog has a run of fixes for accent keys, a Nerd Font glyph that froze the app, and double-click selection.\n\nRepos (both Apache-2.0): https://github.com/herdrdev/herdr-app and https://github.com/herdrdev/herdr-core. Deciding where the findings go (a note in `docs/observations/`, a section of MIP-10, or new cards) is part of this card.",
+  "id": "a_2rX2cSOqK",
+  "position": "b1V",
+  "related": [
+    "a_2XO9XaBwG",
+    "a_26BJbJeZL"
+  ],
+  "title": "Study herdr and Herdr 2 as prior art",
+  "type": "chore",
+  "updated_at_millis": 1793458463863,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793458463735}
+  ]
+}

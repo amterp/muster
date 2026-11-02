@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-codex-pane-still",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793589287581,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback, 2026-11-01. A helper started with `muster pane new --helper --run 'codex --model … -c model_reasoning_effort=xhigh'` ran Codex 0.166.0, installed 30 minutes earlier. Codex sat at 0% CPU and drew nothing for about 9 minutes, probably a first-launch check on a machine that was swapping. All that time `muster window` showed the pane `idle` with harness `codex`, `pane wait --until idle,blocked` answered `idle` at once, and `pane read` returned only the shell's startup lines. `msg post` held its ring (\"its prompt is not on its screen\"), so nothing was typed into the shell. The pane read `blocked` only once Codex drew its folder-trust dialog.\n\nThe detector publishes a new agent as `unknown` for `STARTUP_GRACE`, 3 s (`crates/muster-detect/src/detector.rs:35`), and then reads the screen. Nothing on a screen Codex has not drawn matches a working or blocked rule, so the pane settles idle. a_2hIfuCglw added the grace for a Codex whose first prompt had not started yet, and it covers only a start quicker than 3 s.\n\nWanted: a pane whose harness has not drawn a screen of its own reads `unknown`, or a starting state, however long that takes, and `pane wait --until idle` keeps waiting through it. Open: what counts as the harness having drawn its screen (its adapter's first report, or a manifest rule matching), and what a harness with no adapter falls back to.",
+  "id": "a_2sPvwRzxU",
+  "position": "ZyV",
+  "related": [
+    "a_2hIfuCglw"
+  ],
+  "title": "A Codex pane still launching reads idle once a 3-second startup grace ends",
+  "type": "bug",
+  "updated_at_millis": 1793589298862,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793589287581}
+  ]
+}

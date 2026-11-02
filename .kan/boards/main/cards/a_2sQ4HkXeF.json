@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "cmd-clicking-a-web",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793589608229,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-28: \"CMD click on link on remote pane doesn't seem to work\". At triage on 2026-11-01 he confirmed the link was a web address, not a path.\n\nCmd-click has opened links in a laptop pane since a_2YSLBTjzT, and a devenv pane is meant to do the same: `Sources/MusterMac/MusterWindow.swift:738` sets the surface's `onOpenLink` for every machine, and `LinkPolicy.decide` opens an http or https link whichever machine the pane is on, refusing only a path on another machine. So the click is either lost before it reaches the policy or refused for some other reason. Start with the run log of the machine where it happened: a `link.refused` line names why the policy refused it, while no line and no beep mean the click never reached `onOpenLink`. Also check whether the pointer becomes a hand over a link in a devenv pane (a_2YYdXDUYp).",
+  "id": "a_2sQ4HkXeF",
+  "position": "Zyl",
+  "related": [
+    "a_2YSLBTjzT"
+  ],
+  "title": "Cmd-clicking a web address in a devenv pane does nothing",
+  "type": "bug",
+  "updated_at_millis": 1793589614361,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793589608229}
+  ]
+}

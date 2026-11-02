@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "antigravity-cli-agy",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793589609486,
+  "creator": "Alexander Terp",
+  "description": "amterp, Chat Notes 2026-10-28: \"consider agy support\". Low priority, he said at triage on 2026-11-01.\n\n`agy` is Google's Antigravity CLI, a terminal coding agent. Muster already reads its state off the screen (`crates/muster-detect/manifests/antigravity.toml`, synced 2026-06-24), but `docs/cli/harnesses.md` lists it among \"every other harness\", which gets nothing beyond that. An adapter would give it what Claude Code, Codex and OpenCode get: its own report of its state, its context and model, rings at an empty prompt, and its session resumed after a restart. Start by finding out what hooks or plugin interface `agy` offers and how it names and resumes a session. Under MIP-5, a harness with an adapter also gets a `./dev` tier of its own.",
+  "id": "a_2sQ4Jpobz",
+  "position": "b2D",
+  "related": [
+    "a_2XO9XaBwG"
+  ],
+  "title": "Antigravity CLI (agy): an adapter, as Claude Code, Codex and OpenCode have",
+  "type": "feature",
+  "updated_at_millis": 1793589614760,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793589609486}
+  ]
+}
