@@ -257,6 +257,28 @@ fn a_program_answering_tells_the_desk_the_question_is_answered() {
     assert_eq!((notice.answered, notice.count), (vec![question], 1));
 }
 
+/// The human's own words, from a phone, settle a question at the desk as a picked answer does,
+/// so its banner comes down there too.
+#[test]
+fn a_program_answering_in_words_tells_the_desk_the_question_is_answered() {
+    let daemon = daemon();
+    let mut control = crew(&daemon);
+    let mut window = daemon.connect();
+    subscribed_window(&mut window);
+    let question = a_question(&mut control);
+    let in_words = api::NewPost {
+        answering: Some(api::Answering { question, answer: String::new() }),
+        ..post_as_human("op-1", "not until the tests pass")
+    };
+    let answered = foreman(&daemon).ask(post(in_words));
+    assert_eq!(answered.outcome(), api::Outcome::Done, "{:?}", answered.answer);
+    let notice = until_event(&mut window, |event| match event {
+        proto::event::Event::HumanNotice(notice) if !notice.answered.is_empty() => Some(notice),
+        _ => None,
+    });
+    assert_eq!((notice.answered, notice.count), (vec![question], 1));
+}
+
 /// MIP-9, section 6: an answer reads the same whichever door it came through. A program sends
 /// the answer it picks and any note, and the daemon composes the body as `muster msg post
 /// --answer` does, for whoever asked unless the post names whom it is for.

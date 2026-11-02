@@ -157,6 +157,14 @@ pub fn answer_body(answer: &str, note: &str) -> String {
     }
 }
 
+/// The body of a reply that answers a question in its own words, picking none of its answers:
+/// the words under the same `Answer:` a picked answer starts with, so whoever asked reads either
+/// kind of answer the same way. Nothing when there are no words, since that answers nothing.
+pub fn words_body(words: &str) -> Option<String> {
+    let words = words.trim();
+    (!words.is_empty()).then(|| format!("Answer: {words}"))
+}
+
 /// One message in a group's log, as far as [`settles`] needs it.
 #[derive(Debug, Clone, Copy)]
 pub struct Logged<'a> {
@@ -224,6 +232,16 @@ mod tests {
         assert_eq!(answer_body("Skip it", ""), "Answer: Skip it");
         assert_eq!(answer_body("Skip it", "  \n"), "Answer: Skip it");
         assert_eq!(answer_body("Skip it", " after lunch\n"), "Answer: Skip it\n\nafter lunch");
+    }
+
+    #[test]
+    fn a_reply_in_its_own_words_starts_as_a_picked_one_does_and_needs_words() {
+        assert_eq!(words_body(" after lunch\n").as_deref(), Some("Answer: after lunch"));
+        assert_eq!(
+            words_body("no.\n\nNot until Monday").as_deref(),
+            Some("Answer: no.\n\nNot until Monday")
+        );
+        assert_eq!(words_body("  \n"), None);
     }
 
     #[test]

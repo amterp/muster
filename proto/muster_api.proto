@@ -733,7 +733,9 @@ message MsgRequest {
 //
 // A post refused for a reason the client can act on says so: NOT_FOUND for a group, participant
 // or question that does not exist, ANSWERED for a question that has its answer already, INVALID
-// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer).
+// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer, an
+// answer in words with no words), and UNSUPPORTED for an answer in words to a question kept on a
+// machine whose daemon is too old to keep one.
 // One kept on another machine is NOT_SENT when it never left this daemon and UNKNOWN when it
 // was sent and the reply was lost; asking again under the same id is safe in both. A post that
 // would make a group where the human is homed, when that is another machine, is refused
@@ -753,7 +755,8 @@ message NewPost {
   // answers, where this daemon holds a copy of the group, and otherwise whom the group's policy
   // rings.
   repeated string to = 3;
-  // At most 1 MiB. In a post answering a question, a note after the answer, and may be empty.
+  // At most 1 MiB. In a post picking a question's answer, a note after the answer, and may be
+  // empty; in one answering in words, the answer itself, and may not.
   string body = 4;
   // To reach its addressees while they work, where the group's policy lets its author.
   bool urgent = 5;
@@ -761,8 +764,17 @@ message NewPost {
   repeated string answers = 6;
   // The question it answers and the answer it picks. Its body is composed as `muster msg post
   // --answer` composes one, the answer first so the asker reads it with no parsing: "Answer:
-  // Yes", then a blank line and `body` when there is one. A question takes one answer, from
-  // somebody it was asked of: the home refuses a second with ANSWERED.
+  // Yes", then a blank line and `body` when there is one.
+  //
+  // Since 0.3, an `answering` with no `answer` picks none of the question's answers and answers
+  // in the post's own words, typed or dictated, as `muster msg post --answer Q` does: its body
+  // is composed "Answer: " and then `body`, which must hold more than white space. It settles
+  // the question as a picked answer does, for the desk and every client. A daemon serves this
+  // when its Welcome lists the option "msg.post.answer_in_words"; one before 0.3 refuses it
+  // INVALID, as an answer the question does not offer, and posts nothing.
+  //
+  // A question takes one answer of either kind, from somebody it was asked of: the home refuses
+  // a second with ANSWERED.
   optional Answering answering = 7;
   // The participant to post as. Empty is the human.
   string as = 8;
@@ -887,9 +899,9 @@ message Post {
   repeated string answers = 5;
   // The question it answers, and the answer it picks.
   Answering answering = 6;
-  // For a question in a Page: the number of the post that answered it. A question takes one
-  // answer. Absent from a Logged event, which comes before any answer; the answer's own Logged
-  // event says what it answers.
+  // For a question in a Page: the number of the post that answered it, by picking an answer or
+  // in its own words. A question takes one answer. Absent from a Logged event, which comes
+  // before any answer; the answer's own Logged event says what it answers.
   optional uint64 answered_by = 7;
   // The program that posted it for its author, by the name from its Hello: "foreman". Shown
   // beside the author, as attribution rather than identity: any program can give any name.
@@ -899,7 +911,8 @@ message Post {
 message Answering {
   // The question's number in the group.
   uint64 question = 1;
-  // The answer it picks, as the question offered it.
+  // The answer it picks, as the question offered it. Empty picks none: the post answers in its
+  // own words, its body (NewPost's `answering` says how it is composed).
   string answer = 2;
 }
 

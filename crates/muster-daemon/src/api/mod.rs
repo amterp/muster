@@ -51,6 +51,13 @@ const REQUESTS: [&str; 10] = [
 const TOPICS: [api::Topic; 4] =
     [api::Topic::Panes, api::Topic::Machines, api::Topic::Messages, api::Topic::Attention];
 
+/// Every option of a request that came in a later minor than the request: what a client of that
+/// minor tests for before relying on it, since a daemon before it refuses or misreads it.
+const OPTIONS: [&str; 1] = [
+    // 0.3: `msg.post` answering a question with no answer picked, in its own words.
+    "msg.post.answer_in_words",
+];
+
 /// The longest correlation id a request may carry, which the schema promises. Its answer and its
 /// events repeat it, so with no bound a request that fits in a frame could be answered in one
 /// past [`connection::LARGEST_MESSAGE`].
@@ -73,7 +80,7 @@ pub(crate) fn features() -> api::Features {
     api::Features {
         requests: REQUESTS.iter().map(ToString::to_string).collect(),
         topics: TOPICS.iter().map(|topic| (*topic).into()).collect(),
-        options: Vec::new(),
+        options: OPTIONS.iter().map(ToString::to_string).collect(),
     }
 }
 

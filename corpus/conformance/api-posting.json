@@ -376,6 +376,79 @@
       }
     },
     {
+      "name": "a program answers a question in the human's own words, and that is its one answer",
+      "why": "The human often answers a question with something it did not offer, typed or dictated on a phone. A post whose `answering` names the question and no answer answers it in the post's own words, composed `Answer: ` and then the words, so its asker reads it as it reads a picked answer. It settles the question as a pick does: the question's `answeredBy` names it, and a second answer of either kind is refused ANSWERED. With no words it answers nothing, and is refused INVALID (the schema, NewPost).",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "Ship?", "group": "g", "to": ["@human"], "answers": ["Yes", "No"]},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "msg": {"post": {"operation": "op-1", "group": "g", "body": " \n", "answering": {"question": "4"}}}},
+            "heard": [{"answer": {"correlation": "1", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {
+              "correlation": "2",
+              "msg": {"post": {"operation": "op-2", "group": "g", "body": "not until the tests pass", "answering": {"question": "4"}}}
+            },
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "posted": {"group": "g", "number": "5"}}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "3", "msg": {"post": {"operation": "op-3", "group": "g", "body": "now", "answering": {"question": "4"}}}},
+            "heard": [{"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_ANSWERED"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "4", "msg": {"post": {"operation": "op-4", "group": "g", "answering": {"question": "4", "answer": "Yes"}}}},
+            "heard": [{"answer": {"correlation": "4", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_ANSWERED"}}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "5", "msg": {"history": {"group": "g", "after": "3"}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "5",
+                  "outcome": "OUTCOME_DONE",
+                  "page": {
+                    "group": "g",
+                    "entries": [
+                      {
+                        "number": "4",
+                        "atMs": "*",
+                        "post": {"author": "a", "to": ["@human"], "body": "Ship?", "answers": ["Yes", "No"], "answeredBy": "5"}
+                      },
+                      {
+                        "number": "5",
+                        "atMs": "*",
+                        "post": {
+                          "author": "@human",
+                          "to": ["a"],
+                          "body": "Answer: not until the tests pass",
+                          "answering": {"question": "4"},
+                          "via": "foreman"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "name": "a program posts as the participant it names",
       "why": "A post is the human's unless `as` names another participant, and is shown with the program's name either way (MIP-10, section 5).",
       "given": {"daemon": {}},

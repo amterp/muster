@@ -34,7 +34,8 @@
                         "pane.restart",
                         "pane.send"
                       ],
-                      "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION"]
+                      "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION"],
+                      "options": ["msg.post.answer_in_words"]
                     }
                   }
                 }

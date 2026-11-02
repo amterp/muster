@@ -22,7 +22,7 @@ Every frame either way is a four-byte big-endian length, then one message of at 
 first frame a client sends is a `Hello`:
 
     kind:   KIND_API
-    api:    the version the client was generated from, such as 0.2
+    api:    the version the client was generated from, such as 0.3
     client: a name and a version, which the daemon logs and scopes operation ids by
 
 The daemon answers with a `HelloAnswer`: a `Welcome`, or a `Refused` saying why. After a Welcome
@@ -36,12 +36,13 @@ A version is a major and a minor. The daemon serves a client of its own major no
 oldest version it still serves, and a newer minor too, saying its own version in the Welcome; the
 client then checks that it can read that daemon. Every change to the schema raises the minor.
 Until Muster's 1.0 the API is 0.x and a minor may break clients; the release notes say when one
-does. `Welcome.machine.features` lists the requests and topics this daemon serves, so a client
-asks the Welcome rather than finding out from a refusal.
+does. `Welcome.machine.features` lists the requests and topics this daemon serves, and the options
+of a request that came in a later minor than the request, so a client asks the Welcome rather than
+finding out from a refusal.
 
 ## A first session
 
-    → Hello            kind KIND_API, api 0.2, client "dashboard"
+    → Hello            kind KIND_API, api 0.3, client "dashboard"
     ← HelloAnswer      welcome: this daemon's version, identity and features
     → Request          correlation "1", api.subscribe: TOPIC_PANES, TOPIC_ATTENTION
     ← Answer           correlation "1", DONE, a snapshot: every pane, what waits on the human
@@ -95,6 +96,14 @@ foreman`. That name is attribution, not identity: any program can give any name.
 CLI composes one, `Answer: Yes` and then the post's body as a note, and goes to whoever asked
 unless `to` names others. A question takes one answer, so a second is refused ANSWERED, and a
 phone can say it was answered at the desk.
+
+Since 0.3, an `answering` with no `answer` answers the question in the post's own words, picking
+none of its answers: the body is composed `Answer: ` and then the words, and a post with no words
+is refused INVALID. It settles the question for the desk and every client, as a picked answer does,
+and in history it reads as `answering` with an empty `answer`. A daemon that serves it lists the
+option `msg.post.answer_in_words` in its Welcome; one before 0.3 refuses it INVALID and posts
+nothing. A question kept on another machine whose daemon is too old to keep it is refused
+UNSUPPORTED.
 
 It carries a required operation id, as `pane.new` does. The group's home keeps it in the post's
 own log entry, so a repeat is ALREADY_SO with the first post's group and number, across a

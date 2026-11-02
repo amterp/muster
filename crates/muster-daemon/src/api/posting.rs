@@ -41,9 +41,16 @@ pub(super) fn post(
             id: asked.operation.clone(),
             asked: operations::fingerprint(&asked.encode_to_vec()),
         };
-        let (body, to) = match &asked.answering {
+        let composed = match &asked.answering {
             Some(answering) => answer_of(shared, asked, answering),
-            None => (asked.body.clone(), asked.to.clone()),
+            None => Ok((asked.body.clone(), asked.to.clone())),
+        };
+        let (body, to) = match composed {
+            Ok(composed) => composed,
+            Err(why) => {
+                shared.api.answer(caller.connection, refuse(why));
+                return;
+            }
         };
         let post = proto::msg_request::Post {
             group: (!asked.group.is_empty()).then(|| asked.group.clone()),
@@ -85,19 +92,27 @@ pub(super) fn post(
 }
 
 /// The body and addressees of a post answering a question, as `muster msg post --answer` makes
-/// them: the answer first and the post's body after it as a note, and for whoever asked, unless
-/// the post names whom it is for.
+/// them: the answer first and the post's body after it as a note, or with no answer picked the
+/// body as the answer, and for whoever asked, unless the post names whom it is for. An answer in
+/// words with no words is refused, saying why.
 fn answer_of(
     shared: &Shared,
     asked: &api::NewPost,
     answering: &api::Answering,
-) -> (String, Vec<String>) {
-    let body = posting::answer_body(&answering.answer, &asked.body);
+) -> Result<(String, Vec<String>), &'static str> {
+    let body = if answering.answer.is_empty() {
+        posting::words_body(&asked.body).ok_or(
+            "a post answering a question in its own words, with no answer picked, needs words: \
+             its body is empty; nothing was posted",
+        )?
+    } else {
+        posting::answer_body(&answering.answer, &asked.body)
+    };
     if !asked.to.is_empty() {
-        return (body, asked.to.clone());
+        return Ok((body, asked.to.clone()));
     }
     let questioner = shared.messages().asker(&asked.group, answering.question);
-    (body, questioner.into_iter().collect())
+    Ok((body, questioner.into_iter().collect()))
 }
 
 pub(super) fn ack(shared: &Arc<Shared>, caller: &Caller, correlation: String, asked: &api::Ack) {
@@ -195,9 +210,10 @@ fn refusal_of(code: &str) -> Result<api::Refusal, api::Outcome> {
         "operation_reused" => api::Refusal::OperationReused,
         // A replica waiting to be fetched again: nothing was sent, and it is soon over.
         "handing_over" | "unchecked" => api::Refusal::Unavailable,
-        "urgent_unsupported" | "answers_unsupported" | "operations_unsupported" => {
-            api::Refusal::Unsupported
-        }
+        "urgent_unsupported"
+        | "answers_unsupported"
+        | "in_words_unsupported"
+        | "operations_unsupported" => api::Refusal::Unsupported,
         "empty_body"
         | "body_too_large"
         | "too_many_answers"
