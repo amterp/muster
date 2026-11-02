@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "an-agent-s-effort",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1793625232962,
+  "creator": "Alexander Terp",
+  "description": "amterp via cactus, 2026-11-02, from the phone: \"wherever we show the model. So, for example, Opus 5.5. I'm also interested in the effort level. So we should just show it all together.\"\n\nA pane's facts carry the agent's model (`Facts.model`, \"Opus 4.5\"), reported by its harness's adapter, and the API serves it in its Facts. The effort the agent runs at (Claude Code's low/medium/high/xhigh/max) is not reported anywhere, so nothing that shows the model can show it beside it. Foreman's phone app wants both together.\n\nClaude Code's statusline JSON carries it at `.effort.level`, present only for models that support effort; `extras/claude-code/statusline.sh` forwards only `/model/display_name` today. For Codex, find whether its hooks or transcript carry the reasoning effort; if neither does, leave Codex out and say so in `muster docs harnesses`.\n\nWanted: the effort as a fact beside the model, through the daemon protocol and the API's Facts (a minor addition to API 0.3 while 0.21 is unreleased), and shown in the agent list beside the model if it reads well there. Planned for 0.21.0, after a_2sQ4KIXD9.",
+  "id": "a_2sf134Emi",
+  "position": "a9",
+  "title": "An agent's effort level is one of its pane's facts, beside its model",
+  "type": "feature",
+  "updated_at_millis": 1793625232962,
+  "history": [
+    {"field":"column","value":"next","at":1793625232962}
+  ]
+}
