@@ -415,8 +415,8 @@ place past them. It skips your own messages and shows joins and leaves as one li
     --- review #43 | scout joined ---
 
 An urgent message says so on its first line: `--- review #44 | director -> builder, urgent ---`.
-A question prints the answers it offers after its body, and a reply that picks one says which
-question it answers on its first line (next section).
+A question prints the answers it offers after its body, and a reply to one says which question it
+answers on its first line (next section).
 
 **A post is refused while you have unread messages from others in that group**, and the refusal says
 how many and the `read` that clears it. There is no override: read, then post again. The human is
@@ -466,12 +466,17 @@ no new parsing; the post also carries the pick as a field, `answering` in `--jso
 view marks the question answered. It goes to whoever asked unless `--to` says otherwise. Its first
 line ends `, answering #44`.
 
+`post --group G --answer Q TEXT`, with no `:N`, answers #Q in your own words, picking none of its
+answers: the body is `Answer: TEXT`, and TEXT is required. It settles the question as a pick does,
+and in `--json` its `answering` names #Q with an empty `answer`. A group kept on a machine whose
+daemon is too old for it refuses it as `in_words_unsupported`.
+
 The group's machine holds a reply to its question: #Q has to be a message there offering answers,
 asked of you (not your own, and addressed to you if it names anybody), offering the answer you
-pick, and not answered yet, since a question takes one answer. Each is refused in words saying
-which, as `no_such_question`, `not_asked_of`, `not_offered` or `already_answered` in `--json`. A
-reply that picks an answer cannot offer answers of its own either (`answer_offers_answers`): the
-next question is a post of its own.
+pick unless you answer in your own words, and not answered yet, since a question takes one answer
+of either kind. Each is refused in words saying which, as `no_such_question`, `not_asked_of`,
+`not_offered` or `already_answered` in `--json`. A reply that picks an answer cannot offer answers
+of its own either (`answer_offers_answers`): the next question is a post of its own.
 
 ## Waiting
 
@@ -560,6 +565,7 @@ the human's alone: an agent running it is refused, since it reads its own with `
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
 | `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
+| `post --group G --answer Q TEXT \| --file F \| -` | answers question #Q in your own words, picking none of its answers |
 | `read [--group G] [--if-unread] [--from-hook]` | prints your unread messages and moves your place |
 | `ack G --through N` | marks the human's messages in G read through #N and no further |
 | `log --group G [--since N] [--last N] [--before N] [--follow]` | the group's log, moving nothing; `--last` and `--before` page it, `--follow` keeps printing |

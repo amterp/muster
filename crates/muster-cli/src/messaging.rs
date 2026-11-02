@@ -137,8 +137,9 @@ pub enum Verb {
         #[arg(long = "option", value_name = "ANSWER", conflicts_with = "answer")]
         options: Vec<String>,
         /// Answer question Q in --group with its Nth offered answer, as `read` and `log` number
-        /// them; the message, if any, goes with it as a note. --to defaults to who asked
-        #[arg(long, value_name = "Q:N", requires = "group", value_parser = pick)]
+        /// them, the message, if any, going with it as a note; or with Q alone, in the message's
+        /// own words. --to defaults to who asked
+        #[arg(long, value_name = "Q[:N]", requires = "group", value_parser = pick)]
         answer: Option<Pick>,
         /// The message, or `-` to read it from stdin
         #[arg(value_name = "TEXT", num_args = 0.., trailing_var_arg = true)]
@@ -294,23 +295,29 @@ pub struct Messaging {
 }
 
 /// A reply's pick as `--answer` spells it: the question's number, and which of its offered
-/// answers, counted from 1 as `read` and `log` number them.
+/// answers, counted from 1 as `read` and `log` number them. No answer is an answer in the
+/// message's own words.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pick {
     pub question: u64,
-    pub answer: usize,
+    pub answer: Option<usize>,
 }
 
 fn pick(text: &str) -> Result<Pick, String> {
-    let parsed = text.split_once(':').and_then(|(question, answer)| {
-        Some(Pick { question: question.parse().ok()?, answer: answer.parse().ok()? })
-    });
-    match parsed {
-        Some(pick) if pick.answer > 0 => Ok(pick),
-        _ => Err(format!(
-            "`{text}` is not a question's number and an answer's, such as `44:1` for #44's first"
-        )),
-    }
+    let parsed = match text.split_once(':') {
+        Some((question, answer)) => {
+            answer.parse().ok().filter(|answer| *answer > 0).and_then(|answer| {
+                Some(Pick { question: question.parse().ok()?, answer: Some(answer) })
+            })
+        }
+        None => text.parse().ok().map(|question| Pick { question, answer: None }),
+    };
+    parsed.ok_or_else(|| {
+        format!(
+            "`{text}` is not a question's number and an answer's, such as `44:1` for #44's \
+             first, or a question's number alone, such as `44` to answer it in your own words"
+        )
+    })
 }
 
 /// Turns a command line into a request, reading nothing: the caller's identity is what its
@@ -350,7 +357,7 @@ pub fn parse(
             } else if text == &["-"] {
                 body_from = Some(TextSource::Stdin);
                 String::new()
-            } else if text.is_empty() && answer.is_none() {
+            } else if text.is_empty() && answer.is_none_or(|pick| pick.answer.is_none()) {
                 return Err(Failure::Refused(format!(
                     "`{}` needs a message: as text, as `-` to read stdin, or with --file.",
                     spelling::command(POST, "")
@@ -527,24 +534,37 @@ fn question(
 
 /// Makes `post` the reply picking `pick` from `question`: the pick as a field, and its words at
 /// the top of the body, above whatever note was written, for an agent to read with no new
-/// parsing (MIP-9, section 6). Addressed to whoever asked, unless --to says otherwise.
+/// parsing (MIP-9, section 6). A pick of no answer makes the message itself the answer, under the
+/// same `Answer:`. Addressed to whoever asked, unless --to says otherwise.
 fn answering(
     post: &mut msg_request::Post,
     pick: Pick,
     question: &msg_answer::Message,
 ) -> Result<(), Trouble> {
-    let Some(answer) = question.answers.get(pick.answer - 1) else {
-        return Err(Trouble::Refused(format!(
-            "#{} offers {} answers, so --answer {}:{} names none of them, and nothing was posted.",
-            pick.question,
-            question.answers.len(),
-            pick.question,
-            pick.answer
-        )));
+    let (body, answer) = if let Some(index) = pick.answer {
+        let Some(answer) = question.answers.get(index - 1) else {
+            return Err(Trouble::Refused(format!(
+                "#{} offers {} answers, so --answer {}:{index} names none of them, and nothing \
+                 was posted.",
+                pick.question,
+                question.answers.len(),
+                pick.question,
+            )));
+        };
+        (posting::answer_body(answer, &post.body), answer.clone())
+    } else {
+        let Some(body) = posting::words_body(&post.body) else {
+            return Err(Trouble::Refused(format!(
+                "--answer {} answers #{} in the message's own words, and the message is empty, \
+                 so nothing was posted. Write the answer, or pick one of the question's with \
+                 --answer {}:N.",
+                pick.question, pick.question, pick.question
+            )));
+        };
+        (body, String::new())
     };
-    post.body = posting::answer_body(answer, &post.body);
-    post.answering =
-        Some(msg_request::Answering { question: pick.question, answer: answer.clone() });
+    post.body = body;
+    post.answering = Some(msg_request::Answering { question: pick.question, answer });
     if post.to.is_empty() {
         post.to = vec![question.author.clone()];
     }
@@ -815,6 +835,14 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
             | Asked::Pause(_)
             | Asked::Resume(_),
         ) if !says_who_may_urge(request) => Some(("keep groups with a policy", 1)),
+        Some(Asked::Post(post))
+            if post.answering.as_ref().is_some_and(|answering| answering.answer.is_empty()) =>
+        {
+            Some((
+                "keep an answer in words, with none of a question's answers picked",
+                proto::version::ANSWERS_IN_WORDS,
+            ))
+        }
         Some(Asked::Post(post)) if !post.answers.is_empty() || post.answering.is_some() => {
             Some(("keep the answers a question offers or a reply picks", proto::version::ANSWERS))
         }
@@ -1733,17 +1761,33 @@ mod tests {
             answers: vec!["Yes".to_string()],
             ..Default::default()
         }));
-        let reply = asked(Asked::Post(msg_request::Post {
-            answering: Some(msg_request::Answering::default()),
-            ..Default::default()
-        }));
+        let reply = |answer: &str| {
+            asked(Asked::Post(msg_request::Post {
+                answering: Some(msg_request::Answering { question: 4, answer: answer.to_string() }),
+                ..Default::default()
+            }))
+        };
         let log = |newest, follow| {
             asked(Asked::Log(msg_request::Log { newest, follow, ..Default::default() }))
         };
-        for request in [&question, &reply, &log(Some(5), true)] {
+        for request in [&question, &reply("Yes"), &log(Some(5), true)] {
             assert_eq!(needs_minor(request).map(|(_, minor)| minor), Some(8), "{request:?}");
         }
         assert_eq!(needs_minor(&log(None, false)), None);
+    }
+
+    /// A daemon before 1.10 would refuse an answer in words as not offering the empty answer.
+    #[test]
+    fn an_answer_in_words_is_asked_of_1_10_or_later_only() {
+        let in_words = proto::MsgRequest {
+            caller: None,
+            request: Some(Asked::Post(msg_request::Post {
+                answering: Some(msg_request::Answering { question: 4, answer: String::new() }),
+                ..Default::default()
+            })),
+        };
+        let needs = needs_minor(&in_words).map(|(_, minor)| minor);
+        assert_eq!(needs, Some(proto::version::ANSWERS_IN_WORDS));
     }
 
     #[test]
@@ -2092,7 +2136,7 @@ mod tests {
             answers: vec!["Run it now".to_string(), "Skip it".to_string()],
             ..Default::default()
         };
-        let skip = Pick { question: 4, answer: 2 };
+        let skip = Pick { question: 4, answer: Some(2) };
         let mut post =
             msg_request::Post { body: " after lunch\n".to_string(), ..Default::default() };
         answering(&mut post, skip, &question).unwrap();
@@ -2102,18 +2146,46 @@ mod tests {
         assert_eq!(post.answering, Some(picked));
 
         let mut bare = msg_request::Post { to: vec!["critic".to_string()], ..Default::default() };
-        answering(&mut bare, Pick { question: 4, answer: 1 }, &question).unwrap();
+        answering(&mut bare, Pick { question: 4, answer: Some(1) }, &question).unwrap();
         assert_eq!(
             (bare.body.as_str(), bare.to.as_slice()),
             ("Answer: Run it now", &["critic".to_string()][..])
         );
 
-        let beyond = answering(&mut bare, Pick { question: 4, answer: 3 }, &question);
+        let beyond = answering(&mut bare, Pick { question: 4, answer: Some(3) }, &question);
         assert!(matches!(beyond, Err(Trouble::Refused(_))), "{beyond:?}");
-        assert_eq!(pick("44:2"), Ok(Pick { question: 44, answer: 2 }));
-        for wrong in ["44", "44:0", "a:1", "44:"] {
+        assert_eq!(pick("44:2"), Ok(Pick { question: 44, answer: Some(2) }));
+        for wrong in ["44:0", "a:1", "44:", "a", ":1"] {
             assert!(pick(wrong).is_err(), "{wrong}");
         }
+    }
+
+    /// A question's number alone answers it in the message's own words, under the `Answer:` a
+    /// picked answer starts with, and an empty message answers nothing.
+    #[test]
+    fn a_question_alone_is_answered_in_the_messages_own_words() {
+        let question = msg_answer::Message {
+            author: "builder".to_string(),
+            answers: vec!["Run it now".to_string(), "Skip it".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(pick("44"), Ok(Pick { question: 44, answer: None }));
+        let in_words = Pick { question: 4, answer: None };
+        let mut post =
+            msg_request::Post { body: " after the tests pass\n".to_string(), ..Default::default() };
+        answering(&mut post, in_words, &question).unwrap();
+        assert_eq!(post.body, "Answer: after the tests pass");
+        assert_eq!(post.to, ["builder"]);
+        let answered = msg_request::Answering { question: 4, answer: String::new() };
+        assert_eq!(post.answering, Some(answered));
+
+        let mut empty = msg_request::Post { body: "  ".to_string(), ..Default::default() };
+        let refused = answering(&mut empty, in_words, &question);
+        assert!(
+            matches!(&refused, Err(Trouble::Refused(why)) if why.contains("empty")),
+            "{refused:?}"
+        );
+        assert_eq!(empty.answering, None);
     }
 
     #[test]

@@ -141,6 +141,39 @@ fn a_question_is_offered_read_and_answered_from_the_command_line() {
     assert_eq!(reply["answering"], serde_json::json!({"question": 4, "answer": "Skip it"}));
 }
 
+/// `--answer` with a question's number alone answers it in the message's own words, which
+/// settles it as a pick does; with no message it answers nothing and posts nothing.
+#[test]
+fn a_question_is_answered_in_words_from_the_command_line() {
+    let daemon = Daemon::start_built();
+    ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "review"]));
+    ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "review"]));
+    let asked = ["msg", "--as", "a", "post", "--to", "b", "--option", "Run it now"];
+    let asked = [&asked[..], &["--option", "Skip it", "run the contract tier?"]].concat();
+    assert_eq!(unheard(&muster(&daemon, &asked)).lines().next(), Some("posted #4 to review"));
+    ok(&muster(&daemon, &["msg", "--as", "b", "read"]));
+
+    let wordless =
+        muster(&daemon, &["msg", "--as", "b", "post", "--group", "review", "--answer", "4"]);
+    assert_eq!(wordless.status.code(), Some(1));
+    assert!(complained(&wordless).contains("needs a message"), "{}", complained(&wordless));
+
+    let reply =
+        ["msg", "--as", "b", "post", "--group", "review", "--answer", "4", "after", "lunch"];
+    assert_eq!(unheard(&muster(&daemon, &reply)).lines().next(), Some("posted #5 to review"));
+    let again =
+        muster(&daemon, &["msg", "--as", "b", "post", "--group", "review", "--answer", "4:1"]);
+    assert_eq!(again.status.code(), Some(1));
+    assert!(complained(&again).contains("answered it in words"), "{}", complained(&again));
+
+    let page = ok(&muster(&daemon, &["msg", "--json", "log", "--group", "review", "--last", "1"]));
+    let page: Value = serde_json::from_str(&page).unwrap();
+    let reply = &page["groups"][0]["entries"][0];
+    assert_eq!(reply["to"], serde_json::json!(["a"]));
+    assert_eq!(reply["body"], "Answer: after lunch");
+    assert_eq!(reply["answering"], serde_json::json!({"question": 4, "answer": ""}));
+}
+
 /// `--if-unread` is for a hook after every tool call, whose output the model is handed: a join
 /// or a leave is nothing to interrupt it with.
 #[test]
