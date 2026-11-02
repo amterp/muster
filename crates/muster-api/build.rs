@@ -14,5 +14,6 @@ fn main() {
     // A pane outweighs every other event, and events wait in a queue per subscription.
     config.boxed(".muster.api.PaneAppeared.pane");
     config.boxed(".muster.api.PaneChanged.pane");
+    config.btree_map([".muster.api.Places.places"]);
     config.compile_fds(descriptors).expect("the schema generates");
 }

@@ -3462,6 +3462,22 @@ impl<S: Store> Messaging<S> {
         self.human_is_in(group).then(|| self.cursor(HUMAN, group))
     }
 
+    /// The number of the last entry each member of `group` on this machine has read, the human
+    /// included, and never past the newest entry held. A member on another machine is left out:
+    /// its own daemon keeps its place.
+    pub fn places(&self, group: &str) -> BTreeMap<String, u64> {
+        let Some(kept) = self.groups.get(group) else {
+            return BTreeMap::new();
+        };
+        // A replica held empty after a restart is behind its members' cursors until the refetch.
+        let head = kept.head();
+        kept.members
+            .iter()
+            .filter(|name| split_machine(name).is_none())
+            .map(|name| (name.clone(), self.cursor(name, group).min(head)))
+            .collect()
+    }
+
     /// What waits for the human in each group it is in, a count of 0 where nothing does, for a
     /// host that is starting to tell the windows (MIP-4, section 10).
     pub fn human_notices(&self) -> Vec<Notice> {

@@ -221,6 +221,17 @@ presence, and attention still accumulates. An event when any of it changes, and 
 shows the human a banner or posts a notification, which a client may use and nothing depends on.
 What the human has read of a group is one event to a client hearing either this topic or Messages.
 
+### Places
+
+`TOPIC_PLACES`, since 0.3: where each member of each group on this machine has read, the human
+included, so a client can mark which posts each addressee has read. For each group, `places` maps a
+member's name to the number of the last entry it has read. A Places event replaces a group's map
+whenever a place moves or a member joins or leaves, and comes after the Logged events of the entries
+it reaches. A member's place moves to the newest entry when it reads, and not when it posts.
+Joining starts a member's place at its Joined entry, past what came before, so post N has been read
+by member M when `places[M]` is at least N and no Joined entry for M follows N. A member on another
+machine is absent, its place unknown here: its own daemon keeps it.
+
 ## Ending and budgets
 
 The daemon ends a connection with an `Ended` saying why, when it can: REPLACED when a newer daemon

@@ -318,7 +318,7 @@ conversation, played in order:
   "session": "s-1"}`, the pane's agent reporting its session as its adapter does, `{"agent": "a", "joins": "g"}`,
   `{"agent": "a", "posts": "body", "to": [...]}`, which may also offer `"answers": [...]` or answer with
   `"answering": {"question": 4, "answer": "Yes"}`, and as `"agent": "@human"` is the desk's post, `{"agent": "a",
-  "deletes": "g"}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app": "attending"}` and `{"app": "gone"}`.
+  "reads": "g"}`, `{"agent": "a", "deletes": "g"}`, `{"human": "reads", "group": "g"}` at the desk, and `{"app": "attending"}` and `{"app": "gone"}`.
   Each finishes before the next step starts; a restart, once the daemon says it has brought back what it saved.
 
 A client hears nothing the case does not say. After the last step, each client still connected is sent a request no

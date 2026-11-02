@@ -599,7 +599,7 @@ impl<'a> Conversation<'a> {
         }
     }
 
-    /// An agent, or the desk as `@human`, joining, posting to or deleting a group.
+    /// An agent, or the desk as `@human`, joining, posting to, reading or deleting a group.
     fn agent_acts(&mut self, agent: &str, step: &Value) -> Result<(), CaseError> {
         let text = |key: &str| step.get(key).and_then(Value::as_str);
         let mut control = self.daemon.connect();
@@ -625,11 +625,16 @@ impl<'a> Conversation<'a> {
                 ..Default::default()
             };
             expect(&mut control, msg(&caller, Asked::Post(post)), DONE);
+        } else if let Some(group) = text("reads") {
+            let read = msg_request::Read { group: Some(group.to_string()) };
+            expect(&mut control, msg(&caller, Asked::Read(read)), DONE);
         } else if let Some(group) = text("deletes") {
             let delete = msg_request::GroupDelete { group: group.to_string() };
             expect(&mut control, msg(&caller, Asked::GroupDelete(delete)), DONE);
         } else {
-            return Err(CaseError::new("an agent's step says neither joins, posts nor deletes"));
+            return Err(CaseError::new(
+                "an agent's step says neither joins, posts, reads nor deletes",
+            ));
         }
         Ok(())
     }

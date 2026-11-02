@@ -45,7 +45,7 @@ pub(super) fn join_under_messages(
     snapshot: &mut api::Snapshot,
 ) {
     let hears = |topic| topics.contains(&topic);
-    if !hears(api::Topic::Messages) && !hears(api::Topic::Attention) {
+    if !hears(api::Topic::Messages) && !hears(api::Topic::Attention) && !hears(api::Topic::Places) {
         return;
     }
     let mut messages = shared.messages();
@@ -56,6 +56,10 @@ pub(super) fn join_under_messages(
     if hears(api::Topic::Messages) {
         snapshot.groups = published.groups();
         shared.api.join(joining, api::Topic::Messages);
+    }
+    if hears(api::Topic::Places) {
+        snapshot.places = published.places();
+        shared.api.join(joining, api::Topic::Places);
     }
     shared.api.join(joining, Feed::Unread);
 }

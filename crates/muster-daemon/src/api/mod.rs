@@ -49,8 +49,13 @@ const REQUESTS: [&str; 11] = [
 ];
 
 /// Every topic a subscription may name.
-const TOPICS: [api::Topic; 4] =
-    [api::Topic::Panes, api::Topic::Machines, api::Topic::Messages, api::Topic::Attention];
+const TOPICS: [api::Topic; 5] = [
+    api::Topic::Panes,
+    api::Topic::Machines,
+    api::Topic::Messages,
+    api::Topic::Attention,
+    api::Topic::Places,
+];
 
 /// Every option of a request that came in a later minor than the request: what a client of that
 /// minor tests for before relying on it, since a daemon before it refuses or misreads it.

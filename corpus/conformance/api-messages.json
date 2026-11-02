@@ -342,6 +342,63 @@
           }
         ]
       }
+    },
+    {
+      "name": "where each member has read is a topic of its own, moved after what it reaches",
+      "why": "TOPIC_PLACES gives where each member of a group on this machine has read, the human included, so a client can mark which posts each addressee has read. A Places event replaces a group's places whenever one moves, and comes after the events of the entries it reaches. A subscription that does not name the topic hears none of it, so a client of an earlier minor is told what it was before.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {"agent": "@human", "joins": "g"},
+          {"agent": "a", "joins": "g"},
+          {"agent": "a", "posts": "need input", "to": ["@human"]},
+          {
+            "as": "foreman",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "foreman"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "foreman",
+            "send": {"correlation": "1", "api": {"subscribe": {"topics": ["TOPIC_MESSAGES", "TOPIC_PLACES"]}}},
+            "heard": [
+              {
+                "answer": {
+                  "correlation": "1",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$epoch",
+                  "snapshot": {
+                    "epoch": "$epoch",
+                    "topics": ["TOPIC_MESSAGES", "TOPIC_PLACES"],
+                    "sources": "*",
+                    "groups": "*",
+                    "places": [{"group": "g", "places": {"@human": "2", "a": "3"}}]
+                  }
+                }
+              }
+            ]
+          },
+          {"app": "attending"},
+          {"human": "reads", "group": "g"},
+          {
+            "as": "foreman",
+            "read": 2,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "1", "source": "*", "unread": {"group": "g", "place": "4"}}},
+              {"event": {"epoch": "$epoch", "number": "2", "source": "*", "places": {"group": "g", "places": {"@human": "4", "a": "3"}}}}
+            ]
+          },
+          {"agent": "@human", "posts": "over to you", "group": "g", "to": ["a"]},
+          {"agent": "a", "reads": "g"},
+          {
+            "as": "foreman",
+            "read": 2,
+            "heard": [
+              {"event": {"epoch": "$epoch", "number": "3", "source": "*", "logged": {"group": "g", "entry": {"number": "5", "atMs": "*", "post": {"author": "@human", "to": ["a"], "body": "over to you"}}}}},
+              {"event": {"epoch": "$epoch", "number": "4", "source": "*", "places": {"group": "g", "places": {"@human": "4", "a": "5"}}}}
+            ]
+          }
+        ]
+      }
     }
   ]
 }

@@ -1863,6 +1863,44 @@ fn a_member_removed_on_another_machine_reads_its_dismissal_there() {
     ));
 }
 
+/// Each machine says where its own members have read a shared group and leaves the other's out,
+/// since a member's place is kept by its own daemon.
+#[test]
+fn each_machine_says_where_only_its_own_members_have_read() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.post(Side::Laptop, &builder, None, &[], "have a look").unwrap();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.read(&critic, Some("review@lap"), sessions).unwrap();
+
+    let head = wire.laptop.latest("review").unwrap();
+    let at_home = wire.laptop.places("review");
+    assert_eq!(at_home.keys().collect::<Vec<_>>(), ["builder"], "{at_home:?}");
+    assert!(at_home["builder"] < head, "{at_home:?}");
+    assert_eq!(wire.devenv.places("review@lap"), BTreeMap::from([("critic".to_string(), head)]));
+}
+
+/// A replica held empty after a restart, until its refetch, puts no member's place past what it
+/// holds: a client is told of an entry before any place that reaches it.
+#[test]
+fn a_replica_held_empty_after_a_restart_puts_no_place_past_what_it_holds() {
+    let mut wire = Wire::new();
+    let (builder, critic) = (session("builder"), session("critic"));
+    wire.join(Side::Laptop, &builder, Some("builder"), "review");
+    wire.join(Side::Devenv, &critic, Some("critic"), "review");
+    wire.post(Side::Laptop, &builder, None, &[], "have a look").unwrap();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.read(&critic, Some("review@lap"), sessions).unwrap();
+
+    let saved = wire.devenv.store().saved.clone().unwrap();
+    wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    let held = wire.devenv.latest("review@lap").unwrap();
+    assert!(wire.devenv.participant("critic").unwrap().cursors["review@lap"] > held);
+    assert_eq!(wire.devenv.places("review@lap"), BTreeMap::from([("critic".to_string(), held)]));
+}
+
 /// A replica replayed from nothing a page at a time lets a member go only by where the whole log
 /// leaves it: one that left and came back, its leave closing one page and its return in the
 /// next, keeps its cursor, its wait and the replica.

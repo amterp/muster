@@ -2,6 +2,8 @@
 //! keeps, its changes and posts as events, and its log in pages, read by a program without moving
 //! anybody's place.
 
+use std::collections::BTreeMap;
+
 use crate::attention::{DONE, a_message_for_the_human, join, msg, named, the_human};
 use crate::support::*;
 use muster_api::connection::LARGEST_MESSAGE;
@@ -36,6 +38,23 @@ fn next_logged(api: &mut Api) -> api::Entry {
         api::event::Event::Logged(logged) => logged.entry,
         _ => None,
     })
+}
+
+fn places_of(snapshot: &api::Snapshot, group: &str) -> BTreeMap<String, u64> {
+    let found = snapshot.places.iter().find(|places| places.group == group);
+    found.unwrap_or_else(|| panic!("no places for {group} in {:?}", snapshot.places)).places.clone()
+}
+
+fn next_places(api: &mut Api) -> BTreeMap<String, u64> {
+    next(api, "where each member has read", |event| match event {
+        api::event::Event::Places(places) => Some(places.places),
+        _ => None,
+    })
+}
+
+fn read(control: &mut Control, caller: &msg_request::Caller) {
+    let read = Asked::Read(msg_request::Read { group: Some("g".to_string()) });
+    expect(control, msg(caller, read), DONE);
 }
 
 fn body(entry: &api::Entry) -> Option<&str> {
@@ -237,6 +256,111 @@ fn a_read_at_the_desk_moves_the_humans_place_and_what_waits_with_it() {
     }
 }
 
+/// Each member's place moves when it reads, to the newest entry, and never because it posted. A
+/// place reaches only entries the client has been told of.
+#[test]
+fn each_members_place_moves_as_it_reads_and_not_as_it_posts() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    a_message_for_the_human(&mut control);
+    let mut program = daemon.api();
+    let asked = program.subscribe(&[api::Topic::Messages, api::Topic::Places]);
+    let (g, places) = (group(asked.snapshot(), "g"), places_of(asked.snapshot(), "g"));
+    assert_eq!(places.keys().collect::<Vec<_>>(), ["@human", "a"], "{places:?}");
+    assert_eq!(Some(places["@human"]), g.human_place, "{places:?}");
+    assert!(places["a"] < g.latest, "a has not read its own post: {places:?}");
+    let a_before = places["a"];
+
+    let for_a = msg_request::Post { to: vec!["a".to_string()], ..said("g", "over to you") };
+    post(&mut control, &the_human(), for_a);
+    let asked = next_logged(&mut program).number;
+    read(&mut control, &named("a"));
+    let places = next_places(&mut program);
+    assert_eq!(places["a"], asked, "{places:?}");
+    assert!(places["@human"] < asked, "the human's own post moves their place: {places:?}");
+
+    post(&mut control, &named("a"), said("g", "done"));
+    let answered = next_logged(&mut program).number;
+    read(&mut control, &the_human());
+    let places = next_places(&mut program);
+    let expected = BTreeMap::from([("@human".to_string(), answered), ("a".to_string(), asked)]);
+    assert_eq!(places, expected);
+    assert!(a_before < asked);
+}
+
+/// Joining starts a member's place at its Joined entry, past whatever came before it, so a
+/// member removed and added back has passed a post it never read: a client counts a place only
+/// for posts after the member last joined.
+#[test]
+fn a_member_added_back_has_its_place_from_its_return() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    a_message_for_the_human(&mut control);
+    let mut program = daemon.api();
+    program.subscribe(&[api::Topic::Messages, api::Topic::Places]);
+    let for_a = msg_request::Post { to: vec!["a".to_string()], ..said("g", "read this") };
+    post(&mut control, &the_human(), for_a);
+    let unread = next_logged(&mut program).number;
+
+    let members = |add: &[&str], remove: &[&str]| {
+        let names = |names: &[&str]| names.iter().map(ToString::to_string).collect();
+        let change = msg_request::GroupMembers {
+            group: "g".to_string(),
+            add: names(add),
+            remove: names(remove),
+        };
+        msg(&the_human(), Asked::GroupMembers(change))
+    };
+    expect(&mut control, members(&[], &["a"]), DONE);
+    let places = next_places(&mut program);
+    assert!(!places.contains_key("a"), "{places:?}");
+    expect(&mut control, members(&["a"], &[]), DONE);
+    let returned = next(&mut program, "a joining again", |event| match event {
+        api::event::Event::Logged(api::Logged { entry: Some(entry), .. }) => match entry.what {
+            Some(api::entry::What::Joined(joined)) if joined.who == "a" => Some(entry.number),
+            _ => None,
+        },
+        _ => None,
+    });
+    let places = next_places(&mut program);
+    assert_eq!(places["a"], returned, "{places:?}");
+    assert!(returned > unread);
+}
+
+/// A deleted group's places go with it, told to a subscription that hears places alone.
+#[test]
+fn a_deleted_group_leaves_no_places() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    a_message_for_the_human(&mut control);
+    let mut program = daemon.api();
+    let asked = program.subscribe(&[api::Topic::Places]);
+    assert!(asked.snapshot().groups.is_empty(), "{:?}", asked.snapshot());
+    assert!(!places_of(asked.snapshot(), "g").is_empty());
+
+    let delete = Asked::GroupDelete(msg_request::GroupDelete { group: "g".to_string() });
+    expect(&mut control, msg(&named("a"), delete), DONE);
+    assert_eq!(next_places(&mut program), BTreeMap::new());
+}
+
+/// A group no member on this machine is in any more has no places: an event with none takes it
+/// away, and a fresh snapshot leaves it out.
+#[test]
+fn a_group_its_last_member_here_left_has_no_places() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    join(&mut control, &named("a"), "a", "g");
+    let mut program = daemon.api();
+    let asked = program.subscribe(&[api::Topic::Places]);
+    assert!(!places_of(asked.snapshot(), "g").is_empty());
+
+    let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
+    expect(&mut control, msg(&named("a"), leave), DONE);
+    assert_eq!(next_places(&mut program), BTreeMap::new());
+    let asked = daemon.api().subscribe(&[api::Topic::Places]);
+    assert!(asked.snapshot().places.is_empty(), "{:?}", asked.snapshot().places);
+}
+
 /// Subscribing and fetching history read nothing for the human and move nobody's place.
 #[test]
 fn history_and_subscribing_move_nobodys_place() {
@@ -244,11 +368,14 @@ fn history_and_subscribing_move_nobodys_place() {
     let mut control = daemon.connect();
     a_message_for_the_human(&mut control);
     let mut program = daemon.api();
-    let latest = group(program.subscribe(&[api::Topic::Messages]).snapshot(), "g").latest;
-    let before = group(program.subscribe(&[api::Topic::Messages]).snapshot(), "g").human_place;
+    let topics = [api::Topic::Messages, api::Topic::Places];
+    let latest = group(program.subscribe(&topics).snapshot(), "g").latest;
+    let asked = program.subscribe(&topics);
+    let before = (group(asked.snapshot(), "g").human_place, places_of(asked.snapshot(), "g"));
     fetch(&mut program, "g", 0, latest);
 
-    let after = group(daemon.api().subscribe(&[api::Topic::Messages]).snapshot(), "g").human_place;
+    let asked = daemon.api().subscribe(&topics);
+    let after = (group(asked.snapshot(), "g").human_place, places_of(asked.snapshot(), "g"));
     assert_eq!(after, before);
     let notices = snapshot(&mut control).human;
     assert!(notices.iter().any(|notice| notice.group == "g" && notice.count == 1), "{notices:?}");

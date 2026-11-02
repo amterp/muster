@@ -327,6 +327,8 @@ enum Topic {
   TOPIC_MESSAGES = 3;
   // What waits on the human, and their presence at the desk.
   TOPIC_ATTENTION = 4;
+  // Since 0.3. Where each member of each group has read.
+  TOPIC_PLACES = 5;
 }
 
 // Requests about panes.
@@ -576,6 +578,8 @@ message Snapshot {
   repeated Group groups = 12;
   // TOPIC_ATTENTION: what waits on the human now, and their presence.
   Attention attention = 13;
+  // TOPIC_PLACES: where each member has read, for each group with a member on this machine.
+  repeated Places places = 14;
 }
 
 message SourceStatus {
@@ -595,8 +599,8 @@ enum SourceState {
   SOURCE_STATE_UNREACHABLE = 4;
 }
 
-// One change. Topics' events take arms from 20 on: panes in the 20s, messages in the 30s and
-// attention in the 40s.
+// One change. Topics' events take arms from 20 on: panes in the 20s, messages in the 30s,
+// attention in the 40s and places in the 50s.
 message Event {
   uint64 epoch = 1;
   uint64 number = 2;
@@ -622,6 +626,8 @@ message Event {
     Asking asking = 40;
     Presence presence = 41;
     Shown shown = 42;
+    // TOPIC_PLACES.
+    Places places = 50;
   }
 }
 
@@ -1014,6 +1020,22 @@ message GroupDeleted {
 message Logged {
   string group = 1;
   Entry entry = 2;
+}
+
+// Since 0.3 (TOPIC_PLACES). Where each member of a group on this machine has read, the human
+// included. As an event it is sent whenever a place moves or a member joins or leaves, after the
+// Logged event of every entry it reaches, and replaces what the client held for the group. A
+// group with no member on this machine, a deleted one among them, has no places: the snapshot
+// leaves it out, and an event with none takes it away.
+//
+// Joining starts a member's place at its Joined entry, so a place says nothing of what came
+// before: post N was read by member M when `places[M] >= N` and no Joined entry for M comes after
+// N. A member on another machine is absent, its place unknown here: its own daemon keeps it.
+message Places {
+  // The group, as requests on this connection name it.
+  string group = 1;
+  // The number of the last entry each member has read, by its name in the group's `members`.
+  map<string, uint64> places = 2;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -9,8 +9,14 @@ use muster_api::connection;
 use muster_api::version::API;
 use prost::Message;
 
-fn every_topic() -> [api::Topic; 4] {
-    [api::Topic::Panes, api::Topic::Machines, api::Topic::Messages, api::Topic::Attention]
+fn every_topic() -> [api::Topic; 5] {
+    [
+        api::Topic::Panes,
+        api::Topic::Machines,
+        api::Topic::Messages,
+        api::Topic::Attention,
+        api::Topic::Places,
+    ]
 }
 
 fn source_of(welcome: &api::Welcome) -> api::Source {

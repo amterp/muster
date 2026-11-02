@@ -31,6 +31,8 @@ struct Kept {
     group: api::Group,
     /// While the human is in the group.
     unread: Option<Told>,
+    /// Where each member on this machine has read.
+    places: BTreeMap<String, u64>,
 }
 
 #[derive(Debug)]
@@ -48,7 +50,9 @@ impl Published {
     }
 
     /// Publishes whatever changed in `service` since the last call: for each group, its entries
-    /// since, then a change to it, then the human's unread state, which changes with both.
+    /// since, then a change to it, then the human's unread state, which changes with both, then
+    /// where each member has read, last, so that a place never reaches an entry not yet
+    /// published.
     pub(crate) fn publish<S: Store>(
         &mut self,
         service: &Messaging<S>,
@@ -91,13 +95,32 @@ impl Published {
                 None => made(api, service, group),
             };
             let unread = unread(api, service, &summary, place, kept.unread);
-            self.groups.insert(summary.name, Kept { unread, ..kept });
+            let places = service.places(&summary.name);
+            if places != kept.places {
+                api.publish(api::Topic::Places, || {
+                    api::event::Event::Places(api::Places {
+                        group: summary.name.clone(),
+                        places: places.clone(),
+                    })
+                });
+            }
+            self.groups.insert(summary.name, Kept { unread, places, ..kept });
         }
     }
 
     /// Every group, as last published.
     pub(crate) fn groups(&self) -> Vec<api::Group> {
         self.groups.values().map(|kept| kept.group.clone()).collect()
+    }
+
+    /// Where each member has read, for every group with a member on this machine, as last
+    /// published. A group with none is left out, as an event with no places takes it away.
+    pub(crate) fn places(&self) -> Vec<api::Places> {
+        let places = |(name, kept): (&String, &Kept)| api::Places {
+            group: name.clone(),
+            places: kept.places.clone(),
+        };
+        self.groups.iter().filter(|(_, kept)| !kept.places.is_empty()).map(places).collect()
     }
 
     /// Each group with messages waiting for the human, as last published.
@@ -205,10 +228,11 @@ fn made<S: Store>(api: &Telling<'_>, service: &Messaging<S>, group: api::Group) 
         api::event::Event::GroupMade(api::GroupMade { group: Some(before_its_entries) })
     });
     logged(api, service, &group.name, group.held_after);
-    Kept { group, unread: None }
+    Kept { group, unread: None, places: BTreeMap::new() }
 }
 
-/// Tells the subscribers `kept` is gone, and that nothing waits for the human there.
+/// Tells the subscribers `kept` is gone, and that nothing waits for the human there and nobody
+/// has read anything there.
 fn deleted(api: &Telling<'_>, kept: Kept) {
     let name = kept.group.name;
     let group = name.clone();
@@ -216,8 +240,12 @@ fn deleted(api: &Telling<'_>, kept: Kept) {
         api::event::Event::GroupDeleted(api::GroupDeleted { group })
     });
     if kept.unread.is_some() {
-        let unread = api::Unread { group: name, ..api::Unread::default() };
+        let unread = api::Unread { group: name.clone(), ..api::Unread::default() };
         api.publish(Feed::Unread, || api::event::Event::Unread(unread));
+    }
+    if !kept.places.is_empty() {
+        let places = api::Places { group: name, places: BTreeMap::new() };
+        api.publish(api::Topic::Places, || api::event::Event::Places(places));
     }
 }
 
