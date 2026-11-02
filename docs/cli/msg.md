@@ -460,6 +460,12 @@ each one line of at most 120 bytes and different from the others:
     2. Skip it this round
     --- end review #44 | builder ---
 
+When you would pick one of the answers yourself, say so with `--recommend N`, the Nth `--option`
+counting from 1, rather than in the body: the window and a phone draw that answer apart, and
+`read` and `log` print `(recommended)` after it, `recommended` in `--json`. It changes nothing
+about answering, so any answer may still be picked. A machine whose daemon is older than 1.10
+cannot keep it, so the post is refused there; post again without `--recommend`.
+
 `post --group G --answer Q:N [TEXT]` answers question #Q with its Nth answer. The reply's body
 starts `Answer: <the answer>`, with TEXT below it as a note, so whoever asked reads the pick with
 no new parsing; the post also carries the pick as a field, `answering` in `--json`, which is how a
@@ -563,7 +569,7 @@ the human's alone: an agent running it is refused, since it reads its own with `
 | `join [--name N] [--group G] [--pull]` | registers you, and joins a group, creating it if absent |
 | `leave [--group G]` | leaves a group; with none, leaves every group and stops taking part |
 | `who [--group G]` | who takes part: alive, gone, unreachable or the human, what each in a pane is doing, their groups, and what waits on each unread and why |
-| `post [--group G] [--to A,B] [--urgent] [--option A]... [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer |
+| `post [--group G] [--to A,B] [--urgent] [--option A]... [--recommend N] [TEXT \| --file F \| -]` | appends a message and wakes whom it is for; `--urgent` reaches agents at work; `--option` offers an answer; `--recommend` marks the Nth as yours |
 | `post --group G --answer Q:N [TEXT \| --file F \| -]` | answers question #Q with its Nth offered answer, TEXT as a note |
 | `post --group G --answer Q TEXT \| --file F \| -` | answers question #Q in your own words, picking none of its answers |
 | `read [--group G] [--if-unread] [--from-hook]` | prints your unread messages and moves your place |

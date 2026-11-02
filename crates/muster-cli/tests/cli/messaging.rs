@@ -105,23 +105,27 @@ fn two_agents_post_read_and_are_held_to_the_guard() {
     assert_eq!(bodies, ["the parser is in", "done"]);
 }
 
-/// A question offers answers with `--option`, `read` numbers them, and `--answer` posts the
-/// reply that picks one, to whoever asked; a second pick is refused, and a page of the log ends
-/// on the reply.
+/// A question offers answers with `--option` and recommends one with `--recommend`, `read`
+/// numbers them and marks that one, and `--answer` posts the reply that picks one, to whoever
+/// asked; a second pick is refused, and a page of the log ends on the reply.
 #[test]
 fn a_question_is_offered_read_and_answered_from_the_command_line() {
     let daemon = Daemon::start_built();
     ok(&muster(&daemon, &["msg", "--as", "a", "join", "--group", "review"]));
     ok(&muster(&daemon, &["msg", "--as", "b", "join", "--group", "review"]));
     let asked = ["msg", "--as", "a", "post", "--to", "b", "--option", "Run it now"];
-    let asked = [&asked[..], &["--option", "Skip it", "run the contract tier?"]].concat();
+    let asked = [&asked[..], &["--option", "Skip it", "--recommend"]].concat();
+    let past_the_end = muster(&daemon, &[&asked[..], &["3", "run the contract tier?"]].concat());
+    assert_eq!(past_the_end.status.code(), Some(1));
+    assert!(complained(&past_the_end).contains("names no --option"), "{past_the_end:?}");
+    let asked = [&asked[..], &["2", "run the contract tier?"]].concat();
     assert_eq!(unheard(&muster(&daemon, &asked)).lines().next(), Some("posted #4 to review"));
 
     assert_eq!(
         ok(&muster(&daemon, &["msg", "--as", "b", "read"])),
         "--- review #4 | a -> b ---\nrun the contract tier?\n\n\
          Answers (reply with `muster msg post --group review --answer 4:N`):\n\
-         1. Run it now\n2. Skip it\n--- end review #4 | a ---"
+         1. Run it now\n2. Skip it (recommended)\n--- end review #4 | a ---"
     );
     let reply =
         ["msg", "--as", "b", "post", "--group", "review", "--answer", "4:2", "after", "lunch"];

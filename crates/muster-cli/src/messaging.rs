@@ -136,6 +136,10 @@ pub enum Verb {
         /// An answer to offer, which makes the post a question; repeat it for each, at most six
         #[arg(long = "option", value_name = "ANSWER", conflicts_with = "answer")]
         options: Vec<String>,
+        /// Mark the Nth --option, numbered from 1, as the answer you recommend; it is drawn
+        /// apart, and any answer may still be picked
+        #[arg(long, value_name = "N", requires = "options")]
+        recommend: Option<usize>,
         /// Answer question Q in --group with its Nth offered answer, as `read` and `log` number
         /// them, the message, if any, going with it as a note; or with Q alone, in the message's
         /// own words. --to defaults to who asked
@@ -349,7 +353,7 @@ pub fn parse(
         }
         Verb::Leave { group } => Asked::Leave(msg_request::Leave { group: group.clone() }),
         Verb::Who { group } => Asked::Who(msg_request::Who { group: group.clone() }),
-        Verb::Post { group, to, file, urgent, options, answer: pick, text } => {
+        Verb::Post { group, to, file, urgent, options, recommend, answer: pick, text } => {
             answer = *pick;
             let body = if let Some(file) = file {
                 body_from = Some(TextSource::File(crate::args::file_to_read(file, here)?));
@@ -371,6 +375,7 @@ pub fn parse(
                 body,
                 urgent: *urgent,
                 answers: options.clone(),
+                recommended: recommended_option(options, *recommend)?,
                 ..Default::default()
             })
         }
@@ -842,6 +847,9 @@ fn needs_minor(request: &proto::MsgRequest) -> Option<(&'static str, u32)> {
                 "keep an answer in words, with none of a question's answers picked",
                 proto::version::ANSWERS_IN_WORDS,
             ))
+        }
+        Some(Asked::Post(post)) if post.recommended.is_some() => {
+            Some(("keep the answer a question recommends", proto::version::RECOMMENDS_ANSWERS))
         }
         Some(Asked::Post(post)) if !post.answers.is_empty() || post.answering.is_some() => {
             Some(("keep the answers a question offers or a reply picks", proto::version::ANSWERS))
@@ -1444,7 +1452,7 @@ fn entries_text(
                     format!(
                         "{head}\n{}{}\n--- end {name} #{seq} | {author} ---",
                         message.body.trim_end_matches('\n'),
-                        answers_text(name, seq, &message.answers),
+                        answers_text(name, seq, &message.answers, message.recommended.as_deref()),
                     )
                 }
                 Some(What::Created(by)) => {
@@ -1495,9 +1503,25 @@ fn entries_text(
     blocks.join("\n")
 }
 
+/// The `--option` that `--recommend N` names, counting from 1.
+fn recommended_option(
+    options: &[String],
+    recommend: Option<usize>,
+) -> Result<Option<String>, Failure> {
+    let Some(n) = recommend else { return Ok(None) };
+    match n.checked_sub(1).and_then(|at| options.get(at)) {
+        Some(option) => Ok(Some(option.clone())),
+        None => Err(Failure::Refused(format!(
+            "--recommend {n} names no --option: the post offers {}, numbered from 1.",
+            options.len()
+        ))),
+    }
+}
+
 /// A question's offered answers, numbered as `--answer` counts them, with the command that
-/// picks one, so an agent reading it in a terminal can answer.
-fn answers_text(group: &str, seq: u64, answers: &[String]) -> String {
+/// picks one, so an agent reading it in a terminal can answer, and the one its author recommends
+/// marked.
+fn answers_text(group: &str, seq: u64, answers: &[String], recommended: Option<&str>) -> String {
     if answers.is_empty() {
         return String::new();
     }
@@ -1505,6 +1529,9 @@ fn answers_text(group: &str, seq: u64, answers: &[String]) -> String {
     let mut text = format!("\n\nAnswers (reply with `{reply}`):");
     for (at, answer) in answers.iter().enumerate() {
         let _ = write!(text, "\n{}. {answer}", at + 1);
+        if recommended == Some(answer.as_str()) {
+            text.push_str(" (recommended)");
+        }
     }
     text
 }
@@ -1531,6 +1558,9 @@ fn entry_json(entry: &msg_answer::Entry) -> serde_json::Value {
             }
             if !message.answers.is_empty() {
                 value["answers"] = message.answers.clone().into();
+            }
+            if let Some(recommended) = &message.recommended {
+                value["recommended"] = recommended.clone().into();
             }
             if let Some(answering) = &message.answering {
                 value["answering"] = serde_json::json!({
@@ -1788,6 +1818,25 @@ mod tests {
         };
         let needs = needs_minor(&in_words).map(|(_, minor)| minor);
         assert_eq!(needs, Some(proto::version::ANSWERS_IN_WORDS));
+    }
+
+    /// A daemon before 1.10 decodes a recommending question and drops the recommendation
+    /// without a word, so the question is asked of 1.10 or later only, where 1.8 would do
+    /// without it.
+    #[test]
+    fn a_recommendation_is_asked_of_1_10_or_later_only() {
+        let question = |recommended: Option<&str>| proto::MsgRequest {
+            caller: None,
+            request: Some(Asked::Post(msg_request::Post {
+                answers: vec!["Yes".to_string(), "No".to_string()],
+                recommended: recommended.map(str::to_string),
+                ..Default::default()
+            })),
+        };
+        let needs = needs_minor(&question(Some("No"))).map(|(_, minor)| minor);
+        assert_eq!(needs, Some(proto::version::RECOMMENDS_ANSWERS));
+        let needs = needs_minor(&question(None)).map(|(_, minor)| minor);
+        assert_eq!(needs, Some(proto::version::ANSWERS));
     }
 
     #[test]
@@ -2066,6 +2115,7 @@ mod tests {
             to: vec!["@human".to_string()],
             body: "run the contract tier?".to_string(),
             answers: vec!["Run it now".to_string(), "Skip it".to_string()],
+            recommended: Some("Skip it".to_string()),
             ..Default::default()
         };
         let reply = msg_answer::Message {
@@ -2091,7 +2141,7 @@ mod tests {
              \n\
              Answers (reply with `muster msg post --group review --answer 4:N`):\n\
              1. Run it now\n\
-             2. Skip it\n\
+             2. Skip it (recommended)\n\
              --- end review #4 | builder ---\n\
              --- review #5 | @human -> builder, answering #4 ---\n\
              Answer: Skip it\n\
@@ -2101,6 +2151,7 @@ mod tests {
             serde_json::from_str(&entries_text(&entries, true, true, &Shown::default())).unwrap();
         let logged = &json["groups"][0]["entries"];
         assert_eq!(logged[0]["answers"], serde_json::json!(["Run it now", "Skip it"]));
+        assert_eq!(logged[0]["recommended"], "Skip it");
         assert_eq!(logged[1]["answering"], serde_json::json!({"question": 4, "answer": "Skip it"}));
     }
 
