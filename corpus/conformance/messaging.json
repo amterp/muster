@@ -515,6 +515,46 @@
       ] }
     },
     {
+      "name": "a reply may answer a question in its own words, picking none of its answers",
+      "why": "Somebody asked a question often has an answer it did not offer, typed or dictated, and that settles the question as a picked answer does, for the desk and every program alike. A reply with an empty answer answers in its own words, its body, and is held to everything else a reply is held to: the question was asked of its author, and it is the question's one answer, of either kind.",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "c", "do": "join", "name": "c", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "ship it?", "answers": ["Yes", "Not yet"]},
+        {"session": "b", "do": "read"},
+        {"session": "c", "do": "read"},
+        {"session": "c", "do": "post", "to": ["a"], "body": "Answer: after the tests", "answering": {"question": 5, "answer": ""}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: after the tests", "answering": {"question": 5, "answer": ""}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: now", "answering": {"question": 5, "answer": ""}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 5, "answer": "Yes"}},
+        {"session": "a", "do": "read"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "merge it?", "answers": ["Yes", "No"]},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 7, "answer": "Yes"}},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: on Monday", "answering": {"question": 7, "answer": ""}},
+        {"do": "log", "group": "g", "since": 4}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "c joined g",
+        "a posted #5 to g; woke b [g #5-5 x1 to-you:1 from a]",
+        "b read g: #4 c joined | #5 a->b: ship it? [Yes/Not yet]",
+        "c read g: #5 a->b: ship it? [Yes/Not yet]",
+        "refused not_asked_of c g #5",
+        "b posted #6 to g; woke a [g #6-6 x1 to-you:1 from b]",
+        "refused already_answered g #5 by b in words",
+        "refused already_answered g #5 by b in words",
+        "a read g: #3 b joined | #4 c joined | #6 b->a (answering #5 in words): Answer: after the tests",
+        "a posted #7 to g; woke b [g #7-7 x1 to-you:1 from a]",
+        "b read g: #7 a->b: merge it? [Yes/No]",
+        "b posted #8 to g; woke a [g #8-8 x1 to-you:1 from b]",
+        "refused already_answered g #7 by b: Yes",
+        "#5 a->b: ship it? [Yes/Not yet] | #6 b->a (answering #5 in words): Answer: after the tests | #7 a->b: merge it? [Yes/No] | #8 b->a (answering #7: Yes): Answer: Yes"
+      ] }
+    },
+    {
       "name": "each answer a question offers is one short line of its own",
       "why": "Each offered answer is drawn as a button, and a reply names the one it picks by its words, so a question offers at most six, each at most 120 bytes, none empty or holding a line break, and none twice (MIP-9, section 6).",
       "given": { "steps": [

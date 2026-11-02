@@ -1443,13 +1443,27 @@ fn unsupported(
         return Some(("urgent_unsupported", words));
     }
     let asks = !post.answers.is_empty() || post.answering.is_some();
-    (asks && speaks.minor < proto::version::ANSWERS).then(|| {
+    if asks && speaks.minor < proto::version::ANSWERS {
         let words = format!(
             "{kept_on}, which cannot keep the answers a question offers or a reply picks. \
              Update Muster there, or post without --option and --answer"
         );
-        ("answers_unsupported", words)
+        return Some(("answers_unsupported", words));
+    }
+    (answers_in_words(post) && speaks.minor < proto::version::ANSWERS_IN_WORDS).then(|| {
+        let words = format!(
+            "{kept_on}, which cannot keep an answer in words, with none of the question's \
+             answers picked. Update Muster there, or pick one of its answers"
+        );
+        ("in_words_unsupported", words)
     })
+}
+
+/// Whether `post` answers a question in its own words. A daemon before
+/// [`proto::version::ANSWERS_IN_WORDS`] refuses one as not offering the empty answer, which says
+/// nothing of why, so it is refused before it is sent there.
+pub(super) fn answers_in_words(post: &proto::msg_request::Post) -> bool {
+    post.answering.as_ref().is_some_and(|answering| answering.answer.is_empty())
 }
 
 fn draft_of<'a>(
@@ -2110,10 +2124,17 @@ pub(super) fn words(refusal: &Refusal) -> String {
             "#{question} in {group} was not asked of {name}, so {name} cannot pick its answer; \
              post an ordinary reply instead"
         ),
-        Refusal::AlreadyAnswered { group, question, by, answer } => format!(
-            "#{question} in {group} is answered already: {by} picked \"{answer}\". A question \
-             takes one answer; post an ordinary reply to say more"
-        ),
+        Refusal::AlreadyAnswered { group, question, by, answer } => {
+            let given = if answer.is_empty() {
+                format!("{by} answered it in words")
+            } else {
+                format!("{by} picked \"{answer}\"")
+            };
+            format!(
+                "#{question} in {group} is answered already: {given}. A question takes one \
+                 answer; post an ordinary reply to say more"
+            )
+        }
         Refusal::OperationReused { id } => format!(
             "the operation id {id:?} named another post in the last day; a retry asks exactly \
              what the first request asked, and a new post takes a new id. Nothing was posted"
@@ -2386,6 +2407,26 @@ mod tests {
             assert_eq!(code, "answers_unsupported");
             assert_eq!(unsupported(post, speaking(8), "review", "devenv"), None);
         }
+    }
+
+    /// A reply answering in its own words, sent to a daemon that would refuse it as not
+    /// offering the empty answer, is refused here saying why instead.
+    #[test]
+    fn an_answer_in_words_to_a_machine_too_old_for_it_is_refused_with_its_own_code() {
+        let speaking = |minor| proto::Version { major: 1, minor };
+        let in_words = proto::msg_request::Post {
+            body: "Answer: on Monday".to_string(),
+            answering: Some(proto::msg_request::Answering { question: 4, answer: String::new() }),
+            ..Default::default()
+        };
+        let older = speaking(proto::version::ANSWERS_IN_WORDS - 1);
+        let (code, words) = unsupported(&in_words, older, "review", "devenv").unwrap();
+        assert_eq!(code, "in_words_unsupported");
+        assert!(words.contains("answer in words"), "{words}");
+        let current = speaking(proto::version::ANSWERS_IN_WORDS);
+        assert_eq!(unsupported(&in_words, current, "review", "devenv"), None);
+        let (code, _) = unsupported(&in_words, speaking(7), "review", "devenv").unwrap();
+        assert_eq!(code, "answers_unsupported");
     }
 
     /// The window's core names the human and Muster to tell their messages apart, and depends

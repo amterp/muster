@@ -64,11 +64,21 @@ pub enum What {
 }
 
 /// A reply's pick: the number of the question in its group, and the answer it offered that the
-/// reply takes, as the question wrote it.
+/// reply takes, as the question wrote it. An empty answer picks none: the reply answers in its
+/// own words, its body.
+///
+/// `answer` is written even when empty, since a daemon from before answers in words reads an
+/// entry without it as no entry at all.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Answering {
     pub question: u64,
     pub answer: String,
+}
+
+impl Answering {
+    pub fn in_words(&self) -> bool {
+        self.answer.is_empty()
+    }
 }
 
 /// A program's operation id for a post, and a fingerprint of what it asked, which tells a repeat
@@ -159,6 +169,29 @@ mod tests {
         };
         let line = serde_json::to_string(&reply).expect("an entry writes");
         assert_eq!(serde_json::from_str::<Entry>(&line).expect("and reads back"), reply);
+    }
+
+    /// An answer in words keeps an empty `answer` in the line, which a daemon from before
+    /// answers in words requires, so one put back in place reads the log and holds the question
+    /// answered.
+    #[test]
+    fn an_answer_in_words_writes_its_empty_answer() {
+        let reply = Entry {
+            seq: 5,
+            at_ms: 9,
+            what: What::Message {
+                author: "@human".to_string(),
+                to: vec!["a".to_string()],
+                body: "Answer: neither, try the cache".to_string(),
+                urgent: false,
+                answers: Vec::new(),
+                answering: Some(Answering { question: 3, answer: String::new() }),
+                via: None,
+                operation: None,
+            },
+        };
+        let line = serde_json::to_string(&reply).expect("an entry writes");
+        assert!(line.contains(r#""answering":{"question":3,"answer":""}"#), "{line}");
     }
 
     /// A post a program made keeps its name and operation id, and a line written before posts

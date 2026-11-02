@@ -3006,8 +3006,8 @@ impl<S: Store> Messaging<S> {
 
     /// Holds a reply to its question (MIP-9, section 6): a message in `group` offering answers,
     /// asked of `author` - not its own, and addressed to `author` when it names anybody - that
-    /// offered the answer picked, and that nobody has answered yet, since a question takes one
-    /// answer.
+    /// offered the answer picked, unless the reply answers in its own words, and that nobody has
+    /// answered yet, since a question takes one answer of either kind.
     fn check_answering(
         &self,
         group: &str,
@@ -3031,7 +3031,7 @@ impl<S: Store> Messaging<S> {
             let (name, group) = (author.to_string(), group.to_string());
             return Err(Refusal::NotAskedOf { name, group, question });
         }
-        if !answers.contains(&answering.answer) {
+        if !answering.in_words() && !answers.contains(&answering.answer) {
             return Err(Refusal::NotOffered {
                 group: group.to_string(),
                 question,

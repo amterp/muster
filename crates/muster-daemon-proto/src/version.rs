@@ -11,7 +11,7 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 9 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 10 };
 
 /// The first minor whose daemon presses the keys a `pane send` names. An older one ignores the
 /// field and would write the send's Return without them, so a client asks before sending any.
@@ -55,6 +55,11 @@ pub const ATTENTION: u32 = 9;
 /// repeat of the id with the first post (MIP-10, section 5). An older one drops both and posts the
 /// repeat again, so a post carrying an id is refused rather than sent to one.
 pub const OPERATIONS: u32 = 9;
+
+/// The first minor whose daemon takes a reply that answers a question in its own words, picking
+/// none of its answers. An older one refuses it as not offering the empty answer, which says
+/// nothing of why, so a client asks first.
+pub const ANSWERS_IN_WORDS: u32 = 10;
 
 /// The refusal for asking `daemon` to do `what` when it greeted with `speaks`, which is older
 /// than `since`, the first minor that does it; nothing when it is not. A greeting that named no

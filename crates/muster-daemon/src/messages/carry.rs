@@ -59,23 +59,34 @@ pub(super) fn destination(
     }
 }
 
-/// A refusal for carrying `asked` to `machine`, whose daemon would drop part of it without a word:
-/// a program's post loses its operation id there, so a retry would post twice.
+/// A refusal for carrying `asked` to `machine`, whose daemon would drop part of it without a word
+/// or refuse it without saying why: a program's post loses its operation id there, so a retry
+/// would post twice, and an answer in words is refused as not offering the empty answer.
 pub(super) fn unkept_at(shared: &Shared, machine: &str, asked: &Asked) -> Option<Reply> {
     let speaks = shared.peers.to(machine)?.speaks;
-    let words = unkept(asked, speaks, machine)?;
-    Some(super::refused_as("", "operations_unsupported", &words))
+    let (code, words) = unkept(asked, speaks, machine)?;
+    Some(super::refused_as("", code, &words))
 }
 
-fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<String> {
+fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<(&'static str, String)> {
     let operation = matches!(asked, Asked::Post(post) if post.operation.is_some())
         || matches!(asked, Asked::Ack(_));
-    (operation && speaks.minor < proto::version::OPERATIONS).then(|| {
-        format!(
+    if operation && speaks.minor < proto::version::OPERATIONS {
+        let words = format!(
             "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
              cannot acknowledge messages or keep a program's operation id, without which a retry \
              could post twice. Nothing was sent; update Muster there"
-        )
+        );
+        return Some(("operations_unsupported", words));
+    }
+    let in_words = matches!(asked, Asked::Post(post) if super::answers_in_words(post));
+    (in_words && speaks.minor < proto::version::ANSWERS_IN_WORDS).then(|| {
+        let words = format!(
+            "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
+             cannot keep an answer in words, with none of the question's answers picked. Nothing \
+             was sent; update Muster there, or pick one of its answers"
+        );
+        ("in_words_unsupported", words)
     })
 }
 
@@ -278,6 +289,25 @@ mod tests {
 
     fn post(operation: Option<proto::msg_request::Operation>) -> Asked {
         Asked::Post(proto::msg_request::Post { operation, ..Default::default() })
+    }
+
+    #[test]
+    fn an_answer_in_words_is_not_carried_to_a_daemon_that_would_refuse_it_unexplained() {
+        let in_words = |answer: &str| {
+            Asked::Post(proto::msg_request::Post {
+                answering: Some(proto::msg_request::Answering {
+                    question: 4,
+                    answer: answer.to_string(),
+                }),
+                ..Default::default()
+            })
+        };
+        let older = proto::Version { major: 1, minor: proto::version::ANSWERS_IN_WORDS - 1 };
+        let current = proto::Version { major: 1, minor: proto::version::ANSWERS_IN_WORDS };
+        let refused = unkept(&in_words(""), older, "lap").map(|(code, _)| code);
+        assert_eq!(refused, Some("in_words_unsupported"));
+        assert!(unkept(&in_words(""), current, "lap").is_none());
+        assert!(unkept(&in_words("Yes"), older, "lap").is_none());
     }
 
     #[test]

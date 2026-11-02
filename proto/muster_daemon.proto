@@ -874,11 +874,14 @@ message MsgRequest {
 
   // A reply's pick of an answer a question offered. Refused as `no_such_question`,
   // `not_offered`, `not_asked_of` or `already_answered` where the group is kept: a question
-  // takes one answer, from somebody it was asked of.
+  // takes one answer of either kind, from somebody it was asked of.
   message Answering {
     // The question's number in the post's group.
     uint64 question = 1;
-    // The offered answer picked, as the question wrote it.
+    // The offered answer picked, as the question wrote it. Since 1.10, empty picks none: the
+    // reply answers in its own words, its body. Refused as `in_words_unsupported` when the group
+    // is kept on a machine whose daemon speaks a protocol before 1.10, which refuses it as
+    // `not_offered`.
     string answer = 2;
   }
 

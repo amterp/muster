@@ -208,6 +208,9 @@ fn refused(refusal: &Refusal) -> String {
             format!("{group} #{question} {answer:?} (offers {})", answers.join("/"))
         }
         Refusal::NotAskedOf { name, group, question } => format!("{name} {group} #{question}"),
+        Refusal::AlreadyAnswered { group, question, by, answer } if answer.is_empty() => {
+            format!("{group} #{question} by {by} in words")
+        }
         Refusal::AlreadyAnswered { group, question, by, answer } => {
             format!("{group} #{question} by {by}: {answer}")
         }
@@ -246,7 +249,11 @@ fn entry(entry: &muster_msg::Entry) -> String {
             let to = if to.is_empty() { String::new() } else { format!("->{}", to.join(",")) };
             let urgent = if *urgent { " (urgent)" } else { "" };
             let answering = answering.as_ref().map_or(String::new(), |answering| {
-                format!(" (answering #{}: {})", answering.question, answering.answer)
+                if answering.in_words() {
+                    format!(" (answering #{} in words)", answering.question)
+                } else {
+                    format!(" (answering #{}: {})", answering.question, answering.answer)
+                }
             });
             let answers = if answers.is_empty() {
                 String::new()
