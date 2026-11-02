@@ -913,7 +913,9 @@ struct QuestionAnswersView: View {
     } else if message.answerable {
       let question = message.seq
       AnswerButtons(
-        answers: message.answers, picked: picked, enabled: !box.pending, focus: focus,
+        answers: message.answers, picked: picked,
+        recommended: message.hasRecommended ? Int(message.recommended) : nil,
+        enabled: !box.pending, focus: focus,
         focusing: { AnswerFocus(question: question, index: $0) },
         onPick: { box.pick(question: question, answer: $0) },
         onTabOut: { _ in
@@ -922,8 +924,11 @@ struct QuestionAnswersView: View {
         })
     } else {
       VStack(alignment: .leading, spacing: 2) {
-        ForEach(Array(message.answers.enumerated()), id: \.offset) { _, answer in
-          Label(answer, systemImage: "circle").foregroundStyle(.secondary)
+        ForEach(Array(message.answers.enumerated()), id: \.offset) { index, answer in
+          HStack(spacing: 6) {
+            Label(answer, systemImage: "circle").foregroundStyle(.secondary)
+            if message.hasRecommended, Int(message.recommended) == index { RecommendedLabel() }
+          }
         }
       }
       .font(.callout)

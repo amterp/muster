@@ -183,6 +183,7 @@ fn entry(given: &Value) -> Result<Entry, CaseError> {
         };
         What::Message(Message {
             answers: strings(given, "answers"),
+            recommended: text(given, "recommended").map(str::to_string),
             answering: given.get("answering").map(answering),
             via: text(given, "via").map(str::to_string),
             ..Message::new(
@@ -216,6 +217,7 @@ fn row_json(row: &Row) -> Value {
             ("muster", message.from_muster.then_some(json!(true))),
             ("pane", message.author_pane.as_ref().map(|pane| json!(pane.pane.as_str()))),
             ("answers", (!message.answers.is_empty()).then(|| json!(message.answers.join(" / ")))),
+            ("recommended", message.recommended.map(|at| json!(message.answers[at]))),
             ("answerable", message.answerable.then_some(json!(true))),
             (
                 "answered",

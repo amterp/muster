@@ -321,6 +321,7 @@ struct BannerCard: View {
       if !banner.answers.isEmpty, banner.sent.state != .posted {
         AnswerButtons(
           answers: banner.answers, picked: banner.hasPicked ? Int(banner.picked) : nil,
+          recommended: banner.hasRecommended ? Int(banner.recommended) : nil,
           enabled: banner.replyable, focus: $focus, focusing: { .answer($0) },
           onPick: { board.pick($0, in: banner) }, onTabOut: { _ in focus = .reply }
         )

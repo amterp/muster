@@ -81,6 +81,8 @@ pub struct MessageRow {
     pub from_muster: bool,
     /// The answers it offers, which make it a question (MIP-9, section 6).
     pub answers: Vec<String>,
+    /// Which of them its author recommends, by its place from 0.
+    pub recommended: Option<usize>,
     /// Who answered it and with what, once somebody has.
     pub answered: Option<Answered>,
     /// Whether the human may pick one of its answers now: asked of them, and not yet answered.
@@ -213,6 +215,7 @@ fn message_row(made: &Made, entry: &Entry, message: &Message) -> Row {
         replyable: group.addressable(&message.author),
         from_muster: posting::is_muster(&message.author),
         answers: message.answers.clone(),
+        recommended: message.recommended_at(),
         answerable: answered.is_none() && group.asks_human(message),
         answered,
         answering: message.answering.as_ref().map(|answering| answering.question),

@@ -77,6 +77,7 @@ fn take(
         } else {
             let message = conversation::Message {
                 answers: strings(step, "answers"),
+                recommended: text(step, "recommended").map(str::to_string),
                 via: text(step, "via").map(str::to_string),
                 ..conversation::Message::new(
                     text(step, "author").unwrap_or_default().to_string(),
@@ -164,6 +165,9 @@ fn banner_json(banner: &Banner) -> Value {
             }
             if let Some(picked) = banner.picked {
                 fields.insert("picked".into(), json!(message.answers[picked]));
+            }
+            if let Some(recommended) = message.recommended {
+                fields.insert("recommended".into(), json!(message.answers[recommended]));
             }
         }
         Shown::Unloaded { from, count, why, .. } => {

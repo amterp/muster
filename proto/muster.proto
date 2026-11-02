@@ -2591,6 +2591,8 @@ message Banner {
   repeated string answers = 17;
   // Which of them the human picked, from 0, to go with the reply.
   optional uint32 picked = 18;
+  // Which of them its author recommends, from 0, drawn apart from the others. It picks nothing.
+  optional uint32 recommended = 19;
 }
 
 // Where a post the human sent stands (mip/0009-group-conversation.md, section 4).
@@ -2713,6 +2715,8 @@ message ConversationMessage {
   bool answerable = 20;
   // Its answer picked none of its answers, and is the reply's own words.
   bool answered_in_words = 21;
+  // Which of its answers its author recommends, from 0, drawn apart from the others.
+  optional uint32 recommended = 22;
 }
 
 message ConversationMember {

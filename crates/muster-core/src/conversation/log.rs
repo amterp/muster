@@ -45,6 +45,8 @@ pub struct Message {
     pub blocks: Vec<Block>,
     /// The answers it offers, which make it a question (MIP-9, section 6).
     pub answers: Vec<String>,
+    /// The offered answer its author recommends, as written in `answers`.
+    pub recommended: Option<String>,
     /// The question it answers, when it is a reply that picked one of a question's answers.
     pub answering: Option<Answering>,
     /// The program that posted it for its author, which is shown beside the author.
@@ -62,9 +64,16 @@ impl Message {
             urgent,
             blocks,
             answers: Vec::new(),
+            recommended: None,
             answering: None,
             via: None,
         }
+    }
+
+    /// Which of its answers its author recommends, by its place from 0.
+    pub fn recommended_at(&self) -> Option<usize> {
+        let recommended = self.recommended.as_deref()?;
+        self.answers.iter().position(|answer| answer == recommended)
     }
 }
 

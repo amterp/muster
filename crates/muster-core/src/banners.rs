@@ -42,6 +42,8 @@ pub struct Message {
     pub more: bool,
     /// The answers it offers, which make it a question (MIP-9, section 6).
     pub answers: Vec<String>,
+    /// Which of them its author recommends, by its place from 0.
+    pub recommended: Option<usize>,
     /// The program that posted it for its author.
     pub via: Option<String>,
 }
@@ -58,6 +60,7 @@ impl Message {
             body,
             more,
             answers: message.answers.clone(),
+            recommended: message.recommended_at(),
             via: message.via.clone(),
         }
     }

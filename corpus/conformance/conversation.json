@@ -330,6 +330,24 @@
       }
     },
     {
+      "name": "a question marks the answer its author recommends, asked of the human or not",
+      "why": "An agent's recommendation is drawn apart from the other answers wherever the question is shown, as buttons the human may pick from or as the answers another agent was offered. It picks nothing.",
+      "given": {
+        "members": ["otter", "heron", "@human"],
+        "entries": [
+          { "seq": 1, "author": "otter", "to": ["@human"], "answers": ["Run it now", "Skip it"], "recommended": "Skip it" },
+          { "seq": 2, "author": "otter", "to": ["heron"], "answers": ["Merge", "Hold"], "recommended": "Merge" }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "1970-01-01" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true, "answers": "Run it now / Skip it", "recommended": "Skip it", "answerable": true },
+          { "message": 2, "author": "otter", "to": ["heron"], "answers": "Merge / Hold", "recommended": "Merge" }
+        ]
+      }
+    },
+    {
       "name": "an answered question says who answered and with what, and offers nothing more",
       "why": "A question takes one answer, so once one is given its buttons go and the row says who gave it. The first answer is the one that counts, and the reply says which question it answers.",
       "given": {

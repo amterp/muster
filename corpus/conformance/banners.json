@@ -504,6 +504,23 @@
       }
     },
     {
+      "name": "a question's banner marks the answer its author recommends, which picks nothing",
+      "why": "An agent says which answer it would pick, and the banner draws that one apart. It stays a mark: nothing is picked until the human picks, and the human may pick another.",
+      "given": {
+        "steps": [
+          { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
+          { "fetched": "g", "seq": 4, "author": "otter", "body": "run the contract tier?", "answers": ["Run it now", "Skip it"], "recommended": "Skip it" },
+          { "pick": "g", "seq": 4, "answer": 1 }
+        ]
+      },
+      "expect": {
+        "fetch": ["g#4"],
+        "stack": [
+          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "picked": "Run it now", "recommended": "Skip it", "replyable": true }
+        ]
+      }
+    },
+    {
       "name": "a picked answer starts the reply, with no note needed",
       "why": "The reply carries the pick twice: its body starts with the answer, for the agent to read with no new parsing, and the post names the question and the answer, for a view to mark it answered. A pick alone is a whole reply.",
       "given": {

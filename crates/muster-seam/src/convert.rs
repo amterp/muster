@@ -295,6 +295,7 @@ fn banner(banner: &Banner) -> proto::Banner {
             drawn.more = message.more;
             drawn.answers.clone_from(&message.answers);
             drawn.picked = banner.picked.and_then(|picked| u32::try_from(picked).ok());
+            drawn.recommended = message.recommended.and_then(|at| u32::try_from(at).ok());
         }
         Shown::Unloaded { from, count, why, .. } => {
             drawn.from = from.iter().map(|name| banner.named(name)).collect();
@@ -500,6 +501,7 @@ fn conversation_message(
             .map(|(_, said)| said.clone())
             .unwrap_or_default(),
         answers: message.answers.clone(),
+        recommended: message.recommended.and_then(|at| u32::try_from(at).ok()),
         answered_by: message.answered.as_ref().map(|a| a.by.clone()).unwrap_or_default(),
         answered_with: message.answered.as_ref().and_then(|a| a.answer.clone()).unwrap_or_default(),
         answered_in_words: message.answered.as_ref().is_some_and(|a| a.answer.is_none()),

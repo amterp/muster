@@ -10,6 +10,8 @@ struct AnswerButtons<Focus: Hashable>: View {
   let answers: [String]
   /// The answer picked, by its place from 0.
   let picked: Int?
+  /// The answer its author recommends, by its place from 0: labeled, and never picked by it.
+  let recommended: Int?
   let enabled: Bool
   var focus: FocusState<Focus?>.Binding
   /// What holds the keyboard on each answer's button.
@@ -26,7 +28,9 @@ struct AnswerButtons<Focus: Hashable>: View {
           HStack(spacing: 6) {
             Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
               .foregroundStyle(isPicked ? Color.accentColor : .secondary)
-            Text(answer).frame(maxWidth: .infinity, alignment: .leading)
+            Text(answer)
+            if recommended == index { RecommendedLabel() }
+            Spacer(minLength: 0)
           }
           .contentShape(Rectangle())
         }
@@ -54,5 +58,18 @@ struct AnswerButtons<Focus: Hashable>: View {
         }
       }
     }
+  }
+}
+
+/// Says which answer a question's author recommends, beside it, in words rather than by a color
+/// alone, which a picked answer's checkmark already uses.
+struct RecommendedLabel: View {
+  var body: some View {
+    Text("Recommended")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1)
+      .overlay(Capsule().strokeBorder(.secondary.opacity(0.5)))
   }
 }
