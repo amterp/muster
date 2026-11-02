@@ -2,25 +2,32 @@
   "_v": 4,
   "alias": "api-answer-a",
   "alias_explicit": false,
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "id": "c_2sQMKDWPX",
       "body": "2026-11-01: the owner decided (in the Foreman session) that a reply in his own words removes a question, and that the work belongs in Muster rather than in a record Foreman keeps. Being designed and built by a helper of the Foreman session in ~/src/muster-answer (branch answer-in-words); the owner approved cutting a 0.21 release once it is reviewed.",
       "author": "Alexander Terp",
       "created_at_millis": 1793590301575
+    },
+    {
+      "id": "c_2sRDvZok8",
+      "body": "2026-11-01: done, on main as 56bc8d6e..d007439a (4 commits), gate green at the branch tip (321 s). Built by linen (Claude opus, xhigh); reviewed by Codex gpt-6.1-sol medium and a fresh Claude opus medium, no findings. API 0.3: msg.post answering a question with an empty answer and the words in the body answers it in words; Welcome.machine.features.options lists msg.post.answer_in_words; the body is composed 'Answer: \u003cwords\u003e'; one answer per question across both kinds; CLI muster msg post --answer Q TEXT; daemon protocol 1.10; the desk says 'Answered by you in words'. Not done: the desk's own Reply still posts an ordinary message (a Reply at the desk may be a clarifying question). Ships in 0.21.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793592362055
     }
   ],
   "created_at_millis": 1793573835063,
   "creator": "Alexander Terp",
   "description": "Foreman's phone app (Foreman FEP-3, ~/src/foreman/docs/fep/0003-phone-app-v1.md) lets the owner reply to an agent's question in his own words, typed or dictated, without picking one of its offered answers. msg.post's answering takes only an offered answer, so such a reply is an ordinary post: the question stays unanswered in Muster, the desk keeps showing it open, and Foreman has to keep its own record of which questions the owner replied to so its inbox can drop them.\n\nIf msg.post could answer a question with a note and no offered answer (an 'answered in words' outcome), the desk and every client would see the question settled, and Foreman would retire its record. Open: whether the CLI gets the same (muster msg post --answering N with no --answer), how the asker sees it, and whether one answer per question still holds.\n\nRaised 2026-11-01 by the Foreman session (cactus) from the FEP-3 design review.",
   "id": "a_2sJRxE7cj",
-  "position": "a3",
+  "position": "YvD",
   "title": "API: answer a question in the human's own words",
   "type": "feature",
-  "updated_at_millis": 1793590301716,
+  "updated_at_millis": 1793592362056,
   "history": [
     {"field":"column","value":"uncommitted","at":1793573835063},
-    {"field":"column","value":"next","at":1793590301716}
+    {"field":"column","value":"next","at":1793590301716},
+    {"field":"column","value":"done","at":1793592361954}
   ]
 }
