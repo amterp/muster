@@ -37,7 +37,7 @@ use muster_core::intent::{
 };
 use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
-use muster_core::mirror::backend::{AgentFacts, PaneId, Progress, TabId};
+use muster_core::mirror::backend::{AgentFacts, ClosedPane, PaneId, Progress, TabId};
 use muster_core::mirror::{Change, Health, Mirror, Restart, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_address::{self, Address, Candidate};
@@ -985,6 +985,10 @@ pub(crate) struct Window {
     /// version of the same reason: a rule that retried a refusal would retry it forever.
     tabs_asked_of: BTreeSet<DaemonId>,
 
+    /// The closed panes a daemon remembers that this window showed as they closed, for a bare
+    /// reopen here to bring back its own rather than another window's.
+    closed_here: BTreeSet<PaneId>,
+
     /// Set while a pane this window shows is being hidden, so that if hiding it leaves the
     /// window showing nothing, the window asks for a tab even of a machine in `tabs_asked_of`.
     /// Hiding a pane is putting it away rather than being finished with the machine, which is
@@ -1157,6 +1161,7 @@ impl Default for Window {
             name: crate::holding::first_unnamed(),
             composition: Composition::default(),
             tabs_asked_of: BTreeSet::new(),
+            closed_here: BTreeSet::new(),
             hiding: false,
             left: None,
             awaiting: BTreeSet::new(),
@@ -2683,6 +2688,7 @@ pub(crate) fn submit_from(
             | BackendIntent::MakerClosed { .. }
             | BackendIntent::SwapPanes { .. }
             | BackendIntent::QuietPane { .. }
+            | BackendIntent::ReopenPane { .. }
             | BackendIntent::MovePane { .. } => None,
             // A hidden pane is in no window, so no region could ever be asked for, and it is
             // reached only by its name - from the hidden list or a script that made it - never
@@ -2831,6 +2837,7 @@ pub(crate) fn submit_from(
 fn made_tab(intent: &BackendIntent) -> Option<&TabId> {
     match intent {
         BackendIntent::CreateTab { tab, hidden: false, .. }
+        | BackendIntent::ReopenPane { tab, .. }
         | BackendIntent::MovePane {
             to: MoveDestination::NewTab { tab, hidden: false, .. }, ..
         } => Some(tab),
@@ -3892,6 +3899,64 @@ pub(crate) fn tab_is_hidden(tab: &TabId) -> bool {
     })
 }
 
+/// Every closed pane a machine this window is attached to remembers for a reopen, newest first,
+/// with the machine that remembers it.
+pub(crate) fn closed_panes(window: WindowId) -> Vec<(DaemonId, ClosedPane)> {
+    let now_ms = now_ms();
+    let session = poison::lock(&SESSION, "session");
+    let mut closed: Vec<(DaemonId, ClosedPane)> = Vec::new();
+    for daemon in session.windows[window].composition.daemons() {
+        let Some(backend) = session.backends.get(&daemon.id) else { continue };
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        closed.extend(mirror.closed(now_ms).map(|pane| (daemon.id.clone(), pane.clone())));
+    }
+    closed.sort_by_key(|(_, pane)| std::cmp::Reverse(pane.closed_at_ms));
+    closed
+}
+
+/// The closed pane a reopen naming none brings back in `window`: the newest closed while this
+/// window showed it, or else the newest any machine it shows remembers.
+pub(crate) fn newest_closed(window: WindowId) -> Option<(DaemonId, ClosedPane)> {
+    let mut closed = closed_panes(window);
+    let session = poison::lock(&SESSION, "session");
+    let closed_here = &session.windows[window].closed_here;
+    let here = closed.iter().position(|(_, pane)| closed_here.contains(&pane.id));
+    drop(session);
+    (!closed.is_empty()).then(|| closed.swap_remove(here.unwrap_or(0)))
+}
+
+/// Notes which window showed a pane its daemon has just said it remembers closing. Asked before
+/// the close is reconciled, while a window still holds the pane's tab.
+fn note_closed_in(daemon: &DaemonId, pane: &PaneId) {
+    let now_ms = now_ms();
+    let mut session = poison::lock(&SESSION, "session");
+    let mut remembered = BTreeSet::new();
+    let mut tab = None;
+    for (id, backend) in &session.backends {
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        for closed in mirror.closed(now_ms) {
+            remembered.insert(closed.id.clone());
+            if id == daemon && closed.id == *pane {
+                tab = Some(closed.tab.clone());
+            }
+        }
+    }
+    let showing = tab.and_then(|tab| session.window_holding(&tab));
+    for window in session.windows.values_mut() {
+        window.closed_here.retain(|closed| remembered.contains(closed));
+    }
+    if let Some(window) = showing {
+        session.windows[window].closed_here.insert(pane.clone());
+    }
+}
+
+/// Now, in milliseconds since 1970, as a daemon's clock says when a closed pane's time is up.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
 /// A name for a tab this window is about to ask for, unique across every machine it shows.
 pub(crate) fn mint_tab() -> TabId {
     let minter = Arc::clone(&poison::lock(&SESSION, "session").minter);
@@ -4536,10 +4601,12 @@ pub(crate) fn address(typed: &mut [&mut String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Tells each followed daemon the callsigns every other one holds, for the next pane it makes to
-/// be drawn none of them: `otter` then means one pane wherever it is typed, and `otter@devenv`
-/// is needed only for panes made while their machines were not both followed.
+/// Tells each followed daemon the callsigns every other one holds, or remembers for a pane a
+/// reopen can bring back, for the next pane it makes to be drawn none of them: `otter` then
+/// means one pane wherever it is typed, and `otter@devenv` is needed only for panes made while
+/// their machines were not both followed.
 fn share_callsigns() {
+    let now_ms = now_ms();
     let held: Vec<(Arc<dyn BackendChannel>, BTreeSet<String>)> = {
         let session = poison::lock(&SESSION, "session");
         session
@@ -4547,7 +4614,10 @@ fn share_callsigns() {
             .values()
             .map(|backend| {
                 let mirror = poison::lock(&backend.mirror, "mirror");
-                let callsigns = mirror.panes().filter_map(|pane| pane.callsign.clone()).collect();
+                let open = mirror.panes().filter_map(|pane| pane.callsign.clone());
+                let remembered = mirror.closed(now_ms).map(|closed| closed.callsign.clone());
+                let callsigns = open.chain(remembered).filter(|callsign| !callsign.is_empty());
+                let callsigns = callsigns.collect();
                 (Arc::clone(&backend.channel), callsigns)
             })
             .collect()
@@ -5696,6 +5766,9 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             }
         }
         Notice::Changed(change) => {
+            if let Change::PaneRemoved { pane, .. } = &change {
+                note_closed_in(daemon, pane);
+            }
             // Two questions, not one. Composition is reconciled when something it names may
             // have moved; the view and the roster are republished whenever they would read
             // differently - and a pane's name is in the roster without being anywhere
@@ -5717,6 +5790,10 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             }
             if matches!(change, Change::PaneAdded(_) | Change::PaneRemoved { .. }) {
                 share_callsigns();
+            }
+            // A helper reopened after its maker ended is told so, as one found at a bootstrap is.
+            if matches!(change, Change::PaneAdded(_)) {
+                tell_closed_makers();
             }
             report(daemon, &change);
         }

@@ -48,6 +48,71 @@ fn restarted_answer(restarted: &muster_proto::Restarted, json: bool) -> String {
     format!("{}  {ended} and typed: {}", restarted.pane_id, restarted.typed)
 }
 
+/// Its callsign alone, as `pane new` prints a pane it made, for the same reason: what a script does
+/// next is name it. What came back without it is in `--json`.
+fn reopened_answer(reopened: &muster_proto::Reopened, json: bool) -> String {
+    if !json {
+        return reopened.callsign.clone();
+    }
+    let said = |text: &String| Some(text.clone()).filter(|text| !text.is_empty());
+    json!({
+        "pane": reopened.pane_id,
+        "callsign": reopened.callsign,
+        "resumed": reopened.resumed,
+        "callsign_taken": said(&reopened.callsign_taken),
+        "name_taken": said(&reopened.name_taken),
+    })
+    .to_string()
+}
+
+/// The closed panes that can be reopened, newest first: a row each, with its callsign first since
+/// that is what `--pane` takes, then its name, what it ran, where, and for how much longer.
+fn closed_panes(closed: &muster_proto::ClosedPanes, now_ms: i64, json: bool) -> String {
+    let ms = |ms: u64| i64::try_from(ms).unwrap_or(i64::MAX);
+    if json {
+        let said = |text: &String| Some(text.clone()).filter(|text| !text.is_empty());
+        let listed: Vec<Value> = closed
+            .panes
+            .iter()
+            .map(|pane| {
+                json!({
+                    "pane": pane.pane_id,
+                    "daemon": said(&pane.daemon_id),
+                    "callsign": pane.callsign,
+                    "label": said(&pane.label),
+                    "cwd": pane.cwd,
+                    "agent": said(&pane.agent),
+                    "resumes": pane.resumes,
+                    "closed_at": since_json(ms(pane.closed_at_ms)),
+                    "until": since_json(ms(pane.until_ms)),
+                })
+            })
+            .collect();
+        return json!({ "closed": listed }).to_string();
+    }
+    if closed.panes.is_empty() {
+        return styled("no closed pane can be reopened", QUIET);
+    }
+    closed
+        .panes
+        .iter()
+        .map(|pane| {
+            let ran = match (pane.agent.as_str(), pane.resumes) {
+                ("", _) => "a shell".to_string(),
+                (agent, true) => format!("{agent}, resumed"),
+                (agent, false) => format!("{agent}, as a shell"),
+            };
+            let name =
+                if pane.label.is_empty() { String::new() } else { format!("{}  ", pane.label) };
+            let closed_ago = held_for(ms(pane.closed_at_ms), now_ms);
+            let left = held_for(now_ms, ms(pane.until_ms));
+            let when = styled(&format!("closed {closed_ago} ago, {left} left"), QUIET);
+            format!("{}  {name}{ran}  {}  {when}", pane.callsign, pane.cwd)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Turns an answer into what should be printed, or into the reason there is nothing to print.
 pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
     match &response.payload {
@@ -131,6 +196,8 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
         Some(response::Payload::Restarted(restarted)) => Ok(restarted_answer(restarted, json)),
+        Some(response::Payload::Reopened(reopened)) => Ok(reopened_answer(reopened, json)),
+        Some(response::Payload::ClosedPanes(closed)) => Ok(closed_panes(closed, now_ms(), json)),
         // The window that shows a conversation now: `muster msg open`.
         Some(response::Payload::Opened(opened)) => Ok(if json {
             json!({ "window": opened.window }).to_string()
@@ -210,6 +277,8 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::LayoutMoved(_) => "word that the layout may have moved",
         response::Payload::Restarted(_) => "an agent restarted",
         response::Payload::Draft(_) => "a message box's draft",
+        response::Payload::Reopened(_) => "a pane reopened",
+        response::Payload::ClosedPanes(_) => "the closed panes that can be reopened",
     }
 }
 

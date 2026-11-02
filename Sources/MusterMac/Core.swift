@@ -576,6 +576,56 @@ public enum Core {
     }
   }
 
+  /// Brings back a pane closed on a machine this window shows, with the keyboard on it: `pane` by
+  /// its callsign or id, or the one closed most recently when empty. Off the main thread, since
+  /// the pane starts only once what ran in it has ended, which can take a few seconds; `then` gets
+  /// the core's refusal, if it refused.
+  public static func reopenPane(
+    pane: String, window: String, then: @escaping @MainActor @Sendable (String?) -> Void
+  ) {
+    var reopen = Muster_ReopenPane()
+    reopen.pane = pane
+    reopen.takeFocus = true
+    var request = Muster_Request()
+    request.reopenPane = reopen
+    request.window = window
+    let (sent, dispatcher) = (request, self.dispatcher)
+    DispatchQueue.global(qos: .userInitiated).async {
+      let refused = refusal(send(sent, through: dispatcher))
+      DispatchQueue.main.async { then(refused) }
+    }
+  }
+
+  /// Every closed pane a reopen can still bring back on a machine the front window shows, newest
+  /// first.
+  public static func closedPanes() -> [ClosedPane] {
+    var request = Muster_Request()
+    request.readClosedPanes = Muster_ReadClosedPanes()
+    guard case .closedPanes(let answer) = send(request) else { return [] }
+    return answer.panes.map {
+      ClosedPane(
+        id: $0.paneID, callsign: $0.callsign, label: $0.label, agent: $0.agent, cwd: $0.cwd)
+    }
+  }
+
+  /// A closed pane its machine remembers for a reopen.
+  public struct ClosedPane: Equatable, Sendable {
+    public let id: String
+    public let callsign: String
+    /// The name somebody gave it; empty for none.
+    public let label: String
+    /// The agent it ran; empty for none.
+    public let agent: String
+    public let cwd: String
+
+    /// How a menu says it: by its name and callsign, then what it ran and where.
+    public var title: String {
+      let called = label.isEmpty ? callsign : "\(label) (\(callsign))"
+      let ran = agent.isEmpty ? "shell" : agent
+      return "\(called) - \(ran) in \((cwd as NSString).abbreviatingWithTildeInPath)"
+    }
+  }
+
   /// Takes a pane out of every window into the hidden list, its agent still running. Naming no
   /// pane means the keyboard's.
   @discardableResult
@@ -1701,6 +1751,8 @@ public enum Core {
     case .renamePane: return "rename_pane"
     case .compactPane: return "compact_pane"
     case .restartAgent: return "restart_agent"
+    case .reopenPane: return "reopen_pane"
+    case .readClosedPanes: return "read_closed_panes"
     case .hidePane: return "hide_pane"
     case .showPane: return "show_pane"
     case .showHelpers: return "show_helpers"

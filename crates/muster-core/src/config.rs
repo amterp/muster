@@ -435,6 +435,10 @@ pub struct Panes {
     /// restart or a reboot brings the pane back, with the arguments the agent was running with.
     /// On unless the file says `false`, which brings such a pane back as a shell.
     pub resume_agents: bool,
+
+    /// How long a pane somebody closed can be reopened, in minutes: its daemon remembers it that
+    /// long. An hour unless the file says otherwise; 0 remembers none.
+    pub reopen_closed_minutes: u32,
 }
 
 impl Default for Panes {
@@ -446,6 +450,7 @@ impl Default for Panes {
             name_sessions: true,
             compact_at: None,
             resume_agents: true,
+            reopen_closed_minutes: 60,
         }
     }
 }
@@ -569,7 +574,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 20] = [
+const ROOT_KEYS: [&str; 21] = [
     "daemon",
     "keymap",
     "text",
@@ -584,6 +589,7 @@ const ROOT_KEYS: [&str; 20] = [
     "name_sessions",
     "compact_at",
     "resume_agents",
+    "reopen_closed_minutes",
     "human_name",
     "font",
     "colors",
@@ -749,8 +755,8 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at`, `resume_agents` and
-/// `[shell]`.
+/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at`, `resume_agents`,
+/// `reopen_closed_minutes` and `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
@@ -775,6 +781,20 @@ fn read_panes(root: &toml::Table) -> Result<Panes, String> {
                 described(value)
             )
         })?;
+    }
+
+    if let Some(value) = root.get("reopen_closed_minutes") {
+        panes.reopen_closed_minutes = value
+            .as_integer()
+            .and_then(|minutes| u32::try_from(minutes).ok())
+            .ok_or_else(|| {
+                format!(
+                    "`reopen_closed_minutes` in the config file is {}, and it has to be a whole \
+                     number of minutes, zero or more: how long a closed pane can be reopened. \
+                     None of the file was applied. 0 remembers none.",
+                    written(value)
+                )
+            })?;
     }
 
     if let Some(value) = root.get("compact_at") {

@@ -501,6 +501,44 @@ takes part of the work at its own level and answers to you, starts it with plain
 new`. Muster never infers the relation, so a pane made from inside another pane is nobody's
 helper unless `--helper` said so.
 
+## Bringing back a closed pane
+
+A pane closed by mistake can be brought back for an hour after it closed:
+
+    muster pane reopen --pane otter
+    muster pane reopen
+    muster pane reopen --list
+
+`--pane` takes the callsign or id the pane had when it closed; with no `--pane`, the pane closed
+most recently in this window comes back, or failing that the one closed most recently on any
+machine it shows. It comes back under its id, its callsign and its name, in the directory it was
+in, and where it was in its tab: exactly there when the tab has not changed, else beside a pane it
+was beside, else at the tab's end. A pane whose tab closed with it comes back in a new tab
+with the old tab's name. An agent whose harness reported its session (`muster docs harnesses`) is
+started again in that session with the flags it ran with, as a daemon restart brings it back, and
+messages reach it again, since it is the same pane. What was on its screen is not kept. A pane that
+ran no agent, or whose agent reported no session, comes back as a shell.
+
+It prints the pane's callsign, as `pane new` does, and `--json` adds its id, whether its session
+was resumed, and the callsign or name it could not have back. It gets both back unless an open pane
+holds either now: no pane is drawn the callsign or the name of a closed pane that can still be
+reopened, but a pane can be renamed to one. `--focus` puts the keyboard on it. `--list` lists what
+can be reopened, newest first, with what each ran, where, and for how much longer.
+
+A reopen starts the pane only once whatever ran in it has ended, so an agent closed a moment ago is
+never resumed beside itself. That takes a few seconds at most: a closed pane's programs are killed
+three seconds after they are asked to end.
+
+Only a pane somebody closed is remembered, from the window, `pane close`, `tab close` or the API,
+and not one whose program ended on its own. Its daemon remembers it for `reopen_closed_minutes` in
+the config file, an hour unless that says otherwise, and through a restart of the daemon; at most
+64 at a time, so a busy hour can push the oldest out sooner. A maker brought back takes back its
+helpers on its own machine, quiet again as they were, whichever of them is reopened first.
+
+The window has it as Reopen Closed Pane in the Pane menu, on `cmd+shift+t`, with Recently Closed
+beside it listing each pane that can be reopened. A program reopens a pane with the API's
+`pane.reopen` (`muster docs api`).
+
 ## A pane that has gone dark
 
 A pane draws what a bridge feeds it, and a bridge dies with the connection carrying it. Muster

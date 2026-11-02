@@ -6,7 +6,7 @@
 
 use crate::AgentState;
 use crate::attention::HumanNotice;
-use crate::mirror::backend::{Pane, PaneId, Progress, Tab, TabId};
+use crate::mirror::backend::{ClosedPane, Pane, PaneId, Progress, Tab, TabId};
 
 /// One thing a daemon says happened.
 ///
@@ -19,8 +19,9 @@ pub enum BackendEvent {
     PaneOpened(Pane),
     /// A pane's whole record, as it is now.
     PaneChanged(Pane),
-    /// A pane is gone, however it went: closed by a request, or its program ended.
-    PaneClosed(PaneId),
+    /// A pane is gone, however it went: closed by a request, or its program ended. With what its
+    /// daemon remembers of it for a reopen, when it does.
+    PaneClosed(PaneId, Option<ClosedPane>),
     TabOpened(Tab),
     /// A tab's whole record: its label, its tree, its zoom.
     TabChanged(Tab),

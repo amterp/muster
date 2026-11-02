@@ -350,6 +350,19 @@ pub enum BackendIntent {
         then: Option<String>,
     },
 
+    /// Brings back a pane its daemon remembers closing, under its id, callsign and name, where it
+    /// was ([`crate::mirror::ClosedPane`]).
+    ///
+    /// The daemon's to do, because it holds what was remembered and decides where the pane goes:
+    /// its tab may have changed since it closed.
+    ReopenPane {
+        /// Its id, or its callsign as it closed.
+        pane: String,
+        /// A tab to make when it needs one, which the window mints and takes before it asks, as
+        /// for [`BackendIntent::CreateTab`].
+        tab: TabId,
+    },
+
     /// Restarts the agent in a pane, in the session it reported: the daemon ends it and types the
     /// session's resume at the shell it leaves, the command a daemon restart would run.
     ///
@@ -536,6 +549,21 @@ pub struct Outcome {
     pub created_tab: Option<TabId>,
     /// What a restart did, which nothing on screen says once the agent is back.
     pub restarted: Option<Restarted>,
+    /// What a reopen brought back beyond the pane it made.
+    pub reopened: Option<Reopened>,
+}
+
+/// What a daemon did to reopen a pane, beyond making it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reopened {
+    /// The tab it went into.
+    pub tab: TabId,
+    /// Its agent's session was started again.
+    pub resumed: bool,
+    /// Its callsign and its name as it closed, when an open pane held either and it came back
+    /// without it.
+    pub callsign_taken: Option<String>,
+    pub name_taken: Option<String>,
 }
 
 /// What a daemon did to restart a pane's agent.

@@ -25,10 +25,10 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HideHelpers, HidePane, LeaveConversation, MoveTab, QuietPane, ReadDaemons, ReadPane,
-    ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, Request, ResizePane,
-    RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar,
-    UpgradeMuster, WatchPanes, ZoomPane, request,
+    HideHelpers, HidePane, LeaveConversation, MoveTab, QuietPane, ReadClosedPanes, ReadDaemons,
+    ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, ReopenPane, Request,
+    ResizePane, RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane,
+    ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -808,6 +808,26 @@ enum Doing {
         pane: Option<String>,
     },
 
+    /// Bring back a pane closed in the last hour, under its name and callsign, where it was,
+    /// running its agent's session again
+    //
+    // `--pane` names a closed pane, which no window holds, so the window resolves it against
+    // what each machine remembers rather than against the panes open (`typed_panes` leaves it).
+    Reopen {
+        /// The pane to bring back, by its callsign or id as it closed, or else the one closed
+        /// most recently in this window
+        #[arg(long, value_name = "REF", value_parser = reference, conflicts_with = "list")]
+        pane: Option<String>,
+
+        /// List the closed panes that can be brought back, newest first, instead
+        #[arg(long)]
+        list: bool,
+
+        /// Move the window's keyboard to it, bringing its tab on screen
+        #[arg(long, conflicts_with = "list")]
+        focus: bool,
+    },
+
     /// Put a pane where another one is, without ending what is running in either
     //
     // One verb for both outcomes, because the window has one request for them: which of the
@@ -1357,6 +1377,15 @@ fn pane(
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ReattachPane::default()
         })),
+        Doing::Reopen { list: true, .. } => {
+            send(request::Payload::ReadClosedPanes(ReadClosedPanes::default()))
+        }
+        Doing::Reopen { pane, focus, list: false } => {
+            send(request::Payload::ReopenPane(ReopenPane {
+                pane: pane.clone().unwrap_or_default(),
+                take_focus: *focus,
+            }))
+        }
         Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()

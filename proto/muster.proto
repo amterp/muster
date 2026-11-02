@@ -109,6 +109,8 @@ message Request {
     LeaveConversation leave_conversation = 98;
     ShowConversation show_conversation = 99;
     AttentionShown attention_shown = 102;
+    ReopenPane reopen_pane = 103;
+    ReadClosedPanes read_closed_panes = 104;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -381,6 +383,66 @@ message Restarted {
 
   // The line typed at the pane's shell.
   string typed = 4;
+}
+
+// Brings back a pane its daemon remembers closing, on any machine this window is attached to:
+// under its id, callsign and name, in its directory and back where it was in its tab, running its
+// agent's session again with the flags it ran with (`muster_daemon.proto`, PaneRequest.Reopen).
+// A tab it needs is this window's.
+//
+// Answered with Reopened, once it is back, which can take a few seconds: it starts once what ran
+// in it has ended. Refused when no attached machine remembers a closed pane by that name, or the
+// one that does is too old to reopen it.
+message ReopenPane {
+  // Its id, or its callsign as it closed. Empty: the one closed most recently.
+  string pane = 1;
+
+  // Puts the keyboard on it once it is back, bringing its tab on screen.
+  bool take_focus = 2;
+}
+
+// What a ReopenPane brought back.
+message Reopened {
+  string pane_id = 1;
+  string daemon_id = 2;
+  string callsign = 3;
+
+  // Its agent's session was started again.
+  bool resumed = 4;
+
+  // Its callsign and its name as it closed, when an open pane held either and it came back
+  // without it. Empty otherwise.
+  string callsign_taken = 5;
+  string name_taken = 6;
+}
+
+// Every closed pane a ReopenPane can bring back, on every machine this window is attached to.
+// Answered with ClosedPanes.
+message ReadClosedPanes {}
+
+// Newest first.
+message ClosedPanes {
+  repeated ClosedPane panes = 1;
+}
+
+message ClosedPane {
+  string pane_id = 1;
+  string daemon_id = 2;
+  string callsign = 3;
+
+  // The name somebody gave it, if anybody did.
+  string label = 4;
+  string cwd = 5;
+
+  // The agent it ran; empty for none.
+  string agent = 6;
+
+  // Reopening it starts its agent's session again.
+  bool resumes = 7;
+
+  // When it closed, and the latest it can be reopened: milliseconds since 1970.
+  uint64 closed_at_ms = 8;
+  uint64 until_ms = 9;
 }
 
 // Takes a pane out of every window, its agent still running, into the list of hidden panes.
@@ -1742,6 +1804,8 @@ message Response {
     LayoutMoved layout_moved = 23;
     Restarted restarted = 24;
     MessageBoxDraft draft = 30;
+    Reopened reopened = 31;
+    ClosedPanes closed_panes = 32;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.

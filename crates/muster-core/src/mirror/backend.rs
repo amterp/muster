@@ -459,6 +459,33 @@ pub struct Snapshot {
     /// What waits for the human, by group, in each group with anything waiting (MIP-4,
     /// section 10). Empty from a daemon over ssh, since the human is homed where the app runs.
     pub human: BTreeMap<String, HumanNotice>,
+    /// The closed panes a reopen can still bring back, newest first.
+    pub closed: Vec<ClosedPane>,
+}
+
+/// The most closed panes a daemon remembers, which forgets the oldest past it without saying so
+/// (`muster_daemon_proto::CLOSED_PANES_KEPT`, which the daemon's client asserts this matches).
+pub const CLOSED_PANES_KEPT: usize = 64;
+
+/// A closed pane its daemon remembers, so that a reopen can bring it back under its id, its
+/// callsign and its name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosedPane {
+    pub id: PaneId,
+    /// The tab it was in as it closed, which may be gone.
+    pub tab: TabId,
+    pub callsign: String,
+    /// The name somebody gave it.
+    pub label: Option<String>,
+    pub cwd: String,
+    /// The agent it ran, by the name detection gave it.
+    pub agent: Option<String>,
+    /// Reopening it starts its agent's session again.
+    pub resumes: bool,
+    /// When it closed, and the latest it can be reopened: milliseconds since 1970 on its
+    /// daemon's clock.
+    pub closed_at_ms: u64,
+    pub until_ms: u64,
 }
 
 /// How much of the backend's truth Muster currently has.

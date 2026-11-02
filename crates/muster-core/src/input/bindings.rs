@@ -115,6 +115,12 @@ pub enum Action {
     /// lets it ask again. A toggle, like zoom.
     QuietPane,
     ClosePane,
+    /// Brings back the pane closed most recently on any machine this window shows, while its
+    /// daemon still remembers it: under its name and callsign, in its directory and its place,
+    /// running its agent's session again, with the keyboard on it.
+    ///
+    /// Carried out by the core, as `muster pane reopen` is.
+    ReopenPane,
     NextPane,
     PreviousPane,
     FocusLeft,
@@ -213,7 +219,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 65] = [
+    pub const ALL: [Action; 66] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -233,6 +239,7 @@ impl Action {
         Action::HidePane,
         Action::QuietPane,
         Action::ClosePane,
+        Action::ReopenPane,
         Action::NextPane,
         Action::PreviousPane,
         Action::FocusLeft,
@@ -311,6 +318,7 @@ impl Action {
             Action::HidePane => "hide_pane",
             Action::QuietPane => "quiet_pane",
             Action::ClosePane => "close_pane",
+            Action::ReopenPane => "reopen_pane",
             Action::NextPane => "next_pane",
             Action::PreviousPane => "previous_pane",
             Action::FocusLeft => "focus_left",
@@ -427,6 +435,8 @@ impl Action {
             // name, and free in both keymaps - Ghostty's ⌘⇧ chords on macOS leave R alone.
             Action::RenameTab => Some(Chord::new(Key::KeyR, shifted)),
             Action::ClosePane => Some(Chord::new(Key::KeyW, command)),
+            // A browser's chord for putting back what ⌘W closed, and ⌘W closes a pane here.
+            Action::ReopenPane => Some(Chord::new(Key::KeyT, shifted)),
             Action::NextPane => Some(Chord::new(Key::BracketRight, command)),
             Action::PreviousPane => Some(Chord::new(Key::BracketLeft, command)),
             Action::FocusLeft => Some(Chord::new(Key::ArrowLeft, optioned)),

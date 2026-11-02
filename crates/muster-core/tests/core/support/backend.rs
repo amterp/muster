@@ -10,7 +10,7 @@ use muster_core::AgentState;
 use muster_core::attention::HumanNotice;
 use muster_core::composition::{Daemon, Endpoint};
 use muster_core::mirror::backend::{
-    AgentFacts, CopyNode, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
+    AgentFacts, ClosedPane, CopyNode, LayoutNode, Pane, PaneId, Snapshot, SplitAxis, Tab, TabId,
 };
 use serde_json::Value;
 
@@ -66,6 +66,23 @@ pub(crate) fn read_snapshot(given: &Value) -> Snapshot {
             .flatten()
             .map(|(group, notice)| (group.clone(), read_human_notice(notice)))
             .collect(),
+        closed: collect(given, "closed", read_closed),
+    }
+}
+
+/// A closed pane its daemon remembers: `{ "id": "p2", "callsign": "otter", "untilMs": 60 }`.
+pub(crate) fn read_closed(given: &Value) -> ClosedPane {
+    let number = |key: &str| given.get(key).and_then(Value::as_u64).unwrap_or_default();
+    ClosedPane {
+        id: PaneId::new(text(given, "id")),
+        tab: TabId::new(text(given, "tab")),
+        callsign: text(given, "callsign"),
+        label: given.get("label").and_then(Value::as_str).map(str::to_string),
+        cwd: text(given, "cwd"),
+        agent: given.get("agent").and_then(Value::as_str).map(str::to_string),
+        resumes: given.get("resumes").and_then(Value::as_bool).unwrap_or(false),
+        closed_at_ms: number("closedAtMs"),
+        until_ms: number("untilMs"),
     }
 }
 

@@ -150,6 +150,7 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     hiding_and_quiet_are_asked_of_the_daemon(&here);
     an_agent_is_restarted_by_the_daemon(&here);
     panes_are_made_renamed_and_closed_by_the_daemon(&here);
+    a_closed_pane_is_reopened_by_the_daemon(&here);
     helpers_are_made_by_the_daemon(&here);
 
     let refused = refused_with(&here.muster(&["pane", "read"]), 1);
@@ -477,6 +478,33 @@ fn panes_are_made_renamed_and_closed_by_the_daemon(here: &Here) {
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
     let refused = refused_with(&here.muster(&["pane", "rename", "--pane", "p9nobody", "x"]), 1);
     assert!(refused.contains("no pane called p9nobody"), "{refused}");
+}
+
+/// A closed pane is listed and brought back with no window, by its callsign or as the one closed
+/// most recently, under its id and callsign.
+fn a_closed_pane_is_reopened_by_the_daemon(here: &Here) {
+    let made = made_id(here, &["--pane", "p1", "--name", "reopened"]);
+    let callsign = callsign_of(here, &made);
+    ok(&here.muster(&["pane", "close", "--pane", &made]));
+
+    let listed = ok(&here.muster(&["pane", "reopen", "--list"]));
+    assert!(listed.starts_with(&format!("{callsign}  reopened  a shell")), "{listed}");
+    let listed: Value =
+        serde_json::from_str(&ok(&here.muster(&["--json", "pane", "reopen", "--list"]))).unwrap();
+    assert_eq!(listed["closed"][0]["pane"], json!(made), "{listed}");
+
+    assert_eq!(ok(&here.muster(&["pane", "reopen", "--pane", &callsign])).trim(), callsign);
+    let back = snapshot(&mut here.daemon.connect());
+    let record = back.panes.iter().find(|pane| pane.pane == made).expect("back under its id");
+    assert_eq!(record.label.as_deref(), Some("reopened"));
+
+    ok(&here.muster(&["pane", "close", "--pane", &made]));
+    let said: Value =
+        serde_json::from_str(&ok(&here.muster(&["--json", "pane", "reopen"]))).unwrap();
+    assert_eq!((&said["pane"], &said["callsign"]), (&json!(made), &json!(callsign)), "{said}");
+    let refused = refused_with(&here.muster(&["pane", "reopen", "--pane", "p9nobody"]), 1);
+    assert!(refused.contains("p9nobody"), "{refused}");
+    ok(&here.muster(&["pane", "close", "--pane", &made]));
 }
 
 /// A pane's helpers are made with no window as with one: hidden, in one tab named for their maker,

@@ -57,6 +57,8 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::QuietPane(_)
                     | request::Payload::RenamePane(_)
                     | request::Payload::ClosePane(_)
+                    | request::Payload::ReopenPane(_)
+                    | request::Payload::ReadClosedPanes(_)
             )
         ),
     }
@@ -120,6 +122,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
             let pane = named(&restart.pane_id, "restarted")?;
             respond(restart_agent(&socket, pane, restart)?)
         }
+        // With no window there is no keyboard to move, so `take_focus` asks for nothing here, and
+        // a tab the pane needs joins the next window that opens.
+        Some(request::Payload::ReopenPane(reopen)) => respond(reopen_pane(&socket, &reopen.pane)?),
+        Some(request::Payload::ReadClosedPanes(_)) => respond(closed_panes(&snapshot(&socket)?)),
         Some(request::Payload::HidePane(hide)) => {
             let pane = named(&hide.pane_id, "hidden")?;
             respond(hide_pane(&socket, pane)?)
@@ -513,6 +519,70 @@ fn restart_agent(
         (daemon_proto::Outcome::Done, _) => ok(),
         _ => failure(answer.reason),
     })
+}
+
+/// Reopens a closed pane this machine's daemon remembers, by its id or callsign, or the one closed
+/// most recently, as a window's reopen does.
+fn reopen_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
+    let pane = if pane.is_empty() {
+        let Some(newest) = snapshot(socket)?.closed.into_iter().next() else {
+            return Ok(failure(
+                "no pane closed on this machine can be reopened, so nothing was: none closed \
+                 recently enough, or each was reopened already. `reopen_closed_minutes` in the \
+                 config says how long a closed pane can be reopened."
+                    .to_string(),
+            ));
+        };
+        newest.pane
+    } else {
+        pane.to_string()
+    };
+    let answer = asked_of_one_since(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::Reopen(
+            daemon_proto::pane_request::Reopen {
+                pane,
+                tab: Minter::new(Mint::Drawn).tab().to_string(),
+            },
+        )),
+        daemon_proto::version::REOPENS_PANES,
+        "reopen a closed pane",
+    )?;
+    Ok(match (answer.outcome(), answer.detail) {
+        (daemon_proto::Outcome::Done, Some(daemon_proto::answer::Detail::Reopened(reopened))) => {
+            Response {
+                payload: Some(response::Payload::Reopened(muster_proto::Reopened {
+                    pane_id: reopened.pane,
+                    daemon_id: String::new(),
+                    callsign: reopened.callsign,
+                    resumed: reopened.resumed,
+                    callsign_taken: reopened.callsign_taken.unwrap_or_default(),
+                    name_taken: reopened.name_taken.unwrap_or_default(),
+                })),
+            }
+        }
+        _ => failure(answer.reason),
+    })
+}
+
+/// The closed panes this machine's daemon can still reopen, newest first.
+fn closed_panes(snapshot: &daemon_proto::Snapshot) -> Response {
+    let panes = snapshot
+        .closed
+        .iter()
+        .map(|closed| muster_proto::ClosedPane {
+            pane_id: closed.pane.clone(),
+            daemon_id: String::new(),
+            callsign: closed.callsign.clone(),
+            label: closed.label.clone().unwrap_or_default(),
+            cwd: closed.cwd.clone(),
+            agent: closed.agent.clone().unwrap_or_default(),
+            resumes: closed.resumes,
+            closed_at_ms: closed.closed_at_ms,
+            until_ms: closed.until_ms,
+        })
+        .collect();
+    Response { payload: Some(response::Payload::ClosedPanes(muster_proto::ClosedPanes { panes })) }
 }
 
 /// Moves a pane into a new hidden tab of its own, as a window's hide does. A hidden pane is left

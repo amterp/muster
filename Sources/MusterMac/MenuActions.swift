@@ -69,9 +69,9 @@ public enum MenuActions {
   private static let fixed: [String: Described] = [
     "new_window": Described(
       title: "New Window", selector: #selector(MusterWindow.newWindow(_:)), group: .window),
-    // No chord: ⌘⇧T is what a browser puts on reopening a tab, and Muster's tabs are somebody
-    // else's to reopen - the daemon holds them and they were never gone. Binding it to a window
-    // would be one keystroke meaning two things across two apps.
+    // No chord: ⌘⇧T is what a browser puts on reopening what ⌘W closed, which in Muster is a
+    // pane, so it reopens a pane (`reopen_pane`). Binding it to a window would be one keystroke
+    // meaning two things across two apps.
     "reopen_window": Described(
       title: "Reopen Closed Window", selector: #selector(MusterWindow.reopenWindow(_:)),
       group: .window),
@@ -121,6 +121,8 @@ public enum MenuActions {
       title: "Quiet Pane", selector: #selector(MusterWindow.quietPane(_:)), group: .pane),
     "close_pane": Described(
       title: "Close Pane", selector: #selector(MusterWindow.closePane(_:)), group: .pane),
+    "reopen_pane": Described(
+      title: "Reopen Closed Pane", selector: #selector(MusterWindow.reopenPane(_:)), group: .pane),
     "next_pane": Described(
       title: "Next Pane", selector: #selector(MusterWindow.focusNextPane(_:)), group: .pane),
     "previous_pane": Described(

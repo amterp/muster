@@ -14,7 +14,7 @@ use muster_core::Key;
 use muster_core::input::{InputEvent, InputSink, NotSent};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Directory, Grid, InTree, Maker, MoveDestination, Outcome,
-    Refusal, Restarted, Side,
+    Refusal, Reopened, Restarted, Side,
 };
 use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
@@ -265,6 +265,11 @@ impl DaemonBackend {
         mirror.pane(pane).is_some_and(|held| held.quiet)
     }
 
+    fn is_hidden_tab(&self, tab: &TabId) -> bool {
+        let mirror = self.mirror.lock().unwrap_or_else(PoisonError::into_inner);
+        mirror.tab(tab).is_some_and(|held| held.hidden)
+    }
+
     fn is_zoomed(&self, pane: &PaneId) -> bool {
         let mirror = self.mirror.lock().unwrap_or_else(PoisonError::into_inner);
         mirror
@@ -455,6 +460,36 @@ impl BackendChannel for DaemonBackend {
                     _ => None,
                 };
                 Ok(Outcome { restarted, ..Outcome::default() })
+            }
+            BackendIntent::ReopenPane { pane, tab } => {
+                self.speaks_since(
+                    muster_daemon_proto::version::REOPENS_PANES,
+                    "reopen a closed pane",
+                )?;
+                let reopen = pane_request::Reopen { pane, tab: tab.to_string() };
+                let service = Service::Pane(proto::PaneRequest {
+                    request: Some(pane_request::Request::Reopen(reopen)),
+                });
+                // Seconds, at most: the pane starts once what ran in it has ended.
+                let answer = self.ask_within(service, RESTART_PATIENCE)?;
+                let Some(answer::Detail::Reopened(reopened)) = answer.detail else {
+                    return done;
+                };
+                let tab = TabId::new(reopened.tab);
+                // A tab it made that no window shows, as a helper's, is no window's to take.
+                let shown = reopened.made_tab && !self.is_hidden_tab(&tab);
+                Ok(Outcome {
+                    created: Some(PaneId::new(reopened.pane)),
+                    callsign: Some(reopened.callsign),
+                    created_tab: shown.then(|| tab.clone()),
+                    reopened: Some(Reopened {
+                        tab,
+                        resumed: reopened.resumed,
+                        callsign_taken: reopened.callsign_taken,
+                        name_taken: reopened.name_taken,
+                    }),
+                    ..Outcome::default()
+                })
             }
             BackendIntent::QuietPane { pane, quiet } => {
                 self.hides_and_quiets("make a pane quiet")?;

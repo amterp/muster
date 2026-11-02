@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 
 use crate::AgentState;
 use crate::attention::HumanNotice;
-use crate::mirror::backend::{Health, LayoutNode, Pane, PaneId, Progress, Snapshot, Tab, TabId};
+use crate::mirror::backend::{
+    CLOSED_PANES_KEPT, ClosedPane, Health, LayoutNode, Pane, PaneId, Progress, Snapshot, Tab, TabId,
+};
 use crate::mirror::event::{BackendEvent, Change};
 use crate::mirror::ordered::Ordered;
 use crate::mirror::restart::Restart;
@@ -42,6 +44,9 @@ pub struct Mirror {
     stopping: bool,
     /// What waits for the human, by group, as the daemon last said.
     human: BTreeMap<String, HumanNotice>,
+    /// The closed panes the daemon remembers for a reopen, newest first. One stays here past its
+    /// time; [`Mirror::closed`] leaves it out.
+    closed: Vec<ClosedPane>,
     health: Health,
     /// Why the health is what it is, for anyone who has to say so out loud. Empty when
     /// connected, because a live connection needs no excuse.
@@ -78,6 +83,7 @@ impl Mirror {
         self.unplaced.clear();
         let previous_progress = std::mem::take(&mut self.progress);
         let previous_human = std::mem::replace(&mut self.human, snapshot.human);
+        self.closed = snapshot.closed;
         let new_run = self.instance.is_some_and(|held| held != snapshot.instance);
         self.instance = Some(snapshot.instance);
         let restored_from_file = snapshot.restored_from_file;
@@ -172,6 +178,12 @@ impl Mirror {
         changes
     }
 
+    /// The closed panes the daemon remembers for a reopen at `now_ms`, on its clock: newest
+    /// first.
+    pub fn closed(&self, now_ms: u64) -> impl Iterator<Item = &ClosedPane> {
+        self.closed.iter().filter(move |closed| closed.until_ms > now_ms)
+    }
+
     /// What waits for the human in `group`, as the daemon last said: a count of 0 once they read
     /// it, and nothing once they leave it.
     pub fn human_notice(&self, group: &str) -> Option<&HumanNotice> {
@@ -192,10 +204,17 @@ impl Mirror {
 
     fn apply_event(&mut self, event: BackendEvent) -> Vec<Change> {
         match event {
-            BackendEvent::PaneOpened(pane) | BackendEvent::PaneChanged(pane) => {
+            BackendEvent::PaneOpened(pane) => {
+                self.closed.retain(|closed| closed.id != pane.id);
                 self.upsert_pane(pane)
             }
-            BackendEvent::PaneClosed(id) => {
+            BackendEvent::PaneChanged(pane) => self.upsert_pane(pane),
+            BackendEvent::PaneClosed(id, remembered) => {
+                self.closed.retain(|closed| closed.id != id);
+                if let Some(remembered) = remembered {
+                    self.closed.insert(0, remembered);
+                    self.closed.truncate(CLOSED_PANES_KEPT);
+                }
                 self.unplaced.remove(&id);
                 self.progress.remove(&id);
                 match self.panes.remove(&id) {

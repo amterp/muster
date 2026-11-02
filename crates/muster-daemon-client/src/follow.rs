@@ -687,6 +687,15 @@ fn send_settings(
     if previous.is_none_or(|previous| previous.human_name != settings.human_name) {
         sent.push(control.set_human_name(human_name(settings)));
     }
+    // An older daemon remembers no closed pane, and would refuse the setting every time.
+    let remembers = control.welcome().protocol.unwrap_or_default().minor
+        >= muster_daemon_proto::version::REOPENS_PANES;
+    if remembers
+        && previous
+            .is_none_or(|previous| previous.reopen_closed_minutes != settings.reopen_closed_minutes)
+    {
+        sent.push(control.set_reopen_closed(settings.reopen_closed_minutes));
+    }
     sent
 }
 

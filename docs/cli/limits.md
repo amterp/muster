@@ -331,6 +331,20 @@ attached to.
 in the tab in one request, and it reaches any tab the window holds. With no `--tab` it closes the
 tab the keyboard is in, which is what the menu item means.
 
+## A reopened pane keeps its conversation, not its screen
+
+`muster pane reopen` starts a closed pane again in a new terminal, so what was on its screen and in
+its scrollback is gone. What comes back is what its daemon wrote down as it closed: its id,
+callsign, name, directory and place, and the session its agent's harness reported, which the
+harness resumes with the conversation in it. An agent that reported no session, which takes its
+harness's adapter, comes back as a shell, and so does one whose directory is gone, since its
+session would find no conversation anywhere else.
+
+A pane that closed out of a tab spanning machines comes back in a tab of its own: the window
+arranges such a tab, and the pane's daemon cannot put it back into the window's tree. A maker
+reopened takes back only its helpers on its own machine; a helper on another machine stays listed
+as its maker's and goes on asking for you, as it did once its maker closed.
+
 ## Reattaching takes the pane from whatever is drawing it
 
 `muster pane reattach` asks for a bridge, and a bridge asked for after the first one takes the

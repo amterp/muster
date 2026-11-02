@@ -1,9 +1,11 @@
 //! The mirror is the core's picture of daemon truth, and everything above it renders from
 //! that picture. Cases and their reasoning live in corpus/conformance/mirror.json.
 
-use crate::support::backend::{read_human_notice, read_pane, read_snapshot, read_tab, text};
+use crate::support::backend::{
+    read_closed, read_human_notice, read_pane, read_snapshot, read_tab, text,
+};
 use conformance::{Conformance, fields};
-use muster_core::mirror::backend::{PaneId, Progress, ProgressState, TabId};
+use muster_core::mirror::backend::{CLOSED_PANES_KEPT, PaneId, Progress, ProgressState, TabId};
 use muster_core::mirror::{BackendEvent, Change, Mirror, Restored};
 use serde_json::{Map, Value, json};
 
@@ -53,6 +55,7 @@ fn mirror_conformance() {
             ("stopping", mirror.stopping().then_some(Value::Bool(true))),
             ("progress", progress(&mirror)),
             ("human", human(&mirror)),
+            ("closed", closed(&mirror)),
             ("changes", Some(json!(changes.iter().map(describe).collect::<Vec<_>>()))),
         ]))
     });
@@ -117,6 +120,31 @@ fn progress(mirror: &Mirror) -> Option<Value> {
         })
         .collect();
     (!said.is_empty()).then_some(Value::Object(said))
+}
+
+/// A daemon forgets its oldest closed pane past its cap without an event, so the mirror forgets
+/// it too rather than offer a reopen the daemon would refuse.
+#[test]
+fn the_mirror_keeps_no_more_closed_panes_than_a_daemon_remembers() {
+    let mut mirror = Mirror::new();
+    for n in 0..=CLOSED_PANES_KEPT {
+        let id = format!("p{n}");
+        let remembered = read_closed(&json!({ "id": id, "callsign": format!("c{n}"),
+                                              "closedAtMs": n, "untilMs": u64::MAX }));
+        mirror.apply(BackendEvent::PaneClosed(PaneId::new(id), Some(remembered)));
+    }
+    let kept: Vec<String> = mirror.closed(0).map(|closed| closed.id.to_string()).collect();
+    assert_eq!(kept.len(), CLOSED_PANES_KEPT);
+    assert_eq!(kept.first().map(String::as_str), Some(format!("p{CLOSED_PANES_KEPT}").as_str()));
+    assert!(!kept.iter().any(|id| id == "p0"), "the oldest is forgotten: {kept:?}");
+}
+
+/// The closed panes the daemon remembers, newest first, as `p2 otter`; absent when none is.
+/// Asked at `now` 30, so a case can hold one whose time is up.
+fn closed(mirror: &Mirror) -> Option<Value> {
+    let listed: Vec<String> =
+        mirror.closed(30).map(|closed| format!("{} {}", closed.id, closed.callsign)).collect();
+    (!listed.is_empty()).then(|| json!(listed))
 }
 
 /// What waits for the human, per group, when anything does.
@@ -208,7 +236,10 @@ fn read_event(given: &Value) -> BackendEvent {
     match text(given, "kind").as_str() {
         "paneOpened" => BackendEvent::PaneOpened(read_pane(given)),
         "paneChanged" => BackendEvent::PaneChanged(read_pane(given)),
-        "paneClosed" => BackendEvent::PaneClosed(PaneId::new(text(given, "id"))),
+        "paneClosed" => BackendEvent::PaneClosed(
+            PaneId::new(text(given, "id")),
+            given.get("remembered").map(read_closed),
+        ),
         "tabOpened" => BackendEvent::TabOpened(read_tab(given)),
         "tabChanged" => BackendEvent::TabChanged(read_tab(given)),
         "tabClosed" => BackendEvent::TabClosed(TabId::new(text(given, "id"))),

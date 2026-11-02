@@ -296,6 +296,7 @@ public enum PaneRefusal {
   public static let hideHelpers = "The helpers were not hidden"
   public static let split = "The pane was not split"
   public static let close = "The pane was not closed"
+  public static let reopen = "No pane was reopened"
   public static let move = "The pane was not moved"
   public static let moveToNewTab = "The pane was not moved to a new tab"
   public static let compact = "The agent was not compacted"

@@ -336,6 +336,12 @@ impl Control {
         })))
     }
 
+    pub fn set_reopen_closed(&self, minutes: u32) -> Pending {
+        self.ask(session(session_request::Request::SetReopenClosed(proto::SetReopenClosed {
+            minutes,
+        })))
+    }
+
     pub fn set_compact_at(&self, percent: Option<f32>) -> Pending {
         self.ask(session(session_request::Request::SetCompactAt(proto::SetCompactAt { percent })))
     }

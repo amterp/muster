@@ -41,6 +41,9 @@ holds, and while others are free it passes over:
 - the callsign of a pane closed recently, so one still in somebody's messages does not reach a
   new pane straight away.
 
+It never draws the callsign or the name of a closed pane that can still be reopened, which comes
+back under its callsign (`muster docs agents`, "Bringing back a closed pane").
+
 Panes made while their machines were not both attached to a window can still share a callsign,
 and `otter@devenv` then says which, by the machine name below; a callsign two panes share is
 refused, naming each one.
@@ -51,8 +54,9 @@ several panes share is refused, naming each by its callsign. What a pane cannot 
 another pane's callsign, which would always be matched first.
 
 The id looks like `p1w3r07bsd`. Muster mints it rather than borrowing the daemon's own, it is
-unique across every machine a window shows, and it is never reused, where a callsign is free
-again once its pane closes. A script that holds on to a pane should keep its id. `muster window
+unique across every machine a window shows, and it is never given to another pane, where a
+callsign is free again once its pane closes and can no longer be reopened. A pane reopened comes
+back under its own id. A script that holds on to a pane should keep its id. `muster window
 --json` carries all three, as `pane`, `callsign` and `name`.
 
 Every command that acts on a pane takes `--pane`. Leaving it out means the pane the command is

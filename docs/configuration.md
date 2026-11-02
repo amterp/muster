@@ -25,6 +25,7 @@ clipboard_write = "deny"       # allow (the default) | deny: may a program set t
 name_sessions = false          # the default true: naming a pane names its agent's session
 compact_at = 80                # compact an agent once its context is this full; omit for never
 resume_agents = false          # the default true: a restart brings an agent back in its session
+reopen_closed_minutes = 10     # the default 60: how long a closed pane can be reopened; 0 for never
 human_name = "Alex"            # what messages call you beside @human; omit for your login name
 pane_padding = 2               # points between a pane's text and its edges; 0 fits the most rows
 scrollback_bytes = 50000000    # history a pane keeps; omit for the daemon's own answer
@@ -96,7 +97,7 @@ muted = false                  # silences all five, without forgetting which you
 `[keymap]` is partial, so a file that names one action rebinds one action. Chords are
 modifiers and a key, in any order and any case, spelled the way you would say them: `cmd`,
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `close_window`, `new_tab`,
-`next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `next_pane`,
+`next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `reopen_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
 `numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `send_message`, `leave_conversation`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
@@ -139,10 +140,11 @@ nobody has asked for it: it ends every pane in the tab, and a chord that destroy
 is one somebody reaches by accident. `cmd+w` stays on `close_pane`, where the damage is one
 pane and the muscle memory is everybody's.
 
-`reopen_window` is the fifth. `cmd+shift+t` is what a browser puts on reopening a *tab*, and
-Muster's tabs belong to the daemon and were never gone - so binding it to a window would make
-one keystroke mean two things across two apps. The menu carries it, and `muster window reopen`
-is the same act from a script.
+`reopen_window` is the fifth. `cmd+shift+t` is what a browser puts on reopening what `cmd+w`
+closed, which in Muster is a pane, so the chord is `reopen_pane`'s: it brings back the pane closed
+most recently, while its daemon remembers it (`reopen_closed_minutes`, below). Binding it to a
+window as well would make one keystroke mean two things. The menu carries `reopen_window`, and
+`muster window reopen` is the same act from a script.
 
 `quit_and_close_sessions` is the sixth, and it is the only one unbound for safety rather
 than for parity. Quitting Muster leaves every session running - that is the whole promise, and `cmd+q`
@@ -549,6 +551,13 @@ Claude Code says how to resume it so far (`muster docs harnesses`), and it needs
 hooks, which report the session. The daemon does the restarting, so it is handed the answer as a
 setting, as `name_sessions` is.
 
+`reopen_closed_minutes` is how long a pane somebody closed can be brought back, by
+`reopen_pane`, `muster pane reopen` or the API (`muster docs agents`). Its daemon remembers the pane
+that long, through a restart of the daemon too, and forgets it once it is reopened. An hour by
+default: what a closed pane's record holds is small, and a longer window forgives more. `0`
+remembers none. A change applies to panes closed after it. The daemon does the remembering, so it
+is handed the minutes as a setting, as `resume_agents` is.
+
 `human_name` is what messages between agents call you where they show you: `muster msg who`, and
 the framing of `read` and `log`, which a transcript is. It goes beside your address rather than
 in place of it - `Alex (@human)` - because an agent reading the transcript has to know what to
@@ -663,7 +672,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]`, `name_sessions`, `compact_at`, `resume_agents`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions`, `compact_at`, `resume_agents`, `reopen_closed_minutes`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

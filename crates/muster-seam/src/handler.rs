@@ -183,6 +183,7 @@ fn leaves_the_conversation(payload: &request::Payload, origin: Origin) -> bool {
         | request::Payload::PressNumberedChord(_)
         | request::Payload::FocusHistory(_) => true,
         request::Payload::CreateTab(made) => made.take_focus && origin == Origin::Window,
+        request::Payload::ReopenPane(reopen) => reopen.take_focus && origin == Origin::Window,
         request::Payload::SplitPane(made) => made.take_focus && origin == Origin::Window,
         _ => false,
     }
@@ -445,6 +446,8 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
         request::Payload::RestartAgent(restart) => restart_agent(window, restart),
+        request::Payload::ReopenPane(reopen) => reopen_pane(window, &reopen),
+        request::Payload::ReadClosedPanes(_) => read_closed_panes(window),
         request::Payload::HidePane(hide) => hide_pane(window, &hide),
         request::Payload::ShowPane(show) => show_pane(window, &show),
         request::Payload::ShowHelpers(show) => show_helpers(window, &show),
@@ -628,6 +631,84 @@ fn restarted(pane: &PaneId, outcome: Outcome) -> Response {
             typed: restarted.typed,
         })),
     }
+}
+
+/// Brings back a pane a machine this window shows remembers closing: the one named, by its id or
+/// its callsign as it closed, or else the one this window closed most recently, or failing that
+/// the one any closed most recently. A tab it needs is this
+/// window's, and the keyboard goes to it only when asked.
+fn reopen_pane(window: WindowId, reopen: &proto::ReopenPane) -> Response {
+    let found = if reopen.pane.is_empty() {
+        session::newest_closed(window)
+    } else {
+        session::closed_panes(window)
+            .into_iter()
+            .find(|(_, pane)| pane.id.as_str() == reopen.pane || pane.callsign == reopen.pane)
+    };
+    let Some((daemon, pane)) = found else {
+        return Response::failure(if reopen.pane.is_empty() {
+            "no pane closed on a machine this window shows can be reopened, so nothing was: none \
+             closed recently enough, or each was reopened already. `reopen_closed_minutes` in the \
+             config says how long a closed pane can be reopened."
+                .to_string()
+        } else {
+            format!(
+                "no machine this window shows remembers a closed pane called {}, so nothing was \
+                 reopened: it was not closed, its time to be reopened is up, or it was reopened \
+                 already. `muster pane reopen --list` lists the ones that can be.",
+                reopen.pane
+            )
+        });
+    };
+    let keyboard = if reopen.take_focus { Keyboard::Follows } else { Keyboard::StaysPut };
+    let intent = BackendIntent::ReopenPane { pane: pane.id.to_string(), tab: session::mint_tab() };
+    let outcome = match session::submit(window, &daemon, &intent, keyboard) {
+        Ok(outcome) => outcome,
+        Err(refusal) => return relayed(Err(refusal)),
+    };
+    let reopened = outcome.created.clone().unwrap_or_else(|| pane.id.clone());
+    if reopen.take_focus
+        && let Err(refusal) = session::focus(window, &daemon, &reopened)
+    {
+        log::warn(
+            "pane.reopened.unfocused",
+            fields! {
+                "pane" => reopened.to_string(),
+                "why" => refusal.detail(),
+                "impact" => "the pane is back, and the keyboard stayed where it was",
+            },
+        );
+    }
+    let said = outcome.reopened.as_ref();
+    Response {
+        payload: Some(response::Payload::Reopened(proto::Reopened {
+            pane_id: reopened.to_string(),
+            daemon_id: daemon.to_string(),
+            callsign: outcome.callsign.clone().unwrap_or(pane.callsign),
+            resumed: said.is_some_and(|said| said.resumed),
+            callsign_taken: said.and_then(|said| said.callsign_taken.clone()).unwrap_or_default(),
+            name_taken: said.and_then(|said| said.name_taken.clone()).unwrap_or_default(),
+        })),
+    }
+}
+
+/// Every closed pane the machines this window shows can still reopen, newest first.
+fn read_closed_panes(window: WindowId) -> Response {
+    let panes = session::closed_panes(window)
+        .into_iter()
+        .map(|(daemon, pane)| proto::ClosedPane {
+            pane_id: pane.id.to_string(),
+            daemon_id: daemon.to_string(),
+            callsign: pane.callsign,
+            label: pane.label.unwrap_or_default(),
+            cwd: pane.cwd,
+            agent: pane.agent.unwrap_or_default(),
+            resumes: pane.resumes,
+            closed_at_ms: pane.closed_at_ms,
+            until_ms: pane.until_ms,
+        })
+        .collect();
+    Response { payload: Some(response::Payload::ClosedPanes(proto::ClosedPanes { panes })) }
 }
 
 /// Takes a pane out of every window into the hidden list, its agent still running. The keyboard

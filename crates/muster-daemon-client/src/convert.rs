@@ -10,8 +10,8 @@ use muster_core::daemon_settings::{DaemonSettings, Palette};
 use muster_core::input::{InputEvent, KeyAction, MouseAction, MouseButton, OptionAsAlt};
 use muster_core::intent::{Branch, Side};
 use muster_core::mirror::backend::{
-    Adapter, AgentFacts, CopyNode, Pane, PaneId, PendingCompaction, Progress, ProgressState,
-    Resume, SplitAxis, Tab, TabId, UnreadInput,
+    Adapter, AgentFacts, ClosedPane, CopyNode, Pane, PaneId, PendingCompaction, Progress,
+    ProgressState, Resume, SplitAxis, Tab, TabId, UnreadInput,
 };
 use muster_core::mirror::{BackendEvent, Restored, Snapshot};
 use muster_daemon_proto::{self as proto, event, input_event, pane_effect};
@@ -43,8 +43,29 @@ pub fn snapshot(snapshot: proto::Snapshot) -> (Snapshot, usize) {
             .map(|notice| (notice.group.clone(), human(notice)))
             .filter(|(_, notice)| notice.listed())
             .collect(),
+        closed: snapshot.closed.into_iter().map(closed).collect(),
     };
     (converted, unreadable)
+}
+
+const _: () = assert!(
+    muster_core::mirror::backend::CLOSED_PANES_KEPT == proto::CLOSED_PANES_KEPT,
+    "the window keeps as many closed panes as a daemon remembers, and no more"
+);
+
+/// A closed pane its daemon remembers for a reopen.
+pub fn closed(record: proto::ClosedPane) -> ClosedPane {
+    ClosedPane {
+        id: PaneId::new(record.pane),
+        tab: TabId::new(record.tab),
+        callsign: record.callsign,
+        label: record.label,
+        cwd: record.cwd,
+        agent: record.agent,
+        resumes: record.resumes,
+        closed_at_ms: record.closed_at_ms,
+        until_ms: record.until_ms,
+    }
 }
 
 /// What an event means to the mirror. None for one the mirror holds nothing about: a setting
@@ -55,7 +76,9 @@ pub fn event(event: proto::Event) -> Option<BackendEvent> {
     Some(match event.event? {
         event::Event::PaneOpened(opened) => BackendEvent::PaneOpened(pane(opened.pane?)),
         event::Event::PaneChanged(changed) => BackendEvent::PaneChanged(pane(changed.pane?)),
-        event::Event::PaneClosed(closed) => BackendEvent::PaneClosed(PaneId::new(closed.pane)),
+        event::Event::PaneClosed(gone) => {
+            BackendEvent::PaneClosed(PaneId::new(gone.pane), gone.remembered.map(closed))
+        }
         event::Event::TabOpened(opened) => BackendEvent::TabOpened(tab(opened.tab?)?),
         event::Event::TabChanged(changed) => BackendEvent::TabChanged(tab(changed.tab?)?),
         event::Event::TabClosed(closed) => BackendEvent::TabClosed(TabId::new(closed.tab)),

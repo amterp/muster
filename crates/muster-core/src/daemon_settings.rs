@@ -37,6 +37,8 @@ pub struct DaemonSettings {
     /// Whether a pane whose agent reported its session comes back running that session after a
     /// restart, rather than as a shell.
     pub resume_agents: bool,
+    /// How long a pane closed from now on can be reopened, in minutes; 0 for not at all.
+    pub reopen_closed_minutes: u32,
     /// What messages call the human, as the file names it; none for the login name, which
     /// only the side that sends this can look up.
     pub human_name: Option<String>,
@@ -91,6 +93,7 @@ impl DaemonSettings {
             name_sessions: config.panes.name_sessions,
             compact_at: config.panes.compact_at,
             resume_agents: config.panes.resume_agents,
+            reopen_closed_minutes: config.panes.reopen_closed_minutes,
             human_name: config.human_name.clone(),
         }
     }

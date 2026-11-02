@@ -1152,6 +1152,19 @@ extension MusterWindow {
     if let why = Core.hidePane() { tell(PaneRefusal.hide, why) }
   }
 
+  /// Brings back the pane closed most recently, with the keyboard on it.
+  @objc public func reopenPane(_ sender: Any?) {
+    reopen("")
+  }
+
+  /// Brings back a closed pane, by its id or callsign or else the one closed most recently, with
+  /// the keyboard on it.
+  func reopen(_ pane: String) {
+    Core.reopenPane(pane: pane, window: name) { [weak self] refused in
+      if let refused { self?.tell(PaneRefusal.reopen, refused) }
+    }
+  }
+
   /// Makes the pane the keyboard is on quiet, or lets it notify again.
   @objc public func quietPane(_ sender: Any?) {
     if let why = Core.quietPane() { tell(PaneRefusal.quiet, why) }

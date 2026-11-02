@@ -137,6 +137,9 @@ public enum AppMenu {
         if item.name == "reopen_window" {
           groupMenu.addItem(ReopenWindowMenu.shared.item())
         }
+        if item.name == "reopen_pane" {
+          groupMenu.addItem(RecentlyClosedMenu.shared.item())
+        }
       }
       if group == .tab {
         groupMenu.addItem(MoveTabMenu.shared.item())
@@ -419,6 +422,53 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
     if let refused, let window = picker as? MusterWindow {
       window.tell(TabRefusal.move, refused)
     } else if refused != nil {
+      NSSound.beep()
+    }
+  }
+}
+
+/// Recently Closed, which lists each closed pane a machine this window shows can still bring back,
+/// newest first, as it is when the menu opens.
+///
+/// Reopen Closed Pane brings back the one closed last; this reaches any of them, as `muster pane
+/// reopen --pane NAME` does.
+@MainActor
+public final class RecentlyClosedMenu: NSObject, NSMenuDelegate {
+  public static let shared = RecentlyClosedMenu()
+
+  func item() -> NSMenuItem {
+    let item = NSMenuItem(title: "Recently Closed", action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: "Recently Closed")
+    submenu.delegate = self
+    item.submenu = submenu
+    return item
+  }
+
+  /// Asked of the core each time, because panes close and their time to be reopened runs out
+  /// between one look and the next.
+  public func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    let closed = Core.closedPanes()
+    if closed.isEmpty {
+      let none = NSMenuItem(title: "No Closed Panes", action: nil, keyEquivalent: "")
+      none.isEnabled = false
+      menu.addItem(none)
+      return
+    }
+    for pane in closed {
+      let item = NSMenuItem(title: pane.title, action: #selector(reopen(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = pane.id
+      menu.addItem(item)
+    }
+  }
+
+  @objc private func reopen(_ sender: NSMenuItem) {
+    guard let pane = sender.representedObject as? String else { return }
+    Core.info("pane.reopen.picked", ["pane": pane])
+    if let window = Windows.inFront as? MusterWindow {
+      window.reopen(pane)
+    } else {
       NSSound.beep()
     }
   }

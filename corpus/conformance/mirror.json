@@ -2686,6 +2686,97 @@
           "paneRemoved:p1"
         ]
       }
+    },
+    {
+      "name": "a closed pane the daemon remembers is listed until it opens again or its time is up",
+      "why": "A reopen is asked of the window as often as of the CLI, and the window answers from its mirror: the Recently Closed menu, and which machine to send a reopen to. So the mirror holds each closed pane its daemon remembers, from the snapshot and from each close that says so, newest first; drops it when a pane of that id opens again, which is what a reopen does; and leaves out one whose time is up, without being told, since nothing is sent when that happens.",
+      "given": {
+        "snapshot": {
+          "tabs": [
+            {
+              "id": "t1",
+              "root": {
+                "axis": "columns",
+                "ratio": 0.5,
+                "first": "p1",
+                "second": "p4"
+              }
+            }
+          ],
+          "panes": [
+            {
+              "id": "p1",
+              "agentState": "idle",
+              "cwd": "/src"
+            },
+            {
+              "id": "p4",
+              "agentState": "idle",
+              "cwd": "/src"
+            }
+          ],
+          "closed": [
+            {
+              "id": "p2",
+              "callsign": "otter",
+              "untilMs": 60
+            },
+            {
+              "id": "p3",
+              "callsign": "heron",
+              "untilMs": 20
+            }
+          ]
+        },
+        "events": [
+          {
+            "kind": "tabChanged",
+            "id": "t1",
+            "root": "p1"
+          },
+          {
+            "kind": "paneClosed",
+            "id": "p4",
+            "remembered": {
+              "id": "p4",
+              "callsign": "maple",
+              "untilMs": 90
+            }
+          },
+          {
+            "kind": "paneOpened",
+            "id": "p2",
+            "agentState": "idle",
+            "cwd": "/src"
+          }
+        ]
+      },
+      "expect": {
+        "panes": [
+          "p1"
+        ],
+        "tabs": [
+          "t1"
+        ],
+        "paneTabs": {
+          "p1": "t1"
+        },
+        "agentStates": {
+          "p1": "idle"
+        },
+        "layouts": {
+          "t1": "p1"
+        },
+        "health": "connected",
+        "restoring": false,
+        "closed": [
+          "p4 maple"
+        ],
+        "changes": [
+          "layoutChanged:t1",
+          "paneRemoved:p4"
+        ]
+      }
     }
   ]
 }

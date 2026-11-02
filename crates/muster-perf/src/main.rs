@@ -490,6 +490,7 @@ fn full_window(panes: usize) -> (Composition, Mirror) {
         restored_from_file: false,
         restoring: false,
         human: std::collections::BTreeMap::new(),
+        closed: Vec::new(),
     });
 
     let daemon = DaemonId::new("local");
@@ -595,7 +596,7 @@ fn window_at_work(mirror: &Mirror) -> Vec<BackendEvent> {
         };
         events.push(BackendEvent::PaneOpened(opened));
         events.push(BackendEvent::TabChanged(split));
-        events.push(BackendEvent::PaneClosed(extra));
+        events.push(BackendEvent::PaneClosed(extra, None));
         events.push(BackendEvent::TabChanged(tab.clone()));
     }
     events.extend(panes.into_iter().map(BackendEvent::PaneChanged));
