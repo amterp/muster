@@ -6,21 +6,30 @@
     "backend",
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2si1toEWo",
+      "body": "Landed as 7f86f472 (daemon, API) and 382cf417 (window, CLI, Pane menu), gate green.\n\nChoices: a daemon remembers a pane closed at a client's asking for `reopen_closed_minutes` (default 60, 0 for none), at most 64, in its state file, so a record survives a restart and a handoff; a pane whose program exited is not remembered. A reopen brings it back under its id, callsign and name, in its directory and its place (exactly where it was in an unchanged tab, else beside an old neighbour, else at the tab's end; a gone tab gives a new tab with the old name), with its agent's session resumed whatever `resume_agents` says. It waits for the closed pane's processes to end first, at most 4 s, off the window's connection. A maker and its helpers rejoin in any order on one machine; helpers on another machine are not rejoined. API 0.3: `pane.reopen {operation, pane}` answers MadePane, and `pane.close` says `closed.reopen_until_ms`; close has no operation id, so a close retried after a reopen closes the pane again (the schema says so). The window offers `muster pane reopen [--pane] [--list] [--focus]`, Pane \u003e Reopen Closed Pane on cmd+shift+t, and a Recently Closed submenu; a bare reopen prefers the pane this window closed. Not tried in the running app.\n\nPlan reviewed by Codex gpt-6.1-sol xhigh (tier 2); code reviewed by Claude opus medium and Codex gpt-6.1-sol medium (tier 3), 8 P2 findings, all fixed before landing.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793632415447
+    }
+  ],
   "created_at_millis": 1793589609761,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-29: \"ability to bring back a specific pane by eg call sign if eg closed accidentally\".\n\nA pane closed by mistake is gone along with its agent. Nothing lists closed panes, and getting the conversation back means starting the harness in a new pane and resuming its session by hand, under a new given name and callsign. Wanted: reopen a closed pane by its callsign, from the CLI or a menu, which makes a pane in its directory, resumes its agent's session there with the flags it ran with, and gives back its given name and callsign. `muster pane restart` already resumes a session from what the harness reported, in the same pane; reopening needs the daemon to keep that record after the pane closes.\n\na_2pP7RbnOl covers getting the name and callsign back when you resume a conversation yourself, and the ⌘W card guards against the accidental close in the first place. Open: how long a closed pane's record is kept, and where the reopened pane goes in the layout.",
   "id": "a_2sQ4KIXD9",
-  "position": "a0",
+  "position": "YvC",
   "related": [
     "a_2pP7RbnOl",
     "a_2sQ4IJb9K"
   ],
   "title": "Bring back a pane closed by mistake, by its callsign",
   "type": "feature",
-  "updated_at_millis": 1793625238040,
+  "updated_at_millis": 1793632415609,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793589609761},
-    {"field":"column","value":"in-progress","at":1793625238040}
+    {"field":"column","value":"in-progress","at":1793625238040},
+    {"field":"column","value":"done","at":1793632415609}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-pane-s-rename-answer",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793630732134,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-02 once in a full gate on the Mac mini at load 17 to 31 (other agents' builds), on branch reopen-closed-pane, and it passed run alone straight after. It failed at crates/muster-daemon/tests/daemon/arranging.rs:420: the first event in the rename's answer was a PaneChanged for \"a\" with no label, `(None, \"first working build\")`, where the test expects the rename's own `(Some(\"🤖 A\"), \"first working build\")`.\n\nSo the answer carried another PaneChanged for the same pane ahead of the rename's, likely one the title change or a state change queued just before the rename landed. The test reads `asked.events[0]` and assumes it is the rename's. Have it look for the PaneChanged that carries the label, or wait until the title's change has been announced before renaming.",
+  "id": "a_2shK6Ieep",
+  "position": "b1X",
+  "title": "🎲 A pane's rename answer can lead with another PaneChanged under load",
+  "type": "bug",
+  "updated_at_millis": 1793630732134,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793630732134}
+  ]
+}
