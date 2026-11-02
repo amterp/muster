@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "msg-post-let-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1793628511620,
+  "creator": "Alexander Terp",
+  "description": "The owner, 2026-11-02, from Foreman's phone app: \"Maybe, from muster's perspective, maybe we want some sort of, uh, way to, um, allow the agents to recommend a specific option and express that through muster and inform and can render that.\"\n\nAgents asking the owner a question say which answer they recommend in prose (\"I recommend the first\"). Wanted: `muster msg post --option ... ` can mark one option as the recommended one, the API carries it on the post (`NewPost` and the logged post), Muster's window shows it, and a client such as Foreman's phone app renders it. `muster docs msg` tells agents to use it when they have a recommendation. Foreman card: a_2sgOdZ0hm.",
+  "id": "a_2sgOLDvsA",
+  "position": "aB",
+  "title": "msg post: let a question mark one offered answer as recommended",
+  "type": "feature",
+  "updated_at_millis": 1793628523596,
+  "history": [
+    {"field":"column","value":"next","at":1793628511620}
+  ]
+}

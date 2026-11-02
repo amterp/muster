@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "api-say-how-far-each",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "next",
+  "created_at_millis": 1793628511383,
+  "creator": "Alexander Terp",
+  "description": "The owner, 2026-11-02, from Foreman's phone app: \"I would like some indicator on my own messages to foreman. Um, Which ones have been read and which ones are still unread? through muster, or whatever.\"\n\nThe daemon already knows each member's place in each group (`muster msg who` says what waits unread on each member), but the API serves only the human's (`Unread.place`). Wanted: the API serves each member's place, as an event when it moves, so a client can show which of the human's posts each addressee has read. Foreman's app is the first client (Foreman card a_2sgOdU2D7).",
+  "id": "a_2sgOKq4hI",
+  "position": "aA",
+  "title": "API: say how far each member of a group has read",
+  "type": "feature",
+  "updated_at_millis": 1793628523369,
+  "history": [
+    {"field":"column","value":"next","at":1793628511383}
+  ]
+}
