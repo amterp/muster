@@ -12,6 +12,12 @@
       "body": "2026-10-24: the measurement is right (spawn returned to first answer, 1 ms polls; best-of-five absorbs CPU load but not swap, which lasts across all five). Owner's decision, not made: move this budget to --perf, which refuses a busy machine, or have ./dev print swap in use beside the load average so a failure explains itself.",
       "author": "Alexander Terp",
       "created_at_millis": 1792855654420
+    },
+    {
+      "id": "c_2snrnrRXY",
+      "body": "Again 2026-11-02 in a full gate on branch member-read-places at load 62.5 (other agents' builds): fastest of five daemons 27.7 ms against the 25 ms budget (all: 53.9, 27.9, 144.7, 27.7, 35.7 ms). Passed alone straight after. The gate ran under qm's default utility QoS clamp.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793646327034
     }
   ],
   "created_at_millis": 1792644050216,
@@ -21,7 +27,7 @@
   "position": "b1K",
   "title": "🎲 The daemon start budget failed under load with swap in use",
   "type": "bug",
-  "updated_at_millis": 1792855654420,
+  "updated_at_millis": 1793646327035,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792644050216}
   ]

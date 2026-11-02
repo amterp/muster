@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-burst-reaching-a",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793645979345,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-02 once in a full gate on the Mac mini at load 57 (other agents' builds on 6 performance cores), on branch member-read-places, and it passed run alone straight after. stream::a_burst_reaches_a_surface_that_keeps_up_whole in crates/muster-daemon-client/tests/daemon_client/stream.rs:152 panicked with \"the surface was held up past the grace in every run: the machine is too busy to judge\". The test refuses to pass when it cannot judge, which is right, but it then fails the whole gate for load alone. Decide whether it belongs in the gate at all under contention, or whether it should wait for the machine to calm, or measure the hold-up against the PTY's own baseline in the same run.",
+  "id": "a_2snikz52q",
+  "position": "b1Z",
+  "title": "🎲 A burst reaching a surface that keeps up fails the gate under heavy load",
+  "type": "bug",
+  "updated_at_millis": 1793645979345,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793645979345}
+  ]
+}

@@ -5,16 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2snxyGPZT",
+      "body": "Landed as 2a8c7324. API 0.3 topic TOPIC_PLACES (5): the snapshot's repeated Places (one per group with a member on this machine, member name -\u003e last entry read) and a Places event (arm 50) that replaces a group's map, after the Logged events it reaches. Only this machine's members; a member added back has passed posts it never read, so a client counts post N read by M when places[M] \u003e= N and no Joined entry for M follows N. A topic rather than a field and a TOPIC_MESSAGES event because the shipped-conversations test showed a new event would renumber API 0.2 clients' streams. Plan review pigeon (Codex gpt-6.1-sol xhigh): 1 P1 taken as that client rule. Code review papaya (Claude opus medium): correct, 2 P2 taken (place capped at the newest entry held; a group with no local member left out of the snapshot). Gate green (4th run, qm --steady; runs 2 and 3 each stopped on one load-only timing test: a_2snikz52q filed, a_2m1K0HjTA commented).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793646564129
+    }
+  ],
   "created_at_millis": 1793628511383,
   "creator": "Alexander Terp",
   "description": "The owner, 2026-11-02, from Foreman's phone app: \"I would like some indicator on my own messages to foreman. Um, Which ones have been read and which ones are still unread? through muster, or whatever.\"\n\nThe daemon already knows each member's place in each group (`muster msg who` says what waits unread on each member), but the API serves only the human's (`Unread.place`). Wanted: the API serves each member's place, as an event when it moves, so a client can show which of the human's posts each addressee has read. Foreman's app is the first client (Foreman card a_2sgOdU2D7).",
   "id": "a_2sgOKq4hI",
-  "position": "aA",
+  "position": "Yv9",
   "title": "API: say how far each member of a group has read",
   "type": "feature",
-  "updated_at_millis": 1793628523369,
+  "updated_at_millis": 1793646564280,
   "history": [
-    {"field":"column","value":"next","at":1793628511383}
+    {"field":"column","value":"next","at":1793628511383},
+    {"field":"column","value":"in-progress","at":1793643445618},
+    {"field":"column","value":"done","at":1793646564280}
   ]
 }
