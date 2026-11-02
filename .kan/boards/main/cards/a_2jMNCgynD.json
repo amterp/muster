@@ -42,6 +42,12 @@
       "body": "2026-10-27 re-triage: forwarded the previously uncaptured 2026-10-23 Lectern recurrence from pending feedback a_2doDlCl8P. After its integrator started a background subagent and ended its turn with `report --waiting`, worker done posts #21 at about 21:04 and #25 at about 21:08 stayed unread until the subagent finished at 21:33. Earlier posts arrived while background Bash gates ran. The screen and deciding rule were not captured. Also tracked by a_2j2ta8aPN, whose background-agent investigation now holds the newer `--waiting` report.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143804661
+    },
+    {
+      "id": "c_2shJColNq",
+      "body": "2026-11-02, from Foreman's integrator (tooling-feedback a_2o3vIWdkx): 'Heads up' boxes over four of five Claude Code workers' prompts within two hours. Escape is ignored, and one ctrl+c leaves the box and shows 'Press Ctrl-C again to exit'. What clears it is --key 0 (typed into the prompt) then one ctrl+c, which leaves a 'Dismissed. 1/2/3/4/0' menu that holds neither rings nor /compact. Worth naming the box in muster window and pane wait, with that sequence.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793630697427
     }
   ],
   "created_at_millis": 1792250932025,
@@ -54,7 +60,7 @@
   ],
   "title": "Rings to an idle Claude Code pane wait minutes on 'its screen is not its prompt'",
   "type": "bug",
-  "updated_at_millis": 1793589627075,
+  "updated_at_millis": 1793630697427,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792250932025},
     {"field":"column","value":"next","at":1793589627075}
