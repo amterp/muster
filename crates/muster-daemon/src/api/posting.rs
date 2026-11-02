@@ -53,6 +53,7 @@ pub(super) fn post(
             }
         };
         let post = proto::msg_request::Post {
+            recommended: None,
             group: (!asked.group.is_empty()).then(|| asked.group.clone()),
             to,
             body,

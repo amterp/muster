@@ -61,6 +61,10 @@ pub const OPERATIONS: u32 = 9;
 /// nothing of why, so a client asks first.
 pub const ANSWERS_IN_WORDS: u32 = 10;
 
+/// The first minor whose daemon keeps the answer a question recommends. An older one drops it
+/// without a word, so a post recommending one is refused rather than sent to one.
+pub const RECOMMENDS_ANSWERS: u32 = 10;
+
 /// The first minor whose daemon remembers a closed pane and reopens it. An older one remembers
 /// none and does not know the request, so a client asks first.
 pub const REOPENS_PANES: u32 = 10;

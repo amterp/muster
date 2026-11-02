@@ -271,6 +271,8 @@ pub struct Draft<'a> {
     pub urgent: bool,
     /// Answers its author offers, which make it a question (MIP-9, section 6).
     pub answers: &'a [String],
+    /// The offered answer its author recommends, as written in `answers`.
+    pub recommended: Option<&'a str>,
     /// The question it answers, and the answer it picks.
     pub answering: Option<&'a Answering>,
     /// The program posting it, and the id it names the post by, for a post made through the API.
@@ -295,6 +297,7 @@ pub(crate) struct Content<'a> {
     pub body: &'a str,
     pub urgent: bool,
     pub answers: &'a [String],
+    pub recommended: Option<&'a str>,
     pub answering: Option<&'a Answering>,
     pub operation: Option<&'a Operation>,
 }
@@ -993,6 +996,7 @@ impl<S: Store> Messaging<S> {
         }
         check_body(draft.body)?;
         check_answers(draft.answers)?;
+        check_recommended(draft.answers, draft.recommended)?;
         if draft.answering.is_some() && !draft.answers.is_empty() {
             return Err(Refusal::AnswerOffersAnswers);
         }
@@ -1018,6 +1022,7 @@ impl<S: Store> Messaging<S> {
             body: draft.body,
             urgent: draft.urgent,
             answers: draft.answers,
+            recommended: draft.recommended,
             answering: draft.answering,
             operation: draft.operation,
         };
@@ -1063,6 +1068,8 @@ impl<S: Store> Messaging<S> {
         if unread > 0 {
             return Err(Refusal::Unread { group: group.to_string(), count: unread });
         }
+        // Again here, where the group is kept, for a post forwarded from another machine.
+        check_recommended(content.answers, content.recommended)?;
         if let Some(answering) = content.answering {
             if !content.answers.is_empty() {
                 return Err(Refusal::AnswerOffersAnswers);
@@ -1075,6 +1082,7 @@ impl<S: Store> Messaging<S> {
             body: content.body.to_string(),
             urgent,
             answers: content.answers.to_vec(),
+            recommended: content.recommended.map(str::to_string),
             answering: content.answering.cloned(),
             via: content.operation.map(|operation| operation.client.clone()),
             operation: content
@@ -1160,6 +1168,7 @@ impl<S: Store> Messaging<S> {
             body: body.to_string(),
             urgent: false,
             answers: Vec::new(),
+            recommended: None,
             answering: None,
             via: None,
             operation: None,
@@ -3703,6 +3712,23 @@ fn titled(typed: &str, presence: &dyn Presence) -> Option<Refusal> {
     }
     panes.sort_unstable();
     Some(Refusal::Titled { name: typed.to_string(), panes })
+}
+
+/// Refuses a recommendation that is not one of the post's offered answers, a post offering none
+/// included.
+pub(crate) fn check_recommended(
+    answers: &[String],
+    recommended: Option<&str>,
+) -> Result<(), Refusal> {
+    match recommended {
+        Some(recommended) if !answers.iter().any(|answer| answer == recommended) => {
+            Err(Refusal::RecommendedNotOffered {
+                recommended: recommended.to_string(),
+                answers: answers.to_vec(),
+            })
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Each answer a question offers is one button, and a reply names the one it picks by its words.

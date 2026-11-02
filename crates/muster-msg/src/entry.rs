@@ -29,6 +29,9 @@ pub enum What {
         /// Answers its author offers, which make it a question (MIP-9, section 6).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         answers: Vec<String>,
+        /// The offered answer its author recommends, as written in `answers`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recommended: Option<String>,
         /// The question it answers, and the answer it picks.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         answering: Option<Answering>,
@@ -150,8 +153,10 @@ mod tests {
     fn a_message_reads_with_or_without_answers() {
         let before = r#"{"seq":3,"at_ms":7,"kind":"message","author":"a","body":"hi"}"#;
         let read: Entry = serde_json::from_str(before).expect("a message from before reads");
-        let What::Message { answers, answering, .. } = read.what else { panic!("{read:?}") };
-        assert_eq!((answers, answering), (Vec::new(), None));
+        let What::Message { answers, recommended, answering, .. } = read.what else {
+            panic!("{read:?}")
+        };
+        assert_eq!((answers, recommended, answering), (Vec::new(), None, None));
 
         let reply = Entry {
             seq: 5,
@@ -162,6 +167,7 @@ mod tests {
                 body: "Answer: Skip it".to_string(),
                 urgent: false,
                 answers: vec!["Again?".to_string(), "No".to_string()],
+                recommended: Some("No".to_string()),
                 answering: Some(Answering { question: 3, answer: "Skip it".to_string() }),
                 via: None,
                 operation: None,
@@ -185,6 +191,7 @@ mod tests {
                 body: "Answer: neither, try the cache".to_string(),
                 urgent: false,
                 answers: Vec::new(),
+                recommended: None,
                 answering: Some(Answering { question: 3, answer: String::new() }),
                 via: None,
                 operation: None,

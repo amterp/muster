@@ -80,13 +80,22 @@ fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<(&'sta
         return Some(("operations_unsupported", words));
     }
     let in_words = matches!(asked, Asked::Post(post) if super::answers_in_words(post));
-    (in_words && speaks.minor < proto::version::ANSWERS_IN_WORDS).then(|| {
+    if in_words && speaks.minor < proto::version::ANSWERS_IN_WORDS {
         let words = format!(
             "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
              cannot keep an answer in words, with none of the question's answers picked. Nothing \
              was sent; update Muster there, or pick one of its answers"
         );
-        ("in_words_unsupported", words)
+        return Some(("in_words_unsupported", words));
+    }
+    let recommends = matches!(asked, Asked::Post(post) if post.recommended.is_some());
+    (recommends && speaks.minor < proto::version::RECOMMENDS_ANSWERS).then(|| {
+        let words = format!(
+            "this is done on {machine}, whose muster-daemon speaks protocol {speaks}, which \
+             cannot keep the answer a question recommends. Nothing was sent; update Muster \
+             there, or post without --recommend"
+        );
+        ("recommended_unsupported", words)
     })
 }
 
@@ -308,6 +317,14 @@ mod tests {
         assert_eq!(refused, Some("in_words_unsupported"));
         assert!(unkept(&in_words(""), current, "lap").is_none());
         assert!(unkept(&in_words("Yes"), older, "lap").is_none());
+        let recommending = Asked::Post(proto::msg_request::Post {
+            answers: vec!["Yes".to_string()],
+            recommended: Some("Yes".to_string()),
+            ..Default::default()
+        });
+        let refused = unkept(&recommending, older, "lap").map(|(code, _)| code);
+        assert_eq!(refused, Some("recommended_unsupported"));
+        assert!(unkept(&recommending, current, "lap").is_none());
     }
 
     #[test]

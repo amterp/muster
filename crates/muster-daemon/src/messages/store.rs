@@ -356,6 +356,7 @@ mod tests {
                 body: body.to_string(),
                 urgent: false,
                 answers: Vec::new(),
+                recommended: None,
                 answering: None,
                 via: None,
                 operation: None,

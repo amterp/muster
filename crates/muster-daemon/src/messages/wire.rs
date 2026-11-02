@@ -27,6 +27,7 @@ pub(super) fn call_to(call: &Call) -> Called {
             body,
             urgent,
             answers,
+            recommended,
             answering,
             cursor,
             head,
@@ -40,6 +41,7 @@ pub(super) fn call_to(call: &Call) -> Called {
             head,
             urgent,
             answers,
+            recommended,
             answering: answering.as_ref().map(answering_of),
             operation: operation.as_deref().map(operation_of),
         }),
@@ -70,6 +72,7 @@ pub(super) fn call_from(called: Called) -> Option<Call> {
             body: post.body,
             urgent: post.urgent,
             answers: post.answers,
+            recommended: post.recommended,
             answering: post.answering.map(answering_from),
             cursor: post.cursor,
             head: post.head,
@@ -115,6 +118,7 @@ fn entry_from(entry: msg_answer::Entry) -> Option<Entry> {
             body: message.body,
             urgent: message.urgent,
             answers: message.answers,
+            recommended: message.recommended,
             answering: message.answering.map(answering_from),
             via: message.via,
             operation: None,
@@ -366,6 +370,10 @@ pub(super) fn refusal_to(refusal: &Refusal) -> peer_reply::Refused {
             refused.existing = answer;
             refused.candidates = answers;
         }
+        Refusal::RecommendedNotOffered { recommended, answers } => {
+            refused.existing = recommended;
+            refused.candidates = answers;
+        }
         Refusal::NotAskedOf { name, group, question } => {
             refused.name = name;
             refused.group = group;
@@ -454,6 +462,9 @@ fn refusal_from(refused: peer_reply::Refused) -> Refusal {
         "no_such_question" => Refusal::NoSuchQuestion { group, question: count },
         "not_offered" => {
             Refusal::NotOffered { group, question: count, answer: existing, answers: candidates }
+        }
+        "recommended_not_offered" => {
+            Refusal::RecommendedNotOffered { recommended: existing, answers: candidates }
         }
         "not_asked_of" => Refusal::NotAskedOf { name, group, question: count },
         "already_answered" => {
@@ -566,6 +577,10 @@ mod tests {
             Refusal::AnswerTooLong { answer: "a long answer".into() },
             Refusal::BadAnswer { answer: "Yes".into() },
             Refusal::AnswerOffersAnswers,
+            Refusal::RecommendedNotOffered {
+                recommended: "Maybe".into(),
+                answers: vec!["Yes".into(), "No".into()],
+            },
             Refusal::NoSuchQuestion { group: "g".into(), question: 4 },
             Refusal::NotOffered {
                 group: "g".into(),
@@ -598,7 +613,8 @@ mod tests {
     }
 
     /// A forwarded post keeps the answers it offers and the one it picks, which the group's home
-    /// holds the reply to, and the program that made it with its operation id.
+    /// holds the reply to, the answer it recommends, and the program that made it with its
+    /// operation id.
     #[test]
     fn a_post_crosses_the_link_with_its_answers_and_operation() {
         let call = Call::Post {
@@ -608,6 +624,7 @@ mod tests {
             body: "Answer: Yes".into(),
             urgent: false,
             answers: vec!["Again?".into()],
+            recommended: Some("Again?".into()),
             answering: Some(muster_msg::Answering { question: 4, answer: "Yes".into() }),
             cursor: 6,
             head: 7,
@@ -638,6 +655,7 @@ mod tests {
                         body: "x".into(),
                         urgent: true,
                         answers: vec!["Yes".into(), "No".into()],
+                        recommended: Some("No".into()),
                         answering: None,
                         via: None,
                         operation: None,
@@ -652,6 +670,7 @@ mod tests {
                         body: "Answer: Yes".into(),
                         urgent: false,
                         answers: Vec::new(),
+                        recommended: None,
                         answering: Some(muster_msg::Answering {
                             question: 4,
                             answer: "Yes".into(),

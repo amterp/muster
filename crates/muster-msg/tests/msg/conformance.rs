@@ -207,6 +207,9 @@ fn refused(refusal: &Refusal) -> String {
         Refusal::NotOffered { group, question, answer, answers } => {
             format!("{group} #{question} {answer:?} (offers {})", answers.join("/"))
         }
+        Refusal::RecommendedNotOffered { recommended, answers } => {
+            format!("{recommended:?} (offers {})", answers.join("/"))
+        }
         Refusal::NotAskedOf { name, group, question } => format!("{name} {group} #{question}"),
         Refusal::AlreadyAnswered { group, question, by, answer } if answer.is_empty() => {
             format!("{group} #{question} by {by} in words")
@@ -244,7 +247,9 @@ fn action_word(action: Action) -> &'static str {
 
 fn entry(entry: &muster_msg::Entry) -> String {
     match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
+        What::Message {
+            author, to, body, urgent, answers, recommended, answering, via, ..
+        } => {
             let author = via.as_ref().map_or(author.clone(), |via| format!("{author} via {via}"));
             let to = if to.is_empty() { String::new() } else { format!("->{}", to.join(",")) };
             let urgent = if *urgent { " (urgent)" } else { "" };
@@ -259,6 +264,10 @@ fn entry(entry: &muster_msg::Entry) -> String {
                 String::new()
             } else {
                 format!(" [{}]", answers.join("/"))
+            };
+            let answers = match recommended {
+                Some(recommended) => format!("{answers} recommending {recommended}"),
+                None => answers,
             };
             format!("#{} {author}{to}{urgent}{answering}: {body}{answers}", entry.seq)
         }
@@ -699,6 +708,7 @@ fn step(service: &mut Messaging<Memory>, sessions: &Sessions, step: &Value, now:
                 body,
                 urgent,
                 answers: &answers,
+                recommended: text("recommended"),
                 answering: answering.as_ref(),
                 ..Draft::default()
             };

@@ -898,6 +898,11 @@ message MsgRequest {
     // `operations_unsupported` when the post would go to a machine whose daemon speaks a
     // protocol before 1.9, which would drop both.
     optional Operation operation = 7;
+    // Since 1.10. The offered answer its author recommends, as written in `answers`. Refused as
+    // `recommended_not_offered` when it is not one of them, and as `recommended_unsupported`
+    // when the group is kept on a machine whose daemon speaks a protocol before 1.10, which
+    // would drop it.
+    optional string recommended = 8;
   }
 
   // A program's operation id for a post (MIP-10, section 5).
@@ -1253,6 +1258,8 @@ message MsgAnswer {
     // Since 1.9. The program that posted it for its author, shown beside the author:
     // "Alex (@human) via foreman".
     optional string via = 7;
+    // Since 1.10. The offered answer its author recommends.
+    optional string recommended = 8;
   }
 
   message Members {
@@ -2462,6 +2469,8 @@ message PeerCall {
     optional MsgRequest.Answering answering = 9;
     // Since 1.9.
     optional MsgRequest.Operation operation = 10;
+    // Since 1.10.
+    optional string recommended = 11;
   }
 
   message Since {

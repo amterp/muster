@@ -15,7 +15,9 @@ use crate::names::{
     check_addressee, check_group, check_participant, is_human, is_machine, split_machine,
 };
 use crate::operations::Repeat;
-use crate::service::{Content, Draft, Group, Operation, check_answers, check_body};
+use crate::service::{
+    Content, Draft, Group, Operation, check_answers, check_body, check_recommended,
+};
 use crate::{
     Action, AnsweredWait, Answering, Caller, Change, Entry, HUMAN, Joined, Left, Liveness, MUSTER,
     Member, Messaging, Policy, Posted, Presence, Reach, Refusal, Removed, Store, Unread, Via, Wake,
@@ -87,18 +89,27 @@ impl Peer {
 
     fn entry(&self, entry: Entry) -> Entry {
         let what = match entry.what {
-            What::Message { author, to, body, urgent, answers, answering, via, operation } => {
-                What::Message {
-                    author: self.inward(&author),
-                    to: to.iter().map(|name| self.inward(name)).collect(),
-                    body,
-                    urgent,
-                    answers,
-                    answering,
-                    via,
-                    operation,
-                }
-            }
+            What::Message {
+                author,
+                to,
+                body,
+                urgent,
+                answers,
+                recommended,
+                answering,
+                via,
+                operation,
+            } => What::Message {
+                author: self.inward(&author),
+                to: to.iter().map(|name| self.inward(name)).collect(),
+                body,
+                urgent,
+                answers,
+                recommended,
+                answering,
+                via,
+                operation,
+            },
             What::Created { by } => What::Created { by: self.inward(&by) },
             What::Joined { who } => What::Joined { who: self.inward(&who) },
             What::Left { who } => What::Left { who: self.inward(&who) },
@@ -228,6 +239,7 @@ pub enum Call {
         body: String,
         urgent: bool,
         answers: Vec<String>,
+        recommended: Option<String>,
         answering: Option<Answering>,
         cursor: u64,
         head: u64,
@@ -323,7 +335,8 @@ pub struct Away {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
     Here,
-    Away(Away),
+    /// Boxed, since a post it carries is many times the size of the other variants.
+    Away(Box<Away>),
     /// No group by this name is here, and linked machines may keep one: the host asks each
     /// with [`Call::Find`], and joins `group@machine` if one does, or creates it here if none.
     Ask {
@@ -687,7 +700,7 @@ impl<S: Store> Messaging<S> {
         };
         self.save()?;
         let call = Call::Join { name, group: base(&key), head: self.head_of(&key), was };
-        Ok(Route::Away(Away { machine, call }))
+        Ok(Route::Away(Box::new(Away { machine, call })))
     }
 
     /// The pane whose place in the replica `key` a join as `name` takes: the caller's pane, when
@@ -781,12 +794,13 @@ impl<S: Store> Messaging<S> {
         if let Some(operation) = draft.operation {
             match self.operations.repeat(operation, caller.at_ms)? {
                 Some(Repeat::Posted { .. }) => return Ok(Route::Here),
-                Some(Repeat::Sent(away)) => return Ok(Route::Away(*away)),
+                Some(Repeat::Sent(away)) => return Ok(Route::Away(away)),
                 None => {}
             }
         }
         check_body(draft.body)?;
         check_answers(draft.answers)?;
+        check_recommended(draft.answers, draft.recommended)?;
         let author = self.acting(caller, presence)?;
         let group = draft.group.map(|group| self.locate(group)).transpose()?;
         let addressees =
@@ -821,6 +835,7 @@ impl<S: Store> Messaging<S> {
             body: draft.body.to_string(),
             urgent: draft.urgent,
             answers: draft.answers.to_vec(),
+            recommended: draft.recommended.map(str::to_string),
             answering: draft.answering.cloned(),
             operation: draft.operation.cloned().map(Box::new),
         };
@@ -841,7 +856,7 @@ impl<S: Store> Messaging<S> {
             }
             return Err(refusal);
         }
-        Ok(Route::Away(away))
+        Ok(Route::Away(Box::new(away)))
     }
 
     /// The call that has the home of `key` post Muster's notice `body` to `to`, members as this
@@ -1447,6 +1462,7 @@ impl<S: Store> Messaging<S> {
                 body,
                 urgent,
                 answers,
+                recommended,
                 answering,
                 cursor,
                 head,
@@ -1459,6 +1475,7 @@ impl<S: Store> Messaging<S> {
                     body,
                     urgent,
                     answers,
+                    recommended,
                     answering,
                     cursor,
                     head,
@@ -1680,6 +1697,7 @@ impl<S: Store> Messaging<S> {
             body,
             urgent,
             answers,
+            recommended,
             answering,
             cursor,
             head,
@@ -1706,6 +1724,7 @@ impl<S: Store> Messaging<S> {
             body: &body,
             urgent,
             answers: &answers,
+            recommended: recommended.as_deref(),
             answering: answering.as_ref(),
             operation: operation.as_deref(),
         };
@@ -1864,6 +1883,7 @@ struct Forwarded {
     body: String,
     urgent: bool,
     answers: Vec<String>,
+    recommended: Option<String>,
     answering: Option<Answering>,
     cursor: u64,
     head: u64,

@@ -1450,12 +1450,19 @@ fn unsupported(
         );
         return Some(("answers_unsupported", words));
     }
-    (answers_in_words(post) && speaks.minor < proto::version::ANSWERS_IN_WORDS).then(|| {
+    if answers_in_words(post) && speaks.minor < proto::version::ANSWERS_IN_WORDS {
         let words = format!(
             "{kept_on}, which cannot keep an answer in words, with none of the question's \
              answers picked. Update Muster there, or pick one of its answers"
         );
-        ("in_words_unsupported", words)
+        return Some(("in_words_unsupported", words));
+    }
+    (post.recommended.is_some() && speaks.minor < proto::version::RECOMMENDS_ANSWERS).then(|| {
+        let words = format!(
+            "{kept_on}, which cannot keep the answer a question recommends. Update Muster there, \
+             or post without --recommend"
+        );
+        ("recommended_unsupported", words)
     })
 }
 
@@ -1479,6 +1486,7 @@ fn draft_of<'a>(
         body: &post.body,
         urgent: post.urgent,
         answers: &post.answers,
+        recommended: post.recommended.as_deref(),
         answering,
         operation,
     }
@@ -2116,6 +2124,14 @@ pub(super) fn words(refusal: &Refusal) -> String {
              number there. `{}` shows it",
             messaging::command(LOG, &format!("--group {group}"))
         ),
+        Refusal::RecommendedNotOffered { recommended, answers } if answers.is_empty() => format!(
+            "the post recommends \"{recommended}\" but offers no answers; recommend one of its \
+             --option answers, or post without --recommend"
+        ),
+        Refusal::RecommendedNotOffered { recommended, answers } => format!(
+            "the post recommends \"{recommended}\", which is not one of its answers: {}",
+            answers.iter().map(|answer| format!("\"{answer}\"")).collect::<Vec<_>>().join(", ")
+        ),
         Refusal::NotOffered { group, question, answer, answers } => format!(
             "#{question} in {group} does not offer \"{answer}\"; it offers {}",
             answers.iter().map(|answer| format!("\"{answer}\"")).collect::<Vec<_>>().join(", ")
@@ -2194,17 +2210,18 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
 pub(super) fn entry_of(entry: &Entry) -> msg_answer::Entry {
     use msg_answer::entry::What as Said;
     let what = match &entry.what {
-        What::Message { author, to, body, urgent, answers, answering, via, .. } => {
-            Said::Message(msg_answer::Message {
-                author: author.clone(),
-                to: to.clone(),
-                body: body.clone(),
-                urgent: *urgent,
-                answers: answers.clone(),
-                answering: answering.as_ref().map(answering_of),
-                via: via.clone(),
-            })
-        }
+        What::Message {
+            author, to, body, urgent, answers, recommended, answering, via, ..
+        } => Said::Message(msg_answer::Message {
+            author: author.clone(),
+            to: to.clone(),
+            body: body.clone(),
+            urgent: *urgent,
+            answers: answers.clone(),
+            recommended: recommended.clone(),
+            answering: answering.as_ref().map(answering_of),
+            via: via.clone(),
+        }),
         What::Created { by } => Said::Created(by.clone()),
         What::Joined { who } => Said::Joined(who.clone()),
         What::Left { who } => Said::Left(who.clone()),
@@ -2427,6 +2444,24 @@ mod tests {
         assert_eq!(unsupported(&in_words, current, "review", "devenv"), None);
         let (code, _) = unsupported(&in_words, speaking(7), "review", "devenv").unwrap();
         assert_eq!(code, "answers_unsupported");
+    }
+
+    /// A question recommending one of its answers, sent to a daemon that would drop the
+    /// recommendation without a word, is refused here saying why instead.
+    #[test]
+    fn a_recommendation_to_a_machine_too_old_for_it_is_refused_with_its_own_code() {
+        let speaking = |minor| proto::Version { major: 1, minor };
+        let recommending = proto::msg_request::Post {
+            answers: vec!["Yes".to_string(), "No".to_string()],
+            recommended: Some("No".to_string()),
+            ..Default::default()
+        };
+        let older = speaking(proto::version::RECOMMENDS_ANSWERS - 1);
+        let (code, words) = unsupported(&recommending, older, "review", "devenv").unwrap();
+        assert_eq!(code, "recommended_unsupported");
+        assert!(words.contains("--recommend"), "{words}");
+        let current = speaking(proto::version::RECOMMENDS_ANSWERS);
+        assert_eq!(unsupported(&recommending, current, "review", "devenv"), None);
     }
 
     /// The window's core names the human and Muster to tell their messages apart, and depends

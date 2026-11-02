@@ -515,6 +515,30 @@
       ] }
     },
     {
+      "name": "a question may recommend one of its answers, which settles nothing",
+      "why": "An agent asking the human to choose usually has a choice it would make, and says so in prose a view cannot mark. A question may name one of its offered answers as the one its author recommends, so a view can draw it apart. It must be one the question offers, so a post offering none recommends nothing. The recommendation changes nothing about answering: any offered answer, or a reply in words, still settles the question.",
+      "given": { "steps": [
+        {"session": "a", "do": "join", "name": "a", "group": "g"},
+        {"session": "b", "do": "join", "name": "b", "group": "g"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "ship it?", "answers": ["Yes", "Not yet"], "recommended": "Not yet"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "which?", "answers": ["Yes", "Not yet"], "recommended": "Maybe"},
+        {"session": "a", "do": "post", "to": ["b"], "body": "ok?", "recommended": "Yes"},
+        {"session": "b", "do": "read"},
+        {"session": "b", "do": "post", "to": ["a"], "body": "Answer: Yes", "answering": {"question": 4, "answer": "Yes"}},
+        {"do": "log", "group": "g", "since": 3}
+      ] },
+      "expect": { "said": [
+        "a joined g (created)",
+        "b joined g",
+        "a posted #4 to g; woke b [g #4-4 x1 to-you:1 from a]",
+        "refused recommended_not_offered \"Maybe\" (offers Yes/Not yet)",
+        "refused recommended_not_offered \"Yes\" (offers )",
+        "b read g: #4 a->b: ship it? [Yes/Not yet] recommending Not yet",
+        "b posted #5 to g; woke a [g #5-5 x1 to-you:1 from b]",
+        "#4 a->b: ship it? [Yes/Not yet] recommending Not yet | #5 b->a (answering #4: Yes): Answer: Yes"
+      ] }
+    },
+    {
       "name": "a reply may answer a question in its own words, picking none of its answers",
       "why": "Somebody asked a question often has an answer it did not offer, typed or dictated, and that settles the question as a picked answer does, for the desk and every program alike. A reply with an empty answer answers in its own words, its body, and is held to everything else a reply is held to: the question was asked of its author, and it is the question's one answer, of either kind.",
       "given": { "steps": [
