@@ -12,6 +12,12 @@
       "body": "2026-10-27 re-triage: tooling feedback a_2neJkhNSM adds three 2026-10-24 instances in a kan round. A helper told \"nothing else is queued for slot 2, so stay idle\" ended its turn as asked; about 16 seconds later its maker got \"went idle without posting.\" These are turns started by a message needing no answer, rather than idle compactions or declared waits. Keep this case separate from a_2nUsIZXNY, fixed by a29fb3e4, and from the repeat-notice fix b84df279. Forwarded the feedback here.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143804388
+    },
+    {
+      "id": "c_2swvhlJNr",
+      "body": "2026-11-02, Foreman integrator cactus with helpers sequoia, guppy and quill: four more in 20 minutes. Twice the same case as this card: guppy and quill were told to hold until another worker's stage landed, did so, and each raised 'went idle without posting'. Twice a new variant: sequoia ended its turn waiting on its own two reviewer helpers (marble, blossom, one still working), which is waiting on work, not idle without reporting. Suggest skipping the notice while the helper has helpers of its own that are working, or have posted to it since it last reported.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793667926535
     }
   ],
   "created_at_millis": 1792709971945,
@@ -21,7 +27,7 @@
   "position": "b1c",
   "title": "A helper told to stay idle is reported to its maker as idle without posting",
   "type": "bug",
-  "updated_at_millis": 1793143804388,
+  "updated_at_millis": 1793667926535,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792709971945}
   ]
