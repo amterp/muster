@@ -31,10 +31,12 @@
                         "pane.close",
                         "pane.compact",
                         "pane.new",
+                        "pane.reopen",
                         "pane.restart",
                         "pane.send"
                       ],
-                      "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION"]
+                      "topics": ["TOPIC_PANES", "TOPIC_MACHINES", "TOPIC_MESSAGES", "TOPIC_ATTENTION", "TOPIC_PLACES"],
+                      "options": ["msg.post.answer_in_words", "msg.post.recommended"]
                     }
                   }
                 }

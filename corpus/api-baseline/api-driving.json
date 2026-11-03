@@ -1,12 +1,12 @@
 {
   "concept": "api-driving",
   "source": "authored",
-  "citation": "docs/mip/0010-api-for-other-tools.md, section 5; proto/muster_api.proto, its header's Requests and answers and Acting on a pane, and SendToPane, ClosePane, CompactAgent and RestartAgent",
+  "citation": "docs/mip/0010-api-for-other-tools.md, section 5; proto/muster_api.proto, its header's Requests and answers and Acting on a pane, and SendToPane, ClosePane, ReopenPane, CompactAgent and RestartAgent",
   "why": "`pane.send`, `pane.close`, `pane.compact` and `pane.restart` act on a pane that is already running, as `muster pane send`, `close`, `compact` and `restart` do. None carries an operation id, so what each answers, and which refusal code it gives, is all a client has to go on. Each case is a conversation in protobuf's canonical JSON; docs/testing.md has the steps and tokens.",
   "cases": [
     {
       "name": "a close's event reaches its sender before the answer, with the request's correlation id",
-      "why": "An answer comes after its events, and an event a request caused carries the request's correlation id on that connection only (the header, Requests and answers). So a client that closed a pane can tell its own close from anybody else's, and `through` names the event it was sent before the answer. Another subscriber hears the same close with no correlation id. A pane already gone is refused NOT_FOUND, and nothing else happens: closing takes no operation id, and asking again is safe.",
+      "why": "An answer comes after its events, and an event a request caused carries the request's correlation id on that connection only (the header, Requests and answers). So a client that closed a pane can tell its own close from anybody else's, and `through` names the event it was sent before the answer. Another subscriber hears the same close with no correlation id. A pane already gone is refused NOT_FOUND, and nothing else happens: closing takes no operation id, and asking again is safe until somebody reopens the pane. The close's answer says until when it can be reopened.",
       "given": {"daemon": {}},
       "expect": {
         "conversation": [
@@ -52,7 +52,15 @@
                   "paneClosed": {"pane": "$pane"}
                 }
               },
-              {"answer": {"correlation": "3", "outcome": "OUTCOME_DONE", "epoch": "$ours", "through": "1"}}
+              {
+                "answer": {
+                  "correlation": "3",
+                  "outcome": "OUTCOME_DONE",
+                  "epoch": "$ours",
+                  "through": "1",
+                  "closed": {"reopenUntilMs": "*"}
+                }
+              }
             ]
           },
           {
@@ -74,6 +82,66 @@
                   "refusal": "REFUSAL_NOT_FOUND"
                 }
               }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a closed pane is reopened under its id and callsign, once for each operation id",
+      "why": "`pane.reopen` brings back a pane closed within the time the person's config allows, as `muster pane reopen` does, under its old id and callsign (the schema's ReopenPane). It makes a pane, so it carries an operation id: a repeat of the id is answered ALREADY_SO with the same pane, so a client whose answer was lost asks again safely. Once reopened the pane is no longer remembered, so a reopen under a new id is refused NOT_FOUND, and one with no operation id is refused INVALID before anything happens.",
+      "given": {"daemon": {}},
+      "expect": {
+        "conversation": [
+          {
+            "as": "a",
+            "hello": {"kind": "KIND_API", "api": "$api", "client": {"name": "corpus"}},
+            "heard": [{"welcome": "*"}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "1", "pane": {"new": {"operation": "op-1", "run": "exec sleep 86400"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "1", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "2", "pane": {"close": {"pane": "$pane"}}},
+            "heard": [{"answer": {"correlation": "2", "outcome": "OUTCOME_DONE", "closed": {"reopenUntilMs": "*"}}}]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "3", "pane": {"reopen": {"pane": "$callsign"}}},
+            "heard": [
+              {"answer": {"correlation": "3", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_INVALID"}}
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "4", "pane": {"reopen": {"operation": "op-2", "pane": "$callsign"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "4", "outcome": "OUTCOME_DONE", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "5", "pane": {"reopen": {"operation": "op-2", "pane": "$callsign"}}},
+            "heard": [
+              {
+                "answer": {"correlation": "5", "outcome": "OUTCOME_ALREADY_SO", "made": {"pane": "$pane", "callsign": "$callsign"}}
+              }
+            ]
+          },
+          {
+            "as": "a",
+            "send": {"correlation": "6", "pane": {"reopen": {"operation": "op-3", "pane": "$pane"}}},
+            "heard": [
+              {"answer": {"correlation": "6", "outcome": "OUTCOME_REFUSED", "reason": "*", "refusal": "REFUSAL_NOT_FOUND"}}
             ]
           }
         ]

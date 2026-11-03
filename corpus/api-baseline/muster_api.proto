@@ -161,6 +161,14 @@
 // refused NOT_FOUND, and a compaction or restart asked twice is either carried out twice or
 // refused saying why.
 //
+// A pane closed when somebody asked is remembered for a while, an hour unless the person's
+// config says otherwise, and `pane.reopen` brings it back as `muster pane reopen` does: under
+// the same id and callsign, in its directory, running its agent's session again with the flags
+// it ran with, and back where it was in its tab. `pane.close` answers until when that can be
+// done. A reopened pane is the same pane, so a close sent again after its answer was lost, and
+// after somebody reopened the pane, closes it again: only a close whose fate is unknown is worth
+// sending again, and only soon after. A reopen carries an operation id, as `pane.new` does.
+//
 // A connection carries out its requests one at a time, in the order they were sent. A confirmed
 // send takes up to a second and a restart several, so a program that wants to read meanwhile
 // does so on a second connection.
@@ -319,6 +327,8 @@ enum Topic {
   TOPIC_MESSAGES = 3;
   // What waits on the human, and their presence at the desk.
   TOPIC_ATTENTION = 4;
+  // Since 0.3. Where each member of each group has read.
+  TOPIC_PLACES = 5;
 }
 
 // Requests about panes.
@@ -334,6 +344,8 @@ message PaneRequest {
     CompactAgent compact = 4;
     // "pane.restart": answered with RestartedAgent.
     RestartAgent restart = 5;
+    // "pane.reopen", since 0.3: answered with MadePane.
+    ReopenPane reopen = 6;
   }
 }
 
@@ -396,10 +408,29 @@ message SendToPane {
   bool confirm = 6;
 }
 
-// Closing a pane, which ends whatever runs in it.
+// Closing a pane, which ends whatever runs in it. Its DONE carries ClosedPane when the pane can
+// be reopened.
 message ClosePane {
   // The pane's id.
   string pane = 1;
+}
+
+// What a pane.close leaves to undo, since 0.3.
+message ClosedPane {
+  // The latest a pane.reopen can bring the pane back, in milliseconds since 1970 on the daemon's
+  // clock. Sooner when 64 panes closed after it push it out.
+  uint64 reopen_until_ms = 1;
+}
+
+// Bringing back a pane closed within the last hour, or what the person's config says, since 0.3.
+// Refused NOT_FOUND when no pane closed on this daemon is remembered by that name: never closed
+// here, its time up, or reopened already. It starts once what ran in it has ended, which takes
+// up to the few seconds a closed pane's programs are given, so its answer can take that long.
+message ReopenPane {
+  // Required: the header's "Operation ids" says why.
+  string operation = 1;
+  // The pane's id, or its callsign as it closed.
+  string pane = 2;
 }
 
 // Compacting the context of the agent in a pane, typed once the agent is idle at an empty
@@ -496,6 +527,8 @@ message Answer {
     RestartedAgent restarted = 14;
     // "msg.post".
     Posted posted = 15;
+    // "pane.close", when the pane can be reopened.
+    ClosedPane closed = 16;
   }
 }
 
@@ -545,6 +578,8 @@ message Snapshot {
   repeated Group groups = 12;
   // TOPIC_ATTENTION: what waits on the human now, and their presence.
   Attention attention = 13;
+  // TOPIC_PLACES: where each member has read, for each group with a member on this machine.
+  repeated Places places = 14;
 }
 
 message SourceStatus {
@@ -564,8 +599,8 @@ enum SourceState {
   SOURCE_STATE_UNREACHABLE = 4;
 }
 
-// One change. Topics' events take arms from 20 on: panes in the 20s, messages in the 30s and
-// attention in the 40s.
+// One change. Topics' events take arms from 20 on: panes in the 20s, messages in the 30s,
+// attention in the 40s and places in the 50s.
 message Event {
   uint64 epoch = 1;
   uint64 number = 2;
@@ -591,6 +626,8 @@ message Event {
     Asking asking = 40;
     Presence presence = 41;
     Shown shown = 42;
+    // TOPIC_PLACES.
+    Places places = 50;
   }
 }
 
@@ -685,6 +722,10 @@ message Facts {
   string waiting = 5;
   // Anything else it says, by name.
   map<string, string> other = 6;
+  // Since 0.3. The reasoning effort its model runs at, as its harness names it: Claude Code's
+  // low, medium, high, xhigh or max, Codex's minimal, low, medium, high or xhigh. Empty for a
+  // model that takes none. Shown beside `model`: "Opus 4.5 · high".
+  string effort = 7;
 }
 
 message UnreadInput {
@@ -733,7 +774,9 @@ message MsgRequest {
 //
 // A post refused for a reason the client can act on says so: NOT_FOUND for a group, participant
 // or question that does not exist, ANSWERED for a question that has its answer already, INVALID
-// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer).
+// for a post that could never be taken (an empty or 1 MiB body, an answer it does not offer, an
+// answer in words with no words), and UNSUPPORTED for an answer in words to a question kept on a
+// machine whose daemon is too old to keep one.
 // One kept on another machine is NOT_SENT when it never left this daemon and UNKNOWN when it
 // was sent and the reply was lost; asking again under the same id is safe in both. A post that
 // would make a group where the human is homed, when that is another machine, is refused
@@ -753,7 +796,8 @@ message NewPost {
   // answers, where this daemon holds a copy of the group, and otherwise whom the group's policy
   // rings.
   repeated string to = 3;
-  // At most 1 MiB. In a post answering a question, a note after the answer, and may be empty.
+  // At most 1 MiB. In a post picking a question's answer, a note after the answer, and may be
+  // empty; in one answering in words, the answer itself, and may not.
   string body = 4;
   // To reach its addressees while they work, where the group's policy lets its author.
   bool urgent = 5;
@@ -761,11 +805,26 @@ message NewPost {
   repeated string answers = 6;
   // The question it answers and the answer it picks. Its body is composed as `muster msg post
   // --answer` composes one, the answer first so the asker reads it with no parsing: "Answer:
-  // Yes", then a blank line and `body` when there is one. A question takes one answer, from
-  // somebody it was asked of: the home refuses a second with ANSWERED.
+  // Yes", then a blank line and `body` when there is one.
+  //
+  // Since 0.3, an `answering` with no `answer` picks none of the question's answers and answers
+  // in the post's own words, typed or dictated, as `muster msg post --answer Q` does: its body
+  // is composed "Answer: " and then `body`, which must hold more than white space. It settles
+  // the question as a picked answer does, for the desk and every client. A daemon serves this
+  // when its Welcome lists the option "msg.post.answer_in_words"; one before 0.3 refuses it
+  // INVALID, as an answer the question does not offer, and posts nothing.
+  //
+  // A question takes one answer of either kind, from somebody it was asked of: the home refuses
+  // a second with ANSWERED.
   optional Answering answering = 7;
   // The participant to post as. Empty is the human.
   string as = 8;
+  // Since 0.3. The offered answer its author recommends, as written in `answers`, for a view to
+  // draw apart; empty for none. It changes nothing about which answers settle the question, and
+  // one that is not among `answers` is refused INVALID. A daemon serves it when its Welcome lists
+  // the option "msg.post.recommended"; one before 0.3 ignores the field and posts the question
+  // without it, so a client asks there first.
+  string recommended = 9;
 }
 
 // What a post came to: its group, and its number there.
@@ -887,19 +946,23 @@ message Post {
   repeated string answers = 5;
   // The question it answers, and the answer it picks.
   Answering answering = 6;
-  // For a question in a Page: the number of the post that answered it. A question takes one
-  // answer. Absent from a Logged event, which comes before any answer; the answer's own Logged
-  // event says what it answers.
+  // For a question in a Page: the number of the post that answered it, by picking an answer or
+  // in its own words. A question takes one answer. Absent from a Logged event, which comes
+  // before any answer; the answer's own Logged event says what it answers.
   optional uint64 answered_by = 7;
   // The program that posted it for its author, by the name from its Hello: "foreman". Shown
   // beside the author, as attribution rather than identity: any program can give any name.
   optional string via = 8;
+  // Since 0.3. The offered answer its author recommends, as written in `answers`; empty for
+  // none.
+  string recommended = 9;
 }
 
 message Answering {
   // The question's number in the group.
   uint64 question = 1;
-  // The answer it picks, as the question offered it.
+  // The answer it picks, as the question offered it. Empty picks none: the post answers in its
+  // own words, its body (NewPost's `answering` says how it is composed).
   string answer = 2;
 }
 
@@ -957,6 +1020,22 @@ message GroupDeleted {
 message Logged {
   string group = 1;
   Entry entry = 2;
+}
+
+// Since 0.3 (TOPIC_PLACES). Where each member of a group on this machine has read, the human
+// included. As an event it is sent whenever a place moves or a member joins or leaves, after the
+// Logged event of every entry it reaches, and replaces what the client held for the group. A
+// group with no member on this machine, a deleted one among them, has no places: the snapshot
+// leaves it out, and an event with none takes it away.
+//
+// Joining starts a member's place at its Joined entry, so a place says nothing of what came
+// before: post N was read by member M when `places[M] >= N` and no Joined entry for M comes after
+// N. A member on another machine is absent, its place unknown here: its own daemon keeps it.
+message Places {
+  // The group, as requests on this connection name it.
+  string group = 1;
+  // The number of the last entry each member has read, by its name in the group's `members`.
+  map<string, uint64> places = 2;
 }
 
 // ---------------------------------------------------------------------------------------------
