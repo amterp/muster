@@ -18,6 +18,12 @@
       "body": "2026-11-01 re-triage: two more rounds hit this, from tooling feedback. In a parallel-work round in another project, three Claude Code workers posted 'slot N done' and ended their turns at an empty prompt, yet `muster window` kept each `waiting` on its old declared reason ('on review from laurel', 'on re-review from engine', 'on Codex review of FFI commits') for 34 s to 6 min after the report. In Foreman's round the same day, worker teal stayed `waiting` for 12+ minutes after posting 'slot 1 done' and through a `muster pane compact`, so `pane wait --until idle --timeout 300` timed out twice and stalled the integrator's compact-then-brief sequence.\n\nThis follows the documented rule (`docs/cli/agents.md`, under `pane wait`): a declared wait outlasts a turn Muster typed, such as a message wake, and then lasts up to 10 minutes. A worker waiting on its reviewer is woken by exactly such a turn, the review arriving, so the wait outlives the work it was for. The feedback suggests clearing the wait on Stop, but that would break every wait, since an agent declares one at the end of the turn it then stops. The fix has to tell a wake that delivers what the agent was waiting for from one that does not, or end a carried wait once the agent posts and ends its turn. teal's 12+ minutes is past the 10-minute cap: check whether teal declared again or the cap missed it. Moved to backlog-hi: integrators sequence on `--until idle`, and this times them out.",
       "author": "Alexander Terp",
       "created_at_millis": 1793589299515
+    },
+    {
+      "id": "c_2tEJQcOos",
+      "body": "2026-11-03: ending a carried wait once the agent posts and ends its turn would bring back the bug d590527b fixed. There a helper waiting on its own build was woken by an unrelated message from its maker, answered, and did not declare again, so it read idle with the build running and its maker was told it had gone idle without reporting. Answering is a post, so that rule clears the wait in exactly that case. The two cases differ in who sent the waking message: here it came from the thing waited on (the reviewer), there from someone else. Candidate fix: let a wait name the agent it waits on, `report --waiting \"\u003cwhat\u003e\" --until-message-from \u003cpane\u003e`, beside --until-exits; a message from that pane ends it and any other wake carries it as today. Awaiting the owner's go-ahead.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793709354221
     }
   ],
   "created_at_millis": 1793246116437,
@@ -27,7 +33,7 @@
   "position": "ZyG",
   "title": "A worker that posted its report and ended its turn still reads waiting on a wait it declared earlier",
   "type": "bug",
-  "updated_at_millis": 1793589299722,
+  "updated_at_millis": 1793709354222,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793246116437},
     {"field":"column","value":"backlog-hi","at":1793589299722}
