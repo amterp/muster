@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-rename-typed",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793683110131,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-02 once in a full gate on the Mac mini (`./release minor` for 0.21.0, first attempt) at load 39.4 on 6 performance cores, while other agents' builds ran. `muster-daemon` `compactions::a_rename_and_a_compaction_are_both_typed_in_turn` failed: `/rename builder` was typed twice before `/compact`, where the test expects it once. It passed run alone straight after, and the release's later gate passed.\n\nA doubled `/rename` is a real race rather than only a slow test: if the daemon can type a queued rename twice when its first typing is not seen in time, an agent's pane gets the command twice. Worth finding whether the retry that typed it again is the daemon's own (a rename re-sent after a prompt read that missed the first) or the test's. Filed by the Foreman integrator, from the release worker's report.",
+  "id": "a_2t3IhMvPf",
+  "position": "b2E",
+  "title": "🎲 A rename typed before a compaction was typed twice under load",
+  "type": "bug",
+  "updated_at_millis": 1793683110131,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793683110131}
+  ]
+}
