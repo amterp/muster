@@ -30,6 +30,44 @@ struct Agent {
 }
 
 impl Agent {
+    fn with_codex_session_commands() -> Agent {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut agent = Agent::in_a_pane();
+        let home = agent.daemon.root().join("home");
+        let path = home.join(".muster/agent-detection/claude.toml");
+        let fake = std::fs::read_to_string(&path).unwrap();
+        let codex = include_str!("../../../muster-detect/manifests/codex.toml");
+        let commands = codex.split_once("[session]").unwrap().1.split_once("[[rules]]").unwrap().0;
+        let (prefix, rest) = fake.split_once("[session]").unwrap();
+        let rules = rest.split_once("[[rules]]").unwrap().1;
+        // Keep the fake terminal, but exercise the session commands that actually ship for Codex.
+        std::fs::write(&path, format!("{prefix}[session]{commands}[[rules]]{rules}")).unwrap();
+        let binary = home.join(".muster/bin/codex");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$HOME/fake-codex-queued\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(
+            home.join(".profile"),
+            "PATH=\"$HOME/.muster/bin:$PATH\"\nexport PATH\nPS1='$ '\n",
+        )
+        .unwrap();
+        let reload = session(proto::session_request::Request::SendManifests(
+            proto::SendManifests::default(),
+        ));
+        let answer = agent.control.ask(reload);
+        assert!(matches!(answer.outcome(), proto::Outcome::Done | proto::Outcome::AlreadySo));
+        agent
+    }
+
+    fn codex_queued(&self) -> String {
+        std::fs::read_to_string(self.daemon.root().join("home/fake-codex-queued"))
+            .unwrap_or_default()
+    }
+
     /// A daemon with the fake agent idle in pane `p1`.
     fn in_a_pane() -> Agent {
         let agent = Agent::to_come();
@@ -265,6 +303,20 @@ impl Agent {
             other => panic!("expected a post's answer, got {other:?}"),
         }
     }
+}
+
+#[test]
+fn a_codex_post_uses_the_visible_prompt_with_an_old_session_reported() {
+    let mut agent = Agent::with_codex_session_commands();
+    agent.reports_session("old-conversation");
+    agent.post("p1", "the next assignment");
+
+    until_some("a typed wake or a queued copy", || {
+        (!agent.rung().is_empty() || !agent.codex_queued().is_empty()).then_some(())
+    });
+    assert!(agent.codex_queued().is_empty(), "queued to {}", agent.codex_queued());
+    assert_eq!(agent.rung().len(), 1);
+    assert_eq!(agent.read_in_its_pane(), ["integrator: the next assignment"]);
 }
 
 /// A blocked agent is at a dialog, and a Return would answer it. The message waits, and the
