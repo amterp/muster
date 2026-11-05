@@ -94,6 +94,11 @@ fn project_with(daemon: &Daemon, name: &str, hooks: &[&str], extra: &[&str]) -> 
         "-c".to_string(),
         format!("projects={{\"{}\"={{trust_level=\"trusted\"}}}}", folder.display()),
     ];
+    if let Ok(model) = std::env::var("MUSTER_CODEX_MODEL")
+        && !model.trim().is_empty()
+    {
+        arguments.extend(["--model".to_string(), model]);
+    }
     if !hooks.is_empty() {
         std::fs::write(folder.join(".codex/hooks.json"), merged(hooks)).unwrap();
         // Trusting a hook is a person's act in /hooks; a scratch folder's are trusted here.
@@ -379,8 +384,6 @@ fn an_urgent_post_reaches_codex_within_its_running_turn() {
     let mut control = daemon.connect();
     let networked = [
         "--no-daemon",
-        "--model",
-        "gpt-6.1-terra",
         "-a",
         "never",
         "-s",
@@ -493,8 +496,6 @@ fn message_worker() -> (Daemon, Control, Input, String) {
     let turns = r#"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"jq -r .session_id >> codex-prompt-sessions"}]}]}}"#;
     let extra = [
         "--no-daemon",
-        "--model",
-        "gpt-6.1-terra",
         "-a",
         "never",
         "-s",

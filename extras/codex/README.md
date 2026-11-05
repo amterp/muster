@@ -163,3 +163,6 @@ against whatever Codex is installed, that a pane with these hooks reads working 
 them and reports its context, that a draft holds delivery, that a post after `/new` reaches the new
 conversation without replay on resume, that an urgent post reaches Codex at work, and that the
 messaging hooks hand a sandboxed Codex what it was sent.
+
+The tier uses the installed default model. Set `MUSTER_CODEX_MODEL` to run its probes with a
+specific model, for example when choosing a faster model for these short scripted tasks.
