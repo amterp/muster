@@ -163,6 +163,70 @@ extension SurfaceGUITests {
 }
 
 extension SurfaceGUITests {
+  @MainActor
+  @Test("reports a web link with remote terminal state", arguments: [false, true], [false, true])
+  func aRemoteWebLinkIsReported(hyperlink: Bool, mouseReporting: Bool) async throws {
+    let renderer = try sharedRenderer()
+    // Tests sometimes missed an OSC8 link while another surface was still freeing. The cause
+    // is unknown, so keep fixture teardown separate from the link behavior being checked.
+    try await answered("the previous surface to finish freeing") { renderer.freesInFlight == 0 }
+    let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    let link =
+      hyperlink
+      ? "\\033]8;;https://example.com/muster\\007click-me-please\\033]8;;\\007"
+      : "https://example.com/muster"
+    let modes = mouseReporting ? "\\033[?1000h\\033[?1002h\\033[?1003h\\033[?1006h" : ""
+    let surface = try renderer.makeSurface(
+      in: view,
+      command:
+        "/bin/sh -c \"read ready; printf '\\033[H\\033[2J\\033]7;file://devenv/home/test\\007"
+        + modes + "\\033[5;12H" + link + "\\n'; sleep 10\"")
+    surface.setContentScale(2)
+    view.attach(surface, typeable: true)
+    let ready = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+      context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false,
+      keyCode: 0x24)!
+    surface.pressKey(ready, committed: nil, composing: false)
+    var reports: [SearchReport] = []
+    surface.onSearch = { reports.append($0) }
+    var opened: [OpenedLink] = []
+    view.onOpenLink = { opened.append($0) }
+    var hovered: [String] = []
+    view.onHoverLink = { if let url = $0 { hovered.append(url) } }
+
+    try await answered("the remote link to be drawn") {
+      surface.search(nil)
+      surface.search(hyperlink ? "click-me-please" : "https://example.com/muster")
+      return await polled(within: .milliseconds(250)) { reports.contains(.total(1)) }
+    }
+    surface.search(nil)
+    _ = surface.perform(.scrollToBottom)
+    var point = NSPoint.zero
+    try await answered("the link and the surface's 2x cell metrics to agree") {
+      guard let cell = surface.cellPixelSize else { return false }
+      point = NSPoint(
+        x: surface.padding + Double(cell.width) * 13.5 / 2,
+        y: 300 - surface.padding - Double(cell.height) * 4.5 / 2)
+      return surface.link(at: NSPoint(x: point.x, y: 300 - point.y))?.url
+        == "https://example.com/muster"
+    }
+    func event(_ type: NSEvent.EventType) -> NSEvent {
+      NSEvent.mouseEvent(
+        with: type, location: point, modifierFlags: .command, timestamp: 0,
+        windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    #expect(
+      surface.link(at: NSPoint(x: point.x, y: 300 - point.y))?.url == "https://example.com/muster")
+    view.mouseMoved(with: event(.mouseMoved))
+    view.mouseDown(with: event(.leftMouseDown))
+    view.mouseUp(with: event(.leftMouseUp))
+    try await answered("a remote link to open; hovered: \(hovered)") { !opened.isEmpty }
+    #expect(opened.first?.url == "https://example.com/muster")
+    #expect(opened.count == 1)
+    #expect(hovered.contains("https://example.com/muster"))
+  }
+
   /// libghostty finds the link under a cmd-click and reports it as a runtime action, which
   /// reaches the surface only through `rendererAction`. A shell that declined that action is a
   /// link that does nothing when clicked, which is what shipped until 0.11.0.

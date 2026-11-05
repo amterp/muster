@@ -299,7 +299,8 @@ alternate screen - is searched as that one screen, and its history is searchable
 the program gives the terminal back.
 
 **`cmd`-click a link in a pane to open it**, whether it is an address on the screen or an OSC 8
-hyperlink a program printed. Web and mail links open on this Mac, from a devenv pane too. A path
+hyperlink a program printed. Web links open even while a program has captured the mouse; ordinary
+clicks still belong to that program. Web and mail links open on this Mac, from a devenv pane too. A path
 opens only from a pane on this Mac, since from a devenv it names a file over there; and a file
 that would run code when opened, or a link hiding invisible characters, is refused with a beep.
 A hyperlink to another app's scheme, such as `vscode://`, asks first, because the screen shows

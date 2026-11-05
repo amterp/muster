@@ -10,6 +10,16 @@ import Testing
 
 @Suite("a cmd-clicked link")
 struct LinkPolicyTests {
+  @Test("captured web links recognize the scheme without changing case rules")
+  func webSchemes() {
+    for scheme in ["http", "https", "HTTP", "HTTPS"] {
+      #expect(LinkPolicy.isWebLink(OpenedLink(kind: .text, url: "\(scheme)://example.com")))
+    }
+    for url in ["file:///tmp/example", "vscode://example", "example.com", "mailto:me@example.com"] {
+      #expect(!LinkPolicy.isWebLink(OpenedLink(kind: .text, url: url)))
+    }
+  }
+
   private func decide(_ url: String, _ kind: OpenedLink.Kind = .text, here: Bool = true)
     -> LinkPolicy.Decision
   {

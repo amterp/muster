@@ -13,6 +13,11 @@ import UniformTypeIdentifiers
 /// Pure apart from reading a file's attributes, and separate from the window so that every rule
 /// is a case a test can reach.
 public enum LinkPolicy {
+  static func isWebLink(_ link: OpenedLink) -> Bool {
+    guard let scheme = URL(string: link.url)?.scheme?.lowercased() else { return false }
+    return scheme == "http" || scheme == "https"
+  }
+
   public enum Decision: Equatable, Sendable {
     /// Open it with whatever this Mac opens it with.
     case open(URL)

@@ -78,6 +78,8 @@ final class RecordingSurface: PaneSurface {
   /// Whether a button is the program's, as it is once the program has asked for the mouse.
   var consumesButtons = false
   var mouseCaptured = false
+  var linkAtPoint: (NSPoint) -> OpenedLink? = { _ in nil }
+  func link(at point: NSPoint) -> OpenedLink? { linkAtPoint(point) }
   func mouseButton(_ number: Int, pressed: Bool, modifiers: NSEvent.ModifierFlags) -> Bool {
     buttons.append((number, pressed))
     return consumesButtons

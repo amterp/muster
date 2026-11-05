@@ -545,8 +545,8 @@ private func scratchClipboard(_ name: String) -> NSPasteboard {
 }
 
 // The pane's program is owed the mouse too, when it asked for it, and only its daemon can say
-// whether it did - so every button and movement goes to the core as well as to the surface, and
-// nothing is filtered here.
+// whether it did. Buttons and movements outside a host-handled web-link click reach the core as
+// well as the surface.
 
 /// A pane on the seam, reporting its pointer the way a region wires it.
 @MainActor

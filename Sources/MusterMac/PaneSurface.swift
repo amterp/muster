@@ -84,6 +84,9 @@ public protocol PaneSurface: AnyObject {
   /// which is not where AppKit measures from. The caller converts.
   func mouseMoved(to point: NSPoint, modifiers: NSEvent.ModifierFlags)
 
+  /// A raw link at surface points, without mouse capture or modifier policy.
+  func link(at point: NSPoint) -> OpenedLink?
+
   /// Presses or releases a button, by AppKit's `buttonNumber` for it, and says whether the
   /// renderer consumed it.
   @discardableResult

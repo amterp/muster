@@ -639,6 +639,20 @@ public final class Surface {
       surface, Double(point.x), Double(point.y), ghosttyMods(modifiers))
   }
 
+  public func link(at point: NSPoint) -> OpenedLink? {
+    var kind = GHOSTTY_ACTION_OPEN_URL_KIND_UNKNOWN
+    var url = ghostty_string_s()
+    guard ghostty_surface_read_link(surface, point.x, point.y, &kind, &url), let text = url.ptr
+    else { return nil }
+    defer { ghostty_string_free(url) }
+    return OpenedLink(
+      kind: kind == GHOSTTY_ACTION_OPEN_URL_KIND_OSC8 ? .hyperlink : .text,
+      url: String(
+        decoding: UnsafeBufferPointer(
+          start: UnsafeRawPointer(text).assumingMemoryBound(to: UInt8.self), count: Int(url.len)),
+        as: UTF8.self))
+  }
+
   /// Presses or releases a button, named by AppKit's `buttonNumber`, and says whether libghostty
   /// consumed it - which for the right button decides whether AppKit may still treat it as
   /// asking for a context menu.

@@ -83,8 +83,20 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// Called with the link under the pointer as it arrives over one, and nil as it leaves.
   public var onHoverLink: (@MainActor (String?) -> Void)?
 
-  /// The shape libghostty last asked the pointer to take here. The I-beam until it says, as in
-  /// Ghostty: the pointer is over text.
+  private var surfacePointerShape: PointerShape = .text
+  private var surfaceHoverLink: String?
+  private var capturedWebLink: OpenedLink? {
+    didSet {
+      pointerShape = capturedWebLink == nil ? surfacePointerShape : .link
+      onHoverLink?(capturedWebLink?.url ?? surfaceHoverLink)
+    }
+  }
+  private var pointerPosition: NSPoint?
+  private var pressedWebLink: OpenedLink?
+  private var pressedWebLinkCell: NSPoint?
+  private var linkPressDragged = false
+
+  /// Web-link hover overrides the renderer's shape while a program has captured the mouse.
   public private(set) var pointerShape: PointerShape = .text {
     didSet {
       guard pointerShape != oldValue else { return }
@@ -161,6 +173,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   public var onProcessExited: (@MainActor (Bool) -> Void)?
 
   public func attach(_ surface: any PaneSurface, typeable: Bool) {
+    pressedWebLink = nil
+    pointerPosition = nil
+    surfacePointerShape = .text
+    surfaceHoverLink = nil
+    capturedWebLink = nil
     self.surface = surface
     if !seen {
       surface.setOcclusion(visible: false)
@@ -175,10 +192,16 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
       self?.onOpenLink?(link)
     }
     surface.onPointerShape = { [weak self] shape in
-      self?.pointerShape = shape
+      guard let self else { return }
+      surfacePointerShape = shape
+      if self.surface?.mouseCaptured != true { capturedWebLink = nil }
+      pointerShape = capturedWebLink == nil ? shape : .link
     }
     surface.onHoverLink = { [weak self] url in
-      self?.onHoverLink?(url)
+      guard let self else { return }
+      surfaceHoverLink = url
+      if self.surface?.mouseCaptured != true { capturedWebLink = nil }
+      onHoverLink?(capturedWebLink?.url ?? url)
     }
     surface.onPointerVisibility = { [weak self] visible in
       self?.pointerHidden = !visible
@@ -387,6 +410,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     // Not mid-composition, where the modifiers belong to the input method.
     if isTypeable, !hasMarkedText() {
       surface?.changeModifiers(event)
+      if let pointerPosition {
+        refreshCapturedLink(at: pointerPosition, modifiers: event.modifierFlags)
+      }
     }
     // Onward regardless: the window watches modifiers for the numbered chords, and an override
     // here that stopped the event would end those silently.
@@ -398,8 +424,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// again to pick the pane - a papercut on every switch back.
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  // Every button and every movement goes to the surface and to the pane's daemon, and neither
-  // is decided here.
+  // Web-link clicks belong to the host even while a program has the mouse. Other buttons and
+  // movements reach both the surface and the pane's daemon.
   //
   // The surface sees the pane's real byte stream, so it knows the program's modes: a drag over
   // a program that asked for the mouse is a report rather than a selection, and what the
@@ -410,10 +436,30 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override func mouseDown(with event: NSEvent) {
     onClick?()
+    let point = flipped(event)
+    refreshCapturedLink(at: point, modifiers: event.modifierFlags)
+    if let capturedWebLink {
+      pressedWebLink = capturedWebLink
+      pressedWebLinkCell = pointerCell(at: point)
+      linkPressDragged = false
+      return
+    }
     button(event, 0, pressed: true)
   }
 
   public override func mouseUp(with event: NSEvent) {
+    if let pressedWebLink {
+      self.pressedWebLink = nil
+      let point = flipped(event)
+      refreshCapturedLink(at: point, modifiers: event.modifierFlags)
+      if !linkPressDragged, event.modifierFlags.contains(.command),
+        bounds.contains(convert(event.locationInWindow, from: nil)),
+        surface?.link(at: point) == pressedWebLink
+      {
+        onOpenLink?(pressedWebLink)
+      }
+      return
+    }
     button(event, 0, pressed: false)
   }
 
@@ -461,6 +507,11 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   public override func mouseMoved(with event: NSEvent) { moved(event) }
+  public override func mouseExited(with event: NSEvent) {
+    pointerPosition = nil
+    surfaceHoverLink = nil
+    capturedWebLink = nil
+  }
   public override func mouseDragged(with event: NSEvent) { moved(event) }
   public override func rightMouseDragged(with event: NSEvent) { moved(event) }
   public override func otherMouseDragged(with event: NSEvent) { moved(event) }
@@ -473,7 +524,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(
       NSTrackingArea(
-        rect: bounds, options: [.mouseMoved, .inVisibleRect, .activeAlways], owner: self))
+        rect: bounds,
+        options: [.mouseMoved, .mouseEnteredAndExited, .inVisibleRect, .activeAlways], owner: self))
     super.updateTrackingAreas()
   }
 
@@ -492,8 +544,36 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   private func moved(_ event: NSEvent) {
-    surface?.mouseMoved(to: flipped(event), modifiers: event.modifierFlags)
+    let point = flipped(event)
+    surface?.mouseMoved(to: point, modifiers: event.modifierFlags)
+    refreshCapturedLink(at: point, modifiers: event.modifierFlags)
+    if pressedWebLink != nil {
+      if event.type == .leftMouseDragged {
+        if let pressedWebLinkCell {
+          linkPressDragged = linkPressDragged || pointerCell(at: point) != pressedWebLinkCell
+        } else if surface?.link(at: point) != pressedWebLink {
+          linkPressDragged = true
+        }
+      }
+      return
+    }
     report(event, .motion)
+  }
+
+  private func refreshCapturedLink(at point: NSPoint, modifiers: NSEvent.ModifierFlags) {
+    pointerPosition = point
+    let link =
+      modifiers.contains(.command) && surface?.mouseCaptured == true
+      ? surface?.link(at: point) : nil
+    capturedWebLink = link.flatMap { LinkPolicy.isWebLink($0) ? $0 : nil }
+  }
+
+  private func pointerCell(at point: NSPoint) -> NSPoint? {
+    guard let cell = surface?.cellPixelSize else { return nil }
+    let padding = surface?.padding ?? 0
+    return NSPoint(
+      x: floor((point.x - padding) * backingScale / CGFloat(cell.width)),
+      y: floor((point.y - padding) * backingScale / CGFloat(cell.height)))
   }
 
   private func report(_ event: NSEvent, _ action: Core.Mouse.Action) {
