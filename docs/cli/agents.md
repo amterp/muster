@@ -255,9 +255,9 @@ even one resuming the same session.
 
 While a compaction or its prompt waits, `muster window` says so on the agent's row and what it
 waits for: `(compaction queued, waiting for its 1 sub-agent and its turn to end)`. `pane compact`
-says the same when the agent is not at its prompt. A harness can hold its turn open until its
-sub-agents finish, as Claude Code does on "Waiting for 1 background agent to finish", and the
-compaction waits for that too.
+says the same when the agent is not at its prompt. Claude Code's "Waiting for 1 background agent
+to finish" screen has a ready parent prompt at 2.1.318, so the child alone does not hold the
+compaction. A parent still in its turn, a draft or a covering notice does.
 
 What follows the command is a focus, one line, for a harness that takes one. A harness that gives
 no way to compact it from its prompt, or takes no focus when given one, is refused with the reason
