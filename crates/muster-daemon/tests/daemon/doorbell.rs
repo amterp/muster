@@ -319,6 +319,42 @@ fn a_codex_post_uses_the_visible_prompt_with_an_old_session_reported() {
     assert_eq!(agent.read_in_its_pane(), ["integrator: the next assignment"]);
 }
 
+#[test]
+fn a_codex_read_while_a_draft_holds_delivery_leaves_no_stored_wake() {
+    let mut agent = Agent::with_codex_session_commands();
+    agent.reports_session("resumed-conversation");
+    agent.type_in("half typed", false);
+    agent.until_shows("PROBE-PROMPT> half typed");
+    agent.post("p1", "read before resuming");
+
+    until_some("delivery to reach the draft or the queue", || {
+        (agent.unread().iter().any(|why| why.contains("draft"))
+            || !agent.codex_queued().is_empty())
+        .then_some(())
+    });
+    assert_eq!(agent.read_in_its_pane(), ["integrator: read before resuming"]);
+    assert!(agent.codex_queued().is_empty(), "stored after read: {}", agent.codex_queued());
+    std::thread::sleep(QUIET + Duration::from_secs(1));
+    assert!(agent.rung().is_empty(), "rung for a message already read");
+    assert_eq!(agent.prompt_holds().as_deref(), Some("half typed"));
+}
+
+#[test]
+fn a_codex_urgent_post_still_reaches_its_running_turn() {
+    let mut agent = Agent::with_codex_session_commands();
+    agent.reports_session("running-conversation");
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let posted = agent.post_urgently("p1", "change course");
+    assert_eq!(posted.reached[0].activity(), msg_answer::Activity::Working);
+
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("1 urgent"), "{rung:?}");
+    assert!(agent.codex_queued().is_empty());
+    let record = snapshot(&mut agent.control).panes.into_iter().find(|pane| pane.pane == "p1");
+    assert_eq!(record.unwrap().agent_state(), proto::AgentState::Working);
+    assert_eq!(agent.read_in_its_pane(), ["integrator: change course"]);
+}
+
 /// A blocked agent is at a dialog, and a Return would answer it. The message waits, and the
 /// ring comes once the agent is idle and nobody has typed for the quiet period.
 #[test]
