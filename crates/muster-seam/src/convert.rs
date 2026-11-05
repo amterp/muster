@@ -43,11 +43,13 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         // A watch fills it in; the shell and a read have the roster for it.
         label: String::new(),
         adapter: agent.adapter.as_str().to_string(),
-        unread_input: agent.unread_input.as_ref().map(|unread| proto::UnreadInput {
-            bytes: unread.bytes,
-            since_ms: i64::try_from(unread.since_ms).unwrap_or(i64::MAX),
-            program: unread.program.clone(),
-            pid: unread.pid,
+        unread_input: agent.unread_input.as_ref().map(|unread| {
+            Box::new(proto::UnreadInput {
+                bytes: unread.bytes,
+                since_ms: i64::try_from(unread.since_ms).unwrap_or(i64::MAX),
+                program: unread.program.clone(),
+                pid: unread.pid,
+            })
         }),
         session_id: agent.session.as_ref().map(|session| session.id.clone()).unwrap_or_default(),
         resume: agent.session.as_ref().and_then(|session| session.resume.as_ref()).map(|resume| {

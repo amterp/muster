@@ -178,31 +178,7 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         }
         // One line each, because a watch is read a line at a time as it arrives. The pane's name
         // first, so `grep --line-buffered p1w3r07bsd` is a filter.
-        Some(response::Payload::PaneState(agent)) => Ok(if json {
-            let mut value = json!({
-                "pane": agent.pane_id,
-                "daemon": agent.daemon_id,
-                "state": agent.state,
-                "since": since_json(agent.since_ms),
-            });
-            if let Some(covered) = &agent.prompt_covered_by {
-                value["prompt_covered_by"] = covered.clone().into();
-            }
-            // Left out rather than empty: an empty string is not something to call a pane.
-            if !agent.label.is_empty() {
-                value["label"] = agent.label.clone().into();
-            }
-            value.to_string()
-        } else {
-            // The label last, since it is the one field that can hold a space.
-            let state = styled(&agent.state, agent_style(&agent.state));
-            let covered = agent
-                .prompt_covered_by
-                .as_ref()
-                .map(|description| format!("  (prompt covered by {description})"))
-                .unwrap_or_default();
-            format!("{}  {state}{covered}  {}", agent.pane_id, agent.label).trim_end().to_string()
-        }),
+        Some(response::Payload::PaneState(agent)) => Ok(pane_state_answer(agent, json)),
         Some(response::Payload::Restarted(restarted)) => Ok(restarted_answer(restarted, json)),
         Some(response::Payload::Reopened(reopened)) => Ok(reopened_answer(reopened, json)),
         Some(response::Payload::ClosedPanes(closed)) => Ok(closed_panes(closed, now_ms(), json)),
@@ -237,6 +213,34 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
              has an answer, even a refusal."
                 .to_string(),
         )),
+    }
+}
+
+fn pane_state_answer(agent: &muster_proto::PaneStateChanged, json: bool) -> String {
+    if json {
+        let mut value = json!({
+            "pane": agent.pane_id,
+            "daemon": agent.daemon_id,
+            "state": agent.state,
+            "since": since_json(agent.since_ms),
+        });
+        if let Some(covered) = &agent.prompt_covered_by {
+            value["prompt_covered_by"] = covered.clone().into();
+        }
+        // Left out rather than empty: an empty string is not something to call a pane.
+        if !agent.label.is_empty() {
+            value["label"] = agent.label.clone().into();
+        }
+        value.to_string()
+    } else {
+        // The label last, since it is the one field that can hold a space.
+        let state = styled(&agent.state, agent_style(&agent.state));
+        let covered = agent
+            .prompt_covered_by
+            .as_ref()
+            .map(|description| format!("  (prompt covered by {description})"))
+            .unwrap_or_default();
+        format!("{}  {state}{covered}  {}", agent.pane_id, agent.label).trim_end().to_string()
     }
 }
 
@@ -1948,7 +1952,7 @@ mod tests {
                 PaneStateChanged {
                     pane_id: "p1".to_string(),
                     state: "stuck".to_string(),
-                    unread_input: Some(unread),
+                    unread_input: Some(Box::new(unread)),
                     ..PaneStateChanged::default()
                 },
                 PaneStateChanged {
@@ -2106,11 +2110,11 @@ mod tests {
                 state: "stuck".to_string(),
                 since_ms: 1_700_000_000_000,
                 facts: Some(AgentFacts { context_used: Some(0.4), ..AgentFacts::default() }),
-                unread_input: Some(UnreadInput {
+                unread_input: Some(Box::new(UnreadInput {
                     bytes: 12,
                     program: "codex".to_string(),
                     ..UnreadInput::default()
-                }),
+                })),
                 ..PaneStateChanged::default()
             }],
             ..Window::default()

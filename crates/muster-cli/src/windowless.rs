@@ -925,11 +925,13 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         progress: None,
         rang: false,
         adapter: harnesses::standing(pane.agent.as_deref(), adapter_of(pane)).as_str().to_string(),
-        unread_input: pane.unread_input.as_ref().map(|unread| muster_proto::UnreadInput {
-            bytes: unread.bytes,
-            since_ms: i64::try_from(unread.since_ms).unwrap_or(i64::MAX),
-            program: unread.program.clone(),
-            pid: unread.pid,
+        unread_input: pane.unread_input.as_ref().map(|unread| {
+            Box::new(muster_proto::UnreadInput {
+                bytes: unread.bytes,
+                since_ms: i64::try_from(unread.since_ms).unwrap_or(i64::MAX),
+                program: unread.program.clone(),
+                pid: unread.pid,
+            })
         }),
         session_id: pane.session_id.clone().unwrap_or_default(),
         resume: pane.resume.as_ref().map(|resume| {

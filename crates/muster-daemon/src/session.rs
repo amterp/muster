@@ -3138,16 +3138,7 @@ impl Session {
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
         let shown = record.state();
-        // What sets one field of the record, and is news only when it changes it.
-        let set = match report.what {
-            Reported::Title(title) => Ok(replaced(&mut record.title, title)),
-            Reported::Cwd(directory) => {
-                Ok(replaced(&mut record.cwd, directory.display().to_string()))
-            }
-            Reported::ShiftCapture(capture) => Ok(replaced(&mut record.shift_capture, capture)),
-            Reported::UnreadInput(unread) => Ok(replaced(&mut record.unread_input, unread)),
-            what => Err(what),
-        };
+        let set = set_reported_field(record, report.what);
         let what = match set {
             Ok(changed) => {
                 if changed {
@@ -4810,6 +4801,16 @@ fn turn_ended(pane: &str, agent: Option<&str>, waiting: bool) {
     );
 }
 
+fn set_reported_field(record: &mut proto::Pane, what: Reported) -> Result<bool, Reported> {
+    match what {
+        Reported::Title(title) => Ok(replaced(&mut record.title, title)),
+        Reported::Cwd(directory) => Ok(replaced(&mut record.cwd, directory.display().to_string())),
+        Reported::ShiftCapture(capture) => Ok(replaced(&mut record.shift_capture, capture)),
+        Reported::UnreadInput(unread) => Ok(replaced(&mut record.unread_input, unread)),
+        what => Err(what),
+    }
+}
+
 /// Says once, when it starts, that detection's rules have stopped reading a pane's agent.
 fn unreadable_warning(pane: &str, agent: Option<&str>) {
     log::warn(
@@ -5324,18 +5325,16 @@ mod tests {
         let (shared, _events) = session(&dir.join("daemon.state.json"));
         let (mut master, mut slave) = (-1, -1);
         // SAFETY: both pointers are writable; null arguments select the PTY defaults.
-        assert_eq!(
-            unsafe {
-                libc::openpty(
-                    &raw mut master,
-                    &raw mut slave,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                )
-            },
-            0
-        );
+        let opened = unsafe {
+            libc::openpty(
+                &raw mut master,
+                &raw mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(opened, 0);
         // SAFETY: openpty returned two descriptors owned only by this test.
         let (master, _slave) =
             unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
