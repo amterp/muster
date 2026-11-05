@@ -2,6 +2,8 @@
 
 mod bindings;
 mod composition;
+pub mod image;
+mod image_input;
 mod key;
 mod key_event;
 mod keymap;
@@ -13,6 +15,7 @@ mod settings;
 
 pub use bindings::{Action, Bindings, Chord, ghostty_equivalent, renamed_action};
 pub use composition::{Outcome as CompositionOutcome, outcome as composition_outcome};
+pub use image_input::{ImageCancellation, ImageInput, ImageUpload};
 pub use key::Key;
 pub use key_event::{KeyAction, KeyEvent, Modifiers};
 pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
