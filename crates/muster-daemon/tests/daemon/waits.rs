@@ -506,7 +506,6 @@ fn hooks_reading_the_requested_senders_message_end_the_wait() {
 fn a_requested_senders_message_delivered_by_session_command_ends_the_wait() {
     let mut worker = Pane::with_an_agent();
     make(&mut worker.control, create("p2", in_new_tab("t2")));
-    worker.daemon.run_agent("p2");
     expect(
         &mut worker.control,
         pane(proto::pane_request::Request::Report(proto::pane_request::Report {
@@ -518,7 +517,21 @@ fn a_requested_senders_message_delivered_by_session_command_ends_the_wait() {
         proto::Outcome::Done,
     );
     assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
-    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    expect(
+        &mut worker.control,
+        proto::request::Service::Msg(proto::MsgRequest {
+            caller: Some(proto::msg_request::Caller {
+                as_name: Some("p2".to_string()),
+                ..Default::default()
+            }),
+            request: Some(proto::msg_request::Request::Post(proto::msg_request::Post {
+                to: vec!["p1".to_string()],
+                body: "review complete".to_string(),
+                ..Default::default()
+            })),
+        }),
+        proto::Outcome::Done,
+    );
     worker.until_wait_over();
     assert!(worker.rings_heard().is_empty(), "the wake was typed instead of queued");
     assert!(

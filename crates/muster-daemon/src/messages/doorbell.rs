@@ -121,6 +121,7 @@ pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 #[derive(Debug)]
 pub(crate) struct Rung {
     wake: Wake,
+    wait: Option<waits::MessageWait>,
     /// When its text was typed, after which anything else typed into the pane sits beside it.
     typed: Instant,
     /// When it was rung, or Return last pressed for it, or its prompt last looked at.
@@ -308,9 +309,6 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 let took = seen.io.queue(Input::Ring { text, enter: !at_work });
                 rang(&wake, took);
                 if took {
-                    if let Some(wait) = wait {
-                        wait.finish(shared);
-                    }
                     let at = Instant::now();
                     let mut messages = shared.messages();
                     messages.left.remove(pane_of(&wake));
@@ -319,6 +317,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                     drop(messages);
                     rung.push(Rung {
                         wake,
+                        wait,
                         typed: at,
                         at,
                         presses: 0,
@@ -411,6 +410,7 @@ pub(crate) fn reach(
 #[derive(Debug)]
 pub(crate) struct Commanded {
     wake: Wake,
+    wait: Option<waits::MessageWait>,
     session: String,
     at: Instant,
 }
@@ -545,9 +545,6 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
     let Ran { wake, pane, session, agent, wait } = ran;
     match outcome {
         Ok(()) => {
-            if let Some(wait) = wait {
-                wait.finish(shared);
-            }
             // The doorbell waits for the agent to take it from now, so a mark set as the command
             // started and not yet taken lasts as long, past however long the command took.
             if let Some(io) = shared.lock().pane_io(&pane) {
@@ -566,7 +563,7 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
             let mut messages = shared.messages();
             messages.stalled.remove(&pane);
             messages.commanding.remove(&pane);
-            messages.commanded.push(Commanded { wake, session, at: Instant::now() });
+            messages.commanded.push(Commanded { wake, session, at: Instant::now(), wait });
         }
         Err(failed) => {
             let refused = matches!(failed, command::Failed::Refused(_));
@@ -617,6 +614,7 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
     let now = Instant::now();
     let mut next = None;
     let mut fallen = Vec::new();
+    let mut taken = Vec::new();
     {
         let mut messages = shared.messages();
         for commanded in std::mem::take(&mut messages.commanded) {
@@ -626,6 +624,13 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
                 .get(pane_of(&commanded.wake))
                 .is_some_and(|seen| waits_for(seen.activity, false).is_none());
             if !woken || !idle {
+                if panes
+                    .get(pane_of(&commanded.wake))
+                    .is_some_and(|seen| seen.activity == Some(Activity::Working))
+                    && let Some(wait) = commanded.wait
+                {
+                    taken.push(wait);
+                }
                 continue;
             }
             let due = commanded.at + COMMAND_ANSWER;
@@ -636,6 +641,9 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
                 fallen.push(commanded);
             }
         }
+    }
+    for wait in taken {
+        wait.finish(shared);
     }
     if fallen.is_empty() {
         return next;
@@ -856,6 +864,7 @@ fn look(
     let now = Instant::now();
     let (mut ringing, mut commanding) = (Reaching::new(), Reaching::new());
     let mut unfound = false;
+    let mut taken = Vec::new();
     let pressing = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -888,10 +897,7 @@ fn look(
                 None
             };
             if let Some(why) = why {
-                log::info(
-                    "msg.ring.dropped",
-                    fields! { "name" => wake.name, "pane" => pane, "why" => why },
-                );
+                ring_dropped(&wake, pane, why);
                 continue;
             }
             // Its pane's command, ending, nudges the doorbell to look again; a line typed there
@@ -930,16 +936,20 @@ fn look(
                 }
                 _ => "the pane closed",
             };
-            log::info(
-                "msg.ring.dropped",
-                fields! { "name" => wake.name, "pane" => pane, "why" => dropped },
-            );
+            ring_dropped(&wake, pane, dropped);
         }
         take_in_hand(&mut messages, &commanding, &ringing);
-        unanswered_rings(&mut messages, &panes, now, moving, &mut next)
+        unanswered_rings(&mut messages, &panes, now, moving, &mut next, &mut taken)
     };
+    for wait in taken {
+        wait.finish(shared);
+    }
     deliver(shared, &panes, commanding, ringing, pressing, &mut next);
     until(next, unfound)
+}
+
+fn ring_dropped(wake: &Wake, pane: &str, why: &str) {
+    log::info("msg.ring.dropped", fields! { "name" => wake.name, "pane" => pane, "why" => why });
 }
 
 /// Records the wakes a look is about to ring or hand to a command without the lock, which no
@@ -1078,6 +1088,7 @@ fn unanswered_rings(
     now: Instant,
     moving: &mut Moving,
     next: &mut Option<Instant>,
+    taken: &mut Vec<waits::MessageWait>,
 ) -> Vec<Pressing> {
     let mut pressing = Vec::new();
     for rung in std::mem::take(&mut messages.rung) {
@@ -1094,6 +1105,11 @@ fn unanswered_rings(
         // whatever its agent read: forgotten there, the next thing anybody types is added to it.
         let read = !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
         if rung.returned && waits_for(seen.activity, urgent).is_some() {
+            if seen.activity == Some(Activity::Working)
+                && let Some(wait) = rung.wait
+            {
+                taken.push(wait);
+            }
             continue;
         }
         // Read with its agent still where a ring finds it: its Return may never have reached the
@@ -1191,6 +1207,9 @@ fn press_again(shared: &Shared, pressing: Vec<Pressing>) -> bool {
             // before it stopped. Kept, so the next look can say it stopped, or that it read.
             AtPrompt::Empty { .. } => {
                 if seen.io.unread_bytes().is_none_or(|bytes| bytes == 0) {
+                    if let Some(wait) = rung.wait {
+                        wait.finish(shared);
+                    }
                     continue;
                 }
                 if rung.unread >= PRESSES {

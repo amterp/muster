@@ -87,6 +87,7 @@ pub(crate) fn exists(pid: u32) -> bool {
     i32::try_from(pid).is_ok_and(pty::process_exists)
 }
 
+#[derive(Debug)]
 pub(super) struct MessageWait {
     pane: String,
     serial: u64,
