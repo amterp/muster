@@ -79,6 +79,9 @@ devenv tab the way they do in Ghostty, and one tab can hold both at once - drag 
 row onto a laptop tab's caption and they sit side by side, or right-click a laptop pane and split
 it onto the devenv.
 
+Paste a screenshot into a remote Claude Code or Codex composer with `ctrl+v`. `cmd+v` takes
+copied text first, or an image when there is no text, in local and remote panes alike.
+
 **A CLI that drives the window.** `muster` reports what every agent is doing, draws where every
 pane sits and how big it is, waits for one to finish, reads back what any pane has printed, makes
 panes and tabs, moves and resizes them, names them, types into them, moves the keyboard and zooms. Every pane Muster opens on your laptop can reach

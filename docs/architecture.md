@@ -860,6 +860,43 @@ stop; otherwise it is reported, with full fidelity, toward the focused pane via 
 exception: it goes to the surface and to the daemon both (see data plane). The keymap is data in the config file, not
 code.
 
+### Clipboard images
+
+**The pane's daemon stores an image on its own machine.** Ctrl+V with an image is intercepted only for a
+remote Claude Code or Codex composer whose manifest opts into image paste. Existing prompt readers, foreground
+process detection, and unreadability determine that readiness. A bound chord, input composition, dialog,
+editor, unsupported harness, or local pane keeps its normal Ctrl+V. Cmd+V takes text first, or an image when
+there is no text, for local and remote panes alike.
+
+`PrepareImagePaste` captures the destination, starts holding input, and returns an operation id before the
+shell converts TIFF to PNG off the UI thread. PNG bytes pass through unchanged. `PasteImage` completes that
+operation with PNG bytes or a conversion error. Moving focus leaves the destination fixed; canceled ids
+cannot complete a later operation.
+The upload uses a short-lived answered control connection through the same SSH socket forward, leaving the
+daemon's shared control and input connections free. `StoreImage` needs daemon protocol 1.11. A PNG is at most
+15 MiB within the daemon's 16 MiB frame; the external command socket keeps its separate 8 MiB limit.
+Admission allows two images app-wide, reserving 15 MiB of encoded PNG per image against a 32 MiB budget.
+Native source, decoder, and framing allocations are additional.
+
+`ImageInput` wraps the shared input sink, so keyboard input and scripted sends follow the same ordering.
+Only the destination pane's keys, text, and pastes wait, bounded at 64 KiB and 512 events; pointer, wheel, and
+focus events pass through. Success pastes the safely quoted absolute path before releasing held input.
+Failure shows a dismissible error and releases input without a path, including a held Return. Esc or Ctrl+C
+cancels immediately; exceeding either hold bound cancels the image and releases typing. Closing or restarting
+the pane discards its old hold. A daemon that replaces processes blocks its new input until the asynchronous
+cancellation callback has finished, independently of whether a restart warning is needed. A live handoff
+keeps its processes and does not cancel on that account.
+
+The pane shows `Pasting image…` while input is held. Conversion has ten seconds to finish; each upload write
+has ten seconds without progress. The final answer gets 120 seconds because SSH may still hold bytes after
+the local socket takes the last write. Cancellation closes that socket, and operation ids reject late results.
+
+The daemon writes outside its session and terminal-encoding locks into `<socket stem>.images` beside its
+socket. The cache must be an owned, private directory at 0700; exclusively created files are 0600. A writer
+mutex and file lock serialize cleanup and quota checks across a live handoff. Each upload removes images
+older than seven days, then refuses work past 1 GiB rather than deleting younger files a draft may still
+reference. Partial writes are removed. Completed images survive pane close, reopen, and daemon handoff.
+
 ## One action path
 
 Every operation - keybinding, menu, CLI, socket API - dispatches the same action into the same core dispatcher;
