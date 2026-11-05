@@ -43,6 +43,7 @@ fn devenv() -> (String, Vec<String>) {
 #[test]
 #[ignore = "needs the devenv container; run through ./dev --ssh"]
 fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
+    let turn = muster::testing::fresh_session();
     let home = scratch_home();
     let (host, options) = devenv();
     let far = remote_environment(&host, &options).unwrap();
@@ -61,7 +62,6 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
         let _ = over_ssh(&host, &options, &format!("rm -rf {}", muster_ssh::quoted(&far_home)));
     }));
 
-    let turn = muster::testing::fresh_session();
     let socket = home.join("command.sock");
     let log = home.join("muster.jsonl");
     open_a_window(&home, &socket, &log, &host, &options);
@@ -269,6 +269,92 @@ fn open_a_window(home: &Path, socket: &Path, log: &Path, host: &str, options: &[
     }
 }
 
+#[test]
+#[ignore = "needs the devenv container; run through ./dev --ssh"]
+fn an_image_upload_crosses_ssh_before_the_panes_held_input() {
+    let _turn = muster::testing::fresh_session();
+    let home = scratch_home();
+    let (host, options) = devenv();
+    let socket = home.join("command.sock");
+    let log = home.join("image-paste.jsonl");
+    open_a_window(&home, &socket, &log, &host, &options);
+    let pane = until_some("the remote daemon to make an image destination", || {
+        let asked = request::Payload::CreateTab(CreateTab {
+            daemon_id: "devenv".into(),
+            take_focus: true,
+            ..CreateTab::default()
+        });
+        match dialed(&socket, asked).payload {
+            Some(response::Payload::Made(made)) => Some(made.pane_id),
+            _ => None,
+        }
+    });
+    let local = std::env::temp_dir().join(format!("muster-{}-devenv.sock", std::process::id()));
+    let _stopped = Finally(Box::new(|| {
+        let _ = stop(&local, Duration::from_secs(10));
+    }));
+    until_shows(&socket, &log, "the remote image destination", |window| {
+        on_devenv(window).contains(&pane)
+    });
+    let heard = format!("/tmp/muster-image-input-{}", std::process::id());
+    type_into(&socket, &pane, &format!("stty raw -echo; echo IMAGE_READY; cat > {heard}"));
+    until_within(
+        "the remote pane to capture input",
+        LAUNCH_PATIENCE,
+        || read_pane(&socket, &pane).lines().any(|line| line.trim() == "IMAGE_READY"),
+        || read_pane(&socket, &pane),
+    );
+    let prepared = dialed(
+        &socket,
+        request::Payload::PrepareImagePaste(muster::proto::PrepareImagePaste::default()),
+    );
+    let Some(response::Payload::ImagePastePrepared(prepared)) = prepared.payload else {
+        panic!("preparing the remote image answered {prepared:?}");
+    };
+    assert_ok(&dialed(
+        &socket,
+        request::Payload::SendToPane(SendToPane {
+            pane_id: pane,
+            daemon_id: "devenv".into(),
+            text: "AFTER".into(),
+            enter: true,
+            ..SendToPane::default()
+        }),
+    ));
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.resize(5 << 20, 0x55);
+    assert_ok(&dialed(
+        &socket,
+        request::Payload::PasteImage(muster::proto::PasteImage {
+            upload_id: prepared.upload_id,
+            png: png.clone(),
+            error: String::new(),
+        }),
+    ));
+    let received = until_some("the remote path to precede held typing", || {
+        let text = over_ssh(&host, &options, &format!("cat {heard}"));
+        text.ends_with("AFTER\r").then_some(text)
+    });
+    let path = received
+        .strip_suffix("AFTER\r")
+        .unwrap()
+        .strip_prefix('"')
+        .unwrap()
+        .strip_suffix('"')
+        .unwrap();
+    assert!(path.starts_with("/home/dev/"), "{path}");
+    assert!(Path::new(path).extension().is_some_and(|extension| extension == "png"), "{path}");
+    let output = Command::new("ssh")
+        .args(["-o", "BatchMode=yes"])
+        .args(&options)
+        .arg(&host)
+        .arg(format!("cat {}", muster_ssh::quoted(path)))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "reading the remote image failed");
+    assert_eq!(output.stdout, png);
+}
+
 /// How many times the window's log says it forwarded itself to a machine.
 fn forwards_so_far(log: &Path) -> usize {
     std::fs::read_to_string(log)
@@ -368,8 +454,8 @@ fn scratch_home() -> PathBuf {
     let path = PathBuf::from(format!("/tmp/muster-test/devenv-window-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).expect("the harness root should be writable");
-    // SAFETY: the first thing the one test here does, so no thread of this binary has read the
-    // environment yet. The seam reads it on the first request rather than at load.
+    // SAFETY: both tests hold fresh_session's turn before setting this binary's shared home.
+    // The seam reads it on the first request rather than at load.
     unsafe {
         std::env::set_var("MUSTER_HOME", &path);
     }
