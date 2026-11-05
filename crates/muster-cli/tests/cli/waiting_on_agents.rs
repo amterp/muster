@@ -339,6 +339,44 @@ fn a_pane_can_be_waited_on_by_its_name(open: &Open) {
     );
 }
 
+#[test]
+fn a_covering_notice_is_named_in_window_and_wait_until_it_clears() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    open.daemon.run_agent(&open.pane);
+    open.report("idle");
+    let mut watch = spawned(&open, &["--json", "window", "--watch"]);
+    let lines = lines_of(&mut watch);
+    let _ = next_json(&lines, "the initial pane");
+
+    let sent = muster(&open, &["pane", "send", "--pane", &open.pane, "menu", "--enter"]);
+    assert!(sent.status.success(), "{}", String::from_utf8_lossy(&sent.stderr));
+    let covered = next_json(&lines, "the menu covering an otherwise idle prompt");
+    let description = "a menu opened from its prompt";
+    assert_eq!(covered["prompt_covered_by"], description, "{covered}");
+    for no_window in [false, true] {
+        for verb in [vec!["window"], vec!["pane", "wait", "--pane", &open.pane, "--until", "idle,done"]] {
+            let mut args = verb.clone();
+            if no_window { args.push("--no-window"); }
+            let ran = muster(&open, &args);
+            assert!(ran.status.success(), "{}", String::from_utf8_lossy(&ran.stderr));
+            let text = String::from_utf8_lossy(&ran.stdout);
+            assert!(text.contains(description), "{args:?}: {text}");
+            args.push("--json");
+            let ran = muster(&open, &args);
+            let json: Value = serde_json::from_slice(&ran.stdout).unwrap();
+            let pane = if verb[0] == "window" { &json["panes"][0] } else { &json };
+            assert_eq!(pane["prompt_covered_by"], description, "{args:?}: {json}");
+        }
+    }
+    let sent = muster(&open, &["pane", "send", "--pane", &open.pane, "nomenu", "--enter"]);
+    assert!(sent.status.success());
+    let cleared = next_json(&lines, "the prompt becoming readable without changing state");
+    assert!(cleared["prompt_covered_by"].is_null(), "{cleared}");
+    let _ = watch.kill();
+    let _ = watch.wait();
+}
+
 struct Open {
     daemon: Daemon,
     socket: String,
@@ -401,7 +439,8 @@ fn a_window_onto_one_pane() -> Open {
 
 fn command(open: &Open, argv: &[&str]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_muster"));
-    command.args(argv).env_clear().env("MUSTER_SOCKET", &open.socket);
+    command.args(argv).env_clear().env("MUSTER_SOCKET", &open.socket)
+        .env("MUSTER_DAEMON_SOCKET", open.daemon.socket_path());
     command
 }
 

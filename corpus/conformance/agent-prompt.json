@@ -569,7 +569,7 @@
     },
     {
       "name": "claude 2.1.301: the tip box above the prompt leaves the prompt readable",
-      "why": "The tip box is drawn above the prompt box, not over it, so the prompt under it is the prompt and a ring is typed there. A post to a pane showing this box was rung at once (docs/observations/claude-code-2.1.301.md). Read back from a live pane, scrubbed (corpus/claude-code-2.1.301/tip-box.txt).",
+      "why": "The screen is the exact scrubbed 2.1.301 pane read in corpus/claude-code-2.1.301/tip-box.txt. Later owner sightings on 2026-11-01 and 2026-11-02 establish that this notice can intercept input: 0 then one Ctrl+C clears it. Geometry alone did not establish that Return reaches the prompt, so hold typing until it is dismissed.",
       "given": {
         "agent": "claude",
         "progress": "",
@@ -577,7 +577,7 @@
         "title": "✳ Claude Code"
       },
       "expect": {
-        "atPrompt": true
+        "atPrompt": false
       }
     },
     {
