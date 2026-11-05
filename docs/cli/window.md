@@ -426,6 +426,7 @@ until it is stopped:
     p1w3r07bsd  unknown  ~/src/muster
     p1w3r0ab2n  working  🤖 A
     p1w3r0ab2n  blocked  🤖 A
+    p1w3r0ab2n  idle  (prompt covered by its /model menu)  🤖 A
     p1w3r0cd4x  closed
 
 Pane name first, so `grep --line-buffered p1w3r0ab2n` follows one agent, and its label last, as

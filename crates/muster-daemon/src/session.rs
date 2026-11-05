@@ -4429,6 +4429,7 @@ impl Session {
         let mut screen = Screen::new(grid, &self.settled).map_err(|error| error.to_string())?;
         drop(screen.output(replay));
         screen.replayed_from(resuming.oldest_row);
+        record.prompt_covered_by = None;
         // A daemon from before words hands its panes over with none.
         if record.callsign.is_none() {
             let besides = given_name(record.label.as_deref());

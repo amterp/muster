@@ -456,9 +456,7 @@ impl Detector {
         let screen_only = Input { screen: &content, ..Input::default() };
         let screen_read = manifests.detect(agent.as_ref(), screen_only);
         if !process_exited && screen_read.skip_state_update {
-            self.prompt_covered_by = screen_cover(manifests, agent.as_ref(), &screen_read);
-            self.pending_idle.clear();
-            return self.conclude(agent, self.published.state).or(emitted);
+            return self.covered_prompt(agent, &screen_read, manifests).or(emitted);
         }
         sync_content_change_acquisition(
             self.presence.current.is_some(),
@@ -485,9 +483,7 @@ impl Detector {
                 Input { screen: &content, title: &title, progress: &progress },
             );
             if detection.skip_state_update {
-                self.prompt_covered_by = screen_cover(manifests, agent.as_ref(), &detection);
-                self.pending_idle.clear();
-                return self.conclude(agent, self.published.state).or(emitted);
+                return self.covered_prompt(agent, &detection, manifests).or(emitted);
             }
             detection
         };
@@ -522,6 +518,17 @@ impl Detector {
             emitted = self.conclude(agent, self.published.state).or(emitted);
         }
         emitted
+    }
+
+    fn covered_prompt(
+        &mut self,
+        agent: Option<Agent>,
+        detection: &Detection,
+        manifests: &Manifests,
+    ) -> Option<Publication> {
+        self.prompt_covered_by = screen_cover(manifests, agent.as_ref(), detection);
+        self.pending_idle.clear();
+        self.conclude(agent, self.published.state)
     }
 
     /// Probes the foreground when something suggests it changed, and acts on what it finds.
