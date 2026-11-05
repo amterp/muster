@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1793896014900,
   "creator": "Alexander Terp",
   "description": "Follow on from `a_2pO7VjFVp`. Pane/tab mutations and navigation can still wait for daemon replies\non main. Moving them onto independent queues can change the pane a user action affects.\n\nReview of the withdrawn `360c6d42` implementation exposed this sequence:\n\n1. A slow explicit Compact Agent request on a remote pane holds the action queue.\n2. Local pane A has the keyboard; the user issues Close Pane, which queues empty target IDs.\n3. The user selects local pane B through the still-inline sidebar focus path.\n4. When the queue drains, Close Pane resolves its empty target against B and ends B's process.\n\nClose Tab has the same failure after a tab switch. The final `efe6c94a` restores baseline\nmutation/navigation behavior; that asynchronous implementation was withdrawn.\n\nThe migration needs to preserve the order of relative mutations and navigation together.\nOther review findings belong in the same design: Show Pane/Helpers/Reopen can take focus back\nfrom later navigation, queued numbered presses must still be canceled by intervening terminal\ninput, pointer actions and commands such as Clear Screen, and restart's start needs ordering",
   "id": "a_2uUdK8oOe",
-  "position": "b1c",
+  "position": "Zzl",
   "title": "Moving pane and tab actions off the main thread can change which pane they act on",
   "type": "bug",
-  "updated_at_millis": 1793896014900,
+  "updated_at_millis": 1793901364635,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793896014900}
+    {"field":"column","value":"backlog-hi","at":1793896014900},
+    {"field":"column","value":"next","at":1793901357433}
   ]
 }
