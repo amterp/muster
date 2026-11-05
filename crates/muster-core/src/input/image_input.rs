@@ -6,12 +6,18 @@ use crate::diagnostics::poison;
 use crate::mirror::backend::PaneId;
 
 use super::image::quoted_image_path;
-use super::{InputEvent, InputSink, Key, KeyAction, Modifiers, NotSent};
+use super::{Chord, InputEvent, InputSink, Key, KeyAction, Modifiers, NotSent};
 
 const HELD_BYTES: usize = 64 << 10;
 const HELD_EVENTS: usize = 512;
 
-type Finished = Box<dyn FnOnce(Result<(), String>) + Send>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImagePasteError {
+    Failed(String),
+    Canceled,
+}
+
+type Finished = Box<dyn FnOnce(Result<(), ImagePasteError>) + Send>;
 type Stop = Box<dyn FnOnce() + Send>;
 
 #[derive(Default)]
@@ -88,7 +94,7 @@ impl ImageInput {
     pub fn begin(
         &self,
         pane: &PaneId,
-        finished: impl FnOnce(Result<(), String>) + Send + 'static,
+        finished: impl FnOnce(Result<(), ImagePasteError>) + Send + 'static,
     ) -> Result<ImageUpload, String> {
         let mut state = poison::lock(&self.state, "image input");
         if state.held.contains_key(pane) {
@@ -125,7 +131,7 @@ impl ImageInput {
         });
         self.release(pane, held.input);
         drop(state);
-        (held.finished)(result);
+        (held.finished)(result.map_err(ImagePasteError::Failed));
         true
     }
 
@@ -133,9 +139,15 @@ impl ImageInput {
         let held = poison::lock(&self.state, "image input").held.remove(pane);
         if let Some(held) = held {
             held.upload.cancellation.cancel();
-            (held.finished)(Err(
-                "the pane closed or restarted; its image paste was canceled".into()
-            ));
+            (held.finished)(Err(ImagePasteError::Canceled));
+        }
+    }
+
+    pub fn forget_all(&self) {
+        let held = std::mem::take(&mut poison::lock(&self.state, "image input").held);
+        for (_, held) in held {
+            held.upload.cancellation.cancel();
+            (held.finished)(Err(ImagePasteError::Canceled));
         }
     }
 
@@ -168,11 +180,13 @@ impl InputSink for ImageInput {
         drop(state);
         held.upload.cancellation.cancel();
         let reason = if interrupted {
-            "the image paste was canceled by Esc or Ctrl+C"
+            ImagePasteError::Canceled
         } else {
-            "too much input arrived during the image paste; the image was canceled and typing was released"
+            ImagePasteError::Failed(
+                "too much input arrived during the image paste; the image was canceled and typing was released".into(),
+            )
         };
-        (held.finished)(Err(reason.into()));
+        (held.finished)(Err(reason));
         sent
     }
 
@@ -197,6 +211,12 @@ fn interrupts(event: &InputEvent) -> bool {
             key.key == Key::Escape
                 || (key.key == Key::KeyC
                     && key.modifiers.0 & Modifiers::CHORD.0 == Modifiers::CONTROL.0)
+        }
+        InputEvent::Send { keys, .. } => {
+            keys.iter().filter_map(|key| Chord::parse(key).ok()).any(|chord| {
+                chord.key == Key::Escape
+                    || (chord.key == Key::KeyC && chord.modifiers == Modifiers::CONTROL)
+            })
         }
         _ => false,
     }
@@ -236,7 +256,7 @@ mod tests {
     struct Graph {
         input: ImageInput,
         sink: Arc<Sink>,
-        finished: Arc<Mutex<Vec<Result<(), String>>>>,
+        finished: Arc<Mutex<Vec<Result<(), ImagePasteError>>>>,
         pane: PaneId,
     }
 
@@ -310,13 +330,21 @@ mod tests {
         graph.send(enter.clone());
         graph.input.finish(&graph.pane, upload.id, Err("disk full".into()));
         assert_eq!(graph.received(), [(graph.pane.clone(), enter)]);
-        assert_eq!(*graph.finished.lock().unwrap(), [Err("disk full".into())]);
+        assert_eq!(
+            *graph.finished.lock().unwrap(),
+            [Err(ImagePasteError::Failed("disk full".into()))]
+        );
         graph.begin();
     }
 
     #[test]
     fn escape_and_control_c_cancel_without_waiting_for_upload_completion() {
-        for cancel in [key(Key::Escape, Modifiers::NONE), key(Key::KeyC, Modifiers::CONTROL)] {
+        for cancel in [
+            key(Key::Escape, Modifiers::NONE),
+            key(Key::KeyC, Modifiers::CONTROL),
+            InputEvent::Send { text: String::new(), keys: vec!["Escape".into()], enter: false },
+            InputEvent::Send { text: String::new(), keys: vec!["ctrl+c".into()], enter: false },
+        ] {
             let graph = Graph::new();
             let upload = graph.begin();
             let typing = InputEvent::Bytes(b"draft".to_vec());
@@ -329,6 +357,7 @@ mod tests {
             );
             assert!(!graph.input.finish(&graph.pane, upload.id, Ok("/tmp/late.png".into())));
             assert_eq!(graph.finished.lock().unwrap().len(), 1);
+            assert_eq!(*graph.finished.lock().unwrap(), [Err(ImagePasteError::Canceled)]);
         }
     }
 
@@ -387,5 +416,19 @@ mod tests {
                 InputEvent::Paste { text: "\"/tmp/new.png\"".into(), confirmed: false }
             )]
         );
+    }
+
+    #[test]
+    fn a_daemon_restart_cancels_every_held_pane_without_sending_old_drafts() {
+        let graph = Graph::new();
+        let first = graph.begin();
+        let other = PaneId::new("p2");
+        let second = graph.input.begin(&other, |_| {}).unwrap();
+        graph.send(InputEvent::Bytes(b"old draft".to_vec()));
+        graph.input.forget_all();
+        assert!(first.cancellation.is_canceled());
+        assert!(second.cancellation.is_canceled());
+        assert!(!graph.input.finish(&graph.pane, first.id, Ok("/tmp/old.png".into())));
+        assert!(graph.received().is_empty());
     }
 }
