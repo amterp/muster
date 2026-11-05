@@ -1434,6 +1434,15 @@ priority = 10
 contains = ["busy"]
 "#;
 
+#[test]
+fn a_manifest_with_no_idle_rule_keeps_its_startup_fallback() {
+    let mut run = Run::with_manifest(NO_IDLE_RULE);
+    run.tick();
+    run.paint("an ordinary prompt");
+    run.start_agent();
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+}
+
 /// A harness whose manifest leaves idle to the fallback, reworded so no rule reads it while it
 /// works: its screen keeps moving and nothing matches, which is what drift exists to say.
 #[test]
