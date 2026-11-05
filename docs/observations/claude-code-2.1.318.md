@@ -15,8 +15,9 @@ above its empty prompt box while the child ran a Python command that sleeps for 
 The child had started that command at 15:24:30.195 UTC.
 
 An ordinary post at 15:24:33 was held. The pane's effective state was waiting, but the
-`background_agents_working` screen rule found no prompt and prevented typing. Its
-`msg.ring.waits` event records that rule and the screen's shape.
+busy title still matched `osc_title_working`, which found no prompt and prevented typing. Its
+`msg.ring.waits` event records that rule and the screen's shape. The title was
+`◑ Muster Claude readiness background agent`; the title animation belongs to the child too.
 
 A line typed directly at 15:24:35.493 UTC started a parent UserPromptSubmit while the original
 child remained active. The parent read the held message and replied `TYPED_WHILE_CHILD_RUNNING`.
@@ -25,9 +26,9 @@ Its next Stop ran at 15:24:41.780 UTC, and the same Waiting line returned. A dir
 child was still listed as running. Compaction's internal helper also fired SubagentStop;
 that event does not mean the original child finished.
 
-Muster therefore reads this line as idle with a readable prompt, and names the screen's wait
-as `its background agents`. The usual busy title, turn spinner, permission dialog, draft and
-input quiet-period checks still apply. A screen-derived wait has the existing ten-minute
+Muster therefore reads this exact line as idle with a readable prompt, above the busy-title
+rule, and names the screen's wait as `its background agents`. A parent turn's spinner replaces
+the line. Permission dialogs, drafts and input quiet-period checks still apply. A screen-derived wait has the existing ten-minute
 limit; an explicit declared wait follows its own rules.
 
 ## A child hook can change the parent's effective state

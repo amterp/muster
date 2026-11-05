@@ -67,6 +67,17 @@ any = [
 prompt = '^\s*❯\s?'
 prompt_region = "prompt_box_body"
 
+# The parent takes input while its child keeps the busy title animating (2.1.318 recording).
+[[rules]]
+id = "background_agents_idle"
+state = "idle"
+region = "last_non_empty_above_prompt_box"
+priority = 1110
+visible_idle = true
+prompt = '^\s*❯\s?'
+prompt_region = "prompt_box_body"
+line_regex = ['^\s*[\x{002A}\x{00B7}\x{2722}\x{2736}\x{273B}\x{273D}]\s+Waiting for [1-9]\d* background agents? to finish\s*$']
+
 [[rules]]
 id = "background_agents_waiting"
 state = "idle"
