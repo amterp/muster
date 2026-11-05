@@ -766,7 +766,8 @@ fn an_idle_pane_whose_output_has_not_moved_is_not_read_again() {
     let mut run = Run::new();
     run.tick();
     run.start_agent();
-    run.tick();
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
     let reads = run.pane.screen_reads;
     for _ in 0..10 {
         run.tick();
@@ -819,7 +820,7 @@ fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
 
     run.paint("nothing");
     let first = run.until_published(Duration::from_secs(1)).map(|(_, publication)| publication);
-    assert_eq!(first, Some(published(Some(claude()), State::Idle)), "the stale title counted");
+    assert_eq!(first, None, "the stale title counted");
 
     run.pane.set_title("⠄ fresh");
     run.paint("nothing still");
@@ -884,7 +885,7 @@ fn a_title_written_again_after_an_agent_change_counts_though_it_is_the_same() {
     run.start_agent();
     run.paint("nothing");
     let first = run.until_published(Duration::from_secs(1)).map(|(_, publication)| publication);
-    assert_eq!(first, Some(published(Some(claude()), State::Idle)), "the old agent's title");
+    assert_eq!(first, None, "the old agent's title");
 
     // A restarted agent writing the title its predecessor left, word for word.
     run.pane.set_title("⠂ working on it");
