@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "restarting-a-codex",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793891858884,
+  "creator": "Alexander Terp",
+  "description": "From the 2026-11-05 recordings of /new (Codex 0.166.0): Codex reports a new conversation's id only at its first prompt, so until then the pane still holds the old id, and muster pane restart resumes that old conversation rather than the empty new one. Typed delivery (276936d9) cannot discover an unreported composer either. Low stakes since agents are now told to restart a pane rather than /new, but a person can still do it. Evidence: the worker's /private/tmp/muster-codex-ownership.* recordings on the Mac mini.",
+  "id": "a_2uStCtx9Q",
+  "position": "b2F",
+  "title": "Restarting a Codex pane after /new, before its first prompt, resumes the conversation just left",
+  "type": "bug",
+  "updated_at_millis": 1793891858884,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793891858884}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "older-live-message",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1793891859087,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-11-05 while fixing Codex delivery: the live message cases' shared helper runs with no pane or inbox, so a post without --as is from the human, and automatic groups are named by callsigns, yet older idle/sandboxed Codex and OpenCode cases still expect an implicit named integrator and an 'integrator+worker' pair. The Codex cases touched by 276936d9 were fixed; check the rest under ./dev --codex and ./dev --opencode.",
+  "id": "a_2uStDDGWs",
+  "position": "b2G",
+  "title": "Older live message checks assume a named integrator and a literal integrator+worker group",
+  "type": "chore",
+  "updated_at_millis": 1793891859087,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1793891859087}
+  ]
+}
