@@ -106,6 +106,17 @@ private func imageKey(_ type: NSEvent.EventType = .keyDown, repeated: Bool = fal
     !recorder.requests.contains { if case .prepareImagePaste = $0.payload { true } else { false } })
 }
 
+@Test(.ownsTheSeam) @MainActor func aFreshPressDoesNotInheritAnImageKeysMissingRelease() {
+  let first = imageRecorder()
+  imageView(first).keyDown(with: imageKey())
+  let next = imageRecorder(eligible: false)
+  let view = imageView(next)
+  view.keyDown(with: imageKey())
+  view.keyUp(with: imageKey(.keyUp))
+  #expect(next.requests.contains { if case .keyDown = $0.payload { true } else { false } })
+  #expect(next.requests.contains { if case .keyUp = $0.payload { true } else { false } })
+}
+
 @Test func aTIFFClipboardImageBecomesAPNGWithTheSameDimensions() throws {
   let source = try #require(CGImageSourceCreateWithData(imagePNG as CFData, nil))
   let tiff = NSMutableData()

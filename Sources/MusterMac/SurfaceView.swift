@@ -330,6 +330,8 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public override func keyDown(with event: NSEvent) {
     if event.isARepeat && Self.imageKeys.contains(event.keyCode) { return }
+    // A release outside Muster never reaches a surface.
+    if !event.isARepeat { Self.imageKeys.remove(event.keyCode) }
     if isTypeable, !hasMarkedText(), event.keyCode == 0x09,
       event.modifierFlags.intersection([.control, .option, .command, .shift]) == .control,
       ClipboardImage.containsImage(pasteboard),
