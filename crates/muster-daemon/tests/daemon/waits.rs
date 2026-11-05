@@ -312,3 +312,57 @@ fn a_carried_wait_is_still_limited_after_a_handoff() {
         p1.waiting_on().is_none().then_some(())
     });
 }
+
+#[test]
+fn a_reviewers_message_ends_the_wait_before_the_worker_reports_completion() {
+    use proto::AgentState::{Idle, Working};
+    use proto::msg_request::{self, Request};
+    let mut worker = Pane::with_an_agent();
+    make(&mut worker.control, create("p2", in_new_tab("t2")));
+    worker.daemon.run_agent("p2");
+    worker.turn_declaring("the review");
+    let message = |from: &str, request| {
+        proto::request::Service::Msg(proto::MsgRequest {
+            caller: Some(msg_request::Caller {
+                pane: Some(from.to_string()),
+                ..Default::default()
+            }),
+            request: Some(request),
+        })
+    };
+    expect(
+        &mut worker.control,
+        message(
+            "p2",
+            Request::Post(msg_request::Post {
+                to: vec!["p1".to_string()],
+                body: "review complete".to_string(),
+                ..Default::default()
+            }),
+        ),
+        proto::Outcome::Done,
+    );
+    until_some("the review wake to reach the worker", || {
+        (!worker.rings_heard().is_empty()).then_some(())
+    });
+    worker.hook_reports(Working);
+    expect(
+        &mut worker.control,
+        message("p1", Request::Read(msg_request::Read::default())),
+        proto::Outcome::Done,
+    );
+    expect(
+        &mut worker.control,
+        message(
+            "p1",
+            Request::Post(msg_request::Post {
+                to: vec!["p2".to_string()],
+                body: "work complete".to_string(),
+                ..Default::default()
+            }),
+        ),
+        proto::Outcome::Done,
+    );
+    worker.hook_reports(Idle);
+    assert_eq!(worker.waiting_on(), None, "the review arrived and the worker finished");
+}
