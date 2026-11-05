@@ -567,3 +567,28 @@ harness that allows less must not break anything.
   pane compact`, and `compact_at`.
 - 2026-10-04 Whether an adapter reports, and `muster harness install` (section 12, kan
   `a_2Y6bsEGtg`), answering the open question about Muster installing an adapter.
+
+## 2026-11-05: Codex wakes return to the terminal
+
+The owner chose typed-only Codex delivery, reversing section 7's queue route. Wakes now enter
+Codex's visible composer; a draft holds delivery until it is sent or cleared. An urgent post to
+a working Codex still joins its current turn.
+
+Recordings with 0.166.0 showed `/new` leaving the old conversation loaded and its ID reported
+until the first new prompt. A queue wake reached that old conversation while the visible new
+composer stayed empty. A controlled read/queue/exit sequence also showed a notification replaying
+on resume after its message had been read. Waiting 20 seconds before a typed fallback identifies
+neither the visible conversation nor a stored copy that can safely be withdrawn.
+
+`docs/observations/codex-0.166.0.md` carries the evidence and limits. Older queue copies can still
+start turns in earlier conversations whose hooks consume the pane's messages. Starting a fresh
+Codex process isolates a new assignment. The adapter still reports its ID for resume.
+
+The generic `[session] wake` capability remains, with no bundled harness using it. An adapter
+adopting it must establish that the reported ID names the visible conversation and that its
+command cannot retain an undeliverable wake for later replay. The session-command contract does
+not itself establish either guarantee.
+
+The default suite exercises the shipped Codex session policy with a fake terminal and queue
+command. `./dev --codex` checks draft holds from the sender's side, delivery to the new
+conversation after `/new`, no stale turn on resume, and urgent delivery within a running turn.

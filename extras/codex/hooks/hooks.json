@@ -1,5 +1,5 @@
 {
-  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, how many sub-agents it runs, its model and how full its context is, and the session's id, by which Muster wakes it through `codex queue`.",
+  "description": "Tells the Muster daemon that owns this pane what Codex is doing: working, waiting on you or idle, how many sub-agents it runs, its model and how full its context is, and the session's id for resuming it after a restart.",
   "hooks": {
     "SessionStart": [
       {

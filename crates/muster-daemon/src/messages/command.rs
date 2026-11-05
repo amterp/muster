@@ -1,11 +1,11 @@
 //! A wake handed to a session by its harness's own command, typing nothing into its pane: the
 //! command the agent's manifest names in `[session] wake`, given the session's id its hooks
-//! reported (MIP-5, section 7). Codex's is `codex queue`, which starts a turn in the running
-//! session as if the message were typed there, and leaves a draft in its composer alone.
+//! reported (MIP-5, section 7). No bundled harness currently uses this route: Codex's saved id
+//! can name a conversation behind its visible composer, and its queue can replay read messages.
 //!
 //! The doorbell chooses it over typing whenever it would ring the agent idle, and only then: at
-//! an approval prompt Codex stores a queued message and never submits it, and at work it holds
-//! one until the turn ends, which an urgent ring typed into the running turn does better
+//! an approval prompt Codex stored a queued message and never submitted it, and at work it held
+//! one until the turn ended, which an urgent ring typed into the running turn did better
 //! (`docs/observations/codex-0.154.0.md`, section 9).
 
 use std::io::Read;

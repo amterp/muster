@@ -54,11 +54,18 @@ instead, is the same for every harness: `extras/claude-code/README.md` has it.
 facts when a new session starts or `/clear` runs. Codex fires it with the session's first prompt,
 not when it opens.
 
-`SessionStart` also reports the session's id, which lets Muster wake an idle Codex with `codex
-queue` rather than typing into its pane, so a draft in the composer is left alone (`muster docs
-msg`). It needs nothing installed, since `muster-daemon report` reads the id out of the hook's
-input itself; before a session's first prompt, Codex is rung by typing as any agent is. `codex` must be on the `PATH` a login shell sets, `.zprofile` rather than `.zshrc`,
-since Muster runs it through one.
+`SessionStart` also reports the session's id, which lets Muster resume it after a restart. It
+needs nothing installed, since `muster-daemon report` reads the id out of the hook's input itself.
+Wakes are typed into Codex's visible composer. A draft holds the wake until it is sent or cleared;
+an urgent post at work still joins the running turn (`muster docs msg`).
+
+Muster does not use `codex queue`: `/new` keeps the old conversation loaded and leaves its id
+reported until the first new prompt, so a queued wake can start a turn in that old conversation.
+Codex can also retain a queued notification after its message is read and replay it on resume.
+An older Muster may already have stored such notifications. A turn they start in an earlier
+conversation can still consume the pane's messages through these hooks, and end a sender's wait,
+without the visible conversation seeing them. Start a fresh Codex process to isolate a new
+assignment. `docs/observations/codex-0.166.0.md` records the transitions and limits.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
 turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`, and
@@ -153,5 +160,6 @@ its context (`docs/observations/codex-0.154.0.md`). Codex 0.160.0: where its app
 session's commands and hooks, its dialogs before a session starts, and what it records for a
 marketplace added through a symlink (`docs/observations/codex-0.160.0.md`). `./dev --codex` checks,
 against whatever Codex is installed, that a pane with these hooks reads working and then idle from
-them and reports its context, that an urgent post reaches Codex at work, and that the messaging
-hooks hand a sandboxed Codex what it was sent.
+them and reports its context, that a draft holds delivery, that a post after `/new` reaches the new
+conversation without replay on resume, that an urgent post reaches Codex at work, and that the
+messaging hooks hand a sandboxed Codex what it was sent.

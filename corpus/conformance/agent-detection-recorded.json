@@ -848,6 +848,18 @@
       "expect": {
         "state": "idle"
       }
+    },
+    {
+      "name": "codex 0.166.0: an empty composer after /new before its first prompt",
+      "why": "Recorded in corpus/codex-0.166.0/new-timeline.jsonl. The visible new composer is ready for a typed wake before SessionStart reports its ID; the old reported ID does not name this composer.",
+      "given": {
+        "agent": "codex",
+        "screen": "\n  >_ OpenAI Codex (v0.166.0)\n     $PROBE_ROOT/project\n  permissions: YOLO mode\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  GPT-6.1 Terra low · $PROBE_ROOT/project\n  ? for shortcuts                                     ⚠ 2 warnings · f2 to view\n",
+        "title": ""
+      },
+      "expect": {
+        "state": "idle"
+      }
     }
   ]
 }

@@ -328,7 +328,7 @@ fn a_codex_read_while_a_draft_holds_delivery_leaves_no_stored_wake() {
     agent.post("p1", "read before resuming");
 
     until_some("delivery to reach the draft or the queue", || {
-        (agent.unread().iter().any(|why| why.contains("draft"))
+        (agent.unread().iter().any(|why| why.contains("typed and not sent"))
             || !agent.codex_queued().is_empty())
         .then_some(())
     });
@@ -1082,8 +1082,8 @@ impl Agent {
     }
 }
 
-/// A session whose agent reported its id is woken by the command its manifest names, as Codex is
-/// by `codex queue`: nothing is typed into the pane, so a draft there neither holds the wake back
+/// A session whose agent reported its id is woken by the command its manifest names: nothing is
+/// typed into the pane, so a draft there neither holds the wake back
 /// nor is touched.
 #[test]
 fn a_session_with_its_id_reported_is_woken_by_its_command_without_typing() {

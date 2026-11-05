@@ -206,15 +206,18 @@ gets from each harness. An agent of any other harness in a pane is not woken, an
 `its prompt cannot be read`. An urgent post rings Claude Code or Codex at work; OpenCode holds a
 line typed at work until its turn ends, so it is rung once idle.
 
-**A Codex with the adapter's hooks is woken without typing.** Its hooks report the session's id
-as each session starts, and a wake to it idle runs `codex queue`, which starts a turn in the
-session as if the wake were typed there. Nothing reaches the pane, so it does not wait for an
-empty prompt or for anyone to stop typing, and a draft in Codex's composer stays as it was. A
-Codex at work or at an approval prompt is not woken this way: an urgent post at work is still
-typed into its running turn, and anything else waits for idle, as a ring does. If the command
-fails, or Codex has not started the turn 20 seconds later - as when the session it named has
-exited - the wake is rung instead. A Codex running without its shared app-server checks for
-queued messages about every ten seconds, so it can take most of that wait.
+**Codex wakes are typed into its visible composer.** A draft holds the ring until it is sent or
+cleared, as it does for any typed wake (`muster docs limits`). An urgent post at work still joins
+the running turn. The adapter's session id is kept for resuming the conversation after a restart.
+
+Muster does not queue Codex wakes by that id. After `/new`, Codex keeps the old conversation
+loaded and reports the new id only with its first prompt. A queued wake can therefore reach the
+old conversation while the visible composer is empty. A queued notification can also survive a
+read and replay on resume. Earlier Muster versions may have stored copies already; a turn they
+start in an old conversation can still consume the pane's unread messages through its hooks,
+and end a sender's wait, without the visible conversation seeing them. Start a fresh Codex
+process to isolate a new assignment. The recorded behavior is in
+`docs/observations/codex-0.166.0.md`.
 
 An agent that neither starts work nor reads within five seconds of a ring has Return pressed
 again, a few times, but only while its prompt holds the ring's own text and nothing else, and

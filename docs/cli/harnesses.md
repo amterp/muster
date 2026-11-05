@@ -24,7 +24,7 @@ window`).
 | Rung at an empty prompt | yes | yes | yes | no |
 | Rung while it works, for an urgent post | yes | yes | no | no |
 | Messages fetched by its hooks | yes | yes | no | no |
-| Woken by its own command, typing nothing | no | yes | no | no |
+| Woken by its own command, typing nothing | no | no | no | no |
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | no | no | no |
@@ -60,11 +60,13 @@ kimi, kiro, maki, pi, qodercli.
   a sandboxed Codex that cannot run `muster` itself.
 - **Woken by its own command, typing nothing**: a post to an idle agent runs the harness's own
   command to start a turn in its session, rather than typing a wake into its pane, so it reaches
-  an agent holding a draft and never mixes with what a person is typing. Codex's is `codex queue`,
-  by the session id its adapter's hooks report as each session starts, and it must be on the
-  `PATH` a login shell sets (`.zprofile`, not `.zshrc`). Until then, whenever the command fails,
-  and when Codex does not start the turn within 20 seconds, it is rung as usual. An agent at work or at a dialog is not woken this way:
-  Codex holds a queued message until its turn ends, and at an approval prompt never sends it.
+  an agent holding a draft and never mixes with what a person is typing. No bundled harness
+  currently uses this route. An adapter adopting it must establish that its reported id still
+  names the visible conversation and that its command cannot retain an undeliverable wake for
+  later replay. Codex meets neither condition after `/new` or exit, so its wakes are typed.
+  Commands run on the `PATH` a login shell sets (`.zprofile`, not `.zshrc`). A failed command, or
+  a wake not taken within 20 seconds, falls back to typing. An agent at work or at a dialog is
+  not woken by command.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
   it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in

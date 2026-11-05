@@ -370,7 +370,7 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
 /// call, when the model reads the message and answers it.
 #[test]
 #[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
-fn an_urgent_post_reaches_codex_at_work_and_is_answered() {
+fn an_urgent_post_reaches_codex_within_its_running_turn() {
     if !asked_for("an urgent post reaches Codex at work") {
         return;
     }
@@ -378,6 +378,9 @@ fn an_urgent_post_reaches_codex_at_work_and_is_answered() {
     let daemon = codex_daemon();
     let mut control = daemon.connect();
     let networked = [
+        "--no-daemon",
+        "--model",
+        "gpt-6.1-terra",
         "-a",
         "never",
         "-s",
@@ -385,7 +388,8 @@ fn an_urgent_post_reaches_codex_at_work_and_is_answered() {
         "-c",
         "sandbox_workspace_write.network_access=true",
     ];
-    let (folder, command) = project(&daemon, "worker", true, &networked);
+    let events = r#"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"jq -c . >> codex-turn-events"}]}],"PostToolUse":[{"hooks":[{"type":"command","command":"jq -c . >> codex-turn-events"}]}],"Stop":[{"hooks":[{"type":"command","command":"jq -c . >> codex-turn-events"}]}]}}"#;
+    let (folder, command) = project_with(&daemon, "worker", &[HOOKS, events], &networked);
     make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
     let mut input = Input::connect(daemon.socket_path());
     until_ready(&mut control, "worker");
@@ -404,21 +408,38 @@ fn an_urgent_post_reaches_codex_at_work_and_is_answered() {
     assert!(
         as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
     );
-    let body = format!(
-        "Answer this message by running exactly: muster msg post --to integrator 'got {nonce}'."
+    let body = format!("The nonce is {nonce}. Keep following the current request.");
+    let posted = as_integrator(
+        &muster,
+        &daemon,
+        &["msg", "post", "--as", "integrator", "--urgent", "--to", "worker", &body],
     );
-    let posted =
-        as_integrator(&muster, &daemon, &["msg", "post", "--urgent", "--to", "worker", &body]);
     let said = String::from_utf8_lossy(&posted.stdout).to_string();
     assert!(posted.status.success(), "the post: {said}");
-    assert!(said.contains("worker (working)"), "rung at work: {said}");
+    assert!(said.contains("working"), "rung at work: {said}");
 
-    let group = "integrator+worker";
-    let answered = until_turns(TURN, "the worker answering", || {
-        log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
-    });
-    eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
-    assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+    let events = || {
+        std::fs::read_to_string(daemon.root().join("worker/codex-turn-events"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        until_turns(TURN, "the running turn to read the urgent message", || {
+            events().iter().any(|event| {
+                event["hook_event_name"] == "PostToolUse" && event.to_string().contains(&nonce)
+            })
+        }),
+        "worker: {}",
+        read_text(&mut control, "worker", 0, 0).text
+    );
+    assert!(until_turns(TURN, "the urgent turn to end", || {
+        events().iter().any(|event| event["hook_event_name"] == "Stop")
+    }));
+    let events = events();
+    let first = events.first().unwrap()["turn_id"].as_str().expect("a reported turn id");
+    assert!(events.iter().all(|event| event["turn_id"] == first), "{events:?}");
 }
 
 /// With `extras/codex/messaging-hooks.json`, the ring's turn starts with the message already in
@@ -465,19 +486,15 @@ fn a_sandboxed_codex_with_messaging_hooks_is_handed_its_message() {
     assert!(replied, "the worker never replied with the word it was sent");
 }
 
-/// A Codex whose hooks reported its session's id is woken through `codex queue`, typing nothing:
-/// a draft left in its composer, which the doorbell would wait out for good, neither holds the
-/// message back nor is sent with it, and is still in the composer once the turn ends.
-#[test]
-#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
-fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
-    if !asked_for("Codex is woken through codex queue, typing nothing") {
-        return;
-    }
+fn message_worker() -> (Daemon, Control, Input, String) {
     let muster = built_muster();
     let daemon = codex_daemon();
     let mut control = daemon.connect();
-    let networked = [
+    let turns = r#"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"jq -r .session_id >> codex-prompt-sessions"}]}]}}"#;
+    let extra = [
+        "--no-daemon",
+        "--model",
+        "gpt-6.1-terra",
         "-a",
         "never",
         "-s",
@@ -485,18 +502,61 @@ fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
         "-c",
         "sandbox_workspace_write.network_access=true",
     ];
-    let (folder, command) = project(&daemon, "worker", true, &networked);
-    make_pane(&mut control, "worker", &folder, with_muster_on_path(&muster, &command), true);
-    let mut input = Input::connect(daemon.socket_path());
+    let (folder, command) =
+        project_with(&daemon, "worker", &[HOOKS, MESSAGING_HOOKS, turns], &extra);
+    assert!(Command::new("git").args(["init", "-q", &folder]).status().unwrap().success());
+    let command = with_muster_on_path(&muster, &command);
+    make_pane(&mut control, "worker", &folder, command.clone(), true);
     until_ready(&mut control, "worker");
-    std::thread::sleep(Duration::from_secs(4));
-    // A first turn starts the session, and its SessionStart hook reports the session's id.
+    let mut input = Input::connect(daemon.socket_path());
     type_line(&mut input, "worker", "Reply with the single word ready.");
-    let settled = until_turns(TURN, "the first turn", || {
+    assert!(until_turns(TURN, "the first turn", || {
         read_text(&mut control, "worker", 0, 0).text.contains("• ready")
-    });
-    assert!(settled, "worker: {}", read_text(&mut control, "worker", 0, 0).text);
+    }));
     std::thread::sleep(Duration::from_secs(4));
+    assert!(
+        as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
+    );
+    (daemon, control, input, command)
+}
+
+fn message_group(daemon: &Daemon) -> String {
+    let callsign = snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "worker")
+        .unwrap()
+        .callsign
+        .unwrap();
+    let mut names = ["integrator".to_string(), callsign];
+    names.sort();
+    names.join("+")
+}
+
+fn prompt_sessions(daemon: &Daemon) -> Vec<String> {
+    std::fs::read_to_string(daemon.root().join("worker/codex-prompt-sessions"))
+        .unwrap_or_default()
+        .lines()
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn key(input: &mut Input, key: &str) {
+    input.send(
+        "worker",
+        Event::Send(input_event::Send { keys: vec![key.to_string()], ..Default::default() }),
+    );
+}
+
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn a_codex_draft_holds_its_wake_until_the_composer_is_empty() {
+    if !asked_for("a Codex draft holds delivery without changing or sending the draft") {
+        return;
+    }
+    let (daemon, mut control, mut input, _) = message_worker();
+    let muster = built_muster();
+    let group = message_group(&daemon);
     input.send(
         "worker",
         Event::Send(input_event::Send {
@@ -505,23 +565,107 @@ fn a_codex_holding_a_draft_is_woken_by_codex_queue_and_keeps_the_draft() {
             ..Default::default()
         }),
     );
-
-    let nonce = format!("q{}", std::process::id());
-    assert!(
-        as_integrator(&muster, &daemon, &["msg", "join", "--name", "integrator"]).status.success()
+    until_text(&mut control, "worker", "› half typed");
+    std::thread::sleep(Duration::from_secs(4));
+    let nonce = format!("draft{}", std::process::id());
+    let body =
+        format!("Run exactly: muster msg post --to integrator 'got {nonce}'. Do nothing else.");
+    let posted = as_integrator(
+        &muster,
+        &daemon,
+        &["msg", "post", "--as", "integrator", "--to", "worker", &body],
     );
-    let body = format!("The word for today is {nonce}. Reply with it, and do nothing else.");
-    let posted = as_integrator(&muster, &daemon, &["msg", "post", "--to", "worker", &body]);
-    assert!(posted.status.success());
+    let said = String::from_utf8_lossy(&posted.stdout);
+    assert!(posted.status.success(), "{said}");
+    assert!(said.contains("its prompt holds something typed and not sent"), "{said}");
+    let who =
+        as_integrator(&muster, &daemon, &["msg", "who", "--as", "integrator", "--group", &group]);
+    assert!(who.status.success());
+    assert!(
+        String::from_utf8_lossy(&who.stdout)
+            .contains("its prompt holds something typed and not sent")
+    );
+    assert_eq!(
+        prompt_sessions(&daemon).len(),
+        1,
+        "the draft was submitted or a queued turn started"
+    );
+    assert!(read_text(&mut control, "worker", 0, 0).text.contains("› half typed"));
+    key(&mut input, "ctrl+u");
+    assert!(until_turns(TURN, "delivery after clearing the draft", || {
+        log_of(&mut control, &group).iter().any(|line| line == &format!("worker: got {nonce}"))
+    }));
+    assert_eq!(prompt_sessions(&daemon).len(), 2);
+}
 
-    let replied = until_turns(TURN, "the worker replying with the word", || {
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn a_codex_new_conversation_gets_the_message_and_resume_adds_no_stale_turn() {
+    if !asked_for("a post after /new reaches the new Codex conversation without replay on resume") {
+        return;
+    }
+    let (daemon, mut control, mut input, command) = message_worker();
+    let muster = built_muster();
+    let group = message_group(&daemon);
+    let old = prompt_sessions(&daemon);
+    assert_eq!(old.len(), 1);
+    type_line(&mut input, "worker", "/new");
+    until_text(&mut control, "worker", "Use current Git worktree");
+    key(&mut input, "enter");
+    assert!(until_turns(TURN, "the new empty composer", || {
         let screen = read_text(&mut control, "worker", 0, 0).text;
-        let composer = screen.lines().rev().find(|line| line.starts_with('›')).unwrap_or_default();
-        composer.contains("half typed")
-            && screen.lines().any(|line| line.starts_with('•') && line.contains(&nonce))
-    });
-    eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
-    assert!(replied, "the worker never replied with the word, or its draft was lost");
+        !screen.contains("Use current Git worktree") && !screen.contains("• ready")
+    }));
+    let body = "Run exactly: muster msg post --to integrator 'got new'. Do nothing else.";
+    assert!(
+        as_integrator(
+            &muster,
+            &daemon,
+            &["msg", "post", "--as", "integrator", "--to", "worker", body]
+        )
+        .status
+        .success()
+    );
+    assert!(until_turns(TURN, "the new conversation replying", || {
+        log_of(&mut control, &group).iter().any(|line| line == "worker: got new")
+    }));
+    let turns = prompt_sessions(&daemon);
+    assert_eq!(turns.len(), 2, "{turns:?}");
+    assert_ne!(turns[0], turns[1], "the old conversation took the wake");
+    let id = turns[1].clone();
+    let record =
+        snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "worker").unwrap();
+    assert_eq!(record.session_id.as_deref(), Some(id.as_str()));
+    let read =
+        as_integrator(&muster, &daemon, &["msg", "read", "--as", "worker", "--group", &group]);
+    assert!(read.status.success());
+    assert!(String::from_utf8_lossy(&read.stdout).contains("nothing unread"));
+    assert!(
+        as_integrator(&muster, &daemon, &["msg", "read", "--as", "integrator", "--group", &group])
+            .status
+            .success()
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    key(&mut input, "ctrl+d");
+    until_text(&mut control, "worker", "$");
+    type_line(&mut input, "worker", &format!("{command} resume {id}"));
+    until_ready(&mut control, "worker");
+    std::thread::sleep(Duration::from_secs(22));
+    assert_eq!(prompt_sessions(&daemon), turns, "resume replayed an already-read wake");
+    let body = "Run exactly: muster msg post --to integrator 'got resumed'. Do nothing else.";
+    assert!(
+        as_integrator(
+            &muster,
+            &daemon,
+            &["msg", "post", "--as", "integrator", "--to", "worker", body]
+        )
+        .status
+        .success()
+    );
+    assert!(until_turns(TURN, "the resumed conversation replying to a new post", || {
+        log_of(&mut control, &group).iter().any(|line| line == "worker: got resumed")
+    }));
+    assert_eq!(prompt_sessions(&daemon), [old[0].clone(), id.clone(), id]);
 }
 
 /// A `CODEX_HOME` of a test's own, outside the daemon's folder so that it outlasts the daemon's

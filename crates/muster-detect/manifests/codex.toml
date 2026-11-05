@@ -1,7 +1,7 @@
 id = "codex"
-version = "2026.10.16.1"
+version = "2026.11.05.1"
 min_engine_version = 15
-updated_at = "2026-10-07T00:00:00Z"
+updated_at = "2026-11-05T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
 # binary carries as strings. On Linux each command the model runs goes through
@@ -23,11 +23,9 @@ then restart Codex, so that each session runs its own commands and hooks; or sta
 # as well as after (docs/observations/codex-0.154.0.md, section 5).
 [session]
 rename = "/rename {name}"
-# Starts a turn in the running session as if the message were typed there, without typing into
-# the pane, by the id its hooks report, and leaves a draft in the composer alone
-# (docs/observations/codex-0.154.0.md, section 9). A Codex without the shared app-server starts that
-# turn up to ten seconds later (docs/observations/codex-0.163.0.md).
-wake = ["codex", "queue", "--thread", "{session}", "--message", "{message}"]
+# /new leaves the old conversation loaded and its id reported until the first new prompt.
+# A queued wake can reach that old conversation or survive a read and replay on resume.
+# Typing reaches the visible composer instead (docs/observations/codex-0.166.0.md).
 # What a pane runs after a daemon restart, or a restart of the agent, to start its session again,
 # as two Codex 0.162.1 sessions on a devenv were brought back by hand on 2026-10-16. Without the
 # flags it ran with: where `codex resume` takes them has not been recorded.
