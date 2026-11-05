@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.10
+// Version: 1.11
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -304,6 +304,13 @@ message PaneRequest {
     MakerClosed maker_closed = 14;
     // Since 1.10.
     Reopen reopen = 15;
+    // Since 1.11. Answered with ImageStored; never writes the pane's input itself.
+    StoreImage store_image = 16;
+  }
+
+  message StoreImage {
+    string pane = 1;
+    bytes png = 2;
   }
 
   // Sets whether the pane is quiet: whether a view raises anything for the person about it.
@@ -538,6 +545,10 @@ message PaneRequest {
     // Since 1.10. The reasoning effort the agent's model runs at (`AgentFacts.effort`). Empty
     // removes it.
     optional string effort = 16;
+    // Since 1.11. The pane whose message delivery ends this wait. Accepts a pane id, callsign,
+    // or unique name; stored as its resolved identity in AgentFacts. Needs nonempty waiting
+    // and cannot be combined with waiting_until_exits.
+    optional string waiting_until_message_from = 17;
   }
 }
 
@@ -1378,7 +1389,13 @@ message Answer {
     Created created = 16;
     // Since 1.10.
     Reopened reopened = 17;
+    // Since 1.11.
+    ImageStored image_stored = 18;
   }
+}
+
+message ImageStored {
+  string path = 1;
 }
 
 // What a create made, on its DONE: the callsign drawn for the pane, which the asker can say at
@@ -1763,6 +1780,11 @@ message Pane {
   // its state next changes, and a daemon that predates it sends none. Kept across a handoff, and
   // never written to the state file.
   optional uint64 state_since_ms = 24;
+  // Since 1.11. The deciding screen rule's description of what covers the prompt. Absent
+  // while no named screen covers it. Derived from the live screen, never persisted.
+  optional string prompt_covered_by = 25;
+  // Since 1.11. A supported agent's image composer is currently readable.
+  bool image_paste = 26;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.
@@ -1834,6 +1856,9 @@ message AgentFacts {
   // Since 1.10. The reasoning effort the agent's model runs at, as its harness names it: "high",
   // "xhigh". At most 32 bytes. Absent for a model that takes none.
   optional string effort = 8;
+  // Since 1.11. The resolved sender whose delivered message ends the wait. Other messages and
+  // turns leave it active. A local sender is a pane id, a remote sender a qualified participant.
+  optional string waiting_until_message_from = 9;
 }
 
 enum AgentState {
@@ -2270,6 +2295,11 @@ message Handoff {
     // its end raises no maker's notice. Unset: nothing typed it, or a daemon that sends none.
     TypedBy turn_typed_by = 12;
     optional uint32 turn_ms_ago = 13;
+    // Since 1.11. The current wait's explicit declaration time, in UTC milliseconds. Carrying
+    // it through a wake or compaction does not restart the maker's long-wait notice clock.
+    optional uint64 wait_started_ms = 14;
+    // Since 1.11. The maker has been told that this declared wait has lasted too long.
+    bool wait_noticed = 15;
   }
 
   enum TypedBy {
