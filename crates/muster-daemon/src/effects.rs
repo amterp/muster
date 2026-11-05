@@ -165,6 +165,7 @@ pub(crate) struct Report {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Reported {
+    ImagePaste(bool),
     Title(String),
     Cwd(PathBuf),
     Shown(Shown),

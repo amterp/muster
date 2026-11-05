@@ -85,6 +85,7 @@ pub struct Pane {
     /// Whether the daemon can compact that agent's context from its prompt, by the manifests it
     /// holds. False for a pane running no agent, and from a daemon older than the answer.
     pub compactable: bool,
+    pub image_paste: bool,
     pub cwd: String,
     /// What a person called this pane, if anybody has. Durable identity: the daemon writes it
     /// down, so it comes back after a daemon restart.

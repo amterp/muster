@@ -137,6 +137,8 @@ pub struct Detector {
     pending_foreground_shell_clear: bool,
     foreground_shell_exit_reported: bool,
     last_detection_text: String,
+    image_paste: Option<bool>,
+    image_paste_foreground: bool,
     last_screen_scan_content_seq: Option<u64>,
     startup_grace_until: Option<Instant>,
     pending_idle: PendingIdle,
@@ -196,6 +198,8 @@ impl Detector {
             pending_foreground_shell_clear: false,
             foreground_shell_exit_reported: false,
             last_detection_text: String::new(),
+            image_paste: None,
+            image_paste_foreground: false,
             last_screen_scan_content_seq: None,
             startup_grace_until: None,
             pending_idle: PendingIdle::default(),
@@ -227,6 +231,8 @@ impl Detector {
         self.pending_foreground_shell_clear = false;
         self.foreground_shell_exit_reported = false;
         self.last_detection_text.clear();
+        self.image_paste = None;
+        self.image_paste_foreground = false;
         self.last_screen_scan_content_seq = None;
         self.startup_grace_until = None;
         self.pending_idle.clear();
@@ -436,15 +442,17 @@ impl Detector {
         }
 
         let content_seq = agent.is_some().then(|| pane.content_seq());
-        if should_skip_screen_read(ScreenReadInput {
-            state: self.published.state,
-            identified: agent.is_some(),
-            pending_idle_active: self.pending_idle.active(),
-            agent_changed,
-            process_exited,
-            content_seq,
-            last_screen_scan_content_seq: self.last_screen_scan_content_seq,
-        }) {
+        if self.image_paste.is_some()
+            && should_skip_screen_read(ScreenReadInput {
+                state: self.published.state,
+                identified: agent.is_some(),
+                pending_idle_active: self.pending_idle.active(),
+                agent_changed,
+                process_exited,
+                content_seq,
+                last_screen_scan_content_seq: self.last_screen_scan_content_seq,
+            })
+        {
             return emitted;
         }
 
@@ -452,6 +460,8 @@ impl Detector {
         self.last_screen_scan_content_seq = content_seq;
         let content_changed = content != self.last_detection_text;
         self.last_detection_text.clone_from(&content);
+        self.image_paste =
+            Some(agent.as_ref().is_some_and(|agent| manifests.image_paste(agent, &content)));
         // herdr asked this of the screen alone, before reading the title and progress.
         let screen_only = Input { screen: &content, ..Input::default() };
         let screen_read = manifests.detect(agent.as_ref(), screen_only);
@@ -563,6 +573,7 @@ impl Detector {
         let had_process_probe = self.has_process_probe;
         self.has_process_probe = true;
         let found = probe(self.shell, foreground_group, processes, manifests);
+        self.image_paste_foreground = found.agent.is_some() && !found.shell_in_foreground;
         let previous = self.presence.current.clone();
         let action = foreground_shell_agent_action(
             previous.as_ref(),
@@ -636,6 +647,16 @@ impl Detector {
                 self.presence.observe(found)
             }
         }
+    }
+
+    pub fn image_paste_ready(&self) -> bool {
+        self.image_paste == Some(true)
+            && self.image_paste_foreground
+            && self.last_emitted.as_ref().is_some_and(|published| {
+                published.agent == self.presence.current
+                    && !published.unreadable
+                    && matches!(published.state, State::Idle | State::Working)
+            })
     }
 
     fn current_title(&mut self, pane: &impl Pane) -> String {

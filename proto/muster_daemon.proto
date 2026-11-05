@@ -1777,6 +1777,8 @@ message Pane {
   // Since 1.11. The deciding screen rule's description of what covers the prompt. Absent
   // while no named screen covers it. Derived from the live screen, never persisted.
   optional string prompt_covered_by = 25;
+  // Since 1.11. A supported agent's image composer is currently readable.
+  bool image_paste = 26;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

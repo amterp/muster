@@ -3159,6 +3159,7 @@ impl Session {
             | Reported::Cwd(_)
             | Reported::ShiftCapture(_)
             | Reported::UnreadInput(_)
+            | Reported::ImagePaste(_)
             | Reported::Settled(_) => {}
             Reported::Shown(effect) => {
                 self.emit(Payload::PaneEffect(proto::PaneEffect {
@@ -4810,6 +4811,7 @@ fn set_reported_field(record: &mut proto::Pane, what: Reported) -> Result<bool, 
         Reported::Cwd(directory) => Ok(replaced(&mut record.cwd, directory.display().to_string())),
         Reported::ShiftCapture(capture) => Ok(replaced(&mut record.shift_capture, capture)),
         Reported::UnreadInput(unread) => Ok(replaced(&mut record.unread_input, unread)),
+        Reported::ImagePaste(ready) => Ok(replaced(&mut record.image_paste, ready)),
         what => Err(what),
     }
 }

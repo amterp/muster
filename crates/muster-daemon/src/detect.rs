@@ -275,6 +275,9 @@ pub(crate) struct Detection {
 }
 
 impl Detection {
+    pub(crate) fn image_paste_ready(&self) -> bool {
+        self.detector.image_paste_ready()
+    }
     /// Detection for a pane whose shell is `shell`, when this daemon started one.
     pub(crate) fn new(shell: Option<i32>, now: Instant) -> Detection {
         let shell = shell.and_then(|pid| u32::try_from(pid).ok()).unwrap_or(0);

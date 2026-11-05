@@ -29,12 +29,29 @@ window`).
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | no | no | no |
 | Resumed after a restart | yes | yes | no | no |
+| Clipboard image pasted into a remote composer | yes | yes | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
 kimi, kiro, maki, pi, qodercli.
 
 - **Its state read off the screen**: working, blocked or idle, from rules Muster keeps for each
   harness's screens.
+- **Clipboard images**: Ctrl+V in a remote Claude Code or Codex composer uploads the Mac's image
+  to that pane's machine and pastes its quoted path. The harness attaches it as an image. This
+  needs no adapter; `[session] image_paste = true` opts a manifest in (detection engine 18).
+  Dialogs, editors, other harnesses, custom Ctrl+V bindings, and local Ctrl+V keep their usual
+  behavior. With both text and an image copied, Ctrl+V takes the image. Cmd+V takes text first,
+  or an image when there is no text, in local and remote panes alike.
+
+  PNG bytes are preserved; TIFF is converted to PNG at its original dimensions. PNGs larger
+  than 15 MiB are refused. The pane shows `Pasting image…` and holds later typing until the
+  upload finishes; other panes stay usable. Esc or Ctrl+C cancels the image. A failed upload
+  reports its error and releases held typing, including Return.
+
+  Images are private files beside the pane's daemon socket, in `<socket stem>.images`, and
+  survive closing or restarting a pane. A later upload removes files older than seven days.
+  The cache holds at most 1 GiB and refuses new images rather than deleting younger files a
+  draft might still reference. Image paste needs daemon protocol 1.11 or newer.
 - **Its own report of its state**: the harness's hooks tell Muster, which outranks the screen, so
   a harness update that changes its screen does not change what Muster shows. Needs the
   adapter's hooks installed.

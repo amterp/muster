@@ -1,6 +1,6 @@
 id = "codex"
 version = "2026.11.05.1"
-min_engine_version = 15
+min_engine_version = 18
 updated_at = "2026-11-05T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
@@ -22,6 +22,7 @@ then restart Codex, so that each session runs its own commands and hooks; or sta
 # Typed at an empty composer with a Return; Codex takes the name inline, before its first turn
 # as well as after (docs/observations/codex-0.154.0.md, section 5).
 [session]
+image_paste = true
 rename = "/rename {name}"
 # /new leaves the old conversation loaded and its id reported until the first new prompt.
 # A queued wake can reach that old conversation or survive a read and replay on resume.

@@ -1168,6 +1168,7 @@ impl Pane {
                 unsent: None,
             },
             published: first_published(watching.detection),
+            image_paste_published: None,
             detection,
             detecting: Arc::clone(watching.detecting),
             unsent: None,
@@ -1364,6 +1365,7 @@ struct Reader {
     unsent: Option<Reported>,
     /// The agent state detection last published.
     published: proto::AgentState,
+    image_paste_published: Option<bool>,
     /// Whether the pane's program has stopped reading its input.
     unread: Unread,
     /// What [`Reader::look_at_input`] published that the queue dropped, to send again.
@@ -1494,6 +1496,12 @@ impl Reader {
             self.published = *state;
         }
         publish_agent(&self.reports, self.io.serial, published, &mut self.unsent);
+        let image_paste = self.detection.image_paste_ready();
+        if Some(image_paste) != self.image_paste_published
+            && self.reports.send(self.io.serial, Reported::ImagePaste(image_paste))
+        {
+            self.image_paste_published = Some(image_paste);
+        }
     }
 
     /// Looks at what the pane's program has left unread, when that is worth a look, and

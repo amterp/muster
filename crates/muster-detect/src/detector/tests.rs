@@ -587,6 +587,43 @@ fn published(agent: Option<Agent>, state: State) -> Publication {
 }
 
 #[test]
+fn image_paste_requires_a_supported_composer_and_its_foreground_agent() {
+    let manifest = MANIFEST
+        .replace("min_engine_version = 1", "min_engine_version = 18\n[session]\nimage_paste = true")
+        .replace("contains = [\"ready>\"]", "contains = [\"ready>\"]\nprompt = '^ready> ?'");
+    let mut run = Run::with_manifest(&manifest);
+    run.start_agent();
+    run.paint("ready> a draft");
+    run.until_published(Duration::from_secs(5)).unwrap();
+    assert!(run.detector.image_paste_ready());
+
+    for screen in ["ready> a draft\nallow?", "an editor with no composer", "transcript"] {
+        run.paint(screen);
+        run.tick();
+        assert!(!run.detector.image_paste_ready(), "{screen}");
+    }
+
+    run.paint("ready> a draft");
+    run.tick();
+    assert!(run.detector.image_paste_ready());
+    run.pane.group = Some(SHELL);
+    run.tick();
+    assert!(!run.detector.image_paste_ready());
+}
+
+#[test]
+fn image_paste_is_opt_in_even_with_a_readable_prompt() {
+    let manifest = MANIFEST
+        .replace("min_engine_version = 1", "min_engine_version = 18")
+        .replace("contains = [\"ready>\"]", "contains = [\"ready>\"]\nprompt = '^ready> ?'");
+    let mut run = Run::with_manifest(&manifest);
+    run.start_agent();
+    run.paint("ready> ");
+    run.until_published(Duration::from_secs(5)).unwrap();
+    assert!(!run.detector.image_paste_ready());
+}
+
+#[test]
 fn a_pane_with_no_agent_is_unknown_and_ticks_slowly() {
     let mut run = Run::new();
     assert_eq!(run.tick(), Some(published(None, State::Unknown)));

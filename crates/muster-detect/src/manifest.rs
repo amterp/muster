@@ -35,8 +35,9 @@ use region::Region;
 /// 15 a `[session]` `resume_keeps`, the flags a resume carries when it cannot carry the rest,
 /// and a rule's `shows`, what a screen hiding the prompt shows, 16 an idle rule's `waiting`,
 /// the work of its own an agent at its prompt is waiting on, and 17 a `[session]`
-/// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends.
-pub const ENGINE_VERSION: u32 = 17;
+/// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends,
+/// and 18 `[session] image_paste`, allowing image paths in a readable composer.
+pub const ENGINE_VERSION: u32 = 18;
 
 /// The engine version that introduced a rule's `prompt`.
 const PROMPT_ENGINE_VERSION: u32 = 5;
@@ -176,6 +177,7 @@ pub struct Manifest {
     resume: Option<resume::Spelling>,
     /// Whether a job the agent started in the background starts its next turn when it ends.
     wakes_when_jobs_end: bool,
+    image_paste: bool,
 }
 
 /// The harness's binary serving sessions other than its own, as Codex's shared app-server does:
@@ -335,6 +337,10 @@ impl Manifest {
     /// that a wait it declared on one ends with that turn. Unsaid, it does not.
     pub fn wakes_when_jobs_end(&self) -> bool {
         self.wakes_when_jobs_end
+    }
+
+    pub fn image_paste(&self) -> bool {
+        self.image_paste
     }
 
     /// The command, as arguments, that starts the session with id `session` again after the
@@ -596,6 +602,8 @@ struct RawSession {
     resume_keeps: Vec<String>,
     #[serde(default)]
     wakes_when_jobs_end: bool,
+    #[serde(default)]
+    image_paste: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -849,6 +857,9 @@ fn validate_helpers(manifest: &RawManifest) -> Result<(), String> {
 /// A rename is typed as one line and sent with one Return, so it holds the name and nothing that
 /// would act as a key on its own.
 fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), String> {
+    if session.image_paste && manifest.min_engine_version.unwrap_or(0) < 18 {
+        return Err("[session] image_paste needs min_engine_version 18 or later".into());
+    }
     if manifest.min_engine_version.unwrap_or(0) < SESSION_ENGINE_VERSION {
         return Err(format!(
             "the manifest has a [session] table but min_engine_version is below \
@@ -1235,6 +1246,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
             .session
             .as_ref()
             .is_some_and(|session| session.wakes_when_jobs_end),
+        image_paste: raw.session.as_ref().is_some_and(|session| session.image_paste),
         resume: raw.session.as_ref().and_then(|session| {
             Some(resume::Spelling {
                 command: session.resume.clone()?,

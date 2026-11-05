@@ -14,6 +14,14 @@ fn screen(text: &str) -> Input<'_> {
     Input { screen: text, ..Input::default() }
 }
 
+#[test]
+fn image_paste_needs_engine_eighteen_and_defaults_off() {
+    let source = "id = 'claude'\nmin_engine_version = 18\n[session]\nimage_paste = true\n[[rules]]\nid = 'idle'\nstate = 'idle'\ncontains = ['ready']\n";
+    assert!(Manifest::parse(source).unwrap().image_paste());
+    assert!(Manifest::parse(&source.replace("18", "17")).unwrap_err().contains("image_paste"));
+    assert!(!Manifest::parse(&source.replace("image_paste = true", "")).unwrap().image_paste());
+}
+
 fn region(content: &str, spec: &str) -> String {
     Region::parse(spec).expect("a valid region").slice(screen(content)).to_string()
 }

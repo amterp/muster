@@ -55,6 +55,25 @@ fn all_built_in_manifests_parse_and_validate() {
 }
 
 #[test]
+fn image_paste_reads_claude_and_codex_composers_without_accepting_dialogs() {
+    let manifests = Manifests::built_in();
+    let rule = "─".repeat(80);
+    let claude = format!("{rule}\n❯ a draft\n{rule}\n  ⏸ manual mode on\n");
+    let codex = "› a draft\n\n  ? for shortcuts\n";
+    assert!(manifests.image_paste(&Agent::new("claude"), &claude));
+    assert!(manifests.image_paste(&Agent::new("codex"), codex));
+    assert!(!manifests.image_paste(&Agent::new("opencode"), codex));
+    assert!(
+        !manifests
+            .image_paste(&Agent::new("claude"), "Do you want to proceed?\n❯ 1. Yes\nEsc to cancel")
+    );
+    assert!(!manifests.image_paste(
+        &Agent::new("codex"),
+        "Would you like to run the following command?\n› 1. Yes\nPress enter to confirm or esc to cancel"
+    ));
+}
+
+#[test]
 fn every_name_herdr_knew_an_agent_by_still_reaches_it() {
     // herdr's lookup_agent table (src/detect/mod.rs), minus omp and mastracode, which had no
     // screen manifest and so are not agents here.

@@ -290,6 +290,19 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt())
     }
 
+    pub fn image_paste(&self, agent: &Agent, screen: &str) -> bool {
+        let input = Input { screen, ..Input::default() };
+        self.entry(agent).is_some_and(|entry| {
+            entry.manifest.image_paste()
+                && (entry.manifest.prompt(input, screen).is_some()
+                    || entry.manifest.prompt_at_work(input, screen).is_some())
+        })
+    }
+
+    pub fn supports_image_paste(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.image_paste())
+    }
+
     /// Whether the agent's manifest can read its prompt while it works.
     pub fn reads_prompt_at_work(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt_at_work())
