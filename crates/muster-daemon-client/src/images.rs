@@ -8,7 +8,8 @@ use muster_core::mirror::backend::PaneId;
 use muster_daemon_proto::connection;
 use muster_daemon_proto::{self as proto, answer, control_message, pane_request, request};
 
-const PATIENCE: Duration = Duration::from_secs(10);
+const WRITE_PATIENCE: Duration = Duration::from_secs(10);
+const ANSWER_PATIENCE: Duration = Duration::from_mins(2);
 
 pub fn store(
     socket: &Path,
@@ -36,8 +37,9 @@ pub fn store(
     cancellation.on_cancel(move || {
         let _ = stop.shutdown(Shutdown::Both);
     });
-    stream.set_write_timeout(Some(PATIENCE)).map_err(|error| error.to_string())?;
-    stream.set_read_timeout(Some(PATIENCE)).map_err(|error| error.to_string())?;
+    stream.set_write_timeout(Some(WRITE_PATIENCE)).map_err(|error| error.to_string())?;
+    // SSH may still hold megabytes after the local socket takes the final write.
+    stream.set_read_timeout(Some(ANSWER_PATIENCE)).map_err(|error| error.to_string())?;
     let request = proto::Request {
         id: 1,
         service: Some(request::Service::Pane(proto::PaneRequest {

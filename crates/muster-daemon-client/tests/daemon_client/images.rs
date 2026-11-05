@@ -1,5 +1,6 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::time::Duration;
 
 use muster_core::input::ImageCancellation;
 use muster_core::mirror::backend::PaneId;
@@ -51,4 +52,30 @@ fn an_upload_to_a_missing_pane_creates_no_image_cache() {
     );
     assert!(result.unwrap_err().contains("no pane"));
     assert!(!daemon.socket_path().with_extension("images").exists());
+}
+
+#[test]
+fn a_slow_final_answer_does_not_fail_an_upload_that_reached_the_daemon() {
+    let daemon = Daemon::start_built();
+    make(&mut daemon.connect(), create("p1", in_new_tab("t1")));
+    let relay = daemon.delaying_answers_where(
+        |request| {
+            matches!(
+                &request.service,
+                Some(proto::request::Service::Pane(proto::PaneRequest {
+                    request: Some(proto::pane_request::Request::StoreImage(_)),
+                }))
+            )
+        },
+        Duration::from_secs(11),
+    );
+    let png = b"\x89PNG\r\n\x1a\nimage".to_vec();
+    let path = images::store(
+        relay.socket_path(),
+        &PaneId::new("p1"),
+        png.clone(),
+        &ImageCancellation::default(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(path).unwrap(), png);
 }

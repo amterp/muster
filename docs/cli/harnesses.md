@@ -48,6 +48,10 @@ kimi, kiro, maki, pi, qodercli.
   upload finishes; other panes stay usable. Esc or Ctrl+C cancels the image. A failed upload
   reports its error and releases held typing, including Return.
 
+  An upload stops after ten seconds without write progress. After the local socket takes the
+  bytes, the pane can hold typing for up to 120 seconds while SSH finishes delivering them and
+  the daemon answers. Esc or Ctrl+C cancels that wait immediately.
+
   Images are private files beside the pane's daemon socket, in `<socket stem>.images`, and
   survive closing or restarting a pane. A later upload removes files older than seven days.
   The cache holds at most 1 GiB and refuses new images rather than deleting younger files a
