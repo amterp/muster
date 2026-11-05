@@ -15,6 +15,8 @@ final class ConversationRecorder {
   var edits: [DraftEdit] = []
   /// Each pick sent: the question, and the answer's place or nil for taking it back.
   var picks: [(question: UInt64, answer: UInt32?)] = []
+  var holdPosts = false
+  var postCompletions: [@MainActor @Sendable () -> Void] = []
   /// What the core answers a pick with.
   var picked: (UInt64, UInt32?) -> Muster_MessageBoxDraft? = { question, answer in
     var draft = Muster_MessageBoxDraft()
@@ -49,7 +51,10 @@ final class ConversationRecorder {
         picks.append((question, answer))
         return picked(question, answer)
       },
-      post: { [self] in sent.append("post \($0.group)") },
+      post: { [self] group, done in
+        sent.append("post \(group.group)")
+        if holdPosts { postCompletions.append(done) } else { done() }
+      },
       loadEarlier: { [self] in sent.append("earlier \($0.group)") },
       pause: { [self] in sent.append("pause \($0.group) \($1)") },
       focus: { [self] in sent.append("focus \($0.pane)") })
@@ -188,6 +193,26 @@ struct ConversationTests {
 
     #expect(recorder.edits.last?.complete == "otter")
     #expect(recorder.edits.last?.text == "@o")
+  }
+
+  @Test("a queued post keeps its draft unchanged and cannot be sent twice")
+  func queuedPostKeepsItsDraft() {
+    let (box, recorder) = openBox(text: "send these words", to: ["otter"])
+    recorder.holdPosts = true
+    box.send()
+    #expect(box.pending)
+    #expect(!box.sendable)
+    #expect(box.edited(text: "different words", cursor: 15) == nil)
+    box.remove(recipient: "otter")
+    box.setUrgent(true)
+    box.send()
+    #expect(box.draft.text == "send these words")
+    #expect(box.recipients == ["otter"])
+    #expect(!box.draft.urgent)
+    #expect(recorder.edits.isEmpty)
+    #expect(recorder.sent == ["post review"])
+    recorder.postCompletions.first?()
+    #expect(!box.pending)
   }
 
   @Test("Send posts a draft with words in it, once, and nothing while a post is on its way")

@@ -21,6 +21,7 @@ final class BannerBoard: ObservableObject {
 
   /// What is written in each banner's reply field, by `key(daemon:group:)`.
   @Published private(set) var replies: [String: String] = [:]
+  @Published private var queuedReplies: Set<String> = []
 
   /// The chord that sends, as the core binds `send_message`.
   private(set) var sendChord: Core.Binding?
@@ -93,6 +94,7 @@ final class BannerBoard: ObservableObject {
   /// Takes what is written in a banner's reply field, and tells the core when the field starts
   /// or stops holding anything, which is what keeps the banner on the message being answered.
   func setReply(_ text: String, for banner: Muster_Banner) {
+    guard !pending(banner) else { return }
     let key = Self.key(daemon: banner.daemonID, group: banner.group)
     let held = !(replies[key] ?? "").isEmpty
     replies[key] = text
@@ -104,25 +106,32 @@ final class BannerBoard: ObservableObject {
   /// Picks the answer at `index` of the banner's question, or takes the pick back when it is
   /// the one already picked. What is picked is the core's to keep, and comes back in the banner.
   func pick(_ index: Int, in banner: Muster_Banner) {
+    guard !pending(banner) else { return }
     core.pick(banner.daemonID, banner.group, banner.seq, UInt32(index))
   }
 
   func unpick(_ banner: Muster_Banner) {
+    guard !pending(banner) else { return }
     core.pick(banner.daemonID, banner.group, banner.seq, nil)
   }
 
   func send(_ banner: Muster_Banner) {
     let body = reply(for: banner)
-    guard banner.replyable, Self.canSend(text: body, picked: banner.hasPicked) else {
+    guard !pending(banner), banner.replyable, Self.canSend(text: body, picked: banner.hasPicked)
+    else {
       return
     }
     Core.info(
       "banner.send", ["daemon": banner.daemonID, "group": banner.group, "seq": "\(banner.seq)"])
-    core.reply(banner.daemonID, banner.group, banner.seq, body)
+    let identity = banner.identity
+    queuedReplies.insert(identity)
+    core.reply(banner.daemonID, banner.group, banner.seq, body) { [weak self] in
+      self?.queuedReplies.remove(identity)
+    }
   }
 
   func dismiss(_ banner: Muster_Banner) {
-    guard Self.dismissable(banner) else { return }
+    guard dismissable(banner) else { return }
     core.dismiss(banner.daemonID, banner.group, banner.seq)
   }
 
@@ -134,8 +143,12 @@ final class BannerBoard: ObservableObject {
 
   /// Whether the banner can be taken down: not while its reply is on its way, since the banner
   /// is where that reply's outcome shows, the human's words kept with a refused or unknown one.
-  static func dismissable(_ banner: Muster_Banner) -> Bool {
-    banner.sent.state != .pending
+  func dismissable(_ banner: Muster_Banner) -> Bool {
+    !pending(banner)
+  }
+
+  func pending(_ banner: Muster_Banner) -> Bool {
+    queuedReplies.contains(banner.identity) || banner.sent.state == .pending
   }
 
   /// Whether a key press is the chord that sends.
@@ -160,7 +173,9 @@ final class BannerBoard: ObservableObject {
 
 /// What a banner asks of the core, as functions so a test can see them without one.
 struct BannerRequests {
-  var reply: @MainActor (String, String, UInt64, String) -> Void
+  var reply:
+    @MainActor (String, String, UInt64, String, _ then: @escaping @MainActor @Sendable () -> Void)
+      -> Void
   var dismiss: @MainActor (String, String, UInt64) -> Void
   var hold: @MainActor (String, String, UInt64, Bool) -> Void
   var pick: @MainActor (String, String, UInt64, UInt32?) -> Void
@@ -169,7 +184,7 @@ struct BannerRequests {
   var shown: @MainActor (String, String) -> Void
 
   static let core = BannerRequests(
-    reply: { Core.replyToBanner(daemonID: $0, group: $1, seq: $2, body: $3) },
+    reply: { Core.replyToBanner(daemonID: $0, group: $1, seq: $2, body: $3, then: $4) },
     dismiss: { Core.dismissBanner(daemonID: $0, group: $1, seq: $2) },
     hold: { Core.holdBanner(daemonID: $0, group: $1, seq: $2, held: $3) },
     pick: { Core.pickBannerAnswer(daemonID: $0, group: $1, seq: $2, answer: $3) },
@@ -322,7 +337,8 @@ struct BannerCard: View {
         AnswerButtons(
           answers: banner.answers, picked: banner.hasPicked ? Int(banner.picked) : nil,
           recommended: banner.hasRecommended ? Int(banner.recommended) : nil,
-          enabled: banner.replyable, focus: $focus, focusing: { .answer($0) },
+          enabled: banner.replyable && !board.pending(banner), focus: $focus,
+          focusing: { .answer($0) },
           onPick: { board.pick($0, in: banner) }, onTabOut: { _ in focus = .reply }
         )
         .onExitCommand { onLeave() }
@@ -374,7 +390,7 @@ struct BannerCard: View {
       Button("Open") { board.core.open(banner.daemonID, banner.group) }
         .buttonStyle(.link)
         .help("Open the conversation")
-      if BannerBoard.dismissable(banner) {
+      if board.dismissable(banner) {
         Button(action: { board.dismiss(banner) }) { Image(systemName: "xmark") }
           .buttonStyle(.plain)
           .foregroundStyle(.secondary)
@@ -399,7 +415,7 @@ struct BannerCard: View {
   }
 
   @ViewBuilder private var outcome: some View {
-    switch banner.sent.state {
+    switch board.pending(banner) ? Muster_PostOutcome.State.pending : banner.sent.state {
     case .pending:
       Text("Sending…").font(.caption).foregroundStyle(.secondary)
     case .posted:
@@ -444,7 +460,7 @@ struct BannerReplyField: View {
           Button(action: { board.unpick(banner) }) { Image(systemName: "xmark.circle.fill") }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .disabled(banner.sent.state == .pending)
+            .disabled(board.pending(banner))
             .help("Take the answer back")
         }
         .font(.callout)
@@ -495,13 +511,13 @@ struct BannerReplyField: View {
         // Only an Esc with nothing being composed reaches this: the key press above took the
         // others.
         .onExitCommand { onLeave() }
-        .disabled(banner.sent.state == .pending)
+        .disabled(board.pending(banner))
         .focused(focus, equals: .reply)
       let sendable = BannerBoard.canSend(text: text.wrappedValue, picked: picked != nil)
       Button(action: { board.send(banner) }) { Image(systemName: "paperplane.fill") }
         .buttonStyle(.plain)
         .foregroundStyle(sendable ? .primary : .tertiary)
-        .disabled(!banner.replyable || !sendable)
+        .disabled(board.pending(banner) || !banner.replyable || !sendable)
         .help("Send (\(BannerReplyField.chord(board.sendChord)))")
     }
   }

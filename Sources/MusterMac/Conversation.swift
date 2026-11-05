@@ -43,7 +43,8 @@ struct ConversationRequests {
   var saveDraft: @MainActor (ConversationGroup, DraftEdit) -> Muster_MessageBoxDraft?
   /// Picks question #seq's answer by its place, or takes the pick back with nil.
   var pick: @MainActor (ConversationGroup, UInt64, UInt32?) -> Muster_MessageBoxDraft?
-  var post: @MainActor (ConversationGroup) -> Void
+  var post:
+    @MainActor (ConversationGroup, _ then: @escaping @MainActor @Sendable () -> Void) -> Void
   var loadEarlier: @MainActor (ConversationGroup) -> Void
   var pause: @MainActor (ConversationGroup, Bool) -> Void
   var focus: @MainActor (PaneKey) -> Void
@@ -64,7 +65,7 @@ struct ConversationRequests {
           Core.pickConversationAnswer(group, question: question, answer: answer)
         }
       },
-      post: { group in Core.postFromConversation(group, window: window()) },
+      post: { group, then in Core.postFromConversation(group, window: window(), then: then) },
       loadEarlier: { group in Core.speaking(for: window()) { Core.loadEarlier(group) } },
       pause: { group, paused in
         Core.speaking(for: window()) { Core.pauseGroup(group, paused: paused) }
@@ -197,6 +198,7 @@ final class MessageBox: ObservableObject {
   @Published private(set) var group: ConversationGroup?
   @Published private(set) var draft = Muster_MessageBoxDraft()
   @Published private(set) var sent = Muster_PostOutcome()
+  @Published private var queuedPosts: Set<ConversationGroup> = []
   /// The completion Tab takes.
   @Published private(set) var highlighted = 0
   private(set) var revision = 0
@@ -216,7 +218,7 @@ final class MessageBox: ObservableObject {
   }
 
   var recipients: [String] { draft.to.map(\.name) }
-  var pending: Bool { sent.state == .pending }
+  var pending: Bool { sent.state == .pending || group.map(queuedPosts.contains) == true }
 
   func apply(_ changed: Muster_MessageBoxChanged) {
     group =
@@ -312,12 +314,13 @@ final class MessageBox: ObservableObject {
 
   /// Takes the picked answer back: the cross beside it.
   func unpick() {
-    guard let group, let picked, let answered = requests.pick(group, picked.question, nil)
+    guard !pending, let group, let picked, let answered = requests.pick(group, picked.question, nil)
     else { return }
     take(answered, fromField: false)
   }
 
   func send() {
+    guard !pending else { return }
     // The core posts its own copy of the draft, which hears of the field's text on each change.
     // An input method that commits its composition without changing the text would leave that
     // copy a composition behind, so the field's words go first.
@@ -326,7 +329,8 @@ final class MessageBox: ObservableObject {
     }
     guard let group, sendable else { return }
     Core.info("conversation.send", ["daemon": group.daemon, "group": group.group])
-    requests.post(group)
+    queuedPosts.insert(group)
+    requests.post(group) { [weak self] in self?.queuedPosts.remove(group) }
   }
 
   private func edit(text: String, cursor: Int) -> DraftEdit {
@@ -344,7 +348,7 @@ final class MessageBox: ObservableObject {
 
   @discardableResult
   private func save(_ edit: DraftEdit, fromField: Bool) -> Muster_MessageBoxDraft? {
-    guard let group, let answer = requests.saveDraft(group, edit) else { return nil }
+    guard !pending, let group, let answer = requests.saveDraft(group, edit) else { return nil }
     take(answer, fromField: fromField)
     return answer
   }
@@ -1075,7 +1079,7 @@ struct MessageBoxView: View {
   }
 
   @ViewBuilder private var outcome: some View {
-    switch box.sent.state {
+    switch box.pending ? Muster_PostOutcome.State.pending : box.sent.state {
     case .pending:
       Text("Sending…").font(.caption).foregroundStyle(.secondary)
     case .posted:

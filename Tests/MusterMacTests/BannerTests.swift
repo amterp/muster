@@ -19,12 +19,17 @@ func recordedBoard() -> (BannerBoard, BannerRecorder) {
 @MainActor
 final class BannerRecorder {
   var sent: [String] = []
+  var holdReplies = false
+  var replyCompletions: [@MainActor @Sendable () -> Void] = []
   /// The banners reported shown, apart from what the person did with them.
   var shown: [String] = []
 
   var requests: BannerRequests {
     BannerRequests(
-      reply: { [self] in sent.append("reply \($0)/\($1)#\($2): \($3)") },
+      reply: { [self] daemon, group, seq, body, done in
+        sent.append("reply \(daemon)/\(group)#\(seq): \(body)")
+        if holdReplies { replyCompletions.append(done) } else { done() }
+      },
       dismiss: { [self] in sent.append("dismiss \($0)/\($1)#\($2)") },
       hold: { [self] in sent.append("hold \($0)/\($1)#\($2) \($3)") },
       pick: { [self] in sent.append("pick \($0)/\($1)#\($2) \($3.map(String.init) ?? "none")") },
@@ -68,6 +73,35 @@ func bannerStack(_ banners: Muster_Banner...) -> Muster_BannersChanged {
 
 @Suite("the banners for messages")
 struct BannerTests {
+  @MainActor
+  @Test("a queued banner reply keeps its selected answer and cannot be dismissed or sent twice")
+  func queuedReplyKeepsItsAnswer() {
+    let (board, recorder) = recordedBoard()
+    recorder.holdReplies = true
+    let picked = aBanner("g", seq: 4, answers: ["A", "B"], picked: 0)
+    board.apply(bannerStack(picked))
+    board.send(picked)
+    #expect(board.pending(picked))
+    #expect(!board.dismissable(picked))
+    board.pick(1, in: picked)
+    board.unpick(picked)
+    board.dismiss(picked)
+    board.setReply("different note", for: picked)
+    board.send(picked)
+    #expect(board.reply(for: picked).isEmpty)
+    #expect(recorder.sent == ["reply local/g#4: "])
+
+    let newer = aBanner("g", seq: 5, answers: ["C", "D"], picked: 1)
+    #expect(!board.pending(newer))
+    board.send(newer)
+    #expect(board.pending(newer))
+    recorder.replyCompletions[0]()
+    #expect(!board.pending(picked))
+    #expect(board.pending(newer), "an older reply's completion cleared a newer reply")
+    recorder.replyCompletions[1]()
+    #expect(!board.pending(newer))
+  }
+
   @MainActor
   @Test("a banner is reported shown once for each message it comes up on")
   func shownOncePerMessage() {
@@ -150,10 +184,10 @@ struct BannerTests {
     let pending = aBanner("g", seq: 4, sent: outcome(.pending, said: "", body: "yes"))
     board.apply(bannerStack(pending))
 
-    #expect(!BannerBoard.dismissable(pending))
+    #expect(!board.dismissable(pending))
     board.dismiss(pending)
     #expect(recorder.sent.isEmpty, "the outcome would have nowhere to show")
-    #expect(BannerBoard.dismissable(aBanner("g", seq: 4)))
+    #expect(board.dismissable(aBanner("g", seq: 4)))
   }
 
   @MainActor

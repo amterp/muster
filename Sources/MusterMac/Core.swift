@@ -17,6 +17,8 @@ public enum Core {
   // Keep creation order without putting carried messaging requests ahead of new panes.
   private static let creationQueue = DispatchQueue(
     label: "muster.paneCreation", qos: .userInitiated)
+  private static let conversationActions = DispatchQueue(
+    label: "muster.conversationActions", qos: .userInitiated)
   /// Swapped for a recorder in tests. Background requests capture it before leaving the main
   /// thread, so changing it cannot redirect an in-flight request or its diagnostic records.
   nonisolated(unsafe) public static var dispatcher: Dispatcher = CoreDispatcher()
@@ -1260,28 +1262,31 @@ public enum Core {
   /// Off the main thread, like `replyToBanner`: the answer waits on the daemon keeping the post.
   /// What came of it reaches the message box as the core's next word about it. Names its window
   /// outright, since the sending thread is not the one a window speaks on.
-  static func postFromConversation(_ group: ConversationGroup, window: String) {
+  @MainActor
+  static func postFromConversation(
+    _ group: ConversationGroup, window: String,
+    then: @escaping @MainActor @Sendable () -> Void
+  ) {
     var post = Muster_PostFromConversation()
     post.daemonID = group.daemon
     post.group = group.group
     var request = Muster_Request()
     request.postFromConversation = post
     request.window = window
-    let (sent, dispatcher) = (request, self.dispatcher)
-    DispatchQueue.global(qos: .userInitiated).async {
-      _ = send(sent, through: dispatcher)
-    }
+    sendLater(request, queue: conversationActions) { _ in then() }
   }
 
+  @MainActor
   static func loadEarlier(_ group: ConversationGroup) {
     var earlier = Muster_LoadEarlier()
     earlier.daemonID = group.daemon
     earlier.group = group.group
     var request = Muster_Request()
     request.loadEarlier = earlier
-    send(request)
+    sendLater(request, queue: conversationActions) { _ in }
   }
 
+  @MainActor
   static func pauseGroup(_ group: ConversationGroup, paused: Bool) {
     var pause = Muster_PauseGroup()
     pause.daemonID = group.daemon
@@ -1289,7 +1294,7 @@ public enum Core {
     pause.paused = paused
     var request = Muster_Request()
     request.pauseGroup = pause
-    send(request)
+    sendLater(request, queue: conversationActions) { _ in }
   }
 
   /// Returns the window from a group's conversation to its panes, with the keyboard where it was.
@@ -1312,7 +1317,11 @@ public enum Core {
   /// Off the main thread, like `restartAgent`: the answer waits on the daemon keeping the post,
   /// and on one that never answers, on the group's log as well. What came of it reaches the
   /// banner as the core's next word about the banners, so the answer is only logged.
-  public static func replyToBanner(daemonID: String, group: String, seq: UInt64, body: String) {
+  @MainActor
+  public static func replyToBanner(
+    daemonID: String, group: String, seq: UInt64, body: String,
+    then: @escaping @MainActor @Sendable () -> Void = {}
+  ) {
     var reply = Muster_ReplyToBanner()
     reply.daemonID = daemonID
     reply.group = group
@@ -1320,10 +1329,7 @@ public enum Core {
     reply.body = body
     var request = Muster_Request()
     request.replyToBanner = reply
-    let (sent, dispatcher) = (request, self.dispatcher)
-    DispatchQueue.global(qos: .userInitiated).async {
-      _ = send(sent, through: dispatcher)
-    }
+    sendLater(request, queue: conversationActions) { _ in then() }
   }
 
   /// Takes a banner down without reading its group.

@@ -1115,13 +1115,28 @@ the daemon's: a split hands back the pane it made, and that pane takes the keybo
 the key meant.
 
 **Requests that can wait on a daemon belong off the main thread.** A group deletion can wait on
-another machine, and a new tab or split can wait on a slow daemon. These four shell operations -
-New Tab, Split, Leave Group and Delete Group - build and address their requests on the main
-thread, capture the dispatcher there, and receive their completions back on the main thread.
-Creation requests keep their order on a serial queue; messaging requests run independently, so
-a carried group deletion cannot hold a tab request behind it. Refusals reach the original
-window's sheet or beep after the answer arrives. An unanswered request is logged and never
-retried. Other daemon-waiting shell operations still require migration to this rule.
+another machine, and a new tab or split can wait on a slow daemon. New Tab, Split, Leave Group,
+Delete Group, conversation paging and pause build and address their requests on the main thread,
+capture the dispatcher there, and receive their completions back on the main thread. Creation
+requests keep their order on a serial queue. Relative creation targets stay empty until the core
+resolves them after earlier queued creations.
+
+Conversation paging, pause and posts, including banner replies, use a separate serial queue so
+a post cannot pass an earlier pause. A queued conversation post keeps its message box pending,
+preserving its draft and preventing a second send until it returns. Queued banner replies
+similarly protect their picked answer, note and dismissal until completion, keyed by daemon,
+group and message so an older completion cannot release a newer reply. Other messaging requests
+run independently, so a carried group request cannot hold a tab request behind it. Refusals
+reach the original window's sheet or beep after the answer arrives. An unanswered request is
+logged and never retried.
+
+Pane/tab mutations and navigation still require migration. Moving them onto a queue while
+navigation stays inline can make a relative Close Pane or Close Tab resolve against a pane the
+human selected later, ending the wrong process. A complete migration must preserve mutation and
+navigation order, cancellation of numbered chords by intervening input and actions, and focus
+against later terminal clicks. Restart's start also needs that order without putting its whole
+program-exit wait ahead of every later action. Resize, zoom, equalize, arrangements, Move Pane
+to New Tab and upgrade remain synchronous too.
 
 **Divider drags and moving or resizing a window also leave the main thread, and coalesce.** They
 produce about a hundred events a second, so waiting synchronously spent the whole gesture in
