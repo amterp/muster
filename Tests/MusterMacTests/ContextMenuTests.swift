@@ -111,13 +111,17 @@ struct ContextMenuTests {
   }
 
   @Test("a split from the menu splits the pane that was right-clicked")
-  func aSplitNamesItsPane() {
+  func aSplitNamesItsPane() async {
     let recorder = recorder()
     let menu = ContextMenus.pane(
       laptopPane, surface: nil, machines: [], rename: { _ in })
     let mark = recorder.requests.count
 
     choose("Split Down", in: menu)
+    await until("the right-clicked pane's split") {
+      recorder.sent(since: mark) { if case .splitPane = $0.payload { true } else { false } }.count
+        == 1
+    }
 
     let sent = recorder.sent(since: mark) {
       if case .splitPane = $0.payload { true } else { false }
@@ -132,13 +136,17 @@ struct ContextMenuTests {
 
   /// The card's own item: a pane made where you want it, on whichever machine, without the CLI.
   @Test("picking a machine splits the pane onto that machine")
-  func aSplitOntoAnotherMachine() {
+  func aSplitOntoAnotherMachine() async {
     let recorder = recorder()
     let menu = ContextMenus.pane(
       laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
     let mark = recorder.requests.count
 
     choose("devenv", in: item("Split on Machine", in: menu)?.submenu)
+    await until("the split onto devenv") {
+      recorder.sent(since: mark) { if case .splitPane = $0.payload { true } else { false } }.count
+        == 1
+    }
 
     let sent = recorder.sent(since: mark) {
       if case .splitPane = $0.payload { true } else { false }
@@ -394,7 +402,7 @@ struct ContextMenuTests {
   /// A new tab refused because the directory it would start in is gone was once eight presses of
   /// cmd+T that did nothing (kan a_2jzGT81IV). Making, moving and ending things say why.
   @Test("a refused split or new tab hands the window the core's reason, and a taken one does not")
-  func aRefusedSplitOrNewTabIsShown() {
+  func aRefusedSplitOrNewTabIsShown() async {
     _ = seam(
       RecordingDispatcher { request in
         switch request.payload {
@@ -420,6 +428,7 @@ struct ContextMenuTests {
       "New Tab",
       in: ContextMenus.tab(
         "t1", firstPane: laptopPane, machines: [], rename: { _ in }, refused: refused))
+    await until("both creation refusals") { told.count == 2 }
     #expect(
       told == [
         "The pane was not split: could not start /bin/zsh in /gone",
@@ -430,7 +439,7 @@ struct ContextMenuTests {
   /// What the window's menu items and drops act on: the refusal for the ones that make, move or
   /// end something, and whether it was taken for the ones that only step or adjust.
   @Test("an action says whether the core refused it")
-  func anActionSaysWhetherItWasRefused() {
+  func anActionSaysWhetherItWasRefused() async {
     _ = seam(
       RecordingDispatcher { request in
         guard case .arrangePane = request.payload else { return nil }
@@ -439,7 +448,10 @@ struct ContextMenuTests {
         return .failure(failure)
       })
     #expect(Core.arrange(pane: laptopPane, onto: laptopPane) == "that pane closed")
-    #expect(Core.createTab() == nil)
+    let created: String? = await withCheckedContinuation { done in
+      Core.createTab { done.resume(returning: $0) }
+    }
+    #expect(created == nil)
     #expect(Core.zoom())
   }
 
@@ -466,7 +478,7 @@ struct ContextMenuTests {
   /// Leaving is what takes a group off the list for the human; deleting it ends it for everyone,
   /// so the menu hands that to the window to ask first rather than sending it.
   @Test("a group row leaves the group it names, and asks before deleting it")
-  func aGroupRowsMenu() {
+  func aGroupRowsMenu() async {
     let recorder = recorder()
     var deletes = 0
     let menu = ContextMenus.groupRow(daemon: "laptop", group: "review@devenv") { deletes += 1 }
@@ -476,6 +488,10 @@ struct ContextMenuTests {
     #expect(menu.items.allSatisfy { $0.keyEquivalent.isEmpty })
     choose("Leave Group", in: menu)
     choose("Delete Group…", in: menu)
+    await until("the leave request") {
+      recorder.sent(since: mark) { if case .leaveGroup = $0.payload { true } else { false } }.count
+        == 1
+    }
 
     let left = recorder.sent(since: mark) {
       if case .leaveGroup = $0.payload { true } else { false }
@@ -490,7 +506,7 @@ struct ContextMenuTests {
   }
 
   @Test("a tab's menu names the tab, and grows a new tab from that tab's pane")
-  func aTabsMenu() {
+  func aTabsMenu() async {
     let recorder = recorder()
     let board = scratchClipboard()
     defer { board.releaseGlobally() }
@@ -508,6 +524,10 @@ struct ContextMenuTests {
     choose("devenv", in: item("New Tab on Machine", in: menu)?.submenu)
     choose("Close Tab", in: menu)
     choose("Copy Tab ID", in: menu)
+    await until("both tab creation requests") {
+      recorder.sent(since: mark) { if case .createTab = $0.payload { true } else { false } }.count
+        == 2
+    }
 
     let sent = recorder.requests.dropFirst(mark)
     let created = sent.filter { if case .createTab = $0.payload { true } else { false } }

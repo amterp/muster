@@ -64,11 +64,8 @@ final class LatestRequestSender<Answer: Sendable> {
 
   /// The core this sender talks to, taken once.
   ///
-  /// `Core.dispatcher` is a mutable global declared `nonisolated(unsafe)` on the grounds that
-  /// this seam has no concurrency. Taking it here keeps that true - the background side never
-  /// touches the global - and binds a sender to one core for its life, which is what a caller
-  /// wants: a request that left before the core was swapped should still be answered by the
-  /// core it was addressed to.
+  /// Taking it on the main thread keeps the background side away from the mutable global. A
+  /// request that left before the core was swapped is still answered by the core it was sent to.
   private let dispatcher: Dispatcher
 
   /// What this sender calls itself in a log line, so a refusal names the request that drew it.

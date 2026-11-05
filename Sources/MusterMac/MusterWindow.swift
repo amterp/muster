@@ -259,8 +259,10 @@ public final class MusterWindow: NSObject {
     // --daemon <id>` sends.
     sidebar.onMachinePicked = { [weak self] daemon in
       guard let self else { return }
-      if let why = speaking({ Core.createTab(daemonID: daemon) }) {
-        tell(TabRefusal.create, why)
+      speaking {
+        Core.createTab(daemonID: daemon) { [weak self] why in
+          if let why { self?.tell(TabRefusal.create, why) }
+        }
       }
     }
     // The same request a message's notification, its banner and `muster msg open` send.
@@ -1089,23 +1091,37 @@ private func described(_ rect: NSRect) -> String {
 // says it did (architecture.md, one action path).
 extension MusterWindow {
   @objc public func splitRight(_ sender: Any?) {
-    if let why = Core.split(side: "right") { tell(PaneRefusal.split, why) }
+    split(side: "right")
   }
 
   @objc public func splitDown(_ sender: Any?) {
-    if let why = Core.split(side: "down") { tell(PaneRefusal.split, why) }
+    split(side: "down")
   }
 
   @objc public func splitLeft(_ sender: Any?) {
-    if let why = Core.split(side: "left") { tell(PaneRefusal.split, why) }
+    split(side: "left")
   }
 
   @objc public func splitUp(_ sender: Any?) {
-    if let why = Core.split(side: "up") { tell(PaneRefusal.split, why) }
+    split(side: "up")
+  }
+
+  private func split(side: String) {
+    speaking {
+      Core.split(side: side) {
+        [weak self] why in
+        if let why { self?.tell(PaneRefusal.split, why) }
+      }
+    }
   }
 
   @objc public func newTab(_ sender: Any?) {
-    if let why = Core.createTab() { tell(TabRefusal.create, why) }
+    speaking {
+      Core.createTab {
+        [weak self] why in
+        if let why { self?.tell(TabRefusal.create, why) }
+      }
+    }
   }
 
   /// Closes the tab the keyboard is in, and every pane in it.
@@ -1356,8 +1372,11 @@ extension MusterWindow {
         + "Group instead.",
       confirm: "Delete Group",
       then: { [weak self] in
-        let deleted = self?.speaking { Core.deleteGroup(daemonID: daemon, group: group) }
-        if deleted == false { NSSound.beep() }
+        self?.speaking {
+          Core.deleteGroup(daemonID: daemon, group: group) { deleted in
+            if !deleted { NSSound.beep() }
+          }
+        }
       })
   }
 

@@ -164,6 +164,47 @@ extension SurfaceGUITests {
 
 extension SurfaceGUITests {
   @MainActor
+  @Test("window creation actions resolve the keyboard when their turn arrives", .ownsTheSeam)
+  func windowCreationKeepsRelativeTargets() async throws {
+    _ = NSApplication.shared
+    let renderer = try sharedRenderer()
+    let recording = recorder()
+    let previousWindow = Core.windowInFront
+    let shell = MusterWindow(renderer: renderer, executable: "/unused")
+    shell.name = "window-origin"
+    defer {
+      Windows.remove(shell)
+      shell.window.delegate = nil
+      shell.window.close()
+      Core.windowInFront = previousWindow
+    }
+    shell.apply(
+      WindowContents(
+        tab: "old-tab", tree: nil, keyboard: PaneKey(daemon: "devenv", pane: "old-pane")))
+    let before = recording.requests.count
+    shell.newTab(nil)
+    shell.splitRight(nil)
+    shell.splitDown(nil)
+    Core.windowInFront = "window-other"
+    func creations() -> [Muster_Request] {
+      recording.sent(since: before) {
+        switch $0.payload {
+        case .createTab, .splitPane: true
+        default: false
+        }
+      }
+    }
+    await until("the window's three creation requests") { creations().count == 3 }
+    let sent = creations()
+    #expect(sent.map(\.window) == ["window-origin", "window-origin", "window-origin"])
+    #expect(sent.first?.createTab.daemonID == "")
+    #expect(sent.first?.createTab.paneID == "")
+    #expect(sent.dropFirst().map(\.splitPane.side) == ["right", "down"])
+    #expect(
+      sent.dropFirst().allSatisfy { $0.splitPane.daemonID.isEmpty && $0.splitPane.paneID.isEmpty })
+  }
+
+  @MainActor
   @Test("reports a web link with remote terminal state", arguments: [false, true], [false, true])
   func aRemoteWebLinkIsReported(hyperlink: Bool, mouseReporting: Bool) async throws {
     let renderer = try sharedRenderer()

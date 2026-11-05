@@ -102,7 +102,7 @@ struct BoundActionTests {
 
   @MainActor
   @Test("the cause is recorded before the effect is asked for")
-  func theCauseComesFirst() {
+  func theCauseComesFirst() async {
     // The ordering is the card's complaint stated as an assertion. A record written after the
     // dispatch would sit under its own effect in the timeline, which is where a reader stops
     // being able to tell one from the other.
@@ -127,6 +127,10 @@ struct BoundActionTests {
     let before = recorder.requests.count
 
     pane.performActionForItem(at: at)
+    await until("the split after its press record") {
+      recorder.sent(since: before) { if case .splitPane = $0.payload { true } else { false } }.count
+        == 1
+    }
 
     let sent = recorder.sent(since: before) { request in
       switch request.payload {

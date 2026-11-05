@@ -14,9 +14,11 @@ import SwiftProtobuf
 // nothing has ridden yet.
 
 public enum Core {
-  /// Swapped for a recorder in tests. Reads and writes happen during launch and from the
-  /// main thread thereafter; a lock here would suggest a concurrency this seam does not
-  /// have.
+  // Keep creation order without putting carried messaging requests ahead of new panes.
+  private static let creationQueue = DispatchQueue(
+    label: "muster.paneCreation", qos: .userInitiated)
+  /// Swapped for a recorder in tests. Background requests capture it before leaving the main
+  /// thread, so changing it cannot redirect an in-flight request or its diagnostic records.
   nonisolated(unsafe) public static var dispatcher: Dispatcher = CoreDispatcher()
 
   /// Hands the core what it cannot work out for itself, and starts listening for what it
@@ -480,11 +482,12 @@ public enum Core {
   /// drag-to-split would say.
   /// `newPaneDaemonID` puts the new pane on another machine, in the split pane's tab; empty
   /// keeps it on the split pane's own.
-  @discardableResult
+  @MainActor
   public static func split(
     side: String, ratio: Float = 0, daemonID: String = "", paneID: String = "",
-    newPaneDaemonID: String = ""
-  ) -> String? {
+    newPaneDaemonID: String = "",
+    then: @escaping @MainActor @Sendable (String?) -> Void = { _ in }
+  ) {
     var split = Muster_SplitPane()
     split.daemonID = daemonID
     split.paneID = paneID
@@ -497,17 +500,18 @@ public enum Core {
     split.takeFocus = true
     var request = Muster_Request()
     request.splitPane = split
-    return refusal(send(request))
+    sendLater(request, queue: creationQueue) { then(refusal($0)) }
   }
 
   /// Makes a tab beside a pane, with one pane in it, and shows it.
   ///
   /// An empty cwd means that pane's own directory, which is what somebody pressing the key
   /// mid-task means. The core resolves it, so the CLI and an agent get the same default.
-  @discardableResult
+  @MainActor
   public static func createTab(
-    daemonID: String = "", paneID: String = "", cwd: String = ""
-  ) -> String? {
+    daemonID: String = "", paneID: String = "", cwd: String = "",
+    then: @escaping @MainActor @Sendable (String?) -> Void = { _ in }
+  ) {
     var create = Muster_CreateTab()
     create.daemonID = daemonID
     create.paneID = paneID
@@ -518,7 +522,7 @@ public enum Core {
     create.takeFocus = true
     var request = Muster_Request()
     request.createTab = create
-    return refusal(send(request))
+    sendLater(request, queue: creationQueue) { then(refusal($0)) }
   }
 
   /// Calls a pane what somebody wants to call it, and answers why not if it was refused - a name
@@ -1329,27 +1333,33 @@ public enum Core {
   }
 
   /// Takes the human out of a group, which takes it off the sidebar: `muster msg leave --group G`
-  /// from their own shell. Says whether the daemon did; its refusal is in the run log.
-  @discardableResult
-  public static func leaveGroup(daemonID: String, group: String) -> Bool {
+  /// from their own shell. Answers on the main thread; its refusal is in the run log.
+  @MainActor
+  public static func leaveGroup(
+    daemonID: String, group: String,
+    then: @escaping @MainActor @Sendable (Bool) -> Void = { _ in }
+  ) {
     var leave = Muster_LeaveGroup()
     leave.daemonID = daemonID
     leave.group = group
     var request = Muster_Request()
     request.leaveGroup = leave
-    return !isRefused(send(request))
+    sendLater(request) { then(!isRefused($0)) }
   }
 
   /// Deletes a group and its log for every member, on the machine that keeps it: `muster msg
-  /// group delete G` from the human's own shell. Says whether the daemon did.
-  @discardableResult
-  public static func deleteGroup(daemonID: String, group: String) -> Bool {
+  /// group delete G` from the human's own shell. Answers on the main thread.
+  @MainActor
+  public static func deleteGroup(
+    daemonID: String, group: String,
+    then: @escaping @MainActor @Sendable (Bool) -> Void = { _ in }
+  ) {
     var delete = Muster_DeleteGroup()
     delete.daemonID = daemonID
     delete.group = group
     var request = Muster_Request()
     request.deleteGroup = delete
-    return !isRefused(send(request))
+    sendLater(request) { then(!isRefused($0)) }
   }
 
   /// The core's reason for refusing a request, for a window to show the person who asked. No
@@ -1599,14 +1609,36 @@ public enum Core {
     record("error", event, fields)
   }
 
-  private static func record(_ level: String, _ event: String, _ fields: [String: String]) {
+  private static func record(
+    _ level: String, _ event: String, _ fields: [String: String],
+    through dispatcher: Dispatcher? = nil
+  ) {
     var log = Muster_LogRecord()
     log.level = level
     log.event = event
     log.fields = fields
     var request = Muster_Request()
     request.logRecord = log
-    send(request)
+    if let dispatcher {
+      send(request, through: dispatcher)
+    } else {
+      send(request)
+    }
+  }
+
+  @MainActor
+  private static func sendLater(
+    _ request: Muster_Request,
+    queue: DispatchQueue = .global(qos: .userInitiated),
+    then: @escaping @MainActor @Sendable (Muster_Response.OneOf_Payload?) -> Void
+  ) {
+    var named = request
+    address(&named)
+    let (sent, dispatcher) = (named, self.dispatcher)
+    queue.async {
+      let answer = send(sent, through: dispatcher)
+      DispatchQueue.main.async { then(answer) }
+    }
   }
 
   /// Sends a request and reports a refusal to somewhere that is not the log.
@@ -1615,7 +1647,9 @@ public enum Core {
   /// that failure into the log would be reporting it into the void.
   @discardableResult
   private static func send(_ request: Muster_Request) -> Muster_Response.OneOf_Payload? {
-    send(request, through: dispatcher)
+    var named = request
+    address(&named)
+    return send(named, through: dispatcher)
   }
 
   /// The same, addressed to one core rather than to whichever the global names.
@@ -1627,8 +1661,6 @@ public enum Core {
   private static func send(_ request: Muster_Request, through dispatcher: Dispatcher)
     -> Muster_Response.OneOf_Payload?
   {
-    var request = request
-    address(&request)
     guard let encoded = try? request.serializedBytes() as [UInt8] else {
       FileHandle.standardError.write(
         Data("muster: a request could not be encoded, so the core never saw it.\n".utf8))
@@ -1653,7 +1685,9 @@ public enum Core {
       // a refused record reported as a record is a loop.
       if case .logRecord = request.payload {
       } else {
-        record("error", "core.refused", ["request": name(of: request), "reason": failure.reason])
+        record(
+          "error", "core.refused", ["request": name(of: request), "reason": failure.reason],
+          through: dispatcher)
       }
     }
     // A warning rather than an error, because the change may well have happened: its daemon took
@@ -1661,7 +1695,8 @@ public enum Core {
     if case .unanswered(let unanswered) = decoded.payload {
       FileHandle.standardError.write(Data("muster: \(unanswered.reason)\n".utf8))
       record(
-        "warn", "core.unanswered", ["request": name(of: request), "reason": unanswered.reason])
+        "warn", "core.unanswered", ["request": name(of: request), "reason": unanswered.reason],
+        through: dispatcher)
     }
     return decoded.payload
   }

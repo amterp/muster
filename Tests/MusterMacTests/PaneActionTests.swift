@@ -21,13 +21,14 @@ private func ratios(_ recorder: RecordingDispatcher, since mark: Int) -> [Muster
 struct PaneActionTests {
   @MainActor
   @Test("a new tab names neither a pane nor a directory, and means both")
-  func aNewTabMeansHere() {
+  func aNewTabMeansHere() async {
     // Everything empty is the message a keybinding sends: the pane the keyboard is on, and
     // the directory that pane is in. Both are resolved in the core, so a menu item, the CLI
     // and an agent get the same answer rather than three.
     let recorder = recorder()
 
     Core.createTab()
+    await until("the new tab request") { recorder.requests.count == 1 }
 
     #expect(recorder.requests.count == 1)
     guard case .createTab(let create) = recorder.requests.first?.payload else {
@@ -188,7 +189,7 @@ struct PaneActionTests {
 
   @MainActor
   @Test("a split names the side the new pane lands on")
-  func aSplitAsksForASide() {
+  func aSplitAsksForASide() async {
     // All four, and the shell cannot tell which of them its daemon can do in one request:
     // that belongs in the core rather than in a menu item.
     let recorder = recorder()
@@ -197,6 +198,7 @@ struct PaneActionTests {
     Core.split(side: "down")
     Core.split(side: "left")
     Core.split(side: "up")
+    await until("all four split requests") { recorder.requests.count == 4 }
 
     #expect(recorder.requests.map { $0.splitPane.side } == ["right", "down", "left", "up"])
     // Empty means the pane the keyboard feeds, which is what a keybinding means. A menu that

@@ -335,10 +335,10 @@ public enum ContextMenus {
       case .copy: surface?.copy(nil)
       case .paste: surface?.paste(nil)
       case .splitOnto(let machine):
-        if let why = Core.split(
-          side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine)
-        {
-          refused(PaneRefusal.split, why)
+        Core.split(
+          side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine
+        ) { why in
+          if let why { refused(PaneRefusal.split, why) }
         }
       case .action("restart_agent"): restart(pane)
       default:
@@ -410,16 +410,18 @@ public enum ContextMenus {
       choice in
       switch choice {
       case .action("new_tab"):
-        if let why = Core.createTab(
-          daemonID: firstPane?.daemon ?? "", paneID: firstPane?.pane ?? "")
-        {
-          refused(TabRefusal.create, why)
+        Core.createTab(
+          daemonID: firstPane?.daemon ?? "", paneID: firstPane?.pane ?? ""
+        ) { why in
+          if let why { refused(TabRefusal.create, why) }
         }
       case .action("rename_tab"): rename(tab)
       case .action("close_tab"):
         if let why = Core.closeTab(tabID: tab) { refused(TabRefusal.close, why) }
       case .newTabOn(let machine):
-        if let why = Core.createTab(daemonID: machine) { refused(TabRefusal.create, why) }
+        Core.createTab(daemonID: machine) { why in
+          if let why { refused(TabRefusal.create, why) }
+        }
       case .copyTabID: copy(tab, "tab", to: pasteboard)
       default: unhandled(choice, menu: "tab")
       }
@@ -437,7 +439,9 @@ public enum ContextMenus {
     ) { choice in
       switch choice {
       case .leaveGroup:
-        if !Core.leaveGroup(daemonID: daemon, group: group) { NSSound.beep() }
+        Core.leaveGroup(daemonID: daemon, group: group) { left in
+          if !left { NSSound.beep() }
+        }
       case .deleteGroup: delete()
       default: unhandled(choice, menu: "group")
       }
@@ -450,15 +454,15 @@ public enum ContextMenus {
 
   private static func perform(
     _ choice: ContextChoice, on pane: PaneKey, pasteboard: NSPasteboard,
-    rename: @MainActor (PaneKey) -> Void, refused: Refused
+    rename: @MainActor (PaneKey) -> Void, refused: @escaping Refused
   ) {
     switch choice {
     case .action(let name) where name.hasPrefix("split_"):
-      if let why = Core.split(
+      Core.split(
         side: String(name.dropFirst("split_".count)), daemonID: pane.daemon,
-        paneID: pane.pane)
-      {
-        refused(PaneRefusal.split, why)
+        paneID: pane.pane
+      ) { why in
+        if let why { refused(PaneRefusal.split, why) }
       }
     case .action("zoom"):
       if !Core.zoom(daemonID: pane.daemon, paneID: pane.pane) { NSSound.beep() }

@@ -1076,13 +1076,20 @@ one thing an intent may settle locally is where Muster's own keyboard lands, bec
 the daemon's: a split hands back the pane it made, and that pane takes the keyboard, because that is what pressing
 the key meant.
 
-**A request may also be waited for off the main thread, and two gestures have to be: a divider drag, and the
-window being moved or resized.** Every other gesture is one request; these are one per event, about a hundred a
-second, and the seam is entered synchronously - so the window spent whole gestures inside a round trip and had no
-time left to draw what was being dragged. The request is handed over instead (`LatestRequestSender`): one in flight,
-the latest remembered, and what arrived while a request was out goes next. A gesture then runs at whatever the round
-trip allows rather than queueing behind itself, and the position it ends on is always sent, because the remembered
-one is always the last asked for. This is contained to those two rather than made general.
+**Requests that can wait on a daemon belong off the main thread.** A group deletion can wait on
+another machine, and a new tab or split can wait on a slow daemon. These four shell operations -
+New Tab, Split, Leave Group and Delete Group - build and address their requests on the main
+thread, capture the dispatcher there, and receive their completions back on the main thread.
+Creation requests keep their order on a serial queue; messaging requests run independently, so
+a carried group deletion cannot hold a tab request behind it. Refusals reach the original
+window's sheet or beep after the answer arrives. An unanswered request is logged and never
+retried. Other daemon-waiting shell operations still require migration to this rule.
+
+**Divider drags and moving or resizing a window also leave the main thread, and coalesce.** They
+produce about a hundred events a second, so waiting synchronously spent the whole gesture in
+round trips with no time to draw. `LatestRequestSender` keeps one request in flight and remembers
+only the latest; when the answer arrives, that remembered request goes next. The final position
+is always sent. Discrete operations such as New Tab keep every request instead.
 
 **Input never waits at all.** Every keystroke, click and paste goes to the daemon on the input connection, which is
 never answered: events queue for a writer thread, and a queue full enough to mean the daemon has stopped reading drops
