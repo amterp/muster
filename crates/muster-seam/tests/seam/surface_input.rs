@@ -209,7 +209,7 @@ fn press(key: &str, text: &str, composing: bool) -> bool {
     }
 }
 
-fn read(pane: &str) -> String {
+pub(super) fn read(pane: &str) -> String {
     match answer(request::Payload::ReadPane(ReadPane {
         pane_id: pane.to_string(),
         ..ReadPane::default()

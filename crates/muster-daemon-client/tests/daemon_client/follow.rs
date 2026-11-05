@@ -269,6 +269,16 @@ fn a_daemon_that_comes_back_is_followed_again() {
     drop(followed.follower);
 }
 
+#[test]
+fn a_live_handoff_does_not_report_that_processes_were_replaced() {
+    let mut daemon = Daemon::start_built();
+    let followed = follow(&daemon);
+    let answer = daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    followed.bootstrapped(2);
+    assert!(!followed.notices.lock().unwrap().contains(&Notice::ProcessesReplaced));
+}
+
 /// Settings reach a daemon at connect and when they change, which is how the palette and the
 /// cursor programs are told come to match the window's, and how a new pane's shell gets the
 /// features the config asks for.

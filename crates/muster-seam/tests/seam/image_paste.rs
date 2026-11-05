@@ -5,13 +5,28 @@ use muster_daemon_proto::pane_request;
 use muster_harness::requests::{create, in_new_tab, make, until_text};
 use muster_harness::{Daemon, until};
 use muster_harness::{Pump, Relay};
+use prost::Message;
 use std::io;
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
 
-use super::surface_input::{answer, assert_ok, open_at, open_on};
+use super::surface_input::{answer, assert_ok, open_at, open_on, read};
+
+static IMAGE_FINISHED: Mutex<bool> = Mutex::new(false);
+
+extern "C" fn image_status(bytes: *const u8, len: usize) {
+    // SAFETY: the callback owns a readable buffer for this call, as include/muster.h defines.
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let event = muster::proto::Event::decode(bytes).unwrap();
+    if let Some(muster::proto::event::Payload::ImagePasteChanged(changed)) = event.payload
+        && !changed.pasting
+        && changed.pane_id == "image-restart-shell"
+    {
+        *IMAGE_FINISHED.lock().unwrap() = true;
+    }
+}
 
 fn prepare() -> u64 {
     match answer(request::Payload::PrepareImagePaste(PrepareImagePaste::default())).payload {
@@ -117,6 +132,66 @@ fn failed_conversion_releases_return_and_allows_the_next_image() {
         error: "end this test's paste".into(),
         png: Vec::new(),
     })));
+}
+
+#[test]
+fn a_shell_only_restart_discards_the_image_and_typing_before_conversion_completes() {
+    let _turn = muster::testing::fresh_session();
+    let mut daemon = Daemon::start_built();
+    capture(&daemon, "image-restart-shell");
+    open_on(&daemon, "");
+    *IMAGE_FINISHED.lock().unwrap() = false;
+    muster::ffi::muster_set_event_callback(Some(image_status));
+    let id = prepare();
+    send("image-restart-shell", "OLD_DRAFT", true);
+    let saved = daemon.root().join("daemon.state.json");
+    until(
+        "the shell pane to be durable",
+        || {
+            std::fs::read_to_string(&saved)
+                .is_ok_and(|text| text.contains("\"image-restart-shell\""))
+        },
+        || std::fs::read_to_string(&saved).unwrap_or_default(),
+    );
+    daemon.kill();
+    daemon.restart();
+    until(
+        "the window to observe the shell-only restart",
+        || {
+            let Some(response::Payload::Window(window)) =
+                answer(request::Payload::ReadWindow(muster::proto::ReadWindow::default())).payload
+            else {
+                return false;
+            };
+            window
+                .daemons
+                .iter()
+                .any(|daemon| daemon.state == "connected" && daemon.detail.contains("restarted"))
+        },
+        || "the new shell has not reconnected".into(),
+    );
+    assert_ok(&answer(request::Payload::PasteImage(PasteImage {
+        upload_id: id,
+        png: b"\x89PNG\r\n\x1a\nimage".to_vec(),
+        error: String::new(),
+    })));
+    until(
+        "the image hold to be canceled",
+        || *IMAGE_FINISHED.lock().unwrap(),
+        || "no completed image status".into(),
+    );
+    assert!(
+        !daemon.socket_path().with_extension("images").exists(),
+        "the old operation uploaded into the replacement daemon"
+    );
+    send("image-restart-shell", "printf 'NEW_SHELL_READY\\n'", true);
+    until(
+        "the replacement shell to consume its new input",
+        || read("image-restart-shell").lines().any(|line| line.trim() == "NEW_SHELL_READY"),
+        || read("image-restart-shell"),
+    );
+    assert!(!read("image-restart-shell").contains("OLD_DRAFT"));
+    muster::ffi::muster_set_event_callback(None);
 }
 
 #[derive(Default)]

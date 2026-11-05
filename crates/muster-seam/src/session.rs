@@ -2628,6 +2628,16 @@ pub(crate) fn cancel_image(daemon: &DaemonId, pane: &PaneId) {
     }
 }
 
+fn cancel_all_images(daemon: &DaemonId) {
+    let input = poison::lock(&SESSION, "session")
+        .backends
+        .get(daemon)
+        .map(|backend| backend.images.clone());
+    if let Some(input) = input {
+        input.forget_all();
+    }
+}
+
 /// A pane this window is drawing, by name: the one under the pointer, or the one a held paste
 /// came from.
 pub(crate) fn attached_pane(daemon: &DaemonId, pane: &PaneId) -> Option<Arc<AttachedPane>> {
@@ -5775,6 +5785,7 @@ fn reconcile(daemon: &DaemonId) {
 /// the shell's business, so every pane is sent and the shell decides.
 fn announce(daemon: &DaemonId, notice: Notice) {
     match notice {
+        Notice::ProcessesReplaced => cancel_all_images(daemon),
         Notice::Bootstrapped { changes, unreadable } => {
             log::info(
                 "mirror.bootstrap",
@@ -6203,13 +6214,6 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
 /// somebody's work. It stands while the restart needs somebody, and a `RestartSettled` takes it
 /// down.
 fn restarted(daemon: &DaemonId, restart: &Restart) {
-    let input = poison::lock(&SESSION, "session")
-        .backends
-        .get(daemon)
-        .map(|backend| backend.images.clone());
-    if let Some(input) = input {
-        input.forget_all();
-    }
     log::warn(
         "daemon.restarted",
         fields! {

@@ -50,6 +50,9 @@ pub enum Notice {
         unreadable: usize,
     },
     Changed(Change),
+    /// A new daemon run restored processes from disk. Delivered before its input connection
+    /// becomes usable, even when the restart needs no warning.
+    ProcessesReplaced,
     /// The connection ended. The mirror is still the best answer available, and is now a guess
     /// about the present.
     Stale {
@@ -98,6 +101,7 @@ pub struct Connection {
     /// it up.
     connecting: Mutex<Option<Arc<Control>>>,
     input: Mutex<Option<Input>>,
+    connecting_input: Mutex<Option<Input>>,
     /// What the daemon should be told, sent at every connect and whenever it changes.
     settings: Mutex<Option<DaemonSettings>>,
     /// The answers to the settings last sent. A change sends only what differs unless one of
@@ -347,6 +351,7 @@ impl Drop for Follower {
 struct LogPosition {
     instance: u64,
     last: Option<u64>,
+    snapshot_instance: Option<u64>,
 }
 
 fn follow(
@@ -370,6 +375,7 @@ fn follow(
                 attempts.holding(monotonic_now());
                 lock(&connection.control).take();
                 lock(&connection.input).take();
+                lock(&connection.connecting_input).take();
                 if connection.stopping.load(Ordering::Relaxed) {
                     return;
                 }
@@ -379,6 +385,7 @@ fn follow(
             Err(why) => {
                 lock(&connection.control).take();
                 lock(&connection.input).take();
+                lock(&connection.connecting_input).take();
                 // A snapshot delivered on this connection counts, though the connect then failed:
                 // the daemon can end between sending its state and the subscribe's answer
                 // arriving, and a mirror holding its panes is a stale picture, not no picture.
@@ -426,9 +433,8 @@ fn connect(
             .map_err(|error| format!("could not open a control connection: {error}"))?,
     );
     let instance = control.welcome().instance;
-    // Before the subscribe, since the snapshot tells the window the daemon's panes and the window
-    // may send one of them input at once: a focus report, to the pane with its keyboard.
-    *lock(&connection.input) = Some(open_input(following, connection)?);
+    // Ready before the snapshot publishes, but not usable until old process input is canceled.
+    *lock(&connection.connecting_input) = Some(open_input(following, connection)?);
     *lock(&connection.connecting) = Some(Arc::clone(&control));
     if connection.stopping.load(Ordering::Relaxed) {
         return Err("this window stopped following the daemon".to_string());
@@ -453,7 +459,8 @@ fn connect(
     let after = {
         let mut position = lock(log_position);
         if position.instance != instance {
-            *position = LogPosition { instance, last: None };
+            position.instance = instance;
+            position.last = None;
         }
         position.last
     };
@@ -520,16 +527,30 @@ fn delivery(
     move |delivered, requests| match delivered {
         Delivered::Subscribed(snapshot) => {
             let (mut snapshot, unreadable) = convert::snapshot(*snapshot);
+            let processes_replaced = {
+                let mut position = lock(&log_position);
+                position
+                    .snapshot_instance
+                    .replace(snapshot.instance)
+                    .is_some_and(|before| before != snapshot.instance)
+                    && snapshot.restored_from_file
+            };
             if remote {
                 snapshot.human.clear();
             }
             let changes = mirror.lock().unwrap_or_else(PoisonError::into_inner).bootstrap(snapshot);
+            if processes_replaced && connection.generation.load(Ordering::Relaxed) == generation {
+                notify(Notice::ProcessesReplaced);
+            }
             // Published here, between the snapshot and the notice: a request made before it is
             // refused as not connected, where it could be answered while the mirror still held
             // the picture from before, and one made in answer to the notice finds it connected.
             if connection.generation.load(Ordering::Relaxed) == generation
                 && let Some(control) = lock(&connection.connecting).take()
             {
+                if let Some(input) = lock(&connection.connecting_input).take() {
+                    *lock(&connection.input) = Some(input);
+                }
                 *lock(&connection.control) = Some(control);
             }
             notify(Notice::Bootstrapped { changes, unreadable });
