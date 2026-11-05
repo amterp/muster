@@ -330,7 +330,7 @@ impl Makers {
                 to: helper.to.clone(),
                 helper: helper.pane.clone(),
                 need,
-                body: body(helper, need, called, worked_ms, held_ms),
+                body: body(helper, need, called, worked_ms, held_ms, now_ms),
                 wait_started_ms: (need == Need::Waiting).then_some(waiting_since).flatten(),
             });
         }
@@ -382,17 +382,20 @@ fn body(
     called: &BTreeMap<String, String>,
     worked_ms: u64,
     held_ms: u64,
+    now_ms: u64,
 ) -> String {
     let named = shown(called, &helper.pane);
     // What a command takes it by: its name, which `--pane` takes as it takes the id.
     let pane = called.get(&helper.pane).unwrap_or(&helper.pane);
     match need {
         Need::Waiting => format!(
-            "{named} has been waiting on {reason} for {held}. Its wait is still active; the job may have stalled. \
-             `muster pane read --pane {pane} --turn` shows its last turn. Check the job it is waiting on. \
+            "{named} had been waiting on {reason} for {held} at {at}. \
+             `muster pane read --pane {pane} --turn` shows its last turn. Check whether it still needs help. \
              Muster says this once for each declared wait.",
             reason = helper.waiting.as_ref().map_or("its work", |wait| wait.reason.as_str()),
             held = said_as_time(held_ms),
+            at =
+                muster_core::diagnostics::format_iso8601(i64::try_from(now_ms).unwrap_or(i64::MAX)),
         ),
         Need::Blocked => format!(
             "{named} is blocked at a dialog: {AT_A_DIALOG}, and has been for {held}. `muster pane \
@@ -731,7 +734,8 @@ mod tests {
         let told = makers.judge(&[waiting(100)], &BTreeMap::new(), 100 + limit);
         assert_eq!(needs(&told), [Need::Waiting]);
         assert!(told[0].body.contains("waiting on the full gate for 10 minutes"));
-        assert!(told[0].body.contains("Its wait is still active"));
+        assert!(told[0].body.contains("at 1970-01-01T00:10:00.100Z."));
+        assert!(!told[0].body.contains("still active"));
         assert!(makers.judge(&[waiting(100)], &BTreeMap::new(), 100 + limit * 2).is_empty());
         assert!(
             makers.judge(&[waiting(100 + limit * 2)], &BTreeMap::new(), 100 + limit * 2).is_empty()

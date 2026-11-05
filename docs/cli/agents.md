@@ -491,6 +491,10 @@ plain waits a harness's jobs are expected to end. An unrelated wake or compactio
 restart that notice clock; explicitly declaring a replacement wait does. A limited wait can
 expire earlier and use the expiry notice below.
 
+A maker on another machine gets this notice without the busy hold, as it gets the other helper
+notices. The text gives the observation time in UTC: the helper had been waiting then, and may
+have finished before the maker reads it. Check the helper's current state before acting.
+
 Muster does not report a helper that goes idle after a compaction or a rename Muster typed, or
 after a compaction its harness started by itself while idle, as Claude Code does before its
 prompt cache expires: none of these counts as going to work. A helper whose declared wait ran

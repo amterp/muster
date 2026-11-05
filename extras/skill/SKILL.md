@@ -94,7 +94,8 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
 - **Make the agents you run for your own work with `--helper`.** They are hidden and quiet: the
   person does not see or hear from them, and you are told, in a message from `@muster`, when one is
   blocked, stuck, idle without having reported to you, or on a declared wait for ten minutes.
-  A long-wait notice leaves its wait active; read the helper and check the job it names.
+  A long-wait notice does not end the wait. It describes an observation at the time it names;
+  read the helper to check whether it still needs help.
   When the person wants to watch them,
   say `muster pane show --helpers-of $MUSTER_PANE`, or Show Helpers on your row. Close them when
   their work is done. An agent the person asks you to start as a peer, to take part of

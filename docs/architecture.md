@@ -256,8 +256,11 @@ waiting on and how to inspect it, once per declaration. The wait remains active.
 unlimited waits, live process waits, sender waits, and waits carried through unrelated turns.
 The declaration time and whether the maker was told survive daemon takeover; a wake or compaction
 does not restart the clock. A limited wait that expires uses its existing expiry notice, without
-another notice for an expiry already preceded by a long-wait notice. As with other helper needs,
-a busy maker hears it once free, only if the wait still holds.
+another notice for an expiry already preceded by a long-wait notice. A busy maker on this machine
+hears it once free, only if the wait still holds. A maker on another machine gets the notice
+without that hold, as it gets the other helper notices. The notice gives the observation time in
+UTC and describes how long the helper had waited then, since its wait may end before the message
+is read.
 
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its

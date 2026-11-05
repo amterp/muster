@@ -1622,7 +1622,9 @@ fn long_helper_wait(pid: Option<u32>) {
     let read = agent.read_in_its_pane();
     assert_eq!(read.len(), 1, "{read:?}");
     assert!(
-        read[0].contains("waiting on the full gate for 2s. Its wait is still active"),
+        read[0].contains("had been waiting on the full gate for ")
+            && read[0].contains(" at ")
+            && read[0].contains("Z. "),
         "{read:?}"
     );
     let held = |control: &mut Control| {
