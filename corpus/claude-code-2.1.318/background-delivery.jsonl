@@ -1,0 +1,2 @@
+{"time": "2026-11-05T15:24:33.500Z", "mono_ns": 3157761769194000, "level": "debug", "process": "daemon", "pid": 79642, "event": "msg.ring.waits", "name": "p2hc5a23m4", "rule": "osc_title_working", "shape": "2a80 2a78 2a72 2a35 0✻42 0─80 0❯1 0─80 2⏵76 62●78 2⏺8 2◯78", "title": "0◑42", "why": "its screen reads as its agent at work"}
+{"time": "2026-11-05T15:24:37.648Z", "mono_ns": 3157765916402000, "level": "info", "process": "daemon", "pid": 79642, "event": "msg.ring.dropped", "name": "p2hc5a23m4", "pane": "p2hc5a23m4", "why": "no longer woken"}
