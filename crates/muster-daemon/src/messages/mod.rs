@@ -523,7 +523,23 @@ pub(crate) fn handle_caused(
     shared.messages().service.called(&panes);
     let carriable = carry::may_carry(&shared.messages().service, &caller, &asked, &panes);
     let kept = carriable.then(|| asked.clone());
+    let reading = matches!(asked, Asked::Read(_));
     let reply = respond(shared, &caller, asked, hung_up, &panes, cause);
+    if reading
+        && let Some(Detail::Msg(answer)) = reply.detail.as_deref()
+        && let Some(Answer::Entries(entries)) = &answer.answer
+    {
+        let authors = entries
+            .groups
+            .iter()
+            .flat_map(|g| &g.entries)
+            .filter_map(|entry| match &entry.what {
+                Some(msg_answer::entry::What::Message(message)) => Some(message.author.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        waits::heard(shared, &answer.caller, &authors);
+    }
     shared.messages().note_joined();
     if let Some(asked) = kept
         && let Some(destination) = carry::destination(shared, &caller, &asked, &reply, &panes)
@@ -1028,7 +1044,7 @@ fn ring(shared: &Shared, holding: Holding) -> Rang {
     }
     // Rung, or left for the doorbell: either way it has something to look at.
     shared.doorbell.nudge();
-    let failed = wake(&sending);
+    let failed = wake(shared, &sending);
     if !failed.is_empty() || !refused_rings.is_empty() {
         let mut messages = shared.messages();
         if !messages.handing_over {
@@ -1595,6 +1611,35 @@ pub(crate) fn whom(shared: &Shared, name: &str) -> Result<Vec<String>, Refusal> 
     Ok(found)
 }
 
+pub(crate) fn resolve_wait_sender(
+    shared: &Shared,
+    service: &mut proto::request::Service,
+) -> Result<(), Reply> {
+    let proto::request::Service::Pane(proto::PaneRequest {
+        request: Some(proto::pane_request::Request::Report(report)),
+    }) = service
+    else {
+        return Ok(());
+    };
+    let Some(sender) = report.waiting_until_message_from.as_deref() else { return Ok(()) };
+    if sender.trim().is_empty() || report.waiting.as_deref().is_none_or(str::is_empty) {
+        return Err(Reply::refused("--until-message-from needs a pane and nonempty --waiting"));
+    }
+    if report.waiting_until_exits.is_some() {
+        return Err(Reply::refused("use --until-message-from or --until-exits, not both"));
+    }
+    let panes = Panes::of(shared);
+    let (sender, _) = finding(shared, &panes, &[sender.to_string()], |found| {
+        shared.messages().service.wait_sender(sender, found, &panes)
+    })
+    .map_err(|why| Reply::refused(words(&why)))?;
+    if sender == report.pane {
+        return Err(Reply::refused("a wait cannot end on a message from its own pane"));
+    }
+    report.waiting_until_message_from = Some(sender);
+    Ok(())
+}
+
 /// A resume wakes as a post does, and is answered as one.
 fn resuming(shared: &Shared, caller: &Caller, group: &str, panes: &Panes) -> Reply {
     let delivered =
@@ -1765,21 +1810,33 @@ fn changed(what: &str, changed: Changed, telling: &mut Vec<Tell>) -> (String, An
 }
 
 /// Delivers each wake, returning those that could not be.
-fn wake(wakes: &[Wake]) -> Vec<&Wake> {
+fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
     let mut failed = Vec::new();
     for wake in wakes {
         let Via::Inbox(inbox) = &wake.via else { continue };
         let notice = notice_of(&wake.notice);
+        let wait = waits::MessageWait::for_notice(
+            shared,
+            &wake.name,
+            &wake.notice.group,
+            wake.notice.first,
+            wake.notice.last,
+        );
         match inbox::deliver(inbox, &messaging::wake_text(&notice)) {
-            Ok(()) => log::info(
-                "msg.woke",
-                fields! {
-                    "name" => wake.name,
-                    "group" => notice.group,
-                    "first" => notice.first,
-                    "last" => notice.last,
-                },
-            ),
+            Ok(()) => {
+                if let Some(wait) = wait {
+                    wait.finish(shared);
+                }
+                log::info(
+                    "msg.woke",
+                    fields! {
+                        "name" => wake.name,
+                        "group" => notice.group,
+                        "first" => notice.first,
+                        "last" => notice.last,
+                    },
+                );
+            }
             Err(error) => {
                 log::warn(
                     "msg.wake.failed",
@@ -1807,6 +1864,16 @@ fn waiting(
     hung_up: &dyn Fn() -> bool,
     panes: &Panes,
 ) -> Reply {
+    let reader = caller
+        .as_name
+        .clone()
+        .or_else(|| {
+            caller.inbox.as_ref().and_then(|inbox| {
+                shared.messages().service.holding_inbox(inbox).map(|p| p.name.clone())
+            })
+        })
+        .or_else(|| caller.pane.clone())
+        .unwrap_or_default();
     let (ticket, ended) = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -1815,6 +1882,10 @@ fn waiting(
         match messages.service.wait(caller, wait.group.as_deref(), wait.due, panes) {
             Err(refusal) => return refused("", &refusal),
             Ok(muster_msg::Waited::Ready(notices)) => {
+                drop(messages);
+                for notice in &notices {
+                    waits::heard_notice(shared, &reader, &notice.group, notice.first, notice.last);
+                }
                 let notices = notices.iter().map(notice_of).collect();
                 return answered(String::new(), Answer::Notices(msg_answer::Notices { notices }));
             }
@@ -1833,6 +1904,9 @@ fn waiting(
     loop {
         match ended.recv_timeout(LOOK_UP) {
             Ok(WaitEnded::Ready(notices)) => {
+                for notice in &notices {
+                    waits::heard_notice(shared, &reader, &notice.group, notice.first, notice.last);
+                }
                 return answered(String::new(), Answer::Notices(msg_answer::Notices { notices }));
             }
             Ok(WaitEnded::Left) => {
@@ -1863,6 +1937,16 @@ fn waiting(
                     // A post may have answered this wait between the timeout and the lock, and
                     // counted it as woken: that answer is the one to give.
                     if let Ok(WaitEnded::Ready(notices)) = ended.try_recv() {
+                        drop(messages);
+                        for notice in &notices {
+                            waits::heard_notice(
+                                shared,
+                                &reader,
+                                &notice.group,
+                                notice.first,
+                                notice.last,
+                            );
+                        }
                         return answered(
                             String::new(),
                             Answer::Notices(msg_answer::Notices { notices }),

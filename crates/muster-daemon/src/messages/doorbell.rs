@@ -298,9 +298,19 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, is_urgent(&wake)) {
             AtPrompt::Empty { at_work } => {
                 let text = prompt::as_typed(&messaging::wake_text(&notice_of(&wake.notice)));
+                let wait = waits::MessageWait::for_notice(
+                    shared,
+                    &wake.name,
+                    &wake.notice.group,
+                    wake.notice.first,
+                    wake.notice.last,
+                );
                 let took = seen.io.queue(Input::Ring { text, enter: !at_work });
                 rang(&wake, took);
                 if took {
+                    if let Some(wait) = wait {
+                        wait.finish(shared);
+                    }
                     let at = Instant::now();
                     let mut messages = shared.messages();
                     messages.left.remove(pane_of(&wake));
@@ -447,7 +457,11 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         let Some(arguments) = arguments else {
             let refused =
                 command::Failed::Refused("its manifest no longer names a command".to_string());
-            settle(shared, Ran { wake, pane, session, agent: seen.agent }, Err(refused));
+            settle(
+                shared,
+                Ran { wake, pane, session, agent: seen.agent, wait: None },
+                Err(refused),
+            );
             continue;
         };
         {
@@ -458,7 +472,14 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         // Before the command runs: a Codex joined to its app-server starts the turn before
         // `codex queue` has exited.
         seen.io.woke_by_command(Instant::now() + COMMAND_ANSWER);
-        let ran = Ran { wake, pane, session, agent: seen.agent };
+        let wait = waits::MessageWait::for_notice(
+            shared,
+            &wake.name,
+            &wake.notice.group,
+            wake.notice.first,
+            wake.notice.last,
+        );
+        let ran = Ran { wake, pane, session, agent: seen.agent, wait };
         let unsettled_pane = ran.pane.clone();
         let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };
         let started =
@@ -509,21 +530,24 @@ impl Drop for Unsettled {
 }
 
 /// A wake whose command was started, with what settling it needs.
-#[derive(Clone)]
 struct Ran {
     wake: Wake,
     pane: String,
     session: String,
     agent: String,
+    wait: Option<waits::MessageWait>,
 }
 
 /// What came of a wake's command: one that handed it over is watched until its agent takes it,
 /// and one that failed leaves it to be typed, a command that refused it, or took too long twice,
 /// not run for that session again. Lets the pane run another, and nudges the doorbell.
 fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
-    let Ran { wake, pane, session, agent } = ran;
+    let Ran { wake, pane, session, agent, wait } = ran;
     match outcome {
         Ok(()) => {
+            if let Some(wait) = wait {
+                wait.finish(shared);
+            }
             // The doorbell waits for the agent to take it from now, so a mark set as the command
             // started and not yet taken lasts as long, past however long the command took.
             if let Some(io) = shared.lock().pane_io(&pane) {

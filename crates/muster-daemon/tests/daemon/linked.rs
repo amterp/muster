@@ -1076,6 +1076,40 @@ fn a_helper_tells_its_maker_on_the_linked_machine() {
     assert!(after[0].ends_with(": my report"), "{after:?}");
 }
 
+#[test]
+fn a_declared_wait_can_end_on_a_sender_from_the_linked_machine() {
+    let near = Daemon::start_detecting();
+    let far = Daemon::start_detecting();
+    let (mut local, mut remote) = (near.connect(), far.connect());
+    make(&mut local, create("p1", in_new_tab("t1")));
+    make(&mut remote, create("p2", in_new_tab("t2")));
+    near.run_agent("p1");
+    far.run_agent("p2");
+    let mut logging = following(&near);
+    let _holding = link(&near, &far, &mut logging, 1);
+    let sender = callsign(&mut remote, "p2");
+    let report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        waiting: Some("the remote review".to_string()),
+        waiting_until_message_from: Some(format!("{sender}@far")),
+        ..Default::default()
+    };
+    expect(&mut local, pane(proto::pane_request::Request::Report(report)), proto::Outcome::Done);
+    assert!(snapshot(&mut local).panes[0].facts.as_ref().unwrap().waiting.is_some());
+    expect(
+        &mut remote,
+        post(&in_pane("p2"), None, &["p1"], "review complete"),
+        proto::Outcome::Done,
+    );
+    until_some("the remote sender to end the wait", || {
+        snapshot(&mut local).panes[0]
+            .facts
+            .as_ref()
+            .is_none_or(|facts| facts.waiting.is_none())
+            .then_some(())
+    });
+}
+
 /// A maker that closes on the far machine while no link is up leaves its helpers' notice for
 /// the person waiting there, since the person is homed on the near machine; once the link is
 /// back the near daemon has it, with Muster's words for the banner (MIP-7, section 6).

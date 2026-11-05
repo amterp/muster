@@ -2811,6 +2811,11 @@ impl Session {
                 waiting,
                 serial: pane.turns.wait_serial,
                 until_exits: pane.record.facts.as_ref().and_then(|facts| facts.waiting_until_exits),
+                until_message_from: pane
+                    .record
+                    .facts
+                    .as_ref()
+                    .and_then(|facts| facts.waiting_until_message_from.clone()),
                 limited: pane.turns.wait_carried || !woken(pane.record.agent.as_deref()),
             })
             .collect()
@@ -5029,8 +5034,8 @@ fn gone_process(report: &pane_request::Report) -> Option<Reply> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kept {
     No,
-    /// A wait until a process exits, which only that, or the agent, ends.
-    OnProcess,
+    /// A process or sender condition, which only that condition or the agent ends.
+    OnCondition,
     /// The adapter's prompt hook, for a prompt Muster typed: a wake or a compaction. That is
     /// nobody moving the agent on, and the turn it starts is not the agent's work waking it.
     ThroughPrompt,
@@ -5042,8 +5047,8 @@ fn keeps_wait(pane: &Pane, states: bool, report: &pane_request::Report) -> Kept 
     if !states || report.waiting.as_deref() != Some("") || !pane.holds_declared_wait() {
         return Kept::No;
     }
-    if pane.record.facts.as_ref().is_some_and(|facts| facts.waiting_until_exits.is_some()) {
-        return Kept::OnProcess;
+    if pane.record.facts.as_ref().is_some_and(wait_has_condition) {
+        return Kept::OnCondition;
     }
     let typed = pane.io.prompted_by(std::time::Instant::now());
     if typed.is_some_and(TypedBy::is_musters) { Kept::ThroughPrompt } else { Kept::No }
@@ -5070,11 +5075,10 @@ fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
 /// what started it. For an agent with no hooks, the turn's start is all that says a prompt came.
 fn carry_through_musters_turn(record: &proto::Pane, turns: &mut Turns, io: &PaneIo) {
     let facts = record.facts.as_ref();
-    // A wait on a process ends with the process, whatever turns come, and carrying it would
-    // renumber it under the watch about to end it.
-    let on_process = facts.is_some_and(|facts| facts.waiting_until_exits.is_some());
+    // Carrying would renumber the wait under a delivery or process watch about to end it.
+    let on_condition = facts.is_some_and(wait_has_condition);
     if is_waiting(facts)
-        && !on_process
+        && !on_condition
         && !turns.wait_on_screen
         && io.turn_typed_by().is_some_and(TypedBy::is_musters)
     {
@@ -5097,8 +5101,8 @@ fn settle_wait(record: &mut proto::Pane, turns: &mut Turns, by: &str) -> bool {
     if std::mem::replace(&mut turns.wait_declared, false) || turns.wait_on_screen {
         return false;
     }
-    // Ended by its process, which a turn says nothing about.
-    if record.facts.as_ref().is_some_and(|facts| facts.waiting_until_exits.is_some()) {
+    // A turn says nothing about whether its explicit condition was met.
+    if record.facts.as_ref().is_some_and(wait_has_condition) {
         return false;
     }
     forget_wait(record, by)
@@ -5108,6 +5112,7 @@ fn settle_wait(record: &mut proto::Pane, turns: &mut Turns, by: &str) -> bool {
 fn forget_wait(record: &mut proto::Pane, by: &str) -> bool {
     let Some(facts) = record.facts.as_mut() else { return false };
     facts.waiting_until_exits = None;
+    facts.waiting_until_message_from = None;
     if facts.waiting.take().is_none() {
         return false;
     }
@@ -5116,6 +5121,10 @@ fn forget_wait(record: &mut proto::Pane, by: &str) -> bool {
     }
     log::debug("daemon.report.waiting_cleared", fields! { "pane" => record.pane, "by" => by });
     true
+}
+
+fn wait_has_condition(facts: &proto::AgentFacts) -> bool {
+    facts.waiting_until_exits.is_some() || facts.waiting_until_message_from.is_some()
 }
 
 /// Takes what the agent's screen says it waits on while idle (`on_screen`), from a rule such as

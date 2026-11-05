@@ -801,6 +801,44 @@ impl<S: Store> Messaging<S> {
             .collect()
     }
 
+    /// The authors behind a wake's displayed callsigns, limited to the messages it covers.
+    pub fn notice_authors(&self, reader: &str, group: &str, first: u64, last: u64) -> Vec<String> {
+        let Some(kept) = self.groups.get(group) else { return Vec::new() };
+        self.ringing_under(reader, group, &kept.policy)
+            .filter(|(entry, _)| (first..=last).contains(&entry.seq))
+            .filter_map(|(entry, _)| entry.author().map(str::to_string))
+            .collect()
+    }
+
+    /// Resolves a wait's sender without registering a participant or joining a group.
+    pub fn wait_sender(
+        &self,
+        name: &str,
+        found: &[Found],
+        presence: &dyn Presence,
+    ) -> Result<String, Refusal> {
+        let own = self.own(name);
+        let resolved = self.pane_called(own, found, None, presence)?;
+        let pane = resolved.as_deref().unwrap_or(own);
+        if presence.has_pane(pane) {
+            return Ok(pane.to_string());
+        }
+        if let Some(pane) = self.participant(pane).and_then(|p| p.pane.as_ref())
+            && presence.has_pane(pane)
+        {
+            return Ok(pane.clone());
+        }
+        let matches: Vec<_> = found.iter().filter(|f| f.name == name).map(|f| &f.there).collect();
+        match matches.as_slice() {
+            [only] => Ok((*only).clone()),
+            [] => Err(Refusal::NoSuchParticipant { name: name.to_string() }),
+            _ => Err(Refusal::WhichParticipant {
+                name: name.to_string(),
+                candidates: matches.into_iter().cloned().collect(),
+            }),
+        }
+    }
+
     pub fn join(
         &mut self,
         caller: &Caller,

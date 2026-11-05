@@ -56,11 +56,20 @@ pub(crate) fn apply(
             return Err("waiting_until_exits is 0, which names no process".to_string());
         }
     }
-    // A wait declared again replaces the one before, the process it was to end with included.
+    if let Some(sender) = &report.waiting_until_message_from {
+        if report.waiting.as_deref().is_none_or(str::is_empty) {
+            return Err("waiting_until_message_from needs the wait it ends, in waiting".to_string());
+        }
+        text("waiting_until_message_from", sender, VALUE_BYTES)?;
+        if sender.trim().is_empty() || report.waiting_until_exits.is_some() {
+            return Err("a wait needs one nonempty sender or one process, not both".to_string());
+        }
+    }
     if let Some(waiting) = report.waiting {
         text("waiting", &waiting, VALUE_BYTES)?;
         facts.waiting = Some(waiting).filter(|waiting| !waiting.is_empty());
         facts.waiting_until_exits = report.waiting_until_exits;
+        facts.waiting_until_message_from = report.waiting_until_message_from;
     }
     match subagent {
         proto::SubagentChange::Started => facts.subagents = facts.subagents.saturating_add(1),

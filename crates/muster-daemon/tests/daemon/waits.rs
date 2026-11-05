@@ -44,6 +44,15 @@ impl Pane {
         self.control.ask(pane(proto::pane_request::Request::Report(report)))
     }
 
+    fn declares_from(&mut self, sender: &str) -> Asked {
+        self.control.ask(pane(proto::pane_request::Request::Report(proto::pane_request::Report {
+            pane: "p1".to_string(),
+            waiting: Some("the review".to_string()),
+            waiting_until_message_from: Some(sender.to_string()),
+            ..Default::default()
+        })))
+    }
+
     /// Reports `state` as `claude`'s hooks do, with the empty wait its prompt hook sends.
     fn hook_reports(&mut self, state: proto::AgentState) {
         let mut report = proto::pane_request::Report {
@@ -101,6 +110,23 @@ impl Pane {
     fn finished_unseen(&mut self) -> bool {
         let records = snapshot(&mut self.control).panes;
         records.into_iter().find(|record| record.pane == "p1").is_some_and(|r| r.finished_unseen)
+    }
+
+    fn until_wait_over(&mut self) {
+        let log = self.daemon.root().join("daemon.log");
+        until(
+            "the declared wait to end",
+            || self.waiting_on().is_none(),
+            || {
+                let log = std::fs::read_to_string(&log).unwrap_or_default();
+                log.lines()
+                    .filter(|line| !line.contains("daemon.request.answered"))
+                    .rev()
+                    .take(30)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            },
+        );
     }
 
     /// Every wake the doorbell typed into the agent.
@@ -320,7 +346,10 @@ fn a_reviewers_message_ends_the_wait_before_the_worker_reports_completion() {
     let mut worker = Pane::with_an_agent();
     make(&mut worker.control, create("p2", in_new_tab("t2")));
     worker.daemon.run_agent("p2");
-    worker.turn_declaring("the review");
+    worker.hook_reports(Working);
+    let declared = worker.declares_from("p2");
+    assert_eq!(declared.outcome(), proto::Outcome::Done, "{}", declared.answer.reason);
+    worker.hook_reports(Idle);
     let message = |from: &str, request| {
         proto::request::Service::Msg(proto::MsgRequest {
             caller: Some(msg_request::Caller {
@@ -365,4 +394,158 @@ fn a_reviewers_message_ends_the_wait_before_the_worker_reports_completion() {
     );
     worker.hook_reports(Idle);
     assert_eq!(worker.waiting_on(), None, "the review arrived and the worker finished");
+}
+
+fn message(from: &str, request: proto::msg_request::Request) -> proto::request::Service {
+    proto::request::Service::Msg(proto::MsgRequest {
+        caller: Some(proto::msg_request::Caller {
+            pane: Some(from.to_string()),
+            ..Default::default()
+        }),
+        request: Some(request),
+    })
+}
+
+fn review_from(from: &str) -> proto::request::Service {
+    message(
+        from,
+        proto::msg_request::Request::Post(proto::msg_request::Post {
+            to: vec!["p1".to_string()],
+            body: "review complete".to_string(),
+            ..Default::default()
+        }),
+    )
+}
+
+#[test]
+fn an_unrelated_message_keeps_a_sender_wait_and_a_renamed_reviewers_message_ends_it() {
+    use proto::AgentState::{Idle, Working};
+    use proto::msg_request::{self, Request};
+    let mut worker = Pane::with_an_agent();
+    for (pane, tab) in [("p2", "t2"), ("p3", "t3")] {
+        make(&mut worker.control, create(pane, in_new_tab(tab)));
+        worker.daemon.run_agent(pane);
+    }
+    let records = snapshot(&mut worker.control).panes;
+    let reviewer = records.iter().find(|r| r.pane == "p2").unwrap().callsign.as_deref().unwrap();
+    worker.hook_reports(Working);
+    assert_eq!(worker.declares_from(reviewer).outcome(), proto::Outcome::Done);
+    worker.hook_reports(Idle);
+    expect(&mut worker.control, review_from("p3"), proto::Outcome::Done);
+    until_some("the unrelated wake", || (!worker.rings_heard().is_empty()).then_some(()));
+    worker.hook_reports(Working);
+    expect(
+        &mut worker.control,
+        message("p1", Request::Read(msg_request::Read::default())),
+        proto::Outcome::Done,
+    );
+    worker.hook_reports(Idle);
+    assert!(worker.waiting_on().is_some(), "the unrelated sender ended the wait");
+    expect(
+        &mut worker.control,
+        pane(proto::pane_request::Request::Rename(proto::pane_request::Rename {
+            pane: "p2".to_string(),
+            label: Some("finished reviewer".to_string()),
+        })),
+        proto::Outcome::Done,
+    );
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    worker.until_wait_over();
+}
+
+#[test]
+fn a_review_wait_survives_handoff_and_waits_for_delivery_past_a_dialog() {
+    use proto::AgentState::{Blocked, Idle};
+    let mut worker = Pane::with_an_agent();
+    make(&mut worker.control, create("p2", in_new_tab("t2")));
+    worker.daemon.run_agent("p2");
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    let replaced = worker.daemon.replace(None);
+    assert_eq!(replaced.outcome(), proto::Outcome::Done, "{}", replaced.reason);
+    worker.control = worker.daemon.connect();
+    worker.daemon.set_agent_state("p1", Blocked);
+    worker.hook_reports(Blocked);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    assert!(worker.waiting_on().is_some(), "posting is not delivery");
+    worker.daemon.set_agent_state("p1", Idle);
+    worker.hook_reports(Idle);
+    worker.until_wait_over();
+}
+
+#[test]
+fn hooks_reading_the_requested_senders_message_end_the_wait() {
+    use proto::msg_request::{self, Request};
+    let mut worker = Pane::with_an_agent();
+    make(&mut worker.control, create("p2", in_new_tab("t2")));
+    worker.daemon.run_agent("p2");
+    expect(
+        &mut worker.control,
+        message(
+            "p1",
+            Request::Join(msg_request::Join {
+                name: None,
+                group: Some("reviews".to_string()),
+                pull: true,
+            }),
+        ),
+        proto::Outcome::Done,
+    );
+    worker.daemon.set_agent_state("p1", proto::AgentState::Working);
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    assert!(worker.waiting_on().is_some(), "the hooks have not fetched it yet");
+    expect(
+        &mut worker.control,
+        message("p1", Request::Read(msg_request::Read::default())),
+        proto::Outcome::Done,
+    );
+    assert!(worker.waiting_on().is_none());
+}
+
+#[test]
+fn a_requested_senders_message_delivered_by_session_command_ends_the_wait() {
+    let mut worker = Pane::with_an_agent();
+    make(&mut worker.control, create("p2", in_new_tab("t2")));
+    worker.daemon.run_agent("p2");
+    expect(
+        &mut worker.control,
+        pane(proto::pane_request::Request::Report(proto::pane_request::Report {
+            pane: "p1".to_string(),
+            agent: "claude".to_string(),
+            session_id: Some("review-session".to_string()),
+            ..Default::default()
+        })),
+        proto::Outcome::Done,
+    );
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    worker.until_wait_over();
+    assert!(worker.rings_heard().is_empty(), "the wake was typed instead of queued");
+    assert!(
+        std::fs::read_to_string(worker.daemon.root().join("home/fake-agent-woken"))
+            .unwrap()
+            .contains("review-session|")
+    );
+}
+
+#[test]
+fn sender_waits_refuse_unknown_ambiguous_and_self_targets_without_changing_facts() {
+    let mut worker = Pane::with_an_agent();
+    for sender in ["missing", "", "p1"] {
+        let answer = worker.declares_from(sender);
+        assert_eq!(answer.outcome(), proto::Outcome::Refused, "{sender}: {}", answer.answer.reason);
+        assert_eq!(worker.waiting_on(), None);
+    }
+    for (pane_id, tab) in [("p2", "t2"), ("p3", "t3")] {
+        make(&mut worker.control, create(pane_id, in_new_tab(tab)));
+        expect(
+            &mut worker.control,
+            pane(proto::pane_request::Request::Rename(proto::pane_request::Rename {
+                pane: pane_id.to_string(),
+                label: Some("reviewer".to_string()),
+            })),
+            proto::Outcome::Done,
+        );
+    }
+    assert_eq!(worker.declares_from("reviewer").outcome(), proto::Outcome::Refused);
 }

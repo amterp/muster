@@ -42,7 +42,7 @@ const PATIENCE: Duration = Duration::from_secs(2);
 
 const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
-    [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID]] [--clear] \
+    [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID] [--compacting]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
@@ -58,7 +58,10 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     agent, a message's wake or a compaction, does not end it, and a wait nothing is known to \
     end lasts 10 minutes at most. --until-exits ends the wait when process \
     PID exits instead, and the daemon then tells the agent in a message, which wakes it: for a \
-    harness nothing else wakes when its work ends. Turns do not end such a wait. --state is the \
+    harness nothing else wakes when its work ends. Turns do not end such a wait. \
+    --until-message-from ends the wait when a message from that pane is delivered; unrelated \
+    senders leave it standing. Give a pane id, callsign or unique name, including on a linked \
+    machine. It cannot be combined with --until-exits. --state is the \
     agent's own word on what it is doing, which outranks what detection reads off its screen while fresh; --agent names the agent, \
     as its detection manifest does (claude), and the state counts only while that agent is \
     the pane's. --session-name is what the agent's harness calls its session, empty for no \
@@ -258,6 +261,13 @@ fn parse(
                 facts.insert(key.to_string(), value.to_string());
             }
             "--waiting" => report.waiting = Some(value("--waiting")?),
+            "--until-message-from" => {
+                let sender = value("--until-message-from")?;
+                if sender.trim().is_empty() {
+                    return Err("--until-message-from needs a pane".to_string());
+                }
+                report.waiting_until_message_from = Some(sender);
+            }
             "--until-exits" => {
                 let given = value("--until-exits")?;
                 report.waiting_until_exits = Some(
@@ -288,6 +298,14 @@ fn parse(
     }
     if report.waiting_until_exits.is_some() && report.waiting.as_deref().is_none_or(str::is_empty) {
         return Err("--until-exits needs --waiting, saying what the agent waits on".to_string());
+    }
+    if report.waiting_until_message_from.is_some() {
+        if report.waiting.as_deref().is_none_or(str::is_empty) {
+            return Err("--until-message-from needs --waiting".to_string());
+        }
+        if report.waiting_until_exits.is_some() {
+            return Err("use --until-message-from or --until-exits, not both".to_string());
+        }
     }
     if report.state.is_some() && report.agent.is_empty() {
         return Err("--state needs --agent, naming the agent that is reporting".to_string());
@@ -343,8 +361,19 @@ fn send_within(
 fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), String> {
     let mut stream = UnixStream::connect(socket)
         .map_err(|error| format!("no daemon at {}: {error}", socket.display()))?;
-    connection::open(&mut stream, ConnectionKind::Control, "muster-daemon report")
+    let welcome = connection::open(&mut stream, ConnectionKind::Control, "muster-daemon report")
         .map_err(|error| error.to_string())?;
+    if report.waiting_until_message_from.is_some()
+        && let Some(why) = proto::version::too_old(
+            "the daemon",
+            welcome.protocol.as_ref(),
+            proto::version::WAIT_UNTIL_MESSAGE,
+            "end a wait on a message",
+            "declared",
+        )
+    {
+        return Err(why);
+    }
     let pane = report.pane.clone();
     let request = proto::Request {
         id: 1,
@@ -371,6 +400,26 @@ fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sender_condition_needs_a_wait_and_excludes_a_process_condition() {
+        let parse =
+            |args: &[&str]| parse(args.iter().map(|s| (*s).to_string()), |_| Some("p1".into()));
+        let Ok(Parsed::Report(report)) =
+            parse(&["--waiting", "review", "--until-message-from", "otter"])
+        else {
+            panic!("valid sender wait refused")
+        };
+        assert_eq!(report.waiting_until_message_from.as_deref(), Some("otter"));
+        for args in [
+            vec!["--until-message-from", "otter"],
+            vec!["--waiting", "", "--until-message-from", "otter"],
+            vec!["--waiting", "review", "--until-message-from", ""],
+            vec!["--waiting", "review", "--until-message-from", "otter", "--until-exits", "42"],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+    }
 
     fn filled(arguments: &[&str], stdin: &str) -> Result<Vec<String>, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string()).collect();

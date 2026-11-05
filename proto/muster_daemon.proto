@@ -532,6 +532,10 @@ message PaneRequest {
     // Since 1.10. The reasoning effort the agent's model runs at (`AgentFacts.effort`). Empty
     // removes it.
     optional string effort = 16;
+    // Since 1.11. The pane whose message delivery ends this wait. Accepts a pane id, callsign,
+    // or unique name; stored as its resolved identity in AgentFacts. Needs nonempty waiting
+    // and cannot be combined with waiting_until_exits.
+    optional string waiting_until_message_from = 17;
   }
 }
 
@@ -1828,6 +1832,9 @@ message AgentFacts {
   // Since 1.10. The reasoning effort the agent's model runs at, as its harness names it: "high",
   // "xhigh". At most 32 bytes. Absent for a model that takes none.
   optional string effort = 8;
+  // Since 1.11. The resolved sender whose delivered message ends the wait. Other messages and
+  // turns leave it active. A local sender is a pane id, a remote sender a qualified participant.
+  optional string waiting_until_message_from = 9;
 }
 
 enum AgentState {

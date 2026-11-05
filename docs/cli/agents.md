@@ -62,7 +62,16 @@ wake it or once carried through such a turn, it lasts 10 minutes at most, and th
 reads idle, its turn finished. One declared with `report --waiting "<what>" --until-exits <pid>`
 ends when that process exits instead, whatever turns come meanwhile, and the agent is then told so
 in a message from `@muster`, which wakes it: what a harness nothing else wakes when its work ends,
-Codex, declares. Add `waiting` to the list to hear of a wait too.
+Codex, declares. When waiting on a reviewer or helper, declare the sender instead:
+
+    "$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter
+
+That wait ends when Muster delivers a message from that pane, including one its hooks read.
+Other senders and compactions leave it active. A message queued behind a draft or dialog has
+not been delivered yet. The sender may be a pane id, callsign, or unique name, on this machine
+or a linked one. An unknown or ambiguous name, your own pane, an empty wait, or combining
+`--until-message-from` with `--until-exits` is refused. Declaring another wait or an empty wait
+replaces or clears either condition. Add `waiting` to the list to hear of a wait too.
 `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 

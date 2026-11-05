@@ -73,6 +73,10 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   it and resumes its session with its flags, asking nobody, so be sure it is the one you mean.
 - **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
   since it last went to work, without the turn before or your brief. Do not guess `--rows`.
+- **Name the sender when waiting on a reviewer or helper**:
+  `"$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter`, then end
+  your turn. Its message ends that wait; another sender's message leaves it standing. For a
+  background job, use `--until-exits <pid>` instead.
 - **Check that your own adapter reports** before relying on what it gives: your state, your
   context for `pane compact` and `compact_at`, your session coming back after a restart.
   `muster window --json | jq -r '.panes[] | select(.pane == env.MUSTER_PANE) | .adapter'` says

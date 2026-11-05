@@ -403,7 +403,17 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                     }
                 }
             }
-            Some(service) => {
+            Some(mut service) => {
+                if let Err(reply) = messages::resolve_wait_sender(shared, &mut service) {
+                    let session = locked();
+                    answer(
+                        &session,
+                        &outbox,
+                        reply,
+                        Answered::after(request.id, name, received, lock),
+                    );
+                    continue;
+                }
                 let mut session = locked();
                 match handle(&mut session, service, sender.as_ref(), &outbox, shared) {
                     Handled::Snapshot(reply) => {

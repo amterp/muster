@@ -244,6 +244,13 @@ have woken the agent inside that turn, it lasts 10 minutes at most, as the scree
 message from `@muster`, which wakes it as any message does. The daemon's doorbell thread keeps both clocks, looking
 for the process once a second while one is waited on (`messages/waits.rs`).
 
+A wait declared with `--until-message-from <pane>` also has no expiry: a message delivered from
+that sender ends it. Unrelated messages, compactions, and turn boundaries leave it standing.
+The daemon resolves the sender when declared, using a local pane id or the participant a linked
+machine names, so renaming the pane does not change who ends the wait. Delivery includes a typed
+wake, a harness session command, an inbox wake, and messages fetched by hooks. Posting a message
+that cannot yet reach the agent does not end it. A replacement or explicit clearing still does.
+
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its
 terminal. The daemon counts that with `FIONREAD` on the terminal's slave, opened for a moment by name and closed
