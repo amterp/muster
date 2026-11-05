@@ -304,6 +304,10 @@ impl Manifest {
         self.rules.iter().any(|rule| rule.prompt.is_some())
     }
 
+    pub(crate) fn has_idle_rule(&self) -> bool {
+        self.rules.iter().any(|rule| rule.state == State::Idle && rule.waiting.is_none())
+    }
+
     /// Whether a rule can read the prompt of the agent at work, which takes what is typed there
     /// into its running turn: what an urgent ring needs.
     pub fn reads_prompt_at_work(&self) -> bool {

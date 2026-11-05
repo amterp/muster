@@ -9,6 +9,7 @@
 //! inside Muster, and an inherited `MUSTER_SOCKET` is the developer's own window.
 
 use std::io::{BufRead, BufReader};
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 
@@ -350,7 +351,6 @@ fn a_launching_harness_does_not_answer_an_idle_wait_before_it_draws() {
          printf '\\033[2J\\033[H› \\n'\nwhile IFS= read -r line; do :; done\n",
     )
     .unwrap();
-    use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut control = open.daemon.connect();
     muster_harness::requests::until_text(&mut control, &open.pane, "$");

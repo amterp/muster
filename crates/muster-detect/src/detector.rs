@@ -11,10 +11,10 @@
 //! What the loop is for is flicker. A screen is read a few times a second, and an agent's
 //! chrome is not drawn atomically, so a verdict taken at face value would bounce - working,
 //! idle for a frame, working again. The rules below are herdr's, each earned by an agent
-//! that did that: a new agent gets three seconds before its screen counts, then stays unknown
-//! until a rule recognizes it; working only becomes idle once the idle has held (unless the
-//! agent drew its idle chrome), and an agent
-//! is only forgotten after six probes in a row fail to find it.
+//! that did that: a new agent gets three seconds before its screen counts; one with an idle
+//! rule stays unknown until a rule recognizes it. Working only becomes idle once the idle has
+//! held (unless the agent drew its idle chrome), and an agent is only forgotten after six probes
+//! in a row fail to find it.
 
 use std::time::{Duration, Instant};
 
@@ -478,7 +478,7 @@ impl Detector {
             &mut self.last_content_change_at,
         );
 
-        let mut detection = if process_exited {
+        let detection = if process_exited {
             exited_detection()
         } else {
             let title = self.current_title(pane);
@@ -493,10 +493,7 @@ impl Detector {
             detection
         };
 
-        // A slow launch can leave only shell output for longer than the startup grace.
-        if !process_exited && self.published.state == State::Unknown && detection.rule.is_none() {
-            detection.state = State::Unknown;
-        }
+        let detection = self.startup_detection(detection, process_exited, manifests);
 
         let covered = screen_cover(manifests, agent.as_ref(), &detection);
         let cover_changed = self.prompt_covered_by != covered;
@@ -528,6 +525,23 @@ impl Detector {
             emitted = self.conclude(agent, self.published.state).or(emitted);
         }
         emitted
+    }
+
+    fn startup_detection(
+        &self,
+        mut detection: Detection,
+        process_exited: bool,
+        manifests: &Manifests,
+    ) -> Detection {
+        // A slow launch can leave only shell output for longer than the startup grace.
+        if !process_exited
+            && self.published.state == State::Unknown
+            && detection.rule.is_none()
+            && self.agent().is_some_and(|agent| manifests.has_idle_rule(agent))
+        {
+            detection.state = State::Unknown;
+        }
+        detection
     }
 
     fn covered_prompt(

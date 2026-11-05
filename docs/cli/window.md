@@ -380,13 +380,16 @@ window answering, the daemon's tabs are watched the same way.
 idle agent that said it ended its turn to wait on work it started itself, a gate or a build: it
 has not finished and nobody is holding it up, and `facts.waiting` says on what. It lasts until
 the agent ends a later turn without saying it again, or somebody prompts it. `unknown` is
-the ordinary answer for a pane running a plain shell or an agent whose screen no rule has yet
-recognized. A new agent stays unknown through its startup grace and for however long its first
-recognizable screen takes to draw. Its own valid state reports still count during that time.
-Without an adapter, a matching manifest rule is the only signal. A harness version whose screen
-never matches any rule stays unknown, so `pane wait --until idle` keeps waiting. This deliberately
+the ordinary answer for a pane running a plain shell or an agent still in its startup grace.
+If the agent's manifest has an idle rule, it stays unknown after that grace until a state rule
+recognizes its screen, however long that takes. Its own valid state reports still count during
+that time. Without an adapter, a matching state rule is the only signal. A harness version whose
+screen matches no rule stays unknown, so `pane wait --until idle` keeps waiting. This deliberately
 avoids calling an undrawn or unreadable harness idle. Once a rule has recognized the agent,
 unmatched screens can read idle as before.
+
+A manifest with no idle rule leaves idle to the unmatched-screen fallback. Those harnesses keep
+that fallback after the startup grace, since no match is their normal idle screen.
 
 `stuck` is an agent whose program has stopped reading its input: having been seen to read, it has
 left what was sent to it unread for 5 seconds and read nothing since. Its screen still shows what

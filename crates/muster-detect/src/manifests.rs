@@ -303,6 +303,10 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.image_paste())
     }
 
+    pub(crate) fn has_idle_rule(&self, agent: &Agent) -> bool {
+        self.entry(agent).is_some_and(|entry| entry.manifest.has_idle_rule())
+    }
+
     /// Whether the agent's manifest can read its prompt while it works.
     pub fn reads_prompt_at_work(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.reads_prompt_at_work())
