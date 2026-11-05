@@ -217,8 +217,8 @@ struct Typed {
     /// When the agent's harness said it began compacting its context by itself, for a turn that
     /// starts soon after with nothing typed to take as a chore.
     compacting: Option<Instant>,
-    /// Until when a wake the doorbell handed the harness by command, with nothing typed, may
-    /// still start the agent's turn: Codex takes one from `codex queue` up to ten seconds later.
+    /// Until when a command-delivered wake may still start a turn without that turn counting
+    /// as new work, allowing the harness to accept it asynchronously.
     commanded_until: Option<Instant>,
     /// How many writes of typed input have ended a line, which a terminal reading line by line
     /// passes on whole ([`crate::unread`]).
@@ -487,9 +487,9 @@ impl PaneIo {
     }
 
     /// Who gave the prompt an agent's hook reports now: the turn it starts, if the screen showed
-    /// that turn begin after the last thing typed, and else the last thing typed. A wake handed
-    /// over by command types nothing, and Codex can show its queued turn before its prompt hook
-    /// reports it, so the turn has already taken the wake by then.
+    /// that turn begin after the last thing typed, and else the last thing typed. A harness can
+    /// show a command-delivered turn before its prompt hook reports it, so the turn has already
+    /// taken the wake by then.
     pub(crate) fn prompted_by(&self, now: Instant) -> Option<TypedBy> {
         let typed_by = self.typed_just_now(now);
         let typed = poison::lock(&self.typed, "daemon.pane.typed");

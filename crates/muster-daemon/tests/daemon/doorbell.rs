@@ -1122,7 +1122,7 @@ fn a_quiet_session_with_its_id_reported_is_woken_by_its_command_from_the_post() 
 }
 
 /// A wait the agent declared outlasts the turn a wake handed over by command starts, as it does
-/// one typed: Codex's prompt hook says no wait for a queued turn too, and nothing was typed.
+/// one typed: a prompt hook can say no wait for a command-started turn too, with nothing typed.
 /// Here the hook reports the turn before the screen shows it.
 #[test]
 fn a_declared_wait_outlasts_a_turn_its_wake_command_started() {
@@ -1168,8 +1168,8 @@ fn declared_wait_through_a_command_wake(screen_first: bool) {
     assert_eq!(waiting_on(&mut agent).as_deref(), Some("the full gate"));
 }
 
-/// The command is used only where a ring would reach the agent idle: a blocked agent is at a
-/// dialog, where Codex stores a queued message and never submits it.
+/// A command must not bypass a blocked prompt: the harness may accept the wake without starting
+/// a turn for it while a dialog is open.
 #[test]
 fn a_blocked_session_is_not_woken_by_its_command_until_it_is_idle() {
     let mut agent = Agent::in_a_pane();
@@ -1194,9 +1194,8 @@ fn a_wake_command_that_fails_is_typed_instead() {
     assert_eq!(agent.woken(), Vec::<String>::new());
 }
 
-/// `codex queue` stores a message for a session whose Codex has exited and says it queued it, as
-/// a `codex exec` run in the pane leaves behind: a command wake whose agent neither goes to work
-/// nor reads is typed instead, and the command is not run for that session again.
+/// A command can accept a wake without starting a turn. If its agent neither works nor reads,
+/// the wake is typed instead and the command is not tried again for that session.
 #[test]
 fn a_command_wake_nobody_takes_is_typed_instead() {
     let mut agent = Agent::in_a_pane();
@@ -1204,7 +1203,6 @@ fn a_command_wake_nobody_takes_is_typed_instead() {
     std::thread::sleep(QUIET);
     agent.post("p1", "a brief");
     until_some("the wake command to run", || (!agent.woken().is_empty()).then_some(()));
-    // The daemon gives a command wake 20 seconds, past Codex's queue poll, before typing it.
     muster_harness::until_within(
         "the wake to be typed instead",
         COMMAND_ANSWER + muster_harness::PATIENCE,
@@ -1272,10 +1270,9 @@ fn a_sender_wait_outlasts_a_command_its_agent_has_not_taken() {
     assert_eq!(review_wait(&mut agent), None, "reading delivers the review");
 }
 
-/// A Codex running its session without the shared app-server polls its queue, and starts the turn
-/// for a stored wake up to ten seconds later. That wake is not typed as well: typed, it starts a
-/// turn of its own, and Codex wakes the agent again with the stored copy as that turn ends, for a
-/// message it has read and answered (docs/observations/codex-0.163.0.md).
+/// A command-delivered wake whose turn starts late is not also typed, which would start a
+/// duplicate turn. The timing came from Codex's former queue route
+/// (docs/observations/codex-0.163.0.md).
 #[test]
 fn a_command_wake_its_agent_takes_late_is_not_typed_as_well() {
     let mut agent = Agent::in_a_pane();

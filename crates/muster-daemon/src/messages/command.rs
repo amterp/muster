@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use crate::pty;
 
-/// How long the command may take: `codex queue` answers in well under a second, and a login shell
-/// slow to start can take a few. It runs on a thread of its own, so only its pane waits for it.
+/// How long the command may take: measured with Codex's queue command, which answered in under
+/// a second, while a login shell slow to start could take a few. Only its pane waits for it.
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// How much of what a failed command printed is kept, for the log.

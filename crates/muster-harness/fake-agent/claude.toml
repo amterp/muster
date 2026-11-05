@@ -32,13 +32,9 @@ resume = ["/bin/sh", "-c", "exec \"$HOME/.muster/bin/claude\" \"$@\"", "claude",
 resume_drops = ["-p", "--print", "--resume"]
 resume_values = ["--model", "--effort", "--resume"]
 resume_keeps = ["--model", "--effort"]
-# What wakes a session without typing into its pane, as Codex's manifest names `codex queue`. It
-# runs only once a session id is reported: it writes down the id and the message and puts the
-# agent to work, as Codex starts the queued turn. A session called "gone" refuses it, as a missing
-# harness does, one called "dead" takes it and starts nothing, as `codex queue` does for a session
-# whose Codex has exited, one called "slow" takes longer than the daemon waits for it, and one
-# called "late" starts the turn 8 seconds later, as a Codex polling its queue does
-# (docs/observations/codex-0.163.0.md).
+# Exercise command-delivered wakes with sessions that refuse ("gone"), accept without starting
+# a turn ("dead"), exceed the command timeout ("slow"), or start a turn 8 seconds later ("late").
+# The delayed case came from Codex's former queue route (docs/observations/codex-0.163.0.md).
 wake = ["/bin/sh", "-c", "[ \"$0\" != gone ] || exit 3; [ \"$0\" != slow ] || { printf 'slow\\n' >> \"$HOME/fake-agent-woken\"; sleep 8; exit 0; }; printf '%s|%s\\n' \"$0\" \"$1\" >> \"$HOME/fake-agent-woken\"; pid=$(cat \"$HOME/fake-agent-pid\"); case \"$0\" in dead) ;; late) { sleep 8; kill -USR2 \"$pid\"; } </dev/null >/dev/null 2>&1 & ;; *) kill -USR2 \"$pid\" ;; esac", "{session}", "{message}"]
 
 # At work, its prompt still takes a line, as Claude Code's box does: what an urgent ring reads.

@@ -98,10 +98,9 @@ const IDLE: Duration = Duration::from_mins(1);
 /// before Return is pressed again.
 pub(crate) const ANSWER: Duration = Duration::from_secs(5);
 
-/// How long an agent woken by command has to take the wake before it is typed instead: two polls
-/// of a Codex without the shared app-server, which starts a turn for a queued message up to ten
-/// seconds after it was stored (docs/observations/codex-0.163.0.md). Typed sooner, the wake
-/// starts a turn, and Codex wakes the agent a second time with its stored copy as that turn ends.
+/// How long an agent woken by command has to take the wake before it is typed instead. This
+/// allowed two queue polls when Codex used the route: typing sooner started a second turn for
+/// the same message (docs/observations/codex-0.163.0.md).
 const COMMAND_ANSWER: Duration = Duration::from_secs(20);
 
 /// How long an agent whose hooks fetch its messages is left once it is seen idle with nothing
@@ -404,9 +403,8 @@ pub(crate) fn reach(
     }
 }
 
-/// A wake handed to its session by command, kept until its agent goes to work or reads. A
-/// command's success says only that the harness stored the message: `codex queue` stores one for a
-/// session whose Codex has exited, as a `codex exec` started in the pane leaves behind.
+/// A wake accepted by its session's command, kept until its agent goes to work or reads.
+/// Success says it was accepted, not that the agent began a turn for it.
 #[derive(Debug)]
 pub(crate) struct Commanded {
     wake: Wake,
@@ -469,8 +467,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             messages.commanding.insert(pane.clone());
             messages.held.remove(&pane);
         }
-        // Before the command runs: a Codex joined to its app-server starts the turn before
-        // `codex queue` has exited.
+        // A harness can start its turn before the command exits.
         seen.io.woke_by_command(Instant::now() + COMMAND_ANSWER);
         let wait = waits::MessageWait::for_notice(
             shared,

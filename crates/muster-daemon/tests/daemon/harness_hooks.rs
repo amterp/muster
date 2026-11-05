@@ -288,9 +288,8 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     }
 }
 
-/// Codex is woken through `codex queue` by its session's id, which only its hooks are handed:
-/// `SessionStart` hands the daemon its input to read the id out of, needing no jq, and says
-/// nothing to the model doing so.
+/// Resuming Codex needs the session id its hooks are handed. `SessionStart` passes its input to
+/// the daemon to read that id, needing no jq and saying nothing to the model.
 #[test]
 fn codexs_session_start_reports_its_session_id() {
     let scratch = Scratch::new("codex-session-id");
