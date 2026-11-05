@@ -18,6 +18,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// Where copy and paste meet the rest of the machine. Settable so a test can hand the view
   /// a pasteboard of its own rather than reaching into whatever the developer last copied.
   public var pasteboard: NSPasteboard = .general
+  private static var imageKeys: Set<UInt16> = []
 
   /// Whether the window holding this pane is key, and whether it can be seen, as the window last
   /// said. Kept here so that a surface attached later starts from the window's answer rather
@@ -328,6 +329,17 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   // ghostty_surface_draw is a second painter racing the first.
 
   public override func keyDown(with event: NSEvent) {
+    if event.isARepeat && Self.imageKeys.contains(event.keyCode) { return }
+    if isTypeable, !hasMarkedText(), event.keyCode == 0x09,
+      event.modifierFlags.intersection([.control, .option, .command, .shift]) == .control,
+      ClipboardImage.containsImage(pasteboard),
+      let target = Core.imagePasteTarget(
+        key: event.musterKeyEvent(action: "press", isComposing: false))
+    {
+      Self.imageKeys.insert(event.keyCode)
+      pasteImage(target: target)
+      return
+    }
     // The input method gets the event first: while it is composing, the keystrokes belong
     // to it - they select candidates and build characters - and the pane must see only
     // what it commits. interpretKeyEvents calls back into insertText or setMarkedText.
@@ -395,6 +407,7 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   }
 
   public override func keyUp(with event: NSEvent) {
+    if Self.imageKeys.remove(event.keyCode) != nil { return }
     // Only reported when the pane asked for release events, which the encoder decides from
     // the mode profile. Sending it unconditionally is how a program that never asked ends
     // up with every keystroke twice.
@@ -666,11 +679,43 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
   /// Not an override: `paste(_:)` is an action `NSResponder` dispatches by selector rather
   /// than a method `NSView` declares, so this declares it.
   @objc public func paste(_ sender: Any?) {
-    guard let text = pasteboard.string(forType: .string) else {
-      Core.debug("input.paste.empty", ["impact": "nothing was sent; the clipboard has no text"])
-      return
+    if let text = pasteboard.string(forType: .string) {
+      Core.paste(text: text)
+    } else if ClipboardImage.containsImage(pasteboard) {
+      pasteImage()
+    } else {
+      Core.debug(
+        "input.paste.empty", ["impact": "nothing was sent; the clipboard has no text or image"])
     }
-    Core.paste(text: text)
+  }
+
+  private func pasteImage(target: PaneKey? = nil) {
+    do {
+      let id = try Core.prepareImagePaste(target: target)
+      guard let image = ClipboardImage.read(from: pasteboard) else {
+        Core.completeImagePaste(id: id, error: "the clipboard image is no longer available")
+        return
+      }
+      switch image {
+      case .png(let data):
+        Core.completeImagePaste(id: id, png: data)
+      case .tiff:
+        Task {
+          let result = await Task.detached(priority: .userInitiated) {
+            Result { try image.encoded() }
+          }.value
+          switch result {
+          case .success(let data): Core.completeImagePaste(id: id, png: data)
+          case .failure(let error):
+            Core.completeImagePaste(
+              id: id, error: (error as? ImagePasteFailure)?.reason ?? error.localizedDescription)
+          }
+        }
+      }
+    } catch {
+      ImagePasteFailure.show(
+        (error as? ImagePasteFailure)?.reason ?? error.localizedDescription, in: window)
+    }
   }
 
   /// What is selected in this pane, on its way to the clipboard.
@@ -694,7 +739,9 @@ public final class SurfaceView: NSView, NSMenuItemValidation {
 
   public var hasSelection: Bool { surface?.selectedText?.isEmpty == false }
 
-  public var canPaste: Bool { pasteboard.string(forType: .string) != nil }
+  public var canPaste: Bool {
+    pasteboard.string(forType: .string) != nil || ClipboardImage.containsImage(pasteboard)
+  }
 
   /// Greys out an Edit item that would do nothing.
   ///
