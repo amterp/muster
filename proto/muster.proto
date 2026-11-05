@@ -3545,6 +3545,8 @@ message PaneStateChanged {
   // compaction; `follow_up`, the prompt a compaction was asked to be followed by, once the
   // compaction has run. Empty while neither waits.
   string compaction = 16;
+  // What the daemon's screen rule says covers the prompt, even when the agent is idle.
+  optional string prompt_covered_by = 17;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.

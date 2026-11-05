@@ -351,6 +351,7 @@ impl Detection {
             reported: carried.emitted_reported,
             unreadable: carried.emitted_unreadable,
             waiting: None,
+            prompt_covered_by: None,
         });
         let concluded = carried.concluded.then(|| Publication {
             agent: carried.concluded_agent.as_deref().map(Agent::new),
@@ -358,6 +359,7 @@ impl Detection {
             reported: false,
             unreadable: false,
             waiting: None,
+            prompt_covered_by: None,
         });
         let report = carried.report_agent.as_deref().map(|agent| CarriedReport {
             agent: Agent::new(agent),

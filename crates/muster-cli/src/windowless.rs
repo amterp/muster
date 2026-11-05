@@ -912,6 +912,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         label: label_of(pane),
         reported: pane.state_reported,
         unreadable: pane.screen_unreadable,
+        prompt_covered_by: pane.prompt_covered_by.clone(),
         facts: said.then(|| muster_proto::AgentFacts {
             context_used: facts.context_used,
             subagents: facts.subagents,
@@ -1257,7 +1258,7 @@ pub struct Watching {
     layout: bool,
     /// What was last said about each pane, so a record that changed in some other way is not
     /// said again.
-    sent: BTreeMap<String, AgentState>,
+    sent: BTreeMap<String, (AgentState, Option<String>)>,
     ready: std::collections::VecDeque<Response>,
     ended: bool,
 }
@@ -1343,7 +1344,7 @@ impl Watching {
         let watched: Vec<&daemon_proto::Pane> =
             panes.iter().filter(|pane| self.watches(&pane.pane)).collect();
         for pane in &watched {
-            self.sent.insert(pane.pane.clone(), state_of(pane));
+            self.sent.insert(pane.pane.clone(), (state_of(pane), pane.prompt_covered_by.clone()));
         }
         if !self.until.is_wait() {
             for pane in watched {
@@ -1407,7 +1408,9 @@ impl Watching {
             return;
         }
         let state = state_of(pane);
-        let again = self.sent.insert(pane.pane.clone(), state) == Some(state);
+        let now = (state, pane.prompt_covered_by.clone());
+        let again = self.sent.get(&pane.pane) == Some(&now);
+        self.sent.insert(pane.pane.clone(), now);
         if !self.until.is_wait() {
             if !again {
                 self.ready.push_back(self.said(pane));

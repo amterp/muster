@@ -252,6 +252,15 @@ contains = ["select login method:", "esc to cancel"]
 # the left edge where Claude Code draws it, so the same box quoted in a turn's output, indented,
 # leaves the session's state alone (corpus/claude-code-2.1.302/feedback-draft.txt).
 [[rules]]
+id = "suggestion_notice"
+state = "unknown"
+priority = 1160
+region = "above_prompt_box"
+skip_state_update = true
+shows = "Claude Code's Heads up / You should know notice (0, then Ctrl+C once)"
+regex = ['(?m)^✦ (?:Heads up|You should know) · [^\n]*(?:\n  [^\n]*){0,5}\n  1: Learn more[ \t]+2: Knew this already[ \t]+0: Dismiss[ \t]*$']
+
+[[rules]]
 id = "feedback_draft_box"
 state = "unknown"
 priority = 1160

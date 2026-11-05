@@ -504,6 +504,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
     before.facts != now.facts
         || before.reported != now.reported
         || before.unreadable != now.unreadable
+        || before.prompt_covered_by != now.prompt_covered_by
         || before.adapter != now.adapter
         || before.unread_input != now.unread_input
         || before.session != now.session

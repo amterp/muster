@@ -30,7 +30,10 @@ not running (`muster docs harnesses`), `(bell)` for a bell nobody has looked at 
 own progress, `(40% done)` or `(progress failed)`, a compaction queued and what it waits for,
 `(compaction queued, waiting for its 1 sub-agent and its turn to end)`, or the prompt it was asked
 to carry on with, `(follow-up queued, waiting for an empty prompt)`, and `(quiet)` for a pane that
-raises nothing for you. A waiting agent's second line is what it waits on.
+raises nothing for you. A waiting agent's second line is what it waits on. A named notice or menu
+covering the prompt appears as `(prompt covered by ...)`, even while the pane reads idle or
+done. `prompt_covered_by` carries that description in JSON, and is null when none is known.
+`muster docs limits` gives the sequence for Claude Code's Heads up notice.
 The model, its effort and the cost are in `--json`.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and

@@ -576,7 +576,14 @@ impl Run {
 }
 
 fn published(agent: Option<Agent>, state: State) -> Publication {
-    Publication { agent, state, reported: false, unreadable: false, waiting: None }
+    Publication {
+        agent,
+        state,
+        reported: false,
+        unreadable: false,
+        waiting: None,
+        prompt_covered_by: None,
+    }
 }
 
 #[test]
@@ -872,7 +879,14 @@ fn a_resumed_detector_goes_on_from_where_it_was_carried() {
 // ---- the agent's own reports ----
 
 fn reported(state: State) -> Publication {
-    Publication { agent: Some(claude()), state, reported: true, unreadable: false, waiting: None }
+    Publication {
+        agent: Some(claude()),
+        state,
+        reported: true,
+        unreadable: false,
+        waiting: None,
+        prompt_covered_by: None,
+    }
 }
 
 impl Run {
@@ -1617,4 +1631,37 @@ fn a_key_at_a_pane_that_is_not_blocked_changes_nothing() {
     run.paint("ready>");
     run.until_published(Duration::from_secs(1)).unwrap();
     assert_eq!(run.answer(), None);
+}
+
+#[test]
+fn a_covering_screen_is_published_and_cleared_without_a_state_change() {
+    let manifest = MANIFEST
+        .replace("min_engine_version = 1", "min_engine_version = 15")
+        .replace("contains = [\"transcript\"]", "contains = [\"transcript\"]\nshows = \"a menu\"");
+    for hooked in [false, true] {
+        let mut run = Run::with_manifest(&manifest);
+        run.tick();
+        run.start_agent();
+        run.paint("ready>");
+        run.until_published(Duration::from_secs(1)).unwrap();
+        if hooked {
+            run.report(State::Idle);
+            run.tick();
+        }
+        run.paint("transcript");
+        let shown = run.until_published(Duration::from_secs(1)).unwrap().1;
+        assert_eq!(shown.state, State::Idle);
+        assert_eq!(shown.reported, hooked);
+        assert_eq!(shown.prompt_covered_by.as_deref(), Some("a menu"));
+        run.paint("ready>");
+        let cleared = run.until_published(Duration::from_secs(1)).unwrap().1;
+        assert_eq!(cleared.state, State::Idle);
+        assert_eq!(cleared.prompt_covered_by, None);
+
+        run.paint("transcript");
+        run.until_published(Duration::from_secs(1)).unwrap();
+        run.pane.group = Some(SHELL);
+        let exited = run.until_published(Duration::from_secs(6)).unwrap().1;
+        assert_eq!(exited.prompt_covered_by, None);
+    }
 }

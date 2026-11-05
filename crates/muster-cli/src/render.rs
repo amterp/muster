@@ -185,6 +185,9 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
                 "state": agent.state,
                 "since": since_json(agent.since_ms),
             });
+            if let Some(covered) = &agent.prompt_covered_by {
+                value["prompt_covered_by"] = covered.clone().into();
+            }
             // Left out rather than empty: an empty string is not something to call a pane.
             if !agent.label.is_empty() {
                 value["label"] = agent.label.clone().into();
@@ -193,7 +196,12 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
         } else {
             // The label last, since it is the one field that can hold a space.
             let state = styled(&agent.state, agent_style(&agent.state));
-            format!("{}  {state}  {}", agent.pane_id, agent.label).trim_end().to_string()
+            let covered = agent
+                .prompt_covered_by
+                .as_ref()
+                .map(|description| format!("  (prompt covered by {description})"))
+                .unwrap_or_default();
+            format!("{}  {state}{covered}  {}", agent.pane_id, agent.label).trim_end().to_string()
         }),
         Some(response::Payload::Restarted(restarted)) => Ok(restarted_answer(restarted, json)),
         Some(response::Payload::Reopened(reopened)) => Ok(reopened_answer(reopened, json)),
@@ -1103,6 +1111,9 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
             count => notes.push(format!("{count} sub-agents")),
         }
     }
+    if let Some(covered) = &agent.prompt_covered_by {
+        notes.push(format!("(prompt covered by {covered})"));
+    }
     if agent.unreadable {
         notes.push("(cannot read the screen)".to_string());
     }
@@ -1349,6 +1360,7 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
         "since": agent.map_or(Value::Null, |agent| since_json(agent.since_ms)),
         "reported": agent.is_some_and(|agent| agent.reported),
         "unreadable": agent.is_some_and(|agent| agent.unreadable),
+        "prompt_covered_by": agent.and_then(|agent| agent.prompt_covered_by.as_deref()),
         "facts": agent.and_then(|agent| agent.facts.as_ref()).map_or(Value::Null, facts_json),
         "progress": agent.and_then(|agent| agent.progress.as_ref()).map_or(Value::Null, |progress| {
             json!({ "state": progress.state, "percent": progress.percent })
@@ -1375,7 +1387,15 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
     if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
         row_fields.extend(said);
         if agent.is_some_and(|agent| agent.state == "unreachable") {
-            for stale in ["facts", "progress", "unread_input", "rang", "reported", "subtitle"] {
+            for stale in [
+                "facts",
+                "progress",
+                "unread_input",
+                "rang",
+                "reported",
+                "subtitle",
+                "prompt_covered_by",
+            ] {
                 row_fields.remove(stale);
             }
         }

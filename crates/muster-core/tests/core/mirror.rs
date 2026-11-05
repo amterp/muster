@@ -288,3 +288,23 @@ fn read_event(given: &Value) -> BackendEvent {
         other => panic!("corpus case names an event kind the driver does not know: {other:?}"),
     }
 }
+
+#[test]
+fn a_prompt_cover_is_announced_without_changing_the_agents_state() {
+    let mut mirror = Mirror::new();
+    let pane = json!({ "id": "p1", "agentState": "idle" });
+    mirror.bootstrap(read_snapshot(&json!({
+        "tabs": [{ "id": "t1", "root": "p1" }],
+        "panes": [pane.clone()]
+    })));
+    let mut covered = pane.clone();
+    covered["promptCoveredBy"] = "a menu".into();
+    assert_eq!(
+        mirror.apply(BackendEvent::PaneChanged(read_pane(&covered))),
+        vec![Change::AgentDescribed(PaneId::new("p1"))]
+    );
+    assert_eq!(
+        mirror.apply(BackendEvent::PaneChanged(read_pane(&pane))),
+        vec![Change::AgentDescribed(PaneId::new("p1"))]
+    );
+}

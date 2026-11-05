@@ -1976,6 +1976,11 @@ impl Session {
             since_ms,
             reported: pane.reported,
             unreadable: pane.unreadable,
+            prompt_covered_by: if state == AgentState::Unreachable {
+                None
+            } else {
+                pane.prompt_covered_by.clone()
+            },
             facts: pane.facts.clone(),
             progress,
             rang: self.attention.has_rung(key),
@@ -4826,6 +4831,7 @@ pub(crate) struct PaneAgent {
     pub reported: bool,
     /// Whether the daemon's rules have stopped reading this agent's screen.
     pub unreadable: bool,
+    pub prompt_covered_by: Option<String>,
     pub facts: AgentFacts,
     /// What a program in the pane says of its progress.
     pub progress: Option<Progress>,

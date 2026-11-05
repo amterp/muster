@@ -108,6 +108,7 @@ pub struct Pane {
     /// Whether the daemon's rules have stopped reading this agent's screen, so that its state
     /// comes only from what the agent reports.
     pub unreadable: bool,
+    pub prompt_covered_by: Option<String>,
     /// Whether the agent reports itself through its harness's adapter, as its daemon judged it.
     pub adapter: Adapter,
     /// The pane's program has stopped reading its input, as its daemon measured it.

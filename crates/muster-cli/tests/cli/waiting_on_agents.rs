@@ -355,9 +355,13 @@ fn a_covering_notice_is_named_in_window_and_wait_until_it_clears() {
     let description = "a menu opened from its prompt";
     assert_eq!(covered["prompt_covered_by"], description, "{covered}");
     for no_window in [false, true] {
-        for verb in [vec!["window"], vec!["pane", "wait", "--pane", &open.pane, "--until", "idle,done"]] {
+        for verb in
+            [vec!["window"], vec!["pane", "wait", "--pane", &open.pane, "--until", "idle,done"]]
+        {
             let mut args = verb.clone();
-            if no_window { args.push("--no-window"); }
+            if no_window {
+                args.push("--no-window");
+            }
             let ran = muster(&open, &args);
             assert!(ran.status.success(), "{}", String::from_utf8_lossy(&ran.stderr));
             let text = String::from_utf8_lossy(&ran.stdout);
@@ -439,7 +443,10 @@ fn a_window_onto_one_pane() -> Open {
 
 fn command(open: &Open, argv: &[&str]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_muster"));
-    command.args(argv).env_clear().env("MUSTER_SOCKET", &open.socket)
+    command
+        .args(argv)
+        .env_clear()
+        .env("MUSTER_SOCKET", &open.socket)
         .env("MUSTER_DAEMON_SOCKET", open.daemon.socket_path());
     command
 }

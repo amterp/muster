@@ -291,3 +291,18 @@ fn a_claude_spinner_without_a_timer_is_working_and_a_cut_off_bash_row_is_not() {
     assert_eq!(read("· Brewing…"), State::Working);
     assert_eq!(read("· $ echo the quick brown fox jumps over the lazy do…"), State::Idle);
 }
+
+#[test]
+fn a_claude_suggestion_notice_holds_input_but_its_dismissed_menu_does_not() {
+    let manifests = Manifests::built_in();
+    let screen = "✦ Heads up · a finding\n  1: Learn more   2: Knew this already   0: Dismiss\n────────────\n❯ \n────────────\n";
+    for title in ["Heads up", "You should know"] {
+        let shown = screen.replace("Heads up", title);
+        assert_eq!(detect(&manifests, "claude", &shown).rule.as_deref(), Some("suggestion_notice"));
+        let quoted = shown.lines().map(|line| format!("  {line}")).collect::<Vec<_>>().join("\n");
+        let quoted = format!("{quoted}\n────────────\n❯ \n────────────\n");
+        assert!(!detect(&manifests, "claude", &quoted).skip_state_update);
+    }
+    let dismissed = screen.replace("✦ Heads up · a finding\n  1: Learn more   2: Knew this already   0: Dismiss", "Dismissed. 1 That was helpful / 2 Not relevant / 3 Couldn't understand / 4 Turn off suggestions / 0 Dismiss");
+    assert!(!detect(&manifests, "claude", &dismissed).skip_state_update);
+}

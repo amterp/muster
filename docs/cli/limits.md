@@ -242,6 +242,24 @@ between gets the line and its Return. And a screen that a harness's rule wrongly
 prompt - a new dialog drawn above an unchanged prompt box - is rung as one. "woke" says the line
 was typed, not that the agent read it; its reply is what says that.
 
+## Claude Code's Heads up notice can hold input
+
+A `Heads up` or `You should know` notice above Claude Code's prompt can take input while its
+pane still reads idle or done. Muster holds message wakes and compaction there. `window` and
+`pane wait` name the notice beside the state; `prompt_covered_by` carries the same description
+in their JSON. A pane can be idle while its prompt is covered.
+
+To clear the notice, first let the agent end its turn. Send `muster pane send --pane NAME
+--key 0`, read the pane, then send `muster pane send --pane NAME --key ctrl+c` once and read it
+again. The `0` can be typed into the prompt; the one Ctrl+C clears it and dismisses the notice.
+Do not send a second Ctrl+C while the exit hint is showing: that exits Claude Code. The
+follow-up `Dismissed` feedback menu has been reported to allow wakes and compaction.
+
+Muster does not dismiss the notice automatically, because its text can contain useful findings.
+The notice's geometry was recorded at 2.1.301; input handling and this clearing sequence come
+from the owner's 2026-11-01 and 2026-11-02 sightings. A short 2.1.318 probe did not reproduce a
+notice on demand.
+
 ## A non-zero exit does not always mean nothing happened
 
 Exit 4 is a request that was taken and never answered. Either the window never answered, or it did

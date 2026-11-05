@@ -1946,3 +1946,24 @@ fn a_maker_closed_on_another_machine_frees_its_helpers_here() {
     let refused = expect(&mut agent.control, closed("p1"), proto::Outcome::Refused);
     assert!(refused.answer.reason.contains("has not closed"), "{}", refused.answer.reason);
 }
+
+#[test]
+fn a_prompt_cover_leaves_with_its_agent() {
+    let mut agent = Agent::in_a_pane();
+    agent.type_in("menu", true);
+    agent.until_shows("PROBE-MENU");
+    until(
+        "the pane to describe its covering menu",
+        || snapshot(&mut agent.control).panes[0].prompt_covered_by.is_some(),
+        || "the menu has not been described".to_string(),
+    );
+    agent.type_in("quit", true);
+    until(
+        "the covering menu to leave with the agent",
+        || {
+            let panes = snapshot(&mut agent.control).panes;
+            panes[0].prompt_covered_by.is_none()
+        },
+        || "the exited agent still has a covering menu".to_string(),
+    );
+}

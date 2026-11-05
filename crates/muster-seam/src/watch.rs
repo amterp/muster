@@ -105,7 +105,7 @@ pub(crate) struct Watch {
     /// Whether the caller asked to hear [`Seen::Layout`].
     layout: bool,
     /// What was last sent about each pane, so a change heard twice is sent once.
-    sent: BTreeMap<PaneKey, (AgentState, i64)>,
+    sent: BTreeMap<PaneKey, (AgentState, i64, Option<String>)>,
     /// What was last sent about each daemon. One missing is connected, so a watch on a window
     /// whose daemons are all answering says nothing about daemons at all.
     health: BTreeMap<DaemonId, Health>,
@@ -161,7 +161,10 @@ impl Watch {
         let watched: Vec<PaneAgent> =
             now.into_iter().filter(|agent| self.watches(&agent.pane)).collect();
         for agent in &watched {
-            self.sent.insert(agent.pane.clone(), (agent.state, agent.since_ms));
+            self.sent.insert(
+                agent.pane.clone(),
+                (agent.state, agent.since_ms, agent.prompt_covered_by.clone()),
+            );
         }
 
         if self.until.is_wait() {
@@ -235,8 +238,9 @@ impl Watch {
         if !self.watches(&agent.pane) {
             return None;
         }
-        let now = (agent.state, agent.since_ms);
-        let again = self.sent.insert(agent.pane.clone(), now) == Some(now);
+        let now = (agent.state, agent.since_ms, agent.prompt_covered_by.clone());
+        let again = self.sent.get(&agent.pane) == Some(&now);
+        self.sent.insert(agent.pane.clone(), now);
         if !self.until.is_wait() {
             return (!again).then(|| Next::Answer(state_answer(agent, true)));
         }

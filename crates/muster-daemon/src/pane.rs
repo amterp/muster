@@ -1474,7 +1474,14 @@ impl Reader {
         let published = self.detection.tick(&self.io, &self.detecting, now).map(|publication| {
             let (agent, state) = detect::recorded(&publication);
             let (reported, unreadable) = (publication.reported, publication.unreadable);
-            Reported::Agent { agent, state, reported, unreadable, waiting: publication.waiting }
+            Reported::Agent {
+                agent,
+                state,
+                reported,
+                unreadable,
+                waiting: publication.waiting,
+                prompt_covered_by: publication.prompt_covered_by,
+            }
         });
         if let Some(Reported::Agent { state, .. }) = &published {
             // A turn a chore started - a rename, say - is not the agent's answer to anything,

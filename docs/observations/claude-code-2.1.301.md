@@ -32,3 +32,15 @@ would hold every wake for as long as a tip stays undismissed, which is until a p
 So this box does not explain the wakes an idle Claude Code pane held on 2026-10-17 with "its screen
 is not its prompt": Muster 0.16.0 gave that reason for every screen whose prompt it could not read,
 and its log does not say which one held those.
+
+## 2026-11-05: later input reports change how Muster handles the box
+
+The recording above established where the box was drawn. It did not establish which input the
+box took. The owner's 2026-11-01 and 2026-11-02 sightings found that the notice can hold wakes
+and compaction even when the pane reads idle or done. The working clearing sequence was `0`,
+then one Ctrl+C, with a pane read between keys. The resulting `Dismissed` feedback menu allowed
+both operations. A short 2.1.318 probe on 2026-11-05 did not reproduce the notice on demand.
+
+Muster now treats the original notice as covering the prompt and describes it beside the
+pane's state. The old recording remains the geometry used by the corpus tests; the decision to
+hold input follows the later reports. `muster docs limits` gives the full clearing sequence.

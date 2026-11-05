@@ -3175,7 +3175,14 @@ impl Session {
             Reported::PasteHeld(text) => {
                 self.emit(Payload::PasteHeld(proto::PasteHeld { pane: name, text }));
             }
-            Reported::Agent { agent, state, reported, unreadable, waiting: on_screen } => {
+            Reported::Agent {
+                agent,
+                state,
+                reported,
+                unreadable,
+                waiting: on_screen,
+                prompt_covered_by,
+            } => {
                 let before = record.clone();
                 // What an agent said about itself leaves with it. Not when a pane with no agent
                 // is first recognised: its statusline can report before the first probe lands,
@@ -3230,6 +3237,7 @@ impl Session {
                 record.set_agent_state(state);
                 record.state_reported = reported;
                 record.screen_unreadable = unreadable;
+                record.prompt_covered_by = prompt_covered_by;
                 state_since::dated(shown, record, state_since::now_ms());
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());

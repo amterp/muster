@@ -1761,6 +1761,9 @@ message Pane {
   // its state next changes, and a daemon that predates it sends none. Kept across a handoff, and
   // never written to the state file.
   optional uint64 state_since_ms = 24;
+  // Since 1.11. The deciding screen rule's description of what covers the prompt. Absent
+  // while no named screen covers it. Derived from the live screen, never persisted.
+  optional string prompt_covered_by = 25;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

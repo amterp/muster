@@ -100,12 +100,18 @@ pub struct Publication {
     /// What the agent, idle, is waiting on, when its screen says ([`Detection::waiting`]): its
     /// own work, which wakes it.
     pub waiting: Option<String>,
+    pub prompt_covered_by: Option<String>,
 }
 
 impl Publication {
     /// What the screen rules concluded, before any report of the agent's own.
-    fn concluded(agent: Option<Agent>, state: State, waiting: Option<String>) -> Publication {
-        Publication { agent, state, reported: false, unreadable: false, waiting }
+    fn concluded(
+        agent: Option<Agent>,
+        state: State,
+        waiting: Option<String>,
+        prompt_covered_by: Option<String>,
+    ) -> Publication {
+        Publication { agent, state, reported: false, unreadable: false, waiting, prompt_covered_by }
     }
 }
 
@@ -138,6 +144,7 @@ pub struct Detector {
     /// from [`PublishState`], since a wait coming or going is published without a change of
     /// state: the prompt box can be drawn a frame before the line saying what still runs.
     waiting: Option<String>,
+    prompt_covered_by: Option<String>,
     /// How long a wait the screen shows is published for ([`Detector::SCREEN_WAIT`]).
     wait_limit: Duration,
     /// When the screen began saying what the agent waits on, for as long as it goes on saying it.
@@ -193,6 +200,7 @@ impl Detector {
             startup_grace_until: None,
             pending_idle: PendingIdle::default(),
             waiting: None,
+            prompt_covered_by: None,
             wait_limit: Detector::SCREEN_WAIT,
             waiting_since: None,
             waited_out: false,
@@ -223,6 +231,7 @@ impl Detector {
         self.startup_grace_until = None;
         self.pending_idle.clear();
         self.waiting = None;
+        self.prompt_covered_by = None;
         self.waiting_since = None;
         self.waited_out = false;
         self.answered = None;
@@ -265,7 +274,10 @@ impl Detector {
         let mut detector = Detector::new(shell, now);
         detector.presence = Presence { current: carried.agent, consecutive_misses: carried.misses };
         detector.published = PublishState { state: carried.state, visible: carried.visible };
-        detector.last_emitted = carried.emitted;
+        detector.last_emitted = carried.emitted.map(|mut value| {
+            value.prompt_covered_by = None;
+            value
+        });
         detector.startup_grace_until = carried.grace_left.map(|left| now + left);
         detector.pending_idle = PendingIdle {
             started_at: carried.idle_seen_ago.and_then(|ago| now.checked_sub(ago)),
@@ -280,7 +292,10 @@ impl Detector {
             carried.concluded.as_ref().and_then(|concluded| concluded.waiting.clone());
         // When it began is not carried, so the limit starts over from the handoff.
         detector.waiting_since = detector.waiting.is_some().then_some(now);
-        detector.last_concluded = carried.concluded;
+        detector.last_concluded = carried.concluded.map(|mut value| {
+            value.prompt_covered_by = None;
+            value
+        });
         detector.reporting = Reporting::resumed(
             carried.report,
             carried.pending,
@@ -337,6 +352,7 @@ impl Detector {
                 emitted.agent.clone(),
                 emitted.state,
                 emitted.waiting.clone(),
+                emitted.prompt_covered_by.clone(),
             ))
         })?;
         let agent = self.presence.current.as_ref();
@@ -356,6 +372,7 @@ impl Detector {
             // work is at work, whatever its screen still says.
             waiting: concluded.waiting.filter(|_| state == State::Idle),
             agent: concluded.agent,
+            prompt_covered_by: concluded.prompt_covered_by,
         })
     }
 
@@ -437,9 +454,11 @@ impl Detector {
         self.last_detection_text.clone_from(&content);
         // herdr asked this of the screen alone, before reading the title and progress.
         let screen_only = Input { screen: &content, ..Input::default() };
-        if manifests.detect(agent.as_ref(), screen_only).skip_state_update {
+        let screen_read = manifests.detect(agent.as_ref(), screen_only);
+        if !process_exited && screen_read.skip_state_update {
+            self.prompt_covered_by = screen_cover(manifests, agent.as_ref(), &screen_read);
             self.pending_idle.clear();
-            return emitted;
+            return self.conclude(agent, self.published.state).or(emitted);
         }
         sync_content_change_acquisition(
             self.presence.current.is_some(),
@@ -466,12 +485,16 @@ impl Detector {
                 Input { screen: &content, title: &title, progress: &progress },
             );
             if detection.skip_state_update {
+                self.prompt_covered_by = screen_cover(manifests, agent.as_ref(), &detection);
                 self.pending_idle.clear();
-                return emitted;
+                return self.conclude(agent, self.published.state).or(emitted);
             }
             detection
         };
 
+        let covered = screen_cover(manifests, agent.as_ref(), &detection);
+        let cover_changed = self.prompt_covered_by != covered;
+        self.prompt_covered_by = covered;
         if !process_exited {
             self.reporting.rules(detection.state, detection.rule.is_some(), detection.visible, now);
         }
@@ -495,6 +518,8 @@ impl Detector {
         } else if next == self.published && waiting != self.waiting {
             self.waiting = waiting;
             emitted = self.conclude(agent, next.state).or(emitted);
+        } else if cover_changed {
+            emitted = self.conclude(agent, self.published.state).or(emitted);
         }
         emitted
     }
@@ -552,6 +577,7 @@ impl Detector {
             return foreground;
         }
         foreground.agent_changed = true;
+        self.prompt_covered_by = None;
         let agent = self.presence.current.clone();
         if agent != previous || action == ForegroundShellAgentAction::ReportReplacementProcess {
             self.reporting.agent_changed();
@@ -655,7 +681,12 @@ impl Detector {
     }
 
     fn conclude(&mut self, agent: Option<Agent>, state: State) -> Option<Publication> {
-        let publication = Publication::concluded(agent, state, self.waiting.clone());
+        let publication = Publication::concluded(
+            agent,
+            state,
+            self.waiting.clone(),
+            self.prompt_covered_by.clone(),
+        );
         if self.last_concluded.as_ref() == Some(&publication) {
             return None;
         }
@@ -670,6 +701,14 @@ impl Detector {
         self.last_emitted = Some(publication.clone());
         Some(publication)
     }
+}
+
+fn screen_cover(
+    manifests: &Manifests,
+    agent: Option<&Agent>,
+    detection: &Detection,
+) -> Option<String> {
+    manifests.shows(agent?, detection.rule.as_deref()?).map(str::to_string)
 }
 
 /// A Return or Esc typed at a dialog, and the screens read since.

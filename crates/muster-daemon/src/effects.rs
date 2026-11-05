@@ -178,6 +178,7 @@ pub(crate) enum Reported {
         state: proto::AgentState,
         reported: bool,
         unreadable: bool,
+        prompt_covered_by: Option<String>,
         waiting: Option<String>,
     },
     /// What the program says with XTSHIFTESCAPE, for the pane's record.
