@@ -340,6 +340,55 @@ fn a_pane_can_be_waited_on_by_its_name(open: &Open) {
 }
 
 #[test]
+fn a_launching_harness_does_not_answer_an_idle_wait_before_it_draws() {
+    let _turn = muster::testing::fresh_session();
+    let open = a_window_onto_one_pane();
+    let agent = open.daemon.agent_path().with_file_name("codex");
+    std::fs::write(
+        &agent,
+        "#!/bin/dash\nprintf 'LAUNCHING-CODEX\\n'\nIFS= read -r line\n\
+         printf '\\033[2J\\033[H› \\n'\nwhile IFS= read -r line; do :; done\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&agent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut control = open.daemon.connect();
+    muster_harness::requests::until_text(&mut control, &open.pane, "$");
+    open.daemon.type_into(&open.pane, agent.to_str().unwrap());
+    muster_harness::requests::until_text(&mut control, &open.pane, "LAUNCHING-CODEX");
+    until(
+        "the daemon to identify the launching Codex",
+        || {
+            muster_harness::requests::snapshot(&mut control)
+                .panes
+                .iter()
+                .any(|pane| pane.pane == open.pane && pane.agent.as_deref() == Some("codex"))
+        },
+        String::new,
+    );
+    for no_window in [false, true] {
+        let mut args =
+            vec!["pane", "wait", "--pane", &open.pane, "--until", "idle", "--timeout", "4"];
+        if no_window {
+            args.push("--no-window");
+        }
+        let ran = muster(&open, &args);
+        assert_eq!(ran.status.code(), Some(5), "{args:?}: {ran:?}");
+        assert_eq!(open.state().as_deref(), Some("unknown"));
+    }
+    open.daemon.type_into(&open.pane, "draw");
+    for no_window in [false, true] {
+        let mut args =
+            vec!["pane", "wait", "--pane", &open.pane, "--until", "idle", "--timeout", "10"];
+        if no_window {
+            args.push("--no-window");
+        }
+        let ran = muster(&open, &args);
+        assert!(ran.status.success(), "{args:?}: {ran:?}");
+    }
+}
+
+#[test]
 fn a_covering_notice_is_named_in_window_and_wait_until_it_clears() {
     let _turn = muster::testing::fresh_session();
     let open = a_window_onto_one_pane();

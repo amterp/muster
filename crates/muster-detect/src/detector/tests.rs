@@ -661,6 +661,57 @@ fn a_dialog_drawn_inside_the_grace_is_the_first_state_after_unknown() {
 }
 
 #[test]
+fn a_codex_that_has_not_drawn_stays_unknown_until_its_screen_is_recognized() {
+    let mut run = Run::new();
+    run.manifests = Manifests::built_in();
+    run.processes.agent = "codex";
+    run.tick();
+    run.paint("shell startup lines\n$ codex");
+    run.pane.group = Some(AGENT_GROUP);
+    let codex = Some(Agent::new("codex"));
+    assert_eq!(run.tick(), Some(published(codex.clone(), State::Unknown)));
+    assert_eq!(run.run_for(Duration::from_mins(9), None), []);
+
+    run.paint("Trust this folder?\n› 1. Trust and continue");
+    assert_eq!(run.tick(), Some(published(codex.clone(), State::Blocked)));
+    run.paint("› ");
+    assert_eq!(run.tick(), Some(published(codex, State::Idle)));
+    run.paint("a later screen no rule recognizes");
+    assert_eq!(run.run_for(Duration::from_secs(1), None), []);
+}
+
+#[test]
+fn an_undrawn_agent_stays_unknown_across_takeover() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    assert_eq!(run.run_for(Duration::from_mins(9), None), []);
+    let carried = run.detector.carried(run.now);
+    run.detector = Detector::resumed(SHELL, carried, run.now, 0);
+    assert_eq!(run.run_for(Duration::from_mins(9), None), []);
+    run.paint("ready>");
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+}
+
+#[test]
+fn an_undrawn_agent_can_report_and_exit_without_a_screen_rule() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.report(State::Working);
+    assert_eq!(run.tick(), Some(reported(State::Working)));
+    assert_eq!(
+        run.run_for(reporting::QUIET + Duration::from_secs(1), None),
+        [published(Some(claude()), State::Unknown)]
+    );
+    run.report(State::Idle);
+    assert_eq!(run.tick(), Some(reported(State::Idle)));
+    run.pane.group = Some(SHELL);
+    assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
+    assert_eq!(run.tick(), Some(published(None, State::Unknown)));
+}
+
+#[test]
 fn working_to_a_plain_idle_is_held_until_it_has_been_seen_four_times() {
     let mut run = Run::new();
     run.tick();
