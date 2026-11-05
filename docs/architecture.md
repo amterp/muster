@@ -251,6 +251,14 @@ machine names, so renaming the pane does not change who ends the wait. Delivery 
 wake, a harness session command, an inbox wake, and messages fetched by hooks. Posting a message
 that cannot yet reach the agent does not end it. A replacement or explicit clearing still does.
 
+A helper's declared wait also has a notice clock: after ten minutes its maker hears what it is
+waiting on and how to inspect it, once per declaration. The wait remains active. This covers
+unlimited waits, live process waits, sender waits, and waits carried through unrelated turns.
+The declaration time and whether the maker was told survive daemon takeover; a wake or compaction
+does not restart the clock. A limited wait that expires uses its existing expiry notice, without
+another notice for an expiry already preceded by a long-wait notice. As with other helper needs,
+a busy maker hears it once free, only if the wait still holds.
+
 `stuck` is an agent whose program has stopped reading its input (GitHub issue #1). The program's screen keeps what it
 painted before it stopped, so detection reads on as if nothing had happened; what gives it away is input left in its
 terminal. The daemon counts that with `FIONREAD` on the terminal's slave, opened for a moment by name and closed

@@ -56,6 +56,9 @@ pub(crate) struct Declared {
     pub(crate) until_message_from: Option<String>,
     /// Whether it runs out after [`LIMIT`].
     pub(crate) limited: bool,
+    pub(crate) started_ms: Option<u64>,
+    pub(crate) noticed: bool,
+    pub(crate) carried: bool,
 }
 
 /// What ended a wait.
@@ -341,6 +344,9 @@ mod tests {
             until_exits,
             until_message_from: None,
             limited,
+            started_ms: None,
+            noticed: false,
+            carried: false,
         }
     }
 

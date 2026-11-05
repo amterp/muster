@@ -2817,6 +2817,9 @@ impl Session {
                     .as_ref()
                     .and_then(|facts| facts.waiting_until_message_from.clone()),
                 limited: pane.turns.wait_carried || !woken(pane.record.agent.as_deref()),
+                started_ms: pane.turns.wait_started_ms,
+                noticed: pane.turns.wait_noticed,
+                carried: pane.turns.wait_carried,
             })
             .collect()
     }
@@ -3360,6 +3363,15 @@ impl Session {
     pub(crate) fn set_makers_told(&mut self, told: &BTreeMap<String, Need>) {
         for pane in &mut self.panes {
             pane.maker_told = told.get(&pane.record.pane).copied();
+        }
+    }
+
+    pub(crate) fn wait_noticed(&mut self, name: &str, since_ms: u64) {
+        if let Some(index) = self.pane_index(name) {
+            let pane = &mut self.panes[index];
+            if pane.holds_declared_wait() && pane.turns.wait_started_ms == Some(since_ms) {
+                pane.turns.wait_noticed = true;
+            }
         }
     }
 
@@ -5062,6 +5074,8 @@ fn heard_of_waiting(pane: &mut Pane, said: bool, spoken: bool, kept: bool) {
         pane.turns.wait_declared = true;
         pane.turns.wait_carried = false;
         pane.turns.wait_serial += 1;
+        pane.turns.wait_started_ms = Some(crate::messages::now_ms());
+        pane.turns.wait_noticed = false;
     }
     if kept {
         carry_wait(&pane.record.pane, &mut pane.turns, "prompt");

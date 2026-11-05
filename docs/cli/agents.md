@@ -484,10 +484,17 @@ for 10 seconds, its daemon tells the maker once, in a message from `@muster` tha
 what answers it (`muster docs msg`), whether or not the helper is quiet. While the maker is at
 work it is told once its turn ends, and only if the helper still needs it: a maker approving its
 helpers' plans one after another is not told about dialogs it has already answered. A helper
-that posts its report and then goes idle is not reported, nor is one waiting on its own work, nor
-one going idle after a compaction or a rename Muster typed, or after a compaction its harness
-started by itself while idle, as Claude Code does before its prompt cache expires: none of these
-is going to work. One whose declared wait ran out with nothing ending it is reported as that,
+that posts its report and then goes idle is not reported. A declared wait that lasts 10 minutes
+is noticed once, naming what it waits on and how to inspect the helper. The wait stays active:
+a long build may still be progressing. This includes waits on a process or another sender and
+plain waits a harness's jobs are expected to end. An unrelated wake or compaction does not
+restart that notice clock; explicitly declaring a replacement wait does. A limited wait can
+expire earlier and use the expiry notice below.
+
+Muster does not report a helper that goes idle after a compaction or a rename Muster typed, or
+after a compaction its harness started by itself while idle, as Claude Code does before its
+prompt cache expires: none of these counts as going to work. A helper whose declared wait ran
+out with nothing ending it is reported as that,
 naming the wait. While its
 maker's pane holds no agent, because the agent exited to its shell or the helper was made from a
 plain shell, a quiet helper asks for you as if it were not quiet, since nothing there hears it.

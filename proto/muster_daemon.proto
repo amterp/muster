@@ -2271,6 +2271,11 @@ message Handoff {
     // its end raises no maker's notice. Unset: nothing typed it, or a daemon that sends none.
     TypedBy turn_typed_by = 12;
     optional uint32 turn_ms_ago = 13;
+    // Since 1.11. The current wait's explicit declaration time, in UTC milliseconds. Carrying
+    // it through a wake or compaction does not restart the maker's long-wait notice clock.
+    optional uint64 wait_started_ms = 14;
+    // Since 1.11. The maker has been told that this declared wait has lasted too long.
+    bool wait_noticed = 15;
   }
 
   enum TypedBy {

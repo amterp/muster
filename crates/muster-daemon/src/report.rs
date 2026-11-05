@@ -296,6 +296,15 @@ fn parse(
             other => return Err(format!("{other} is not an option")),
         }
     }
+    validate(&report)?;
+    report.facts = facts;
+    report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
+        "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
+    )?;
+    Ok(Parsed::Report(Box::new(report)))
+}
+
+fn validate(report: &pane_request::Report) -> Result<(), String> {
     if report.waiting_until_exits.is_some() && report.waiting.as_deref().is_none_or(str::is_empty) {
         return Err("--until-exits needs --waiting, saying what the agent waits on".to_string());
     }
@@ -319,11 +328,7 @@ fn parse(
     if report.compacting && report.agent.is_empty() {
         return Err("--compacting needs --agent, naming the agent that is reporting".to_string());
     }
-    report.facts = facts;
-    report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
-        "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
-    )?;
-    Ok(Parsed::Report(Box::new(report)))
+    Ok(())
 }
 
 /// Sends the report, giving up once `patience` has passed since it started.

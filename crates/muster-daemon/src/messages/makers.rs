@@ -47,6 +47,23 @@ const NOTHING_DUE: Duration = Duration::from_mins(1);
 /// How long a maker no linked machine had is left before they are asked again.
 const ASK_AGAIN: Duration = Duration::from_mins(1);
 
+fn waiting_limit() -> Duration {
+    if cfg!(debug_assertions)
+        && let Ok(said) = std::env::var("MUSTER_DAEMON_HELPER_WAIT_MS")
+        && let Ok(ms) = said.parse::<u64>()
+    {
+        return Duration::from_millis(ms);
+    }
+    Duration::from_mins(10)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Waiting {
+    pub(crate) reason: String,
+    pub(crate) since_ms: u64,
+    pub(crate) noticed: bool,
+}
+
 fn settle() -> Duration {
     if cfg!(debug_assertions)
         && let Ok(said) = std::env::var(SETTLE_SAID)
@@ -76,6 +93,7 @@ pub(crate) struct Helper {
     /// What the wait it declared was on, when that wait ran out with nothing ending it and it
     /// has not gone to work since.
     pub(crate) ran_out: Option<String>,
+    pub(crate) waiting: Option<Waiting>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to its maker, looked up only while it is idle.
@@ -92,6 +110,7 @@ pub(crate) enum Need {
     Stuck,
     /// Idle without having posted to its maker since it last went to work.
     Unreported,
+    Waiting,
 }
 
 impl Need {
@@ -100,6 +119,7 @@ impl Need {
             Need::Blocked => "blocked",
             Need::Stuck => "stuck",
             Need::Unreported => "unreported",
+            Need::Waiting => "waiting",
         }
     }
 }
@@ -112,6 +132,7 @@ pub(crate) struct Tell {
     pub(crate) helper: String,
     pub(crate) need: Need,
     pub(crate) body: String,
+    wait_started_ms: Option<u64>,
 }
 
 /// One helper, between looks.
@@ -137,12 +158,58 @@ struct Watch {
     told_unreported_for: Option<u64>,
     /// Whether its need is due and waits for its maker to be free.
     held: bool,
+    waiting_since_ms: Option<u64>,
+    told_wait_since_ms: Option<u64>,
+    retry_at_ms: Option<u64>,
+}
+
+impl Watch {
+    fn update_need(&mut self, helper: &Helper, now_ms: u64) {
+        let waiting_since = helper.waiting.as_ref().map(|waiting| waiting.since_ms);
+        if self.waiting_since_ms != waiting_since {
+            if waiting_since.is_some() {
+                self.told_wait_since_ms = None;
+            }
+            if self.need.is_some_and(|(need, _)| need == Need::Waiting) {
+                self.need = None;
+                self.told = false;
+                self.held = false;
+                self.retry_at_ms = None;
+            }
+            self.waiting_since_ms = waiting_since;
+        }
+        let need = need(helper, self.worked_since_ms);
+        if self.need.map(|(was, _)| was) != need {
+            self.need = need.map(|need| {
+                (need, if need == Need::Waiting { waiting_since.unwrap_or(now_ms) } else { now_ms })
+            });
+            self.told = need == Some(Need::Unreported)
+                && self.worked_since_ms.is_some()
+                && self.told_unreported_for == self.worked_since_ms;
+            if need == Some(Need::Waiting) {
+                self.told = helper.waiting.as_ref().is_some_and(|waiting| waiting.noticed)
+                    || (waiting_since.is_some() && self.told_wait_since_ms == waiting_since);
+                if self.told {
+                    self.told_wait_since_ms = waiting_since;
+                }
+            }
+            if need == Some(Need::Unreported)
+                && helper.ran_out.is_some()
+                && self.told_wait_since_ms.is_some()
+            {
+                self.told = true;
+            }
+            self.held = false;
+            self.retry_at_ms = None;
+        }
+    }
 }
 
 /// Every helper this daemon is watching, between looks.
 #[derive(Debug)]
 pub(crate) struct Makers {
     settle_ms: u64,
+    waiting_ms: u64,
     watches: HashMap<String, Watch>,
     /// Helpers whose maker no machine linked to this one has, said once each.
     elsewhere: HashSet<String>,
@@ -170,6 +237,7 @@ impl Makers {
     fn after(settle: Duration) -> Makers {
         Makers {
             settle_ms: u64::try_from(settle.as_millis()).unwrap_or(u64::MAX),
+            waiting_ms: u64::try_from(waiting_limit().as_millis()).unwrap_or(u64::MAX),
             watches: HashMap::new(),
             elsewhere: HashSet::new(),
             there: HashMap::new(),
@@ -233,17 +301,12 @@ impl Makers {
                 }
                 Some(Activity::Blocked | Activity::Stuck) | None => {}
             }
-            let need = need(helper, watch.worked_since_ms);
-            if watch.need.map(|(was, _)| was) != need {
-                watch.need = need.map(|need| (need, now_ms));
-                watch.told = need == Some(Need::Unreported)
-                    && watch.worked_since_ms.is_some()
-                    && watch.told_unreported_for == watch.worked_since_ms;
-                watch.held = false;
-            }
+            watch.update_need(helper, now_ms);
+            let waiting_since = helper.waiting.as_ref().map(|waiting| waiting.since_ms);
             let Some((need, since_ms)) = watch.need else { continue };
             let held_ms = now_ms.saturating_sub(since_ms);
-            if watch.told || held_ms < self.settle_ms {
+            let limit = if need == Need::Waiting { self.waiting_ms } else { self.settle_ms };
+            if watch.told || held_ms < limit || watch.retry_at_ms.is_some_and(|at| now_ms < at) {
                 continue;
             }
             if helper.maker_busy {
@@ -258,6 +321,9 @@ impl Makers {
             if need == Need::Unreported {
                 watch.told_unreported_for = watch.worked_since_ms;
             }
+            if need == Need::Waiting {
+                watch.told_wait_since_ms = waiting_since;
+            }
             let worked_ms = now_ms.saturating_sub(watch.worked_since_ms.unwrap_or(now_ms));
             tells.push(Tell {
                 maker: helper.maker.clone(),
@@ -265,6 +331,7 @@ impl Makers {
                 helper: helper.pane.clone(),
                 need,
                 body: body(helper, need, called, worked_ms, held_ms),
+                wait_started_ms: (need == Need::Waiting).then_some(waiting_since).flatten(),
             });
         }
         tells
@@ -276,9 +343,13 @@ impl Makers {
         self.watches
             .values()
             .filter(|watch| !watch.told && !watch.held)
-            .filter_map(|watch| watch.need)
-            .map(|(_, since_ms)| {
-                let left = (since_ms + self.settle_ms).saturating_sub(now_ms);
+            .filter_map(|watch| watch.need.map(|(need, since)| (need, since, watch.retry_at_ms)))
+            .map(|(need, since_ms, retry_at)| {
+                let limit = if need == Need::Waiting { self.waiting_ms } else { self.settle_ms };
+                let left = since_ms
+                    .saturating_add(limit)
+                    .max(retry_at.unwrap_or(0))
+                    .saturating_sub(now_ms);
                 Duration::from_millis(left)
             })
             .min()
@@ -293,6 +364,7 @@ fn need(helper: &Helper, worked_since_ms: Option<u64>) -> Option<Need> {
     }
     match helper.activity {
         Some(Activity::Blocked) => Some(Need::Blocked),
+        Some(Activity::Waiting) if helper.waiting.is_some() => Some(Need::Waiting),
         Some(Activity::Idle) => {
             let worked = worked_since_ms?;
             let posted = helper.last_post_ms.is_some_and(|posted| posted >= worked);
@@ -315,6 +387,13 @@ fn body(
     // What a command takes it by: its name, which `--pane` takes as it takes the id.
     let pane = called.get(&helper.pane).unwrap_or(&helper.pane);
     match need {
+        Need::Waiting => format!(
+            "{named} has been waiting on {reason} for {held}. Its wait is still active; the job may have stalled. \
+             `muster pane read --pane {pane} --turn` shows its last turn. Check the job it is waiting on. \
+             Muster says this once for each declared wait.",
+            reason = helper.waiting.as_ref().map_or("its work", |wait| wait.reason.as_str()),
+            held = said_as_time(held_ms),
+        ),
         Need::Blocked => format!(
             "{named} is blocked at a dialog: {AT_A_DIALOG}, and has been for {held}. `muster pane \
              read --pane {pane}` shows it and `muster pane send --pane {pane} --key <key>` answers it, or bring it \
@@ -409,9 +488,20 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         );
     }
     for tell in tells {
-        if !tell_maker(shared, &panes, &tell) {
+        if tell_maker(shared, &panes, &tell) {
+            if let Some(since) = tell.wait_started_ms {
+                shared.lock().wait_noticed(&tell.helper, since);
+            }
+        } else {
             // Whoever is in the maker's pane there may have changed: asked again next time.
             makers.there.remove(&tell.maker);
+            if tell.need == Need::Waiting
+                && let Some(watch) = makers.watches.get_mut(&tell.helper)
+            {
+                watch.told = false;
+                watch.told_wait_since_ms = None;
+                watch.retry_at_ms = Some(now_ms().saturating_add(makers.settle_ms));
+            }
         }
     }
     keep_told(shared, makers);
@@ -521,6 +611,7 @@ fn helpers(
             chores_turn: seen.io.turn_typed_by() == Some(TypedBy::Chore),
             turn: seen.io.turn_serial(),
             ran_out: seen.ran_out.clone(),
+            waiting: seen.waiting.clone(),
             stopped: seen.stopped.clone(),
         });
     }
@@ -625,6 +716,70 @@ fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
 mod tests {
     use super::*;
 
+    fn waiting(since_ms: u64) -> Helper {
+        Helper {
+            waiting: Some(Waiting { reason: "the full gate".into(), since_ms, noticed: false }),
+            ..maple(Activity::Waiting)
+        }
+    }
+
+    #[test]
+    fn a_long_wait_is_told_once_per_declaration_without_ending_it() {
+        let mut makers = Makers::after(Duration::from_secs(10));
+        let limit = 600_000;
+        assert!(makers.judge(&[waiting(100)], &BTreeMap::new(), 100 + limit - 1).is_empty());
+        let told = makers.judge(&[waiting(100)], &BTreeMap::new(), 100 + limit);
+        assert_eq!(needs(&told), [Need::Waiting]);
+        assert!(told[0].body.contains("waiting on the full gate for 10 minutes"));
+        assert!(told[0].body.contains("Its wait is still active"));
+        assert!(makers.judge(&[waiting(100)], &BTreeMap::new(), 100 + limit * 2).is_empty());
+        assert!(
+            makers.judge(&[waiting(100 + limit * 2)], &BTreeMap::new(), 100 + limit * 2).is_empty()
+        );
+        assert_eq!(
+            needs(&makers.judge(&[waiting(100 + limit * 2)], &BTreeMap::new(), 100 + limit * 3)),
+            [Need::Waiting]
+        );
+    }
+
+    #[test]
+    fn a_busy_maker_hears_a_long_wait_only_if_it_still_holds() {
+        let mut makers = Makers::after(Duration::from_secs(10));
+        let busy = Helper { maker_busy: true, ..waiting(100) };
+        assert!(makers.judge(&[busy], &BTreeMap::new(), 600_100).is_empty());
+        assert_eq!(
+            needs(&makers.judge(&[waiting(100)], &BTreeMap::new(), 600_200)),
+            [Need::Waiting]
+        );
+
+        let mut makers = Makers::after(Duration::from_secs(10));
+        let busy = Helper { maker_busy: true, ..waiting(100) };
+        makers.judge(&[busy], &BTreeMap::new(), 600_100);
+        let finished = Helper { last_post_ms: Some(600_200), ..maple(Activity::Idle) };
+        assert!(makers.judge(&[finished], &BTreeMap::new(), 600_200).is_empty());
+    }
+
+    #[test]
+    fn an_unrelated_turn_and_a_handoff_do_not_repeat_a_wait_notice() {
+        let mut makers = Makers::after(Duration::from_secs(10));
+        assert_eq!(
+            needs(&makers.judge(&[waiting(100)], &BTreeMap::new(), 600_100)),
+            [Need::Waiting]
+        );
+        makers.judge(
+            &[Helper { activity: Some(Activity::Working), ..waiting(100) }],
+            &BTreeMap::new(),
+            600_200,
+        );
+        assert!(makers.judge(&[waiting(100)], &BTreeMap::new(), 600_300).is_empty());
+        let mut next = Makers::after(Duration::from_secs(10));
+        let carried = Helper {
+            waiting: Some(Waiting { noticed: true, ..waiting(100).waiting.unwrap() }),
+            ..maple(Activity::Waiting)
+        };
+        assert!(next.judge(&[carried], &BTreeMap::new(), 600_400).is_empty());
+    }
+
     const SETTLE_MS: u64 = 10_000;
 
     fn makers() -> Makers {
@@ -641,6 +796,7 @@ mod tests {
             chores_turn: false,
             turn: 1,
             ran_out: None,
+            waiting: None,
             stopped: None,
             last_post_ms: None,
             maker_busy: false,

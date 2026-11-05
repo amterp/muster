@@ -1000,6 +1000,8 @@ pub(crate) struct Turns {
     /// Which wait the agent holds, counted up each time one is declared or carried, so a wait
     /// that runs out or whose process exits is ended only if it is still the one held.
     pub(crate) wait_serial: u64,
+    pub(crate) wait_started_ms: Option<u64>,
+    pub(crate) wait_noticed: bool,
 }
 
 impl Default for Turns {
@@ -1012,6 +1014,8 @@ impl Default for Turns {
             wait_on_screen: false,
             wait_carried: false,
             wait_serial: 0,
+            wait_started_ms: None,
+            wait_noticed: false,
         }
     }
 }

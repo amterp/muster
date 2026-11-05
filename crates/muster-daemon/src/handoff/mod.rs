@@ -35,7 +35,9 @@ use crate::pane::{Turns, TypedBy};
 use crate::persist::{self, Persister};
 use crate::pty::Grid;
 use crate::server::Socket;
-use crate::session::{Handing, Places, Replacement, Reply, Resuming, Saved, Shared, Stop};
+use crate::session::{
+    HandedPane, Handing, Places, Replacement, Reply, Resuming, Saved, Shared, Stop,
+};
 
 /// How long either side waits for the other at one step before giving the handoff up.
 const STEP: Duration = Duration::from_secs(10);
@@ -328,38 +330,7 @@ fn handed(
     )?;
 
     for pane in &handing.panes {
-        let name = &pane.record.pane;
-        let (replay, grid) = pane.io.replay();
-        let (turn_by, turn_ago) = pane.io.carried_turn(Instant::now());
-        fds::send(&link, &[pane.io.master()])
-            .map_err(|error| format!("could not send pane {name}'s terminal: {error}"))?;
-        let grid = proto::Grid {
-            cols: grid.cols.into(),
-            rows: grid.rows.into(),
-            width_px: grid.width_px.into(),
-            height_px: grid.height_px.into(),
-        };
-        send(
-            &mut link,
-            handoff::Message::Pane(Box::new(handoff::Pane {
-                record: Some(pane.record.clone()),
-                grid: Some(grid),
-                process: pane.process,
-                replay_length: replay.len() as u64,
-                detection: pane.io.carried_detection(),
-                wait_declared: Some(pane.turns.wait_declared),
-                wait_carried: Some(pane.turns.wait_carried),
-                turn_typed_by: typed_by(turn_by).into(),
-                turn_ms_ago: turn_ago.map(|ago| u32::try_from(ago.as_millis()).unwrap_or(u32::MAX)),
-                reports_turns: pane.turns.reports_turns,
-                session_id: pane.session_id.clone(),
-                oldest_row: pane.io.screen().handed_over_oldest_row(),
-                maker_told: told(pane.maker_told).into(),
-            })),
-        )?;
-        for piece in replay.chunks(PIECE) {
-            send(&mut link, handoff::Message::ReplayPiece(piece.to_vec()))?;
-        }
+        send_pane(&mut link, pane)?;
     }
 
     match receive(&mut link, "ready")? {
@@ -738,6 +709,13 @@ fn adopt_panes(
                 .and_then(|ms| Instant::now().checked_sub(Duration::from_millis(ms.into()))),
         );
         let record = pane.record.unwrap_or_default();
+        let wait_started_ms = pane.wait_started_ms.or_else(|| {
+            record
+                .facts
+                .as_ref()
+                .and_then(|facts| facts.waiting.as_ref())
+                .map(|_| crate::messages::now_ms())
+        });
         let resume = resumes.get(&record.pane);
         let quiet_before_orphaned = orphaned_quiet.get(&record.pane).copied();
         let adopted = shared.lock().adopt(
@@ -754,6 +732,8 @@ fn adopt_panes(
                     wait_on_screen: false,
                     wait_carried: pane.wait_carried.unwrap_or(false),
                     wait_serial: 0,
+                    wait_started_ms,
+                    wait_noticed: pane.wait_noticed,
                 },
                 session_id: pane.session_id.as_deref(),
                 resume,
@@ -766,6 +746,44 @@ fn adopt_panes(
         if let Err(problem) = adopted {
             return refuse(link, problem);
         }
+    }
+    Ok(())
+}
+
+fn send_pane(link: &mut UnixStream, pane: &HandedPane) -> Result<(), String> {
+    let name = &pane.record.pane;
+    let (replay, grid) = pane.io.replay();
+    let (turn_by, turn_ago) = pane.io.carried_turn(Instant::now());
+    fds::send(link, &[pane.io.master()])
+        .map_err(|error| format!("could not send pane {name}'s terminal: {error}"))?;
+    let grid = proto::Grid {
+        cols: grid.cols.into(),
+        rows: grid.rows.into(),
+        width_px: grid.width_px.into(),
+        height_px: grid.height_px.into(),
+    };
+    send(
+        link,
+        handoff::Message::Pane(Box::new(handoff::Pane {
+            record: Some(pane.record.clone()),
+            grid: Some(grid),
+            process: pane.process,
+            replay_length: replay.len() as u64,
+            detection: pane.io.carried_detection(),
+            wait_declared: Some(pane.turns.wait_declared),
+            wait_carried: Some(pane.turns.wait_carried),
+            turn_typed_by: typed_by(turn_by).into(),
+            turn_ms_ago: turn_ago.map(|ago| u32::try_from(ago.as_millis()).unwrap_or(u32::MAX)),
+            reports_turns: pane.turns.reports_turns,
+            session_id: pane.session_id.clone(),
+            oldest_row: pane.io.screen().handed_over_oldest_row(),
+            maker_told: told(pane.maker_told).into(),
+            wait_started_ms: pane.turns.wait_started_ms,
+            wait_noticed: pane.turns.wait_noticed,
+        })),
+    )?;
+    for piece in replay.chunks(PIECE) {
+        send(link, handoff::Message::ReplayPiece(piece.to_vec()))?;
     }
     Ok(())
 }
@@ -794,7 +812,7 @@ fn told(need: Option<Need>) -> handoff::Told {
         Some(Need::Stuck) => handoff::Told::Stuck,
         // A need of idle is judged against when the helper last went to work, which a new
         // daemon never saw, so it is never told again anyway.
-        Some(Need::Unreported) | None => handoff::Told::Nothing,
+        Some(Need::Unreported | Need::Waiting) | None => handoff::Told::Nothing,
     }
 }
 

@@ -39,6 +39,7 @@ pub(crate) struct Seen {
     pub(crate) stopped: Option<(String, u32)>,
     /// What the wait its agent declared was on, when that ran out and it has not worked since.
     pub(crate) ran_out: Option<String>,
+    pub(crate) waiting: Option<super::makers::Waiting>,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -114,6 +115,26 @@ impl Panes {
         let loaded = manifests.is_some();
         let agent_to_come = agent_to_come();
         let session = shared.lock();
+        let waits: HashMap<_, _> = session
+            .declared_waits()
+            .into_iter()
+            .filter(|wait| {
+                !wait.limited
+                    || wait.carried
+                    || wait.until_exits.is_some()
+                    || wait.until_message_from.is_some()
+            })
+            .filter_map(|wait| {
+                Some((
+                    wait.pane,
+                    super::makers::Waiting {
+                        reason: wait.waiting,
+                        since_ms: wait.started_ms?,
+                        noticed: wait.noticed,
+                    },
+                ))
+            })
+            .collect();
         let naming = session.names_sessions();
         let read = session.each_pane(|pane| {
             let (record, io) = (&pane.record, &pane.io);
@@ -145,6 +166,7 @@ impl Panes {
                         .as_ref()
                         .map(|unread| (unread.program.clone(), unread.bytes)),
                     ran_out: pane.ran_out.clone(),
+                    waiting: waits.get(&record.pane).cloned(),
                     agent,
                     io: io.clone(),
                 }

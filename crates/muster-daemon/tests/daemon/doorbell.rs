@@ -1527,6 +1527,66 @@ fn a_helper_whose_wait_ran_out_tells_its_maker_so() {
     );
 }
 
+#[test]
+fn a_helpers_unlimited_wait_is_noticed_without_ending_it() {
+    long_helper_wait(None);
+}
+
+#[test]
+fn a_helpers_live_process_wait_is_noticed_without_ending_it() {
+    struct Job(std::process::Child);
+    impl Drop for Job {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let job = Job(std::process::Command::new("sleep").arg("600").spawn().unwrap());
+    long_helper_wait(Some(job.0.id()));
+}
+
+fn long_helper_wait(pid: Option<u32>) {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_WAIT_MS", "2000")]);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    let declare = || {
+        pane(proto::pane_request::Request::Report(proto::pane_request::Report {
+            pane: "p2".to_string(),
+            waiting: Some("the full gate".to_string()),
+            waiting_until_exits: pid,
+            ..Default::default()
+        }))
+    };
+    let mut logging = following(&agent.daemon);
+    expect(&mut agent.control, declare(), proto::Outcome::Done);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let read = agent.read_in_its_pane();
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].contains("waiting on the full gate for 2s. Its wait is still active"),
+        "{read:?}"
+    );
+    let held = |control: &mut Control| {
+        snapshot(control).panes.into_iter().find(|p| p.pane == "p2").unwrap().facts.unwrap().waiting
+    };
+    assert_eq!(held(&mut agent.control).as_deref(), Some("the full gate"));
+
+    let mut logging = following(&agent.daemon);
+    expect(&mut agent.control, declare(), proto::Outcome::Done);
+    logging.logged_times_until(r#""event":"msg.helper.told""#, 2, Duration::from_secs(20));
+    assert_eq!(agent.read_in_its_pane().len(), 1, "a replacement wait is noticed again");
+
+    let replaced = agent.daemon.replace(None);
+    assert_eq!(replaced.outcome(), proto::Outcome::Done, "{}", replaced.reason);
+    agent.control = agent.daemon.connect();
+    // Prove no second notice past the test's two-second notice limit after takeover.
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(agent.read_as("p1").is_empty());
+    assert_eq!(held(&mut agent.control).as_deref(), Some("the full gate"));
+}
+
 /// A helper that blocks while its maker is at work is held until the maker can hear it, and told
 /// then while it is still blocked: a post to a maker at work would wait for its turn to end
 /// anyway. The advice names the helper by its callsign, which no other pane can hold.
