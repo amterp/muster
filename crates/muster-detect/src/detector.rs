@@ -478,13 +478,7 @@ impl Detector {
         );
 
         let detection = if process_exited {
-            Detection {
-                state: State::Idle,
-                visible: true,
-                skip_state_update: false,
-                rule: None,
-                waiting: None,
-            }
+            exited_detection()
         } else {
             let title = self.current_title(pane);
             let progress = pane.progress();
@@ -1096,6 +1090,18 @@ fn decide_transition(
         return false;
     }
     next != previous || agent_changed || process_exited
+}
+
+/// What a pane reads as once its agent's process has exited: idle, on the evidence of the exit
+/// itself rather than of anything on the screen.
+fn exited_detection() -> Detection {
+    Detection {
+        state: State::Idle,
+        visible: true,
+        skip_state_update: false,
+        rule: None,
+        waiting: None,
+    }
 }
 
 #[cfg(test)]
