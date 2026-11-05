@@ -888,8 +888,9 @@ cancellation callback has finished, independently of whether a restart warning i
 keeps its processes and does not cancel on that account.
 
 The pane shows `Pasting image…` while input is held. Conversion has ten seconds to finish; each upload write
-has ten seconds without progress. The final answer gets 120 seconds because SSH may still hold bytes after
-the local socket takes the last write. Cancellation closes that socket, and operation ids reject late results.
+has ten seconds without progress. After the last upload write, Muster waits up to 120 seconds for the daemon's
+response because SSH may still hold bytes that the local socket has accepted. Cancellation closes that socket,
+and operation ids reject late results.
 
 The daemon writes outside its session and terminal-encoding locks into `<socket stem>.images` beside its
 socket. The cache must be an owned, private directory at 0700; exclusively created files are 0600. A writer
