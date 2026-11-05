@@ -41,6 +41,12 @@ impl Agent {
         let commands = codex.split_once("[session]").unwrap().1.split_once("[[rules]]").unwrap().0;
         let (prefix, rest) = fake.split_once("[session]").unwrap();
         let rules = rest.split_once("[[rules]]").unwrap().1;
+        // Codex's session table can use keys a newer engine reads, so the fake asks for that
+        // engine too; otherwise the daemon refuses the whole manifest.
+        let engine = |manifest: &str| {
+            manifest.lines().find(|line| line.starts_with("min_engine_version")).unwrap().to_owned()
+        };
+        let prefix = prefix.replacen(&engine(&fake), &engine(codex), 1);
         // Keep the fake terminal, but exercise the session commands that actually ship for Codex.
         std::fs::write(&path, format!("{prefix}[session]{commands}[[rules]]{rules}")).unwrap();
         let binary = home.join(".muster/bin/codex");
