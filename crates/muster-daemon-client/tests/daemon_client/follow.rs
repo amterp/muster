@@ -276,7 +276,14 @@ fn a_live_handoff_does_not_report_that_processes_were_replaced() {
     let answer = daemon.replace(None);
     assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
     followed.bootstrapped(2);
-    assert!(!followed.notices.lock().unwrap().contains(&Notice::ProcessesReplaced));
+    assert!(
+        !followed
+            .notices
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|notice| matches!(notice, Notice::ProcessesReplaced { .. }))
+    );
 }
 
 /// Settings reach a daemon at connect and when they change, which is how the palette and the

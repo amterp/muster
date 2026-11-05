@@ -52,7 +52,9 @@ pub enum Notice {
     Changed(Change),
     /// A new daemon run restored processes from disk. Delivered before its input connection
     /// becomes usable, even when the restart needs no warning.
-    ProcessesReplaced,
+    ProcessesReplaced {
+        generation: u64,
+    },
     /// The connection ended. The mirror is still the best answer available, and is now a guess
     /// about the present.
     Stale {
@@ -102,6 +104,8 @@ pub struct Connection {
     connecting: Mutex<Option<Arc<Control>>>,
     input: Mutex<Option<Input>>,
     connecting_input: Mutex<Option<Input>>,
+    /// The process-replacement callback that must finish before input is usable.
+    input_waits_for: AtomicU64,
     /// What the daemon should be told, sent at every connect and whenever it changes.
     settings: Mutex<Option<DaemonSettings>>,
     /// The answers to the settings last sent. A change sends only what differs unless one of
@@ -140,10 +144,20 @@ impl Connection {
     /// Queues an input event, or says why it was not: nothing is queued for a daemon that is
     /// not there, since keystrokes arriving late are worse than keystrokes lost.
     pub fn send_input(&self, event: proto::InputEvent) -> Result<(), NotSent> {
-        match lock(&self.input).as_ref() {
+        let input = lock(&self.input);
+        if self.input_waits_for.load(Ordering::Acquire) != 0 {
+            return Err(NotSent::NotConnected);
+        }
+        match input.as_ref() {
             Some(input) if input.is_open() => input.send(event),
             _ => Err(NotSent::NotConnected),
         }
+    }
+
+    pub fn input_ready(&self) -> bool {
+        let input = lock(&self.input);
+        self.input_waits_for.load(Ordering::Acquire) == 0
+            && input.as_ref().is_some_and(Input::is_open)
     }
 
     /// Waits up to `patience` for the mirror's first snapshot, and says whether it came.
@@ -322,7 +336,19 @@ fn notifier(daemon: &str, connection: &Arc<Connection>, notify: Notify) -> std::
             if connection.stopping.load(Ordering::Relaxed) {
                 return;
             }
+            let replaced = match &notice {
+                Notice::ProcessesReplaced { generation } => Some(*generation),
+                _ => None,
+            };
             notify(notice);
+            if let Some(generation) = replaced {
+                let _ = connection.input_waits_for.compare_exchange(
+                    generation,
+                    0,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+            }
         }
     })?;
     Ok(Arc::new(move |notice| {
@@ -539,20 +565,23 @@ fn delivery(
                 snapshot.human.clear();
             }
             let changes = mirror.lock().unwrap_or_else(PoisonError::into_inner).bootstrap(snapshot);
-            if processes_replaced && connection.generation.load(Ordering::Relaxed) == generation {
-                notify(Notice::ProcessesReplaced);
-            }
             // Published here, between the snapshot and the notice: a request made before it is
             // refused as not connected, where it could be answered while the mirror still held
             // the picture from before, and one made in answer to the notice finds it connected.
-            if connection.generation.load(Ordering::Relaxed) == generation
-                && let Some(control) = lock(&connection.connecting).take()
-            {
-                if let Some(input) = lock(&connection.connecting_input).take() {
-                    *lock(&connection.input) = Some(input);
+            let mut input = lock(&connection.input);
+            if connection.generation.load(Ordering::Relaxed) == generation {
+                if processes_replaced {
+                    connection.input_waits_for.store(generation, Ordering::Release);
+                    notify(Notice::ProcessesReplaced { generation });
                 }
-                *lock(&connection.control) = Some(control);
+                if let Some(control) = lock(&connection.connecting).take() {
+                    if let Some(connecting) = lock(&connection.connecting_input).take() {
+                        *input = Some(connecting);
+                    }
+                    *lock(&connection.control) = Some(control);
+                }
             }
+            drop(input);
             notify(Notice::Bootstrapped { changes, unreadable });
             if std::mem::take(&mut reconnected) {
                 notify(Notice::Reconnected);

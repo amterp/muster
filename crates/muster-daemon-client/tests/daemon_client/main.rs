@@ -8,4 +8,5 @@ mod handover;
 mod images;
 mod input;
 mod launch;
+mod replacement_input;
 mod stream;

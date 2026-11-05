@@ -2614,7 +2614,8 @@ pub(crate) fn image_destination(
         input: backend.images.clone(),
         socket: backend.socket_path.clone(),
         remote: backend.tunnel.is_some(),
-        connected: backend.follower.connection().control().is_some(),
+        connected: backend.follower.connection().control().is_some()
+            && backend.follower.connection().input_ready(),
     })
 }
 
@@ -5785,7 +5786,7 @@ fn reconcile(daemon: &DaemonId) {
 /// the shell's business, so every pane is sent and the shell decides.
 fn announce(daemon: &DaemonId, notice: Notice) {
     match notice {
-        Notice::ProcessesReplaced => cancel_all_images(daemon),
+        Notice::ProcessesReplaced { .. } => cancel_all_images(daemon),
         Notice::Bootstrapped { changes, unreadable } => {
             log::info(
                 "mirror.bootstrap",
