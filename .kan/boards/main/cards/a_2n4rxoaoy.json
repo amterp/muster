@@ -6,24 +6,31 @@
     "shell",
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "id": "c_2pP7SWPDi",
       "body": "2026-10-27 re-triage: the owner confirmed chat note Rne8OhKH1ft, \"paste images thru ssh,\" is captured by this card and approved archiving the note.",
       "author": "Alexander Terp",
       "created_at_millis": 1793144056762
+    },
+    {
+      "id": "c_2uUXjFw6F",
+      "body": "Done 2026-11-05 (fdfb432b..45bff08c, with integration fixes 4e5e1e04, c7f598bd, 1a445bd1): Ctrl+V in a Claude Code or Codex pane on another machine, with an image on the Mac's clipboard and the harness's composer on screen, uploads the image to that machine's daemon on a connection of its own and pastes its path; typing after it is held until the path lands (Esc/Ctrl+C cancel). ⌘V on an image-only clipboard does the same on either machine. Images live beside the daemon's socket for 7 days, 1 GiB cap, 15 MiB max. Both harnesses attach a pasted image path on Linux (Claude Code 2.1.318, Codex 0.166.0). Real SSH acceptance at 5 MiB passed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793895799776
     }
   ],
   "created_at_millis": 1792800268848,
   "creator": "Alexander Terp",
   "description": "amterp's chat note, 2026-10-22: \"paste images thru ssh\".\n\nPasting a screenshot into an agent works only on the laptop: Claude Code and Codex read an image from the machine's own clipboard when you paste. An agent on a devenv runs where the laptop's clipboard is out of reach, and a terminal paste carries text only, so the image never arrives. Inferred, not measured on each harness.\n\nWanted: an image pasted into a pane on another machine reaches its agent as it would locally. Muster already holds an ssh connection to that machine, so one route is copying the image there and handing the agent a file path, which both harnesses take as an image. Which harnesses accept a path, and where the file goes and when it is cleaned up, are open.",
   "id": "a_2n4rxoaoy",
-  "position": "a2",
+  "position": "Yv3",
   "title": "An image pasted into a devenv pane never reaches the agent there",
   "type": "feature",
-  "updated_at_millis": 1793144056762,
+  "updated_at_millis": 1793895799905,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1792800268848}
+    {"field":"column","value":"backlog-hi","at":1792800268848},
+    {"field":"column","value":"done","at":1793895799905}
   ]
 }
