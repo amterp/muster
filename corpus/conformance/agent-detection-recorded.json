@@ -870,7 +870,8 @@
         "title": ""
       },
       "expect": {
-        "state": "idle"
+        "state": "idle",
+        "waiting": "its background agents"
       }
     }
   ]
