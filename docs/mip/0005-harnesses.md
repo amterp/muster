@@ -37,7 +37,8 @@ one, built with this MIP: the doorbell, which wakes an idle agent by typing into
 its state; its screens are recorded; and `./dev --codex` checks all of it against the installed
 Codex. Stage two adds the rest of what Codex allows: its prompt while it works, fetching messages
 from its hooks and the context it has used, and a route through `codex queue` that wakes an
-idle Codex without typing into its pane.
+idle Codex without typing into its pane. That route was reversed on 2026-11-05: Codex is
+woken by typing again ("Addendum, 2026-11-05", below).
 
 ## Decisions for amterp
 
@@ -280,7 +281,8 @@ sections 6 to 9):
   12,000-token baseline, and report it with the model, in the background. Codex runs hook commands
   in the user's shell, so they are written to mean the same in zsh as in sh, and the hook tests run
   every harness's hooks in both.
-- **A route that types nothing**, built 2026-10-04. `codex queue --thread <id> --message <text>`
+- **A route that types nothing**, built 2026-10-04 and reversed 2026-11-05 ("Addendum,
+  2026-11-05", below). `codex queue --thread <id> --message <text>`
   starts a turn in a running session without typing into its pane, and leaves a draft in the
   composer alone. The plugin's `SessionStart` hook reports the session's id with `report --agent
   codex --session-id`, which the daemon keeps on the pane, forgets when the agent leaves it, and
@@ -537,9 +539,31 @@ harness that allows less must not break anything.
   Code's do; the hooks are wired and were not seen firing.
 - Whether an OpenCode plugin can hand the model its messages mid-turn, as Codex's hooks do, and
   whether OpenCode renames a session from its prompt (section 11).
-- Whether `codex queue` should also wake a Codex at work for a post that is not urgent, rather
-  than wait for idle as the doorbell does: Codex holds it until the turn ends, unless the turn
-  meets an approval prompt first, which was not measured.
+
+## Addendum, 2026-11-05: Codex wakes return to the terminal
+
+The owner chose typed-only Codex delivery, reversing section 7's queue route. Wakes now enter
+Codex's visible composer; a draft holds delivery until it is sent or cleared. An urgent post to
+a working Codex still joins its current turn.
+
+Recordings with 0.166.0 showed `/new` leaving the old conversation loaded and its ID reported
+until the first new prompt. A queue wake reached that old conversation while the visible new
+composer stayed empty. A controlled read/queue/exit sequence also showed a notification replaying
+on resume after its message had been read. Waiting 20 seconds before a typed fallback identifies
+neither the visible conversation nor a stored copy that can safely be withdrawn.
+
+`docs/observations/codex-0.166.0.md` carries the evidence and limits. Older queue copies can still
+start turns in earlier conversations whose hooks consume the pane's messages. Starting a fresh
+Codex process isolates a new assignment. The adapter still reports its ID for resume.
+
+The generic `[session] wake` capability remains, with no bundled harness using it. An adapter
+adopting it must establish that the reported ID names the visible conversation and that its
+command cannot retain an undeliverable wake for later replay. The session-command contract does
+not itself establish either guarantee.
+
+The default suite exercises the shipped Codex session policy with a fake terminal and queue
+command. `./dev --codex` checks draft holds from the sender's side, delivery to the new
+conversation after `/new`, no stale turn on resume, and urgent delivery within a running turn.
 
 ## References
 
@@ -567,28 +591,6 @@ harness that allows less must not break anything.
   pane compact`, and `compact_at`.
 - 2026-10-04 Whether an adapter reports, and `muster harness install` (section 12, kan
   `a_2Y6bsEGtg`), answering the open question about Muster installing an adapter.
-
-## 2026-11-05: Codex wakes return to the terminal
-
-The owner chose typed-only Codex delivery, reversing section 7's queue route. Wakes now enter
-Codex's visible composer; a draft holds delivery until it is sent or cleared. An urgent post to
-a working Codex still joins its current turn.
-
-Recordings with 0.166.0 showed `/new` leaving the old conversation loaded and its ID reported
-until the first new prompt. A queue wake reached that old conversation while the visible new
-composer stayed empty. A controlled read/queue/exit sequence also showed a notification replaying
-on resume after its message had been read. Waiting 20 seconds before a typed fallback identifies
-neither the visible conversation nor a stored copy that can safely be withdrawn.
-
-`docs/observations/codex-0.166.0.md` carries the evidence and limits. Older queue copies can still
-start turns in earlier conversations whose hooks consume the pane's messages. Starting a fresh
-Codex process isolates a new assignment. The adapter still reports its ID for resume.
-
-The generic `[session] wake` capability remains, with no bundled harness using it. An adapter
-adopting it must establish that the reported ID names the visible conversation and that its
-command cannot retain an undeliverable wake for later replay. The session-command contract does
-not itself establish either guarantee.
-
-The default suite exercises the shipped Codex session policy with a fake terminal and queue
-command. `./dev --codex` checks draft holds from the sender's side, delivery to the new
-conversation after `/new`, no stale turn on resume, and urgent delivery within a running turn.
+- 2026-11-05 Codex wakes typed again, reversing the `codex queue` route (kan `a_2pOzlEw3G`,
+  `a_2pPidIbLL`): see "Addendum, 2026-11-05". The open question about queueing a wake for a
+  Codex at work is moot.
