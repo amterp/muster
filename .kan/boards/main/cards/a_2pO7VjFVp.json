@@ -13,6 +13,12 @@
       "body": "2026-10-27 re-triage: Fifth in next: measured ten-second waits block the app's main thread. Fixing daemon request concurrency alone does not make a synchronous main-thread call responsive.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143965388
+    },
+    {
+      "id": "c_2uT7INBBq",
+      "body": "2026-11-05, first part landed (badb6f47): New Tab, Split, Leave Group and Delete Group wait for their answers off the main thread, completions back on the main actor, refusal sheets and beeps kept; creation requests go through one serial queue with relative targets left empty so the core resolves them in order. docs/architecture.md says so. Still synchronous: resize/zoom/equalize, pane rename/compact/hide/show/helper visibility/quiet/close, tab rename/close/move, arrangements, the upgrade action's tab, focus paths that reveal hidden panes (sidebar, notification, conversation navigation, focusAsking), and conversation loadEarlier/pauseGroup. Second part in progress.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793892400396
     }
   ],
   "created_at_millis": 1793141675554,
@@ -25,7 +31,7 @@
   ],
   "title": "The window freezes for up to 10 s per request while a daemon is slow to answer",
   "type": "bug",
-  "updated_at_millis": 1793143965388,
+  "updated_at_millis": 1793892400396,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793141675554},
     {"field":"column","value":"next","at":1793143876874}
