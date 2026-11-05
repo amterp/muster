@@ -5,19 +5,28 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2uSPlsReA",
+      "body": "2026-11-05: fixed by 4173bb80. Cause: libghostty skips link detection while the program has the mouse (unless Shift is held), and Codex 0.166.0 and Claude Code 2.1.318 both turn on mouse modes 1000/1002/1003/1006 at startup - so it failed in local agent panes too, not only devenv ones. Cmd-click on a web link now opens it while the program captures the mouse; ordinary clicks still go to the program. A new additive libghostty call (0004-surface-read-link.patch) reads the link under the pointer.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793890727321
+    }
+  ],
   "created_at_millis": 1793589608229,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-28: \"CMD click on link on remote pane doesn't seem to work\". At triage on 2026-11-01 he confirmed the link was a web address, not a path.\n\nCmd-click has opened links in a laptop pane since a_2YSLBTjzT, and a devenv pane is meant to do the same: `Sources/MusterMac/MusterWindow.swift:738` sets the surface's `onOpenLink` for every machine, and `LinkPolicy.decide` opens an http or https link whichever machine the pane is on, refusing only a path on another machine. So the click is either lost before it reaches the policy or refused for some other reason. Start with the run log of the machine where it happened: a `link.refused` line names why the policy refused it, while no line and no beep mean the click never reached `onOpenLink`. Also check whether the pointer becomes a hand over a link in a devenv pane (a_2YYdXDUYp).",
   "id": "a_2sQ4HkXeF",
-  "position": "Zyl",
+  "position": "Yv6",
   "related": [
     "a_2YSLBTjzT"
   ],
   "title": "Cmd-clicking a web address in a devenv pane does nothing",
   "type": "bug",
-  "updated_at_millis": 1793589614361,
+  "updated_at_millis": 1793890727453,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793589608229}
+    {"field":"column","value":"backlog-hi","at":1793589608229},
+    {"field":"column","value":"done","at":1793890727453}
   ]
 }
