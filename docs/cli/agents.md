@@ -75,11 +75,12 @@ replaces or clears either condition. Add `waiting` to the list to hear of a wait
 `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 
-An agent that has just started reads `unknown` for about three seconds, until Muster has read
-its screen, so a wait started straight after `pane new --run` answers with what the agent opened
-on: `blocked` at Claude Code's folder-trust dialog, which `muster pane send --key down --enter`
-answers, or `working` for an agent started with a first prompt, never an `idle` from before its
-screen counted.
+An agent that has just started reads `unknown` for about three seconds, until Muster has read its
+screen - and, when its manifest has an idle rule, until a rule first recognizes that screen, however
+long the launch takes (`muster docs window`) - so a wait started straight after `pane new --run`
+answers with what the agent opened on: `blocked` at Claude Code's folder-trust dialog, which `muster
+pane send --key down --enter` answers, or `working` for an agent started with a first prompt, never
+an `idle` from before its screen counted.
 
 A wait also ends when the daemon holding its pane stops answering - a devenv over a dropped VPN -
 because nothing the agent does reaches the window until the daemon is back. It exits 4 at once
