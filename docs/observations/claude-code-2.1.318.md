@@ -37,7 +37,8 @@ The first probe used a child whose Bash tool backgrounded `sleep 60`. After the 
 the child's PostToolUse ran at 15:22:58.188 UTC with a nonempty `agent_id`. The pane read working
 at 15:22:59 even though the parent had ended its turn and the Waiting line was visible. The
 ordinary wake then waited until the child's short turn ended. The selected first-probe screen
-is included in `background-input.jsonl`.
+is included in `background-input.jsonl`, and its parent Stop and child PostToolUse are retained
+in `background-hooks.jsonl` under `background-shell-child`.
 
 The screen-rule correction removes the recorded prompt hold. The separate effect of child
 PostToolUse state reports needs its own regression before changing hook authority; these
