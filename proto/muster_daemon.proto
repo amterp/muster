@@ -298,6 +298,13 @@ message PaneRequest {
     MakerClosed maker_closed = 14;
     // Since 1.10.
     Reopen reopen = 15;
+    // Since 1.11. Answered with ImageStored; never writes the pane's input itself.
+    StoreImage store_image = 16;
+  }
+
+  message StoreImage {
+    string pane = 1;
+    bytes png = 2;
   }
 
   // Sets whether the pane is quiet: whether a view raises anything for the person about it.
@@ -1376,7 +1383,13 @@ message Answer {
     Created created = 16;
     // Since 1.10.
     Reopened reopened = 17;
+    // Since 1.11.
+    ImageStored image_stored = 18;
   }
+}
+
+message ImageStored {
+  string path = 1;
 }
 
 // What a create made, on its DONE: the callsign drawn for the pane, which the asker can say at

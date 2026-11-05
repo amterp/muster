@@ -6,5 +6,6 @@ mod environment;
 mod follow;
 mod handover;
 mod input;
+mod images;
 mod launch;
 mod stream;

@@ -93,6 +93,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Quiet(_)) => "pane.quiet",
             Some(pane_request::Request::MakerClosed(_)) => "pane.maker_closed",
             Some(pane_request::Request::Restart(_)) => "pane.restart",
+            Some(pane_request::Request::StoreImage(_)) => "pane.store_image",
             Some(pane_request::Request::Reopen(_)) => "pane.reopen",
             None => "pane",
         },

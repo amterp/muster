@@ -380,6 +380,17 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
         // and its answer goes under this lock, beside the state it describes.
         let sender = sender_of(peer, request.service.as_ref(), shared);
         let handled = match request.service {
+            Some(Service::Pane(proto::PaneRequest {
+                request: Some(pane_request::Request::StoreImage(image)),
+            })) => {
+                let exists = locked().pane_io(&image.pane).is_some();
+                let reply = if exists {
+                    shared.images.store(&image.png)
+                } else {
+                    Reply::refused(format!("no pane {} on this daemon", image.pane))
+                };
+                Handled::Reply(reply)
+            }
             // Outside the session's lock: messages have their own (crate::messages).
             Some(Service::Msg(message)) => {
                 let handled = match &sender {

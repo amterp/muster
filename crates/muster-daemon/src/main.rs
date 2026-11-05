@@ -19,6 +19,7 @@ mod facts;
 mod handoff;
 mod hold;
 mod input;
+mod images;
 mod messages;
 mod operations;
 mod pane;

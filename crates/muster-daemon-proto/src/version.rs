@@ -16,6 +16,8 @@ pub const PROTOCOL: Version = Version { major: 1, minor: 11 };
 /// The first minor whose daemon ends a declared wait on a message from its named sender.
 pub const WAIT_UNTIL_MESSAGE: u32 = 11;
 
+pub const IMAGE_PASTE: u32 = 11;
+
 /// The first minor whose daemon presses the keys a `pane send` names. An older one ignores the
 /// field and would write the send's Return without them, so a client asks before sending any.
 pub const KEYS_IN_A_SEND: u32 = 4;

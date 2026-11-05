@@ -8,6 +8,7 @@ pub mod convert;
 pub mod follow;
 pub mod handover;
 pub mod input;
+pub mod images;
 pub mod install;
 pub mod launch;
 pub mod records;

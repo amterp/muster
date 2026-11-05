@@ -108,6 +108,7 @@ pub(crate) enum Stop {
 #[derive(Debug)]
 pub(crate) struct Shared {
     pub(crate) session: Mutex<Session>,
+    pub(crate) images: crate::images::Images,
     /// Messages between agents, under a lock of their own (see [`crate::messages`]).
     pub(crate) messages: Mutex<Messages>,
     /// Rings agents in panes once they can be rung.
@@ -175,6 +176,7 @@ impl Shared {
             let human = messages.human();
             let joined = messages.joined();
             Shared {
+                images: crate::images::Images::beside(&socket.path),
                 messages: Mutex::new(messages),
                 doorbell: Doorbell::default(),
                 peers: Peers::beside(&socket.path),
@@ -1376,6 +1378,7 @@ impl Session {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(reading) => return Handled::Read(Box::new(reading)),
                 },
+                P::StoreImage(_) => Reply::unsupported(),
             },
             _ => Reply::unsupported(),
         };
