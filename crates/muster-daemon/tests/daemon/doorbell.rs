@@ -1127,6 +1127,63 @@ fn a_command_wake_nobody_takes_is_typed_instead() {
     assert_eq!(agent.woken().len(), 1, "the command was run again");
 }
 
+fn declare_review_wait(agent: &mut Agent) {
+    make(&mut agent.control, create("p2", in_new_tab("t2")));
+    let report = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        waiting: Some("the review".to_string()),
+        waiting_until_message_from: Some("p2".to_string()),
+        ..Default::default()
+    };
+    expect(
+        &mut agent.control,
+        pane(proto::pane_request::Request::Report(report)),
+        proto::Outcome::Done,
+    );
+}
+
+fn review_wait(agent: &mut Agent) -> Option<String> {
+    snapshot(&mut agent.control)
+        .panes
+        .into_iter()
+        .find(|p| p.pane == "p1")
+        .and_then(|p| p.facts?.waiting)
+}
+
+#[test]
+fn a_sender_wait_outlasts_an_urgent_ring_waiting_for_its_return() {
+    let mut agent = Agent::in_a_pane();
+    declare_review_wait(&mut agent);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.posting_as("p2", "p1", "the review", true);
+    agent.until_shows("PROBE-PROMPT> [muster]");
+    assert_eq!(review_wait(&mut agent).as_deref(), Some("the review"), "the ring is still unsent");
+    agent.daemon.block_agent_unasked();
+    agent.until_shows("PROBE-STATE:BLOCKED");
+    assert_eq!(
+        review_wait(&mut agent).as_deref(),
+        Some("the review"),
+        "the dialog holds its Return"
+    );
+}
+
+#[test]
+fn a_sender_wait_outlasts_a_command_its_agent_has_not_taken() {
+    let mut agent = Agent::in_a_pane();
+    declare_review_wait(&mut agent);
+    agent.reports_session("dead");
+    let mut logging = following(&agent.daemon);
+    agent.posting_as("p2", "p1", "the review", false);
+    logging.logged_until(r#""event":"msg.rang""#, Duration::from_secs(20));
+    assert_eq!(
+        review_wait(&mut agent).as_deref(),
+        Some("the review"),
+        "the command only stored it"
+    );
+    agent.read_in_its_pane();
+    assert_eq!(review_wait(&mut agent), None, "reading delivers the review");
+}
+
 /// A Codex running its session without the shared app-server polls its queue, and starts the turn
 /// for a stored wake up to ten seconds later. That wake is not typed as well: typed, it starts a
 /// turn of its own, and Codex wakes the agent again with the stored copy as that turn ends, for a
