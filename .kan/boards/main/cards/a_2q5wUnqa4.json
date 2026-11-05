@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "id": "c_2q65sSp7K",
@@ -24,19 +24,26 @@
       "body": "2026-11-03: ending a carried wait once the agent posts and ends its turn would bring back the bug d590527b fixed. There a helper waiting on its own build was woken by an unrelated message from its maker, answered, and did not declare again, so it read idle with the build running and its maker was told it had gone idle without reporting. Answering is a post, so that rule clears the wait in exactly that case. The two cases differ in who sent the waking message: here it came from the thing waited on (the reviewer), there from someone else. Candidate fix: let a wait name the agent it waits on, `report --waiting \"\u003cwhat\u003e\" --until-message-from \u003cpane\u003e`, beside --until-exits; a message from that pane ends it and any other wake carries it as today. Awaiting the owner's go-ahead.",
       "author": "Alexander Terp",
       "created_at_millis": 1793709354221
+    },
+    {
+      "id": "c_2uR8bl2cY",
+      "body": "Done 2026-11-05: 5c6a67d4..630b9297 on main. report --waiting --until-message-from \u003cpane\u003e ends on a wake from that pane; teal's overrun explained: each carry restarts a carried wait's 10-minute timer (wait serial), and takeover restarts it too. The tai parallel-work skill gets the flag once the installed Muster has it.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793887684299
     }
   ],
   "created_at_millis": 1793246116437,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-28 in a parallel-work round, twice: anvil and carrot (Claude Code workers, helpers of tulip) each declared a wait on their own reviewers with report --waiting, got the reviews back, finished, posted 'slot N done' to the integrator and ended their turns at an empty prompt. muster window then showed each as 'waiting ... on review from elder' / 'on melon re-checking two review fixes' rather than done or idle. Impact: the integrator reads a finished worker as still busy. Check whether a turn that ends after a post should clear a declared wait, or whether the agent re-declared it at the end of its last turn (pane read --turn did not show it).\n\n\nDecided 2026-11-03 (amterp): a declared wait can name the agent it waits on, `report --waiting \"\u003cwhat\u003e\" --until-message-from \u003cpane\u003e`, beside `--until-exits \u003cpid\u003e`. A message wake from that pane ends the wait; a wake for anyone else's message carries it as today. A wait declared without the flag keeps today's behavior, so d590527b's fix stands: there a helper waiting on its build answered its maker's unrelated message and read idle with the build still running. Ending a carried wait on any post, the other option considered, would bring that back, since answering is a post. Done also means the parallel-work skill (tai) and `extras/skill/SKILL.md` tell an agent waiting on a reviewer or helper to use the flag, `docs/cli/agents.md` and `docs/architecture.md` describe it, and teal's 12+ minutes past the 10-minute cap is explained.",
   "id": "a_2q5wUnqa4",
-  "position": "a4V",
+  "position": "Yv8",
   "title": "A worker that posted its report and ended its turn still reads waiting on a wait it declared earlier",
   "type": "bug",
-  "updated_at_millis": 1793710059592,
+  "updated_at_millis": 1793887684299,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793246116437},
     {"field":"column","value":"backlog-hi","at":1793589299722},
-    {"field":"column","value":"next","at":1793710059592}
+    {"field":"column","value":"next","at":1793710059592},
+    {"field":"column","value":"done","at":1793887684068}
   ]
 }

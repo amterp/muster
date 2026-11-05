@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "comments": [
     {
       "id": "c_2nn4B95Pe",
@@ -18,19 +18,26 @@
       "body": "2026-10-27 re-triage: tooling feedback a_2ocrquAaV (identical duplicate a_2ocrezxhc) adds a Spool Claude Code helper whose `swiftpm-testing-helper` hung at about 08:46 on 2026-10-26. It declared a wait and ended its turn at 08:51, then remained waiting until its maker noticed at 10:36. No notice was raised; an urgent post was the successful recovery.\n\nCurrent-code clarification for the earlier comment: `Session::declared_waits` limits waits carried through a Muster-typed turn and waits for a harness without `wakes_when_jobs_end`. A plain Claude Code wait can remain unlimited because its manifest says its jobs wake it. `messages/waits.rs::judge` skips unlimited waits. Commit 764c1c2e improves the notice for waits that do expire; it does not impose a universal ten-minute limit. Investigate that policy and a notice for a hung job before assuming the deployed build missed the timeout change. Promoted to backlog-hi because this newer instance lost almost two hours.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143805095
+    },
+    {
+      "id": "c_2uR8bvJz1",
+      "body": "Done 2026-11-05 (2169764c, 630b9297): a maker hears once per declaration after 10 minutes of a helper's wait, which stays standing; a maker on another machine gets a dated observation without the busy hold.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793887684393
     }
   ],
   "created_at_millis": 1792896283950,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-24 running two parallel-work helpers. One declared `report --waiting \"cargo fmt in the background\"` and ended its turn; its background command hung for an hour on a `cat` reading a stdin that never closed. Muster tells a maker when a helper is blocked, stuck, or idle without having reported to it, but `waiting` is none of those, so nothing reached the maker, and `muster window` showed `waiting 57m` to nobody looking. It was found only by reading the pane. Something like a notice to the maker once a helper has waited past a limit (or past a time the helper gave with --waiting) would have caught it within minutes.",
   "id": "a_2nj9krSRa",
-  "position": "a8",
+  "position": "Yv7",
   "title": "A helper waiting on its own job is never noticed to its maker, however long it waits",
   "type": "enhancement",
-  "updated_at_millis": 1793589627720,
+  "updated_at_millis": 1793887684394,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792896283950},
     {"field":"column","value":"backlog-hi","at":1793143875826},
-    {"field":"column","value":"next","at":1793589627720}
+    {"field":"column","value":"next","at":1793589627720},
+    {"field":"column","value":"done","at":1793887684207}
   ]
 }
