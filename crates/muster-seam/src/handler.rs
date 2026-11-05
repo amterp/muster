@@ -280,6 +280,9 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             Response::ok()
         }),
         request::Payload::Paste(paste) => paste_into(window, &paste),
+        request::Payload::ReadImagePasteTarget(ask) => crate::image_paste::target(window, &ask),
+        request::Payload::PrepareImagePaste(ask) => crate::image_paste::prepare(window, ask),
+        request::Payload::PasteImage(image) => crate::image_paste::paste(window, image),
         request::Payload::PerformOnPane(perform) => perform_on_pane(window, &perform),
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
@@ -617,6 +620,7 @@ fn restart_agent(window: WindowId, restart: proto::RestartAgent) -> Response {
     };
     let intent =
         BackendIntent::RestartAgent { pane: pane.clone(), env: restart.env.into_iter().collect() };
+    session::cancel_image(&target.daemon, &pane);
     let outcome = session::submit(window, &target.daemon, &intent, Keyboard::StaysPut);
     placed(outcome.map(|outcome| restarted(&pane, outcome)), &target)
 }

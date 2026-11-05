@@ -277,6 +277,7 @@ public final class PaneChrome: NSView {
 
   /// The link under the pointer, at the pane's bottom left while the pointer is over one.
   private let linkBanner = LinkBanner(frame: .zero)
+  private let imagePasteLabel = NSTextField(labelWithString: "Pasting image…")
 
   public init(frame: NSRect, surface: SurfaceView) {
     self.surface = surface
@@ -303,6 +304,12 @@ public final class PaneChrome: NSView {
     addSubview(badge)
     badge.isHidden = true
     addSubview(linkBanner)
+    imagePasteLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    imagePasteLabel.textColor = .secondaryLabelColor
+    imagePasteLabel.backgroundColor = .windowBackgroundColor
+    imagePasteLabel.drawsBackground = true
+    imagePasteLabel.isHidden = true
+    addSubview(imagePasteLabel)
     addSubview(dropOverlay)
     // Last, so a press on it is the handle's and never the terminal's underneath.
     addSubview(handle)
@@ -321,6 +328,11 @@ public final class PaneChrome: NSView {
   public func attach(paneID: String?) {
     self.paneID = paneID
     applyAppearance()
+  }
+
+  public func showImagePaste(_ pasting: Bool) {
+    imagePasteLabel.isHidden = !pasting
+    needsLayout = true
   }
 
   /// Takes a state change, if it is about this pane.
@@ -468,6 +480,10 @@ public final class PaneChrome: NSView {
     focusRing.frame = bounds.insetBy(dx: focusInset, dy: focusInset)
     badge.frame = bounds
     linkBanner.frame = linkBanner.frame(in: surface.frame)
+    imagePasteLabel.sizeToFit()
+    imagePasteLabel.setFrameOrigin(
+      NSPoint(
+        x: surface.frame.maxX - imagePasteLabel.frame.width - 8, y: surface.frame.minY + 8))
     handle.frame = PaneDrop.handleFrame(in: bounds)
     window?.invalidateCursorRects(for: handle)
   }

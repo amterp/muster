@@ -786,6 +786,11 @@ public final class MusterWindow: NSObject {
     heldPastes.hold(held)
   }
 
+  public func apply(pane: PaneKey, imagePasting: Bool, error: String) {
+    surfaces.chrome(for: pane)?.showImagePaste(imagePasting)
+    if !error.isEmpty { ImagePasteFailure.show(error, in: window) }
+  }
+
   /// Comes to the front, with its window made key.
   public func raise() {
     if window.isMiniaturized { window.deminiaturize(nil) }

@@ -378,6 +378,38 @@ public enum Core {
     send(request)
   }
 
+  static func imagePasteTarget(key: Muster_KeyEvent) -> PaneKey? {
+    var request = Muster_Request()
+    request.readImagePasteTarget.key = key
+    guard case .imagePasteTarget(let target) = send(request), !target.paneID.isEmpty else {
+      return nil
+    }
+    return PaneKey(daemon: target.daemonID, pane: target.paneID)
+  }
+
+  static func prepareImagePaste(target: PaneKey?) throws -> UInt64 {
+    var request = Muster_Request()
+    var prepare = Muster_PrepareImagePaste()
+    if let target {
+      prepare.daemonID = target.daemon
+      prepare.paneID = target.pane
+    }
+    request.prepareImagePaste = prepare
+    switch send(request) {
+    case .imagePastePrepared(let prepared): return prepared.uploadID
+    case .failure(let failure): throw ImagePasteFailure(failure.reason)
+    default: throw ImagePasteFailure("the image paste could not be started")
+    }
+  }
+
+  static func completeImagePaste(id: UInt64, png: Data = Data(), error: String = "") {
+    var request = Muster_Request()
+    request.pasteImage.uploadID = id
+    request.pasteImage.png = png
+    request.pasteImage.error = error
+    send(request)
+  }
+
   /// A wheel or trackpad turn over a pane, as the pane's surface was given it.
   ///
   /// The surface scrolls its own history; this is for the pane's daemon, which decides from the
@@ -1788,6 +1820,9 @@ public enum Core {
     case .restartAgent: return "restart_agent"
     case .reopenPane: return "reopen_pane"
     case .readClosedPanes: return "read_closed_panes"
+    case .readImagePasteTarget: return "read_image_paste_target"
+    case .prepareImagePaste: return "prepare_image_paste"
+    case .pasteImage: return "paste_image"
     case .hidePane: return "hide_pane"
     case .showPane: return "show_pane"
     case .showHelpers: return "show_helpers"
@@ -1992,6 +2027,10 @@ public enum Core {
           "hidden_collapsed": String(changed.hiddenCollapsed),
         ])
       window(for: event)?.apply(presentation: presentation)
+    case .imagePasteChanged(let changed):
+      window(for: event)?.apply(
+        pane: PaneKey(daemon: changed.daemonID, pane: changed.paneID),
+        imagePasting: changed.pasting, error: changed.error)
     case .pasteHeld(let held):
       // The kind and the size, never the text: it is somebody's clipboard.
       info(

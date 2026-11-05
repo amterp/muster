@@ -22,6 +22,7 @@ mod convert;
 pub mod ffi;
 mod handler;
 mod holding;
+mod image_paste;
 mod peering;
 mod presence;
 mod session;

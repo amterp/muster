@@ -291,6 +291,8 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::Draft(_) => "a message box's draft",
         response::Payload::Reopened(_) => "a pane reopened",
         response::Payload::ClosedPanes(_) => "the closed panes that can be reopened",
+        response::Payload::ImagePasteTarget(_) => "an image paste destination",
+        response::Payload::ImagePastePrepared(_) => "a prepared image paste",
     }
 }
 

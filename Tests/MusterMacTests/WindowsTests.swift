@@ -265,6 +265,7 @@ private final class StandIn: ShellWindow {
   func apply(problems: [Problem]) { applied.append("problems") }
   func apply(groups: [SidebarModel.MessageGroup]) { applied.append("groups") }
   func hold(_ held: HeldPaste) { applied.append("paste") }
+  func apply(pane: PaneKey, imagePasting: Bool, error: String) { applied.append("image paste") }
   var drawsBanners: Bool { false }
   func lists(_ pane: PaneKey) -> Bool { false }
   func raise() { applied.append("raise") }

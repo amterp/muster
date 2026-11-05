@@ -31,6 +31,8 @@ pub(crate) fn is_use(payload: &request::Payload) -> bool {
         request::Payload::KeyDown(_)
             | request::Payload::SendText(_)
             | request::Payload::Paste(_)
+            | request::Payload::PasteImage(_)
+            | request::Payload::PrepareImagePaste(_)
             | request::Payload::Wheel(_)
             | request::Payload::Mouse(_)
     )

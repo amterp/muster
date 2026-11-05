@@ -20,6 +20,7 @@ mod group_messages;
 mod handing_over;
 mod hiding;
 mod holding;
+mod image_paste;
 mod inherited;
 mod just_made;
 mod late_daemon;

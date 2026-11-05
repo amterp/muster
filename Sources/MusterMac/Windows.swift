@@ -23,6 +23,7 @@ public protocol ShellWindow: AnyObject {
   func apply(problems: [Problem])
   func apply(groups: [SidebarModel.MessageGroup])
   func hold(_ held: HeldPaste)
+  func apply(pane: PaneKey, imagePasting: Bool, error: String)
   /// Whether this window draws the banners for messages to the human now: it is the main window,
   /// and on screen.
   var drawsBanners: Bool { get }

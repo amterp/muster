@@ -156,9 +156,13 @@ fn daemon_running(program: Option<&str>) -> Daemon {
 
 /// Opens a window on `daemon` with `config` in its file, and attaches its pane as a surface
 /// does.
-fn open_on(daemon: &Daemon, config: &str) -> String {
+pub(super) fn open_on(daemon: &Daemon, config: &str) -> String {
+    open_at(&daemon.muster_config_with(config))
+}
+
+pub(super) fn open_at(config: &std::path::Path) -> String {
     assert_ok(&answer(request::Payload::Startup(Startup {
-        config_path: daemon.muster_config_with(config).to_string_lossy().into_owned(),
+        config_path: config.to_string_lossy().into_owned(),
         ..Startup::default()
     })));
     assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
@@ -217,13 +221,13 @@ fn read(pane: &str) -> String {
     }
 }
 
-fn answer(payload: request::Payload) -> Response {
+pub(super) fn answer(payload: request::Payload) -> Response {
     let bytes = Request::new(payload).encode_to_vec();
     Response::decode(muster::dispatch(&bytes).as_slice())
         .expect("the core answers with a response this build knows")
 }
 
-fn assert_ok(response: &Response) {
+pub(super) fn assert_ok(response: &Response) {
     if let Some(response::Payload::Failure(failure)) = &response.payload {
         panic!("the core refused: {}", failure.reason);
     }

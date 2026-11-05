@@ -30,7 +30,7 @@ use muster_core::equalize::{self, Evenly};
 use muster_core::fields;
 use muster_core::focus_history::FocusHistory;
 use muster_core::helpers::{MakerHearing, quiet_in_effect};
-use muster_core::input::{InputEvent, InputSink, PaneInput, PaneInputSettings};
+use muster_core::input::{ImageInput, InputEvent, InputSink, PaneInput, PaneInputSettings};
 use muster_core::intent::{
     BackendChannel, BackendIntent, Branch, Grid, InTree, Maker, MoveDestination, Outcome, Refusal,
     Side,
@@ -845,6 +845,7 @@ struct Backend {
     channel: Arc<dyn BackendChannel>,
     /// Where its panes' keystrokes go, one connection for all of them.
     input: Arc<dyn InputSink>,
+    images: Arc<ImageInput>,
     /// Held because dropping it hangs up and stops following.
     follower: Follower,
     /// How to start it again once it has gone, for a daemon Muster manages.
@@ -1366,6 +1367,7 @@ pub(crate) fn reset() {
         poison::lock(&APPLIED_DAEMONS, "applied-daemons").clear();
     }
     ATTACH_ENDED.notify_all();
+    crate::image_paste::forget();
     *poison::lock(&SESSION, "session") = Session::default();
 
     startup::forget();
@@ -1460,8 +1462,12 @@ impl Session {
             ),
             description.clone(),
         ));
-        let input =
-            Arc::new(DaemonInput::new(Arc::clone(&connection), muster_vt::key_code, description));
+        let images = Arc::new(ImageInput::new(Arc::new(DaemonInput::new(
+            Arc::clone(&connection),
+            muster_vt::key_code,
+            description,
+        ))));
+        let input: Arc<dyn InputSink> = images.clone();
         self.backends.insert(
             id,
             Backend {
@@ -1471,6 +1477,7 @@ impl Session {
                 socket_path: reached.socket_path,
                 channel,
                 input,
+                images,
                 follower,
                 start_again: reached.start_again,
             },
@@ -2581,6 +2588,44 @@ fn asks_a_closed_window(payload: &request::Payload) -> bool {
 /// The pane a window's keyboard feeds, if it has one.
 pub(crate) fn keyboard_pane(window: WindowId) -> Option<Arc<AttachedPane>> {
     poison::lock(&SESSION, "session").keyboard_pane(window)
+}
+
+pub(crate) struct ImageDestination {
+    pub(crate) key: PaneKey,
+    pub(crate) input: Arc<ImageInput>,
+    pub(crate) socket: String,
+    pub(crate) remote: bool,
+    pub(crate) ready: bool,
+    pub(crate) connected: bool,
+}
+
+pub(crate) fn image_destination(
+    window: WindowId,
+    named: Option<PaneKey>,
+) -> Option<ImageDestination> {
+    let session = poison::lock(&SESSION, "session");
+    let key = named.or_else(|| session.keyboard_key(window))?;
+    let backend = session.backends.get(&key.daemon)?;
+    let mirror = poison::lock(&backend.mirror, "mirror");
+    let pane = mirror.pane(&key.pane)?;
+    Some(ImageDestination {
+        ready: pane.image_paste,
+        key,
+        input: backend.images.clone(),
+        socket: backend.socket_path.clone(),
+        remote: backend.tunnel.is_some(),
+        connected: backend.follower.connection().control().is_some(),
+    })
+}
+
+pub(crate) fn cancel_image(daemon: &DaemonId, pane: &PaneId) {
+    let input = poison::lock(&SESSION, "session")
+        .backends
+        .get(daemon)
+        .map(|backend| backend.images.clone());
+    if let Some(input) = input {
+        input.forget(pane);
+    }
 }
 
 /// A pane this window is drawing, by name: the one under the pointer, or the one a held paste
@@ -6017,6 +6062,7 @@ fn report(daemon: &DaemonId, change: &Change) {
         }
     }
     if let Change::PaneRemoved { pane, .. } = change {
+        cancel_image(daemon, pane);
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
     }
 }
@@ -6157,6 +6203,13 @@ fn restored_from_disk(daemon: &DaemonId, restored: &Restored) {
 /// somebody's work. It stands while the restart needs somebody, and a `RestartSettled` takes it
 /// down.
 fn restarted(daemon: &DaemonId, restart: &Restart) {
+    let input = poison::lock(&SESSION, "session")
+        .backends
+        .get(daemon)
+        .map(|backend| backend.images.clone());
+    if let Some(input) = input {
+        input.forget_all();
+    }
     log::warn(
         "daemon.restarted",
         fields! {
