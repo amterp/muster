@@ -5316,6 +5316,60 @@ mod tests {
     }
 
     #[test]
+    fn a_taken_over_pane_does_not_keep_an_unverified_prompt_cover() {
+        use std::os::fd::FromRawFd;
+
+        let dir = scratch("cover");
+        let (shared, _events) = session(&dir.join("daemon.state.json"));
+        let (mut master, mut slave) = (-1, -1);
+        // SAFETY: both pointers are writable; null arguments select the PTY defaults.
+        assert_eq!(
+            unsafe {
+                libc::openpty(
+                    &raw mut master,
+                    &raw mut slave,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        // SAFETY: openpty returned two descriptors owned only by this test.
+        let (master, _slave) =
+            unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+        let record = proto::Pane {
+            pane: "p1".into(),
+            agent: Some("claude".into()),
+            agent_state: proto::AgentState::Idle.into(),
+            prompt_covered_by: Some("a menu that was dismissed during handoff".into()),
+            ..Default::default()
+        };
+        let mut session = shared.lock();
+        session
+            .adopt(
+                record,
+                Grid::FALLBACK,
+                master,
+                None,
+                b"",
+                Resuming {
+                    detection: None,
+                    turns: Turns::default(),
+                    session_id: None,
+                    resume: None,
+                    oldest_row: 0,
+                    maker_told: None,
+                    turn: (None, None),
+                    quiet_before_orphaned: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(session.snapshot().panes[0].prompt_covered_by, None);
+        session.close_everything();
+    }
+
+    #[test]
     fn a_pane_handed_over_in_no_tab_is_found() {
         let tab = |name: &str, panes: [&str; 2]| persist::Tab {
             name: name.to_string(),

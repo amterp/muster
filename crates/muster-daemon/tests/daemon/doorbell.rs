@@ -1948,7 +1948,7 @@ fn a_maker_closed_on_another_machine_frees_its_helpers_here() {
 }
 
 #[test]
-fn a_prompt_cover_leaves_with_its_agent() {
+fn a_prompt_cover_is_rechecked_on_takeover_and_leaves_with_its_agent() {
     let mut agent = Agent::in_a_pane();
     agent.type_in("menu", true);
     agent.until_shows("PROBE-MENU");
@@ -1956,6 +1956,14 @@ fn a_prompt_cover_leaves_with_its_agent() {
         "the pane to describe its covering menu",
         || snapshot(&mut agent.control).panes[0].prompt_covered_by.is_some(),
         || "the menu has not been described".to_string(),
+    );
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    agent.control = agent.daemon.connect();
+    until(
+        "the successor to read the still visible menu",
+        || snapshot(&mut agent.control).panes[0].prompt_covered_by.is_some(),
+        || "the covering menu was not read after takeover".to_string(),
     );
     agent.type_in("quit", true);
     until(

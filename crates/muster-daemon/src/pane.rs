@@ -1886,6 +1886,7 @@ mod tests {
             state: proto::AgentState::Working,
             reported: false,
             unreadable: false,
+            prompt_covered_by: None,
             waiting: None,
         };
         let mut unsent = None;
