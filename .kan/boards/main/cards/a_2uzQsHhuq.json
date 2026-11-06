@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "api-clear-an-agent-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793969418025,
+  "creator": "Alexander Terp",
+  "description": "**Wanted:** Foreman's phone app lets the owner compact an agent from its conversation through `pane.compact`, and he asked about clearing one too (Chat Notes, 2026-11-03): \"ideally we can support compaction. I don't know if there are other similar kinds of things that come to mind clear as well. And ultimately, hoping that muster can kind of offer these as part of its API, and it can do the harness translation as needed.\"\n\nThe API has no verb for this, so a client would have to type `/clear` with `pane.send` and know each harness's command. Codex's is `/new`.\n\n**Proposed:** a `pane.clear` beside `pane.compact`, typed once the agent is idle at an empty prompt, refused for a harness Muster cannot clear. Harness skills stay out: the owner dropped them because Muster would have to learn which skills each agent has.",
+  "id": "a_2uzQsHhuq",
+  "position": "b1b",
+  "title": "API: clear an agent's context, as pane.compact compacts it",
+  "type": "feature",
+  "updated_at_millis": 1793969418025,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793969418025}
+  ]
+}

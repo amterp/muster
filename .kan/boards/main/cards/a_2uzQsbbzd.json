@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "api-say-when-an",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1793969418224,
+  "creator": "Alexander Terp",
+  "description": "**Wanted:** the owner ran `/clear` at the desk and the agent's conversation in Foreman showed nothing (Chat Notes, 2026-11-03): \"there's nothing in the foreman messages with the agents to indicate that the context is cleared. Ideally, muster has a better visibility into this kind of stuff and thus can also provide it to foreman.\"\n\nThe API gives a pane's `session` and `facts.context_used`, and no event for either change. A client could only guess from `context_used` falling or `session` changing. Not checked: whether `session` changes on `/clear`, which a_2jSDHoYDD believed and did not verify. Compaction keeps the session.\n\n**Proposed:** an event on the API's watch stream with the pane, the kind (cleared, compacted) and the time, so a client can mark the moment in a conversation.",
+  "id": "a_2uzQsbbzd",
+  "position": "b1c",
+  "title": "API: say when an agent's context was cleared or compacted",
+  "type": "feature",
+  "updated_at_millis": 1793969418224,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793969418224}
+  ]
+}
