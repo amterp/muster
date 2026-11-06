@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-claude-code-pane-the",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794003491485,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-02 on 0.20.0, devenv panes viewed from the laptop's window. Four Claude Code panes the daemon had resumed that morning with `claude --resume \u003cid\u003e`, with no turn since, reported `context_used` 0 in `muster window --json` (`0% context` in `muster window`). Their transcripts' last assistant usage records said 478k, 513k, 607k and 697k tokens. Every other pane's figure matched its transcript.\n\nCosts: an agent choosing which idle panes to restart, skipping any over 300k tokens, would have restarted the four largest sessions, the ones the rule was meant to spare. Nothing marks the 0 as a figure no turn has produced yet.\n\nInferred, not confirmed: the figure is the status line's `context_window.used_percentage` (extras/claude-code/statusline.sh), and a freshly resumed Claude Code reports 0 there until its first request. Not rechecked on 0.22.\n\nPossibly: after a resume, report the context as unknown until a turn has run, or seed it from the session transcript's last usage record.",
+  "id": "a_2vDjHG6BP",
+  "position": "b2H",
+  "title": "A Claude Code pane the daemon resumed reads 0% context until its next turn",
+  "type": "bug",
+  "updated_at_millis": 1794003491485,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794003491485}
+  ]
+}

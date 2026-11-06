@@ -1,0 +1,31 @@
+{
+  "_v": 4,
+  "alias": "a-numbered-chord",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2tu4sVS7U",
+      "body": "Inferred, not confirmed: the run log records no key releases, so the KeyUp is read from the code and the ~70 ms timing. Intermittent: a later ⌘1 ⌘2 worked with 293 ms between the presses and no disarm between them, which fits only if 1 was still held, or if the release went somewhere that does not reach the core. Reproduce by releasing 1 deliberately before pressing 2.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793808892674
+    },
+    {
+      "id": "c_2tu933Oww",
+      "body": "Correction after more log reading: the KeyUp explanation is probably wrong. A ⌘1 pressed from inside the first tab (16:12:22) stayed armed for 1.5 s, until ⌘ came up. Every ⌘1 that switched from tab 2 to tab 1 (6 of 6 at 16:10-16:11) was disarmed 70-170 ms later, before any ⌘2. A key release would happen the same way in both cases, so the trigger is something the shell sends after the shown tab changes. The run log records no request names, so which request it is cannot be read from the log. Candidates: mouse motion from the newly shown surface under a stationary pointer (SurfaceView tracks .mouseMoved .activeAlways, and Mouse is not a read), or something else sent on a tab change. Next step: log the payload kind that triggers disarm(), or try ⌘2 then ⌘1 ⌘2 with the pointer over the sidebar.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793809052979
+    }
+  ],
+  "created_at_millis": 1793808873488,
+  "creator": "Alexander Terp",
+  "description": "Seen on 0.21 in a window of two tabs, the first holding two panes. Press ⌘1, release 1 while still holding ⌘, press 2: the keyboard goes to tab 2 rather than tab 1's second pane, though the pane badges were drawn after ⌘1.\n\nThe run log shows it each time: the ⌘1 roster.published says numbering 'panes in \u003ctab\u003e', about 70 ms later a roster.numbering 'tabs' line appears (which only disarm() writes), then ⌘2 publishes the other tab. 70 ms is how long the 1 key is held.\n\nCause: the menu consumes the ⌘1 keyDown, but AppKit still delivers the keyUp of 1 to the focused SurfaceView, whose keyUp(with:) sends Core.send(keyUp:) whenever the pane is typeable. In handler.rs, KeyUp is neither in muster_proto::only_reads nor in leaves_the_chord_armed, so the release counts as 'a request that changes something' and calls session::disarm before the second press. Only a ⌘2 pressed while 1 is still down (key rollover) survives.\n\nLikely fix: a key release should leave the chord armed (the key's press already did whatever disarming it was owed), for example KeyUp in leaves_the_chord_armed. Worth a seam test that sends PressNumberedChord, KeyUp, PressNumberedChord and expects the pane inside the first tab.",
+  "id": "a_2tu4NR8WV",
+  "position": "b1V",
+  "title": "⌨️ A numbered chord that switches tabs is disarmed before its second press, so ⌘1 ⌘2 lands on tab 2",
+  "type": "bug",
+  "updated_at_millis": 1793809053142,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1793808873488}
+  ]
+}

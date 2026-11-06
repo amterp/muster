@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "report-waiting-fails",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794003506641,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-05 on 0.22.0 on the devenv, twice from the same worker helper pane. Before ending its turn the agent ran `\"$MUSTER_DAEMON\" report --waiting \"...\" --until-message-from \u003cpane\u003e`, which exited 1 with:\n\n    muster-daemon report: the daemon did not answer within 2s\n\nThe messages it was waiting on arrived afterward, so the wait worked, but the agent could not tell whether the report had been recorded or whether to retry. In the same session `muster window`, `muster pane compact`, and helper creation and closing printed that the window 'did not answer within 2s - its machine may be asleep' and fell back to this machine's daemon, so a slow window on the other machine was routine that day.\n\nStill so on main: `send_within` in crates/muster-daemon/src/report.rs gives up with 'the daemon did not answer within {patience}' and leaves the report thread running.\n\nCosts: an agent either retries a report that may already be in, or ends its turn unsure its wait was declared.\n\nPossibly: say in the error that the report may still land and whether retrying is safe (or make it idempotent and say so), and consider a longer patience for report.",
+  "id": "a_2vDjfsyZ2",
+  "position": "b2L",
+  "title": "report --waiting fails with 'the daemon did not answer within 2s' and does not say whether the report landed",
+  "type": "bug",
+  "updated_at_millis": 1794003506641,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794003506641}
+  ]
+}

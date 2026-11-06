@@ -14,6 +14,12 @@
       "created_at_millis": 1793143804388
     },
     {
+      "id": "c_2soTr5JPA",
+      "body": "2026-11-02, tool=muster, low severity: a Codex builder posted its completed commit and checks to its director, then went idle awaiting review. After two minutes @muster woke only the builder to say the director had not read the handoff because its prompt held unsent text. The builder read that notice and ended its turn without posting because there was no new work or question. About 18 seconds later @muster told the director that the builder \"went idle without posting to you since it went to work\" and might have ended on an error.\n\nThis is another no-reply turn, but the input is Muster's own held-wake notice rather than a stay-idle instruction from the director. A notification-only turn should not create a fresh unreported-work warning. No workaround was applied; an extra standing-by post would add another wake without advancing the review.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793647789752
+    },
+    {
       "id": "c_2swvhlJNr",
       "body": "2026-11-02, Foreman integrator cactus with helpers sequoia, guppy and quill: four more in 20 minutes. Twice the same case as this card: guppy and quill were told to hold until another worker's stage landed, did so, and each raised 'went idle without posting'. Twice a new variant: sequoia ended its turn waiting on its own two reviewer helpers (marble, blossom, one still working), which is waiting on work, not idle without reporting. Suggest skipping the notice while the helper has helpers of its own that are working, or have posted to it since it last reported.",
       "author": "Alexander Terp",

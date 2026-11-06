@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "clicking-a-sidebar",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794003492598,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-06 on 0.22.0 (cask), twice in one afternoon, typing into a Claude Code pane in a devenv tab: keys stopped reaching the focused pane, and digits moved the highlight between sidebar rows.\n\nRead from the code and the run log: the agent list (`SidebarTable`, a plain NSTableView, Sources/MusterMac/Sidebar.swift) became first responder after a row click. When the clicked row is the pane that already has the keyboard, the core publishes nothing (`publish.unchanged cause=focus`), so `TabView.apply(keyboard:)`, the only code that moves the responder to a surface, never runs. Clicking the terminal does not recover it: `SurfaceView.mouseDown` only calls `onClick`, which sends a focus request that is again unchanged, and AppKit does not make a custom view first responder on a click. The run log showed three clicks reaching the surface (one made a selection and an OSC 52 clipboard write) with keys still lost. Neither path logs the dropped keys: no `input.key`, no refusal. Confirmed on main that SidebarView sets no `refusesFirstResponder` and `SurfaceView.mouseDown` makes no `makeFirstResponder` call.\n\nWorkaround: focus another pane and come back.\n\nCosts: typing into a pane silently goes nowhere, and the obvious recovery, clicking the pane, does nothing.\n\nPossibly: (1) `table.refusesFirstResponder = true` in SidebarView, so a row click never takes the keyboard (losing type-select and arrow keys in the list, which keys meant for panes do not need); (2) `SurfaceView.mouseDown` makes itself first responder when it is not, as Ghostty's own AppKit surface view does, which also recovers from a banner or anything else that takes the keyboard; (3) a debug record naming the first responder on window focus, so the next 'keys vanish' report is readable from the log.",
+  "id": "a_2vDjJE0Sg",
+  "position": "b1d",
+  "title": "Clicking a sidebar row can leave the keyboard on the sidebar, and clicking the terminal does not get it back",
+  "type": "bug",
+  "updated_at_millis": 1794003492598,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794003492598}
+  ]
+}

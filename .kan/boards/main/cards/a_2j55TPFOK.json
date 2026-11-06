@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2vDjv2PdL",
+      "body": "2026-11-02, 0.20.0, laptop: the first gap bit the person typing in the held pane, not only someone reading `muster window`. A Codex builder helper posted its report to its maker, a Claude Code pane; the wake was held because the maker's prompt held unsent text the person had typed there (by the time they looked it read 'did it get stuck?'). @muster told the builder after two minutes, and the builder decided to wait. Nothing in the maker's pane, where the person was typing, said a message for its agent was waiting, so they took the builder to have stalled. Same again later that session with another report held 2+ minutes. The 'went idle without posting' notice that followed each time is on a_2mSyvanM4.\n\nPossibly: while a wake is held on unsent input, show it where the typist looks, such as a '1 message waiting' badge on the pane's border or header.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794003515963
+    }
+  ],
   "created_at_millis": 1792209734715,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-16 after a held wake became visible to its sender (a_2hIfuUkdQ). Three gaps left, each minor: muster window does not show a held wake on the pane's row, for a person rather than an agent to see at a glance; a post to another machine's member carries no held reason, like until and activity (a peer Reached would need all three); and a wake whose wake command is running sits in no list, so msg who reads it as rung and not read for those seconds (Codex panes only).",
@@ -13,7 +21,7 @@
   "position": "b1K",
   "title": "A held wake's reason, beyond msg who and the post's answer",
   "type": "enhancement",
-  "updated_at_millis": 1792209734715,
+  "updated_at_millis": 1794003515963,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792209734715}
   ]

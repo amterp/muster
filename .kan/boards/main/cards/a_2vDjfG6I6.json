@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "compact-an-idle",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794003506274,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-03 on the devenv: a Claude Code pane at 432k tokens (43%) sat idle about 2h45m and Claude Code's own idle compaction never fired. Coming back to it meant a full uncached read of 432k tokens, or a compaction that pays that read anyway.\n\nClaude Code's idle compaction is best-effort. Read from the 2.1.312 bundle: it arms a timer at 90% of the one-hour cache lifetime after a turn ends, then skips silently on several conditions (a near-limit rate-limit status, the timer firing more than 60 s late, a newer request, a UI refusal). The skip reason goes only to Anthropic's telemetry, nothing local. It does work on this machine ('Compacted while idle' in several transcripts on 2.1.302-2.1.312), but not for this pane, and nothing showed why.\n\nMuster already knows each pane's state, how long it has been idle and its context %. a_2luwIdT57 would show when a cache is about to go cold; this would act on it.\n\nPossibly: an opt-in rule that runs `muster pane compact` on an idle Claude Code pane before its cache expires, for example idle at least ~45 minutes and context at least a configurable threshold, with a default 'what to keep' text. Skip panes blocked at a dialog or waiting on declared work, and skip a pane whose harness already compacted (its context % dropped since the turn ended).",
+  "id": "a_2vDjfG6I6",
+  "position": "b2K",
+  "related": [
+    "a_2luwIdT57",
+    "a_2o3Se3dO0"
+  ],
+  "title": "Compact an idle Claude Code pane before its prompt cache expires, when Claude Code's own idle compaction does not fire",
+  "type": "feature",
+  "updated_at_millis": 1794003515763,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794003506274}
+  ]
+}

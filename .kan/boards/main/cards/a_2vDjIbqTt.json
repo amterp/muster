@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-worker-s-post-to",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794003492231,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-05 on 0.22.0 on the devenv, an integrator Claude Code pane with five Claude Code and Codex worker helpers that post to it with `muster msg post`. One worker's post ('slot 2 plan ready: ...', around 17:22) never produced a wake in the integrator, though it ended several turns after the post landed and wakes for other groups' posts arrived in that time. The integrator found the post only by reading the worker's pane (`muster pane read --turn`) and then `muster msg log --group \u003cgroup\u003e`; `muster msg read` then showed it as unread. The worker sat waiting about 15 minutes.\n\nCosts: a silent stall in a round; nothing told the sender or the receiver that the wake was lost.\n\nNot one of the causes a_2hIfuUkdQ broke down (a long Bash row read as working, a box over the prompt): the receiver was ending turns and taking other wakes.\n\nPossibly: check how a wake is queued for a pane that is mid-turn when the post lands, and whether its later idle rings it; and have any later wake name every group with unread posts, as a_2hIfuUkdQ wanted.",
+  "id": "a_2vDjIbqTt",
+  "position": "b2J",
+  "related": [
+    "a_2hIfuUkdQ"
+  ],
+  "title": "A worker's post to its maker never woke the maker, though later wakes from other groups did",
+  "type": "bug",
+  "updated_at_millis": 1794003515516,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794003492231}
+  ]
+}
