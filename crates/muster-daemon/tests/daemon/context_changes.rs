@@ -116,7 +116,7 @@ fn played(hooks: &str, reporting_as: &str, recorded: &str) -> Vec<ContextChangeK
         for command in commands(&hooks, &event, &row) {
             run(&command.replace(reporting_as, "--agent claude"), &row, &daemon);
         }
-        let now = record(&snapshot(&mut control), "p1").context_change;
+        let now = record(&snapshot(&mut control), "p1").context_change.clone();
         if let Some(change) = now.filter(|change| Some(change.at_ms) != last) {
             last = Some(change.at_ms);
             seen.push(change.kind());
@@ -240,7 +240,7 @@ fn forgetting_an_agents_facts_leaves_its_context_change() {
     said(&mut control, with_a_fact);
     let clear = pane_request::Report { clear: true, ..report(ContextChangeKind::None) };
     said(&mut control, clear);
-    let held = record(&snapshot(&mut control), "p1").context_change;
+    let held = record(&snapshot(&mut control), "p1").context_change.clone();
     assert_eq!(held.map(|change| change.kind()), Some(Compacted));
 }
 
@@ -253,7 +253,7 @@ fn two_reports_of_one_compaction_are_one_change() {
         context_change_id: Some(id.to_string()),
         ..report(Compacted)
     };
-    let change = |control: &mut Control| record(&snapshot(control), "p1").context_change;
+    let change = |control: &mut Control| record(&snapshot(control), "p1").context_change.clone();
 
     said(&mut control, named("boundary-1"));
     let first = change(&mut control);
@@ -291,7 +291,7 @@ fn a_hook_left_waiting_shares_its_parents_compaction() {
         std::fs::write(&transcript, format!("{boundary}\n")).unwrap();
     });
 
-    let held = record(&snapshot(&mut control), "p1").context_change;
+    let held = record(&snapshot(&mut control), "p1").context_change.clone();
     assert_eq!(held.map(|change| change.kind()), Some(Compacted));
     let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
     assert_eq!(log.matches("session.context.changed").count(), 1, "{log}");
@@ -305,7 +305,7 @@ fn a_session_started_clears_only_a_session_the_agent_still_held() {
         session_id: Some(id.to_string()),
         ..report(ContextChangeKind::SessionStarted)
     };
-    let change = |control: &mut Control| record(&snapshot(control), "p1").context_change;
+    let change = |control: &mut Control| record(&snapshot(control), "p1").context_change.clone();
 
     said(&mut control, started("s-1"));
     assert_eq!(change(&mut control), None, "the agent's first session replaced nothing");

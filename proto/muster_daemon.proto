@@ -1810,6 +1810,8 @@ message ContextChange {
   ContextChangeKind kind = 1;
   // When the daemon heard of it, in milliseconds since the Unix epoch by the daemon's clock.
   uint64 at_ms = 2;
+  // What the harness called it (`Report.context_change_id`), when it named it.
+  optional string id = 3;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

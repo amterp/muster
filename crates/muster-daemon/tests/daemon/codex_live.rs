@@ -292,7 +292,7 @@ fn codexs_hooks_say_when_its_context_was_compacted_and_cleared() {
         let before = change();
         type_line(input, "hooked", line);
         let said = until_turns(TURN, &format!("{kind:?} after {line}"), || {
-            change().is_some_and(|now| Some(now) != before && now.kind() == kind)
+            change().is_some_and(|now| now.kind() == kind && Some(now) != before)
         });
         assert!(said, "{line} never said {kind:?}");
     };

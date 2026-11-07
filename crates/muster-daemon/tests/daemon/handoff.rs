@@ -131,15 +131,22 @@ fn a_pane_keeps_its_last_context_change_across_a_handoff() {
         agent: "claude".to_string(),
         ..Default::default()
     };
+    report.context_change_id = Some("boundary-1".to_string());
     report.set_context_change(proto::ContextChangeKind::Compacted);
+    let again = report.clone();
     expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
-    let before = crate::persistence::record(&snapshot(&mut control), "p1").context_change;
+    let before = crate::persistence::record(&snapshot(&mut control), "p1").context_change.clone();
     assert!(before.is_some());
 
     replaced(&mut daemon);
 
     let mut control = daemon.connect();
-    let after = crate::persistence::record(&snapshot(&mut control), "p1").context_change;
+    let after = crate::persistence::record(&snapshot(&mut control), "p1").context_change.clone();
+    assert_eq!(after, before);
+
+    // A hook left waiting across the handoff, reporting the same compaction.
+    expect(&mut control, pane(pane_request::Request::Report(again)), proto::Outcome::AlreadySo);
+    let after = crate::persistence::record(&snapshot(&mut control), "p1").context_change.clone();
     assert_eq!(after, before);
 }
 

@@ -2759,7 +2759,8 @@ impl Session {
         session_before: Option<&str>,
     ) -> bool {
         let pane = &mut self.panes[index];
-        let repeated = change.id.is_some() && change.id == pane.context_change_id;
+        let held = pane.record.context_change.as_ref().and_then(|held| held.id.as_deref());
+        let repeated = change.id.is_some() && change.id.as_deref() == held;
         if pane.record.agent.as_deref() != Some(agent) || repeated {
             return false;
         }
@@ -2775,9 +2776,8 @@ impl Session {
             }
             said => said,
         };
-        pane.context_change_id = change.id;
-        let mut change =
-            proto::ContextChange { at_ms: state_since::now_ms(), ..Default::default() };
+        let id = change.id;
+        let mut change = proto::ContextChange { at_ms: state_since::now_ms(), id, kind: 0 };
         change.set_kind(kind);
         pane.record.context_change = Some(change);
         log::info(
