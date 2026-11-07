@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.11
+// Version: 1.12
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -549,7 +549,25 @@ message PaneRequest {
     // or unique name; stored as its resolved identity in AgentFacts. Needs nonempty waiting
     // and cannot be combined with waiting_until_exits.
     optional string waiting_until_message_from = 17;
+    // Since 1.12. The agent's context was cleared or compacted, or a session started that clears
+    // it if the pane's agent held another. Needs its agent, and counts only while detection finds
+    // that agent in the pane. A session's start is judged by `session_id` in this same report.
+    ContextChangeKind context_change = 18;
+    // Since 1.12. What the harness calls this change, when it names one: a second report naming
+    // the change the pane last took changes nothing, as two hooks waiting on one transcript do.
+    optional string context_change_id = 19;
   }
+}
+
+// What happened to a pane's agent's context.
+enum ContextChangeKind {
+  CONTEXT_CHANGE_KIND_NONE = 0;
+  CONTEXT_CHANGE_KIND_CLEARED = 1;
+  CONTEXT_CHANGE_KIND_COMPACTED = 2;
+  // Only in a report: a session started, by no source that says why. Codex says this for `/new`,
+  // which starts a session as a process's first one does, and the daemon makes it CLEARED when
+  // the pane's agent held another session, since that agent is still running.
+  CONTEXT_CHANGE_KIND_SESSION_STARTED = 3;
 }
 
 enum SubagentChange {
@@ -1785,6 +1803,21 @@ message Pane {
   optional string prompt_covered_by = 25;
   // Since 1.11. A supported agent's image composer is currently readable.
   bool image_paste = 26;
+  // Since 1.12. The last time the pane's agent's context was cleared or compacted, as its adapter
+  // reported it. Kept across a handoff, and never written to the state file.
+  ContextChange context_change = 27;
+  // Since 1.12. `label` was taken from the agent's session (`Report.session_name`) rather than
+  // given to the pane. False while it has no label.
+  bool label_from_session = 28;
+}
+
+// One change to an agent's context (`Pane.context_change`).
+message ContextChange {
+  ContextChangeKind kind = 1;
+  // When the daemon heard of it, in milliseconds since the Unix epoch by the daemon's clock.
+  uint64 at_ms = 2;
+  // What the harness called it (`Report.context_change_id`), when it named it.
+  optional string id = 3;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.
