@@ -1,0 +1,6 @@
+{"note": "step: first prompt"}
+{"recorded_at": "2026-11-07T03:10:25.363+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3fc-3e45-7cb1-9c6b-3e2b3066acc4", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T21-10-15-01a1b3fc-3e45-7cb1-9c6b-3e2b3066acc4.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "startup"}
+{"note": "step: /fork"}
+{"note": "step: prompt after fork, asks what was said before"}
+{"recorded_at": "2026-11-07T03:10:42.597+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3fc-85f9-7841-9365-0e33bb0886bd", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T21-10-33-01a1b3fc-85f9-7841-9365-0e33bb0886bd.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "fork"}
+{"note": "done"}

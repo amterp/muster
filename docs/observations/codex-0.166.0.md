@@ -65,7 +65,8 @@ Codex says a compaction as it finishes, and a clear only at the next prompt.
 Recorded 2026-11-06 with `gpt-6.1-terra` at low effort, with no Muster daemon: a script drove Codex
 in a PTY with project hooks that logged their JSON input. `context-hooks-asked.jsonl` is one session
 by typed commands, and `context-hooks-automatic.jsonl` is one with
-`model_auto_compact_token_limit=3000`, a sub-agent, and a `resume`.
+`model_auto_compact_token_limit=3000`, a sub-agent, and a `resume`. `context-hooks-fork.jsonl` is a
+`/fork`.
 
 | What happened | Hooks that ran | `session_id` |
 |---|---|---|
@@ -74,6 +75,7 @@ by typed commands, and `context-hooks-automatic.jsonl` is one with
 | `/compact`, then Esc | `PreCompact`, `Interrupt` | same |
 | `/clear` | nothing, until the next prompt: `SessionStart` with `source: clear` | new |
 | `/new` | nothing, until the next prompt: `SessionStart` with `source: startup` | new |
+| `/fork` | nothing, until the next prompt: `SessionStart` with `source: fork`, and the conversation carries on | new |
 | `codex resume` | `SessionStart` with `source: resume` at the first prompt | same |
 
 `/new` reads like a process starting. Only the session it replaces tells them apart: the process

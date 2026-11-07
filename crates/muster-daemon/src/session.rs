@@ -2643,8 +2643,8 @@ impl Session {
         if let Some(why) = session_id.as_deref().and_then(|id| facts::session_id(id).err()) {
             return Reply::refused(why);
         }
-        let context_change = report.context_change();
-        let names_a_change = context_change != proto::ContextChangeKind::None;
+        let change = ContextReport::taken_from(&mut report);
+        let names_a_change = change.kind != proto::ContextChangeKind::None;
         if (report.compacting || names_a_change) && agent.is_empty() {
             return Reply::refused("a compaction or a change of context needs its agent's name");
         }
@@ -2683,7 +2683,7 @@ impl Session {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
-        let identified = self.session_and_context(index, &agent, session_id, context_change);
+        let identified = self.session_and_context(index, &agent, session_id, change);
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
@@ -2738,7 +2738,7 @@ impl Session {
         index: usize,
         agent: &str,
         session_id: Option<String>,
-        change: proto::ContextChangeKind,
+        change: ContextReport,
     ) -> bool {
         let before = self.panes[index].session_id.clone();
         let identified = self.session_identified(index, agent, session_id);
@@ -2755,14 +2755,15 @@ impl Session {
         &mut self,
         index: usize,
         agent: &str,
-        change: proto::ContextChangeKind,
+        change: ContextReport,
         session_before: Option<&str>,
     ) -> bool {
         let pane = &mut self.panes[index];
-        if pane.record.agent.as_deref() != Some(agent) {
+        let repeated = change.id.is_some() && change.id == pane.context_change_id;
+        if pane.record.agent.as_deref() != Some(agent) || repeated {
             return false;
         }
-        let kind = match change {
+        let kind = match change.kind {
             proto::ContextChangeKind::None => return false,
             proto::ContextChangeKind::SessionStarted => {
                 let replaced =
@@ -2774,6 +2775,7 @@ impl Session {
             }
             said => said,
         };
+        pane.context_change_id = change.id;
         let mut change =
             proto::ContextChange { at_ms: state_since::now_ms(), ..Default::default() };
         change.set_kind(kind);
@@ -4727,6 +4729,18 @@ fn given_name(label: Option<&str>) -> Option<&str> {
 
 /// How many names a pane's record remembers it was given before (`Pane.former_labels`).
 const FORMER_LABELS: usize = 8;
+
+/// What a report says happened to its agent's context, and what its harness calls that.
+struct ContextReport {
+    kind: proto::ContextChangeKind,
+    id: Option<String>,
+}
+
+impl ContextReport {
+    fn taken_from(report: &mut pane_request::Report) -> ContextReport {
+        ContextReport { kind: report.context_change(), id: report.context_change_id.take() }
+    }
+}
 
 /// Where a pane's label came from.
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -547,6 +547,9 @@ message PaneRequest {
     // it if the pane's agent held another. Needs its agent, and counts only while detection finds
     // that agent in the pane. A session's start is judged by `session_id` in this same report.
     ContextChangeKind context_change = 18;
+    // Since 1.12. What the harness calls this change, when it names one: a second report naming
+    // the change the pane last took changes nothing, as two hooks waiting on one transcript do.
+    optional string context_change_id = 19;
   }
 }
 
@@ -555,9 +558,9 @@ enum ContextChangeKind {
   CONTEXT_CHANGE_KIND_NONE = 0;
   CONTEXT_CHANGE_KIND_CLEARED = 1;
   CONTEXT_CHANGE_KIND_COMPACTED = 2;
-  // Only in a report: a session started, by no source that says why. A harness whose `/new`
-  // starts a session as a process's first one does says this, and the daemon makes it CLEARED
-  // when the pane's agent held another session, since that agent is still running.
+  // Only in a report: a session started, by no source that says why. Codex says this for `/new`,
+  // which starts a session as a process's first one does, and the daemon makes it CLEARED when
+  // the pane's agent held another session, since that agent is still running.
   CONTEXT_CHANGE_KIND_SESSION_STARTED = 3;
 }
 

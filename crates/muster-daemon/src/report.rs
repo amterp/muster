@@ -33,7 +33,7 @@ const FROM_FLAGS: [&str; 12] = [
     "session-name",
     "session-id",
     "session-source",
-    "compaction-in",
+    "compacted-in",
     "agent",
     "state",
 ];
@@ -47,7 +47,7 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID] [--session-source SOURCE] [--compacting] \
-    [--context-compacted [--compaction-in TRANSCRIPT]]] [--from FLAG=POINTER]...\n\n\
+    [--context-compacted | --compacted-in TRANSCRIPT]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. --effort is the reasoning effort the model runs at, as the harness \
@@ -77,10 +77,10 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     started the session, in the words of a hook's `source`: clear says the agent's context was \
     cleared, startup says so too when the agent still held another session, which --session-id \
     in the same report settles, and anything else says nothing. --context-compacted says the \
-    agent's context was compacted. --compaction-in names a Claude Code transcript that has to \
-    record the compaction first: a sub-agent's fires the same hooks as its parent's and records \
-    it elsewhere, so the report waits a few seconds for the transcript and sends nothing if it \
-    stays silent. Both need --agent. \
+    agent's context was compacted. --compacted-in says so about a Claude Code transcript, which \
+    has to record the compaction first: a sub-agent's fires the same hooks as its parent's and \
+    records it elsewhere, so the report waits a few seconds for the transcript and sends nothing \
+    if it stays silent. All three need --agent. \
     --from fills a flag from the JSON object on stdin, which a harness hands its hooks and \
     statusline: --from context-used=/context_window/used_percentage reads that JSON pointer, a \
     number or text, as --context-used's value. A value missing or null leaves the flag out, and \
@@ -97,7 +97,7 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let (report, compaction_in) =
+    let (mut report, compaction_in) =
         match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
             Ok(Parsed::Report(report, compaction_in)) => (*report, compaction_in),
             Ok(Parsed::Help) => {
@@ -115,10 +115,12 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
     if came_up_empty && says_nothing(&report) {
         return ExitCode::SUCCESS;
     }
-    if let Some(transcript) = compaction_in
-        && !crate::transcript::records_compaction(&transcript, crate::state_since::now_ms())
-    {
-        return ExitCode::SUCCESS;
+    if let Some(transcript) = compaction_in {
+        let started = crate::state_since::now_ms();
+        let Some(boundary) = crate::transcript::recorded_compaction(&transcript, started) else {
+            return ExitCode::SUCCESS;
+        };
+        report.context_change_id = Some(boundary);
     }
     let Some(socket) = std::env::var_os("MUSTER_DAEMON_SOCKET").map(PathBuf::from) else {
         eprintln!(
@@ -304,7 +306,10 @@ fn parse(
                 report.set_context_change(from_source(&value("--session-source")?));
             }
             "--context-compacted" => report.set_context_change(proto::ContextChangeKind::Compacted),
-            "--compaction-in" => compaction_in = Some(PathBuf::from(value("--compaction-in")?)),
+            "--compacted-in" => {
+                compaction_in = Some(PathBuf::from(value("--compacted-in")?));
+                report.set_context_change(proto::ContextChangeKind::Compacted);
+            }
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -320,9 +325,6 @@ fn parse(
         }
     }
     validate(&report)?;
-    if compaction_in.is_some() && report.context_change() != proto::ContextChangeKind::Compacted {
-        return Err("--compaction-in needs --context-compacted".to_string());
-    }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
         "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
@@ -365,8 +367,8 @@ fn validate(report: &pane_request::Report) -> Result<(), String> {
     }
     if report.context_change() != proto::ContextChangeKind::None && report.agent.is_empty() {
         return Err(
-            "--context-compacted and --session-source need --agent, naming the agent that is \
-             reporting"
+            "--context-compacted, --compacted-in and --session-source need --agent, naming the \
+             agent that is reporting"
                 .to_string(),
         );
     }
@@ -585,10 +587,16 @@ mod tests {
         assert!(parsed(&["--session-source", "clear"], Some("p1")).is_err());
     }
 
+    /// A sub-agent's compaction reads as its parent's unless the transcript says otherwise, so a
+    /// hook's input with no transcript to ask reports nothing, rather than a compaction unchecked.
     #[test]
-    fn a_transcript_only_confirms_a_compaction() {
-        let arguments = ["--agent", "claude", "--compaction-in", "/t.jsonl"];
-        assert!(parsed(&arguments, Some("p1")).is_err());
+    fn a_compaction_with_no_transcript_to_confirm_it_says_nothing() {
+        let arguments = ["--agent", "claude", "--from", "compacted-in=/transcript_path"];
+        let Filled { arguments: given, came_up_empty } =
+            filled_from(arguments.map(String::from).to_vec(), || Ok("{}".to_string())).unwrap();
+        assert!(came_up_empty);
+        let report = parsed(&given.iter().map(String::as_str).collect::<Vec<_>>(), Some("p1"));
+        assert!(says_nothing(&report.unwrap()));
     }
 
     /// A hook hands its session's id in the JSON on its standard input, however the session

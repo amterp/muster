@@ -53,5 +53,7 @@ field that differs between the two. The transcript does tell them apart, as `ai-
 
 `extras/claude-code` reports a clear from SessionStart's `source`, and a compaction from `PostCompact`
 only once the session's own transcript records it, in a hook that runs asynchronously. A sub-agent's
-compaction then reports nothing, after a five-second wait. A name a pane takes from `session_name`
+compaction then reports nothing, after a five-second wait. A sub-agent's hook still waiting when its
+parent compacts finds the parent's boundary, so a report names the boundary's `uuid` and the daemon
+takes each one once. A name a pane takes from `session_name`
 is marked as taken, and the mark cannot say which of section 4's two wrote it.

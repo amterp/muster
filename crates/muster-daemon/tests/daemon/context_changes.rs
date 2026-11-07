@@ -37,6 +37,10 @@ const CODEX_ASKED: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../corpus/codex-0.166.0/context-hooks-asked.jsonl"
 ));
+const CODEX_FORK: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../corpus/codex-0.166.0/context-hooks-fork.jsonl"
+));
 const CODEX_AUTOMATIC: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../corpus/codex-0.166.0/context-hooks-automatic.jsonl"
@@ -166,6 +170,12 @@ fn codexs_recorded_clear_new_and_compaction_reach_the_pane() {
     assert_eq!(played, [Compacted, Cleared, Cleared, Compacted]);
 }
 
+/// `/fork` starts another session and keeps the conversation, so it clears nothing.
+#[test]
+fn codexs_fork_keeps_its_context() {
+    assert_eq!(played(CODEX_HOOKS, "--agent codex", CODEX_FORK), []);
+}
+
 /// Six compactions fired the hooks, one of them a sub-agent's, which says so. Cancelling one
 /// with Esc and resuming change nothing.
 #[test]
@@ -232,6 +242,59 @@ fn forgetting_an_agents_facts_leaves_its_context_change() {
     said(&mut control, clear);
     let held = record(&snapshot(&mut control), "p1").context_change;
     assert_eq!(held.map(|change| change.kind()), Some(Compacted));
+}
+
+/// A sub-agent's hook can still be waiting on the transcript when its parent compacts, and then
+/// finds the parent's boundary too: both report it, and it is one compaction.
+#[test]
+fn two_reports_of_one_compaction_are_one_change() {
+    let (_daemon, mut control) = agent_in_p1();
+    let named = |id: &str| pane_request::Report {
+        context_change_id: Some(id.to_string()),
+        ..report(Compacted)
+    };
+    let change = |control: &mut Control| record(&snapshot(control), "p1").context_change;
+
+    said(&mut control, named("boundary-1"));
+    let first = change(&mut control);
+    expect(
+        &mut control,
+        pane(pane_request::Request::Report(named("boundary-1"))),
+        proto::Outcome::AlreadySo,
+    );
+    assert_eq!(change(&mut control), first, "the same boundary again");
+
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    said(&mut control, named("boundary-2"));
+    assert_ne!(change(&mut control), first, "another compaction");
+}
+
+/// As recorded, a sub-agent's `PostCompact` was still within its wait when its parent's began, with
+/// one transcript between them, and the shipped hook has to come to one change.
+#[test]
+fn a_hook_left_waiting_shares_its_parents_compaction() {
+    let (daemon, mut control) = agent_in_p1();
+    let scratch = Scratch::new("context-changes-overlap");
+    let transcript = scratch.0.join("transcript.jsonl");
+    std::fs::write(&transcript, "").unwrap();
+    let hooks: serde_json::Value = serde_json::from_str(CLAUDE_HOOKS).unwrap();
+    let input = serde_json::json!({ "transcript_path": transcript.display().to_string() });
+    let command = commands(&hooks, "PostCompact", &input).remove(0);
+
+    std::thread::scope(|threads| {
+        threads.spawn(|| run(&command, &input, &daemon));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        threads.spawn(|| run(&command, &input, &daemon));
+        let line = CLAUDE_BOUNDARIES.lines().last().unwrap();
+        let mut boundary: serde_json::Value = serde_json::from_str(line).unwrap();
+        boundary["timestamp"] = format_iso8601(now_ms().cast_signed()).into();
+        std::fs::write(&transcript, format!("{boundary}\n")).unwrap();
+    });
+
+    let held = record(&snapshot(&mut control), "p1").context_change;
+    assert_eq!(held.map(|change| change.kind()), Some(Compacted));
+    let log = std::fs::read_to_string(daemon.root().join("daemon.log")).unwrap_or_default();
+    assert_eq!(log.matches("session.context.changed").count(), 1, "{log}");
 }
 
 /// A session's start is a clear only when the agent went on running from another session.

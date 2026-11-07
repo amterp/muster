@@ -950,6 +950,9 @@ pub(crate) struct Pane {
     /// that agent leaves the pane. A wake reaches the session by it, through the command the
     /// agent's manifest names (`messages::command`).
     pub(crate) session_id: Option<String>,
+    /// What the harness called the last change to the agent's context it named, so that a second
+    /// report of the same one changes nothing.
+    pub(crate) context_change_id: Option<String>,
     /// The session the context and cost in its record belong to, as its statusline named it, so
     /// a report about another session forgets them first. Not handed over or saved: a daemon
     /// that took the pane over learns it from the next report.
@@ -1205,6 +1208,7 @@ impl Pane {
             session_name: SessionName::default(),
             compaction: Compaction::default(),
             session_id: None,
+            context_change_id: None,
             context_session: None,
             ran_out: None,
             resume: None,

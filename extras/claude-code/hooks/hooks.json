@@ -12,6 +12,15 @@
         ]
       },
       {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --session-source clear >/dev/null 2>&1 || true"
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",
@@ -23,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; input=$(cat); printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id --from session-source=/source >/dev/null 2>&1 || printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id >/dev/null 2>&1 || true"
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from session-id=/session_id >/dev/null 2>&1 || true"
           }
         ]
       }
@@ -116,7 +125,7 @@
           {
             "type": "command",
             "async": true,
-            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --context-compacted --from compaction-in=/transcript_path >/dev/null 2>&1 || true"
+            "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent claude --from compacted-in=/transcript_path >/dev/null 2>&1 || true"
           }
         ]
       }
