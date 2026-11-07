@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "tell-a-person-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794030391058,
+  "creator": "Alexander Terp",
+  "description": "**Wanted:** `Pane.name_from_session` stays false for a name a person chose. Today a person's `/rename` in Claude Code is marked as taken from the session, so a client that hides those names, as Foreman does, hides the person's. A rename in Muster is not affected.\n\nClaude Code's transcript tells the two apart: `custom-title` for a person's rename and `ai-title` for its own. Nothing reads them yet.",
+  "id": "a_2vP13sLsc",
+  "position": "b2O",
+  "title": "Tell a person's /rename from Claude Code's own title",
+  "type": "enhancement",
+  "updated_at_millis": 1794030391058,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794030391058}
+  ]
+}

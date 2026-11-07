@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "opencode-say-when",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794030390850,
+  "creator": "Alexander Terp",
+  "description": "**Wanted:** `Pane.context_change` for OpenCode panes. API 0.4 reports it for Claude Code and Codex, and OpenCode reports neither kind.\n\n**Not measured:** what OpenCode does on a clear or a compaction. The one recording, on `opencode/big-pickle`, only retried, so a recording that reaches a compaction comes first. `./dev --opencode` was not run for 0.23.0.",
+  "id": "a_2vP13Xgxn",
+  "position": "b2N",
+  "title": "OpenCode: say when its context was cleared or compacted",
+  "type": "feature",
+  "updated_at_millis": 1794030390850,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794030390850}
+  ]
+}

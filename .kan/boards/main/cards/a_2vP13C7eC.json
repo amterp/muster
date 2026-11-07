@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "four-live-tier",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794030390639,
+  "creator": "Alexander Terp",
+  "description": "**Wanted:** `./dev --claude-code` and `./dev --codex` pass. On 2026-11-06 they gave 11 passed, 2 failed and 7 passed, 2 failed, and the same four tests failed with and without the 0.23.0 context-change work. The other live checks passed, including the new ones for context changes.\n\n- `claude_code_doorbell::an_urgent_post_reaches_claude_code_mid_turn` expects `woke: worker (working)`. The post now prints `woke: \u003ccallsign\u003e (worker, working)`, so the assertion is out of date.\n- `claude_code_doorbell::a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered`: the worker never answered.\n- `codex_live::a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered`: the worker never answered.\n- `codex_live::codex_reads_working_then_idle_through_its_hooks_and_through_its_screen`: the pane with no hooks read as reporting. The cause may be an adapter installed for this user, which nobody checked.\n\n**Not diagnosed:** the last three. The Codex runs used 0.166.0 through a `PATH` override, with `MUSTER_CODEX_MODEL=gpt-6.1-terra`, because Homebrew's Codex 0.167 can't run commands on the machine that measured this.",
+  "id": "a_2vP13C7eC",
+  "position": "b1e",
+  "title": "Four live-tier checks fail on Claude Code and Codex",
+  "type": "bug",
+  "updated_at_millis": 1794030390639,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794030390639}
+  ]
+}

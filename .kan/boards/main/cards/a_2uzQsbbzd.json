@@ -5,25 +5,32 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2vIt5lV86",
       "body": "Approved by the owner on 2026-11-06, from the phone, for building tonight, including releasing Muster so Foreman's card a_2uzRbrNjc can use it. In progress on main4 in ../muster-4.",
       "author": "Alexander Terp",
       "created_at_millis": 1794015784974
+    },
+    {
+      "id": "c_2vP1NeQNt",
+      "body": "Shipped in 0.23.0 as `Pane.context_change`, API 0.4. `session` changes on `/clear` in Claude Code and Codex, which answers the card's open question. Codex dates a clear at the first prompt after `/clear` or `/new`, so a clear with no prompt after it reports nothing. OpenCode reports nothing and has its own card, a_2vP13Xgxn. The hooks changed, so each harness's plugin has to be reinstalled to get this.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794030403261
     }
   ],
   "created_at_millis": 1793969418224,
   "creator": "Alexander Terp",
   "description": "**Wanted:** the owner ran `/clear` at the desk and the agent's conversation in Foreman showed nothing (Chat Notes, 2026-11-03): \"there's nothing in the foreman messages with the agents to indicate that the context is cleared. Ideally, muster has a better visibility into this kind of stuff and thus can also provide it to foreman.\"\n\nThe API gives a pane's `session` and `facts.context_used`, and no event for either change. A client could only guess from `context_used` falling or `session` changing. Not checked: whether `session` changes on `/clear`, which a_2jSDHoYDD believed and did not verify. Compaction keeps the session.\n\n**Proposed:** an event on the API's watch stream with the pane, the kind (cleared, compacted) and the time, so a client can mark the moment in a conversation.",
   "id": "a_2uzQsbbzd",
-  "position": "a0",
+  "position": "Yuz",
   "title": "API: say when an agent's context was cleared or compacted",
   "type": "feature",
-  "updated_at_millis": 1794015785110,
+  "updated_at_millis": 1794030403261,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793969418224},
-    {"field":"column","value":"in-progress","at":1794015785110}
+    {"field":"column","value":"in-progress","at":1794015785110},
+    {"field":"column","value":"done","at":1794030391199}
   ]
 }
