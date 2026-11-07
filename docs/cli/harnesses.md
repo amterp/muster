@@ -28,6 +28,7 @@ window`).
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | no | no | no |
+| Says when its context was cleared or compacted | yes | yes | no | no |
 | Resumed after a restart | yes | yes | no | no |
 | Clipboard image pasted into a remote composer | yes | yes | no | no |
 
@@ -88,6 +89,9 @@ kimi, kiro, maki, pi, qodercli.
   Commands run on the `PATH` a login shell sets (`.zprofile`, not `.zshrc`). A failed command, or
   a wake not taken within 20 seconds, falls back to typing. An agent at work or at a dialog is
   not woken by command.
+- **Says when its context was cleared or compacted**: an adapter reports it, and the API gives it
+  to a client on the pane, in `context_change` (`muster docs api` says when each harness does).
+  Nothing is inferred from context used falling.
 - **Its session named after the pane**: naming a pane - the chord, the menu, `muster pane rename`,
   or `pane new --name` once its agent starts - types `/rename <name>` into the agent's prompt once
   it is idle at an empty prompt, as a ring is typed, so the session goes by the pane's name in

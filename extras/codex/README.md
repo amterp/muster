@@ -54,6 +54,11 @@ instead, is the same for every harness: `extras/claude-code/README.md` has it.
 facts when a new session starts or `/clear` runs. Codex fires it with the session's first prompt,
 not when it opens.
 
+`SessionStart`'s `source` and `PostCompact` tell Muster the agent's context was cleared or compacted,
+which the API gives a client on the pane (`muster docs api`). `/new` reads as `startup`, as a process
+starting does, and counts when the agent held another session. A clear is dated at the prompt after
+it, the first Codex runs a hook for (`docs/observations/codex-0.166.0.md`, section 3).
+
 `SessionStart` also reports the session's id, which lets Muster resume it after a restart. It
 needs nothing installed, since `muster-daemon report` reads the id out of the hook's input itself.
 Wakes are typed into Codex's visible composer. A draft holds the wake until it is sent or cleared;

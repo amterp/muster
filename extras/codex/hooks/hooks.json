@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; input=$(cat); case \"$input\" in *'\"session_id\"'*) printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent codex --from session-id=/session_id >/dev/null 2>&1 ;; esac; exit 0"
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; input=$(cat); case \"$input\" in *'\"session_id\"'*) printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent codex --from session-id=/session_id --from session-source=/source >/dev/null 2>&1 || printf '%s' \"$input\" | \"$MUSTER_DAEMON\" report --agent codex --from session-id=/session_id >/dev/null 2>&1 ;; esac; exit 0"
           }
         ]
       }
@@ -78,6 +78,16 @@
           {
             "type": "command",
             "command": "[ -z \"$MUSTER_DAEMON\" ] || \"$MUSTER_DAEMON\" report --agent codex --state blocked >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\"'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent codex --context-compacted >/dev/null 2>&1 || true"
           }
         ]
       }

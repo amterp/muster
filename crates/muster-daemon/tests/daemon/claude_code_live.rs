@@ -360,6 +360,39 @@ fn claude_code_compacts_when_the_daemon_asks_through_both_paths() {
             std::thread::sleep(Duration::from_millis(500));
         }
     }
+
+    // The hooks say so, and the screen cannot.
+    until_context_change(&mut asking, proto::ContextChangeKind::Compacted);
+    let screen = |asking: &mut Control| {
+        snapshot(asking).panes.into_iter().find(|pane| pane.pane == "screen")
+    };
+    assert_eq!(screen(&mut asking).and_then(|pane| pane.context_change), None);
+
+    until_settled(&mut control, PANES);
+    let session = hooked_session(&mut asking);
+    let clear = input_event::Send { text: "/clear".to_string(), enter: true, ..Default::default() };
+    input.send("hooked", Event::Send(clear));
+    until_context_change(&mut asking, proto::ContextChangeKind::Cleared);
+    assert_ne!(hooked_session(&mut asking), session, "/clear starts another session");
+}
+
+fn hooked_session(control: &mut Control) -> Option<String> {
+    let hooked = snapshot(control).panes.into_iter().find(|pane| pane.pane == "hooked");
+    hooked.and_then(|pane| pane.session_id)
+}
+
+/// Waits for the hooked pane's record to say `kind`.
+fn until_context_change(control: &mut Control, kind: proto::ContextChangeKind) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let hooked = snapshot(control).panes.into_iter().find(|pane| pane.pane == "hooked");
+        let change = hooked.and_then(|pane| pane.context_change);
+        if change.as_ref().is_some_and(|change| change.kind() == kind) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "the hooked pane never said {kind:?}: {change:?}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 /// The state file's saved session for the daemon's one pane, if it holds one.

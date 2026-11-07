@@ -56,6 +56,12 @@ Claude Code's is before its prompt cache expires, the turn is not the agent goin
 helper is not reported to its maker as having gone idle without posting. A compaction that comes
 when the context fills partway through a turn leaves that turn work.
 
+`SessionStart`'s `source` and `PostCompact` tell Muster the agent's context was cleared or compacted,
+which the API gives a client on the pane (`muster docs api`). `PostCompact` also fires for a
+sub-agent's compaction, with nothing in its input to say so, so its hook runs asynchronously and
+reports only once the session's own transcript records a compaction, which takes up to five
+seconds to give up (`docs/observations/claude-code-2.1.319.md`).
+
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Claude Code ends
 a turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`.
 The line also says that waiting for a message or a person is just ending the turn, since an agent

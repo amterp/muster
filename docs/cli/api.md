@@ -199,6 +199,23 @@ and whether it is hidden or quiet. An event when a pane appears, when anything a
 it changes, and its id when it closes. A client replaces what it holds of a pane with each event's.
 Output fires nothing, and neither does a title on its own.
 
+Since 0.4, `context_change` is the last time the agent's context was cleared or compacted: its kind
+and `at_ms`, when the daemon heard of it. It arrives in a PaneChanged like any other change, and in
+every snapshot, so a client that was away catches up. A client that keeps these stores each it sees
+by pane, kind and `at_ms` and ignores a repeat; one that missed two sees the later. It is kept across
+a handoff and absent after a restart, and absence removes nothing a client stored.
+
+Only what the agent's harness tells Muster counts, never `context_used` falling:
+
+| Harness | Cleared | Compacted |
+|---|---|---|
+| Claude Code | at `/clear` | a moment after a compaction finishes, its own and not a sub-agent's |
+| Codex | at the first prompt after `/clear` or `/new`, since no hook runs before it | as a compaction finishes, its own and not a sub-agent's |
+| Others | never | never |
+
+An agent whose adapter is not installed, or was installed before 0.4, reports neither. A cleared
+agent has a new `session`; a compacted one keeps its own.
+
 ### Machines
 
 `TOPIC_MACHINES`: each daemon in the snapshot, by its identity, its display name, its version and

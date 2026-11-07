@@ -1,0 +1,21 @@
+{"recorded_at": "2026-11-07T01:51:32.724+00:00", "recorded_as": "SessionStart", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "SessionStart", "source": "startup", "model": "claude-haiku-5-5"}
+{"note": "step: first prompt"}
+{"recorded_at": "2026-11-07T01:51:42.817+00:00", "recorded_as": "statusline", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "session_name": "Ok"}
+{"note": "step: /rename probe-name"}
+{"recorded_at": "2026-11-07T01:51:52.819+00:00", "recorded_as": "statusline", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "session_name": "probe-name"}
+{"note": "step: /compact"}
+{"recorded_at": "2026-11-07T01:52:03.283+00:00", "recorded_as": "PreCompact", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "PreCompact", "trigger": "manual"}
+{"recorded_at": "2026-11-07T01:52:07.046+00:00", "recorded_as": "SubagentStop", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "agent_id": "a6f8edf1980be3290", "agent_type": "", "hook_event_name": "SubagentStop", "background_tasks": [], "session_crons": []}
+{"recorded_at": "2026-11-07T01:52:07.121+00:00", "recorded_as": "SessionStart", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "SessionStart", "source": "compact", "model": "claude-haiku-5-5", "session_title": "probe-name"}
+{"recorded_at": "2026-11-07T01:52:07.342+00:00", "recorded_as": "PostCompact", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "PostCompact", "trigger": "manual", "compact_summary": "(removed)"}
+{"note": "step: prompt after compact"}
+{"note": "step: /clear"}
+{"recorded_at": "2026-11-07T01:52:24.529+00:00", "recorded_as": "SessionEnd", "session_id": "15b6132b-8bc5-461b-8807-a98c7034f6ee", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/15b6132b-8bc5-461b-8807-a98c7034f6ee.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "SessionEnd", "reason": "clear"}
+{"recorded_at": "2026-11-07T01:52:24.678+00:00", "recorded_as": "SessionStart", "session_id": "a0bc632b-041f-4909-a522-f77bf04e494b", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/a0bc632b-041f-4909-a522-f77bf04e494b.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "SessionStart", "source": "clear", "session_title": "probe-name"}
+{"note": "step: /compact on an empty conversation"}
+{"recorded_at": "2026-11-07T01:52:32.051+00:00", "recorded_as": "PreCompact", "session_id": "a0bc632b-041f-4909-a522-f77bf04e494b", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/a0bc632b-041f-4909-a522-f77bf04e494b.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "PreCompact", "trigger": "manual"}
+{"note": "step: prompt after clear"}
+{"note": "step: /compact then Esc"}
+{"recorded_at": "2026-11-07T01:52:53.597+00:00", "recorded_as": "PreCompact", "session_id": "a0bc632b-041f-4909-a522-f77bf04e494b", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/a0bc632b-041f-4909-a522-f77bf04e494b.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "PreCompact", "trigger": "manual"}
+{"note": "done"}
+{"recorded_at": "2026-11-07T01:53:06.704+00:00", "recorded_as": "SessionEnd", "session_id": "a0bc632b-041f-4909-a522-f77bf04e494b", "transcript_path": "$USER_HOME/.claude/projects/$PROBE_PROJECT/a0bc632b-041f-4909-a522-f77bf04e494b.jsonl", "cwd": "$PROBE_ROOT/cwd-claude", "hook_event_name": "SessionEnd", "reason": "other"}

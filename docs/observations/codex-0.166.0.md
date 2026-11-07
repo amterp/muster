@@ -57,3 +57,34 @@ an old conversation can still consume the pane's messages through its hooks, and
 wait, without the visible conversation seeing them. Start a fresh Codex process to isolate a
 new assignment. Before a new conversation's first prompt, restarting by the last reported ID
 also resumes the previous conversation.
+
+## 3. Clearing and compacting, as its hooks say them
+
+Codex says a compaction as it finishes, and a clear only at the next prompt.
+
+Recorded 2026-11-06 with `gpt-6.1-terra` at low effort, with no Muster daemon: a script drove Codex
+in a PTY with project hooks that logged their JSON input. `context-hooks-asked.jsonl` is one session
+by typed commands, and `context-hooks-automatic.jsonl` is one with
+`model_auto_compact_token_limit=3000`, a sub-agent, and a `resume`.
+
+| What happened | Hooks that ran | `session_id` |
+|---|---|---|
+| `/compact` | `PreCompact`, `PostCompact` at once; `SessionStart` with `source: compact` at the next prompt | same |
+| Automatic compaction | `PreCompact`, `PostCompact`, `SessionStart` with `source: compact` | same |
+| `/compact`, then Esc | `PreCompact`, `Interrupt` | same |
+| `/clear` | nothing, until the next prompt: `SessionStart` with `source: clear` | new |
+| `/new` | nothing, until the next prompt: `SessionStart` with `source: startup` | new |
+| `codex resume` | `SessionStart` with `source: resume` at the first prompt | same |
+
+`/new` reads like a process starting. Only the session it replaces tells them apart: the process
+that ran the old conversation is still running, and a new process follows an agent leaving the pane.
+A `/compact` at the empty composer after `/new` still ran `PreCompact` and `PostCompact`, and the
+screen said `Context compacted`.
+
+A sub-agent's `PreCompact` and `PostCompact` carry its `agent_id` under its parent's `session_id`.
+The parent's carry none.
+
+`extras/codex` therefore reports a compaction from `PostCompact` unless the input holds `agent_id`,
+and a clear from SessionStart's `source`, with `startup` counting when the agent held another
+session. A clear is dated at the prompt after it, and a `/clear` or `/new` followed by no prompt
+reports nothing.

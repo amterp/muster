@@ -20,6 +20,7 @@ mod claude_code_inbox;
 mod claude_code_live;
 mod codex_live;
 mod compactions;
+mod context_changes;
 mod detection;
 mod devenv_terminfo;
 mod doorbell;

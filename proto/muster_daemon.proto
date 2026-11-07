@@ -543,7 +543,22 @@ message PaneRequest {
     // or unique name; stored as its resolved identity in AgentFacts. Needs nonempty waiting
     // and cannot be combined with waiting_until_exits.
     optional string waiting_until_message_from = 17;
+    // Since 1.12. The agent's context was cleared or compacted, or a session started that clears
+    // it if the pane's agent held another. Needs its agent, and counts only while detection finds
+    // that agent in the pane. A session's start is judged by `session_id` in this same report.
+    ContextChangeKind context_change = 18;
   }
+}
+
+// What happened to a pane's agent's context.
+enum ContextChangeKind {
+  CONTEXT_CHANGE_KIND_NONE = 0;
+  CONTEXT_CHANGE_KIND_CLEARED = 1;
+  CONTEXT_CHANGE_KIND_COMPACTED = 2;
+  // Only in a report: a session started, by no source that says why. A harness whose `/new`
+  // starts a session as a process's first one does says this, and the daemon makes it CLEARED
+  // when the pane's agent held another session, since that agent is still running.
+  CONTEXT_CHANGE_KIND_SESSION_STARTED = 3;
 }
 
 enum SubagentChange {
@@ -1779,6 +1794,16 @@ message Pane {
   optional string prompt_covered_by = 25;
   // Since 1.11. A supported agent's image composer is currently readable.
   bool image_paste = 26;
+  // Since 1.12. The last time the pane's agent's context was cleared or compacted, as its adapter
+  // reported it. Kept across a handoff, and never written to the state file.
+  ContextChange context_change = 27;
+}
+
+// One change to an agent's context (`Pane.context_change`).
+message ContextChange {
+  ContextChangeKind kind = 1;
+  // When the daemon heard of it, in milliseconds since the Unix epoch by the daemon's clock.
+  uint64 at_ms = 2;
 }
 
 // The command that resumes a pane's agent session after a restart, run in the pane's directory.

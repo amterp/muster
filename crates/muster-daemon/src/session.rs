@@ -2638,8 +2638,10 @@ impl Session {
         if let Some(why) = session_id.as_deref().and_then(|id| facts::session_id(id).err()) {
             return Reply::refused(why);
         }
-        if report.compacting && agent.is_empty() {
-            return Reply::refused("a compaction needs the name of the agent reporting it");
+        let context_change = report.context_change();
+        let names_a_change = context_change != proto::ContextChangeKind::None;
+        if (report.compacting || names_a_change) && agent.is_empty() {
+            return Reply::refused("a compaction or a change of context needs its agent's name");
         }
         let harness_compacts = report.compacting && self.harness_compacting(index, &agent);
         let cleared = report.clear;
@@ -2649,6 +2651,7 @@ impl Session {
         let from_adapter = own_state.is_some()
             || session_id.is_some()
             || cleared
+            || names_a_change
             || report.subagent() != proto::SubagentChange::None;
         let kept = keeps_wait(&self.panes[index], own_state.is_some(), &report);
         if kept != Kept::No {
@@ -2675,7 +2678,7 @@ impl Session {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
-        let identified = self.session_identified(index, &agent, session_id);
+        let identified = self.session_and_context(index, &agent, session_id, context_change);
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
@@ -2720,6 +2723,63 @@ impl Session {
             pane.io.compacting_by_itself(std::time::Instant::now());
         }
         ours
+    }
+
+    /// Keeps the session id a report says and the change it says the context went through, and
+    /// says whether either moved. The change comes second because a session starting is judged
+    /// against the session the pane held before this report.
+    fn session_and_context(
+        &mut self,
+        index: usize,
+        agent: &str,
+        session_id: Option<String>,
+        change: proto::ContextChangeKind,
+    ) -> bool {
+        let before = self.panes[index].session_id.clone();
+        let identified = self.session_identified(index, agent, session_id);
+        self.context_changed(index, agent, change, before.as_deref()) || identified
+    }
+
+    /// Dates the change a report says its agent's context went through and publishes it, when
+    /// `agent` is the one detection finds in the pane, saying whether it did. On the record rather
+    /// than among the facts, since `report --clear` forgets those and a harness may send that
+    /// report and this one at once. `session_before` is the session the pane's agent held before
+    /// this report, which a session's start is judged by: an agent leaving the pane forgets its
+    /// session, so a held one that was replaced means the same agent went on running.
+    fn context_changed(
+        &mut self,
+        index: usize,
+        agent: &str,
+        change: proto::ContextChangeKind,
+        session_before: Option<&str>,
+    ) -> bool {
+        let pane = &mut self.panes[index];
+        if pane.record.agent.as_deref() != Some(agent) {
+            return false;
+        }
+        let kind = match change {
+            proto::ContextChangeKind::None => return false,
+            proto::ContextChangeKind::SessionStarted => {
+                let replaced =
+                    session_before.is_some() && session_before != pane.session_id.as_deref();
+                if !replaced {
+                    return false;
+                }
+                proto::ContextChangeKind::Cleared
+            }
+            said => said,
+        };
+        let mut change =
+            proto::ContextChange { at_ms: state_since::now_ms(), ..Default::default() };
+        change.set_kind(kind);
+        pane.record.context_change = Some(change);
+        log::info(
+            "session.context.changed",
+            fields! { "pane" => pane.record.pane, "agent" => agent, "kind" => kind.as_str_name() },
+        );
+        let record = pane.record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        true
     }
 
     /// Notes the session a report says its context belongs to, saying whether that is another

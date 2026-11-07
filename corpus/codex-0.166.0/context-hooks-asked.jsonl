@@ -1,0 +1,17 @@
+{"note": "step: first prompt"}
+{"recorded_at": "2026-11-07T01:56:28.620+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-56-26-01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "startup"}
+{"note": "step: /compact"}
+{"recorded_at": "2026-11-07T01:56:37.821+00:00", "recorded_as": "PreCompact", "session_id": "01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-56-26-01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "PreCompact", "model": "gpt-6.1-terra", "trigger": "manual"}
+{"recorded_at": "2026-11-07T01:56:39.679+00:00", "recorded_as": "PostCompact", "session_id": "01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-56-26-01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "PostCompact", "model": "gpt-6.1-terra", "trigger": "manual"}
+{"note": "step: prompt after compact"}
+{"recorded_at": "2026-11-07T01:56:47.302+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-56-26-01a1b3b8-aaeb-7043-98b4-2bd5a06a95bb.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "compact"}
+{"note": "step: /clear"}
+{"note": "step: prompt after clear"}
+{"recorded_at": "2026-11-07T01:57:02.952+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3b9-149f-7460-aa80-14733ea895cf", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-56-53-01a1b3b9-149f-7460-aa80-14733ea895cf.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "clear"}
+{"note": "step: /new"}
+{"note": "step: prompt after new"}
+{"recorded_at": "2026-11-07T01:57:19.133+00:00", "recorded_as": "SessionStart", "session_id": "01a1b3b9-54e0-7611-be86-6b82e255136b", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-57-09-01a1b3b9-54e0-7611-be86-6b82e255136b.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "SessionStart", "model": "gpt-6.1-terra", "source": "startup"}
+{"note": "step: /compact at empty after /new"}
+{"recorded_at": "2026-11-07T01:57:35.474+00:00", "recorded_as": "PreCompact", "session_id": "01a1b3b9-9cd1-7351-9cff-fb0bbf0fd80a", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-57-28-01a1b3b9-9cd1-7351-9cff-fb0bbf0fd80a.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "PreCompact", "model": "gpt-6.1-terra", "trigger": "manual"}
+{"recorded_at": "2026-11-07T01:57:39.068+00:00", "recorded_as": "PostCompact", "session_id": "01a1b3b9-9cd1-7351-9cff-fb0bbf0fd80a", "transcript_path": "$USER_HOME/.codex/sessions/2026/11/06/rollout-2026-11-06T19-57-28-01a1b3b9-9cd1-7351-9cff-fb0bbf0fd80a.jsonl", "cwd": "$PROBE_ROOT/cwd-codex", "hook_event_name": "PostCompact", "model": "gpt-6.1-terra", "trigger": "manual"}
+{"note": "done"}

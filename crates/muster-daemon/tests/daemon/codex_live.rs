@@ -266,6 +266,51 @@ fn codex_reads_working_then_idle_through_its_hooks_and_through_its_screen() {
 
 /// Esc ends a Codex turn with `Interrupt` and no `Stop`; the hooks report that idle, rather than
 /// leaving a working report to lapse ten quiet seconds later and the screen to decide.
+/// Codex's hooks say when its context was compacted, at once, and when it was cleared, at the
+/// prompt after, for `/clear` and for `/new`, which reads as a process starting.
+#[test]
+#[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
+fn codexs_hooks_say_when_its_context_was_compacted_and_cleared() {
+    if !asked_for("Codex's hooks still say when its context was compacted or cleared") {
+        return;
+    }
+    let daemon = codex_daemon();
+    let mut control = daemon.connect();
+    let (folder, command) = project(&daemon, "hooked", true, &[]);
+    make_pane(&mut control, "hooked", &folder, command, true);
+    let mut input = Input::connect(daemon.socket_path());
+    until_ready(&mut control, "hooked");
+    std::thread::sleep(Duration::from_secs(4));
+    let mut change = || {
+        snapshot(&mut control)
+            .panes
+            .into_iter()
+            .find(|pane| pane.pane == "hooked")
+            .and_then(|pane| pane.context_change)
+    };
+    let mut after = |input: &mut Input, line: &str, kind: proto::ContextChangeKind| {
+        let before = change();
+        type_line(input, "hooked", line);
+        let said = until_turns(TURN, &format!("{kind:?} after {line}"), || {
+            change().is_some_and(|now| Some(now) != before && now.kind() == kind)
+        });
+        assert!(said, "{line} never said {kind:?}");
+    };
+    let answer = "Reply with only the word ok.";
+
+    type_line(&mut input, "hooked", answer);
+    std::thread::sleep(Duration::from_secs(15));
+    after(&mut input, "/compact", proto::ContextChangeKind::Compacted);
+    std::thread::sleep(Duration::from_secs(5));
+    type_line(&mut input, "hooked", "/clear");
+    std::thread::sleep(Duration::from_secs(5));
+    after(&mut input, answer, proto::ContextChangeKind::Cleared);
+    std::thread::sleep(Duration::from_secs(10));
+    type_line(&mut input, "hooked", "/new");
+    std::thread::sleep(Duration::from_secs(5));
+    after(&mut input, answer, proto::ContextChangeKind::Cleared);
+}
+
 #[test]
 #[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
 fn esc_mid_turn_reads_idle_from_codexs_own_report() {

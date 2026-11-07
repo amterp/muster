@@ -38,7 +38,19 @@ pub(crate) fn pane(record: &proto::Pane, hidden: bool, source: &api::Source) -> 
         hidden,
         quiet: record.quiet,
         adapter: adapter(record).into(),
+        context_change: record.context_change.as_ref().map(context_change),
     }
+}
+
+fn context_change(change: &proto::ContextChange) -> api::ContextChange {
+    let kind = match change.kind() {
+        proto::ContextChangeKind::Cleared => api::ContextChangeKind::Cleared,
+        proto::ContextChangeKind::Compacted => api::ContextChangeKind::Compacted,
+        proto::ContextChangeKind::None | proto::ContextChangeKind::SessionStarted => {
+            api::ContextChangeKind::Unspecified
+        }
+    };
+    api::ContextChange { kind: kind.into(), at_ms: change.at_ms }
 }
 
 /// Whether `now` says anything a client has not been told by `before`. A title alone does not:

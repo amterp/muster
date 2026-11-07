@@ -30,7 +30,8 @@ const CLAUDE_CODE: Harness = Harness {
     reports: &[
         (
             "SessionStart",
-            "[report][--clear][report][--agent][claude][--from][session-id=/session_id]",
+            "[report][--clear][report][--agent][claude][--from][session-id=/session_id][--from]\
+             [session-source=/source]",
         ),
         ("SubagentStart", "[report][--subagent-started]"),
         ("SubagentStop", "[report][--subagent-stopped]"),
@@ -40,6 +41,10 @@ const CLAUDE_CODE: Harness = Harness {
         ("PermissionRequest", "[report][--agent][claude][--state][blocked]"),
         ("Notification", "[report][--agent][claude][--state][blocked]"),
         ("PreCompact", "[report][--agent][claude][--compacting]"),
+        (
+            "PostCompact",
+            "[report][--agent][claude][--context-compacted][--from][compaction-in=/transcript_path]",
+        ),
         ("Stop", "[report][--agent][claude][--state][idle]"),
         ("StopFailure", "[report][--agent][claude][--state][idle]"),
     ],
@@ -61,6 +66,7 @@ const CODEX: Harness = Harness {
         ("UserPromptSubmit", "[report][--agent][codex][--state][working][--waiting][]"),
         ("PostToolUse", "[report][--agent][codex][--state][working]"),
         ("PermissionRequest", "[report][--agent][codex][--state][blocked]"),
+        ("PostCompact", "[report][--agent][codex][--context-compacted]"),
         ("Stop", "[report][--agent][codex][--state][idle]"),
         ("Interrupt", "[report][--agent][codex][--state][idle]"),
     ],
@@ -327,7 +333,11 @@ fn codexs_session_start_reports_its_session_id() {
         assert!(output.status.success(), "a hook never fails a session");
         assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
         let said = std::fs::read_to_string(&arguments).unwrap_or_default();
-        assert_eq!(said, "[report][--agent][codex][--from][session-id=/session_id]", "in {shell}");
+        assert_eq!(
+            said,
+            "[report][--agent][codex][--from][session-id=/session_id][--from][session-source=/source]",
+            "in {shell}"
+        );
         let handed: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&given).unwrap()).unwrap();
         assert_eq!(handed, input, "in {shell}: the daemon reads the id from the hook's input");
@@ -382,7 +392,11 @@ fn claude_codes_session_start_reports_its_session_id() {
         assert!(output.status.success(), "a hook never fails a session");
         assert!(output.stdout.is_empty(), "{shell}: what it prints reaches the model");
         let said = std::fs::read_to_string(&arguments).unwrap_or_default();
-        assert_eq!(said, "[report][--agent][claude][--from][session-id=/session_id]", "in {shell}");
+        assert_eq!(
+            said,
+            "[report][--agent][claude][--from][session-id=/session_id][--from][session-source=/source]",
+            "in {shell}"
+        );
         assert_eq!(std::fs::read_to_string(&read).unwrap(), input, "the hook's input reaches it");
     }
 }

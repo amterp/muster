@@ -23,7 +23,7 @@ use crate::session::HANDING_OVER;
 const STDIN_BYTES: u64 = 1 << 20;
 
 /// The flags `--from` may fill: each one that takes one value.
-const FROM_FLAGS: [&str; 10] = [
+const FROM_FLAGS: [&str; 12] = [
     "context-used",
     "context-session",
     "model",
@@ -32,6 +32,8 @@ const FROM_FLAGS: [&str; 10] = [
     "waiting",
     "session-name",
     "session-id",
+    "session-source",
+    "compaction-in",
     "agent",
     "state",
 ];
@@ -44,7 +46,8 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
-    [--session-id ID] [--compacting]] [--from FLAG=POINTER]...\n\n\
+    [--session-id ID] [--session-source SOURCE] [--compacting] \
+    [--context-compacted [--compaction-in TRANSCRIPT]]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
     $MUSTER_PANE unless --pane names another, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. --effort is the reasoning effort the model runs at, as the harness \
@@ -70,7 +73,14 @@ const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used P
     the harness's id for its session, which the daemon names it by to reach it through the \
     harness's own command, where its manifest says how; empty forgets it. It needs --agent too. \
     --compacting says the agent's harness began compacting its context by itself, so the turn it \
-    shows as is not the agent going to work; it needs --agent too. \
+    shows as is not the agent going to work; it needs --agent too. --session-source is what \
+    started the session, in the words of a hook's `source`: clear says the agent's context was \
+    cleared, startup says so too when the agent still held another session, which --session-id \
+    in the same report settles, and anything else says nothing. --context-compacted says the \
+    agent's context was compacted. --compaction-in names a Claude Code transcript that has to \
+    record the compaction first: a sub-agent's fires the same hooks as its parent's and records \
+    it elsewhere, so the report waits a few seconds for the transcript and sends nothing if it \
+    stays silent. Both need --agent. \
     --from fills a flag from the JSON object on stdin, which a harness hands its hooks and \
     statusline: --from context-used=/context_window/used_percentage reads that JSON pointer, a \
     number or text, as --context-used's value. A value missing or null leaves the flag out, and \
@@ -87,21 +97,27 @@ pub(crate) fn run(arguments: impl Iterator<Item = String>) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let report = match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
-        Ok(Parsed::Report(report)) => *report,
-        Ok(Parsed::Help) => {
-            println!("{USAGE}");
-            return ExitCode::SUCCESS;
-        }
-        Err(problem) => {
-            eprintln!("muster-daemon report: {problem}\n{USAGE}");
-            return ExitCode::from(2);
-        }
-    };
+    let (report, compaction_in) =
+        match parse(arguments.into_iter(), |name| std::env::var(name).ok()) {
+            Ok(Parsed::Report(report, compaction_in)) => (*report, compaction_in),
+            Ok(Parsed::Help) => {
+                println!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            Err(problem) => {
+                eprintln!("muster-daemon report: {problem}\n{USAGE}");
+                return ExitCode::from(2);
+            }
+        };
     // A hook whose input held none of what it reads from it - a session start that carried no id
     // - has nothing to tell, and the daemon is not dialed for it. A report with no --from at all
     // is sent as it stands: the daemon counts any report it takes as the adapter reporting.
     if came_up_empty && says_nothing(&report) {
+        return ExitCode::SUCCESS;
+    }
+    if let Some(transcript) = compaction_in
+        && !crate::transcript::records_compaction(&transcript, crate::state_since::now_ms())
+    {
         return ExitCode::SUCCESS;
     }
     let Some(socket) = std::env::var_os("MUSTER_DAEMON_SOCKET").map(PathBuf::from) else {
@@ -203,7 +219,8 @@ fn read_stdin() -> Result<String, String> {
 }
 
 enum Parsed {
-    Report(Box<pane_request::Report>),
+    /// The report, and the transcript that has to record its compaction before it is sent.
+    Report(Box<pane_request::Report>, Option<PathBuf>),
     Help,
 }
 
@@ -214,6 +231,7 @@ fn parse(
     let mut report = pane_request::Report::default();
     let mut pane = None;
     let mut facts = HashMap::new();
+    let mut compaction_in = None;
     while let Some(argument) = arguments.next() {
         let mut value = |flag: &str| arguments.next().ok_or(format!("{flag} needs a value"));
         match argument.as_str() {
@@ -282,6 +300,11 @@ fn parse(
             "--compacting" => report.compacting = true,
             "--session-name" => report.session_name = Some(value("--session-name")?),
             "--session-id" => report.session_id = Some(value("--session-id")?),
+            "--session-source" => {
+                report.set_context_change(from_source(&value("--session-source")?));
+            }
+            "--context-compacted" => report.set_context_change(proto::ContextChangeKind::Compacted),
+            "--compaction-in" => compaction_in = Some(PathBuf::from(value("--compaction-in")?)),
             "--agent" => report.agent = value("--agent")?,
             "--state" => {
                 let given = value("--state")?;
@@ -297,11 +320,23 @@ fn parse(
         }
     }
     validate(&report)?;
+    if compaction_in.is_some() && report.context_change() != proto::ContextChangeKind::Compacted {
+        return Err("--compaction-in needs --context-compacted".to_string());
+    }
     report.facts = facts;
     report.pane = pane.or_else(|| environment("MUSTER_PANE")).ok_or(
         "MUSTER_PANE is not set, so this is not running in a Muster pane; name one with --pane",
     )?;
-    Ok(Parsed::Report(Box::new(report)))
+    Ok(Parsed::Report(Box::new(report), compaction_in))
+}
+
+/// What a session starting from `source`, a hook's word for it, did to the agent's context.
+fn from_source(source: &str) -> proto::ContextChangeKind {
+    match source {
+        "clear" => proto::ContextChangeKind::Cleared,
+        "startup" => proto::ContextChangeKind::SessionStarted,
+        _ => proto::ContextChangeKind::None,
+    }
 }
 
 fn validate(report: &pane_request::Report) -> Result<(), String> {
@@ -327,6 +362,13 @@ fn validate(report: &pane_request::Report) -> Result<(), String> {
     }
     if report.compacting && report.agent.is_empty() {
         return Err("--compacting needs --agent, naming the agent that is reporting".to_string());
+    }
+    if report.context_change() != proto::ContextChangeKind::None && report.agent.is_empty() {
+        return Err(
+            "--context-compacted and --session-source need --agent, naming the agent that is \
+             reporting"
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -410,7 +452,7 @@ mod tests {
     fn a_sender_condition_needs_a_wait_and_excludes_a_process_condition() {
         let parse =
             |args: &[&str]| parse(args.iter().map(|s| (*s).to_string()), |_| Some("p1".into()));
-        let Ok(Parsed::Report(report)) =
+        let Ok(Parsed::Report(report, _)) =
             parse(&["--waiting", "review", "--until-message-from", "otter"])
         else {
             panic!("valid sender wait refused")
@@ -509,7 +551,7 @@ mod tests {
     fn parsed(arguments: &[&str], pane: Option<&str>) -> Result<pane_request::Report, String> {
         let arguments = arguments.iter().map(|argument| (*argument).to_string());
         match parse(arguments, |name| (name == "MUSTER_PANE").then(|| pane.map(str::to_string))?)? {
-            Parsed::Report(report) => Ok(*report),
+            Parsed::Report(report, _) => Ok(*report),
             Parsed::Help => Err("help".to_string()),
         }
     }
@@ -523,6 +565,30 @@ mod tests {
         let report = report.unwrap();
         assert_eq!(report.context_session.as_deref(), Some("0199-c"));
         assert_eq!(report.session_id, None);
+    }
+
+    #[test]
+    fn a_sessions_source_says_what_it_did_to_the_context() {
+        let source = |source: &str| {
+            let arguments = ["--agent", "codex", "--session-source", source];
+            parsed(&arguments, Some("p1")).unwrap().context_change()
+        };
+        assert_eq!(source("clear"), proto::ContextChangeKind::Cleared);
+        assert_eq!(source("startup"), proto::ContextChangeKind::SessionStarted);
+        assert_eq!(source("resume"), proto::ContextChangeKind::None);
+        assert_eq!(source("compact"), proto::ContextChangeKind::None);
+    }
+
+    #[test]
+    fn a_change_of_context_needs_its_agent() {
+        assert!(parsed(&["--context-compacted"], Some("p1")).is_err());
+        assert!(parsed(&["--session-source", "clear"], Some("p1")).is_err());
+    }
+
+    #[test]
+    fn a_transcript_only_confirms_a_compaction() {
+        let arguments = ["--agent", "claude", "--compaction-in", "/t.jsonl"];
+        assert!(parsed(&arguments, Some("p1")).is_err());
     }
 
     /// A hook hands its session's id in the JSON on its standard input, however the session

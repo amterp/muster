@@ -39,6 +39,7 @@ mod spawn;
 mod ssh;
 mod state_since;
 mod stream;
+mod transcript;
 mod tree;
 mod unread;
 mod writer;

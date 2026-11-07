@@ -118,6 +118,31 @@ fn every_pane_survives_a_handoff_with_its_process_screen_and_place() {
     }
 }
 
+/// A client that lost its connection to a handoff catches up from the new daemon's snapshot, so a
+/// change to an agent's context goes with the pane's record.
+#[test]
+fn a_pane_keeps_its_last_context_change_across_a_handoff() {
+    let mut daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let mut report = pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        ..Default::default()
+    };
+    report.set_context_change(proto::ContextChangeKind::Compacted);
+    expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
+    let before = crate::persistence::record(&snapshot(&mut control), "p1").context_change;
+    assert!(before.is_some());
+
+    replaced(&mut daemon);
+
+    let mut control = daemon.connect();
+    let after = crate::persistence::record(&snapshot(&mut control), "p1").context_change;
+    assert_eq!(after, before);
+}
+
 /// Output the program writes while its pane is handed over waits in the PTY for the new daemon:
 /// the pane's text holds every line exactly once, across the handoff.
 #[test]

@@ -138,6 +138,12 @@
 // output, and a title on its own fires nothing either, since a harness redraws its title while it
 // works; every event and snapshot carries the latest title.
 //
+// `Pane.context_change` says when an agent's context was last cleared or compacted. It is a field
+// rather than an event of its own so that a snapshot repairs a gap in it as it does any other. A
+// client keeping a record of these stores each it sees, by pane, kind and `at_ms`, and ignores a
+// repeat. Only a harness's own word sets it, never `context_used` falling, so a harness that does
+// not say gets none: `muster docs api` says which do.
+//
 // ## Reading a pane
 //
 // `api.read_pane` answers one page of a pane's text, at most 4 MiB, the pages `muster pane read`
@@ -690,6 +696,26 @@ message Pane {
   // Nothing about it asks for the human: no banner, and no notification.
   bool quiet = 15;
   Adapter adapter = 16;
+  // Since 0.4. The last time the agent's context was cleared or compacted, as its harness's
+  // adapter reported it. Absent when none has been reported since its daemon started. It replaces
+  // the one before it, so a client that stores these keeps each it sees, by pane, kind and
+  // `at_ms`, and one that missed two sees the later.
+  ContextChange context_change = 17;
+}
+
+// One change to an agent's context, which its harness told its daemon of.
+message ContextChange {
+  ContextChangeKind kind = 1;
+  // When its daemon heard of it, in milliseconds since the Unix epoch by that daemon's clock.
+  uint64 at_ms = 2;
+}
+
+enum ContextChangeKind {
+  CONTEXT_CHANGE_KIND_UNSPECIFIED = 0;
+  // Its context was emptied, and a new session began.
+  CONTEXT_CHANGE_KIND_CLEARED = 1;
+  // Its context was replaced by a summary, in the same session.
+  CONTEXT_CHANGE_KIND_COMPACTED = 2;
 }
 
 // What a pane's agent is doing, as Muster's window shows it.
