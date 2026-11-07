@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "patch-0002-frees-a",
+  "alias_explicit": false,
+  "area": [
+    "renderer",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794073236366,
+  "creator": "Alexander Terp",
+  "description": "Rebasing patch 0002 as written would compile, pass every tier, and ship a freeze and a use-after-free. Redesign it.\n\nUpstream did not fix the deadlock 0002 works around (a_2Y9XNJ2YI): the app mailbox is still a blocking 64-entry queue drained only by a tick, and `Surface.deinit` still joins the IO thread on the caller. So Muster still needs the patch.\n\nUpstream did add a rule. #14691 routes every CVDisplayLink start and stop through the main thread. src/renderer/DisplayLink.zig says `close` \"Must be called on the main thread\", and generic.zig's `renderer.deinit` calls it with the comment \"Surfaces are destroyed on the main thread\". 0002 runs `core_surface.deinit()` on a spawned thread. That brings back the collision #14691 removed, and `close` can free the struct while `syncCallback` runs on the main queue. Both need a display reconfiguration during a free, which no tier stages.\n\nProposed, not built: join off the main thread, finish on it.\n1. Split `Surface.deinit` into one function that stops and joins the threads and one with the rest. `deinit` calls both.\n2. `ghostty_surface_free_detached` keeps its main-thread half.\n3. The spawned thread runs only the join half, then `dispatch_async_f` to the main queue.\n4. That callback runs the rest of `Surface.deinit`, `alloc.destroy(ptr)` and `done`.\n\nConsequences: `done` now fires on the main queue, and Renderer.swift:255's `isolated deinit` spins on `frees.value` with `usleep` on the main thread, so a completion cannot run during that spin. Renderer.swift:144's comment and observations section 15 become false. The header hunk needs nullability annotations inside `assume_nonnull`, or `rendererSurfaceFreed` stops matching. Splitting `Surface.deinit` also bends the rule that patches only add C API; it changes no behavior, but it will conflict on later re-pins.\n\nVerify with SurfaceGUITests plus a check that the completion arrives on the main thread.",
+  "id": "a_2vgzfDCvo",
+  "parent": "a_2vgzMmJ4x",
+  "position": "Zx",
+  "related": [
+    "a_2Y9XNJ2YI"
+  ],
+  "title": "Patch 0002 frees a surface off the main thread, which vt-1.0.0 forbids",
+  "type": "bug",
+  "updated_at_millis": 1794073309063,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794073236366}
+  ]
+}

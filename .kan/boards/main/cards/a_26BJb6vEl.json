@@ -13,6 +13,12 @@
       "body": "Settled by MIP-3: the daemon replays a pane's history and the surface keeps its own scrollback built from that replay, so Ghostty's search works (docs/architecture.md, data plane).",
       "author": "Alexander Terp",
       "created_at_millis": 1792200745236
+    },
+    {
+      "id": "c_2vh1VAG6a",
+      "body": "2026-11-07 re-triage: the claim that the daemon and a surface hold the same history is off by 40 MB. See a_2vgzh7JCV.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794073306960
     }
   ],
   "created_at_millis": 1786461806247,
@@ -22,7 +28,7 @@
   "position": "Ywp",
   "title": "Scrollback strategy",
   "type": "chore",
-  "updated_at_millis": 1792200745323,
+  "updated_at_millis": 1794073306960,
   "history": [
     {"field":"column","value":"backlog-lo","at":1786461806247},
     {"field":"column","value":"done","at":1792200745323}

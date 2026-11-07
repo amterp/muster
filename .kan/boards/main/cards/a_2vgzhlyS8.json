@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "muster-daemon-s-ssh",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "devenv"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794073237947,
+  "creator": "Alexander Terp",
+  "description": "crates/muster-daemon/src/ssh.rs is a port of `ghostty +ssh` from before these upstream fixes. The pin move does not bring them.\n\nWorth doing:\n- #14472: the cache key is `user@hostname`. Each checkout's devenv has its own port, so if they share an address, the first install makes the others skip theirs.\n- #14854: ssh.rs:77 passes `-o SetEnv=TERM=...`. ssh takes the first `SetEnv`, so this replaces every `SetEnv` in the user's ssh config.\n\nMinor: #15112 runs the install under `sh -c`, since `INSTALL` fails in tcsh, nushell and elvish login shells. #15061 uses `tic -o ~/.terminfo`, since plain `tic -x -` could write the system directory as root. #13844 versions the cache, so a stale entry does not stay accepted.",
+  "id": "a_2vgzhlyS8",
+  "position": "Zt",
+  "title": "muster-daemon's ssh wrapper has fallen behind ghostty +ssh, and its terminfo cache ignores the port",
+  "type": "bug",
+  "updated_at_millis": 1794073237947,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794073237947}
+  ]
+}

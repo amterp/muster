@@ -13,16 +13,22 @@
       "body": "2026-11-05, later the same day: the freesInFlight wait was not enough once - a full GUI run failed the unchanged aRemoteWebLinkIsReported OSC 8 + mouse-reporting case waiting for its link at 2x metrics; the case passed alone and a full repeat passed 21/21. ./release runs ./dev --contract, which runs these GUI tests, so this can stop a release. Log: /private/tmp/muster-slot2b-conversation-gui-all.log on the Mac mini.",
       "author": "Alexander Terp",
       "created_at_millis": 1793896021282
+    },
+    {
+      "id": "c_2vh1UanwQ",
+      "body": "2026-11-07 re-triage: raised. No commit between the pin and vt-1.0.0 explains this. #13960 and #14857 are nearby, and neither explains a dependence on the previous fixture. a_2vgzfDCvo changes surface teardown timing, which is what this card suspects, so settle this before the move and re-run it after.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794073306608
     }
   ],
   "created_at_millis": 1793890734662,
   "creator": "Alexander Terp",
   "description": "Found 2026-11-05 building the captured-mouse link fix (4173bb80). Run back to back, SurfaceGUITests fixtures can fail to find a visible OSC 8 link even though a search finds its label; the same case run alone passes. Waiting for renderer.freesInFlight == 0 between fixtures makes the whole matrix pass in either order, and 4173bb80's fixtures do that wait. Cause unknown: it may be a lifecycle race in the product (a surface made while the previous one's teardown is in flight), not only in the test, so the wait is a workaround, not an explanation. Repro notes were in the worker's scratch files (/private/tmp/muster-slot2-link-debug.log) on the Mac mini.",
   "id": "a_2uSPxdVNJ",
-  "position": "b1a",
+  "position": "Zvz",
   "title": "A real-surface test that follows another can find no OSC 8 link where its label is",
   "type": "bug",
-  "updated_at_millis": 1793896021282,
+  "updated_at_millis": 1794073308258,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793890734662}
   ]

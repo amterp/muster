@@ -7,6 +7,14 @@
     "renderer"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2vh1UIXSr",
+      "body": "2026-11-07 re-triage: vt-1.0.0 makes this safer. At the pin the render thread restarts the display link itself; at the tag setDisplay queues the change for the main thread and never blocks (DisplayLink.zig:182). Links are created with createWithActiveCGDisplays, so displays of different refresh rates can still pace by the wrong one. Do it after a_2vgzMmJ4x. Still not measured.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794073306420
+    }
+  ],
   "created_at_millis": 1792208553664,
   "creator": "Alexander Terp",
   "description": "Raised 2026-10-16 while fixing a surface's scale across displays (a_2ZMgETdtq). Ghostty calls ghostty_surface_set_display_id whenever its window changes screen, and libghostty uses it to drive redraws from that display's refresh. Muster never sends it, so with displays of different refresh rates its redraw timing may follow the wrong one. A fix has to send it when a surface is made, not only on a screen change. Not measured.",
@@ -14,7 +22,7 @@
   "position": "b1J",
   "title": "Muster never tells a surface which display it is on",
   "type": "bug",
-  "updated_at_millis": 1792208553664,
+  "updated_at_millis": 1794073306421,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792208553664}
   ]

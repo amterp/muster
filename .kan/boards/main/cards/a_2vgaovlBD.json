@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-queued-wake-is",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794072281434,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-01 on a Claude Code pane in a parallel-work round. A reviewer's report arrived mid-turn and the agent read it with `msg read --group`. Several turns later, after a turn ended with `report --waiting`, a wake arrived naming that message, and the read said \"nothing unread\". The wake cost a turn.\n\na_2cP6w1lHN and a_2pPidIbLL fixed Codex forms of this. Re-check a pending wake against the group's read state just before typing it.",
+  "id": "a_2vgaovlBD",
+  "position": "Zy",
+  "related": [
+    "a_2cP6w1lHN",
+    "a_2pPidIbLL"
+  ],
+  "title": "A queued wake is delivered for a message read since it was queued",
+  "type": "bug",
+  "updated_at_millis": 1794072302699,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794072281434}
+  ]
+}

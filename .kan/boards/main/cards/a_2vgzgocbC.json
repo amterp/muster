@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "compress-an-idle",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794073237355,
+  "creator": "Alexander Terp",
+  "description": "libghostty-vt never compresses on its own and Muster never asks, so the daemon's history stays raw. A surface compresses its own by default. The API is in the pin's C API: `ghostty_terminal_compress` and `ghostty_terminal_compression_activity`.\n\nUpstream reports compressed history at 10-30% of raw for text (#13264). Muster's panes are unmeasured. At 15 full panes:\n\n| History per pane | Raw | Resident at 10-30% |\n|---|---|---|\n| 10 MB, today's default | 150 MB | 15-45 MB |\n| 50 MB | 750 MB | 75-225 MB |\n\nSaving 105-135 MB alone changes little on a 16 GB machine; the value is five times the history for about today's memory (a_2vgzh7JCV). Kitty images are a larger risk and compression does not touch them: `KITTY_IMAGE_BYTES` is 320 MB per screen, so one pane can hold 640 MB.\n\nCosts: about 100 us per page to compress and 26 us to restore (#13264); a full 10 MB pane is about 25 pages. Muster owns the timer: after an idle period (upstream uses 250 ms) read the activity and step until complete, likely from the detection tick. Steps run under the pane's lock, so input waits at most one step. Restores stick: every replay, history `pane read` and resize puts the pane back at raw size until the next idle pass, so an app launch peaks at today's memory and only the steady state improves.\n\nMeasure `phys_footprint`, not RSS, because macOS reclaims the freed pages lazily. `GHOSTTY_TERMINAL_DATA_MEMORY_USAGE` arrives with vt-1.0.0.",
+  "id": "a_2vgzgocbC",
+  "position": "ZxV",
+  "title": "Compress an idle pane's scrollback in the daemon",
+  "type": "enhancement",
+  "updated_at_millis": 1794073309206,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794073237355}
+  ]
+}

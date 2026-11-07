@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "wake-notices-can",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794072279667,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-05, Claude Code, Muster 0.21-era daemon. A receiver that had used `report --waiting ... --until-exits` ended its turn at 23:55:58. A post from 23:46 and an urgent one from 23:53 stayed unread: at 00:01 the composer held two concatenated wake notices with no dialog visible, and `msg who` said the request \"was rung, and has neither read it nor gone to work\". One manual Return started the turn.\n\nNot a_2hL5I8kn2, which was a busy pane. Here the pane had finished its turn. After typing a notice and Return, check that the receiver starts a turn; if only the unsent notice remains once the harness settles, retry Return without typing the notice again.",
+  "id": "a_2vgam6tPd",
+  "position": "ZvV",
+  "related": [
+    "a_2hL5I8kn2",
+    "a_2vgamvo5e"
+  ],
+  "title": "Wake notices can stay unsent in the prompt of a waiting Claude Code pane",
+  "type": "bug",
+  "updated_at_millis": 1794073307611,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794072279667}
+  ]
+}

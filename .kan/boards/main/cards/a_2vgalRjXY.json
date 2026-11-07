@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "msg-post-takes-flags",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794072279249,
+  "creator": "Alexander Terp",
+  "description": "`muster msg post --to @human \"\u003ctext\u003e\" --option A --option B` posted the flags as body text, so the question went out with no answers to tap. `muster msg post --to hippo \"...\" --help`, run to reread the options, sent the text plus a literal `--help` and woke the recipient. A post cannot be recalled.\n\ncrates/muster-cli/src/messaging.rs:149 declares TEXT with `trailing_var_arg = true`, so everything after the first word of text is text. Refuse text holding one of post's own flags or `--help`, or stop treating the rest as text once a flag-shaped word follows. Text that really contains such a word keeps a way through: `--file` or `--`.",
+  "id": "a_2vgalRjXY",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "Zv",
+  "title": "`msg post` takes flags after its text as message text, and `--help` there sends the post",
+  "type": "bug",
+  "updated_at_millis": 1794073307468,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794072279249}
+  ]
+}

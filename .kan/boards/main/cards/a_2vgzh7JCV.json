@@ -1,0 +1,27 @@
+{
+  "_v": 4,
+  "alias": "the-daemon-keeps-10",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "renderer"
+  ],
+  "blocked_by": [
+    "a_2vgzgocbC"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794073237547,
+  "creator": "Alexander Terp",
+  "description": "screen.rs:21 calls `DEFAULT_SCROLLBACK` (10 MB) \"Ghostty's own `scrollback-limit`, so the daemon's copy holds what the surface beside it holds\". Ghostty's default is 50 MB, at the pin and at vt-1.0.0. With `scrollback_bytes` unset, a surface can hold 50 MB and a reattach replays 10 MB, silently shortening what the pane showed. Setting `scrollback_bytes` does not close the gap: it reaches the daemon, and nothing in Sources passes a limit to surfaces.\n\nRaise the default to 50 MB once a_2vgzgocbC keeps that affordable, correct the comment, and decide whether `scrollback_bytes` also sets the surface's limit. a_26BJb6vEl's claim that the two hold the same history needs the same correction.",
+  "id": "a_2vgzh7JCV",
+  "position": "Zxl",
+  "related": [
+    "a_26BJb6vEl"
+  ],
+  "title": "The daemon keeps 10 MB of scrollback where a surface keeps 50 MB, so a reattach shortens history",
+  "type": "bug",
+  "updated_at_millis": 1794073309347,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794073237547}
+  ]
+}

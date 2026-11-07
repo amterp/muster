@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "schedule-an-agent-to",
+  "alias_explicit": false,
+  "area": [
+    "backend",
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794073265757,
+  "creator": "Alexander Terp",
+  "description": "The owner, 2026-11-03 and 2026-11-07: a native Muster feature, not a beagle job calling `muster pane new`. Schedule a Muster agent to spawn with instructions, in a given directory. It could be a cron, but in practice it is more likely to be a one-time spawn at a set time, so support both.\n\nDesign questions:\n- Who holds the schedule. The daemon, presumably, since `muster msg` already works with no window open and the app may be closed when a time arrives.\n- Where the pane appears when no window is open, and how the owner finds out it started.\n- A machine asleep or a daemon down at the scheduled time: run late, skip, or say so.\n- Which machine it runs on, and whether a schedule set on the laptop can target a devenv.\n- What a schedule names: directory, command or harness, model and effort, brief, pane name, and whether it can start as a helper.\n- The surface: a CLI verb, the API, and a list with cancel, so a pending schedule can be seen and removed. Whether a schedule survives a daemon restart (it is intent, so `docs/architecture.md` allows it).",
+  "id": "a_2vh0QcvL9",
+  "position": "Zq",
+  "title": "Schedule an agent to start later, once or on a cron, with its instructions and directory",
+  "type": "feature",
+  "updated_at_millis": 1794073265757,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794073265757}
+  ]
+}

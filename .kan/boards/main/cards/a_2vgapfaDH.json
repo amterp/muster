@@ -1,0 +1,26 @@
+{
+  "_v": 4,
+  "alias": "muster-harness",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794072281870,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-06 on Muster 0.23.0: `muster harness install codex --dry-run` printed nothing for over 60 seconds with a hanging Homebrew Codex 0.167 first on PATH. Pointing PATH at a working Codex made it print its plan and exit 0. The claude-code dry run printed its plan at once.\n\nA dry run should not need the harness to answer. Failing that, bound the call and say which harness command it is waiting on. crates/muster-cli/src/harness.rs.",
+  "id": "a_2vgapfaDH",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "Zx",
+  "related": [
+    "a_2nVYt5xqC"
+  ],
+  "title": "`muster harness install --dry-run` runs the harness, so a hung harness hangs it",
+  "type": "bug",
+  "updated_at_millis": 1794072302921,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794072281870}
+  ]
+}

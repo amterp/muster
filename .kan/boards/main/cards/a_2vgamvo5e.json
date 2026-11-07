@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "pane-new-name-can",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794072280156,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-04 on Codex 0.166.0, in one of three helpers started together with `pane new --helper --name ... --run \u003ccodex wrapper\u003e`. The composer held `/rename cxp` typed and unsubmitted while the agent worked. An urgent post then answered \"rung once its prompt is empty ... its prompt holds something typed and not sent\" and did not arrive. Twelve `--key backspace` presses cleared it, and the queued post arrived.\n\nConfirm the rename was submitted or retry the Return once Codex has finished starting, or name the session without typing into the prompt. `muster window` could also say a prompt holds unsent text, so an orchestrator can see why posts are held.",
+  "id": "a_2vgamvo5e",
+  "position": "Zvl",
+  "title": "`pane new --name` can leave `/rename` unsent in a Codex prompt, which holds every post to it",
+  "type": "bug",
+  "updated_at_millis": 1794073307752,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794072280156}
+  ]
+}

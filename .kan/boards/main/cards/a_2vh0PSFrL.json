@@ -1,0 +1,27 @@
+{
+  "_v": 4,
+  "alias": "search-a-pane-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2vgzMmJ4x"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794073265050,
+  "creator": "Alexander Terp",
+  "description": "An agent looking for \"FAIL\" in another pane's history pages through `muster pane read` in 4 MiB pages. vt-1.0.0 adds `ghostty_search_*`: active area and scrollback of both screens, correct through reflow and pruning, byte-exact with ASCII case-insensitive matching, no regex.\n\nA verb such as `muster pane read --find \u003ctext\u003e` returning stable row numbers would be about 150 lines across daemon, proto, CLI and API. Run `feed` under the pane's lock and `tick` outside it so output does not stall. Search keeps compressed pages compressed (0d015b2fc), so it suits a_2vgzgocbC. The alternative, formatting plain text under the lock and searching in Rust, gives regex and works at the pin, but stalls output and decompresses history.\n\nCloses the daemon-side search a_29Ayr1P8F asked for.",
+  "id": "a_2vh0PSFrL",
+  "position": "Zr",
+  "related": [
+    "a_2vgzgocbC",
+    "a_29Ayr1P8F"
+  ],
+  "title": "Search a pane's history without paging all of it",
+  "type": "feature",
+  "updated_at_millis": 1794073305133,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794073265050}
+  ]
+}

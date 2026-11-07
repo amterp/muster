@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-replay-loses-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794073237747,
+  "creator": "Alexander Terp",
+  "description": "`cursor_position` (crates/muster-vt/src/replay.rs:278-284) restores a pending wrap by reprinting the cell. A blank cell formats to nothing, leaving `ESC 7`, `CSI 2 K`, `ESC 8`, so the wrap is lost. Upstream fixed its own version in #14670 and #14918. `GHOSTTY_FORMATTER_EXTRA_CURSOR` would cover it, but origin-relative positioning and right-margin wrap only fire with the modes extra on, and Muster states modes itself.\n\nFound by reading; the move will not fix it. Add the blank-cell case, or have the carried state function in a_2vgzN6Tln set `cursor_origin` and `wrap_column`, about 10 lines, which also deletes `Region::parse`.",
+  "id": "a_2vgzhRYHu",
+  "position": "Zu",
+  "title": "A replay loses a pending wrap when the cursor's cell is blank",
+  "type": "bug",
+  "updated_at_millis": 1794073266271,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794073237747}
+  ]
+}

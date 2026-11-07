@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-turn-s-mark-is-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794073238161,
+  "creator": "Alexander Terp",
+  "description": "`mark_turn` (crates/muster-daemon/src/pane.rs:356) records a row number and the screen's text, and `pane read --turn` reads from there. A resize that rewraps history moves the rows. A tracked grid ref (grid_ref_tracked.h, already in the pin's C API) moves with reflow and reports when its row is pruned. It cannot cross a handover, so the row number stays as a fallback.\n\nInferred from the code; how often a turn's mark goes wrong in practice is not measured. Tracked refs do not replace patch 0003: a ref is lost once its row is pruned.",
+  "id": "a_2vgzi6POx",
+  "position": "Zs",
+  "title": "A turn's mark is a row number that rewrap moves",
+  "type": "enhancement",
+  "updated_at_millis": 1794073238161,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794073238161}
+  ]
+}

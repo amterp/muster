@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "no-key-encoder",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794073236758,
+  "creator": "Alexander Terp",
+  "description": "vt-1.0.0 changes what keys encode to under modifyOtherKeys 2: Ctrl keys send `CSI 27;...` rather than C0 bytes, and F13-F25, keypad, Help and Alt+Escape change (#14144, #14145, #14146, #14508). Non-ASCII Alt prefixes, Ctrl+Alt+Shift+Backspace and kitty release text change too (#13861). corpus's key-encoder.json has no match for `modify_other`, so these would pass unnoticed, and Claude Code runs with modifyOtherKeys 2 on.\n\nRecord cases at the current pin before the move, so the move shows them as a reviewed diff.",
+  "id": "a_2vgzfqpgw",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "Zvx",
+  "title": "No key-encoder oracle covers modifyOtherKeys 2, and vt-1.0.0 changes its output",
+  "type": "chore",
+  "updated_at_millis": 1794073308110,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794073236758}
+  ]
+}

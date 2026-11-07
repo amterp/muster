@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-codex-pane-reads",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794072282298,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-06 on Muster 0.23.0 and Codex 0.166.0. `pane wait --until idle,done,blocked` returned `done`, then `pane send \"/clear\" --enter` was refused on the pane's screen: \"'/clear' is disabled while a task is in progress.\" The send gave no sign of it. The same send a minute later worked.\n\nHold `done` until the harness can take a command, or have `pane send --confirm` fail when the screen refuses. Whether `--confirm` already catches this is not known: the reporter's pipeline hid its exit status.",
+  "id": "a_2vgaqMPrH",
+  "position": "Zw",
+  "title": "A Codex pane reads done before Codex accepts /clear",
+  "type": "bug",
+  "updated_at_millis": 1794072282298,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794072282298}
+  ]
+}

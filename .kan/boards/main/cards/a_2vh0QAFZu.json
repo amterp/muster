@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "should-a-pane-s-scrollback",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1794073265544,
+  "creator": "Alexander Terp",
+  "description": "Today a daemon restart returns the pane tree but \"the scrollback is gone\". `docs/architecture.md` says \"Persist intent, never observation\", and terminals carry secrets, so persisting scrollback reverses a stated doctrine and writes those secrets to disk. That is the owner's call.\n\nIf yes, write `terminal.replay()` to disk rather than a libghostty snapshot. It works today, any later libghostty reads it back, and it already has an oracle.\n\nSnapshots (snapshot.h) carry more: the saved cursor, the kitty keyboard stack, images. But the header excludes the byte format from the ABI promise, and snapshot/main.zig calls version 1 \"the work-in-progress format that we intended to continue to break\". #13566 broke it at version 1, and testdata/complete-v1.hex changed between the pin and vt-1.0.0 with the version still 1. Readers check only the version number, so an old file could decode into a subtly wrong grid. Any file would need stamping with the exact pin and patch hash and discarding on mismatch, so every re-pin would lose saved scrollback.\n\nEither format has no incremental encode: each save is a whole pane under its lock, and a crash loses everything since the last one.",
+  "id": "a_2vh0QAFZu",
+  "position": "aj",
+  "title": "Should a pane's scrollback survive a daemon restart?",
+  "type": "chore",
+  "updated_at_millis": 1794073265544,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794073265544}
+  ]
+}

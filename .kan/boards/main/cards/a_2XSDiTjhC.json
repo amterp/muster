@@ -9,6 +9,12 @@
       "body": "The hold-pipe drain is skipped unless nudged (96b444d). The per-chunk poll is next, per the profile in the round report.",
       "author": "Alexander Terp",
       "created_at_millis": 1790549698155
+    },
+    {
+      "id": "c_2vh1UkAVA",
+      "body": "2026-11-07 re-triage: not fixed by a_2vgzMmJ4x. This card's cost is per-read overhead, and upstream's #15046 says plain-ASCII throughput is bound by the kernel. Upstream's print speedups change the VT cost beside it, so re-measure after the move.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794073306703
     }
   ],
   "created_at_millis": 1790491706680,
@@ -19,7 +25,7 @@
   "position": "aa",
   "title": "The daemon's reader costs 1.6x a bare PTY read on a flood",
   "type": "enhancement",
-  "updated_at_millis": 1790549698155,
+  "updated_at_millis": 1794073306758,
   "history": [
     {"field":"column","value":"backlog-lo","at":1790491706680}
   ]

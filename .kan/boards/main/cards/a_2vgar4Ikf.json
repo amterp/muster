@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "muster-daemon-report",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794072282729,
+  "creator": "Alexander Terp",
+  "description": "`pane new --name` prints a callsign and every `muster` verb takes one, but `muster-daemon report --pane pelican` fails with \"the daemon has no pane pelican\". It takes only the pane id, and its usage line says NAME. Resolve callsigns as the other verbs do, or have the error ask for a pane id. Reported by a helper on 0.21.0; not reproduced.",
+  "id": "a_2vgar4Ikf",
+  "labels": [
+    "ai-hi"
+  ],
+  "position": "Zv",
+  "title": "`muster-daemon report --pane` refuses a callsign without saying why",
+  "type": "enhancement",
+  "updated_at_millis": 1794072282729,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794072282729}
+  ]
+}

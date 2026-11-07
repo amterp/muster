@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "should-muster-read",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2vgzMmJ4x"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1794073265268,
+  "creator": "Alexander Terp",
+  "description": "vt-1.0.0 adds `GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS` for OSC 7501 (#14560): a program reports idle, working, done, blocked or error, with a kind (permission, question, auth) and a message. That is Muster's state model, delivered by the terminal with no adapter and no screen rules, for any harness.\n\nNothing in corpus/ shows a harness emitting it, so its value depends on adoption. Open: does any harness emit it or plan to, where would it rank against hooks and screen rules, and is about 60 lines worth carrying before one does. While the callback is unset, a query goes unanswered and reports are dropped, which is what happens today.\n\nSmaller and available regardless: `GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT` gives a plain shell pane exact working and idle edges from OSC 133, which Muster's shell integration already emits.",
+  "id": "a_2vh0PpKvY",
+  "position": "ai",
+  "title": "Should Muster read an agent's state from OSC 7501, where a program reports it itself?",
+  "type": "chore",
+  "updated_at_millis": 1794073305278,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794073265268}
+  ]
+}
