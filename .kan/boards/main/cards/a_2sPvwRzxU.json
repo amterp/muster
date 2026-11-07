@@ -12,6 +12,18 @@
       "body": "Done 2026-11-05 (in 0.22.0): a harness whose manifest has an idle rule (Claude Code, Codex, OpenCode) stays unknown after the startup grace until a state rule first recognizes its screen, so pane wait --until idle waits through a slow launch. Manifests without an idle rule keep the idle fallback.",
       "author": "Alexander Terp",
       "created_at_millis": 1793901356940
+    },
+    {
+      "id": "c_2v5he7CBm",
+      "body": "2026-11-06, Foreman slot 5: Codex review helper ibex (p2hn44rthz), started with muster pane new --helper --run codex, remained blank apart from .zshrc loading lines for about four minutes. Process inspection confirmed a live codex process, while muster window showed idle, adapter null, no session. Its review post was held as its prompt is not on its screen. This repeats the starting-versus-idle issue. After sending Ctrl+C, pane read immediately returned no pane on this daemon; the pane disappeared, so a pinned 0.166.0 replacement was started.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793984362356
+    },
+    {
+      "id": "c_2v7EXatvl",
+      "body": "2026-11-06 11:56-11:59, Foreman stage-8 review: helper eagle (p2hnfvhxrz), started with codex --model gpt-6.1-sol -c model_reasoning_effort=medium, drew only shell startup lines for about three minutes while ps showed the Codex process alive. muster window reported idle with adapter/session null. The review wake stayed unread with prompt not on screen. I interrupted that startup and used bunx @openai/codex@0.166.0 in a replacement helper; it drew a real prompt. This repeats the blank-startup state mismatch after this card was marked done.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1793988010104
     }
   ],
   "created_at_millis": 1793589287581,
@@ -24,7 +36,7 @@
   ],
   "title": "A Codex pane still launching reads idle once a 3-second startup grace ends",
   "type": "bug",
-  "updated_at_millis": 1793901357310,
+  "updated_at_millis": 1793988010104,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793589287581},
     {"field":"column","value":"done","at":1793901357310}
