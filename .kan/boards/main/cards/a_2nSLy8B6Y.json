@@ -5,7 +5,7 @@
   "area": [
     "testing"
   ],
-  "column": "uncommitted",
+  "column": "backlog-hi",
   "comments": [
     {
       "id": "c_2nTjhkpfi",
@@ -54,6 +54,12 @@
       "body": "2026-10-27 re-triage: moved out of next because the latest investigation leaves an owner decision before implementation can start. The proposed `set +m` workaround changes Ctrl-Z, background jobs and pipelines during a pane's requested command; keeping the wrapper leaves the macOS race open. Retained all reproductions and the proposed options here, and marked blocked until that choice is made.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143805247
+    },
+    {
+      "id": "c_2vpyM1kOU",
+      "body": "2026-11-07: moved out of uncommitted, which now holds only what nobody has committed to. The owner asked for this, so it belongs in the backlog even while decisions about it remain open. It keeps the blocked label until he decides.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794094635498
     }
   ],
   "created_at_millis": 1792856237685,
@@ -63,18 +69,19 @@
   "labels": [
     "blocked"
   ],
-  "position": "a9",
+  "position": "b1f",
   "related": [
     "a_2k7D9rlWP"
   ],
   "title": "🎲 Input sent to a pane just after it prints ready is sometimes never read (typing tests, ~3% under load)",
   "type": "bug",
-  "updated_at_millis": 1793143875651,
+  "updated_at_millis": 1794094635498,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792856237685},
     {"field":"column","value":"next","at":1792860389186},
     {"field":"column","value":"in-progress","at":1792939964772},
     {"field":"column","value":"next","at":1792944675478},
-    {"field":"column","value":"uncommitted","at":1793143875650}
+    {"field":"column","value":"uncommitted","at":1793143875650},
+    {"field":"column","value":"backlog-hi","at":1794094635410}
   ]
 }

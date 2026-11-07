@@ -5,16 +5,25 @@
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2vpyN7Mxy",
+      "body": "2026-11-07: moved out of uncommitted, which now holds only what nobody has committed to. The owner asked for this, so it belongs in the backlog even while decisions about it remain open.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794094636170
+    }
+  ],
   "created_at_millis": 1793555648743,
   "creator": "Alexander Terp",
   "description": "The owner, 2026-11-01, commenting on Foreman's phone app mock-up: he wants an agent's messages shown with \"formatting, supporting images, etc.\" Formatting needs nothing from Muster, since agents already write Markdown in a message's text and a client can render it. An image cannot travel today: a message is text alone (`muster msg post [TEXT | --file F | -]`), and `--file` posts a file's text.\n\nWanted: an agent attaches an image to a post, and the desk and an API client such as Foreman's server can show it, including in a group kept on another machine. Open: where the image's bytes are kept and for how long, a size limit, how the desk shows one, and whether it belongs in MIP-10's stage 5 (a_2q476Ize2) or needs a MIP of its own.",
   "id": "a_2sBoqRukX",
-  "position": "ag",
+  "position": "b2R",
   "title": "A message can carry an image",
   "type": "feature",
-  "updated_at_millis": 1793555648743,
+  "updated_at_millis": 1794094636170,
   "history": [
-    {"field":"column","value":"uncommitted","at":1793555648743}
+    {"field":"column","value":"uncommitted","at":1793555648743},
+    {"field":"column","value":"backlog-lo","at":1794094636081}
   ]
 }
