@@ -214,7 +214,8 @@ Only what the agent's harness tells Muster counts, never `context_used` falling:
 | Others | never | never |
 
 An agent whose adapter is not installed, or was installed before 0.4, reports neither. A cleared
-agent has a new `session`; a compacted one keeps its own.
+agent's `session` changes, in the same event or one just before or after it; a compacted one keeps
+its own.
 
 Since 0.4, `name_from_session` says the pane took `name` from its agent's session, rather than
 being given it by `pane new --name` or a rename. A harness may write such a name itself, as Claude
