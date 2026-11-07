@@ -1,20 +1,33 @@
 {
   "_v": 4,
-  "alias": "should-a-pane-s-scrollback",
+  "alias": "a-pane-s-scrollback",
   "alias_explicit": false,
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2vhDXQeLI",
+      "body": "2026-11-07: the owner settled the question this card asked. Yes, opt-out if not too complex, and encryption only if it cannot cost reliability, which rules out application-level encryption. Rewritten as a feature and moved out of uncommitted.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794073769646
+    }
+  ],
   "created_at_millis": 1794073265544,
   "creator": "Alexander Terp",
-  "description": "Today a daemon restart returns the pane tree but \"the scrollback is gone\". `docs/architecture.md` says \"Persist intent, never observation\", and terminals carry secrets, so persisting scrollback reverses a stated doctrine and writes those secrets to disk. That is the owner's call.\n\nIf yes, write `terminal.replay()` to disk rather than a libghostty snapshot. It works today, any later libghostty reads it back, and it already has an oracle.\n\nSnapshots (snapshot.h) carry more: the saved cursor, the kitty keyboard stack, images. But the header excludes the byte format from the ABI promise, and snapshot/main.zig calls version 1 \"the work-in-progress format that we intended to continue to break\". #13566 broke it at version 1, and testdata/complete-v1.hex changed between the pin and vt-1.0.0 with the version still 1. Readers check only the version number, so an old file could decode into a subtly wrong grid. Any file would need stamping with the exact pin and patch hash and discarding on mismatch, so every re-pin would lose saved scrollback.\n\nEither format has no incremental encode: each save is a whole pane under its lock, and a crash loses everything since the last one.",
+  "description": "Decided by the owner on 2026-11-07: yes, on by default with an opt-out, and it has to just work. A restored pane comes back with its history above a new shell, where today the restart notice says \"the scrollback is gone\".\n\n**Storage: plain files, mode 0600, beside the daemon's other state.** persist.rs already writes that way, through a temporary file and a rename. Application-level encryption is left out on purpose. A daemon starts with nobody at the keyboard, through launchd or over SSH, so it must read its key unprompted. A key on the same disk protects nothing, the Keychain can prompt or refuse, and a Linux devenv has no equivalent. Each failure there would lose history, which is the reliability the owner ruled out risking. FileVault or the disk's own encryption covers a machine at rest, and any program running as the same user can already read a pane through `muster pane read`.\n\n**What to write: the primary screen's history and text, not the whole replay.** The process that drew the screen is gone, so a restored pane must not inherit an alternate screen, mouse modes, keyboard modes or a kitty stack, and it must not carry a replay continuation (a_2vgzfWBEl): an unfinished sequence would swallow the new shell's first output. The primary-screen formatter from patch 0001 is the likely source. Keep VT text, not a libghostty snapshot: any later libghostty can read it, while snapshot/main.zig calls its format version 1 \"the work-in-progress format that we intended to continue to break\", and readers check only that number, so an old file could decode into a subtly wrong grid. Snapshots would also lose saved history at every re-pin.\n\n**It must never get in a restore's way.** A missing, short or unreadable file means the pane starts empty and a warning goes to the log. A restore does not wait on it. Delete a pane's file when the pane closes, including when reopening it is no longer possible.\n\n**Open, for the plan:**\n- When to save. There is no incremental encode, so each save formats a whole pane under its lock, and a crash loses what came after the last save. Saving an idle pane that changed, plus at a clean shutdown, is the obvious start. Measure the hold at 50 MB: `vt.replay_compose` is 235 ns a row, and input waits on that lock.\n- Handover needs none of this, since the panes live on.\n- Disk use: up to about 750 MB at 15 full panes at the 50 MB default, or less if a file is compressed.\n- Time Machine and other backups copy home directories, so a file of terminal contents should be excluded, and on work machines it must stay out of personal backups. An `tmutil addexclusion` on the directory may be enough on a Mac.\n- The setting's name and place, likely a root key such as `persist_scrollback = false`, following CLAUDE.md's \"Configuring\".\n\n**Docs this changes.** docs/architecture.md's \"Persist intent, never observation\" needs a stated exception with this reason: a person would ask for their history again, even though its contents are observed. CLAUDE.md's \"Sessions outlive the app\" desideratum and the notice in crates/muster-core/src/mirror/restart.rs both say the scrollback is lost.\n\nA persisted format is design work and a risky change: get the plan reviewed by the other model family before building, and two reviewers on the result (ordo `design-work`, `push`).",
   "id": "a_2vh0QAFZu",
-  "position": "aj",
-  "title": "Should a pane's scrollback survive a daemon restart?",
-  "type": "chore",
-  "updated_at_millis": 1794073265544,
+  "position": "Zxp",
+  "related": [
+    "a_2vgzgocbC",
+    "a_2XJ1gvmm9"
+  ],
+  "title": "A pane's scrollback survives a daemon restart, with an opt-out",
+  "type": "feature",
+  "updated_at_millis": 1794073769647,
   "history": [
-    {"field":"column","value":"uncommitted","at":1794073265544}
+    {"field":"column","value":"uncommitted","at":1794073265544},
+    {"field":"column","value":"backlog-hi","at":1794073769375}
   ]
 }

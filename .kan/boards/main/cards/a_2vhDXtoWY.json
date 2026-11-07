@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "walk-the-agent-list",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794073769995,
+  "creator": "Alexander Terp",
+  "description": "The owner, Chat Notes 2026-11-07: step through panes in sidebar order, like switching tabs in Edge, whose vertical tab strip works this way. Muster has two separate walks: `next_pane` reaches panes a window is showing, and `next_tab` walks tabs. Nothing goes down the agent list from one row to the next across tabs, so getting from the last pane of one tab to the first of the next takes two chords.\n\nThe owner asked for ⌘⌥← and ⌘⌥→ first, but those are `focus_left` and `focus_right`, matching Ghostty's `goto_split`, and they stay. Ghostty has no walk that crosses tabs and splits. Its tab walk is on two chords, ⌘⇧[ ⌘⇧] and Ctrl+Tab Ctrl+Shift+Tab. Muster's `next_tab` already has the first. The second is unbound in Muster, so use it: Ctrl+Tab goes down the list and Ctrl+Shift+Tab goes up. In a window of one-pane tabs this is exactly Ghostty's next tab.\n\nAdd a pair of actions in the shared path with the roster's order, so the keymap, the menu and `muster focus` all reach it. Likely `next_in_roster` and `previous_in_roster`, in `[keymap]`. It wraps at the ends and follows what the list shows, so it skips hidden panes and collapsed helpers.\n\nBinding Ctrl+Tab means it stops reaching the program in a pane, as in Ghostty. Anyone wanting Edge's chord can bind ⌘⌥← and ⌘⌥→ to these actions in `[keymap]`, giving up directional focus on those two keys.",
+  "id": "a_2vhDXtoWY",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "Zxx",
+  "title": "Walk the agent list with a chord, across tabs, on Ctrl+Tab and Ctrl+Shift+Tab",
+  "type": "feature",
+  "updated_at_millis": 1794073770325,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794073769995}
+  ]
+}
