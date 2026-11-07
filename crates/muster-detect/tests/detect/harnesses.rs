@@ -25,6 +25,7 @@ struct Supplied {
     takes_pane_name: bool,
     names_pane: bool,
     compacts: bool,
+    says_context_changes: bool,
     resumes: bool,
     image_paste: bool,
 }
@@ -32,7 +33,7 @@ struct Supplied {
 /// A capability's row: its name on the page, and how it is read off what a harness supplies.
 type Row = (&'static str, fn(&Supplied) -> bool);
 
-const ROWS: [Row; 12] = [
+const ROWS: [Row; 13] = [
     ("Its own report of its state", |supplied| supplied.reported_state),
     ("Context used, model and cost", |supplied| supplied.context),
     ("Sub-agents counted", |supplied| supplied.subagents),
@@ -43,6 +44,7 @@ const ROWS: [Row; 12] = [
     ("Its session named after the pane", |supplied| supplied.takes_pane_name),
     ("The pane named after its session", |supplied| supplied.names_pane),
     ("Compacted when asked", |supplied| supplied.compacts),
+    ("Says when its context was cleared or compacted", |supplied| supplied.says_context_changes),
     ("Resumed after a restart", |supplied| supplied.resumes),
     ("Clipboard image pasted into a remote composer", |supplied| supplied.image_paste),
 ];
@@ -113,6 +115,7 @@ fn supplied(manifests: &Manifests, extras: &[(Agent, String)], agent: &Agent) ->
         takes_pane_name: manifests.session_rename(agent, "name").is_some(),
         names_pane: reports(&wiring, "session-name"),
         compacts: manifests.session_compact(agent, None).is_some(),
+        says_context_changes: reports(&wiring, "session-source"),
         // The manifest says how, and the adapter reports the session to resume.
         resumes: manifests.session_resume(agent, "id", &[], None).is_some()
             && reports(&wiring, "session-id"),
