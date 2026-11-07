@@ -216,6 +216,13 @@ Only what the agent's harness tells Muster counts, never `context_used` falling:
 An agent whose adapter is not installed, or was installed before 0.4, reports neither. A cleared
 agent has a new `session`; a compacted one keeps its own.
 
+Since 0.4, `name_from_session` says the pane took `name` from its agent's session, rather than
+being given it by `pane new --name` or a rename. A harness may write such a name itself, as Claude
+Code titles a session from how it began, so a client may prefer not to show it. It survives a
+resume, a restart, a reopen and a handoff, and a rename in Muster ends it, even to the same text. It
+says where the name came from and not who chose it: a person's `/rename` in Claude Code reads the
+same as Claude Code's own title. Only Claude Code's adapter reports a session's name.
+
 ### Machines
 
 `TOPIC_MACHINES`: each daemon in the snapshot, by its identity, its display name, its version and

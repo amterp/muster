@@ -53,4 +53,5 @@ field that differs between the two. The transcript does tell them apart, as `ai-
 
 `extras/claude-code` reports a clear from SessionStart's `source`, and a compaction from `PostCompact`
 only once the session's own transcript records it, in a hook that runs asynchronously. A sub-agent's
-compaction then reports nothing, after a five-second wait.
+compaction then reports nothing, after a five-second wait. A name a pane takes from `session_name`
+is marked as taken, and the mark cannot say which of section 4's two wrote it.

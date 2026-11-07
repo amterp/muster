@@ -19,7 +19,7 @@ fn pane_request_of(request: pane_request::Request) -> proto::request::Service {
 
 /// Reopens `pane` and insists it came back, saying how.
 #[track_caller]
-fn reopened(control: &mut Control, pane: &str, tab: &str) -> proto::Reopened {
+pub(crate) fn reopened(control: &mut Control, pane: &str, tab: &str) -> proto::Reopened {
     match expect(control, reopen_request(pane, tab), proto::Outcome::Done).answer.detail {
         Some(proto::answer::Detail::Reopened(reopened)) => reopened,
         other => panic!("a reopen answered with {other:?}"),
@@ -31,7 +31,7 @@ fn rename(control: &mut Control, pane: &str, label: &str) {
     expect(control, pane_request_of(pane_request::Request::Rename(rename)), proto::Outcome::Done);
 }
 
-fn close(control: &mut Control, pane: &str) {
+pub(crate) fn close(control: &mut Control, pane: &str) {
     expect(control, close_request(pane), proto::Outcome::Done);
 }
 

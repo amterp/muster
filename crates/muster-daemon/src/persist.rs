@@ -175,6 +175,9 @@ pub(crate) struct Pane {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) label: Option<String>,
+    /// Its label came from its agent's session (`proto::Pane::label_from_session`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) label_from_session: bool,
     /// Its callsign (`proto::Pane::callsign`), so it comes back called the same. Absent from a
     /// file written before callsigns, and one is drawn as the pane comes back. Kept as `word`,
     /// its name when the format was set.
@@ -771,6 +774,7 @@ mod tests {
         Pane {
             name: name.to_string(),
             label: None,
+            label_from_session: false,
             callsign: Some(format!("word-{name}")),
             cwd: PathBuf::from("/tmp"),
             grid: Grid { cols: 80, rows: 24, width_px: 800, height_px: 480 },
@@ -1005,6 +1009,7 @@ mod tests {
         let pane = |name: &str, label: Option<&str>| Pane {
             name: name.to_string(),
             label: label.map(str::to_string),
+            label_from_session: false,
             callsign: None,
             cwd: PathBuf::from("/tmp"),
             grid,

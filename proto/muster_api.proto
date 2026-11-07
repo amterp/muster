@@ -666,7 +666,8 @@ message Pane {
   // A short word its daemon drew for it (`otter`), which `muster` takes wherever it takes a
   // pane, and which no other live pane on that machine holds. Kept through a rename.
   string callsign = 3;
-  // The name somebody gave it. Empty while nobody has.
+  // What it is called: a name somebody gave it, or one it took from its agent's session
+  // (`name_from_session`). Empty while it has neither.
   string name = 4;
   // What the program in it last called itself.
   string title = 5;
@@ -701,6 +702,12 @@ message Pane {
   // the one before it, so a client that stores these keeps each it sees, by pane, kind and
   // `at_ms`, and one that missed two sees the later.
   ContextChange context_change = 17;
+  // Since 0.4. `name` was taken from the agent's session rather than given to the pane, by
+  // `pane new --name` or a rename. A harness may write such a name itself, from whatever its
+  // session began with, so a client may prefer not to show it. It says where the name came from,
+  // and not who chose it: a person's rename in the harness reads the same. False while `name` is
+  // empty.
+  bool name_from_session = 18;
 }
 
 // One change to an agent's context, which its harness told its daemon of.

@@ -920,6 +920,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
     persist::Pane {
         name: pane.record.pane.clone(),
         label: pane.record.label.clone(),
+        label_from_session: pane.record.label_from_session,
         callsign: pane.record.callsign.clone(),
         cwd: PathBuf::from(&pane.record.cwd),
         grid: pane.io.grid(),
@@ -1113,6 +1114,7 @@ fn keep_what_was_lost(path: &Path, lost: &Lost) -> bool {
 pub(crate) struct Starting {
     pane: String,
     label: Option<String>,
+    label_from_session: bool,
     /// The word drawn for it, and claimed in `naming` with the name it was given, if any.
     callsign: String,
     command: Option<String>,
@@ -1821,6 +1823,7 @@ impl Session {
         Ok(Starting {
             pane: create.pane,
             label: create.label,
+            label_from_session: false,
             callsign,
             command: create.command,
             quiet: create.quiet,
@@ -1906,6 +1909,7 @@ impl Session {
         self.naming.insert(callsign.clone(), pane.clone());
         Ok(Starting {
             pane,
+            label_from_session: saved.label_from_session && label.is_some(),
             label,
             callsign,
             command: resume.as_ref().map(|resume| resume.command.join(" ")),
@@ -2052,6 +2056,7 @@ impl Session {
         let record = proto::Pane {
             pane: starting.pane.clone(),
             label: starting.label,
+            label_from_session: starting.label_from_session,
             callsign: Some(starting.callsign),
             cwd: starting.cwd.display().to_string(),
             command: starting.command,
@@ -3102,7 +3107,7 @@ impl Session {
         }
         let pane = &mut self.panes[index];
         log::info("session.name.taken", fields! { "pane" => pane.record.pane, "agent" => agent });
-        relabel(&mut pane.record, Some(taken));
+        relabel(&mut pane.record, Some(taken), LabelFrom::Session);
         let record = pane.record.clone();
         self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         true
@@ -3543,7 +3548,8 @@ impl Session {
         let Some(index) = self.pane_index(&rename.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", rename.pane));
         };
-        if self.panes[index].record.label == rename.label {
+        let record = &self.panes[index].record;
+        if record.label == rename.label && !record.label_from_session {
             return Reply::already();
         }
         let given = given_name(rename.label.as_deref());
@@ -3553,7 +3559,7 @@ impl Session {
             return taken;
         }
         let record = &mut self.panes[index].record;
-        relabel(record, rename.label);
+        relabel(record, rename.label, LabelFrom::Given);
         let record = record.clone();
         let pane = &mut self.panes[index];
         pane.session_name.named(&record.pane, record.label.as_deref());
@@ -4241,6 +4247,7 @@ impl Session {
             let record = proto::Pane {
                 pane: name.clone(),
                 label: pane.saved.label,
+                label_from_session: pane.saved.label_from_session,
                 callsign: pane.saved.callsign,
                 cwd: cwd.display().to_string(),
                 command: resume.as_ref().map(|resume| resume.command.join(" ")),
@@ -4721,11 +4728,19 @@ fn given_name(label: Option<&str>) -> Option<&str> {
 /// How many names a pane's record remembers it was given before (`Pane.former_labels`).
 const FORMER_LABELS: usize = 8;
 
+/// Where a pane's label came from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LabelFrom {
+    Given,
+    Session,
+}
+
 /// Gives a pane a new label, remembering the name it had before for whoever still uses it.
-fn relabel(record: &mut proto::Pane, label: Option<String>) {
+fn relabel(record: &mut proto::Pane, label: Option<String>, from: LabelFrom) {
     let before = given_name(record.label.as_deref()).map(str::to_string);
     record.label = label;
     let now = given_name(record.label.as_deref()).map(str::to_string);
+    record.label_from_session = from == LabelFrom::Session && now.is_some();
     record.former_labels.retain(|former| Some(former) != now.as_ref());
     if let Some(before) = before.filter(|before| Some(before) != now.as_ref()) {
         record.former_labels.retain(|former| *former != before);

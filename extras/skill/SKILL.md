@@ -73,6 +73,9 @@ twice. Only 3 is safe to repeat. After a 4, `muster pane read --pane X` before d
   it and resumes its session with its flags, asking nobody, so be sure it is the one you mean.
 - **Read a finished agent's report with `muster pane read --pane X --turn`**: what it printed
   since it last went to work, without the turn before or your brief. Do not guess `--rows`.
+- **Give each helper a `--name` that says its task**: `muster pane new --helper --name "review
+  the parser" --run claude`. A pane with no name takes the title its harness writes, which is often
+  about the first message it was woken by, such as `Read galaxy+ocean message`.
 - **Name the sender when waiting on a reviewer or helper**:
   `"$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter`, then end
   your turn. Its message ends that wait; another sender's message leaves it standing. For a

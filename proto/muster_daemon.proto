@@ -1797,6 +1797,9 @@ message Pane {
   // Since 1.12. The last time the pane's agent's context was cleared or compacted, as its adapter
   // reported it. Kept across a handoff, and never written to the state file.
   ContextChange context_change = 27;
+  // Since 1.12. `label` was taken from the agent's session (`Report.session_name`) rather than
+  // given to the pane. False while it has no label.
+  bool label_from_session = 28;
 }
 
 // One change to an agent's context (`Pane.context_change`).

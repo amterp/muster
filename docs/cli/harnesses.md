@@ -100,6 +100,7 @@ kimi, kiro, maki, pi, qodercli.
 - **The pane named after its session**: renaming the session in the harness renames the pane.
   Claude Code hands its statusline the session's name, so this needs the adapter's statusline,
   and its `refreshInterval` for the pane to follow within seconds rather than at the next message.
+  Claude Code's own title for a session arrives the same way, so a pane nobody named takes it.
   Codex names every session itself after its first request, where a rename goes too, so Muster
   cannot tell a name you gave from one Codex chose, and takes neither.
 - **Compacted when asked**: `muster pane compact`, or `compact_at` in the config file, types the

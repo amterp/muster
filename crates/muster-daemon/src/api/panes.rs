@@ -39,6 +39,7 @@ pub(crate) fn pane(record: &proto::Pane, hidden: bool, source: &api::Source) -> 
         quiet: record.quiet,
         adapter: adapter(record).into(),
         context_change: record.context_change.as_ref().map(context_change),
+        name_from_session: record.label_from_session,
     }
 }
 

@@ -7,6 +7,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::persistence::{record, stop, until_restored, until_saved};
+use crate::reopen::{close, reopened};
 use crate::support::*;
 
 /// Long enough for a rename the daemon would type to have been typed: past the quiet period
@@ -63,6 +65,15 @@ impl Pane {
             .into_iter()
             .find(|record| record.pane == "p1")
             .and_then(|record| record.label)
+    }
+
+    /// Whether the API says the pane's name came from its session, and what its record says.
+    fn name_is_from_session(&mut self) -> bool {
+        let record = record(&snapshot(&mut self.control), "p1").label_from_session;
+        let mut api = self.daemon.api();
+        let snapshot = api.subscribe(&[api::Topic::Panes]).snapshot().clone();
+        assert_eq!(snapshot.panes[0].name_from_session, record);
+        record
     }
 
     fn heard_file(&self) -> PathBuf {
@@ -124,6 +135,71 @@ fn a_session_renamed_in_its_harness_renames_the_pane_and_nothing_is_typed_back()
     p1.reports("critic");
     assert_eq!(p1.label().as_deref(), Some("reviewer"), "the old name, said again, is not news");
     p1.until_renamed("/rename reviewer");
+}
+
+/// A client hides a name its harness may have written about a wake, so it asks where a name came
+/// from. A person's rename settles that, even to the very text the pane took.
+#[test]
+fn a_name_taken_from_the_session_is_marked_until_somebody_renames_the_pane() {
+    let mut p1 = Pane::named(None);
+    assert!(!p1.name_is_from_session(), "no name is no mark");
+
+    p1.reports("Read galaxy+ocean message");
+    assert!(p1.name_is_from_session());
+    p1.reports("Read galaxy+ocean message");
+    assert!(p1.name_is_from_session(), "said again, it is the same name from the same place");
+
+    p1.renamed("Read galaxy+ocean message");
+    assert!(!p1.name_is_from_session(), "a rename adopts the text");
+    assert_eq!(p1.label().as_deref(), Some("Read galaxy+ocean message"));
+
+    p1.reports("another");
+    assert!(p1.name_is_from_session(), "the session renamed again");
+    let unnamed = proto::pane_request::Rename { pane: "p1".to_string(), label: None };
+    let unnamed = pane(proto::pane_request::Request::Rename(unnamed));
+    expect(&mut p1.control, unnamed, proto::Outcome::Done);
+    assert!(!p1.name_is_from_session(), "no name is no mark");
+}
+
+/// A name given to the pane is handed to the session, which then says it back or says something
+/// else first, and neither makes it the session's.
+#[test]
+fn a_given_name_is_not_marked_by_the_session_saying_it_or_starting_with_another() {
+    let mut p1 = Pane::named(Some("the build"));
+    p1.reports("Ok");
+    assert_eq!(p1.label().as_deref(), Some("the build"));
+    assert!(!p1.name_is_from_session());
+    p1.reports("the build");
+    assert!(!p1.name_is_from_session());
+
+    p1.reports("reviewer");
+    assert_eq!(p1.label().as_deref(), Some("reviewer"));
+    assert!(p1.name_is_from_session(), "renamed in its harness, the pane took a name");
+}
+
+/// A restart that lost the mark would show a wake's title as a name somebody gave.
+#[test]
+fn the_mark_survives_a_restart_a_handoff_and_a_reopen() {
+    let mut p1 = Pane::named(None);
+    make(&mut p1.control, create("p2", beside("p1", proto::Side::Down)));
+    p1.reports("a title");
+    until_saved(&p1.daemon, "label_from_session");
+
+    stop(&mut p1.daemon, &mut p1.control);
+    p1.daemon.restart();
+    p1.control = p1.daemon.connect();
+    until_restored(&mut p1.control, 2);
+    assert_eq!(p1.label().as_deref(), Some("a title"));
+    assert!(p1.name_is_from_session(), "restarted");
+
+    let answer = p1.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    p1.control = p1.daemon.connect();
+    assert!(p1.name_is_from_session(), "handed over");
+
+    close(&mut p1.control, "p1");
+    reopened(&mut p1.control, "p1", "t9");
+    assert!(p1.name_is_from_session(), "reopened");
 }
 
 #[test]
