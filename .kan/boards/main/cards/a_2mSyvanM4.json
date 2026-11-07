@@ -24,6 +24,12 @@
       "body": "2026-11-02, Foreman integrator cactus with helpers sequoia, guppy and quill: four more in 20 minutes. Twice the same case as this card: guppy and quill were told to hold until another worker's stage landed, did so, and each raised 'went idle without posting'. Twice a new variant: sequoia ended its turn waiting on its own two reviewer helpers (marble, blossom, one still working), which is waiting on work, not idle without reporting. Suggest skipping the notice while the helper has helpers of its own that are working, or have posted to it since it last reported.",
       "author": "Alexander Terp",
       "created_at_millis": 1793667926535
+    },
+    {
+      "id": "c_2vJGN0hVH",
+      "body": "2026-11-06, Foreman: a reviewer helper answered another agent (not its maker) with muster msg post, twice in 4 minutes, and its maker got 'went idle without posting to you' both times. Counting a post to anyone at the end of the turn would cover this.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794016679788
     }
   ],
   "created_at_millis": 1792709971945,
@@ -33,7 +39,7 @@
   "position": "b1c",
   "title": "A helper told to stay idle is reported to its maker as idle without posting",
   "type": "bug",
-  "updated_at_millis": 1793667926535,
+  "updated_at_millis": 1794016679788,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792709971945}
   ]
