@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2wLuIhvmw",
+      "body": "Data point for the dismissing sequence, 2026-11-08 14:42, Claude Code 2.1.319: a Heads up notice held a ring to an idle worker in plan mode with an empty prompt. `muster pane send --pane \u003cp\u003e \"0\"` (as text, no Return) dismissed it at once; the screen then showed 'Dismissed. 1: That was helpful 2: Not relevant 3: Couldn't understand 4: Turn off suggestions 0: Dismiss', the held ring rang within a second, and the worker went to work. No Ctrl+C was needed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794170744635
+    }
+  ],
   "created_at_millis": 1794170582222,
   "creator": "Alexander Terp",
   "description": "Since a_2jMNCgynD (0.22.0), the `suggestion_notice` rule in `crates/muster-detect/manifests/claude.toml` recognizes Claude Code's \"Heads up\" / \"You should know\" notice (drawn by its built-in you-should-know plugin) and holds every ring and every queued compaction while it shows. Nothing dismisses it, so a held pane waits until a person presses keys in it. Claude Code draws these notices often: four of five workers had one at once in one round.\n\nWhat the hold has cost:\n\n- 2026-10-25: a queued compaction stayed queued about an hour while the worker kept being woken, and its context grew from 48% to 82%.\n- 2026-11-08 09:46 to 10:09: a notice over an integrator's own prompt held a worker's \"plan ready\" wake for 23 minutes, so the worker sat idle in plan mode. The same pane was covered three times in two hours. An integrator cannot press keys in its own pane.\n- 2026-11-08 14:28: an agent compacted itself with `muster pane compact \u003ckeep\u003e --then \u003cprompt\u003e` and ended its turn, and a notice appeared at once. The pane is nobody's helper, so Muster told nobody; the owner found it by looking at its row.\n- An owner answering from a phone cannot press keys at all, and the phone app does not draw the notice, so the pane just looks idle.\n\nClearing it by hand is unreliable, and the hint `muster window` prints, \"(0, then Ctrl+C once)\", can do harm. `muster pane send --key 0` sometimes dismisses the notice, sometimes types \"0\" into the prompt, and sometimes does nothing. When the 0 lands in the prompt, one Ctrl+C clears both. When it did nothing, that Ctrl+C lands on an empty prompt and arms \"Press Ctrl-C again to exit\". And twice the held wake was delivered between the two keys, so the Ctrl+C interrupted the agent's new turn.\n\nThe notices are sometimes worth reading: several have named real gaps in the work in front of the agent. So dismissing them silently throws away information.\n\nProposal: when a ring or a compaction is held by this notice on an idle pane, Muster:\n\n1. reads the notice's text off the screen,\n2. dismisses it, checking the screen after each key, and never sending Ctrl+C unless the prompt holds what it just typed,\n3. delivers what it was holding, and hands the notice's text to the pane's agent (in the ring, or as a message from @muster) so the agent can act on it or pass it on.\n\nOpen questions:\n\n- The input behavior was never recorded, so the dismissing sequence is not known. Record it first, next to `corpus/claude-code-2.1.301/tip-box.txt`.\n- 6c6c625d kept screen text out of `prompt_covered_by`. Handing a notice's text to the same pane's agent is a different path, but it is screen text leaving the screen, and is worth a Fencil decision.\n- Should this cover rings as well as compactions, and should the owner also be told?\n- Until this lands, the \"(0, then Ctrl+C once)\" hint should say to read the pane between the two keys.",
@@ -19,7 +27,7 @@
   ],
   "title": "Dismiss a Claude Code notice that holds a ring or compaction, and hand its text to the agent",
   "type": "feature",
-  "updated_at_millis": 1794170592794,
+  "updated_at_millis": 1794170744635,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794170582222}
   ]
