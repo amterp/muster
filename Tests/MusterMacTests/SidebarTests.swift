@@ -1306,24 +1306,119 @@ struct SidebarTests {
   @MainActor func aReusedRowForgetsItsLastRow() {
     let sidebar = SidebarView(
       frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-    let busy = pane("local", "w1:p1", subtitle: "chasing a flaky test")
-    var agent = PaneAgent(state: "working")
+    let busy = pane("local", "w1:p1", directory: "/Users/a/src/muster")
+    var agent = PaneAgent(state: "blocked")
+    agent.sinceMS = Int64((Date().timeIntervalSince1970 - 120) * 1000)
     agent.rang = true
     agent.contextUsed = 40
     agent.progress = PaneAgent.Progress(state: "running", percent: 30)
     sidebar.apply(roster: roster([busy]), agents: [busy.key: agent])
     _ = sidebar.drawnRows
     let row = sidebar.rowView(at: 0)
-    #expect(row?.shownSubtitle == "chasing a flaky test")
+    #expect(row?.shownStateLine == "Blocked 2m")
+    #expect(row?.shownDirectory == "muster")
+    #expect(row?.shownIcon == "blocked")
+    #expect(row?.showsTint == true)
     #expect(row?.shownMarks == 2)
+    #expect(row?.shownContext == 40)
     #expect(row?.showsProgress == true)
 
     sidebar.apply(roster: roster([pane("local", "w1:p1")]), agents: [busy.key: "idle"])
 
     #expect(sidebar.rowView(at: 0) === row)
-    #expect(row?.shownSubtitle == nil)
+    #expect(row?.shownStateLine == nil)
+    #expect(row?.shownDirectory == nil)
+    #expect(row?.shownIcon == "idle")
+    #expect(row?.showsTint == false)
     #expect(row?.shownMarks == 0)
+    #expect(row?.shownContext == nil)
     #expect(row?.showsProgress == false)
+  }
+
+  /// Lets a test move the list's clock without waiting for it.
+  private final class Clock {
+    var now: Date
+    init(_ now: Date) { self.now = now }
+  }
+
+  @Test(
+    "what a change costs the list in redrawn rows, at one pane and at fifteen", arguments: [1, 15])
+  @MainActor func redrawCost(panes count: Int) {
+    let clock = Clock(now)
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 800))
+    sidebar.clock = { clock.now }
+    let panes = (1...count).map { pane("local", "w1:p\($0)", place: $0, directory: "/src/p\($0)") }
+    func agents(lastIs state: String) -> [PaneKey: PaneAgent] {
+      var agents = Dictionary(
+        uniqueKeysWithValues: panes.map { ($0.key, agent("idle", since: 90, now: clock.now)) })
+      agents[panes[0].key] = agent("blocked", since: 90, now: clock.now)
+      if count > 1 { agents[panes[1].key] = agent("done", since: 30, now: clock.now) }
+      if count > 2 { agents[panes[count - 1].key] = agent(state, since: 90, now: clock.now) }
+      return agents
+    }
+    let timed = min(count, 2)
+
+    sidebar.apply(roster: roster(panes), agents: agents(lastIs: "idle"))
+    #expect(sidebar.redrawCount == count, "the first draw is every row")
+    #expect(sidebar.isTicking, "a blocked row shows a time, so the minute is being counted")
+
+    // The same roster and states again, as a republish that changed nothing sends them.
+    let before = sidebar.redrawCount
+    sidebar.apply(roster: roster(panes), agents: agents(lastIs: "idle"))
+    #expect(sidebar.redrawCount == before, "an unchanged republish redrew rows")
+
+    // One agent changes what it is doing.
+    if count > 2 {
+      sidebar.apply(roster: roster(panes), agents: agents(lastIs: "working"))
+      #expect(sidebar.redrawCount == before + 1, "a state change redrew more than its own row")
+    }
+
+    // A minute passes: only the rows showing a time say something different, and a few
+    // seconds more change nothing.
+    let afterChange = sidebar.redrawCount
+    clock.now = clock.now.addingTimeInterval(60)
+    sidebar.tick()
+    #expect(sidebar.redrawCount == afterChange + timed, "the minute redrew rows with no time")
+    clock.now = clock.now.addingTimeInterval(10)
+    sidebar.tick()
+    #expect(sidebar.redrawCount == afterChange + timed, "ten seconds redrew a row")
+  }
+
+  @Test("the minute is counted only while a row shows a time")
+  @MainActor func theTimerRunsOnlyWhenNeeded() {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let one = pane("local", "w1:p1")
+
+    sidebar.apply(roster: roster([one]), agents: [one.key: agent("idle", since: 90)])
+    #expect(!sidebar.isTicking)
+
+    sidebar.apply(roster: roster([one]), agents: [one.key: agent("blocked", since: 90)])
+    #expect(sidebar.isTicking)
+
+    sidebar.apply(roster: roster([one]), agents: [one.key: agent("working", since: 90)])
+    #expect(!sidebar.isTicking)
+  }
+
+  @Test("a caption draws its press as a key, and the tab on screen sits on a panel")
+  @MainActor func captionsAreKeysOnAPanel() {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let roster = roster(
+      [
+        tab("local", "w1:t1", press: 1, panes: [pane("local", "w1:p1", tabPress: 1, press: 1)]),
+        tab(
+          "local", "w1:t2", place: 2, press: 2, onScreen: true,
+          panes: [pane("local", "w1:p2", place: 2, tabPress: 2, press: 1)]),
+      ], numbering: .tabs)
+    sidebar.apply(roster: roster, agents: [:])
+    _ = sidebar.drawnRows
+    let views = (0..<4).map { sidebar.rowView(at: $0) }
+
+    // Caption, pane, caption, pane: the first tab's caption and pane carry their chords as keys.
+    #expect(views[0]?.shownKeys == [1])
+    #expect(views[1]?.shownKeys == [1, 1])
+    #expect(views[2]?.shownKeys == [2])
+    #expect(views[3]?.shownKeys == [2, 1])
+    #expect(views.map { $0?.shownPanel } == [nil, nil, .top, .bottom])
   }
 
   /// An agent as the core last said it, `seconds` before `now`.

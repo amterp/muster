@@ -761,6 +761,12 @@ public enum SidebarModel {
     }
   }
 
+  /// Whether a row's second line shows a time, which is whether a minute passing can change it.
+  public static func showsTime(in row: Row) -> Bool {
+    guard row.isPane, let agent = row.agent else { return false }
+    return ["blocked", "stuck", "done"].contains(agent.state) && agent.sinceMS > 0
+  }
+
   /// What a pane row's second line says before the directory, for `agent` as it is at `now`.
   ///
   /// The state's word and how long it has held for the three states that want somebody, what a
@@ -1321,6 +1327,9 @@ public final class SidebarView: NSView {
     // agent said what it is working on, and a table with a size style of its own ignores what
     // `heightOfRow` answers.
     table.rowSizeStyle = .custom
+    // No gap between rows: the tab on screen's raised panel is drawn a row at a time and has to
+    // read as one rectangle.
+    table.intercellSpacing = .zero
     table.selectionHighlightStyle = .regular
     table.backgroundColor = .clear
     table.dataSource = self
@@ -1433,15 +1442,43 @@ public final class SidebarView: NSView {
   /// Instantly rather than animated: a note animates by default, and a row growing under
   /// somebody reading the list is the movement the two heights exist to avoid.
   public func apply(roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil) {
+    inputs = (roster, agents, keyboard)
+    redraw()
+  }
+
+  /// What the list was last given, kept so that a minute passing can draw it again.
+  private var inputs: (roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey?)?
+
+  /// The time rows measure how long a state has held against. Replaceable so that a test can let
+  /// a minute pass without waiting for one.
+  var clock: () -> Date = { Date() }
+
+  /// How many rows have been drawn since this list was made, counting a whole reload as every
+  /// row. What the cost of a change is measured in: a state change should be one, an unchanged
+  /// roster none.
+  private(set) var redrawCount = 0
+
+  /// The timer that ticks on the minute, while some row shows a time.
+  private var minuteTimer: Timer?
+
+  /// Whether the minute timer is running, which it is only while some row shows a time.
+  var isTicking: Bool { minuteTimer != nil }
+
+  private func redraw() {
+    guard let inputs else { return }
     let fresh = SidebarModel.rows(
-      roster: roster, agents: agents, keyboard: keyboard, groups: groups,
-      hiddenCollapsed: hiddenCollapsed, helpersOpen: helpersOpen, members: conversationMembers)
+      roster: inputs.roster, agents: inputs.agents, keyboard: inputs.keyboard, groups: groups,
+      hiddenCollapsed: hiddenCollapsed, helpersOpen: helpersOpen, members: conversationMembers,
+      now: clock())
     let previous = rows
     rows = fresh
+    defer { scheduleMinuteTick() }
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
+      redrawCount += fresh.count
       table.reloadData()
       return
     }
+    redrawCount += changed.redraw.count
     for index in changed.redraw {
       rowView(at: index)?.show(fresh[index])
     }
@@ -1455,6 +1492,33 @@ public final class SidebarView: NSView {
   /// The view drawing a row, or nil when the table has none loaded for it.
   func rowView(at row: Int) -> SidebarRowView? {
     table.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarRowView
+  }
+
+  /// Draws the list again against the time now, which changes only the rows showing how long a
+  /// state has held. Called by the minute timer, and by tests that have moved `clock`.
+  func tick() {
+    redraw()
+  }
+
+  /// Keeps one timer running, on the minute, for as long as some row shows a time, and none
+  /// otherwise. One per list rather than one per row: at fifteen panes that is one wakeup a
+  /// minute instead of fifteen, and a list with nothing blocked, stuck or done wakes for nothing.
+  private func scheduleMinuteTick() {
+    let needed = rows.contains(where: SidebarModel.showsTime(in:))
+    guard needed != (minuteTimer != nil) else { return }
+    guard needed else {
+      minuteTimer?.invalidate()
+      minuteTimer = nil
+      return
+    }
+    let now = clock().timeIntervalSince1970
+    let next = Date(timeIntervalSince1970: (now / 60).rounded(.down) * 60 + 60)
+    let timer = Timer(fire: next, interval: 60, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated { self?.tick() }
+    }
+    timer.tolerance = 1
+    RunLoop.main.add(timer, forMode: .common)
+    minuteTimer = timer
   }
 
   @objc private func rowClicked() {
@@ -1621,559 +1685,5 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
   private func dragged(_ info: NSDraggingInfo) -> PaneKey? {
     info.draggingPasteboard.string(forType: SidebarView.draggedPane)
       .flatMap(PaneDrop.pane(fromPayload:))
-  }
-}
-
-/// One row: a state dot or the chord that reaches it, a name, and whether anything is showing it.
-///
-/// Built once and shown many times. A focus change moves the keyboard marker on two rows and an
-/// agent going idle repaints one, and rebuilding a row's fields and layers for that cost about a
-/// millisecond of AppKit construction each - more than anything else a focus change does on the
-/// main thread. So a row changing is `show` on the view already there, and the table hands a
-/// view back for reuse when a whole reload or a scroll asks for one.
-@MainActor
-final class SidebarRowView: NSView {
-  static let identifier = NSUserInterfaceItemIdentifier("sidebar-row")
-
-  private let dot = CALayer()
-  private let showing = CALayer()
-  private let name = NSTextField(labelWithString: "")
-  private let subtitle = NSTextField(labelWithString: "")
-  private let tabPress = NSTextField(labelWithString: "")
-  private let press = NSTextField(labelWithString: "")
-  private let highlight = CALayer()
-  /// Which machine the row is on, at the very trailing edge (`SidebarModel.Row.machine`).
-  private let swatch = CALayer()
-  /// The marks at the trailing edge, left to right (`SidebarModel.accessories(of:)`).
-  private var marks: [NSView] = []
-  /// What `marks` draws, so a row whose marks did not change keeps the views it has.
-  private var accessories: [SidebarModel.Accessory] = []
-  private let progressTrack = CALayer()
-  private let progressBar = CALayer()
-  /// How much of the bar is filled, from 0 to 1.
-  private var progressFilled: CGFloat = 0
-  /// Every layer's colour, kept to resolve again when the appearance changes: a layer holds a
-  /// resolved colour, so one set once keeps light mode's in dark.
-  private var layerColors: [(layer: CALayer, color: NSColor)] = []
-  /// How many steps in from the list's edge the row starts.
-  private var indent = 0
-  private var isTab = false
-
-  /// Whether this row carries the keyboard marker.
-  var marksKeyboard: Bool { highlight.superlayer != nil }
-
-  /// What the second line says, or nil when the row has none.
-  var shownSubtitle: String? { subtitle.superview == nil ? nil : subtitle.stringValue }
-
-  /// How many marks sit at the trailing edge, and whether a progress bar runs under the text.
-  var shownMarks: Int { marks.count }
-  var showsProgress: Bool { progressBar.superlayer != nil }
-
-  init() {
-    super.init(frame: .zero)
-    identifier = SidebarRowView.identifier
-    wantsLayer = true
-    highlight.cornerRadius = 5
-    // A square rather than a circle, and at the far edge rather than beside the name: the dot
-    // by the name is the agent's state, and a second round mark in a second color beside it
-    // would read as a second state.
-    swatch.cornerRadius = 2
-    showing.cornerRadius = SidebarRowView.showingSize / 2
-    dot.cornerRadius = SidebarRowView.dotSize / 2
-    for bar in [progressTrack, progressBar] {
-      bar.cornerRadius = SidebarRowView.progressHeight / 2
-    }
-    subtitle.font = .systemFont(ofSize: 10, weight: .regular)
-    subtitle.textColor = .secondaryLabelColor
-    // Truncated rather than wrapped, and the full text on hover. Wrapping would make a row's
-    // height a function of what its agent is doing, so the list would jump under somebody
-    // reading it every time an agent wrote a longer sentence. In a list whose whole value is
-    // being scannable, a stable row beats a complete one.
-    subtitle.lineBreakMode = .byTruncatingTail
-    // Long directory names truncate rather than spilling past the row, for the same reason.
-    name.lineBreakMode = .byTruncatingTail
-    addSubview(name)
-  }
-
-  /// Draws `row`, taking away whatever the row this view last showed had and this one does not.
-  func show(_ row: SidebarModel.Row) {
-    // Panes indent under their tab caption, and stay indented in a list that draws none; a
-    // helper and its maker's helpers line go further in, a step for each level.
-    indent = (row.isPane || row.isHelpers ? 1 : 0) + row.depth
-    isTab = row.isTab
-    layerColors = []
-    for layer in [highlight, swatch, showing, dot, progressTrack, progressBar] {
-      layer.removeFromSuperlayer()
-    }
-    for field in [subtitle, tabPress, press] {
-      field.removeFromSuperview()
-    }
-    progressFilled = 0
-
-    // The pane the keyboard feeds, marked the way the window already marks it. Behind
-    // everything else and only for the one row, so a list of a dozen panes beside a window of
-    // two can be read back against it.
-    if row.hasKeyboard {
-      paint(highlight, NSColor.controlAccentColor.withAlphaComponent(0.22))
-      layer?.insertSublayer(highlight, at: 0)
-    }
-
-    if let machine = row.machine, let color = NSColor(hex: machine.color) {
-      paint(swatch, color)
-      layer?.addSublayer(swatch)
-    }
-
-    switch row.kind {
-    case .machine, .messages, .hidden:
-      name.font = .systemFont(ofSize: 10, weight: .semibold)
-      name.stringValue = row.label.uppercased()
-      name.textColor = .secondaryLabelColor
-      // A folded Hidden caption is the only one carrying a state: the most urgent of the panes
-      // it is folded over.
-      if row.isHiddenCaption, !row.state.isEmpty {
-        paint(dot, SidebarModel.dotColor(state: row.state))
-        layer?.addSublayer(dot)
-      }
-    case .helpers:
-      name.font = .systemFont(ofSize: 11, weight: .regular)
-      name.stringValue = row.label
-      name.textColor = .secondaryLabelColor
-      // Folded, it carries the most urgent state of the helpers it is folded over, as a folded
-      // Hidden caption does.
-      if !row.state.isEmpty {
-        paint(dot, SidebarModel.dotColor(state: row.state))
-        layer?.addSublayer(dot)
-      }
-    case .group(let unread, _):
-      // Bold while something waits, as a mailbox is: the badge says how much, the weight says
-      // that the row is worth reading at all.
-      name.font = .systemFont(ofSize: 12, weight: unread > 0 ? .semibold : .regular)
-      name.stringValue = row.label
-      name.textColor = unread > 0 ? .labelColor : .secondaryLabelColor
-    case .tab(let reached):
-      // Its own press sits in the tab column, drawn as a whole chord rather than as the prefix
-      // to one - a caption is somewhere you go, not a step on the way to a pane.
-      // The tab on screen is named in full, and the ones behind it are quieter. This says a
-      // different thing from the keyboard highlight on purpose: one is where you are
-      // looking, the other is where you are typing, and in a two-region window those are
-      // two different tabs.
-      name.font = .systemFont(ofSize: 11, weight: row.onScreen ? .semibold : .regular)
-      name.stringValue = row.label
-      name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
-      draw(tabPress: reached, press: 0, in: row)
-      // A mark rather than only the weight above: one row in the list is the tab you are
-      // looking at, and a font weight is something you compare where a mark is something you
-      // see. It answers a narrower question than it used to - the window shows one tab now, so
-      // this is the ordinary current-tab mark rather than the "which of these share the screen"
-      // mark a column-per-machine window needed (kan a_2HtF52Itm).
-      //
-      // Quiet, and deliberately not the accent colour: this says where you are looking, and the
-      // accent highlight on a pane row already says where you are typing.
-      if row.onScreen {
-        paint(showing, .tertiaryLabelColor)
-        layer?.addSublayer(showing)
-      }
-    case .pane(let first, let second):
-      name.font = .systemFont(ofSize: 12, weight: .regular)
-      draw(tabPress: first, press: second, in: row)
-      // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
-      // rather than "gone", which is the difference between a row worth clicking and one that
-      // looks broken.
-      let color: NSColor = row.onScreen ? .labelColor : .secondaryLabelColor
-      name.textColor = color
-      name.attributedStringValue = Self.firstLine(for: row, color: color)
-      paint(dot, SidebarModel.dotColor(state: row.state))
-      layer?.addSublayer(dot)
-      if !row.subtitle.isEmpty {
-        subtitle.stringValue = row.subtitle
-        addSubview(subtitle)
-      }
-      if let progress = SidebarModel.progress(of: row) {
-        let failed = progress.state == "error"
-        progressFilled = failed ? 1 : CGFloat(min(max(progress.percent ?? 0, 0), 100)) / 100
-        paint(progressTrack, .quaternaryLabelColor)
-        paint(progressBar, failed ? .systemRed : .controlAccentColor)
-        layer?.addSublayer(progressTrack)
-        layer?.addSublayer(progressBar)
-      }
-    }
-    showMarks(SidebarModel.accessories(of: row))
-
-    if row.isPane {
-      // The whole of what is known, on hover and to VoiceOver, which otherwise hears a name and
-      // nothing of the dot beside it.
-      let details = SidebarModel.details(of: row)
-      toolTip = details
-      name.toolTip = details
-      subtitle.toolTip = details
-      setAccessibilityElement(true)
-      setAccessibilityRole(.staticText)
-      setAccessibilityLabel(details)
-    } else if let summary = SidebarModel.summary(of: row) {
-      // A folded caption stands in for the rows it hides, so it says what they would have.
-      toolTip = nil
-      name.toolTip = summary
-      setAccessibilityElement(true)
-      setAccessibilityRole(.staticText)
-      setAccessibilityLabel(summary)
-    } else {
-      toolTip = nil
-      // A machine row's subtitle is what its restart cost, which the heading has no line for.
-      name.toolTip = row.subtitle.isEmpty ? row.label : "\(row.label): \(row.subtitle)"
-      setAccessibilityElement(false)
-      setAccessibilityRole(nil)
-      setAccessibilityLabel(nil)
-    }
-    resolveColors()
-    needsLayout = true
-  }
-
-  /// A pane row's first line: its callsign, in a style of its own, then what the core puts beside
-  /// it - or the whole label for a pane with no callsign.
-  ///
-  /// Monospaced and in the accent colour, because the callsign is the pane's handle rather than a
-  /// description of it, and a renamed pane keeps it: it reads as the same kind of thing on every
-  /// row whatever follows it.
-  static func firstLine(for row: SidebarModel.Row, color: NSColor) -> NSAttributedString {
-    let plain: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 12, weight: .regular), .foregroundColor: color,
-    ]
-    guard !row.callsign.isEmpty else {
-      return NSAttributedString(string: row.label, attributes: plain)
-    }
-    let line = NSMutableAttributedString(
-      string: row.callsign,
-      attributes: [
-        .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold),
-        .foregroundColor: NSColor.controlAccentColor,
-      ])
-    if !row.besideCallsign.isEmpty {
-      line.append(NSAttributedString(string: "  \(row.besideCallsign)", attributes: plain))
-    }
-    return line
-  }
-
-  /// Replaces the trailing marks, unless they are the ones already drawn.
-  private func showMarks(_ wanted: [SidebarModel.Accessory]) {
-    guard wanted != accessories else { return }
-    accessories = wanted
-    for mark in marks {
-      mark.removeFromSuperview()
-    }
-    marks = wanted.map(SidebarRowView.mark(for:))
-    for mark in marks {
-      addSubview(mark)
-    }
-  }
-
-  private func paint(_ layer: CALayer, _ color: NSColor) {
-    layerColors.append((layer, color))
-  }
-
-  private func resolveColors() {
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      for (layer, color) in layerColors {
-        layer.backgroundColor = color.cgColor
-      }
-    }
-  }
-
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    resolveColors()
-  }
-
-  /// One trailing mark, drawn small and quiet: the dot says what the agent is doing, and these
-  /// only add to it.
-  private static func mark(for accessory: SidebarModel.Accessory) -> NSView {
-    switch accessory {
-    case .unreadable:
-      return symbol("eye.slash", tint: .tertiaryLabelColor, saying: "cannot read the screen")
-    case .bell:
-      return symbol("bell.fill", tint: .secondaryLabelColor, saying: "the bell rang")
-    case .subagents(let count):
-      return CountBadge(count: count, saying: count == 1 ? "1 sub-agent" : "\(count) sub-agents")
-    case .unread(let count):
-      return CountBadge(count: count, saying: "\(count) unread")
-    case .toYou(let count):
-      return symbol("at", tint: .controlAccentColor, saying: "\(count) addressed to you")
-    case .context(let used):
-      return ContextRing(used: used)
-    case .quiet:
-      return symbol("bell.slash", tint: .tertiaryLabelColor, saying: "quiet")
-    case .member:
-      return symbol(
-        "bubble.left.and.bubble.right", tint: .secondaryLabelColor,
-        saying: "in the conversation shown")
-    case .hiddenPanes(let count):
-      return CountBadge(
-        count: count, saying: count == 1 ? "1 hidden pane" : "\(count) hidden panes")
-    case .disclosure(let collapsed):
-      return symbol(
-        collapsed ? "chevron.right" : "chevron.down", tint: .tertiaryLabelColor,
-        saying: collapsed ? "show hidden panes" : "fold hidden panes")
-    case .helpers(let open):
-      return symbol(
-        open ? "chevron.down" : "chevron.right", tint: .tertiaryLabelColor,
-        saying: open ? "fold helpers" : "show helpers")
-    }
-  }
-
-  private static func symbol(_ name: String, tint: NSColor, saying: String) -> NSView {
-    let image = NSImage(systemSymbolName: name, accessibilityDescription: saying)?
-      .withSymbolConfiguration(.init(pointSize: 9, weight: .regular))
-    let view = NSImageView(image: image ?? NSImage())
-    view.contentTintColor = tint
-    return view
-  }
-
-  /// The chord that reaches this row, drawn beside the dot rather than instead of it.
-  ///
-  /// The dot is what the row is for and the chord is how to get there, so a row wants both.
-  /// Zero draws nothing, which is what a press a row does not have carries - the tab column in
-  /// a window of one tab, and both columns on a pane nothing reaches.
-  ///
-  /// One function for every kind of row, because a chord means one thing wherever it lands and
-  /// two implementations of "draw the chord" would be two chances for them to look different
-  /// depending on which row they were on.
-  ///
-  /// **The last press of a chord is the operative one and reads at full weight; a press before
-  /// it is a prefix and stays quiet.** So a caption's own press and the lone press onto a
-  /// one-pane tab both read as loudly as a pane digit does - each is a whole chord - while the
-  /// tab digit repeating down a group of panes recedes, which is the digit that says nothing
-  /// new about the row it is on.
-  ///
-  /// A row reserving a column still adds the field with nothing in it, which is what keeps
-  /// every label in the list on one edge.
-  private func draw(tabPress first: Int, press second: Int, in row: SidebarModel.Row) {
-    let hasFirst = SidebarRowView.pressable(first)
-    let hasSecond = SidebarRowView.pressable(second)
-    if hasFirst || row.reservedPresses >= 1 {
-      tabPress.stringValue = hasFirst ? String(first) : ""
-      style(tabPress, operative: !hasSecond, live: false)
-      addSubview(tabPress)
-    }
-    if hasSecond || row.reservedPresses >= 2 {
-      press.stringValue = hasSecond ? String(second) : ""
-      style(press, operative: true, live: row.isSecondPress)
-      addSubview(press)
-    }
-  }
-
-  /// How loudly one press of a chord is drawn.
-  ///
-  /// `live` is brighter and heavier because at that moment the press is not a reference
-  /// somebody might consult - it is the keystroke about to be made, and the modifier is still
-  /// down. At rest the pane digit reads in the secondary label color, a step below the name
-  /// beside it, and the tab digit a step below that. They used to be a step quieter each, and
-  /// in use they were too faint to find at a glance, which is what they are drawn for (amterp,
-  /// kan a_2YSLBqN6a).
-  private func style(_ field: NSTextField, operative: Bool, live: Bool) {
-    field.font = .monospacedDigitSystemFont(
-      ofSize: operative ? 11 : 10, weight: live ? .semibold : (operative ? .medium : .regular))
-    field.textColor =
-      live ? .controlAccentColor : (operative ? .secondaryLabelColor : .tertiaryLabelColor)
-  }
-
-  /// Whether a press is one of the nine ⌘1 to ⌘9 name.
-  ///
-  /// The core sends nothing else, and this is the shell agreeing rather than deciding: a digit
-  /// drawn beside a row that no key can produce would be worse than an unlabelled row.
-  private static func pressable(_ press: Int) -> Bool {
-    (1...9).contains(press)
-  }
-
-  /// One press's column, centred on the row, advancing the edge the next thing starts from.
-  private func place(_ field: NSTextField, from left: inout CGFloat, width: CGFloat) {
-    let height = min(bounds.height, field.fittingSize.height)
-    field.frame = CGRect(
-      x: left, y: (bounds.height - height) / 2, width: width, height: height)
-    left += width
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("muster builds its views in code")
-  }
-
-  static let dotSize: CGFloat = 7
-  /// Between two trailing marks, and between the last of them and the text.
-  static let markGap: CGFloat = 4
-  static let progressHeight: CGFloat = 2
-  /// Smaller than a state dot, and in the same column. A mark the size of a pane's dot would
-  /// read as a state on a row that has no agent to have one.
-  static let showingSize: CGFloat = 4
-  /// A point smaller than a state dot, so the two read as different kinds of mark.
-  static let swatchSize: CGFloat = 6
-  static let inset: CGFloat = 8
-  static let indent: CGFloat = 10
-  /// Wide enough for the digit a press is drawn as, at the size an operative press is drawn.
-  static let pressWidth: CGFloat = 12
-  /// Narrower, because a prefix is drawn a point smaller - and because the two columns
-  /// together come off a 200pt list that is already truncating labels.
-  static let prefixWidth: CGFloat = 11
-  /// Between the two presses of one chord: close enough to read as one address rather than as
-  /// two columns that happen to be adjacent.
-  static let pressGap: CGFloat = 3
-
-  override func layout() {
-    super.layout()
-    if highlight.superlayer != nil {
-      highlight.frame = bounds.insetBy(dx: 4, dy: 1)
-    }
-    let left = SidebarRowView.inset + CGFloat(indent) * SidebarRowView.indent
-    // Chord, then dot, then label, laid out from a running left edge rather than each from
-    // `left`, because a pane row carries both: the chord says how to reach the row and the dot
-    // says why you would want to, and they used to be alternatives only because a row was
-    // either a caption or a pane. A caption now takes the dot's column too, for the mark saying
-    // a region is showing it.
-    var textLeft = left
-    let chorded = tabPress.superview != nil || press.superview != nil
-    if tabPress.superview != nil {
-      place(tabPress, from: &textLeft, width: SidebarRowView.prefixWidth)
-      if press.superview != nil { textLeft += SidebarRowView.pressGap }
-    }
-    if press.superview != nil {
-      place(press, from: &textLeft, width: SidebarRowView.pressWidth)
-    }
-    if chorded { textLeft += 4 }
-    if dot.superlayer != nil {
-      dot.frame = CGRect(
-        x: textLeft, y: (bounds.height - SidebarRowView.dotSize) / 2,
-        width: SidebarRowView.dotSize, height: SidebarRowView.dotSize)
-      textLeft += SidebarRowView.inset + SidebarRowView.dotSize
-    } else if isTab {
-      // The column is taken on every caption and filled on the ones on screen, so a tab that
-      // goes behind another does not slide its label fifteen points sideways as it happens.
-      // Centred on where a pane's dot sits, so the marks read down the list as one column.
-      let size = SidebarRowView.showingSize
-      showing.frame = CGRect(
-        x: textLeft + (SidebarRowView.dotSize - size) / 2, y: (bounds.height - size) / 2,
-        width: size, height: size)
-      textLeft += SidebarRowView.inset + SidebarRowView.dotSize
-    }
-    // The marks from the trailing edge in, each centred on the row as the dot is, so a column of
-    // them reads straight down the list whatever each row's second line does.
-    var right = bounds.width - SidebarRowView.inset
-    if swatch.superlayer != nil {
-      let size = SidebarRowView.swatchSize
-      swatch.frame = CGRect(
-        x: right - size, y: (bounds.height - size) / 2, width: size, height: size)
-      right -= size + SidebarRowView.markGap
-    }
-    for mark in marks.reversed() {
-      let size = mark.fittingSize
-      mark.frame = CGRect(
-        x: right - size.width, y: (bounds.height - size.height) / 2, width: size.width,
-        height: size.height)
-      right -= size.width + SidebarRowView.markGap
-    }
-    if progressBar.superlayer != nil {
-      // Along the bottom edge under the text, the way a download's bar sits under its name.
-      let span = max(0, bounds.width - SidebarRowView.inset - textLeft)
-      let height = SidebarRowView.progressHeight
-      progressTrack.frame = CGRect(x: textLeft, y: 1, width: span, height: height)
-      progressBar.frame = CGRect(x: textLeft, y: 1, width: span * progressFilled, height: height)
-    }
-    // Sized to the text and then centred, rather than given the whole row. A label draws its
-    // text at the top of whatever frame it is handed, so a full-height frame puts the words
-    // above the dot beside them - which reads as the dot being wrong rather than the text.
-    let width = max(0, right - textLeft)
-    let textHeight = min(bounds.height, name.fittingSize.height)
-    guard subtitle.superview != nil else {
-      name.frame = CGRect(
-        x: textLeft, y: (bounds.height - textHeight) / 2, width: width, height: textHeight)
-      return
-    }
-    // Two lines share the row: the pair is centred together, so a one-line row and a two-line
-    // row read as the same list rather than as two lists. The dot stays on the row's centre
-    // rather than on the first line's, which keeps the column of dots straight.
-    let secondHeight = min(bounds.height, subtitle.fittingSize.height)
-    let top = (bounds.height - textHeight - secondHeight) / 2
-    name.frame = CGRect(
-      x: textLeft, y: top + secondHeight, width: width, height: textHeight)
-    subtitle.frame = CGRect(x: textLeft, y: top, width: width, height: secondHeight)
-  }
-}
-
-/// A count drawn the way Mail draws an unread one - sub-agents running, messages unread: a number
-/// in a capsule, quiet enough to skip and plain enough to read at a glance.
-@MainActor
-final class CountBadge: NSView {
-  private let label = NSTextField(labelWithString: "")
-
-  init(count: Int, saying: String) {
-    super.init(frame: .zero)
-    wantsLayer = true
-    layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-    label.stringValue = String(count)
-    label.font = .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
-    label.textColor = .secondaryLabelColor
-    label.alignment = .center
-    addSubview(label)
-    setAccessibilityLabel(saying)
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("muster builds its views in code")
-  }
-
-  override var fittingSize: NSSize {
-    let text = label.fittingSize
-    return NSSize(width: max(text.width + 8, 14), height: 13)
-  }
-
-  override func layout() {
-    super.layout()
-    layer?.cornerRadius = bounds.height / 2
-    let text = label.fittingSize
-    label.frame = CGRect(
-      x: 0, y: (bounds.height - text.height) / 2, width: bounds.width, height: text.height)
-  }
-
-  // Resolved again when the appearance changes, since a layer holds a colour, not a name.
-  override func viewDidChangeEffectiveAppearance() {
-    super.viewDidChangeEffectiveAppearance()
-    effectiveAppearance.performAsCurrentDrawingAppearance {
-      layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-    }
-  }
-}
-
-/// How full a row's agent's context is, as a ring filled clockwise from the top: read at a
-/// glance down a column of them, where a percentage would have to be read.
-@MainActor
-final class ContextRing: NSView {
-  /// Percent, 0 to 100.
-  private let used: Float
-
-  init(used: Float) {
-    self.used = used
-    super.init(frame: .zero)
-    setAccessibilityLabel("\(Int(used.rounded()))% of its context used")
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("muster builds its views in code")
-  }
-
-  override var fittingSize: NSSize { NSSize(width: 11, height: 11) }
-
-  override func draw(_ dirtyRect: NSRect) {
-    let width: CGFloat = 1.75
-    let ring = bounds.insetBy(dx: width / 2, dy: width / 2)
-    let center = CGPoint(x: ring.midX, y: ring.midY)
-    let track = NSBezierPath(ovalIn: ring)
-    track.lineWidth = width
-    NSColor.quaternaryLabelColor.setStroke()
-    track.stroke()
-    guard used > 0 else { return }
-    let arc = NSBezierPath()
-    arc.appendArc(
-      withCenter: center, radius: ring.width / 2, startAngle: 90,
-      endAngle: 90 - 360 * CGFloat(min(used, 100) / 100), clockwise: true)
-    arc.lineWidth = width
-    arc.lineCapStyle = .round
-    SidebarModel.contextColor(used: used).setStroke()
-    arc.stroke()
   }
 }

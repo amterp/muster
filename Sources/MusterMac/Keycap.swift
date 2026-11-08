@@ -22,8 +22,11 @@ final class KeycapView: NSView {
   private(set) var faceColor = NSColor.clear
   private(set) var edgeColor = NSColor.clear
   private(set) var isLive = false
+  /// The digit it shows.
+  private(set) var value: Int
 
   init(digit: Int) {
+    value = digit
     super.init(frame: CGRect(x: 0, y: 0, width: Self.width, height: Self.height))
     wantsLayer = true
     layer?.addSublayer(edge)
@@ -48,6 +51,7 @@ final class KeycapView: NSView {
   /// thing the hand is about to do.
   func show(digit: Int, live: Bool, surface: ChromePalette.Surface) {
     self.digit.stringValue = String(digit)
+    value = digit
     isLive = live
     faceColor = surface.keycapFill.color
     edgeColor = live ? NSColor.controlAccentColor : surface.keycapEdge.color
