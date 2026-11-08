@@ -18,6 +18,12 @@
       "body": "2026-11-07 instance (Mac Mini): a parallel-work worker pane, busy mid-turn, was reported to its helper as having 'something typed and not sent' in its prompt (presumably Muster's own wake line), so the helper's report was held until the worker's next post was refused for unread messages.",
       "author": "Alexander Terp",
       "created_at_millis": 1794107203177
+    },
+    {
+      "id": "c_2wFkzUdUP",
+      "body": "Another instance, 2026-11-08 (Mac, a parallel-work round in another repo): the integrator's idle Claude Code pane had a wake for one group typed into its prompt at 10:17 and never submitted; every later wake to it was held (\"its prompt holds something typed and not sent\") for 20+ minutes, until a worker pressed Enter in that pane, which submitted the stuck wake and the integrator resumed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794156087085
     }
   ],
   "created_at_millis": 1794072279667,
@@ -31,7 +37,7 @@
   ],
   "title": "Wake notices can stay unsent in the prompt of a waiting Claude Code pane",
   "type": "bug",
-  "updated_at_millis": 1794107203177,
+  "updated_at_millis": 1794156087085,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794072279667}
   ]
