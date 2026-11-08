@@ -43,12 +43,13 @@ struct SidebarTests {
   /// a window of one tab. A case about a window of several states both presses instead.
   private func pane(
     _ daemon: String, _ id: String, place: Int = 1, tabPress: Int = 0, press: Int? = nil,
-    label: String? = nil, subtitle: String = "", givenName: String = "", onScreen: Bool = false
+    label: String? = nil, subtitle: String = "", givenName: String = "", onScreen: Bool = false,
+    directory: String = ""
   ) -> Roster.Pane {
     Roster.Pane(
       key: PaneKey(daemon: daemon, pane: id), place: place, tabPress: tabPress,
       press: press ?? place, label: label ?? id, subtitle: subtitle, givenName: givenName,
-      onScreen: onScreen)
+      onScreen: onScreen, directory: directory)
   }
 
   /// One tab, numbered as the core would have numbered it.
@@ -1084,12 +1085,13 @@ struct SidebarTests {
     #expect(lines.last?.hasSuffix(" - 2817 bytes are waiting") == true)
   }
 
-  @Test("a row with a second line is taller, and only that row")
-  func onlyASecondLineCostsHeight() {
+  @Test("a pane row is two lines whatever its agent says, and a caption is one")
+  func panesAreTwoLinesAndCaptionsOne() {
     // The reason this is asserted rather than left to look right: a list of fifteen agents is
     // read by scanning it, and a height that varied with what an agent happened to be writing
-    // would move every row below it whenever one of them wrote a longer sentence. Two heights
-    // and no more means the only thing that can move a row is a title arriving or leaving.
+    // would move every row below it whenever one of them wrote a longer sentence. A pane's
+    // second line is its directory, which it always has, so no pane's height depends on its
+    // agent at all.
     let roster = roster([
       tab(
         "local",
@@ -1097,12 +1099,14 @@ struct SidebarTests {
           pane("local", "w1:p1", subtitle: "first working build"),
           pane("local", "w1:p2", subtitle: "a very much longer sentence about the work"),
           pane("local", "w1:p3"),
-        ])
+        ]),
+      tab("local", "w1:t2", place: 2, panes: [pane("local", "w1:p4", place: 2)]),
     ])
 
-    let panes = SidebarModel.rows(roster: roster, agents: [:]).filter { $0.isPane }
-    let heights = panes.map(SidebarModel.height(of:))
-    #expect(heights == [SidebarModel.twoLines, SidebarModel.twoLines, SidebarModel.oneLine])
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
+    #expect(rows.filter(\.isPane).map(SidebarModel.height(of:)) == Array(repeating: 40, count: 4))
+    #expect(rows.filter(\.isTab).map(SidebarModel.height(of:)) == [20, 20])
+    #expect(SidebarModel.twoLines == 40)
   }
 
   @Test("a rename starts from what somebody typed, not from what is drawn")
@@ -1134,38 +1138,52 @@ struct SidebarTests {
     roster([tab("local", panes: panes)])
   }
 
+  /// A machine heading that has been restarted, which is the one row left whose second line comes
+  /// and goes: its note says what the restart cost.
+  private func machines(restarted: String) -> [Roster.Machine] {
+    [
+      Roster.Machine(
+        id: "devenv", state: "connected", panes: 0, color: "#8d9440", restarted: restarted)
+    ]
+  }
+
   @Test("a second line arriving asks for the row to be measured again, not just drawn again")
   func aSecondLineArrivingAsksForAMeasure() {
     // The bug this pins: redrawing a row builds its view again inside the frame it already
     // had, so a row that grew a second line drew two lines in a one-line frame until
     // something unrelated reloaded the whole list. Both answers matter - the row has to be
     // drawn again because its words changed, and measured again because its height did.
+    let panes = [pane("local", "w1:p1")]
     let before = SidebarModel.rows(
-      roster: roster([pane("local", "w1:p1"), pane("local", "w1:p2", place: 2)]), agents: [:])
+      roster: roster([tab("local", panes: panes)], machines: machines(restarted: "")),
+      agents: [:])
     let after = SidebarModel.rows(
-      roster: roster([
-        pane("local", "w1:p1", subtitle: "align-agent-state colours"),
-        pane("local", "w1:p2", place: 2),
-      ]), agents: [:])
+      roster: roster(
+        [tab("local", panes: panes)], machines: machines(restarted: "restarted 2m ago")),
+      agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    // One tab, so no caption: the first pane is row 0.
-    #expect(changed?.redraw == IndexSet(integer: 0))
-    #expect(changed?.remeasure == IndexSet(integer: 0))
+    // One tab, so no caption: the pane is row 0 and the machine is row 1.
+    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.remeasure == IndexSet(integer: 1))
   }
 
   @Test("a second line leaving asks for the same thing")
   func aSecondLineLeavingAsksForAMeasure() {
-    // The way back matters as much as the way there: an agent that stops titling itself
-    // leaves a row that would otherwise keep a two-line frame with one line in it.
+    // The way back matters as much as the way there: a machine that stops saying what its
+    // restart cost leaves a row that would otherwise keep a two-line frame with one line in it.
+    let panes = [pane("local", "w1:p1")]
     let before = SidebarModel.rows(
-      roster: roster([pane("local", "w1:p1", subtitle: "align-agent-state colours")]),
+      roster: roster(
+        [tab("local", panes: panes)], machines: machines(restarted: "restarted 2m ago")),
       agents: [:])
-    let after = SidebarModel.rows(roster: roster([pane("local", "w1:p1")]), agents: [:])
+    let after = SidebarModel.rows(
+      roster: roster([tab("local", panes: panes)], machines: machines(restarted: "")),
+      agents: [:])
 
     let changed = SidebarModel.changes(from: before, to: after)
-    #expect(changed?.redraw == IndexSet(integer: 0))
-    #expect(changed?.remeasure == IndexSet(integer: 0))
+    #expect(changed?.redraw == IndexSet(integer: 1))
+    #expect(changed?.remeasure == IndexSet(integer: 1))
   }
 
   @Test("an agent blinking is drawn again and never measured again")
@@ -1200,14 +1218,17 @@ struct SidebarTests {
     // something asks again, and only the frames it settles on say whether it was asked.
     let sidebar = SidebarView(
       frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-    sidebar.apply(roster: roster([pane("local", "w1:p1", label: "muster · claude")]), agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.oneLine])
+    let panes = [pane("local", "w1:p1", label: "muster · claude")]
+    sidebar.apply(
+      roster: roster([tab("local", panes: panes)], machines: machines(restarted: "")),
+      agents: [:])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines, SidebarModel.oneLine])
 
     sidebar.apply(
-      roster: roster([
-        pane("local", "w1:p1", label: "muster · claude", subtitle: "align-agent-state colours")
-      ]), agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines])
+      roster: roster(
+        [tab("local", panes: panes)], machines: machines(restarted: "restarted 2m ago")),
+      agents: [:])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines, SidebarModel.twoLines])
   }
 
   @Test("rows are drawn against the width the list was given, not the one it was born with")
@@ -1303,6 +1324,200 @@ struct SidebarTests {
     #expect(row?.shownSubtitle == nil)
     #expect(row?.shownMarks == 0)
     #expect(row?.showsProgress == false)
+  }
+
+  /// An agent as the core last said it, `seconds` before `now`.
+  private func agent(
+    _ state: String, since seconds: Double? = nil,
+    now: Date = Date(timeIntervalSince1970: 1_000_000),
+    waiting: String = "", lastState: String = ""
+  ) -> PaneAgent {
+    var agent = PaneAgent(state: state)
+    agent.sinceMS = seconds.map { Int64((now.timeIntervalSince1970 - $0) * 1000) } ?? 0
+    agent.waiting = waiting
+    agent.lastState = lastState
+    return agent
+  }
+
+  private let now = Date(timeIntervalSince1970: 1_000_000)
+
+  @Test("a state asks for the person as loudly as the legend says")
+  func tiersFollowTheLegend() {
+    let tiers = [
+      "blocked": SidebarModel.Tier.asks, "stuck": .asks, "done": .look, "working": .calm,
+      "waiting": .calm, "idle": .calm, "unknown": .absent, "unreachable": .absent,
+      "a state nobody has invented yet": .absent,
+    ]
+    for (state, tier) in tiers {
+      #expect(SidebarModel.Tier(state: state) == tier, "\(state)")
+    }
+  }
+
+  @Test("line two says the state and how long it has held, but only where that wants somebody")
+  func stateLines() {
+    func line(_ agent: PaneAgent) -> String { SidebarModel.stateLine(for: agent, now: now) }
+
+    #expect(line(agent("blocked", since: 65)) == "Blocked 1m")
+    #expect(line(agent("stuck", since: 4 * 60)) == "Stuck 4m")
+    #expect(line(agent("done", since: 2 * 3600)) == "Done 2h")
+    // A calm agent says nothing: the row shows only where it is.
+    #expect(line(agent("working", since: 30)).isEmpty)
+    #expect(line(agent("idle", since: 30)).isEmpty)
+    // What a waiting agent waits on says more than any time.
+    #expect(line(agent("waiting", since: 30, waiting: "its build")) == "Waiting on its build")
+    #expect(line(agent("waiting")) == "Waiting")
+    #expect(line(agent("unknown")) == "Unknown")
+    // What follows is what the agent said before its machine went, and no time: the daemon's
+    // moment is when it stopped answering.
+    #expect(
+      line(agent("unreachable", since: 600, lastState: "working")) == "Unreachable · was working")
+    #expect(line(agent("unreachable")) == "Unreachable")
+    // The core has not said when: the word without a time, not a time of 55 years.
+    #expect(line(agent("blocked")) == "Blocked")
+  }
+
+  @Test("how long a state has held is rounded down and never negative")
+  func heldFor() {
+    func held(_ seconds: Double) -> String {
+      SidebarModel.heldFor(sinceMS: Int64((now.timeIntervalSince1970 - seconds) * 1000), now: now)
+    }
+    #expect(held(0) == "<1m")
+    #expect(held(59) == "<1m")
+    #expect(held(60) == "1m")
+    #expect(held(3599) == "59m")
+    #expect(held(3600) == "1h")
+    #expect(held(86399) == "23h")
+    #expect(held(86400) == "1d")
+    #expect(held(-30) == "<1m", "a remote clock running ahead is not a negative time")
+    #expect(SidebarModel.heldFor(sinceMS: 0, now: now).isEmpty)
+  }
+
+  @Test("a directory is shortened to its last part for the row and to ~ for the hover")
+  func directoryShortening() {
+    let home = "/Users/a"
+    func name(_ path: String) -> String { SidebarModel.directoryName(path, home: home) }
+    func full(_ path: String) -> String { SidebarModel.abbreviated(path, home: home) }
+
+    #expect(name("/Users/a/src/muster") == "muster")
+    #expect(name("/Users/a/src/muster/") == "muster", "a trailing slash is not a directory name")
+    #expect(name("/Users/a") == "~")
+    #expect(name("/Users/a/") == "~")
+    #expect(name("/") == "/")
+    #expect(name("").isEmpty)
+    #expect(name("/Users/ab") == "ab", "a longer name that starts like home is not home")
+
+    #expect(full("/Users/a/src/muster") == "~/src/muster")
+    #expect(full("/Users/a") == "~")
+    #expect(full("/Users/ab/src") == "/Users/ab/src")
+    #expect(full("/srv/work") == "/srv/work")
+  }
+
+  @Test("a pane row carries its directory, tier and state line, hidden panes included")
+  func rowsCarryTheSecondLine() {
+    let shown = pane("local", "w1:p1", directory: "/Users/a/src/muster")
+    let roster = Roster(
+      tabs: [tab("local", panes: [shown])],
+      machines: [
+        Roster.Machine(id: "local", state: "connected", panes: 2, color: color(of: "local"))
+      ],
+      numbering: .panes,
+      hidden: [
+        Roster.Tab(
+          id: "w1:t9", daemons: ["local"], place: 0, label: "", onScreen: false,
+          panes: [pane("local", "w1:p9", place: 0, directory: "/srv/quiet/")])
+      ])
+    let agents = [
+      shown.key: agent("blocked", since: 120, now: now),
+      PaneKey(daemon: "local", pane: "w1:p9"): agent("done", since: 30, now: now),
+    ]
+
+    let rows = SidebarModel.rows(roster: roster, agents: agents, now: now)
+    let first = rows.first { $0.pane == shown.key }
+    let second = rows.first { $0.pane?.pane == "w1:p9" }
+
+    #expect(first?.directory == "/Users/a/src/muster")
+    #expect(first?.directoryName == "muster")
+    #expect(first?.tier == .asks)
+    #expect(first?.stateLine == "Blocked 2m")
+    #expect(first?.isTinted == true)
+    #expect(second?.directoryName == "quiet")
+    #expect(second?.tier == .look)
+    #expect(second?.stateLine == "Done <1m")
+    #expect(second?.isTinted == false, "only a state that asks is tinted")
+    #expect(rows.filter(\.isTab).allSatisfy { $0.tier == nil }, "a caption has no tier")
+  }
+
+  @Test("only blocked and stuck rows are tinted")
+  func tintPerState() {
+    for state in ["working", "waiting", "idle", "done", "unknown", "unreachable"] {
+      let rows = SidebarModel.rows(
+        roster: roster([pane("local", "w1:p1")]),
+        agents: [PaneKey(daemon: "local", pane: "w1:p1"): agent(state)])
+      #expect(rows[0].isTinted == false, "\(state)")
+    }
+    for state in ["blocked", "stuck"] {
+      let rows = SidebarModel.rows(
+        roster: roster([pane("local", "w1:p1")]),
+        agents: [PaneKey(daemon: "local", pane: "w1:p1"): agent(state)])
+      #expect(rows[0].isTinted, "\(state)")
+    }
+  }
+
+  @Test("the tab on screen, its panes and the helper lines under them are one raised panel")
+  func theShowingTabIsOnAPanel() {
+    let roster = roster([
+      tab("local", "w1:t1", press: 1, panes: [pane("local", "w1:p1")]),
+      tab(
+        "local", "w1:t2", place: 2, press: 2, onScreen: true,
+        panes: [pane("local", "w1:p2", place: 2), pane("local", "w1:p3", place: 3)]),
+      tab("local", "w1:t3", place: 3, press: 3, onScreen: false, panes: []),
+    ])
+
+    let rows = SidebarModel.rows(roster: roster, agents: [:])
+
+    #expect(rows.map(\.panel) == [nil, nil, .top, .middle, .bottom, nil])
+  }
+
+  @Test(
+    "a showing caption with nothing under it is a panel of one, and a window with no captions has none"
+  )
+  func panelEdgeCases() {
+    let lonely = roster([
+      tab("local", "w1:t1", press: 1, onScreen: true, panes: []),
+      tab("local", "w1:t2", place: 2, press: 2, panes: [pane("local", "w1:p2", place: 2)]),
+    ])
+    #expect(SidebarModel.rows(roster: lonely, agents: [:]).map(\.panel).first == .only)
+
+    let single = roster([tab("local", onScreen: true, panes: [pane("local", "w1:p1")])])
+    #expect(SidebarModel.rows(roster: single, agents: [:]).allSatisfy { $0.panel == nil })
+  }
+
+  @Test("a minute passing redraws the rows that show a time and no others")
+  func aMinuteRedrawsOnlyTimedRows() {
+    let panes = [
+      pane("local", "w1:p1"), pane("local", "w1:p2", place: 2), pane("local", "w1:p3", place: 3),
+    ]
+    let agents = [
+      panes[0].key: agent("blocked", since: 70, now: now),
+      panes[1].key: agent("working", since: 70, now: now),
+      panes[2].key: agent("idle", since: 70, now: now),
+    ]
+    let before = SidebarModel.rows(roster: roster(panes), agents: agents, now: now)
+    let later = SidebarModel.rows(
+      roster: roster(panes), agents: agents, now: now.addingTimeInterval(60))
+    let same = SidebarModel.rows(
+      roster: roster(panes), agents: agents, now: now.addingTimeInterval(10))
+
+    #expect(SidebarModel.changes(from: before, to: later)?.redraw == IndexSet(integer: 0))
+    #expect(SidebarModel.changes(from: before, to: same)?.redraw.isEmpty == true)
+  }
+
+  @Test("the list is put away below the same window width it always was, whatever its default")
+  func theCutoffDidNotMoveWithTheDefault() {
+    #expect(SidebarModel.width == 280)
+    #expect(SidebarModel.widths(in: 399).sidebar == 0)
+    #expect(SidebarModel.widths(in: 400).sidebar == 200)
+    #expect(SidebarModel.widths(in: 1000).sidebar == 280)
   }
 
   @Test("a pane's directory crosses the seam whole, beside a label that does not carry it")

@@ -351,6 +351,35 @@ public enum SidebarModel {
     case group(unread: Int, toYou: Int)
   }
 
+  /// How loudly a pane's state asks for the person (Fencil `agent-list-rows`).
+  public enum Tier: Equatable {
+    /// Blocked and stuck: waiting on you, so the row is tinted and carries a colored edge.
+    case asks
+    /// Done: finished a turn you have not looked at.
+    case look
+    /// Working, waiting and idle: nothing to do, so the row says only where the pane is.
+    case calm
+    /// Unknown and unreachable: Muster cannot say what the agent is doing.
+    case absent
+
+    public init(state: String) {
+      switch state {
+      case "blocked", "stuck": self = .asks
+      case "done": self = .look
+      case "working", "waiting", "idle": self = .calm
+      default: self = .absent
+      }
+    }
+  }
+
+  /// A row's place in the raised panel behind the tab on screen and the rows under its caption,
+  /// which the list draws as one rounded rectangle a row at a time.
+  public enum PanelPlace: Equatable {
+    case top, middle, bottom
+    /// A caption with nothing under it.
+    case only
+  }
+
   /// A group the human is in, as the core listed it (MIP-4, Decision 1b).
   public struct MessageGroup: Equatable {
     public let daemon: String
@@ -465,6 +494,28 @@ public enum SidebarModel {
     /// so the list says which panes are in the group (mip/0009-group-conversation.md, section 1).
     public var member = false
 
+    /// The directory the pane is in, whole, and its last component as line two draws it. Empty on
+    /// the rows that are not panes, and on a pane whose daemon reported none.
+    public var directory = ""
+    public var directoryName = ""
+
+    /// How much of the person's attention this pane's state is asking for, and nil on the rows
+    /// that are not panes.
+    public var tier: Tier?
+
+    /// What a pane row's second line says before its directory: the state's word and how long the
+    /// state has held for the states that want somebody, what a waiting agent waits on, and
+    /// nothing at all for a calm one. Decided here, with the time already worked out, so a minute
+    /// passing changes the row's value and is redrawn exactly when it shows something different.
+    public var stateLine = ""
+
+    /// Where this row sits in the raised panel the tab on screen is drawn on, or nil when it is
+    /// not part of one.
+    public var panel: PanelPlace?
+
+    /// Whether the row is drawn with a tint and a colored edge: the states that ask for somebody.
+    public var isTinted: Bool { tier == .asks }
+
     public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
 
     /// Whether picking this row means something.
@@ -561,7 +612,7 @@ public enum SidebarModel {
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
     groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = [],
-    members: Set<PaneKey> = []
+    members: Set<PaneKey> = [], now: Date = Date()
   ) -> [Row] {
     let captions = roster.tabs.count > 1 || roster.tabs.contains { $0.press > 0 }
     // Reserved from what a kind of row can carry in this window rather than from what each row
@@ -593,7 +644,9 @@ public enum SidebarModel {
           hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
           machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
           hidden: true, callsign: pane.callsign, besideCallsign: pane.besideCallsign, depth: depth,
-          member: members.contains(pane.key)))
+          member: members.contains(pane.key), directory: pane.directory,
+          directoryName: directoryName(pane.directory), tier: Tier(state: agent.state),
+          stateLine: stateLine(for: agent, now: now)))
       appendHelpers(of: pane, tab: tab, depth: depth)
     }
     func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
@@ -616,6 +669,10 @@ public enum SidebarModel {
       }
     }
     for tab in roster.tabs {
+      let first = rows.count
+      defer {
+        if captions && tab.onScreen { markPanel(&rows, from: first) }
+      }
       if captions {
         rows.append(
           Row(
@@ -643,7 +700,9 @@ public enum SidebarModel {
             machine: mark(pane.key.daemon),
             isSecondPress: tab.armed,
             quiet: pane.quiet, callsign: pane.callsign, besideCallsign: pane.besideCallsign,
-            member: members.contains(pane.key)))
+            member: members.contains(pane.key), directory: pane.directory,
+            directoryName: directoryName(pane.directory), tier: Tier(state: agent.state),
+            stateLine: stateLine(for: agent, now: now)))
         appendHelpers(of: pane, tab: tab.id, depth: 0)
       }
     }
@@ -689,6 +748,82 @@ public enum SidebarModel {
           isSecondPress: false))
     }
     return rows
+  }
+
+  /// Marks the rows from `first` to the end as one raised panel: the tab on screen's caption, its
+  /// panes and the helper lines under them.
+  private static func markPanel(_ rows: inout [Row], from first: Int) {
+    guard first < rows.count else { return }
+    let last = rows.count - 1
+    for index in first...last {
+      rows[index].panel =
+        first == last ? .only : (index == first ? .top : (index == last ? .bottom : .middle))
+    }
+  }
+
+  /// What a pane row's second line says before the directory, for `agent` as it is at `now`.
+  ///
+  /// The state's word and how long it has held for the three states that want somebody, what a
+  /// waiting agent waits on, the state in words for the two Muster cannot read, and nothing for
+  /// an agent that is working or idle: there the row says only where the pane is.
+  public static func stateLine(for agent: PaneAgent, now: Date) -> String {
+    let held = heldFor(sinceMS: agent.sinceMS, now: now)
+    let timed = { (word: String) in held.isEmpty ? word : "\(word) \(held)" }
+    switch agent.state {
+    case "blocked": return timed("Blocked")
+    case "stuck": return timed("Stuck")
+    case "done": return timed("Done")
+    case "waiting": return agent.waiting.isEmpty ? "Waiting" : "Waiting on \(agent.waiting)"
+    case "working", "idle": return ""
+    case "unreachable":
+      // What follows is what the agent said before its machine went, and has to read as that. No
+      // time: `since_ms` is when the daemon stopped answering, not how long the agent has held.
+      return agent.lastState.isEmpty ? "Unreachable" : "Unreachable · was \(agent.lastState)"
+    default: return "Unknown"
+    }
+  }
+
+  /// How long ago a state began, as a row says it: `<1m`, `7m`, `2h`, `3d`, or empty when the
+  /// daemon did not say. A start in the future - a remote machine's clock running ahead - reads as
+  /// less than a minute rather than as a negative time.
+  public static func heldFor(sinceMS: Int64, now: Date) -> String {
+    guard sinceMS > 0 else { return "" }
+    let seconds = max(0, Int(now.timeIntervalSince1970 - Double(sinceMS) / 1000))
+    switch seconds {
+    case ..<60: return "<1m"
+    case ..<3600: return "\(seconds / 60)m"
+    case ..<86400: return "\(seconds / 3600)h"
+    default: return "\(seconds / 86400)d"
+    }
+  }
+
+  /// The last component of a directory, which is what a row has room for: `muster` for
+  /// `/Users/a/src/muster`, `~` for the home directory itself, `/` for the root, and nothing for no
+  /// directory.
+  public static func directoryName(_ path: String, home: String = NSHomeDirectory()) -> String {
+    guard !path.isEmpty else { return "" }
+    let trimmed = trimmed(path)
+    guard !trimmed.isEmpty else { return "/" }
+    if !home.isEmpty, trimmed == self.trimmed(home) { return "~" }
+    return trimmed.split(separator: "/").last.map(String.init) ?? "/"
+  }
+
+  /// A directory as hovering a row says it: the whole path, with `~` for the home directory.
+  ///
+  /// Home is this machine's, so a pane on another machine whose path happens to start with it is
+  /// shortened too. That needs the same user name on a machine with the same home layout, and the
+  /// alternative is the shell guessing which machine is the local one.
+  public static func abbreviated(_ path: String, home: String = NSHomeDirectory()) -> String {
+    let home = trimmed(home)
+    guard !home.isEmpty else { return path }
+    if trimmed(path) == home { return "~" }
+    return path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
+  }
+
+  private static func trimmed(_ path: String) -> String {
+    var path = path
+    while path.hasSuffix("/") { path.removeLast() }
+    return path
   }
 
   /// The state a folded caption's dot takes from the panes under it, or nil for none.
@@ -820,6 +955,7 @@ public enum SidebarModel {
     if !row.callsign.isEmpty, !row.givenName.isEmpty {
       lines.append("callsign \(row.callsign)")
     }
+    if !row.directory.isEmpty { lines.append(abbreviated(row.directory)) }
     if let machine = row.machine { lines.append("on \(machine.daemon)") }
     guard let agent = row.agent else { return lines.joined(separator: "\n") }
     var state = agent.state
@@ -987,10 +1123,12 @@ public enum SidebarModel {
   /// list of fifteen agents is read by scanning it, so a height that varied with what an agent
   /// happened to be writing would move every row below it each time one of them wrote a longer
   /// sentence. The only thing that can move a row is a second line arriving or going away.
+  ///
+  /// A pane row is always two lines - its second line is its directory - and a caption is one.
   public static let oneLine: CGFloat = 20
-  public static let twoLines: CGFloat = 32
+  public static let twoLines: CGFloat = 40
   public static func height(of row: Row) -> CGFloat {
-    row.subtitle.isEmpty ? oneLine : twoLines
+    row.isPane || !row.subtitle.isEmpty ? twoLines : oneLine
   }
 
   /// What the list has to be told when the rows come out different.
@@ -1019,7 +1157,10 @@ public enum SidebarModel {
 
   /// How wide the list is until the core has said otherwise. The core holds the real answer,
   /// which is whatever the list was last dragged to.
-  public static let width: CGFloat = 200
+  public static let width: CGFloat = 280
+
+  /// The window width below which the list is put away altogether, whatever it was dragged to.
+  public static let minimumWindow: CGFloat = 400
 
   /// How wide the list is, and how much is left for panes.
   ///
@@ -1035,8 +1176,7 @@ public enum SidebarModel {
   ///
   /// `wanted` is the width the list was dragged to. It gets at most half the window, so a list
   /// dragged wide in a big window narrows as the window does instead of taking the panes' room,
-  /// and the window gives the list up where it always did - below twice the default width -
-  /// whatever it was dragged to.
+  /// and the window gives the list up below `minimumWindow`, whatever it was dragged to.
   ///
   /// The list's width is a whole number of points because the panes start where it ends. A
   /// terminal surface at a fractional x is resampled by the compositor, and every glyph in it
@@ -1044,7 +1184,7 @@ public enum SidebarModel {
   public static func widths(in total: CGFloat, shown: Bool = true, wanted: CGFloat = width) -> (
     sidebar: CGFloat, regions: CGFloat
   ) {
-    guard shown, total >= width * 2 else { return (0, max(0, total)) }
+    guard shown, total >= minimumWindow else { return (0, max(0, total)) }
     let sidebar = min(wanted, total / 2).rounded(.down)
     return (sidebar, total - sidebar)
   }

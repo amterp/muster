@@ -191,9 +191,9 @@ impl Default for Presentation {
 }
 
 impl Presentation {
-    /// Wide enough for a directory and a harness name, narrow enough to leave a full window of
-    /// panes readable beside it.
-    pub const SIDEBAR_WIDTH: f64 = 200.0;
+    /// Wide enough for two keycaps, a state icon, a callsign with a name beside it and a second
+    /// line of state and directory, narrow enough to leave a full window of panes beside it.
+    pub const SIDEBAR_WIDTH: f64 = 280.0;
 
     /// The narrowest and widest the roster may be dragged to. At 140 a row still shows its
     /// chord, its dot and a short name; past 480 the list is taking a terminal's worth of room
@@ -479,11 +479,11 @@ mod tests {
     #[allow(clippy::float_cmp)] // whole numbers, and the clamp returns its bounds exactly
     fn the_roster_is_dragged_as_far_as_its_limits_and_no_further() {
         let at = |width| Presentation::default().with_sidebar_width(width).sidebar_width;
-        assert_eq!(Presentation::default().sidebar_width, 200.0);
+        assert_eq!(Presentation::default().sidebar_width, 280.0);
         assert_eq!(at(260.0), 260.0);
         assert_eq!(at(20.0), 140.0, "a list dragged to nothing should stop at its narrowest");
         assert_eq!(at(4000.0), 480.0, "a list dragged across the window should stop at its widest");
-        assert_eq!(at(f64::NAN), 200.0, "a width that is no number moved the list");
+        assert_eq!(at(f64::NAN), 280.0, "a width that is no number moved the list");
     }
 
     #[test]

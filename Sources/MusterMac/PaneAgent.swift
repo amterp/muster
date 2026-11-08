@@ -31,6 +31,11 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   /// What it read before its machine stopped answering, while `state` is `unreachable`; empty
   /// otherwise. Everything else here is from then too.
   public var lastState = ""
+  /// When the agent last changed what it was doing, in milliseconds since the epoch, and 0 when the
+  /// core does not know. Nothing earlier is known for a pane older than the window, so it is the
+  /// moment this window first saw it. While `state` is `unreachable` it is when the daemon
+  /// stopped answering.
+  public var sinceMS: Int64 = 0
   /// Whether the state is the agent's own report rather than what Muster read off its screen.
   public var reported = false
   /// Whether Muster's rules have stopped reading this agent's screen.
@@ -64,6 +69,7 @@ public struct PaneAgent: Equatable, Sendable, ExpressibleByStringLiteral {
   init(_ changed: Muster_PaneStateChanged) {
     self.init(state: changed.state)
     lastState = changed.lastState
+    sinceMS = changed.sinceMs
     reported = changed.reported
     unreadable = changed.unreadable
     rang = changed.rang
