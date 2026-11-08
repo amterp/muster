@@ -1,4 +1,5 @@
 import AppKit
+import MusterRenderer
 
 /// What a pane's agent state looks like, and what the window says about the daemon.
 ///
@@ -78,10 +79,19 @@ public enum PaneAppearance {
   /// what makes a saved file take effect without a relaunch.
   @MainActor private(set) static var configured: Core.Chrome = .none
 
+  /// What the config file said about the terminal, beside the chrome above: the colors the
+  /// terminal's background and foreground come from when it sets them.
+  @MainActor private(set) static var configuredPane = MusterRenderer.Appearance()
+
   /// Takes a new answer. The caller repaints; nothing here reaches a view.
+  ///
+  /// The pane half is kept for its `[colors] background` and `foreground`: chrome that sits beside
+  /// a terminal takes its colors from the terminal's (`terminal`).
   @MainActor
-  public static func adopt(chrome: Core.Chrome) {
+  public static func adopt(chrome: Core.Chrome, pane: MusterRenderer.Appearance = .init()) {
     configured = chrome
+    configuredPane = pane
+    ChromePalette.forgetResolved()
   }
 
   /// Parsed rather than trusted blindly, on the same terms as the divider: the core already

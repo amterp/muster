@@ -129,5 +129,5 @@ extension NSColor {
 @MainActor
 public func adoptChrome(_ appearance: Core.Appearance) {
   DividerView.repaint(with: appearance.chrome.divider)
-  PaneAppearance.adopt(chrome: appearance.chrome)
+  PaneAppearance.adopt(chrome: appearance.chrome, pane: appearance.pane)
 }

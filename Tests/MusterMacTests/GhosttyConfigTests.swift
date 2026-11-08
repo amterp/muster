@@ -288,6 +288,20 @@ import Testing
     #expect(color(second, "background") == "#222222")
   }
 
+  @Test func theTerminalsColorsAreReadBackWhetherOrNotTheFileSetThem() throws {
+    let set = try loaded(
+      ghosttyConfiguration(Appearance(background: "#112233", foreground: "#ddeeff")))
+    defer { ghostty_config_free(set) }
+    #expect(
+      terminalColors(of: set) == TerminalColors(background: "#112233", foreground: "#ddeeff"))
+
+    // A file that sets neither is the owner's, and what a header is drawn from then is
+    // libghostty's own default - not nothing.
+    let bare = try loaded(ghosttyConfiguration(Appearance()))
+    defer { ghostty_config_free(bare) }
+    #expect(
+      terminalColors(of: bare) == TerminalColors(background: "#282c34", foreground: "#ffffff"))
+  }
 }
 
 // Readers for the C API's several shapes. `ghostty_config_get` writes through a void pointer whose

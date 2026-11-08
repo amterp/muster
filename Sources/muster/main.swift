@@ -132,7 +132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // between two of them. After this the core sends the same answer as an event whenever
       // the file is read again.
       let appearance = Core.appearance()
-      adoptChrome(appearance)
       let renderer = try Renderer(
         appearance: appearance.pane, configPath: rendererConfigPath())
       for complaint in renderer.diagnostics {
@@ -148,6 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       Renderer.current = renderer
       self.renderer = renderer
+      // After the renderer exists, because a terminal color the file left out is read back from it.
+      adoptChrome(appearance)
 
       let windows = WindowOpening(renderer: renderer, executable: CommandLine.arguments[0])
       self.windows = windows

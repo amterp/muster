@@ -313,6 +313,17 @@ public final class Renderer {
     padding = surfacePadding(appearance)
   }
 
+  /// The colors a pane is painted with now: what the config file set, or libghostty's own default
+  /// for whichever of the two it left out.
+  ///
+  /// The one place Muster reads a color back from libghostty. Chrome that sits beside a pane -
+  /// headers, the conversation - takes its colors from these so that it follows the terminal, and
+  /// the appearance Muster holds only knows what the file said, which for a config that sets
+  /// neither is nothing at all.
+  public func terminalColors() -> TerminalColors? {
+    MusterRenderer.terminalColors(of: config)
+  }
+
   /// Creates a surface that renders into `view`, running `command`.
   ///
   /// The command is the only way bytes reach a surface - libghostty exposes no way to
@@ -808,4 +819,32 @@ private func ghosttyButton(_ number: Int) -> ghostty_input_mouse_button_e {
   case 10: GHOSTTY_MOUSE_ELEVEN
   default: GHOSTTY_MOUSE_UNKNOWN
   }
+}
+
+/// A pane's background and foreground, as `#rrggbb`.
+public struct TerminalColors: Equatable, Sendable {
+  public let background: String
+  public let foreground: String
+
+  public init(background: String, foreground: String) {
+    self.background = background
+    self.foreground = foreground
+  }
+}
+
+/// What `config` paints a pane's background and foreground with, or nil if libghostty will not say.
+///
+/// `ghostty_config_get` answers for both keys because their type has a C representation
+/// (docs/observations/libghostty-9f9b8d1d.md section 9). A key left out of the config reads back as
+/// libghostty's default rather than as nothing, which is what makes this the effective color.
+public func terminalColors(of config: ghostty_config_t) -> TerminalColors? {
+  func read(_ key: String) -> String? {
+    var color = ghostty_config_color_s()
+    let found = key.withCString { ghostty_config_get(config, &color, $0, UInt(strlen($0))) }
+    return found ? String(format: "#%02x%02x%02x", color.r, color.g, color.b) : nil
+  }
+  guard let background = read("background"), let foreground = read("foreground") else {
+    return nil
+  }
+  return TerminalColors(background: background, foreground: foreground)
 }
