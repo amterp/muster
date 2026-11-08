@@ -12,6 +12,12 @@
       "body": "2026-11-07 instance (Mac Mini): a worker pane read reviewer message #11 in its group with `muster msg read` about ten minutes before it ended its turn; a wake then arrived saying \"1 new (#11), 1 to you\", and `muster msg read` printed \"nothing unread\". Cost one turn.",
       "author": "Alexander Terp",
       "created_at_millis": 1794104512990
+    },
+    {
+      "id": "c_2wDMgh3Zu",
+      "body": "Filed by Quartermaster's orchestrator. Another instance, 2026-11-08 09:03-09:10, Mac Mini, integrator pane linen (Claude Code): a reviewer's report (#5 in linen+moss) was held because Claude Code's Heads up notice covered linen's prompt (Muster told the reviewer so). linen read the report with 'muster msg log' and then a 'muster msg read' that consumed it. After the notice cleared, the held wake was typed in anyway: 'linen+moss: 1 new (#5) ... Read: muster msg read --group linen+moss', and the read said 'nothing unread'. So a wake held behind a notice is also not re-checked against the read state when it is released.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794150386312
     }
   ],
   "created_at_millis": 1794072281434,
@@ -25,7 +31,7 @@
   ],
   "title": "A queued wake is delivered for a message read since it was queued",
   "type": "bug",
-  "updated_at_millis": 1794104512990,
+  "updated_at_millis": 1794150386312,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794072281434}
   ]
