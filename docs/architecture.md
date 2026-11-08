@@ -7,8 +7,8 @@ this document could. When a decision here proves wrong in practice, change it: u
 change, and put the why in the commit.
 
 The desiderata in `AGENTS.md` are the requirements. `origin.md` holds the founding history and `glossary.md` the
-terms; large decisions are recorded as MIPs in `mip/`, routine rationale lives in commit messages, and open
-questions live on the kan board. This document is the bridge between the desiderata and code.
+terms; decisions are recorded with Fencil in `.fencil/`, and the large ones made before 2026-11-08 as MIPs in
+`mip/`; routine rationale lives in commit messages, and open questions live on the kan board. This document is the bridge between the desiderata and code.
 
 ## The shape
 

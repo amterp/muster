@@ -1,0 +1,20 @@
+id = "foldable-tabs"
+question = "Can a tab in the agent list be folded?"
+tags = ["ui", "agent-list"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-decided"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = "Yes. Every tab in the agent list folds and unfolds."
+why = "The owner asked for it while choosing the agent list's design."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "Also, I want every tab to be collapsible in the sidebar"

@@ -1,0 +1,39 @@
+id = "chrome-colors"
+question = "Where do the colors of Muster's own surfaces come from?"
+tags = ["ui", "theming", "configuration"]
+paths = ["Sources/MusterMac/PaneChrome.swift", "Sources/MusterMac/Sidebar.swift", "Sources/MusterMac/Conversation.swift", "Sources/MusterMac/Banners.swift", "docs/configuration.md"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-nodded"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = '''
+Muster has no theme of its own. The agent list uses macOS's own colors, as it does today. The pane
+area, pane headers and the conversation view included, takes the terminal's background and
+foreground from [colors]: a header is the background shifted a little toward the foreground. A
+tint for a state is that state's agent_* color mixed into the surface it sits on. No color setting
+is added; one pure function derives every color, with a minimum contrast between text and the
+surface under it.'''
+why = '''
+The owner wanted the redesign coherent and customizable without Muster taking on a theme, and
+without over-engineering it. Deriving from colors that already exist keeps the window looking like
+the person's terminal and the platform, and changing one existing color recolors everything taken
+from it. The mock-ups' greys were placeholders. A computed color can lose contrast on an unusual
+theme, so the minimum-contrast rule lives in a function that can be tested against light, dark and
+default themes.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "right now we're getting a very [Ghostty]-like feel ... it looks like in these mock-ups ... we're basically going to be having our own theming. I'm mixed on that. I don't want to over-engineer that aspect, but also it's nice muster if it has a really coherent theming to it, would be really nice. ... I just want to make sure that this is well designed and like the subject of theming and stuff like that makes sense and is customizable"
+  note = "Raised while answering whether panes should get headers."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "Yep, I agree with all of this. Sounds great."
+  note = "Agreeing to several proposals at once, this answer among them."

@@ -392,10 +392,14 @@ regenerates on demand; a normal build does it only when the schema's hash change
 ## Repo conventions
 
 - `docs/`: `origin.md` is the founding story, frozen as history; `architecture.md`, `configuration.md`, `testing.md` and
-  `glossary.md` are living doctrine; `docs/mip/` holds MIPs, the rare large decisions; `docs/observations/` records what a
-  dependency was measured doing, one file per version, each claim citing raw transcripts in `corpus/`. Routine
-  rationale lives in commit messages; open questions live in the kan board's `uncommitted` column. `docs/cli/` is
-  the reference `muster docs` ships inside the CLI binary, so a file there is prose the gate checks is reachable.
+  `glossary.md` are living doctrine; `docs/mip/` holds MIP-1 to MIP-10, the large decisions made before Fencil, and no
+  new MIPs are written; `docs/observations/` records what a dependency was measured doing, one file per version, each
+  claim citing raw transcripts in `corpus/`. Routine rationale lives in commit messages; open questions live in the kan
+  board's `uncommitted` column. `docs/cli/` is the reference `muster docs` ships inside the CLI binary, so a file
+  there is prose the gate checks is reachable.
+- This project records its decisions with Fencil, in `.fencil/`, since 2026-11-08. Before changing what the system
+  does or is built with, run `fencil search` for the decisions that cover it. A decision that outgrows a commit
+  message is recorded there (the `fencil` skill), at the level the owner's words support.
 - `extras/` holds things that are Muster-adjacent rather than Muster: a Claude Code skill pointing an agent at
   `muster docs`, each harness's wiring that reports a session's state and its context to the daemon that owns
   its pane - `extras/claude-code`, `extras/codex` and `extras/opencode`, plugins each harness installs from this

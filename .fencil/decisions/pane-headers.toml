@@ -1,0 +1,36 @@
+id = "pane-headers"
+question = "How does a pane show which agent it holds and what state that agent is in?"
+tags = ["ui", "panes"]
+paths = ["Sources/MusterMac/PaneChrome.swift", "docs/architecture.md"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-nodded"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = '''
+A header at the top of each pane: its chord, state icon, callsign, name, directory, state word and
+time held, and context bar, tinted for blocked and stuck as the agent list's rows are. Panes stay
+flush, with today's divider and no gaps or rounded corners between them. The border marks only the
+pane the keyboard reaches; state-colored borders go. There is no setting to turn headers off
+unless the owner asks for one after using them.'''
+why = '''
+A split then says which agent is which without the agent list. The gaps and rounded corners in the
+mock-up cost space the owner wants for text, and headers do not need them, so a header costs only
+its own height, about one line. The owner agreed to try headers and may want them configurable
+later, so the switch waits for his verdict rather than being built ahead of it.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "Yeah, let's try it. I'm looking at the mock-up that you have of the window, and I'm willing to try this. Part of me doesn't love the lost space between each panel, like that is just lost space that could be more efficiently just showing more of the [pane], like more text in the [pane]. But I'm open to trying this, and depending on how I like it, we may end up making something configurable"
+  note = "Asked: should panes get headers, and the state-colored border go?"
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "Yep, I agree with all of this. Sounds great."
+  note = "Agreeing to several proposals at once: flush panes without gaps, headers only one line tall, no off switch until he asks, and the chrome colors in chrome-colors."

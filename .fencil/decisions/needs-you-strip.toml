@@ -1,0 +1,28 @@
+id = "needs-you-strip"
+question = "Does the agent list gather the agents that want the person somewhere of their own?"
+tags = ["ui", "agent-list", "attention"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-decided"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = '''
+Yes: a Needs you strip at the top of the agent list, which folds. It has one card for each agent
+that is blocked, stuck, finished and unseen, or holding messages for the person, and is absent
+while nothing needs anyone. An agent in the strip keeps its row in the list below, so the list
+never reorders.'''
+why = '''
+The owner chose direction B's strip on top of direction A's list and asked for it to fold. Keeping
+each agent's row where it is means the strip is the only part that moves, so rows and their chords
+stay where the person's eye expects them.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "I also like the [Needs] you strip from B, so definitely have that. ... So A and B, as I said before, with that B strip, make it collapsible."
+  note = "On the page's question: which direction for the agent list, A, B, C, or A now with B's strip added later?"

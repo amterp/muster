@@ -1,0 +1,24 @@
+id = "row-whole-chord"
+question = "Does a pane's row draw its whole chord, or only the pane's digit?"
+tags = ["ui", "agent-list", "keyboard"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-decided"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = "The whole chord, tab digit and pane digit, as two keycaps at full contrast on every row."
+why = '''
+The tab digit, drawn in the tertiary label color, was nearly invisible, and the owner reads the
+chord off the row. The alternative was the pane digit alone, with the tab digit on the tab's
+caption, as direction B drew it.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "Yes, the way that is now in the [mock-ups] with the two the entire chord visible on each pane is fine"
+  note = "Asked: should every row draw the whole chord (2 3), or only the pane digit, with the tab digit on the tab's caption as in B?"

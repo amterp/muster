@@ -6,7 +6,7 @@ default_column = "backlog-lo"
 [[columns]]
   name = "uncommitted"
   color = "#a1a1aa"
-  description = "Ideas and open questions nobody has committed to: an agent's idea the owner has not taken up, or one of his own he has not decided to do. kan ready never lists this column, so no agent taking ready work sees these cards. Work the owner has asked for goes in a backlog column instead, even while decisions about it remain open. A card that waits on the owner's decision carries blocked. When one settles, the why lands in a commit message or a MIP, and the card moves on or dies."
+  description = "Ideas and open questions nobody has committed to: an agent's idea the owner has not taken up, or one of his own he has not decided to do. kan ready never lists this column, so no agent taking ready work sees these cards. Work the owner has asked for goes in a backlog column instead, even while decisions about it remain open. A card that waits on the owner's decision carries blocked. When one settles, the why lands in a commit message or a Fencil decision, and the card moves on or dies."
   limit = 0
   category = "idea"
 

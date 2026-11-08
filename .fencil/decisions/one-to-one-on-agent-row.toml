@@ -1,0 +1,32 @@
+id = "one-to-one-on-agent-row"
+question = "Where does a conversation between the person and one agent with a pane appear?"
+tags = ["ui", "agent-list", "messages"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-decided"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = '''
+On that agent's row in the agent list, as an envelope with the unread count that opens the
+conversation, rather than as an @human+<callsign> row under Messages. Messages keeps
+conversations with several members and agents whose pane is gone.'''
+why = '''
+Messages listed nine @human+ rows in the owner's window on 2026-11-08, with one unread. The cost is
+that a one-to-one conversation with nothing unread is reached from the agent's row rather than
+from Messages.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "yes"
+  note = "Asked, on its own: should a conversation between you and one agent instead show on that agent's own row, as a blue envelope with the unread count? Messages would then list only conversations with several members and agents whose pane is gone."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "I have answered that question in one-on-one conversations. The answer is yes."

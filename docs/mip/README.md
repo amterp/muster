@@ -1,5 +1,9 @@
 # Muster Improvement Proposals (MIPs)
 
+MIPs are no longer written. Since 2026-11-08 Muster records its decisions with Fencil, one question at a time, in
+`.fencil/` (`fencil list`). MIP-1 to MIP-10 stay as the records of their decisions, and what follows describes how
+they were written.
+
 MIPs record Muster's large decisions - what we chose, why, and what we rejected. One document spans the decision's
 whole life: it starts as a proposal and matures into the permanent record.
 
