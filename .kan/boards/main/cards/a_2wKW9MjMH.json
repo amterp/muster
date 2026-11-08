@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "the-roster-carries",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167433059,
+  "creator": "Alexander Terp",
+  "description": "RosterPane carries only label, which holds the directory and harness for a pane nobody named and the given name for one somebody did. So a renamed pane's directory never reaches the shell, and frost's row (\"Muster UI redesign\") cannot say it runs in ~/src/muster.\n\nDirection A's rows and the pane headers show every pane's directory (Lectern page muster-ui-redesign). The daemon knows each pane's directory: `muster window` lists them per machine. A field beside label keeps the label rule as it is.",
+  "id": "a_2wKW9MjMH",
+  "parent": "a_2wKW8eBfM",
+  "position": "Zul",
+  "title": "The roster carries each pane's directory, so a named pane's row can show it",
+  "type": "enhancement",
+  "updated_at_millis": 1794167433059,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167433059}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "agent-list-rows",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167432845,
+  "creator": "Alexander Terp",
+  "description": "Today every state is the same 7 px dot, the context ring reads as a loading spinner, the chord's tab digit is nearly invisible, and a named pane's row says nothing about its directory (Lectern page muster-ui-redesign, section \"Today\").\n\nDirection A, as drawn on that page:\n- Each state gets an icon with its own shape: filled for blocked, stuck and done, outline for working, waiting and idle. It reads at 14 px and without color vision.\n- Blocked and stuck rows are tinted, with a colored bar on the row's left edge.\n- Every row draws the whole chord as two keycaps at full contrast (owner, 2026-11-08).\n- Line two shows the directory's last part, with the full path on hover. For a state that wants the person, the state word and how long it has held come first; a waiting agent says what it waits on.\n- A short context bar replaces the ring. It turns red as it fills; the percentage is on hover.\n- The tab on screen sits on a raised panel instead of carrying a 4 px dot.\n\nHow long a state has held is PaneStateChanged.since_ms, which the shell does not read yet. A named pane's directory needs the roster card beside this one. The shapes also settle a_2is53KFd3, where stuck's pink dot read as red. docs/architecture.md describes the state legend the borders and dots share.",
+  "id": "a_2wKW90pja",
+  "parent": "a_2wKW8eBfM",
+  "position": "ZuV",
+  "related": [
+    "a_2wKW9MjMH",
+    "a_2is53KFd3"
+  ],
+  "title": "Agent list rows drawn as direction A: state shapes, whole chord, directory, context bar",
+  "type": "enhancement",
+  "updated_at_millis": 1794167434828,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167432845}
+  ]
+}

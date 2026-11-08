@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-one-to-one",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1794167434662,
+  "creator": "Alexander Terp",
+  "description": "Proposed on the Lectern page muster-ui-redesign as decision 3; waits on the owner.\n\nMessages lists one row for every agent the person has messaged, each named @human+\u003ccallsign\u003e: nine in his window on 2026-11-08, with one unread. When that agent has a pane, its row in the agent list could carry the conversation instead, as an envelope with the unread count that opens it. Messages would keep conversations with several members and agents whose pane is gone.\n\nCost: a one-to-one conversation with nothing unread is reached from the agent's row rather than from Messages.",
+  "id": "a_2wKWBw61V",
+  "labels": [
+    "blocked"
+  ],
+  "parent": "a_2wKW8eBfM",
+  "position": "aj",
+  "title": "A one-to-one conversation with an agent that has a pane shows on that agent's row",
+  "type": "enhancement",
+  "updated_at_millis": 1794167434662,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794167434662}
+  ]
+}

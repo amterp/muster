@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "restyle-the-group",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167434164,
+  "creator": "Alexander Terp",
+  "description": "From the Lectern page muster-ui-redesign, section \"Messages\". The conversation keeps its thread, message box and members, and takes the agent list's state icons and keycaps:\n- an avatar per author, with its state icon on the avatar's corner;\n- a blue bar and a \"To you\" tag on a message to the person, in place of the faint tint;\n- messages between agents folded into one line;\n- a question's answers as buttons numbered like the chords;\n- each member showing its chord, so its pane is one press away;\n- a message box with To chips and the chord that sends.\n\nAvatar colors are a_2o5jIMI5J's. The page proposes keeping those colors out of the sidebar, where color already means state.",
+  "id": "a_2wKWB83DG",
+  "parent": "a_2wKW8eBfM",
+  "position": "Zuzl",
+  "related": [
+    "a_2o5jIMI5J"
+  ],
+  "title": "Restyle the group conversation as on the Lectern page",
+  "type": "enhancement",
+  "updated_at_millis": 1794167435133,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167434164}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "pass-on-what-a",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167433699,
+  "creator": "Alexander Terp",
+  "description": "A Needs you card for a blocked agent is most useful when it shows what the agent is asking, as the mock-up does (\"Which locations should your starting rules let it clear?\", Lectern page muster-ui-redesign). Nothing in proto/muster.proto carries that today.\n\nTwo likely sources: the harness adapters, since a Claude Code hook sees the tool call an agent is blocked on, including an AskUserQuestion call's questions; and the screen, which the daemon already reads to classify state. The strip ships without this and gains it later.",
+  "id": "a_2wKWAO18V",
+  "parent": "a_2wKW8eBfM",
+  "position": "Zuz",
+  "title": "Pass on what a blocked agent is asking, for the Needs you strip",
+  "type": "feature",
+  "updated_at_millis": 1794167433699,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167433699}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "pane-headers-carry",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167433924,
+  "creator": "Alexander Terp",
+  "description": "From the window board on the Lectern page muster-ui-redesign: each pane gets a header with its chord, state icon, callsign, name, directory, state word and time held, and context bar. Blocked and stuck headers are tinted, as the agent list's rows are.\n\nA split then says which agent is which without the sidebar. With the state in the header, the border around a pane marks only the pane the keyboard reaches, and the state-colored border goes. docs/architecture.md describes that border legend and changes with it.",
+  "id": "a_2wKWAklSl",
+  "parent": "a_2wKW8eBfM",
+  "position": "ZuzV",
+  "title": "Pane headers carry chord, state and directory; the border marks only focus",
+  "type": "enhancement",
+  "updated_at_millis": 1794167433924,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167433924}
+  ]
+}

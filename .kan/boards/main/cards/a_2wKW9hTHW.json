@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "fold-and-unfold-each",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167433271,
+  "creator": "Alexander Terp",
+  "description": "Owner's request, 2026-11-08: every tab in the agent list can be folded.\n\nA folded tab keeps its caption and draws each of its agents' state icons in a row at the caption's right edge, so a blocked agent inside it still shows (Lectern page muster-ui-redesign, section \"Chosen\"). The Hidden group already folds (hiddenCollapsed in SidebarModel's presentation), so the same path from core to shell likely fits, and the fold should survive a restart the way that one does.\n\nOpen: a folded tab's chords still reach its panes, so whether the caption should show them somewhere.",
+  "id": "a_2wKW9hTHW",
+  "parent": "a_2wKW8eBfM",
+  "position": "Zut",
+  "title": "Fold and unfold each tab in the agent list",
+  "type": "feature",
+  "updated_at_millis": 1794167433271,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167433271}
+  ]
+}

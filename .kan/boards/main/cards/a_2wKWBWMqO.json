@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "restyle-the-message",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794167434405,
+  "creator": "Alexander Terp",
+  "description": "From the Lectern page muster-ui-redesign, section \"Messages\". The banner takes the conversation's parts: the author's avatar, the conversation's name (the agent's name for a one-to-one, not @human+linen), the time with seconds, numbered answers, and a reply field showing the chord that sends. Banners past the first fold into one line naming who they are from.",
+  "id": "a_2wKWBWMqO",
+  "parent": "a_2wKW8eBfM",
+  "position": "Zuzt",
+  "title": "Restyle the message banner as on the Lectern page",
+  "type": "enhancement",
+  "updated_at_millis": 1794167434405,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794167434405}
+  ]
+}
