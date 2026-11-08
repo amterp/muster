@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "derive-the-redesign",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794168220079,
+  "creator": "Alexander Terp",
+  "description": "Fencil decision chrome-colors (owner-nodded, 2026-11-08): Muster has no theme of its own, and the redesign's new surfaces take their colors from settings that already exist.\n\n- The agent list keeps macOS's own colors, as it does today.\n- The pane area, pane headers and the conversation view included, takes the terminal's background and foreground from [colors]. A header is the background shifted a little toward the foreground, so it reads as part of the pane. The owner's config sets neither, so his headers would come from the renderer's default background.\n- A tint for a state, behind a blocked row or header, is that state's agent_* color mixed into the surface it sits on, so changing agent_blocked recolors the tint too.\n\nNo color setting is added. One pure function derives every color, with a minimum contrast between text and the surface under it, and is tested against a light theme, a dark theme and the renderer's default: a computed color can lose contrast on an unusual theme, such as a light terminal beside a dark-mode sidebar. The rows, pane-header, conversation and banner cards all draw with it.",
+  "id": "a_2wKqcjyIY",
+  "parent": "a_2wKW8eBfM",
+  "position": "ZuG",
+  "title": "Derive the redesign's colors from the terminal colors, macOS and the state legend",
+  "type": "enhancement",
+  "updated_at_millis": 1794168220079,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794168220079}
+  ]
+}

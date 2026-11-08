@@ -5,16 +5,19 @@
   "area": [
     "shell"
   ],
+  "blocked_by": [
+    "a_2wKqcjyIY"
+  ],
   "column": "backlog-hi",
   "created_at_millis": 1794167433924,
   "creator": "Alexander Terp",
-  "description": "From the window board on the Lectern page muster-ui-redesign: each pane gets a header with its chord, state icon, callsign, name, directory, state word and time held, and context bar. Blocked and stuck headers are tinted, as the agent list's rows are.\n\nA split then says which agent is which without the sidebar. With the state in the header, the border around a pane marks only the pane the keyboard reaches, and the state-colored border goes. docs/architecture.md describes that border legend and changes with it.",
+  "description": "Fencil decision pane-headers (owner-nodded, 2026-11-08), drawn on the window board of the Lectern page muster-ui-redesign.\n\nEach pane gets a header with its chord, state icon, callsign, name, directory, state word and time held, and context bar. Blocked and stuck headers are tinted, as the agent list's rows are. A split then says which agent is which without the sidebar.\n\n- Panes stay flush, with today's divider and no gaps or rounded corners between them. The mock-up's gaps cost space the owner wants for text, and headers do not need them, so a header costs only its own height, about one line.\n- The border marks only the pane the keyboard reaches; the state-colored border goes. docs/architecture.md describes that border legend and changes with it.\n- Colors come from the color card beside this one (decision chrome-colors): the header is the pane's background shifted toward its foreground.\n- No setting turns headers off. The owner may want one after using them; build it then, not ahead of his verdict.",
   "id": "a_2wKWAklSl",
   "parent": "a_2wKW8eBfM",
   "position": "ZuzV",
-  "title": "Pane headers carry chord, state and directory; the border marks only focus",
+  "title": "Pane headers carry chord, state and directory; panes stay flush; the border marks only focus",
   "type": "enhancement",
-  "updated_at_millis": 1794167433924,
+  "updated_at_millis": 1794168222107,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794167433924}
   ]
