@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1794167433059,
   "creator": "Alexander Terp",
   "description": "RosterPane carries only label, which holds the directory and harness for a pane nobody named and the given name for one somebody did. So a renamed pane's directory never reaches the shell, and frost's row (\"Muster UI redesign\") cannot say it runs in ~/src/muster.\n\nDirection A's rows and the pane headers show every pane's directory (Lectern page muster-ui-redesign). The daemon knows each pane's directory: `muster window` lists them per machine. A field beside label keeps the label rule as it is.\n\n## Plan (reviewed 2026-11-08)\n\nFrom the plan for the redesign, step 1; the parent card a_2wKW8eBfM has its overall shape, order and checks.\n\nThe core already holds each pane's full cwd (`Pane.cwd`, `crates/muster-core/src/mirror/backend.rs`,\nfrom the daemon's `Pane` record) and republishes the roster when it changes. Only the last path\ncomponent reaches the shell, folded into `beside_callsign`, and only for a pane nobody named.\n\n- Add `string directory = 19` to `RosterPane` in `proto/muster.proto`: the full path as the daemon\n  reports it, on every pane.\n- Set it in both roster builders in `crates/muster-core/src/roster.rs` (tabs and hidden tabs) and in\n  `crates/muster-seam/src/convert.rs`.\n- The conformance driver (`crates/muster-core/tests/core/roster.rs`, `describe_pane`) prints it only\n  when a case asks, so existing `corpus/conformance/roster.json` expectations stay as they are; add\n  cases for a named pane carrying its directory and for a directory change.\n- Swift mirrors it on `Roster.Pane`. The shell shortens it for display (last component, `~` for the\n  home directory in the hover text); shortening is presentation, so it stays in `SidebarModel`.",
   "id": "a_2wKW9MjMH",
   "parent": "a_2wKW8eBfM",
-  "position": "Zul",
+  "position": "a5",
   "title": "The roster carries each pane's directory, so a named pane's row can show it",
   "type": "enhancement",
-  "updated_at_millis": 1794170689583,
+  "updated_at_millis": 1794170829237,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794167433059}
+    {"field":"column","value":"backlog-hi","at":1794167433059},
+    {"field":"column","value":"next","at":1794170829237}
   ]
 }

@@ -28,7 +28,7 @@ default_column = "backlog-lo"
   name = "next"
   color = "#f59e0b"
   description = "Ready to pick up now: scoped, unblocked, and understood well enough to start without further design. Agents: when finishing work empties this column, refill it from the backlog by priority and natural sequencing."
-  limit = 8
+  limit = 12
   category = "open"
 
 [[columns]]
@@ -44,6 +44,9 @@ default_column = "backlog-lo"
   description = "Finished and verified: code merged, tests green, docs updated where the change needed them."
   limit = 0
   category = "done"
+
+[ready]
+  exclude = ["labels=blocked"]
 
 [custom_fields]
   [custom_fields.area]
@@ -139,6 +142,3 @@ default_column = "backlog-lo"
   pattern_title = "![a-zA-Z]+"
   command = ".kan/hooks/type-shortcut.rad"
   timeout = 0
-
-[ready]
-  exclude = ["labels=blocked"]
