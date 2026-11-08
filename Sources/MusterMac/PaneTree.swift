@@ -120,6 +120,7 @@ extension Roster.Pane {
       quiet: pane.quiet,
       callsign: pane.callsign,
       besideCallsign: pane.besideCallsign,
+      directory: pane.directory,
       maker: pane.maker,
       under: pane.under)
   }

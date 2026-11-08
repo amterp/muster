@@ -3386,6 +3386,12 @@ message RosterPane {
   // list: a pane in one of its tabs, or a hidden pane (MIP-7, section 3). A helper in a tab
   // somebody can see keeps its place and its number there.
   string under = 18;
+
+  // The directory this pane is in, as its daemon reports it: the whole path, on every pane,
+  // empty only when the daemon has none. Apart from `label`, which keeps its rule of naming a
+  // pane by the name somebody gave it and carrying the directory only for a pane nobody named -
+  // so a renamed pane's row can still say where it runs.
+  string directory = 19;
 }
 
 // Everything this window is showing, as one message.

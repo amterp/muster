@@ -3,12 +3,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::support::backend::{read_snapshot, text};
+use crate::support::backend::{read_pane, read_snapshot, text};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::composition::{Composition, Daemon, DaemonId, Endpoint, PaneKey};
 use muster_core::config::Rgb;
-use muster_core::mirror::Mirror;
 use muster_core::mirror::backend::{PaneId, TabId};
+use muster_core::mirror::{BackendEvent, Mirror};
 use muster_core::roster::{
     Chord, Landing, Numbering, Roster, RosterPane, RosterTab, TabStep, machine_color,
 };
@@ -20,6 +20,8 @@ fn roster_conformance() {
 
     let ran = corpus.run(|given| {
         let roster = built(given)?;
+        // Only for a case about directories, so the others do not restate one on every line.
+        let directories = given.get("directories").and_then(Value::as_bool).unwrap_or(false);
         let pressed = read_presses(given, &roster)?;
         Ok(fields([
             (
@@ -82,7 +84,9 @@ fn roster_conformance() {
                 Some(json!(
                     roster
                         .tabs()
-                        .flat_map(|tab| tab.panes.iter().map(move |pane| describe_pane(tab, pane)))
+                        .flat_map(|tab| {
+                            tab.panes.iter().map(move |pane| describe_pane(tab, pane, directories))
+                        })
                         .collect::<Vec<String>>()
                 )),
             ),
@@ -95,8 +99,11 @@ fn roster_conformance() {
                         .hidden
                         .iter()
                         .flat_map(|tab| {
-                            std::iter::once(describe_tab(tab))
-                                .chain(tab.panes.iter().map(move |pane| describe_pane(tab, pane)))
+                            std::iter::once(describe_tab(tab)).chain(
+                                tab.panes
+                                    .iter()
+                                    .map(move |pane| describe_pane(tab, pane, directories)),
+                            )
                         })
                         .collect::<Vec<String>>(),
                 )
@@ -151,6 +158,10 @@ fn built(given: &Value) -> Result<Roster, CaseError> {
             })?;
         let mut mirror = Mirror::new();
         mirror.bootstrap(read_snapshot(snapshot));
+        // What the daemon said after it bootstrapped, for a case about a pane that moved.
+        for event in snapshot.get("then").and_then(Value::as_array).into_iter().flatten() {
+            mirror.apply(BackendEvent::PaneChanged(read_pane(event)));
+        }
         worlds.insert(id, mirror);
     }
 
@@ -280,9 +291,9 @@ fn described(key: &str, value: Option<&str>) -> String {
 ///
 /// The tab is printed even though the nesting already says it, so that a case can be read
 /// without counting rows back up to the heading it belongs to.
-fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
+fn describe_pane(tab: &RosterTab, pane: &RosterPane, directories: bool) -> String {
     format!(
-        "{} place={} tab={} label={:?}{}{}{}{}{} {}{}{}{}",
+        "{} place={} tab={} label={:?}{}{}{}{}{}{} {}{}{}{}",
         pane.key,
         pane.place,
         tab.id,
@@ -293,6 +304,7 @@ fn describe_pane(tab: &RosterTab, pane: &RosterPane) -> String {
         described("callsign", pane.callsign.as_deref()),
         // Only beside a word, since without one it is the label again.
         described("beside-callsign", pane.callsign.as_ref().map(|_| pane.beside_callsign.as_str())),
+        described("directory", directories.then_some(pane.directory.as_str())),
         if pane.on_screen { "on-screen" } else { "off-screen" },
         if pane.quiet { " quiet" } else { "" },
         pane.maker.as_ref().map(|maker| format!(" maker={maker}")).unwrap_or_default(),

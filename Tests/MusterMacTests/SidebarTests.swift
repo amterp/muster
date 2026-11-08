@@ -1304,6 +1304,26 @@ struct SidebarTests {
     #expect(row?.shownMarks == 0)
     #expect(row?.showsProgress == false)
   }
+
+  @Test("a pane's directory crosses the seam whole, beside a label that does not carry it")
+  func directoryCrossesTheSeam() {
+    var pane = Muster_RosterPane()
+    pane.daemonID = "local"
+    pane.paneID = "w1:p1"
+    pane.label = "payments spike"
+    pane.givenName = "payments spike"
+    pane.directory = "/Users/a/src/muster"
+    var tab = Muster_RosterTab()
+    tab.tabID = "w1:t1"
+    tab.panes = [pane]
+    var changed = Muster_RosterChanged()
+    changed.tabs = [tab]
+
+    let listed = Roster(changed).tabs[0].panes[0]
+
+    #expect(listed.directory == "/Users/a/src/muster")
+    #expect(listed.label == "payments spike")
+  }
 }
 
 /// Whether two colours paint the same under the current drawing appearance. Compared as sRGB

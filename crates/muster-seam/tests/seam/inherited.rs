@@ -81,6 +81,18 @@ fn a_window_opened_on_somebody_elses_session_can_reach_all_of_it() {
              in this window can reach it: {by_given:?}"
         );
     }
+    // Every pane here was given a name, which is what a label carries instead of a directory,
+    // so this is the case where only the roster's own field can say where a pane is. The daemon
+    // may spell /tmp as /private/tmp, so the path is read by its last component.
+    for pane in roster_panes(&roster).filter(|pane| GIVEN.contains(&pane.given_name.as_str())) {
+        assert!(
+            pane.directory.ends_with("/tmp"),
+            "the pane {} runs in /tmp and its roster entry says {:?}, so a row listing it by its \
+             name could not say where it is",
+            pane.pane_id,
+            pane.directory
+        );
+    }
     let mut sorted = listed.clone();
     sorted.sort();
     sorted.dedup();

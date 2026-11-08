@@ -228,6 +228,12 @@ pub struct RosterPane {
     /// What a row drawing `callsign` on its own puts after it: [`pane_beside_callsign`]. The
     /// same as `label` for a pane with no callsign.
     pub beside_callsign: String,
+    /// The directory the pane is in, whole, as its daemon reports it. Empty when the daemon has
+    /// none.
+    ///
+    /// Carried apart from `label`, which names a pane by what somebody called it and puts the
+    /// directory in only for a pane nobody named.
+    pub directory: String,
     /// Whether a region is showing it right now.
     ///
     /// Here rather than left to the shell to work out by comparing against the view: the two
@@ -557,6 +563,7 @@ impl Roster {
                             name: pane_name(pane).map(str::to_string),
                             callsign: pane_callsign(pane).map(str::to_string),
                             beside_callsign: pane_beside_callsign(pane),
+                            directory: pane.cwd.clone(),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
                             resumes_as: resumes_as(pane),
@@ -728,6 +735,7 @@ fn hidden_tabs<'a>(
                     name: pane_name(pane).map(str::to_string),
                     callsign: pane_callsign(pane).map(str::to_string),
                     beside_callsign: pane_beside_callsign(pane),
+                    directory: pane.cwd.clone(),
                     on_screen: false,
                     compactable: pane.compactable,
                     resumes_as: resumes_as(pane),

@@ -3538,6 +3538,124 @@
         ],
         "tabs": ["t1 on=local+devenv place=1 label=\"t1\" given-name=\"t1\" on-screen"]
       }
+    },
+    {
+      "name": "a pane carries the directory it is in, whatever it is called",
+      "why": "A row says where its agent runs, and a renamed pane's label is only the name somebody typed, so the directory could not be read back off it. It travels apart from the label, whole, as its daemon says it: the label's rule of naming an unnamed pane by its directory is unchanged, and shortening the path for display is the shell's business.",
+      "given": {
+        "directories": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" }
+              }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/Users/a/src/muster", "name": "payments spike" },
+              { "id": "w1:p2", "cwd": "/src/beta/" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"payments spike\" given-name=\"payments spike\" name=\"payments spike\" directory=\"/Users/a/src/muster\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" directory=\"/src/beta/\" off-screen"
+        ],
+        "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"]
+      }
+    },
+    {
+      "name": "a hidden pane carries its directory too",
+      "why": "The hidden list is built apart from the tabs, and a row there says where its agent runs on the same terms as any other.",
+      "given": {
+        "directories": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              { "id": "w1:t1", "label": "t1", "root": "w1:p1" },
+              { "id": "w1:t2", "root": "w1:p2", "hidden": true }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/src/alpha" },
+              { "id": "w1:p2", "cwd": "/src/beta", "name": "quiet one" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "showing": ["local/w1:p1"]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes"],
+        "panes": ["local/w1:p1 place=1 tab=w1:t1 label=\"alpha\" directory=\"/src/alpha\" on-screen"],
+        "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"],
+        "hidden": [
+          "w1:t2 on=local place=0 label=\"\" off-screen",
+          "local/w1:p2 place=0 tab=w1:t2 label=\"quiet one\" given-name=\"quiet one\" name=\"quiet one\" directory=\"/src/beta\" off-screen"
+        ]
+      }
+    },
+    {
+      "name": "a pane its daemon reports no directory for carries an empty one",
+      "why": "Empty is how the wire says there is none, and the row has to be able to tell that from a directory: the label falls back to the pane's id, which is no place anybody is.",
+      "given": {
+        "directories": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [{ "id": "w1:t1", "label": "t1", "root": "w1:p1" }],
+            "panes": [{ "id": "w1:p1" }]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "machines": ["local connected 1 panes"],
+        "panes": ["local/w1:p1 place=1 tab=w1:t1 label=\"w1:p1\" directory=\"\" off-screen"],
+        "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"]
+      }
+    },
+    {
+      "name": "a pane that changed directory is listed with the new one",
+      "why": "The daemon sends a pane's whole record when it moves, and the roster is built from what the mirror holds after it. A renamed pane's label does not move with it, so the directory is the only field here that says the pane went anywhere; an unnamed pane's label follows.",
+      "given": {
+        "directories": true,
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": { "axis": "columns", "ratio": 0.5, "first": "w1:p1", "second": "w1:p2" }
+              }
+            ],
+            "panes": [
+              { "id": "w1:p1", "cwd": "/src/alpha", "name": "builder" },
+              { "id": "w1:p2", "cwd": "/src/alpha" }
+            ],
+            "then": [
+              { "id": "w1:p1", "cwd": "/src/beta", "name": "builder" },
+              { "id": "w1:p2", "cwd": "/src/beta" }
+            ]
+          }
+        },
+        "daemons": [{ "id": "local", "world": "laptop" }],
+        "regions": [{ "daemon": "local", "tab": "w1:t1" }]
+      },
+      "expect": {
+        "machines": ["local connected 2 panes"],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"builder\" given-name=\"builder\" name=\"builder\" directory=\"/src/beta\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta\" directory=\"/src/beta\" off-screen"
+        ],
+        "tabs": ["w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"]
+      }
     }
   ]
 }

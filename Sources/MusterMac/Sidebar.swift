@@ -59,6 +59,10 @@ public struct Roster: Equatable {
     /// core takes the callsign out of `label` for it, so the callsign is drawn once.
     public let besideCallsign: String
 
+    /// The directory the pane is in, whole, as its daemon reports it; empty when it has none.
+    /// Apart from `label`, which names a renamed pane by its name and says nothing of where it is.
+    public let directory: String
+
     /// The id of the pane that made it as its helper, empty for a pane nobody made (MIP-7).
     public let maker: String
 
@@ -70,7 +74,7 @@ public struct Roster: Equatable {
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
       resumesAs: String = "", quiet: Bool = false, callsign: String = "",
-      besideCallsign: String? = nil,
+      besideCallsign: String? = nil, directory: String = "",
       maker: String = "", under: String = ""
     ) {
       self.key = key
@@ -86,6 +90,7 @@ public struct Roster: Equatable {
       self.quiet = quiet
       self.callsign = callsign
       self.besideCallsign = besideCallsign ?? label
+      self.directory = directory
       self.maker = maker
       self.under = under
     }
