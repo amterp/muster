@@ -9,12 +9,12 @@
   "column": "backlog-hi",
   "created_at_millis": 1794167432626,
   "creator": "Alexander Terp",
-  "description": "The owner chose this on 2026-11-08 from the Lectern page muster-ui-redesign, whose version 3 holds every board: direction A for the agent list, direction B's Needs you strip on top of it, the strip and every tab foldable, and the pane-header, conversation and banner mock-ups as drawn. He also chose the whole chord on every row.\n\nThe cards under this one are the parts that can be built separately. One question is still with him: whether a one-to-one conversation with an agent that has a pane moves onto that agent's row. It has its own card, in uncommitted.",
+  "description": "The owner chose this on 2026-11-08 from the Lectern page muster-ui-redesign (now archived; version 3 holds every board): direction A for the agent list, direction B's Needs you strip on top of it, the strip and every tab foldable, the whole chord on every row, one-to-one conversations on their agent's row, and the pane-header, conversation and banner mock-ups as drawn.\n\nThe cards under this one are the parts that can be built separately. How Muster's chrome takes its colors, and how much space pane headers and gaps cost, is still being discussed with the owner; settle that before building the pane headers.",
   "id": "a_2wKW8eBfM",
   "position": "Zu",
   "title": "🎨 Muster UI redesign: direction A with the Needs you strip",
   "type": "feature",
-  "updated_at_millis": 1794167432626,
+  "updated_at_millis": 1794167621113,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794167432626}
   ]
