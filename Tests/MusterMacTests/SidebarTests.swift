@@ -788,6 +788,14 @@ struct SidebarTests {
     #expect(SidebarModel.widths(in: 1400, shown: false, wanted: 320) == (0, 1400))
   }
 
+  @Test("the panes beside the list start on a whole point, so their text is not resampled")
+  func thePanesStartOnAWholePoint() {
+    // A drag reports wherever the pointer was, and that is saved as it came.
+    #expect(SidebarModel.widths(in: 1400, wanted: 261.58984375) == (261, 1139))
+    // Half of an odd window is half a point.
+    #expect(SidebarModel.widths(in: 501, wanted: 320) == (250, 251))
+  }
+
   @MainActor
   @Test("dragging the list's edge asks for a width, and the list takes the one it is given")
   func theEdgeAsksAndTheLayoutAnswers() throws {

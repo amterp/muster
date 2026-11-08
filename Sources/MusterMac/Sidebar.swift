@@ -1009,11 +1009,15 @@ public enum SidebarModel {
   /// dragged wide in a big window narrows as the window does instead of taking the panes' room,
   /// and the window gives the list up where it always did - below twice the default width -
   /// whatever it was dragged to.
+  ///
+  /// The list's width is a whole number of points because the panes start where it ends. A
+  /// terminal surface at a fractional x is resampled by the compositor, and every glyph in it
+  /// comes out blurred.
   public static func widths(in total: CGFloat, shown: Bool = true, wanted: CGFloat = width) -> (
     sidebar: CGFloat, regions: CGFloat
   ) {
     guard shown, total >= width * 2 else { return (0, max(0, total)) }
-    let sidebar = min(wanted, total / 2)
+    let sidebar = min(wanted, total / 2).rounded(.down)
     return (sidebar, total - sidebar)
   }
 }
