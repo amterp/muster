@@ -12,6 +12,12 @@
       "body": "Another instance, 2026-11-07 21:00 CST, Muster 0.23.0, Mac: a Claude Code worker (opus medium, pane taffy) had declared report --waiting on two reviewer helpers and ended its turn. A wake for its Codex reviewer's message was typed into its prompt ('[muster] squid+taffy: 1 new (#5) ...') but never submitted; the pane sat idle with that draft for minutes until the integrator pressed Return with pane send --enter.",
       "author": "Alexander Terp",
       "created_at_millis": 1794107083318
+    },
+    {
+      "id": "c_2vvFITsFt",
+      "body": "2026-11-07 instance (Mac Mini): a parallel-work worker pane, busy mid-turn, was reported to its helper as having 'something typed and not sent' in its prompt (presumably Muster's own wake line), so the helper's report was held until the worker's next post was refused for unread messages.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794107203177
     }
   ],
   "created_at_millis": 1794072279667,
@@ -25,7 +31,7 @@
   ],
   "title": "Wake notices can stay unsent in the prompt of a waiting Claude Code pane",
   "type": "bug",
-  "updated_at_millis": 1794107083318,
+  "updated_at_millis": 1794107203177,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794072279667}
   ]
