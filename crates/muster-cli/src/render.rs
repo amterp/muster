@@ -1521,6 +1521,14 @@ fn window_json(window: &Window, others: Others) -> Value {
         // The group whose conversation the window shows in place of its panes, so an agent can
         // see that the human is reading it. Null while it shows its panes.
         "conversation": conversation(window).map(|(daemon, group)| json!({ "daemon": daemon, "group": group })),
+        "asking": window.asking.iter().map(|entry| json!({
+            "daemon": entry.daemon_id,
+            "pane": (!entry.pane_id.is_empty()).then_some(&entry.pane_id),
+            "group": (!entry.group.is_empty()).then_some(&entry.group),
+            "alert": entry.alert,
+            "since_ms": entry.since_ms,
+            "preview": entry.preview,
+        })).collect::<Vec<_>>(),
         "tabs": tabs_out,
         "panes": panes,
     })
@@ -1766,6 +1774,37 @@ mod tests {
         Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text, windows,
     };
     use anstyle::{AnsiColor, Color, Style};
+
+    #[test]
+    fn window_json_keeps_the_asking_order_and_identity() {
+        use muster_proto::{AskingEntry, Window};
+        let window = Window {
+            asking: vec![
+                AskingEntry {
+                    daemon_id: "local".into(),
+                    pane_id: "p1".into(),
+                    alert: "blocked".into(),
+                    since_ms: 10,
+                    ..Default::default()
+                },
+                AskingEntry {
+                    daemon_id: "remote".into(),
+                    group: "g".into(),
+                    alert: "message".into(),
+                    since_ms: 20,
+                    preview: "hello".into(),
+                    ..Default::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["asking"][0]["pane"], "p1");
+        assert_eq!(json["asking"][0]["group"], serde_json::Value::Null);
+        assert_eq!(json["asking"][1]["group"], "g");
+        assert_eq!(json["asking"][1]["preview"], "hello");
+        assert_eq!(json["asking"][1]["since_ms"], 20);
+    }
 
     /// A `pane new` nobody answered names the pane it may have made as a field, so a `--json`
     /// caller finds it without reading the sentence; any other unanswered request has none.

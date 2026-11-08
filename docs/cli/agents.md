@@ -598,9 +598,10 @@ reach all of it. The four directions are geometric and do not wrap. `--place` ta
 `muster window` prints beside each pane and goes to that pane, bringing its tab on screen. It is
 not a press of `cmd+1` to `cmd+9`, whose meaning depends on the press before it.
 
-`--asking` goes to the pane most urgently asking for somebody, which is what `cmd+shift+a` does:
-`blocked` first, then a program's notification, then `done`, and within each the pane that asked
-first. It prints the pane it went to, and nothing when nothing is asking, which still exits 0.
+`--asking` goes to what most urgently asks for somebody, which is what `cmd+shift+a` does:
+`blocked`, then `stuck`, messages for the human, program notifications, and `done`. Within each
+kind it goes to what asked first. It prints where it went, and nothing when nothing is asking,
+which still exits 0.
 A recognized agent's own notifications are its state asking twice, so they do not count.
 
 It reaches a pane in any window: one in another open window brings that window forward, and one

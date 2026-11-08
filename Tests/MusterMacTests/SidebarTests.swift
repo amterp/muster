@@ -17,6 +17,22 @@ struct SidebarTests {
     #expect(Roster.Tab(tab).folded)
   }
 
+  @Test("the asking list keeps the core's entry")
+  func readsAskingEntry() {
+    var entry = Muster_AskingEntry()
+    entry.daemonID = "local"
+    entry.group = "g"
+    entry.alert = "message"
+    entry.sinceMs = 42
+    entry.preview = "hello"
+    let read = AskingEntry(entry)
+    #expect(read.daemon == "local")
+    #expect(read.group == "g")
+    #expect(read.alert == "message")
+    #expect(read.sinceMs == 42)
+    #expect(read.preview == "hello")
+  }
+
   /// One pane, numbered as the core would have numbered it.
   ///
   /// The place is stated rather than counted here, for the same reason a tab's is: the core

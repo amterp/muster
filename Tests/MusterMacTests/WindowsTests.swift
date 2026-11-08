@@ -73,12 +73,16 @@ struct WindowsTests {
     view.viewChanged = Muster_ViewChanged()
     view.window = "window-2"
     Core.deliver(view)
+    var asking = Muster_Event()
+    asking.askingListChanged = Muster_AskingListChanged()
+    asking.window = "window-2"
+    Core.deliver(asking)
     var problems = Muster_Event()
     problems.problemsChanged = Muster_ProblemsChanged()
     Core.deliver(problems)
 
     #expect(first.applied == ["problems"])
-    #expect(second.applied == ["view", "problems"])
+    #expect(second.applied == ["view", "asking", "problems"])
   }
 
   @Test("a conversation's events reach the window they name")
@@ -264,6 +268,7 @@ private final class StandIn: ShellWindow {
   func apply(bindings: [Core.Binding]) { applied.append("bindings") }
   func apply(problems: [Problem]) { applied.append("problems") }
   func apply(groups: [SidebarModel.MessageGroup]) { applied.append("groups") }
+  func apply(asking: [AskingEntry]) { applied.append("asking") }
   func hold(_ held: HeldPaste) { applied.append("paste") }
   func apply(pane: PaneKey, imagePasting: Bool, error: String) { applied.append("image paste") }
   var drawsBanners: Bool { false }

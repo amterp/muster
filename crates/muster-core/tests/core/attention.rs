@@ -15,11 +15,29 @@ use std::collections::{BTreeMap, BTreeSet};
 use conformance::{CaseError, Conformance, fields};
 use muster_core::AgentState;
 use muster_core::attention::{
-    Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
+    Alert, Asker, Attend, Attention, GroupKey, HumanNotice, Note, Noticed, Notifications,
 };
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::mirror::backend::PaneId;
 use serde_json::{Map, Value, json};
+
+#[test]
+fn message_and_notification_keep_their_first_raise_time() {
+    let mut attention = Attention::new();
+    let group = GroupKey { daemon: DaemonId::new("local"), group: "g".into() };
+    let pane = PaneKey::new(&DaemonId::new("local"), &PaneId::new("p1"));
+    let notice = HumanNotice { count: 1, last: 1, ..HumanNotice::default() };
+    attention.messaged(&group, Some(notice.clone()), false, 100);
+    attention.messaged(&group, Some(HumanNotice { last: 2, ..notice }), false, 200);
+    attention.notified(&pane, Note { title: String::new(), body: "hi".into() }, None, 300);
+    attention.notified(&pane, Note { title: String::new(), body: "again".into() }, None, 400);
+    assert_eq!(attention.raised_at(&Asker::Group(group.clone())), Some(100));
+    assert_eq!(attention.raised_at(&Asker::Pane(pane.clone())), Some(300));
+    assert_eq!(
+        attention.asking(),
+        vec![(Asker::Group(group), Alert::Message), (Asker::Pane(pane), Alert::Notified)]
+    );
+}
 
 #[test]
 fn attention_conformance() {
@@ -202,7 +220,7 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
             let said = |key: &str| note.get(key).and_then(Value::as_str).unwrap_or_default();
             let note = Note { title: said("title").to_string(), body: said("body").to_string() };
             let agent = event.get("agent").and_then(Value::as_str);
-            if let Some(Attend::Raised(alert)) = run.attention.notified(&pane, note, agent) {
+            if let Some(Attend::Raised(alert)) = run.attention.notified(&pane, note, agent, 0) {
                 let body = run.attention.note(&pane).map(|note| note.body.clone());
                 run.notified.push(format!(
                     "{pane} {}: {}",
@@ -263,7 +281,7 @@ fn messaged(run: &mut Run, event: &Value, message: &Value) -> Result<(), CaseErr
         answered: Vec::new(),
     };
     let looking = event.get("looking").and_then(Value::as_bool).unwrap_or_default();
-    match run.attention.messaged(&group, Some(notice), looking) {
+    match run.attention.messaged(&group, Some(notice), looking, 0) {
         Some(Attend::Raised(alert)) => {
             let from = run.attention.human_notice(&group).map(|notice| notice.from.join(", "));
             run.notified.push(format!("{group} {}: {}", alert.as_str(), from.unwrap_or_default()));

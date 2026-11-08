@@ -18,7 +18,7 @@ use muster_core::fields;
 use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
-use super::{SESSION, answer_as_human, posting};
+use super::{SESSION, announce_asking, answer_as_human, posting};
 use crate::proto::{Event, Response, event};
 use crate::{convert, ffi};
 
@@ -44,11 +44,22 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
                     },
                 );
             }
-            let changed =
-                poison::lock(&SESSION, "session").banners.fetched(&group, seq, fetched, called);
+            let changed = {
+                let mut session = poison::lock(&SESSION, "session");
+                if let Ok((_, preview)) = &fetched
+                    && session
+                        .attention
+                        .human_notice(&group)
+                        .is_some_and(|notice| notice.last == seq)
+                {
+                    session.asking_previews.insert(group.clone(), (seq, preview.clone()));
+                }
+                session.banners.fetched(&group, seq, fetched.map(|(message, _)| message), called)
+            };
             if changed {
                 announce();
             }
+            announce_asking();
         }
     });
     if let Err(error) = spawned {
@@ -70,7 +81,7 @@ pub(super) fn fetch(group: &GroupKey, seq: u64) {
 fn fetch_message(
     group: &GroupKey,
     seq: u64,
-) -> (Result<Message, String>, BTreeMap<String, String>) {
+) -> (Result<(Message, String), String>, BTreeMap<String, String>) {
     // Bounded above too, so the answer is the one entry rather than everything after it. A
     // daemon before 1.8 drops `before` and answers with the rest of the log, which `find` below
     // still reads the entry out of.
@@ -90,7 +101,8 @@ fn fetch_message(
         .find(|entry| entry.seq == seq);
     let message = match entry {
         Some(Entry { at_ms, what: What::Message(message), .. }) => {
-            Ok(Message::of(seq, at_ms, &message))
+            let preview = message.body.chars().take(280).collect();
+            Ok((Message::of(seq, at_ms, &message), preview))
         }
         Some(_) => Err(format!("entry #{seq} in the group's log is not a message")),
         None => Err(format!("the group's log holds no message #{seq}")),

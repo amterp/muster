@@ -263,6 +263,24 @@ public struct Roster: Equatable {
   public var spansMachines: Bool { machines.count > 1 }
 }
 
+public struct AskingEntry: Equatable {
+  public let daemon: String
+  public let pane: String
+  public let group: String
+  public let alert: String
+  public let sinceMs: Int64
+  public let preview: String
+
+  init(_ entry: Muster_AskingEntry) {
+    daemon = entry.daemonID
+    pane = entry.paneID
+    group = entry.group
+    alert = entry.alert
+    sinceMs = entry.sinceMs
+    preview = entry.preview
+  }
+}
+
 /// What the window shows of itself, as the core decided it.
 ///
 /// The shell's mirror of `PresentationChanged`, on the same terms as `Roster` and
@@ -1065,6 +1083,7 @@ public final class SidebarView: NSView {
   /// next `apply(roster:agents:keyboard:)`, like `groups`.
   public var hiddenCollapsed = false
   public var needsYouFolded = false
+  public var asking: [AskingEntry] = []
 
   /// Called when somebody clicks the Hidden caption, with whether they are asking to fold it.
   public var onHiddenToggled: ((Bool) -> Void)?

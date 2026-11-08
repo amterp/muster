@@ -2,8 +2,8 @@
 //! brought on screen with the keyboard on it, wherever it is in the window.
 
 use muster::proto::{
-    AttentionChanged, Event, FocusAsking, OpenWindow, ReadAsking, ReadWindow, Request, Response,
-    Startup, WindowFocus, event, request, response,
+    AskingListChanged, AttentionChanged, Event, FocusAsking, OpenWindow, ReadAsking, ReadWindow,
+    RenamePane, Request, Response, Startup, WindowFocus, event, request, response,
 };
 use muster_daemon_proto::{AgentState, input_event};
 use muster_harness::requests::{create, in_new_tab, make, until_text};
@@ -19,6 +19,7 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     muster::ffi::muster_set_event_callback(Some(note));
     ASKED.lock().expect("a panicking test poisoned the log").clear();
     TOLD.lock().expect("a panicking test poisoned the log").clear();
+    LISTS.lock().expect("asking lists").clear();
     let daemon = Daemon::start_built();
     let mut control = daemon.connect();
     make(&mut control, create("p1", in_new_tab("t1")));
@@ -47,6 +48,13 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     // Whichever tab is not on screen asks, so going there has to change what is shown.
     let (hidden_tab, hidden_pane) = if shown == "t1" { ("t2", "p2") } else { ("t1", "p1") };
     let mut input = Input::connect(daemon.socket_path());
+    let before_notification = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("wall clock")
+            .as_millis(),
+    )
+    .expect("timestamp fits");
     let send = input_event::Send {
         text: r"printf '\033]9;look here\a'".to_string(),
         enter: true,
@@ -67,6 +75,19 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     let would = read_asking();
     assert_eq!(would.pane_id, hidden_pane, "would go to {would:?}");
     assert_eq!(keyboard().0, shown, "asking where it would go went there");
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    let entry =
+        window.asking.iter().find(|entry| entry.pane_id == hidden_pane).expect("notification asks");
+    assert_eq!(entry.alert, "notified");
+    assert!(
+        entry.since_ms >= before_notification,
+        "notification borrowed the pane's old state time"
+    );
+    assert_rename_preserves_asking(hidden_pane);
 
     let went = focus_asking();
     assert_eq!(went, would, "went somewhere other than where it said it would");
@@ -80,6 +101,41 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     assert_eq!(nothing, muster::proto::Asking::default(), "something still asks");
     assert_eq!(keyboard(), (hidden_tab.to_string(), hidden_pane.to_string()), "it moved");
     assert_eq!(told(), [false, true, false], "told only when the answer changed");
+}
+
+fn assert_rename_preserves_asking(hidden_pane: &str) {
+    until(
+        "the asking list to arrive",
+        || {
+            LISTS
+                .lock()
+                .expect("asking lists")
+                .last()
+                .is_some_and(|list| list.entries.iter().any(|entry| entry.pane_id == hidden_pane))
+        },
+        || "no asking list".to_string(),
+    );
+    let before = LISTS.lock().expect("asking lists").len();
+    assert_ok(&answer(request::Payload::RenamePane(RenamePane {
+        pane_id: hidden_pane.to_string(),
+        name: "renamed".to_string(),
+        ..RenamePane::default()
+    })));
+    let renamed = || match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .into_iter()
+            .flat_map(|roster| roster.tabs)
+            .flat_map(|tab| tab.panes)
+            .any(|pane| pane.pane_id == hidden_pane && pane.given_name == "renamed"),
+        _ => false,
+    };
+    until("the renamed pane", renamed, || "the old name remains".to_string());
+    assert_eq!(
+        LISTS.lock().expect("asking lists").len(),
+        before,
+        "a name is not part of an asking entry"
+    );
 }
 
 /// Muster quit and its agents went on, and one blocked meanwhile. The window that opens next
@@ -120,6 +176,17 @@ fn a_pane_blocked_before_the_window_opened_is_reached() {
             )
         },
     );
+
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    let entry =
+        window.asking.iter().find(|entry| entry.pane_id == "p2").expect("blocked pane asks");
+    let pane = window.panes.iter().find(|pane| pane.pane_id == "p2").expect("blocked pane");
+    assert_eq!(entry.alert, "blocked");
+    assert_eq!(entry.since_ms, pane.since_ms);
 
     let went = focus_asking();
     assert_eq!(went.pane_id, "p2", "went to {went:?}");
@@ -198,6 +265,7 @@ static PAINTED: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
 /// Every AskingChanged the shell was sent, in order.
 static TOLD: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+static LISTS: Mutex<Vec<AskingListChanged>> = Mutex::new(Vec::new());
 
 fn told() -> Vec<bool> {
     TOLD.lock().expect("a panicking test poisoned the log").clone()
@@ -214,6 +282,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Some(event::Payload::AskingChanged(changed)) => {
             TOLD.lock().expect("a panicking test poisoned the log").push(changed.asking);
+        }
+        Some(event::Payload::AskingListChanged(changed)) => {
+            LISTS.lock().expect("asking lists").push(changed);
         }
         Some(event::Payload::PaneStateChanged(state)) => {
             PAINTED

@@ -936,6 +936,7 @@ pub(crate) struct Session {
 
     /// What the shell was last told of whether anything is asking ([`announce_asking`]).
     told_asking: Option<bool>,
+    asking_previews: BTreeMap<GroupKey, (u64, String)>,
 
     /// Which pane has been told it has the keyboard of this window, for a program that asked
     /// to hear it. Spans the daemons for the reason attention does.
@@ -1327,6 +1328,7 @@ fn unknown_window(id: WindowId) -> ! {
 struct Sent {
     view: Option<ViewChanged>,
     roster: Option<RosterChanged>,
+    asking: Option<Vec<crate::proto::AskingEntry>>,
 }
 
 impl Sent {
@@ -2049,6 +2051,51 @@ impl Session {
             }
         }
         agents
+    }
+
+    fn asking_entries(&self, agents: &[PaneAgent]) -> Vec<crate::proto::AskingEntry> {
+        self.attention
+            .asking()
+            .into_iter()
+            .map(|(asker, alert)| {
+                let raised_at = self.attention.raised_at(&asker).unwrap_or_default();
+                match asker {
+                    Asker::Pane(pane) => crate::proto::AskingEntry {
+                        daemon_id: pane.daemon.to_string(),
+                        pane_id: pane.pane.to_string(),
+                        alert: alert.as_str().to_string(),
+                        since_ms: if alert == Alert::Notified {
+                            raised_at
+                        } else {
+                            agents
+                                .iter()
+                                .find(|agent| agent.pane == pane)
+                                .map_or(0, |agent| agent.since_ms)
+                        },
+                        ..Default::default()
+                    },
+                    Asker::Group(group) => {
+                        let preview = self
+                            .attention
+                            .human_notice(&group)
+                            .and_then(|notice| {
+                                self.asking_previews
+                                    .get(&group)
+                                    .filter(|(seq, _)| *seq == notice.last)
+                            })
+                            .map_or_else(String::new, |(_, text)| text.clone());
+                        crate::proto::AskingEntry {
+                            daemon_id: group.daemon.to_string(),
+                            group: group.group,
+                            alert: alert.as_str().to_string(),
+                            since_ms: raised_at,
+                            preview,
+                            ..Default::default()
+                        }
+                    }
+                }
+            })
+            .collect()
     }
 
     /// Puts a region onto the tab holding this pane, so that something can show it.
@@ -4905,6 +4952,7 @@ pub(crate) struct WindowNow {
     pub layouts: Vec<View>,
     /// How big each pane's terminal is, when the caller asked for the layout.
     pub grids: Vec<(DaemonId, PaneId, Grid)>,
+    pub asking: Vec<crate::proto::AskingEntry>,
 }
 
 /// Another window, as this one can describe it.
@@ -5120,6 +5168,7 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
     } else {
         (Vec::new(), Vec::new())
     };
+    let asking = session.asking_entries(&agents);
     drop(session);
     let grids = grids(channels);
     let others = others
@@ -5131,7 +5180,7 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
         })
         .collect();
 
-    WindowNow { view, roster, numbering, agents, daemons, name, others, layouts, grids }
+    WindowNow { view, roster, numbering, agents, daemons, name, others, layouts, grids, asking }
 }
 
 /// Why a pane could not be attached.
@@ -5593,6 +5642,47 @@ pub(crate) fn set_window_frame(window: WindowId, frame: Option<Frame>, full_scre
     save(&mut session, window);
 }
 
+fn settle_folds(session: &mut Session) {
+    let holding = &session.holding;
+    for window in session.windows.values_mut() {
+        if window.is_open() {
+            let tabs: BTreeSet<_> = window.composition.tabs().map(|tab| tab.id.clone()).collect();
+            let pending: BTreeSet<_> = window
+                .left
+                .iter()
+                .flat_map(|left| &left.tabs)
+                .filter(|tab| {
+                    holding.holds(&window.name, &tab.id)
+                        && tab.regions.iter().any(|region| window.awaiting.contains(&region.daemon))
+                })
+                .map(|tab| tab.id.clone())
+                .collect();
+            window
+                .presentation
+                .folded_tabs
+                .retain(|tab| tabs.contains(tab) || pending.contains(tab));
+            if tabs.len() == 1
+                && (window.awaiting.is_empty()
+                    || window.last_tab_count.is_some_and(|count| count > 1))
+            {
+                window.presentation.folded_tabs.remove(tabs.first().expect("one tab"));
+            }
+            window.last_tab_count = Some(tabs.len());
+        }
+    }
+    for window in session.windows.opened() {
+        if let Some(pane) = session.keyboard_key(window) {
+            let held = &mut session.windows[window];
+            if held.last_keyboard.as_ref().is_some_and(|last| last != &pane)
+                && let Some(tab) = held.composition.showing()
+            {
+                held.presentation.folded_tabs.remove(tab);
+            }
+            held.last_keyboard = Some(pane);
+        }
+    }
+}
+
 /// Tells the shell what each window is showing.
 ///
 /// The whole view rather than what moved. A shell handed the whole answer holds no picture
@@ -5629,48 +5719,7 @@ fn publish(cause: &str) {
         for daemon in &daemons {
             session.reconcile(daemon);
         }
-        let holding = &session.holding;
-        for window in session.windows.values_mut() {
-            if window.is_open() {
-                let tabs: BTreeSet<_> =
-                    window.composition.tabs().map(|tab| tab.id.clone()).collect();
-                let pending: BTreeSet<_> = window
-                    .left
-                    .iter()
-                    .flat_map(|left| &left.tabs)
-                    .filter(|tab| {
-                        holding.holds(&window.name, &tab.id)
-                            && tab
-                                .regions
-                                .iter()
-                                .any(|region| window.awaiting.contains(&region.daemon))
-                    })
-                    .map(|tab| tab.id.clone())
-                    .collect();
-                window
-                    .presentation
-                    .folded_tabs
-                    .retain(|tab| tabs.contains(tab) || pending.contains(tab));
-                if tabs.len() == 1
-                    && (window.awaiting.is_empty()
-                        || window.last_tab_count.is_some_and(|count| count > 1))
-                {
-                    window.presentation.folded_tabs.remove(tabs.first().expect("one tab"));
-                }
-                window.last_tab_count = Some(tabs.len());
-            }
-        }
-        for window in session.windows.opened() {
-            if let Some(pane) = session.keyboard_key(window) {
-                let held = &mut session.windows[window];
-                if held.last_keyboard.as_ref().is_some_and(|last| last != &pane)
-                    && let Some(tab) = held.composition.showing()
-                {
-                    held.presentation.folded_tabs.remove(tab);
-                }
-                held.last_keyboard = Some(pane);
-            }
-        }
+        settle_folds(session);
         session.rebase_bridge_counts();
         // Only the windows that have opened: one not yet open has no shell window to draw in,
         // and a view sent there would be lost while `sent` recorded it as delivered.
@@ -6259,7 +6308,12 @@ fn attended(daemon: &DaemonId, change: &Change) -> Option<(PaneKey, Attend)> {
                     fields! { "pane" => key.to_string(), "agent" => agent.as_str(), "title" => title.as_str() },
                 );
             }
-            let attended = session.attention.notified(&key, note, agent.as_deref());
+            let attended = session.attention.notified(
+                &key,
+                note,
+                agent.as_deref(),
+                clock::wall_clock_millis(),
+            );
             attended.map(|attend| (key, attend))
         }
         _ => None,
@@ -6823,23 +6877,41 @@ fn free_helpers(daemon: &DaemonId, maker: &PaneId, called: Option<&str>) {
     }
 }
 
-/// Tells the shell whether anything is asking, when that answer has changed since it was last
-/// told. Called wherever attention may have moved, since it costs a lock and two emptiness
-/// checks and sends nothing when the answer is the same. Settled and sent under one lock of its
-/// own, as [`announce_groups`] is, so the last answer settled is the last one the shell hears.
+/// Tells the shell which entries ask, and whether any do. Serialize settlement and delivery so
+/// concurrent updates cannot leave the shell with an older list.
 fn announce_asking() {
     static TELLING: Mutex<()> = Mutex::new(());
     let _telling = poison::lock(&TELLING, "asking");
-    let asking = {
+    let (changed, lists) = {
         let mut session = poison::lock(&SESSION, "session");
         let asking = session.attention.anything_asking();
-        if session.told_asking == Some(asking) {
-            return;
-        }
+        let changed = (session.told_asking != Some(asking)).then_some(asking);
         session.told_asking = Some(asking);
-        asking
+        let entries = if asking { session.asking_entries(&session.agents()) } else { Vec::new() };
+        let lists = session
+            .windows
+            .values_mut()
+            .filter_map(|window| {
+                if !window.is_open() || window.sent.asking.as_ref() == Some(&entries) {
+                    return None;
+                }
+                window.sent.asking = Some(entries.clone());
+                Some((window.name.clone(), entries.clone()))
+            })
+            .collect::<Vec<_>>();
+        (changed, lists)
     };
-    ffi::emit(&Event::new(event::Payload::AskingChanged(AskingChanged { asking })));
+    if let Some(asking) = changed {
+        ffi::emit(&Event::new(event::Payload::AskingChanged(AskingChanged { asking })));
+    }
+    for (window, entries) in lists {
+        ffi::emit(
+            &Event::new(event::Payload::AskingListChanged(crate::proto::AskingListChanged {
+                entries,
+            }))
+            .for_window(window.as_str()),
+        );
+    }
 }
 
 /// Tells the shell that a pane has started asking for somebody, or stopped.
@@ -6891,19 +6963,32 @@ fn human_noticed(daemon: &DaemonId, group: &str) {
         });
         let waiting = notice.as_ref().is_some_and(|notice| notice.count > 0);
         let looking = waiting && session.looking_at_conversation(&key);
+        let previous = session.attention.human_notice(&key).map(|notice| notice.last);
+        let latest = notice.as_ref().filter(|_| waiting && !looking).map(|notice| notice.last);
+        if latest.is_none() {
+            session.asking_previews.remove(&key);
+        }
         if looking {
             session.read_as_human(&key);
         }
         let fetch = session.banners.noticed(&key, notice.as_ref(), looking);
-        (session.attention.messaged(&key, notice, looking), fetch)
+        (
+            session.attention.messaged(&key, notice, looking, clock::wall_clock_millis()),
+            fetch,
+            latest.filter(|seq| Some(*seq) != previous),
+        )
     };
-    let (attend, fetch) = attend;
+    let (attend, fetch, latest) = attend;
     if let Some(attend) = attend {
         announce_message(&key, attend);
     }
     if let Some(seq) = fetch {
         banners::fetch(&key, seq);
     }
+    if let Some(seq) = latest.filter(|seq| Some(*seq) != fetch) {
+        banners::fetch(&key, seq);
+    }
+    announce_asking();
     banners::announce();
 }
 
@@ -6930,7 +7015,9 @@ fn read_what_is_looked_at() {
             }
             session.read_as_human(&key);
             session.banners.noticed(&key, None, true);
-            if let Some(attend) = session.attention.messaged(&key, None, true) {
+            if let Some(attend) =
+                session.attention.messaged(&key, None, true, clock::wall_clock_millis())
+            {
                 withdrawn.push((key, attend));
             }
         }

@@ -7,8 +7,9 @@ use crate::group_messages::{
     entries, group_of_three, in_pane, log, msg, named, post, posted, the_human, unread,
 };
 use muster::proto::{
-    BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, PickBannerAnswer, ReplyToBanner,
-    Request, Response, Startup, event, markdown_block, post_outcome, request, response,
+    BannersChanged, DismissBanner, Event, HoldBanner, OpenWindow, PickBannerAnswer, ReadWindow,
+    ReplyToBanner, Request, Response, Startup, event, markdown_block, post_outcome, request,
+    response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{Answer, entry::What};
@@ -88,6 +89,17 @@ fn a_reply_goes_to_the_author_the_banner_shows_and_leaves_the_group_unread() {
     let since = post(&mut control, "b", "@human", "wait, the build is red");
     let held = until_banner(|banner| banner.waiting_author == "b");
     assert_eq!((held.seq, held.author.as_str()), (asked, "a"), "a held banner keeps its message");
+    let preview = || match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => {
+            window.asking.first().map(|entry| entry.preview.clone())
+        }
+        _ => None,
+    };
+    until(
+        "the newer asking preview",
+        || preview().as_deref() == Some("wait, the build is red"),
+        || format!("preview: {:?}", preview()),
+    );
 
     let replied = answer(reply(asked, "yes"));
     let Some(response::Payload::Ok(ok)) = &replied.payload else {

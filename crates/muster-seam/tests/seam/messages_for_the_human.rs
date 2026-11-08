@@ -4,8 +4,9 @@
 
 use crate::group_messages::{group_of_three, msg, named, post, posted, the_human};
 use muster::proto::{
-    AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged, LeaveGroup, OpenWindow,
-    ReadWindow, Request, Response, Startup, WindowFocus, event, request, response,
+    AskingListChanged, AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged,
+    LeaveGroup, OpenWindow, ReadWindow, Request, Response, Startup, WindowFocus, event, request,
+    response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{self, Answer};
@@ -14,6 +15,81 @@ use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until
 use muster_harness::{Control, Daemon, until};
 use prost::Message;
 use std::sync::Mutex;
+
+#[test]
+fn a_second_message_updates_the_asking_preview_without_moving_it() {
+    let _turn = muster::testing::fresh_session();
+    ASKING_LISTS.lock().expect("asking lists").clear();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    open_window(&daemon);
+    group_of_three(&mut control);
+    post(&mut control, "a", "@human", "first message");
+    let latest = || ASKING_LISTS.lock().expect("asking lists").last().cloned();
+    until(
+        "the first preview",
+        || {
+            latest().is_some_and(|list| {
+                list.entries.iter().any(|entry| entry.preview == "first message")
+            })
+        },
+        || format!("{:?}", latest()),
+    );
+    let first = latest().expect("asking list").entries[0].clone();
+    assert_eq!(first.group, "g");
+    assert_eq!(first.alert, "message");
+    assert!(first.since_ms > 0);
+    post(&mut control, "a", "@human", "second message");
+    until(
+        "the second preview",
+        || {
+            latest().is_some_and(|list| {
+                list.entries.iter().any(|entry| entry.preview == "second message")
+            })
+        },
+        || format!("{:?}", latest()),
+    );
+    let second = latest().expect("asking list").entries[0].clone();
+    assert_eq!(second.group, first.group);
+    assert_eq!(second.since_ms, first.since_ms);
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    assert_eq!(window.asking, vec![second]);
+}
+
+#[test]
+fn a_message_preview_is_fetched_when_notifications_are_disabled() {
+    let _turn = muster::testing::fresh_session();
+    ASKING_LISTS.lock().expect("asking lists").clear();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let daemon = Daemon::start_built();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    let config = daemon.muster_config();
+    let original = std::fs::read_to_string(&config).expect("config");
+    std::fs::write(&config, format!("{original}\n[notifications]\nmessages = false\n"))
+        .expect("config");
+    open_window_with(&config);
+    group_of_three(&mut control);
+    post(&mut control, "a", "@human", "quiet message");
+    let latest = || ASKING_LISTS.lock().expect("asking lists").last().cloned();
+    until(
+        "the quiet preview",
+        || {
+            latest().is_some_and(|list| {
+                list.entries.iter().any(|entry| entry.preview == "quiet message")
+            })
+        },
+        || format!("{:?}", latest()),
+    );
+}
 
 /// The window is open when the message arrives: one banner for it and none for the chatter
 /// before it, and going to what asked shows the group's conversation, which is the human reading
@@ -346,6 +422,7 @@ static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 
 /// What the shell was last told of the human's groups.
 static GROUPS: Mutex<Option<GroupsChanged>> = Mutex::new(None);
+static ASKING_LISTS: Mutex<Vec<AskingListChanged>> = Mutex::new(Vec::new());
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
@@ -358,6 +435,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Some(event::Payload::GroupsChanged(groups)) => {
             *GROUPS.lock().expect("a panicking test poisoned the log") = Some(groups);
+        }
+        Some(event::Payload::AskingListChanged(list)) => {
+            ASKING_LISTS.lock().expect("asking lists").push(list);
         }
         _ => {}
     }

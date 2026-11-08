@@ -236,6 +236,7 @@ pub struct Observed {
 #[derive(Debug, Clone, Copy)]
 struct Raised {
     alert: Alert,
+    since_ms: i64,
     /// When, as a count of raises: a pane's wait restarts when what it asks for changes.
     order: u64,
     /// Whether a banner stands for it. A pane asks whether or not one does: the file decides
@@ -373,6 +374,13 @@ impl Attention {
         asking.into_iter().map(|(asker, raised)| (asker, raised.alert)).collect()
     }
 
+    pub fn raised_at(&self, asker: &Asker) -> Option<i64> {
+        match asker {
+            Asker::Pane(pane) => self.raised.get(pane).map(|raised| raised.since_ms),
+            Asker::Group(group) => self.messages.get(group).map(|(raised, _)| raised.since_ms),
+        }
+    }
+
     /// Whether this window can reach `daemon`. While it cannot, nothing on it asks
     /// ([`Attention::asking`]); what it raised waits, unannounced, for it to answer again.
     pub fn reachable(&mut self, daemon: &DaemonId, reachable: bool) {
@@ -401,6 +409,7 @@ impl Attention {
         group: &GroupKey,
         notice: Option<HumanNotice>,
         looking: bool,
+        now_ms: i64,
     ) -> Option<Attend> {
         let Some(notice) = notice.filter(|notice| notice.count > 0 && !looking) else {
             let (raised, _) = self.messages.remove(group)?;
@@ -424,7 +433,12 @@ impl Attention {
             }
             None => {
                 self.raises += 1;
-                let raised = Raised { alert: Alert::Message, order: self.raises, announced };
+                let raised = Raised {
+                    alert: Alert::Message,
+                    order: self.raises,
+                    announced,
+                    since_ms: now_ms,
+                };
                 self.messages.insert(group.clone(), (raised, notice));
                 announced.then_some(Attend::Raised(Alert::Message))
             }
@@ -551,7 +565,13 @@ impl Attention {
     /// state already asks about - Claude Code when it has sat idle, and at a permission prompt -
     /// so a banner of its own is `done` or `blocked` asked twice, and one that ignores what the
     /// file says about them. Its shell's programs ask again once it has gone.
-    pub fn notified(&mut self, pane: &PaneKey, note: Note, agent: Option<&str>) -> Option<Attend> {
+    pub fn notified(
+        &mut self,
+        pane: &PaneKey,
+        note: Note,
+        agent: Option<&str>,
+        now_ms: i64,
+    ) -> Option<Attend> {
         if agent.is_some()
             || self.seen(pane)
             || self.quiet.contains(pane)
@@ -564,12 +584,12 @@ impl Attention {
             // banner, if it has one, is the one to leave standing.
             if self.alert(pane).is_none() {
                 self.notes.insert(pane.clone(), note);
-                self.ask_silently(pane, Alert::Notified);
+                self.stamp(pane, Alert::Notified, false, now_ms);
             }
             return None;
         }
         self.notes.insert(pane.clone(), note);
-        self.stamp(pane, Alert::Notified, true);
+        self.stamp(pane, Alert::Notified, true, now_ms);
         Some(Attend::Raised(Alert::Notified))
     }
 
@@ -719,7 +739,7 @@ impl Attention {
         }
         let had_banner = self.raised.get(pane).is_some_and(|raised| raised.announced);
         let announced = self.notifications.allows(alert);
-        self.stamp(pane, alert, announced);
+        self.stamp(pane, alert, announced, 0);
         if announced {
             Some(Attend::Raised(alert))
         } else {
@@ -730,7 +750,7 @@ impl Attention {
     /// Starts this pane asking with no banner, unless it already asks for the same.
     fn ask_silently(&mut self, pane: &PaneKey, alert: Alert) {
         if self.alert(pane) != Some(alert) && !self.quiet.contains(pane) {
-            self.stamp(pane, alert, false);
+            self.stamp(pane, alert, false, 0);
         }
     }
 
@@ -751,9 +771,9 @@ impl Attention {
 
     /// Records that the pane has started asking for `alert`, after every pane that asked
     /// before it.
-    fn stamp(&mut self, pane: &PaneKey, alert: Alert, announced: bool) {
+    fn stamp(&mut self, pane: &PaneKey, alert: Alert, announced: bool, since_ms: i64) {
         self.raises += 1;
-        self.raised.insert(pane.clone(), Raised { alert, order: self.raises, announced });
+        self.raised.insert(pane.clone(), Raised { alert, order: self.raises, announced, since_ms });
     }
 
     /// Stops the pane asking. Says so only when a banner stood for it, since that is what

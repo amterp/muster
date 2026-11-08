@@ -2019,6 +2019,7 @@ message Window {
   // several apps listening asks for a window only of its own install's. Empty from an app older
   // than the field.
   string install = 10;
+  repeated AskingEntry asking = 11;
 }
 
 // One tab's arrangement, as it is drawn when the tab is on screen.
@@ -2866,6 +2867,7 @@ message Event {
     MessageBoxChanged message_box_changed = 98;
     ConversationChanged conversation_changed = 99;
     ImagePasteChanged image_paste_changed = 101;
+    AskingListChanged asking_list_changed = 102;
   }
 
   // The window this event is for, by its name, or empty for one about the whole app: what the
@@ -2955,6 +2957,19 @@ message ShutWindow {}
 // every window on an agent's finish.
 message AskingChanged {
   bool asking = 1;
+}
+
+message AskingEntry {
+  string daemon_id = 1;
+  string pane_id = 2;
+  string group = 3;
+  string alert = 4;
+  int64 since_ms = 5;
+  string preview = 6;
+}
+
+message AskingListChanged {
+  repeated AskingEntry entries = 1;
 }
 
 // One pane started asking for a person, or stopped.

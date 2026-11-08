@@ -2031,6 +2031,8 @@ public enum Core {
       }
     case .askingChanged(let changed):
       anythingAsking = changed.asking
+    case .askingListChanged(let changed):
+      window(for: event)?.apply(asking: changed.entries.map(AskingEntry.init))
     case .attentionChanged(let changed):
       // Straight on, because the decision was made before it crossed: the core holds the
       // unread set, knows what this window is showing, and holds the file's answer about
