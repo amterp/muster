@@ -6,6 +6,15 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2vvCBMJu1",
+      "body": "Two more instances, 2026-11-07, Muster 0.23.0, Mac, Fencil parallel-work round: worker easel ran report --waiting \"second review round from tabby\" and worker lagoon ran report --waiting \"Codex reviewer knot on 35e4d5b\", both without --until-message-from (checked in their transcripts). Each got its review, reported done and went idle; muster window still showed easel waiting 3 minutes later, and @muster told the integrator 10 minutes later that lagoon had been waiting on knot. Where they took the plain form from is not known; the session-start hook text shows it.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794107083443,
+      "updated_at_millis": 1794107097657
+    }
+  ],
   "created_at_millis": 1794003491869,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-05 on 0.22.0 on the devenv, five times in one parallel-work round. A Claude Code worker declared a wait on its reviewer helper before ending its turn, for example `\"$MUSTER_DAEMON\" report --waiting \"on ferret re-check\"`, got the review, posted its done report, took a new brief, planned through several turns and was compacted with `muster pane compact`. Through all of it `muster window` showed it `waiting ... on ferret re-check`, so `muster pane wait --until idle` timed out on an agent sitting idle at its prompt. In the other four, 10 minutes after the wait was declared, @muster told the integrator the worker 'had been waiting on \u003creviewer\u003e's re-check for 10 minutes. Check whether it still needs help', though it had reported done and gone idle.\n\nThis is the documented behavior for a wait declared without `--until-message-from`: a message wake carries it, for up to 10 minutes per carry. a_2q5wUnqa4 added the flag for exactly this case, and docs/cli/agents.md and the muster skill show it. The session-start hook in extras/claude-code/hooks/hooks.json (and extras/codex) does not: it says only 'Only when you end a turn to wait on work you started (a build, a background job, a sub-agent), first run \"$MUSTER_DAEMON\" report --waiting \"\u003cwhat\u003e\"'. An agent that knows Muster from the hook alone declares the wait without the flag. The first instance's command shows no flag; the other four commands were not recorded.\n\nCosts: one false 'still needs help' notice per worker per round for the integrator, each a wake and a pane read to rule out, and `pane wait --until idle` timeouts.\n\nPossibly: have the hook text name the flag for a wait on another agent (`--until-message-from \u003cpane\u003e`), or drop 'a sub-agent' from what the hook says to declare.",
@@ -16,7 +25,7 @@
   ],
   "title": "The session-start hook teaches report --waiting without --until-message-from, so a wait on a reviewer outlives the review",
   "type": "docs",
-  "updated_at_millis": 1794003515229,
+  "updated_at_millis": 1794107097657,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794003491869}
   ]
