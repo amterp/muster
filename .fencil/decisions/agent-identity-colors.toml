@@ -23,3 +23,27 @@ mock-ups showed the avatar-only version, and the owner has not ruled on the diff
   by = "agent"
   date = 2026-11-08
   note = "Decision 5 on the page recommended avatar colors only. The owner's replies approved the page as a whole (\"This all looks great.\") without answering this one."
+
+[[revisions]]
+n = 2
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-nodded"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = '''
+On its avatar in conversations and banners only. Callsigns in the agent list stay one neutral
+color.'''
+why = '''
+In the agent list color means state, and an agent's own color beside its state icon would read as
+a second state. Card a_2o5jIMI5J proposed sharing the color with the agent list's callsign. The
+owner chose neutral callsigns to start with, which leaves coloring them open to revisit once the
+redesign is in use.'''
+change = "The owner answered the question on its own: keep sidebar callsigns neutral for now."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "lets start with neutral"
+  note = "Asked, on its own: should an agent's own color appear only on its avatar in conversations and banners, with callsigns in the sidebar staying one neutral color? The agent recommended neutral. Recorded as a nod rather than a ruling because 'start with' marks the answer as provisional."
