@@ -1,0 +1,24 @@
+id = "sidebar-default-width"
+question = "How wide is the agent list by default?"
+tags = ["ui", "agent-list"]
+paths = ["Sources/MusterMac/Sidebar.swift"]
+
+[[revisions]]
+n = 1
+date = 2026-11-08
+recorded_by = "claude-code"
+discussion = "ui-redesign-2026-11"
+level = "owner-decided"
+proposed_by = "agent"
+reversibility = "two-way"
+answer = "280 pt, up from 200. Dragging the edge still sets any width."
+why = '''
+Direction A was drawn at 280 pt. At 200 a row holds its keycaps, its icon and a cut-off name, and
+the directory, which the owner asked to see, is the first thing lost. The alternative was keeping
+200 and letting rows show less until the person widens the list.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-08
+  quote = "280 sounds fine"
+  note = "Asked, on its own: should the sidebar's default width go from 200 to 280 px, or stay at 200 and let rows show less until you drag it wider?"
