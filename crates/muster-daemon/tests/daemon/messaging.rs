@@ -517,6 +517,112 @@ fn a_named_read_that_moves_a_human_groups_member_invalidates_who_once() {
     assert_eq!(changed(&unrelated), 0);
 }
 
+#[test]
+fn a_partly_refused_member_change_invalidates_who() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    attend(&mut control);
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    join(&mut control, &named("b"), "b", "g");
+    let change = Asked::GroupMembers(msg_request::GroupMembers {
+        group: "g".into(),
+        add: vec![],
+        remove: vec!["b".into(), "missing".into()],
+    });
+    let refused = expect(&mut control, msg(&the_human(), change), proto::Outcome::Refused);
+    assert_eq!(
+        refused
+            .events
+            .iter()
+            .filter(|event| matches!(event.event, Some(proto::event::Event::MessagingChanged(_))))
+            .count(),
+        1
+    );
+    let asked = expect(
+        &mut control,
+        msg(&the_human(), Asked::Who(msg_request::Who { group: Some("g".into()) })),
+        DONE,
+    );
+    let Some(Answer::Members(members)) = &msg_answer(&asked).answer else { panic!("no members") };
+    assert!(!members.members.iter().any(|member| member.name == "b"));
+}
+
+#[test]
+fn membership_changes_in_a_read_group_each_invalidate_once() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    attend(&mut control);
+    join(&mut control, &the_human(), "@human", "g");
+    join(&mut control, &named("a"), "a", "g");
+    expect(&mut control, read(&the_human()), DONE);
+    let joining = Asked::Join(msg_request::Join {
+        name: Some("third".into()),
+        group: Some("g".into()),
+        pull: false,
+    });
+    let joined = expect(&mut control, msg(&named("third"), joining), DONE);
+    let left = expect(
+        &mut control,
+        msg(&named("third"), Asked::Leave(msg_request::Leave { group: Some("g".into()) })),
+        DONE,
+    );
+    for asked in [&joined, &left] {
+        assert_eq!(
+            asked
+                .events
+                .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    Some(proto::event::Event::MessagingChanged(_))
+                ))
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn a_wait_that_moves_a_member_invalidates_before_it_is_answered() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p1");
+    daemon.run_agent("p2");
+    join(&mut control, &the_human(), "@human", "g");
+    let caller = |pane: &str| msg_request::Caller {
+        as_name: Some("partner".into()),
+        pane: Some(pane.into()),
+        ..Default::default()
+    };
+    join(&mut control, &caller("p1"), "partner", "g");
+    daemon.type_into("p1", "quit");
+    until(
+        "the first agent to exit",
+        || {
+            snapshot(&mut control)
+                .panes
+                .iter()
+                .any(|pane| pane.pane == "p1" && pane.agent.is_none())
+        },
+        || "the first agent is still running".to_string(),
+    );
+    let mut window = daemon.connect();
+    attend(&mut window);
+    let mut waiter = daemon.connect();
+    waiter.send(msg(
+        &caller("p2"),
+        Asked::Wait(msg_request::Wait { group: Some("g".into()), timeout_ms: None, due: false }),
+    ));
+    loop {
+        if matches!(window.next_event().event, Some(proto::event::Event::MessagingChanged(_))) {
+            break;
+        }
+    }
+    assert!(waiter.next_message(std::time::Duration::from_millis(100)).is_none());
+}
+
 /// A window attending the daemon hears of each message that wakes the human, once, and of
 /// nothing said between agents; the human reading clears it (MIP-4, section 10).
 #[test]
