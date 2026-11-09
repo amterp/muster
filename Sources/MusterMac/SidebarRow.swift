@@ -68,6 +68,14 @@ final class SidebarRowView: NSView {
   /// Called when somebody clicks the caption's fold control, with the row it is on.
   var onFoldToggled: ((SidebarModel.Row) -> Void)?
 
+  /// Called when somebody presses the envelope on a pane's row, with its group's daemon and name.
+  var onGroupPicked: ((String, String) -> Void)?
+
+  /// The envelope on this row, for the tests to press.
+  var conversationBadge: ConversationBadge? {
+    marks.compactMap { $0 as? ConversationBadge }.first
+  }
+
   /// Whether this row carries the keyboard marker.
   var marksKeyboard: Bool { highlight.superlayer != nil }
 
@@ -448,6 +456,12 @@ final class SidebarRowView: NSView {
     marks = wanted.map(SidebarRowView.mark(for:))
     for mark in marks {
       addSubview(mark)
+      if let badge = mark as? ConversationBadge {
+        badge.onPressed = { [weak self] in
+          guard let conversation = self?.shown?.conversation else { return }
+          self?.onGroupPicked?(conversation.daemon, conversation.group)
+        }
+      }
     }
   }
 
@@ -489,6 +503,8 @@ final class SidebarRowView: NSView {
       return CountBadge(count: count, saying: count == 1 ? "1 sub-agent" : "\(count) sub-agents")
     case .unread(let count):
       return CountBadge(count: count, saying: "\(count) unread")
+    case .conversation(let unread, let toYou):
+      return ConversationBadge(unread: unread, toYou: toYou)
     case .toYou(let count):
       return symbol("at", tint: .controlAccentColor, saying: "\(count) addressed to you")
     case .context(let used):
@@ -836,6 +852,87 @@ final class FoldControl: NSView {
   override var fittingSize: NSSize { NSSize(width: Self.width, height: Self.height) }
 
   /// Every point of it is the control's, so a press on the chevron is not a press on the caption.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    bounds.contains(convert(point, from: superview)) ? self : nil
+  }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func mouseDown(with event: NSEvent) {
+    onPressed?()
+  }
+}
+
+/// The conversation with a row's agent, as an envelope with what is unread beside it, which opens
+/// the conversation when pressed (Fencil `one-to-one-on-agent-row`).
+///
+/// Always there on a row that has one, because the row is now the only place that conversation is
+/// listed: quiet with nothing unread, and in the accent color once something waits.
+@MainActor
+final class ConversationBadge: NSView {
+  let unread: Int
+  let toYou: Int
+  var onPressed: (() -> Void)?
+
+  private let envelope = NSImageView()
+  private let count = NSTextField(labelWithString: "")
+
+  /// What the pointer and VoiceOver are told.
+  static func words(unread: Int, toYou: Int) -> String {
+    switch (unread, toYou) {
+    case (0, _): return "Open your conversation"
+    case (let unread, 0): return "Open your conversation: \(unread) unread"
+    case (let unread, let toYou):
+      return "Open your conversation: \(unread) unread, \(toYou) to you"
+    }
+  }
+
+  init(unread: Int, toYou: Int) {
+    self.unread = unread
+    self.toYou = toYou
+    super.init(frame: .zero)
+    let tint: NSColor = unread > 0 ? .controlAccentColor : .tertiaryLabelColor
+    let image = NSImage(systemSymbolName: "envelope.fill", accessibilityDescription: nil)?
+      .withSymbolConfiguration(.init(pointSize: 10, weight: .regular))
+    envelope.image = image
+    envelope.contentTintColor = tint
+    addSubview(envelope)
+    if unread > 0 {
+      count.stringValue = String(unread)
+      count.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+      count.textColor = tint
+      addSubview(count)
+    }
+    let words = Self.words(unread: unread, toYou: toYou)
+    toolTip = words
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(words)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  static let envelopeWidth: CGFloat = 13
+  static let height: CGFloat = 14
+
+  override var fittingSize: NSSize {
+    NSSize(
+      width: Self.envelopeWidth + (unread > 0 ? 2 + ceil(count.fittingSize.width) : 0),
+      height: Self.height)
+  }
+
+  override func layout() {
+    super.layout()
+    envelope.frame = CGRect(x: 0, y: 0, width: Self.envelopeWidth, height: bounds.height)
+    let text = count.fittingSize
+    count.frame = CGRect(
+      x: Self.envelopeWidth + 2, y: (bounds.height - text.height) / 2, width: ceil(text.width),
+      height: text.height)
+  }
+
+  /// Every point of it is the badge's, so a press on it is not a press on the row.
   override func hitTest(_ point: NSPoint) -> NSView? {
     bounds.contains(convert(point, from: superview)) ? self : nil
   }

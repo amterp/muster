@@ -548,9 +548,12 @@ one's, and Space or Return picks one, which fills the box as the banner's pick f
 ⌘↩ posts the answer with anything written. An answered question says who answered it and with
 which answer, or that they answered in words.
 
-The window lists the groups you are in under its tabs. Right-clicking one offers Leave Group,
-which is `muster msg leave --group G` and takes the group off the list, and Delete Group, which
-is `muster msg group delete G` and asks first. A group kept on a devenv is deleted there.
+The window lists the groups you are in under its tabs. A conversation between you and one agent
+whose pane that window shows is not listed there: it is an envelope on the agent's row, with what is
+unread, and pressing it opens the conversation. Another window, or the same window once the pane is
+closed, lists it as a group. Right-clicking a listed group offers Leave Group, which is `muster msg
+leave --group G` and takes the group off the list, and Delete Group, which is `muster msg group
+delete G` and asks first. A group kept on a devenv is deleted there.
 
 `who`, `read` and `log` show the human by name beside the address, `Alex (@human)`: the name is
 `human_name` in `~/.muster/config.toml`, or else your login name. The address an agent writes is

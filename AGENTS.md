@@ -33,8 +33,8 @@ drawn and answered from it without leaving your pane, or raising a notification 
 behind, a question's answers, offered with `--option`, drawn as buttons under it in the banner and in the conversation,
 where Tab reaches them and no digit picks one, a group's conversation drawn in place of the panes with what was for you
 standing out, what each member is doing and why it has not read, and a message box that posts as you and is left with
-Esc, the groups you are in listed in the sidebar with what is unread in each and left or deleted from a right-click
-there, compacting an agent's context when asked or once it is full enough, restarting an agent in its session from its
+Esc, the groups you are in listed in the sidebar with what is unread in each, a conversation with one agent on that
+agent's row instead, and left or deleted from a right-click there, compacting an agent's context when asked or once it is full enough, restarting an agent in its session from its
 notice, its menus or the CLI, upgrading Muster through Homebrew from its own menu or `muster upgrade`, and installing a
 harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter is not reporting.
 

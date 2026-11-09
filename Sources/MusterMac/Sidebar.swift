@@ -407,6 +407,23 @@ public enum SidebarModel {
     }
   }
 
+  /// A group the human is in with one agent, as its agent's row carries it: which group it is and
+  /// what waits there. The group's daemon is not the pane's, since a group is kept on one machine
+  /// and its partner may be on another.
+  public struct Conversation: Equatable {
+    public let daemon: String
+    public let group: String
+    public let unread: Int
+    public let toYou: Int
+
+    init(_ group: MessageGroup) {
+      daemon = group.daemon
+      self.group = group.group
+      unread = group.unread
+      toYou = group.toYou
+    }
+  }
+
   /// One line in the list.
   public struct Row: Equatable {
     public let kind: Kind
@@ -534,6 +551,10 @@ public enum SidebarModel {
     /// On a folded caption, the panes it is folded over, in the order the roster lists them, so
     /// that a state changing inside it changes the caption and redraws exactly that row.
     public var foldedPanes: [FoldedPane] = []
+
+    /// On a pane row, the conversation between the person and this pane's agent, when this window
+    /// draws it here rather than under Messages (`OneToOne`).
+    public var conversation: Conversation?
 
     /// Whether the row is drawn with a tint and a colored edge: the states that ask for somebody.
     public var isTinted: Bool { tier == .asks }
@@ -750,14 +771,28 @@ public enum SidebarModel {
         appendHidden(pane, tab: tab.id, depth: 0)
       }
     }
-    if !groups.isEmpty {
+    // A conversation sits on its agent's row only when this window draws that row: a folded tab or
+    // a collapsed Hidden caption draws none, and a group claimed by a row nobody sees would be
+    // reachable from nowhere.
+    let claimed = OneToOne.claims(
+      groups: groups, among: Set(rows.filter(\.isPane).compactMap(\.pane)))
+    for index in rows.indices {
+      guard rows[index].isPane, let key = rows[index].pane, let group = claimed[key] else {
+        continue
+      }
+      rows[index].conversation = Conversation(group)
+    }
+    let kept = groups.filter { group in
+      !claimed.values.contains { $0.daemon == group.daemon && $0.group == group.group }
+    }
+    if !kept.isEmpty {
       rows.append(
         Row(
           kind: .messages, daemon: "", tab: "", pane: nil, label: "Messages", subtitle: "",
           givenName: "", state: "", agent: nil, onScreen: false, hasKeyboard: false,
           reservedPresses: 0, machine: nil, isSecondPress: false))
     }
-    for group in groups {
+    for group in kept {
       rows.append(
         Row(
           kind: .group(unread: group.unread, toYou: group.toYou), daemon: group.daemon, tab: "",
@@ -964,6 +999,9 @@ public enum SidebarModel {
     case quiet
     /// The pane's agent is in the group whose conversation the window shows.
     case member
+    /// The conversation with this pane's agent, as an envelope that opens it, with what is unread
+    /// and how much of that is to the person.
+    case conversation(unread: Int, toYou: Int)
     /// How many panes a folded Hidden caption is over.
     case hiddenPanes(Int)
     /// Whether the Hidden caption is folded, as the chevron a click on it turns.
@@ -987,6 +1025,9 @@ public enum SidebarModel {
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
+    if let conversation = row.conversation {
+      marks.append(.conversation(unread: conversation.unread, toYou: conversation.toYou))
+    }
     if row.member { marks.append(.member) }
     if row.quiet { marks.append(.quiet) }
     // The rest are about the agent as it is now, which nobody can say for a pane whose machine
@@ -1020,6 +1061,16 @@ public enum SidebarModel {
     case "error": return progress
     case "running", "paused": return progress.percent == nil ? nil : progress
     default: return nil
+    }
+  }
+
+  /// What the envelope on a row says on hover and to VoiceOver.
+  public static func conversationLine(_ conversation: Conversation) -> String {
+    switch (conversation.unread, conversation.toYou) {
+    case (0, _): return "your conversation with it"
+    case (let unread, 0): return "\(unread) unread in your conversation with it"
+    case (let unread, let toYou):
+      return "\(unread) unread in your conversation with it, \(toYou) to you"
     }
   }
 
@@ -1072,6 +1123,9 @@ public enum SidebarModel {
     if let cost = agent.costUSD { lines.append(String(format: "$%.2f so far", cost)) }
     if agent.rang { lines.append("the bell rang") }
     if row.member { lines.append("in the conversation shown") }
+    if let conversation = row.conversation {
+      lines.append(conversationLine(conversation))
+    }
     return lines.joined(separator: "\n")
   }
 
@@ -1680,6 +1734,7 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
       as? SidebarRowView ?? SidebarRowView()
     view.show(rows[row])
     view.onFoldToggled = { [weak self] row in self?.onTabFolded?(row.tab, !row.folded) }
+    view.onGroupPicked = { [weak self] daemon, group in self?.onGroupPicked?(daemon, group) }
     return view
   }
 
