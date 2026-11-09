@@ -30,3 +30,35 @@ alternatives; the owner chose A.'''
   date = 2026-11-08
   quote = "Yeah, I really like A, and I also like the [Needs] you strip from B, so definitely have that."
   note = "On the page's question: which direction for the agent list, A, B, C, or A now with B's strip added later?"
+
+[[revisions]]
+id = "pbko6yiy"
+base = "plzbyvbn"
+date = 2026-11-09
+recorded_by = "other"
+discussion = "ui-redesign-2026-11"
+level = "shown"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Direction A from the Lectern page muster-ui-redesign. Rows keep today's order and two lines.
+Each state has an icon with a shape of its own, filled for blocked, stuck and done and outlined
+for working, waiting and idle. Blocked and stuck rows are tinted, with a colored bar on the left
+edge. Line two shows the directory's last part, with the full path on hover, after the state word
+and time held for a state that wants the person, or what a waiting agent waits on. A pane with no
+given name already shows its directory on line one, so its line two leaves the directory out, and
+a calm one centers line one in the row. A short bar that turns red as it fills replaces the context
+ring. The tab on screen sits on a raised panel.'''
+why = '''
+Every state was the same 7 px dot, so a blocked agent weighed as much as an idle one, and color
+alone does not survive a small size or a reader without color vision. Saying the state word only
+where it wants the person keeps calm rows quiet and leaves room for the directory, which the owner
+asked to see. The ring read as a loading spinner. B's one-line rows and C's ledger were the
+alternatives; the owner chose A.'''
+change = "An unnamed pane's first line is already its directory, so its second line no longer repeats it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "...if there's a clear right answer, just defer to you, use your judgment, but if there is something that really needs my input, then, yeah, feel free to ask."
+  note = "Asked to explain three open questions from the redesign's screenshots, one of them whether an unnamed pane's row should stop repeating its directory on line two. The owner was then told the decision (drop the repeat) and did not rule on it."
