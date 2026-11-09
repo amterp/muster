@@ -1,0 +1,33 @@
+id = "messaging-changed-event"
+question = "How does a daemon tell a window that a messaging Who answer may have changed?"
+tags = ["messaging", "daemon-protocol"]
+paths = ["proto/muster_daemon.proto", "crates/muster-daemon/src/messages/mod.rs", "crates/muster-seam/src/session.rs"]
+
+[[revisions]]
+id = "4uvrc0pc"
+date = 2026-11-09
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+From daemon protocol 1.13, each daemon emits an empty MessagingChanged event when a Who asked of
+it may now answer differently, in members or in panes, including when a peer link comes up or goes
+down. It is an invalidation, not a delta: the window then asks Who again for the person's groups,
+on one worker off the session lock. The daemon decides to emit by comparing state derived from the
+person's groups after each messaging request, not by listing the operations that change it. An
+older daemon gets no periodic refresh in its place.'''
+why = '''
+Showing a one-to-one conversation on its agent's row needs the window to know the conversation's
+partner and its pane. Two changes reached no existing trigger: a member joining or leaving a pair
+the person has read to zero unread, with no post, and a partner taking another existing pane. The
+group's keeper does not hold a remote member's pane binding, so a revision on the person's notices
+would have needed a new peer hop; an invalidation from each attached daemon does not. Listing
+operations missed the most common way a partner moves pane (a read or wait from the new pane), so
+the daemon compares derived state instead. An older daemon stays attached only when it refuses to
+hand over, so a timer for it would cost more than the rare staleness it prevents.'''
+
+  [[revisions.evidence]]
+  by = "other"
+  date = 2026-11-08
+  note = "A spike reproduced the missing update on one machine and across two linked daemons with real daemons and no synthesized notices; a tier-2 Claude review of its design required state-derived emission, peer-link emission, one serial refresh worker and no periodic fallback. The build is commits 3628734f through 97d49c01, reviewed by a Claude and two Codex reviewers."
