@@ -1195,7 +1195,23 @@ impl Starting {
     /// pane it was made beside - is the case a restored pane already meets, and is met the same
     /// way: the pane starts at home, and `cwd` says so. Asked only once a start has failed, so a
     /// directory on a hung mount costs no more than the start that found it.
+    ///
+    /// Once started, `cwd` is the directory resolved, as the pane's shell will report it: `/tmp`
+    /// on macOS is `/private/tmp`, and recording the path as given would change the pane's
+    /// directory a moment after it starts, with nobody moving it. Resolving it touches the
+    /// filesystem, so it happens here, outside the lock, and only after the process has already
+    /// changed into it.
     pub(crate) fn start(&mut self) -> std::io::Result<(OwnedFd, Child)> {
+        let started = self.start_somewhere();
+        if started.is_ok()
+            && let Ok(resolved) = std::fs::canonicalize(&self.cwd)
+        {
+            self.cwd = resolved;
+        }
+        started
+    }
+
+    fn start_somewhere(&mut self) -> std::io::Result<(OwnedFd, Child)> {
         if let Some(reopening) = self.reopening.as_deref_mut() {
             reopening.wait_for_closing(&self.pane);
             if !self.cwd.is_dir() {

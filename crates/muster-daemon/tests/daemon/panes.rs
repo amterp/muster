@@ -224,7 +224,25 @@ fn a_directory_taken_from_another_pane_gives_way_to_home_when_it_is_gone() {
     make(&mut control, asked);
     assert_eq!(written(&out).trim(), canonical(&home).display().to_string());
     let record = snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "p1").unwrap();
-    assert_eq!(record.cwd, home.display().to_string());
+    assert_eq!(record.cwd, canonical(&home).display().to_string());
+}
+
+/// A pane started through a symlink records where it really is from the start, as its shell
+/// will report a moment later, so its directory does not change while nobody moved it.
+#[test]
+fn a_pane_records_its_directory_resolved_from_the_start() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let real = daemon.root().join("real");
+    std::fs::create_dir(&real).unwrap();
+    let link = daemon.root().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let mut asked = create("p1", in_new_tab("t1"));
+    asked.cwd = Some(link.display().to_string());
+    make(&mut control, asked);
+    let record = snapshot(&mut control).panes.into_iter().find(|pane| pane.pane == "p1").unwrap();
+    assert_eq!(record.cwd, canonical(&real).display().to_string());
 }
 
 #[test]
