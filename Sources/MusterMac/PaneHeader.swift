@@ -35,7 +35,7 @@ public enum PaneHeaderModel {
   /// agent list's rows keep both (Fencil `agent-list-rows`).
   public static func parts(width: CGFloat, for row: SidebarModel.Row) -> Parts {
     Parts(
-      directory: width >= directoryWidth && !row.givenName.isEmpty && !row.directoryName.isEmpty,
+      directory: width >= directoryWidth && !row.namedDirectory.isEmpty,
       context: width >= contextWidth)
   }
 

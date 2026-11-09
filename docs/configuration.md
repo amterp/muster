@@ -315,6 +315,10 @@ out as its directory and the harness in it. `rename_pane` replaces that with any
 emoji included: `🔥 payments spike`. Double-clicking a row asks the same thing, which is worth
 knowing because the rows most worth naming are the ones no split is showing.
 
+An unnamed pane's first line is already its directory and harness, so its second line carries
+only what the state says and, with more than one machine attached, which machine; hover the row
+for the whole path. Once a pane is named its second line ends in its directory.
+
 **Drag a row and the pane moves with it.** Dropping one agent's row on another exchanges the
 two, so the list you arrange is the window you get - and the numbers move with them, since a
 chord reaches whatever sits at its place now. Drop a row on one in a different tab and the agent

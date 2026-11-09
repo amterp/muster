@@ -1308,7 +1308,7 @@ struct SidebarTests {
   @MainActor func aReusedRowForgetsItsLastRow() {
     let sidebar = SidebarView(
       frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-    let busy = pane("local", "w1:p1", directory: "/Users/a/src/muster")
+    let busy = pane("local", "w1:p1", givenName: "build", directory: "/Users/a/src/muster")
     var agent = PaneAgent(state: "blocked")
     agent.sinceMS = Int64((Date().timeIntervalSince1970 - 120) * 1000)
     agent.rang = true
@@ -1667,7 +1667,8 @@ struct SidebarTests {
     var blocked = agent("blocked", since: 120)
     blocked.contextUsed = 40
     let view = try paneRowView(
-      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: blocked, width: width)
+      pane("local", "w1:p1", givenName: "lectern", directory: "/Users/a/src/lectern"),
+      agent: blocked, width: width)
 
     #expect(view.shownDirectory == "lectern")
     #expect(view.directoryFits == true, "the directory was cut to make room for the state")
@@ -1690,8 +1691,8 @@ struct SidebarTests {
   @Test("a long machine name is cut to leave the state and the directory their room")
   @MainActor func aLongMachineTagDoesNotTakeTheLine() throws {
     let long = "development-workstation-linux-aarch64"
-    let there = pane(long, "w1:p1", directory: "/Users/a/src/lectern")
-    let here = pane("local", "w1:p2", place: 2, directory: "/src/x")
+    let there = pane(long, "w1:p1", givenName: "review", directory: "/Users/a/src/lectern")
+    let here = pane("local", "w1:p2", place: 2, givenName: "other", directory: "/src/x")
     let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 200, height: 400))
     sidebar.apply(
       roster: roster([tab(long, panes: [there]), tab("local", place: 2, panes: [here])]),
@@ -1715,6 +1716,97 @@ struct SidebarTests {
     let view = try paneRowView(
       pane("local", "w1:p1", directory: "/src/muster"), agent: working, width: SidebarModel.width)
     #expect(view.contextBarWidth == 32)
+  }
+
+  // MARK: An unnamed pane says its directory once
+
+  @Test("an unnamed pane's second line leaves its directory to line one, a named pane's keeps it")
+  @MainActor func anUnnamedPaneSaysItsDirectoryOnce() throws {
+    let unnamed = try paneRowView(
+      pane("local", "w1:p1", label: "otter · lectern · claude", directory: "/Users/a/src/lectern"),
+      agent: agent("blocked", since: 120), width: SidebarModel.width)
+    #expect(unnamed.shownDirectory == nil)
+    #expect(unnamed.shownStateLine?.hasPrefix("Blocked") == true, "the state phrase stays")
+    #expect(unnamed.shownStateText?.hasSuffix(" · ") == false, "no separator left over nothing")
+
+    let named = try paneRowView(
+      pane("local", "w1:p1", givenName: "review", directory: "/Users/a/src/lectern"),
+      agent: agent("blocked", since: 120), width: SidebarModel.width)
+    #expect(named.shownDirectory == "lectern")
+  }
+
+  @Test("an unnamed pane on another machine keeps its machine tag and draws no directory")
+  @MainActor func anUnnamedPaneKeepsItsMachineTag() throws {
+    let there = pane("devenv", "w1:p1", directory: "/home/a/src/lectern")
+    let here = pane("local", "w1:p2", place: 2, directory: "/src/x")
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    sidebar.apply(
+      roster: roster([tab("devenv", panes: [there]), tab("local", place: 2, panes: [here])]),
+      agents: [there.key: agent("blocked", since: 120)])
+    let views = (0..<sidebar.drawnRows.count).compactMap { sidebar.rowView(at: $0) }
+    let view = try #require(views.first { $0.shownStateLine?.hasPrefix("Blocked") == true })
+    view.frame.size.width = SidebarModel.width
+    view.needsLayout = true
+    view.layoutSubtreeIfNeeded()
+
+    #expect(view.showsMachineTag)
+    #expect(view.shownDirectory == nil)
+  }
+
+  @Test("an unnamed pane's whole path is still on hover, on both lines' text")
+  @MainActor func theWholePathStaysOnHover() throws {
+    let view = try paneRowView(
+      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: agent("working"),
+      width: SidebarModel.width)
+    #expect(view.firstLineToolTip?.contains("/src/lectern") == true)
+  }
+
+  @Test("a row with nothing on line two centers its first line, and keeps its height")
+  @MainActor func aCalmUnnamedRowCentersItsFirstLine() throws {
+    let calm = try paneRowView(
+      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: agent("idle"),
+      width: SidebarModel.width)
+    #expect(abs(calm.firstLineMidY - calm.bounds.midY) <= 1)
+
+    let blocked = try paneRowView(
+      pane("local", "w1:p1", directory: "/Users/a/src/lectern"),
+      agent: agent("blocked", since: 120), width: SidebarModel.width)
+    #expect(blocked.firstLineMidY > blocked.bounds.midY + 3, "a second line sits under it")
+
+    let named = try paneRowView(
+      pane("local", "w1:p1", givenName: "review", directory: "/Users/a/src/lectern"),
+      agent: agent("idle"), width: SidebarModel.width)
+    #expect(named.firstLineMidY > named.bounds.midY + 3, "its directory is on line two")
+
+    let rows = SidebarModel.rows(
+      roster: roster([pane("local", "w1:p1", directory: "/src/x")]), agents: [:])
+    #expect(rows.filter(\.isPane).map(SidebarModel.height(of:)) == [40])
+  }
+
+  @Test("the home directory is not said on line two as ~ when line one says it as the user's name")
+  func theHomeDirectoryIsNotRepeated() throws {
+    let row = SidebarModel.paneRow(
+      pane("local", "w1:p1", directory: NSHomeDirectory()), in: "w1:t1", agent: agent("idle"),
+      now: Date(), presses: (0, 1), onScreen: false)
+    #expect(row.directoryName == "~")
+    #expect(row.namedDirectory == "")
+  }
+
+  @Test("the directory line two draws is the pane's only when somebody named the pane")
+  func namedDirectoryFollowsTheName() {
+    func row(_ given: String, _ directory: String) -> SidebarModel.Row {
+      SidebarModel.paneRow(
+        pane("local", "w1:p1", givenName: given, directory: directory), in: "w1:t1",
+        agent: agent("idle"), now: Date(), presses: (0, 1), onScreen: false)
+    }
+    #expect(row("review", "/src/lectern").namedDirectory == "lectern")
+    #expect(row("", "/src/lectern").namedDirectory == "")
+    #expect(row("review", "").namedDirectory == "")
+    #expect(row("", "/").namedDirectory == "/", "the core leaves the root off line one")
+    #expect(
+      PaneHeaderModel.parts(width: 400, for: row("review", "/src/lectern")).directory,
+      "the header's rule is the same one")
+    #expect(!PaneHeaderModel.parts(width: 400, for: row("", "/src/lectern")).directory)
   }
 
   /// An agent as the core last said it, `seconds` before `now`.

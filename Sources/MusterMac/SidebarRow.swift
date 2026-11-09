@@ -91,6 +91,18 @@ final class SidebarRowView: NSView {
       ? nil : stateField.stringValue.replacingOccurrences(of: " · ", with: "")
   }
 
+  /// The first line's hover text, which holds the whole path for a pane whose second line does not.
+  var firstLineToolTip: String? { name.toolTip }
+
+  /// What the state field says, with its separator.
+  var shownStateText: String? { stateField.superview == nil ? nil : stateField.stringValue }
+
+  /// Whether the machine's tag is drawn on line two.
+  var showsMachineTag: Bool { machineTag.map { $0.superview != nil && !$0.isHidden } ?? false }
+
+  /// Where line one sits, which a row with nothing on line two centers.
+  var firstLineMidY: CGFloat { name.frame.midY }
+
   /// The directory a pane's second line ends in, or nil when it has none.
   var shownDirectory: String? { directoryField.superview == nil ? nil : directoryField.stringValue }
 
@@ -376,7 +388,7 @@ final class SidebarRowView: NSView {
   /// a contrast the palette has checked against the tint behind it; everything else is quiet,
   /// because a calm agent's row is there to say where it is.
   private func drawSecondLine(of row: SidebarModel.Row, palette: ChromePalette.Surface) {
-    let hasWhere = !row.directoryName.isEmpty || row.machine != nil
+    let hasWhere = !row.namedDirectory.isEmpty || row.machine != nil
     if !row.stateLine.isEmpty {
       let loud = row.tier == .asks || row.tier == .look
       let word: NSColor =
@@ -404,8 +416,8 @@ final class SidebarRowView: NSView {
       addSubview(tag)
       machineTag = tag
     }
-    if !row.directoryName.isEmpty {
-      directoryField.stringValue = row.directoryName
+    if !row.namedDirectory.isEmpty {
+      directoryField.stringValue = row.namedDirectory
       directoryField.toolTip = SidebarModel.abbreviated(row.directory)
       addSubview(directoryField)
     }
@@ -666,18 +678,28 @@ final class SidebarRowView: NSView {
     let nameHeight = min(bounds.height, name.fittingSize.height)
     let secondHeight = ceil(
       max(stateField.fittingSize.height, directoryField.fittingSize.height, 13))
+    let stateWanted = stateField.superview != nil ? ceil(stateField.fittingSize.width) : 0
+    let directoryWanted =
+      directoryField.superview != nil ? ceil(directoryField.fittingSize.width) : 0
+    let tagSize = machineTag?.fittingSize
+    let room = max(0, right - textLeft)
+    // The machine's tag comes after the directory and the state's floor, and is cut rather than
+    // taking the line: a long daemon id must not leave a row with no state and no directory.
+    let spare = room - min(stateWanted, SidebarRowView.stateFloor) - directoryWanted - 5
+    let tagWidth = tagSize.map { spare >= SidebarRowView.tagFloor ? min($0.width, spare) : 0 } ?? 0
+
+    // With nothing on the second line - a calm unnamed pane on one machine, whose first line is
+    // already its directory - the first line is centered in the row rather than left over a blank
+    // one. The row is as tall as ever, so nothing below it moves.
+    let hasSecondLine = stateWanted > 0 || directoryWanted > 0 || tagWidth > 0
     let top = (bounds.height - nameHeight - secondHeight - 2) / 2
     let secondY = top
-    let firstY = top + secondHeight + 2
+    let firstY = hasSecondLine ? top + secondHeight + 2 : (bounds.height - nameHeight) / 2
 
     // Every mark on the first line, from the trailing edge in, the context bar at the very edge
     // so a column of them lines up down the list. The second line is the state and the directory
     // and nothing else: with the bar there too it left the directory "le…rn", and the first line,
     // whose name ends in an ellipsis and says all of itself on hover, is the one that can give.
-    let stateWanted = stateField.superview != nil ? ceil(stateField.fittingSize.width) : 0
-    let directoryWanted =
-      directoryField.superview != nil ? ceil(directoryField.fittingSize.width) : 0
-    let tagSize = machineTag?.fittingSize
     var firstRight = right
     for mark in marks.reversed() {
       let size = mark.fittingSize
@@ -693,11 +715,6 @@ final class SidebarRowView: NSView {
     // part is where the agent is, and cut to "le…rn" it says nothing, so it is given its whole width
     // first. The state gives way to it, never to less than a word's worth, and ends in an ellipsis
     // when it does.
-    let room = max(0, right - textLeft)
-    // The machine's tag comes after the directory and the state's floor, and is cut rather than
-    // taking the line: a long daemon id must not leave a row with no state and no directory.
-    let spare = room - min(stateWanted, SidebarRowView.stateFloor) - directoryWanted - 5
-    let tagWidth = tagSize.map { spare >= SidebarRowView.tagFloor ? min($0.width, spare) : 0 } ?? 0
     let free = max(0, room - (tagWidth > 0 ? tagWidth + 5 : 0))
     let directoryWidth = min(
       directoryWanted, max(0, free - min(stateWanted, SidebarRowView.stateFloor)))

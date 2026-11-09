@@ -528,6 +528,19 @@ public enum SidebarModel {
     public var directory = ""
     public var directoryName = ""
 
+    /// The directory's last part as line two of the row draws it: only for a pane somebody named.
+    /// An unnamed pane's first line is already its directory and harness, which the core builds it
+    /// from, so a second line repeating it would say the same thing twice; the whole path stays in
+    /// the row's hover text (`SidebarModel.details`).
+    ///
+    /// Not a comparison of the two strings: the first line says `a` for the home directory where
+    /// `directoryName` says `~`, and what decides it is whether the core built the first line from
+    /// the directory, which is whether the pane has a given name. The root is the exception: the core
+    /// leaves it out of the first line as it does a missing directory, so line two keeps it.
+    public var namedDirectory: String {
+      givenName.isEmpty && directoryName != "/" ? "" : directoryName
+    }
+
     /// How much of the person's attention this pane's state is asking for, and nil on the rows
     /// that are not panes.
     public var tier: Tier?
