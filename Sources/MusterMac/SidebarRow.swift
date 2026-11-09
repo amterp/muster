@@ -71,6 +71,9 @@ final class SidebarRowView: NSView {
   /// Called when somebody presses the envelope on a pane's row, with its group's daemon and name.
   var onGroupPicked: ((String, String) -> Void)?
 
+  /// Asked for the menu of the envelope on this row's pane, which is the group's menu.
+  var onConversationMenu: ((SidebarModel.Conversation) -> NSMenu?)?
+
   /// The envelope on this row, for the tests to press.
   var conversationBadge: ConversationBadge? {
     marks.compactMap { $0 as? ConversationBadge }.first
@@ -460,6 +463,10 @@ final class SidebarRowView: NSView {
         badge.onPressed = { [weak self] in
           guard let conversation = self?.shown?.conversation else { return }
           self?.onGroupPicked?(conversation.daemon, conversation.group)
+        }
+        badge.onMenu = { [weak self] in
+          guard let conversation = self?.shown?.conversation else { return nil }
+          return self?.onConversationMenu?(conversation)
         }
       }
     }
@@ -874,6 +881,10 @@ final class ConversationBadge: NSView {
   let toYou: Int
   var onPressed: (() -> Void)?
 
+  /// Builds the menu for a right-click on the envelope: the conversation's own, Leave Group and
+  /// Delete Group, which the row it sits on has no other place for.
+  var onMenu: (() -> NSMenu?)?
+
   private let envelope = NSImageView()
   private let count = NSTextField(labelWithString: "")
 
@@ -941,6 +952,17 @@ final class ConversationBadge: NSView {
 
   override func mouseDown(with event: NSEvent) {
     onPressed?()
+  }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    onMenu?()
+  }
+
+  /// What VoiceOver's press does, since it does not send the view a mouse event.
+  override func accessibilityPerformPress() -> Bool {
+    guard let onPressed else { return false }
+    onPressed()
+    return true
   }
 }
 

@@ -199,6 +199,32 @@ struct OneToOneTests {
     #expect(badge.toolTip?.contains("2 unread") == true)
   }
 
+  @Test("the envelope carries the group's menu, and VoiceOver's press opens the conversation")
+  func theEnvelopeIsMenuedAndPressable() throws {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 280, height: 400))
+    var opened: [String] = []
+    var asked: [String] = []
+    sidebar.onGroupPicked = { opened.append("\($0)/\($1)") }
+    sidebar.onConversationMenu = {
+      asked.append("\($0.daemon)/\($0.group)")
+      return NSMenu(title: "group")
+    }
+    sidebar.groups = [group("human+otter", unread: 1, partner: otter)]
+    sidebar.apply(roster: roster([pane("w1:p1", callsign: "otter")]), agents: [:])
+
+    let views = (0..<sidebar.drawnRows.count).compactMap { sidebar.rowView(at: $0) }
+    let badge = try #require(views.compactMap(\.conversationBadge).first)
+    let click = try #require(
+      NSEvent.mouseEvent(
+        with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    #expect(badge.menu(for: click)?.title == "group", "Leave Group and Delete Group live here")
+    #expect(asked == ["local/human+otter"])
+
+    #expect(badge.accessibilityPerformPress())
+    #expect(opened == ["local/human+otter"])
+  }
+
   @Test("a row's hover text says there is a conversation")
   func hoverTextNamesTheConversation() throws {
     let rows = SidebarModel.rows(

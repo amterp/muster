@@ -349,6 +349,9 @@ public final class MusterWindow: NSObject {
       }
     }
     sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
+    sidebar.onConversationMenu = { [weak self] conversation in
+      self?.groupMenu(daemon: conversation.daemon, group: conversation.group)
+    }
     sidebar.onProblemRemedied = { [weak self] problem in
       // A restart ends the agent, so it asks first, as the menus' Restart Agent does.
       if case .restartAgent(let restart) = problem.remedy?.request.payload {
@@ -1375,6 +1378,13 @@ extension MusterWindow {
       refused: { [weak self] in self?.tell($0, $1) })
   }
 
+  /// The menu of a group, from its Messages row or from the envelope on its agent's row.
+  private func groupMenu(daemon: String, group: String) -> NSMenu {
+    ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
+      [weak self] in self?.confirmDelete(daemon: daemon, group: group)
+    }
+  }
+
   /// A right-clicked row's menu. A machine's row has none: clicking it already makes a tab
   /// there, and its name is the config file's to change.
   func menu(for row: SidebarModel.Row) -> NSMenu? {
@@ -1401,10 +1411,7 @@ extension MusterWindow {
         window: name, rename: { [weak self] in self?.rename(tab: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .group:
-      let (daemon, group) = (row.daemon, row.label)
-      return ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
-        [weak self] in self?.confirmDelete(daemon: daemon, group: group)
-      }
+      return groupMenu(daemon: row.daemon, group: row.label)
     case .helpers:
       guard let maker = row.pane, let helpers = roster.helpers(of: maker) else { return nil }
       return ContextMenus.helpersRow(

@@ -1420,6 +1420,10 @@ public final class SidebarView: NSView {
   /// because what the menu offers depends on the bindings and the machines.
   public var onRowMenu: ((SidebarModel.Row) -> NSMenu?)?
 
+  /// A right-clicked envelope's menu. A group on an agent's row has no row of its own under
+  /// Messages to take Leave Group and Delete Group from, so the envelope carries them.
+  public var onConversationMenu: ((SidebarModel.Conversation) -> NSMenu?)?
+
   public private(set) var rows: [SidebarModel.Row] = []
 
   /// The frames the list has settled on for its rows.
@@ -1735,6 +1739,9 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     view.show(rows[row])
     view.onFoldToggled = { [weak self] row in self?.onTabFolded?(row.tab, !row.folded) }
     view.onGroupPicked = { [weak self] daemon, group in self?.onGroupPicked?(daemon, group) }
+    view.onConversationMenu = { [weak self] conversation in
+      self?.onConversationMenu?(conversation)
+    }
     return view
   }
 
