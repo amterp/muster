@@ -243,6 +243,60 @@ fn a_remote_groups_replica_tracks_membership_at_its_keeper() {
 }
 
 #[test]
+fn a_remote_partner_resolves_when_its_late_snapshot_arrives() {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let home = Daemon::start_detecting();
+    let far = Daemon::start_detecting();
+    let mut here = home.connect();
+    let mut there = far.connect();
+    make(&mut here, create("homepane", in_new_tab("hometab")));
+    make(&mut there, create("partner", in_new_tab("partnertab")));
+    far.run_agent("partner");
+    let mut logs = home.connect();
+    let follow = daemon_proto::session_request::Request::FollowLog(
+        daemon_proto::session_request::FollowLog { after: None },
+    );
+    expect(
+        &mut logs,
+        daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(follow),
+        }),
+        daemon_proto::Outcome::Done,
+    );
+    let _link = link_peer(&home, &far, &mut logs);
+    join_pair(&mut here, &the_human(), "@human");
+    let partner = msg_request::Caller { pane: Some("partner".into()), ..Default::default() };
+    assert!(join_pair(&mut there, &partner, "partner").starts_with("g@"));
+    let relay = far.delaying_answers_where(
+        |request| {
+            matches!(
+                &request.service,
+                Some(daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+                    request: Some(daemon_proto::session_request::Request::Subscribe(_)),
+                }))
+            )
+        },
+        std::time::Duration::from_secs(5),
+    );
+    let config = home.root().join("late-remote.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "[[daemon]]\nid = \"home\"\nsocket = {:?}\n[[daemon]]\nid = \"far\"\nsocket = {:?}\n",
+            home.socket_path().to_string_lossy(),
+            relay.socket_path().to_string_lossy(),
+        ),
+    )
+    .expect("config");
+    open_window_with(&config);
+    until_group_partner("g", None);
+    until_group_partner("g", Some(("far", "partner")));
+    drop(relay);
+}
+
+#[test]
 fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
     let _turn = muster::testing::fresh_session();
     GROUPS.lock().expect("groups").take();
