@@ -1708,6 +1708,14 @@ fn daemons_text(daemons: &muster_proto::Daemons) -> String {
         }
     }
     lines.push(String::new());
+    if daemons.daemons.iter().any(|daemon| !daemon.holdings_unknown.is_empty()) {
+        lines.push(format!(
+            "{}An unknown count is not zero: that daemon may hold live agents. Ask it again, or \
+             read `muster window --no-window`, before ending it.{}",
+            QUIET.render(),
+            QUIET.render_reset()
+        ));
+    }
     lines.push(format!(
         "{}End one with: kill $(lsof -t <socket>.lock){}",
         QUIET.render(),
@@ -1722,6 +1730,10 @@ fn described(daemon: &muster_proto::KnownDaemon) -> String {
     let version =
         if daemon.version.is_empty() { String::new() } else { format!(" · {}", daemon.version) };
     match daemon.state.as_str() {
+        "answering" if !daemon.holdings_unknown.is_empty() => format!(
+            "answering{version} · holds an unknown number of panes: {}",
+            daemon.holdings_unknown
+        ),
         "answering" if daemon.panes == 0 => format!("answering{version} · holding nothing"),
         "answering" => format!(
             "answering{version} · {} pane(s){}",
@@ -1753,15 +1765,21 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
         "daemons": daemons
             .daemons
             .iter()
-            .map(|daemon| json!({
-                "socket": daemon.socket,
-                "started": daemon.started,
-                "state": daemon.state,
-                "panes": daemon.panes,
-                "directories": daemon.directories,
-                "attached_here": daemon.attached_here,
-                "version": daemon.version,
-            }))
+            .map(|daemon| {
+                // Null rather than zero for a count that was never learned, so a script testing
+                // `panes == 0` before ending a daemon fails safe instead of passing.
+                let unknown = !daemon.holdings_unknown.is_empty();
+                json!({
+                    "socket": daemon.socket,
+                    "started": daemon.started,
+                    "state": daemon.state,
+                    "panes": if unknown { Value::Null } else { json!(daemon.panes) },
+                    "directories": if unknown { Value::Null } else { json!(daemon.directories) },
+                    "holdings_unknown": if unknown { json!(daemon.holdings_unknown) } else { Value::Null },
+                    "attached_here": daemon.attached_here,
+                    "version": daemon.version,
+                })
+            })
             .collect::<Vec<Value>>(),
     })
 }
@@ -1778,7 +1796,8 @@ pub(crate) fn shell_word(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text, windows,
+        Others, QUIET, agent_style, daemons_json, daemons_text, held_for, window_json, window_text,
+        windows,
     };
     use anstyle::{AnsiColor, Color, Style};
 
@@ -1916,6 +1935,58 @@ mod tests {
         });
         assert!(text.contains("answering · 0.17.1-dev · 2 pane(s)"), "{text}");
         assert!(text.contains("answering · 2 pane(s)"), "{text}");
+    }
+
+    fn unreadable_daemon() -> muster_proto::KnownDaemon {
+        muster_proto::KnownDaemon {
+            socket: "/home/a/.muster/daemon/release.sock".to_string(),
+            state: "answering".to_string(),
+            holdings_unknown: "no snapshot within 5 s".to_string(),
+            ..muster_proto::KnownDaemon::default()
+        }
+    }
+
+    /// An answering daemon that could not be asked what it holds is not one that holds nothing,
+    /// and the row says so in words, with a warning under the list.
+    #[test]
+    fn a_daemon_whose_holding_could_not_be_read_is_not_said_to_hold_nothing() {
+        let text = daemons_text(&muster_proto::Daemons {
+            remembered: true,
+            daemons: vec![unreadable_daemon()],
+            ..muster_proto::Daemons::default()
+        });
+        assert!(
+            text.contains("holds an unknown number of panes: no snapshot within 5 s"),
+            "{text}"
+        );
+        assert!(!text.contains("holding nothing"), "{text}");
+        assert!(text.contains("An unknown count is not zero"), "{text}");
+    }
+
+    /// `--json` says null where a script would otherwise read zero, so `panes == 0` is false for
+    /// a daemon nobody could count.
+    #[test]
+    fn json_says_null_for_a_holding_that_was_not_learned() {
+        let known = muster_proto::KnownDaemon {
+            socket: "/s/known.sock".to_string(),
+            state: "answering".to_string(),
+            panes: 0,
+            attached_here: true,
+            ..muster_proto::KnownDaemon::default()
+        };
+        let json = daemons_json(&muster_proto::Daemons {
+            remembered: true,
+            daemons: vec![unreadable_daemon(), known],
+            ..muster_proto::Daemons::default()
+        });
+        let unreadable = &json["daemons"][0];
+        assert!(unreadable["panes"].is_null(), "{json}");
+        assert!(unreadable["directories"].is_null(), "{json}");
+        assert_eq!(unreadable["holdings_unknown"], "no snapshot within 5 s");
+        let known = &json["daemons"][1];
+        assert_eq!(known["panes"], 0);
+        assert!(known["holdings_unknown"].is_null(), "{json}");
+        assert_eq!(known["attached_here"], true);
     }
 
     /// The line is there to be pasted, and a home directory can have a space in it.

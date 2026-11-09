@@ -1948,6 +1948,15 @@ message KnownDaemon {
   // when the replacement's version is newer: the app that started a daemon is no guide once an
   // older app has been put back in front of it.
   string version = 7;
+
+  // Why `panes` and `directories` are not an answer, when the daemon replied to its handshake and
+  // then could not be asked what it holds: a second connection that failed, no snapshot in the
+  // time allowed, an answer that was not a snapshot. Empty when they are an answer, and for a
+  // daemon that was not asked.
+  //
+  // Set, `panes` is not zero in any sense that matters: the daemon may hold live agents, and a
+  // reader deciding what to end must not read it as one that holds none.
+  string holdings_unknown = 8;
 }
 
 // Everything about a window at one moment: what it draws, what it holds, and how the agents in

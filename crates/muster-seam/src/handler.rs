@@ -14,6 +14,7 @@ use muster_core::attention::Asker;
 use muster_core::composition::{DaemonId, FontSizeChange, Frame, Step, View};
 use muster_core::config::{self, CursorStyle};
 use muster_core::daemon_settings::DaemonSettings;
+use muster_core::daemons::Holding;
 use muster_core::equalize::Evenly;
 use muster_core::font::{self, FontReport};
 use muster_core::input::{
@@ -561,14 +562,24 @@ fn read_daemons() -> Response {
         payload: Some(response::Payload::Daemons(proto::Daemons {
             daemons: found
                 .into_iter()
-                .map(|(census, attached_here)| proto::KnownDaemon {
-                    socket: census.socket,
-                    started: i64::try_from(census.started).unwrap_or(i64::MAX),
-                    state: census.state.as_str().to_string(),
-                    panes: census.panes,
-                    directories: census.directories,
-                    attached_here,
-                    version: census.version,
+                .map(|(census, attached_here)| {
+                    let (panes, directories, holdings_unknown) = match census.holding {
+                        Holding::Known { panes, directories } => {
+                            (panes, directories, String::new())
+                        }
+                        Holding::Unknown(why) => (0, Vec::new(), why),
+                        Holding::NotAsked => (0, Vec::new(), String::new()),
+                    };
+                    proto::KnownDaemon {
+                        socket: census.socket,
+                        started: i64::try_from(census.started).unwrap_or(i64::MAX),
+                        state: census.state.as_str().to_string(),
+                        panes,
+                        directories,
+                        attached_here,
+                        version: census.version,
+                        holdings_unknown,
+                    }
                 })
                 .collect(),
             remembered,

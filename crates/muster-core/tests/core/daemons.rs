@@ -88,3 +88,103 @@ fn started(socket: &str, at: u64) -> Started {
 fn kept() -> u32 {
     u32::try_from(KEPT).expect("the bound is a small number")
 }
+
+mod census {
+    use std::collections::BTreeMap;
+
+    use muster_core::daemons::{Census, Dial, Holding, Started, State, census};
+
+    #[derive(Default)]
+    struct Fake {
+        present: Vec<&'static str>,
+        listening: Vec<&'static str>,
+        building: BTreeMap<&'static str, &'static str>,
+        holds: BTreeMap<&'static str, Result<(u32, Vec<String>), String>>,
+    }
+
+    impl Dial for Fake {
+        fn exists(&self, socket: &str) -> bool {
+            self.present.contains(&socket)
+        }
+        fn listening(&self, socket: &str) -> bool {
+            self.listening.contains(&socket)
+        }
+        fn welcome(&self, socket: &str) -> Option<String> {
+            self.building.get(socket).map(ToString::to_string)
+        }
+        fn holding(&self, socket: &str) -> Result<(u32, Vec<String>), String> {
+            self.holds.get(socket).cloned().unwrap_or_else(|| Err("not asked".to_string()))
+        }
+    }
+
+    fn record(socket: &str, started: u64) -> Started {
+        Started { socket: socket.to_string(), started }
+    }
+
+    fn only(fake: &Fake, socket: &str) -> Census {
+        census([record(socket, 1)], fake).remove(0)
+    }
+
+    #[test]
+    fn an_answering_daemon_says_what_it_holds() {
+        let mut fake = Fake { present: vec!["/d/a.sock"], ..Fake::default() };
+        fake.building.insert("/d/a.sock", "0.24.0");
+        fake.holds.insert("/d/a.sock", Ok((2, vec!["/src/a".to_string()])));
+
+        let found = only(&fake, "/d/a.sock");
+
+        assert_eq!(found.state, State::Answering);
+        assert_eq!(found.version, "0.24.0");
+        assert_eq!(
+            found.holding,
+            Holding::Known { panes: 2, directories: vec!["/src/a".to_string()] }
+        );
+    }
+
+    /// The bug this exists for: an answering daemon whose second look failed read as holding
+    /// nothing, which is the one answer that says it is safe to end.
+    #[test]
+    fn an_answering_daemon_that_cannot_be_asked_what_it_holds_is_unknown_and_not_empty() {
+        let mut fake = Fake { present: vec!["/d/a.sock"], ..Fake::default() };
+        fake.building.insert("/d/a.sock", "0.24.0");
+        fake.holds.insert("/d/a.sock", Err("no snapshot within 5 s".to_string()));
+
+        let found = only(&fake, "/d/a.sock");
+
+        assert_eq!(found.state, State::Answering);
+        assert_eq!(found.holding, Holding::Unknown("no snapshot within 5 s".to_string()));
+    }
+
+    #[test]
+    fn a_daemon_that_does_not_answer_was_not_asked_what_it_holds() {
+        let fake = Fake { present: vec!["/d/silent.sock"], ..Fake::default() };
+
+        let silent = only(&fake, "/d/silent.sock");
+        let gone = only(&fake, "/d/gone.sock");
+
+        assert_eq!((silent.state, silent.holding), (State::Silent, Holding::NotAsked));
+        assert_eq!((gone.state, gone.holding), (State::Gone, Holding::NotAsked));
+    }
+
+    #[test]
+    fn a_herdr_daemon_is_known_by_its_listener_alone() {
+        let sock = "/home/a/.config/herdr/sessions/muster/herdr.sock";
+        let mut fake = Fake { present: vec![sock], ..Fake::default() };
+
+        assert_eq!(only(&fake, sock).state, State::Silent);
+        fake.listening.push(sock);
+        let found = only(&fake, sock);
+
+        assert_eq!((found.state, found.holding), (State::Herdr, Holding::NotAsked));
+    }
+
+    #[test]
+    fn the_newest_daemon_comes_first() {
+        let fake = Fake::default();
+
+        let found = census([record("/d/old.sock", 1), record("/d/new.sock", 9)], &fake);
+
+        let sockets: Vec<&str> = found.iter().map(|found| found.socket.as_str()).collect();
+        assert_eq!(sockets, ["/d/new.sock", "/d/old.sock"]);
+    }
+}

@@ -532,6 +532,12 @@ that.
   keeps no `.lock` file.
 - `panes` and `directories` say what an answering daemon holds. This is the row that decides
   anything - a count of zero is a daemon you can end and lose nothing.
+- `holdings_unknown` is why `panes` and `directories` are not an answer, and null when they are.
+  A daemon can answer its handshake and then fail to say what it holds: a second connection that
+  would not open, no snapshot within 5 seconds, or an answer that was not a snapshot. Then `panes`
+  and `directories` are null, never 0, and the plain answer says "holds an unknown number of
+  panes" with the reason. That daemon may hold live agents; ask again before ending it. A daemon
+  that did not answer was not asked, and its `state` is the whole story.
 - `version` is the build an answering daemon says it is, and empty for the rest. It is what
   decides whether a Muster replacing this one takes its panes over: only a newer version does,
   comparing the numbers and ignoring anything after a `-` or a `+`.

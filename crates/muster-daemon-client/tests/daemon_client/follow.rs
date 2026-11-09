@@ -439,11 +439,41 @@ fn the_census_asks_each_daemon_what_it_holds() {
     let census = records::census(&records.display().to_string());
     assert_eq!(census.len(), 1);
     assert_eq!(census[0].state, records::State::Answering);
-    assert_eq!(census[0].panes, 1);
+    assert!(
+        matches!(census[0].holding, records::Holding::Known { panes: 1, .. }),
+        "{:?}",
+        census[0].holding
+    );
     assert_eq!(
         census[0].version,
         env!("CARGO_PKG_VERSION"),
         "the daemon built from this commit says its own version when dialed"
+    );
+}
+
+/// A daemon that completes its handshake and then never answers the question of what it holds is
+/// answering, and its holding is unknown - not zero, which would read as safe to end.
+#[test]
+fn a_daemon_that_cannot_say_what_it_holds_is_unknown_and_not_empty() {
+    let daemon = Daemon::start_built();
+    let relay = daemon.withholding_answers_where(|request| {
+        matches!(
+            &request.service,
+            Some(proto::request::Service::Session(proto::SessionRequest {
+                request: Some(proto::session_request::Request::Snapshot(_)),
+            }))
+        )
+    });
+    let records = daemon.root().join("records-unreadable").display().to_string();
+    records::started(&records, &relay.socket_path().display().to_string());
+
+    let census = records::census(&records);
+
+    assert_eq!(census[0].state, records::State::Answering);
+    assert!(
+        matches!(&census[0].holding, records::Holding::Unknown(why) if why.contains("failed")),
+        "{:?}",
+        census[0].holding
     );
 }
 
@@ -461,7 +491,7 @@ fn a_herdr_daemon_from_before_is_named_in_the_census() {
 
     let census = records::census(&records);
     assert_eq!(census[0].state, records::State::Herdr);
-    assert_eq!(census[0].panes, 0, "herdr is not asked what it holds");
+    assert_eq!(census[0].holding, records::Holding::NotAsked, "herdr is not asked what it holds");
 
     // Waited for rather than read once: a child another test forks in this moment holds a copy
     // of the listener until it execs, and the socket accepts on that copy.

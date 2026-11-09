@@ -14,7 +14,7 @@ use std::path::Path;
 use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_core::problems::Severity;
-use muster_daemon_client::records::{self, Census, State};
+use muster_daemon_client::records::{self, Census, Holding, State};
 use muster_daemon_proto::install;
 
 use super::problems::{clear_problem, raise_problem};
@@ -75,10 +75,20 @@ fn beside<'a>(ours: &str, found: &'a [Census]) -> Vec<&'a Census> {
         .iter()
         .filter(|other| {
             other.state == State::Answering
-                && other.panes > 0
+                && held_panes(other) > 0
                 && Path::new(&other.socket).file_name() != ours
         })
         .collect()
+}
+
+/// How many panes a daemon is known to hold. A daemon whose holding could not be read counts as
+/// none here: this notice is a claim about panes a window cannot show, and it is not made on a
+/// guess. `muster daemons` is where that daemon says its count is unknown.
+fn held_panes(daemon: &Census) -> u32 {
+    match daemon.holding {
+        Holding::Known { panes, .. } => panes,
+        Holding::Unknown(_) | Holding::NotAsked => 0,
+    }
 }
 
 /// What the person is told, naming each install by its socket's name as `muster daemons` does.
@@ -94,7 +104,7 @@ fn sentence(ours: &str, ours_is_checkout: bool, others: &[&Census]) -> String {
             } else {
                 format!("{}, ", other.version)
             };
-            format!("{install} ({version}{} pane(s)) at {}", other.panes, other.socket)
+            format!("{install} ({version}{} pane(s)) at {}", held_panes(other), other.socket)
         })
         .collect();
     let mut detail = format!(
@@ -122,8 +132,7 @@ mod tests {
             socket: socket.to_string(),
             started: 0,
             state,
-            panes,
-            directories: Vec::new(),
+            holding: Holding::Known { panes, directories: Vec::new() },
             version: "0.17.0".to_string(),
         }
     }
