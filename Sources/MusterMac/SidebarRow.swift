@@ -575,7 +575,10 @@ final class SidebarRowView: NSView {
     if stateField.superview != nil {
       let wanted = ceil(stateField.fittingSize.width)
       let hasMore = directoryField.superview != nil || machineTag != nil
-      let width = hasMore ? min(wanted, room * 0.65) : min(wanted, room)
+      // With a machine tag to fit as well, the state gives up more, so the directory is not the
+      // thing that goes.
+      let share = machineTag == nil ? 0.65 : 0.45
+      let width = hasMore ? min(wanted, room * share) : min(wanted, room)
       stateField.frame = CGRect(x: cursor, y: secondY, width: width, height: secondHeight)
       cursor += width
     }

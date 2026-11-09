@@ -138,6 +138,20 @@ struct ChromePaletteTests {
     #expect(palette.header.dimText.contrast(with: palette.header.background) >= 4.5)
   }
 
+  @Test("a mid-gray background keeps its raised panel readable too")
+  func midGrayRaisedPanel() {
+    let gray = ChromePalette.Terminal(background: rgb("#666666"), foreground: rgb("#ffffff"))
+    let palette = ChromePalette.make(
+      terminal: gray, agents: lists[0].agents, appearance: lists[0].list)
+
+    for surface in [palette.header, palette.list] {
+      for text in [surface.text, surface.dimText] {
+        #expect(text.contrast(with: surface.background) >= 4.5)
+        #expect(text.contrast(with: surface.raised) >= 4.5)
+      }
+    }
+  }
+
   @Test("hex round-trips and contrast spans 1 to 21")
   func arithmetic() {
     #expect(rgb("#3dd16b").hex == "#3dd16b")

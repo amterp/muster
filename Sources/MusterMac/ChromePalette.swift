@@ -169,7 +169,15 @@ public struct ChromePalette: Equatable, Sendable {
   private static func surface(
     background: RGB, text foreground: RGB, agents: [String: RGB]
   ) -> Surface {
-    let raised = background.mixed(toward: foreground, raisedAmount)
+    // A panel standing above the background, but never so far that the text cannot be read on it:
+    // on a mid-gray background the lighter panel is the surface text has the least contrast with,
+    // and no color can reach the floor on both.
+    var raised = background.mixed(toward: foreground, raisedAmount)
+    var lift = raisedAmount
+    while foreground.contrast(againstAll: [raised]) < minimumContrast, lift > 0.004 {
+      lift /= 2
+      raised = background.mixed(toward: foreground, lift)
+    }
     var tint: [String: RGB] = [:]
     var stateText: [String: RGB] = [:]
     for state in states {
