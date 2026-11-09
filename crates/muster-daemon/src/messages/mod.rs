@@ -666,14 +666,6 @@ fn respond(
     panes: &Panes,
     cause: Option<&Cause>,
 ) -> Reply {
-    let needs_drain = matches!(
-        &asked,
-        Asked::Post(_)
-            | Asked::Resume(_)
-            | Asked::Join(_)
-            | Asked::Leave(_)
-            | Asked::GroupMembers(_)
-    );
     let reply = match asked {
         Asked::Post(post) => posting(shared, caller, &post, panes, cause),
         Asked::Resume(resume) => resuming(shared, caller, &resume.group, panes),
@@ -707,10 +699,8 @@ fn respond(
             reply
         }
     };
-    if needs_drain {
-        let told = shared.messages().take_told();
-        tell_human(shared, told);
-    }
+    let told = shared.messages().take_told();
+    tell_human(shared, told);
     reply
 }
 
@@ -1882,14 +1872,8 @@ fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
     failed
 }
 
-fn waiting(
-    shared: &Shared,
-    caller: &Caller,
-    wait: &proto::msg_request::Wait,
-    hung_up: &dyn Fn() -> bool,
-    panes: &Panes,
-) -> Reply {
-    let reader = caller
+fn wait_reader(shared: &Shared, caller: &Caller) -> String {
+    caller
         .as_name
         .clone()
         .or_else(|| {
@@ -1898,7 +1882,17 @@ fn waiting(
             })
         })
         .or_else(|| caller.pane.clone())
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+fn waiting(
+    shared: &Shared,
+    caller: &Caller,
+    wait: &proto::msg_request::Wait,
+    hung_up: &dyn Fn() -> bool,
+    panes: &Panes,
+) -> Reply {
+    let reader = wait_reader(shared, caller);
     let (ticket, ended) = {
         let mut messages = shared.messages();
         if messages.handing_over {

@@ -3572,7 +3572,8 @@ impl<S: Store> Messaging<S> {
 
     /// Whether the state a window was told still describes the human's groups.
     pub fn human_who_unchanged(&self, told: &HumanWhoState) -> bool {
-        let mut groups = told.groups.iter();
+        let HumanWhoState { groups, linked } = told;
+        let mut groups = groups.iter();
         let mut has_groups = false;
         for (name, group) in &self.groups {
             if !group.members.iter().any(|member| is_human(member)) {
@@ -3591,7 +3592,7 @@ impl<S: Store> Messaging<S> {
             }
         }
         groups.next().is_none()
-            && if has_groups { self.linked == told.linked } else { told.linked.is_empty() }
+            && if has_groups { self.linked == *linked } else { linked.is_empty() }
     }
 
     /// Whether this machine's human is in `group`.

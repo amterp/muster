@@ -453,7 +453,7 @@ fn human_notice(window: &mut Control) -> msg_answer::Notice {
     loop {
         match window.next_event().event {
             Some(proto::event::Event::HumanNotice(notice)) => return notice,
-            Some(proto::event::Event::MessagingChanged(_)) => continue,
+            Some(proto::event::Event::MessagingChanged(_)) => {}
             other => panic!("expected what waits for the human, got {other:?}"),
         }
     }

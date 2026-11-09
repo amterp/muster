@@ -466,6 +466,45 @@ fn woke(posted: &Posted) -> Vec<(&str, Reach)> {
     posted.reached.iter().map(|(name, reach)| (name.as_str(), *reach)).collect()
 }
 
+#[test]
+fn human_who_comparison_matches_the_snapshot_across_changes() {
+    let mut wire = Wire::new();
+    let compare = |service: &Messaging<Memory>, before: &muster_msg::HumanWhoState, same: bool| {
+        assert_eq!(service.human_who_unchanged(before), service.human_who_state() == *before);
+        assert_eq!(service.human_who_unchanged(before), same);
+    };
+    let empty = wire.laptop.human_who_state();
+    compare(&wire.laptop, &empty, true);
+    wire.join(Side::Laptop, &human(), Some("@human"), "g");
+    compare(&wire.laptop, &empty, false);
+    wire.pane(Side::Laptop, "p1");
+    wire.pane(Side::Laptop, "p2");
+    let before_join = wire.laptop.human_who_state();
+    let original = Caller {
+        inbox: Some(Inbox { socket: "/tmp/partner.sock".into(), inode: 1 }),
+        ..in_pane("p1")
+    };
+    wire.join(Side::Laptop, &original, Some("partner"), "g");
+    compare(&wire.laptop, &before_join, false);
+    let joined = wire.laptop.human_who_state();
+    compare(&wire.laptop, &joined, true);
+    wire.sessions.dead.borrow_mut().insert("/tmp/partner.sock".into());
+    let caller = Caller { as_name: Some("partner".into()), ..in_pane("p2") };
+    wire.read(Side::Laptop, &caller, Some("g"));
+    compare(&wire.laptop, &joined, false);
+    let moved = wire.laptop.human_who_state();
+    wire.cut();
+    compare(&wire.laptop, &moved, false);
+    let cut = wire.laptop.human_who_state();
+    wire.mend();
+    compare(&wire.laptop, &cut, false);
+    let linked = wire.laptop.human_who_state();
+    let now = wire.tick();
+    let (service, sessions) = wire.split(Side::Laptop);
+    service.leave(&caller, Some("g"), sessions, now).unwrap();
+    compare(&wire.laptop, &linked, false);
+}
+
 fn woken_names(posted: &Posted) -> Vec<&str> {
     posted.wakes.iter().map(|wake| wake.name.as_str()).collect()
 }
