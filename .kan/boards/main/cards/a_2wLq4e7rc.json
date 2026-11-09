@@ -30,6 +30,12 @@
       "body": "2026-11-08 23:28, Mac: a Heads up notice on frost's idle pane held jester's wake for a non-urgent message. The notice was addressed to the person, not the agent: 'The release you asked for would ship the whole redesign before you've seen any of it in a real window, since the screenshots failed.' I left it up instead of dismissing it, so the owner would still see it. New angle: some notices carry a warning meant for the person. A fix that dismisses the notice and hands its text to the agent should also put that text in front of the person, for example in the Needs you strip.",
       "author": "Alexander Terp",
       "created_at_millis": 1794202213099
+    },
+    {
+      "id": "c_2wjkRN4F8",
+      "body": "2026-11-09 06:20, Mac: two agents dismissed the same notice. muster window showed frost's idle pane as covered by a Heads up notice, but frost had already dismissed it at the start of its turn. The \"0\" I then sent as text (muster pane send --pane frost \"0\") landed in frost's now empty prompt as a draft, and that draft held my next post ('rung once idle'). One --key ctrl+c cleared it, and the post went in. New angle: dismissing by typing 0 is not idempotent, and a second dismisser leaves a draft that holds every later wake. If Muster dismissed the notice itself (this card), there would be one dismisser and no race.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794227564338
     }
   ],
   "created_at_millis": 1794170582222,
@@ -45,7 +51,7 @@
   ],
   "title": "Dismiss a Claude Code notice that holds a ring or compaction, and hand its text to the agent",
   "type": "feature",
-  "updated_at_millis": 1794202213099,
+  "updated_at_millis": 1794227564338,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794170582222}
   ]
