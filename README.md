@@ -48,7 +48,7 @@ takes you to the pane you were on before, in whatever tab, and forward undoes it
 on you, or that finishes while nobody is looking, says so - and activating the notification takes
 you to that pane, including one no split is showing. `cmd+shift+a` goes there without the
 click, to whichever agent has waited longest, the blocked ones first, in whichever window it is. A pane you
-are already looking at stays quiet; that is what its border is for. Both are switchable, and one
+are already looking at stays quiet; that is what its header is for. Both are switchable, and one
 line in your config mutes the lot, which silences the notifications and leaves `cmd+shift+a`.
 A pane can also be made quiet on its own, and hidden from every window with its agent still
 running, which suits the helpers an agent runs and talks to itself: a Hidden list in the sidebar
@@ -58,7 +58,7 @@ shows what they are doing and brings any of them back.
 the daemon writes it down rather than the app. An agent that sets a terminal title gets a second
 line under that, so a row reads `payments spike` over `chasing a flaky test`. Drag one row onto
 another and the two panes trade places; drop it on a row in a different tab and the agent moves
-there. Grab a pane by the handle at the top of it and drop it on another pane's edge to put it
+there. Grab a pane by its header and drop it on another pane's edge to put it
 on that side, as in Ghostty, which is also how a side by side pair becomes one above the other.
 Right-click a pane, a tab's caption or an agent's row to split, rename, move or close it, or to
 copy the ID `muster` takes for it.

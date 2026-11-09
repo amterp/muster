@@ -262,13 +262,11 @@ public final class FindBar {
   /// and a counter left over from the first would be a count of matches that are not there.
   public func show(over chrome: PaneChrome) {
     guard self.chrome !== chrome else { return }
+    self.chrome?.overlay = nil
     // The pane being left keeps its marks otherwise, which would be two panes looking searched
     // and one of them counted.
     leave()
-    hosting.removeFromSuperview()
-    chrome.addSubview(hosting)
-    hosting.frame = chrome.bounds
-    hosting.autoresizingMask = [.width, .height]
+    chrome.overlay = hosting
     self.chrome = chrome
     chrome.surface.onSearch = { [weak self] report in self?.apply(report) }
     if !state.needle.isEmpty {
@@ -313,8 +311,8 @@ public final class FindBar {
     if holdsKeyboard, let surface = chrome?.surface {
       surface.window?.makeFirstResponder(surface)
     }
+    chrome?.overlay = nil
     leave()
-    hosting.removeFromSuperview()
   }
 
   /// Puts the keyboard in the bar's field, selecting what is already typed there so that typing

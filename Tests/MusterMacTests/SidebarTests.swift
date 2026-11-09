@@ -971,8 +971,9 @@ struct SidebarTests {
     #expect(row.map(SidebarModel.accessories(of:)) == [])
     #expect(
       row.map(SidebarModel.details(of:))?.contains("was blocked when last heard from") == true)
-    // Painted as nothing in particular, the way a state the window cannot vouch for is.
-    #expect(!PaneAppearance.isHighlighted(state: "unreachable"))
+    // Drawn as nothing in particular, the way a state the window cannot vouch for is.
+    #expect(row?.tier == .absent)
+    #expect(row?.isTinted == false)
   }
 
   @Test("the context ring warms as the context fills, rather than flipping at a line")

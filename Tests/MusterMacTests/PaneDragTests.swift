@@ -3,10 +3,10 @@ import Testing
 
 @testable import MusterMac
 
-// Dragging a pane by its handle onto another pane's side.
+// Dragging a pane by its header onto another pane's side.
 //
 // The rules are Ghostty's and live in `PaneDrop`, so most of this is arithmetic. What needs a
-// view is that the handle is where a hand looks for it and takes the press there from the
+// view is that the header is where a hand looks for it and takes the press there from the
 // terminal, and that a drop becomes the one request a script can send too, naming both panes
 // and the side.
 
@@ -63,7 +63,7 @@ struct PaneDragTests {
     #expect(!PaneDrop.accepts(laptop, onto: neighbor, fromThisWindow: false))
   }
 
-  /// The agent list takes this payload already, so a pane dragged by its handle can land on a
+  /// The agent list takes this payload already, so a pane dragged by its header can land on a
   /// row or a tab caption there, and a row dragged out of the list can land on a pane.
   @Test("a dragged pane is carried as the agent list carries one")
   func thePayload() {
@@ -73,51 +73,59 @@ struct PaneDragTests {
     #expect(PaneDrop.pane(fromPayload: "\tp1") == nil)
   }
 
-  @Test("the handle sits at the top middle of the pane, as Ghostty's does")
-  func whereTheHandleIs() {
+  @Test("the header is the top of the pane, and is what a pane is dragged by")
+  func whereTheHeaderIs() {
     let chrome = chrome(width: 400, height: 300)
-    #expect(chrome.grabHandle.frame == CGRect(x: 160, y: 288, width: 80, height: 12))
-    #expect(chrome.grabHandle.isHidden == false)
+    let inset = PaneAppearance.inset
+    #expect(
+      chrome.header.frame
+        == CGRect(
+          x: inset, y: 300 - inset - PaneHeaderModel.height, width: 400 - 2 * inset,
+          height: PaneHeaderModel.height))
+    #expect(chrome.header.isHidden == false)
   }
 
-  /// The handle is the one place a drag in a pane is Muster's rather than the program's, so it
+  /// The header is the one place a drag in a pane is Muster's rather than the program's, so it
   /// has to win the press there and lose it everywhere else.
-  @Test("a press on the handle is the handle's, and a point beside it is the terminal's")
-  func theHandleTakesThePress() {
+  @Test("a press on the header is the header's, and a point below it is the terminal's")
+  func theHeaderTakesThePress() {
     let chrome = chrome(width: 400, height: 300)
-    #expect(chrome.hitTest(NSPoint(x: 200, y: 294)) === chrome.grabHandle)
-    #expect(chrome.hitTest(NSPoint(x: 150, y: 294)) === chrome.surface)
-    #expect(chrome.hitTest(NSPoint(x: 200, y: 280)) === chrome.surface)
+    #expect(chrome.hitTest(NSPoint(x: 200, y: 290)) === chrome.header)
+    #expect(chrome.hitTest(NSPoint(x: 20, y: 290)) === chrome.header, "a label is still the header")
+    #expect(chrome.hitTest(NSPoint(x: 200, y: 200)) === chrome.surface)
   }
 
-  @Test("a pane with nothing behind it has no handle")
-  func noPaneNoHandle() {
+  @Test("a pane with nothing behind it has no header to grab")
+  func noPaneNoHeader() {
     let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
     let bare = PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
     bare.layoutSubtreeIfNeeded()
-    #expect(bare.grabHandle.isHidden)
+    #expect(bare.header.isHidden)
   }
 
-  @Test("the symbol shows across the top of the pane and not below it")
-  func theBand() {
-    let bounds = CGRect(x: 0, y: 0, width: 400, height: 300)
-    #expect(PaneDrop.handleBand(in: bounds) == CGRect(x: 0, y: 240, width: 400, height: 60))
-    // Never thinner than the handle, so a short pane still shows what it is grabbing.
-    let short = CGRect(x: 0, y: 0, width: 400, height: 40)
-    #expect(PaneDrop.handleBand(in: short).height == PaneDrop.handleSize.height)
-
-    let handle = chrome(width: 400, height: 300).grabHandle
-    #expect(!handle.iconShown)
-    handle.pointerInBand = true
-    #expect(handle.iconShown)
+  @Test("a pane too short for a header cannot be grabbed by one")
+  func tooShortForAGrip() {
+    let short = chrome(width: 400, height: PaneHeaderModel.minimumPaneHeight - 1)
+    #expect(short.header.isHidden)
+    #expect(short.hitTest(NSPoint(x: 200, y: 30)) === short.surface)
   }
 
-  @Test("a press on the handle asks for the keyboard, as a click on the pane does")
+  @Test("the grip shows while the pointer is over the header and not otherwise")
+  func theGrip() {
+    let header = chrome(width: 400, height: 300).header
+    #expect(!header.gripShown)
+    header.mouseEntered(with: mouse())
+    #expect(header.gripShown)
+    header.mouseExited(with: mouse())
+    #expect(!header.gripShown)
+  }
+
+  @Test("a press on the header asks for the keyboard, as a click on the pane does")
   func aPressFocuses() {
     let chrome = chrome(width: 400, height: 300)
     var asked: [String] = []
     chrome.onFocusRequested = { asked.append($0) }
-    chrome.grabHandle.mouseDown(with: mouse())
+    chrome.header.mouseDown(with: mouse())
     #expect(asked == ["p2"])
   }
 

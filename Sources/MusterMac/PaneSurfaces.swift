@@ -157,7 +157,9 @@ public final class PaneSurfaces {
     chrome.attach(paneID: leaf.paneID)
     chrome.onFocusRequested = focus
     chrome.onPointerRequested = pointer
-    chrome.surface.onMenu = { [weak self] in self?.menu?(key) }
+    let menu: @MainActor () -> NSMenu? = { [weak self] in self?.menu?(key) }
+    chrome.surface.onMenu = menu
+    chrome.header.onMenu = menu
     chrome.key = key
     chrome.onPaneDropped = { [weak self] dragged, side in
       if let why = Core.arrange(pane: dragged, onto: key, side: side) {

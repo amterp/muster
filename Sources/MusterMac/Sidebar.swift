@@ -772,7 +772,12 @@ public enum SidebarModel {
   /// Whether a row's second line shows a time, which is whether a minute passing can change it.
   public static func showsTime(in row: Row) -> Bool {
     guard row.isPane, let agent = row.agent else { return false }
-    return ["blocked", "stuck", "done"].contains(agent.state) && agent.sinceMS > 0
+    return showsTime(of: agent)
+  }
+
+  /// Whether a line about this agent shows how long its state has held.
+  public static func showsTime(of agent: PaneAgent) -> Bool {
+    ["blocked", "stuck", "done"].contains(agent.state) && agent.sinceMS > 0
   }
 
   /// What a pane row's second line says before the directory, for `agent` as it is at `now`.
@@ -842,10 +847,10 @@ public enum SidebarModel {
 
   /// The state a folded caption's dot takes from the panes under it, or nil for none.
   ///
-  /// The states that earn a pane a border (`PaneAppearance.isHighlighted`), most urgent first:
-  /// the three that ask for somebody in the order the core ranks them (`Alert`, in
-  /// `crates/muster-core/src/attention.rs`), then working. An idle or waiting agent asks nothing
-  /// of somebody looking at a folded list, so it draws no dot there.
+  /// The states a folded caption says anything about, most urgent first: the three that ask for
+  /// somebody in the order the core ranks them (`Alert`, in `crates/muster-core/src/attention.rs`),
+  /// then working. An idle or waiting agent asks nothing of somebody looking at a folded list, so
+  /// it draws no dot there.
   public static func mostUrgent(_ states: [String]) -> String? {
     ["blocked", "stuck", "done", "working"].first { states.contains($0) }
   }

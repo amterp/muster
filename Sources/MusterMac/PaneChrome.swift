@@ -73,7 +73,7 @@ public enum PaneAppearance {
 
   /// What the config file said about Muster's own chrome, or nothing.
   ///
-  /// Held rather than asked for per paint, the way `DividerView.color` is: a border is applied
+  /// Held rather than asked for per paint, the way `DividerView.color` is: a header is drawn
   /// on every state change on every pane, and a round trip to the core per repaint would put
   /// the config file on the render path. Set from the one event that carries it, which is also
   /// what makes a saved file take effect without a relaunch.
@@ -116,35 +116,18 @@ public enum PaneAppearance {
     return named.flatMap(NSColor.init(hex:))
   }
 
-  /// **How thick each ring is, and how far apart.** Here rather than on the view for the
-  /// reason the colours are: this is the decision the two rings rest on, and a number inside
-  /// `layout` is a number no test can reach.
+  /// How thick the ring is that marks the pane the keyboard reaches, and so how far in from its edge
+  /// the header and the terminal start.
   ///
-  /// The two used to be equal weights side by side, which read as one four-point edge
-  /// whatever colours they carried. They differ in kind now because they have to: the focus
-  /// ring follows `controlAccentColor`, the accent a person picks in System Settings, so any
-  /// fixed state palette collides with somebody's - green with `done`, orange with `blocked`.
-  /// Weight and a gap are legible whatever the accent turns out to be.
+  /// The only border a pane has (Fencil `pane-headers`): what an agent is doing is said by its
+  /// header, so the edge says one small thing about the window rather than anything about an
+  /// agent. The ring follows `controlAccentColor`, which a person picks in System Settings, so it
+  /// is never given a state's color to collide with.
   ///
-  /// The state ring keeps the whole of what it had, because it is what the product is about.
-  /// The focus ring is the one that gives way: it says one small thing about the window rather
-  /// than anything about an agent.
-  public static let stateWidth: CGFloat = 2
-  public static let focusGap: CGFloat = 2
-  public static let focusWidth: CGFloat = 1
-
-  /// How much of a pane's edge is chrome rather than terminal - the sum, so a surface cannot
-  /// end up under a ring by arithmetic that drifted.
-  public static let inset: CGFloat = stateWidth + focusGap + focusWidth
-
-  /// Whether a state deserves a visible border at all.
-  ///
-  /// Idle and unknown do not. Every pane carrying a colored edge all the time is every
-  /// pane carrying none: the border exists to be noticed, and it is only noticeable if
-  /// the resting state is bare.
-  public static func isHighlighted(state: String) -> Bool {
-    state == "working" || state == "blocked" || state == "stuck" || state == "done"
-  }
+  /// Always reserved, drawn or not, so that moving the keyboard from one pane to another never
+  /// resizes a terminal - which would reflow its text for the sake of a ring.
+  public static let focusWidth: CGFloat = 2
+  public static let inset: CGFloat = focusWidth
 
   /// How big the number drawn over a pane should be, for a pane this size.
   ///
@@ -164,7 +147,7 @@ public enum PaneAppearance {
   /// The window title: which pane the keyboard feeds, and whether the daemon is still there.
   ///
   /// Agent state used to be here and is not any more, because a window with fifteen panes has
-  /// fifteen agent states and one title - the per-pane borders carry that now. What survives
+  /// fifteen agent states and one title - the per-pane headers carry that now. What survives
   /// is the part that is genuinely per-window: a window rendering an hour-old session as
   /// though it were live is the worst failure available to this product, and it is
   /// indistinguishable from a working one without saying so.
@@ -230,30 +213,26 @@ public enum PaneAppearance {
   }
 }
 
-/// Holds one surface, draws the agent state around it, and says whether it has the keyboard.
+/// Holds one surface under its header, and says whether it has the keyboard.
 ///
 /// A container rather than the surface itself, because libghostty attaches its own Metal
 /// layer to the view it is handed and a border on that layer is a fight over ownership -
 /// not a thing to discover at render time.
 ///
-/// Two edges, not one, and they mean different things. The outer is the agent's state, which
-/// is the whole point of the product; the inner says which pane a keystroke would go to. One
-/// edge carrying both would make a working pane and a focused pane indistinguishable, which
-/// is exactly the confusion these are for clearing up.
-///
-/// **They differ in kind, not only in hue, and they have to.** The focus ring follows
-/// `controlAccentColor` - the accent a person chooses in System Settings, which Muster does
-/// not pick and cannot know. So any fixed state palette collides with *some* accent: green
-/// with `done`, orange with `blocked`, blue with `working` on the default. Painting the two
-/// different colours fixes whichever collision you happen to have and leaves the same bug for
-/// the next person. A thick outer ring, a gap, and a thin inner one is legible whatever the
-/// accent turns out to be.
+/// What the agent is doing is the header's to say (`PaneHeaderView`). The one edge a pane has is
+/// the keyboard's: a ring in the accent, so a working pane and the pane being typed into cannot be
+/// confused, and no state color can collide with somebody's accent.
 @MainActor
 public final class PaneChrome: NSView {
   /// The pane this view is showing, or nil for the renderer check.
   public private(set) var paneID: String?
-  public private(set) var state: String = "unknown"
   public private(set) var isFocused = false
+
+  /// What this pane's agent is doing, as its header last said, or `unknown` before it has said.
+  public var state: String { headerRow?.state ?? "unknown" }
+
+  /// The row the header draws, or nil before the window has joined the roster with the agents.
+  public private(set) var headerRow: SidebarModel.Row?
 
   public let surface: SurfaceView
 
@@ -269,17 +248,27 @@ public final class PaneChrome: NSView {
   /// The pane this view is showing, with its machine: what a drag of it carries, and what a
   /// drop on it names. Nil for the renderer check, which has no pane to drag.
   public var key: PaneKey? {
-    didSet { handle.pane = key }
+    didSet { header.pane = key }
   }
 
   /// Called when a pane is dropped on one of this pane's sides, meaning it should go there.
   public var onPaneDropped: ((_ dragged: PaneKey, _ side: DropSide) -> Void)?
 
-  private let focusRing = CALayer()
+  /// What says which agent this is and what it is doing, and what the pane is dragged by.
+  let header = PaneHeaderView(frame: .zero)
 
-  /// What this pane is dragged by, and what lights the side a dragged pane would land on.
-  private let handle = PaneGrabHandle(frame: .zero)
+  /// What lights the side a dragged pane would land on.
   private let dropOverlay = PaneDropOverlay(frame: .zero)
+
+  /// A view drawn over the terminal and kept to its frame, which is the find bar: laid out against
+  /// the surface rather than the pane, so it stays out of the header.
+  var overlay: NSView? {
+    didSet {
+      oldValue?.removeFromSuperview()
+      if let overlay { addSubview(overlay, positioned: .above, relativeTo: surface) }
+      needsLayout = true
+    }
+  }
 
   /// The number a numbered chord would reach this pane by, drawn over it while one is being
   /// typed. Added over the surface rather than beside it, the way the find bar is.
@@ -293,11 +282,11 @@ public final class PaneChrome: NSView {
     self.surface = surface
     super.init(frame: frame)
     wantsLayer = true
-    layer?.addSublayer(focusRing)
-    // Never animated. A frame set from a layout pass would otherwise slide into place over a
-    // quarter second, and a surface whose bounds lag its host by that long renders the
-    // previous arrangement while the daemon has already moved on.
-    focusRing.actions = ["position": NSNull(), "bounds": NSNull(), "borderColor": NSNull()]
+    // Never animated. A ring recolored from a focus change would otherwise fade over a quarter
+    // second, and a surface whose bounds lag its host by that long renders the previous
+    // arrangement while the daemon has already moved on.
+    layer?.actions = ["borderColor": NSNull(), "borderWidth": NSNull()]
+    addSubview(header)
     addSubview(surface)
     surface.onClick = { [weak self] in
       guard let self, let paneID = self.paneID else { return }
@@ -321,9 +310,7 @@ public final class PaneChrome: NSView {
     imagePasteLabel.isHidden = true
     addSubview(imagePasteLabel)
     addSubview(dropOverlay)
-    // Last, so a press on it is the handle's and never the terminal's underneath.
-    addSubview(handle)
-    handle.onPressed = { [weak self] in
+    header.onPressed = { [weak self] in
       guard let self, let paneID = self.paneID else { return }
       self.onFocusRequested?(paneID)
     }
@@ -345,22 +332,26 @@ public final class PaneChrome: NSView {
     needsLayout = true
   }
 
-  /// Takes a state change, if it is about this pane.
+  /// Takes the row the header draws, if it is about this pane.
   ///
-  /// The core sends every pane's transitions, because the sidebar wants them and the log
-  /// wants them all. A window showing several panes has to filter, and one that forgot to
-  /// would show its neighbor's agent as its own.
-  public func apply(paneID: String, state: String) {
-    guard paneID == self.paneID else { return }
-    self.state = state
-    applyAppearance()
+  /// The window joins the roster with every pane's agent and hands each chrome its own row, and a
+  /// chrome shown a neighbor's would draw the neighbor's agent as its own - so one that is not
+  /// this pane's is ignored. Nil takes the header's content away.
+  public func apply(header row: SidebarModel.Row?) {
+    if let row, row.pane?.pane != paneID { return }
+    headerRow = row
+    header.show(row)
   }
+
+  /// How many times the header has been drawn with something new to say.
+  var headerRedrawCount: Int { header.redrawCount }
 
   /// Takes the colours in force again, for a pane that was already drawn when they changed.
   ///
-  /// The state has not moved, so nothing else here would repaint: a border is applied when a
-  /// transition arrives, and saving a config file is not one.
+  /// The state has not moved, so nothing else here would repaint: a header is drawn when its row
+  /// changes, and saving a config file is not one.
   public func recolor() {
+    header.recolor()
     applyAppearance()
   }
 
@@ -394,9 +385,6 @@ public final class PaneChrome: NSView {
 
   /// The badge itself, so a test can check that a click did not land on it.
   var badgeView: NSView { badge }
-
-  /// The handle, so a test can find where it is and what it shows.
-  var grabHandle: PaneGrabHandle { handle }
 
   /// The overlay's rect while a dragged pane is over this one, or nil when it is not.
   var dropHighlight: CGRect? { dropOverlay.isHidden ? nil : dropOverlay.frame }
@@ -462,49 +450,34 @@ public final class PaneChrome: NSView {
     info.draggingPasteboard.string(forType: PaneDrop.type).flatMap(PaneDrop.pane(fromPayload:))
   }
 
-  /// Draws the handle's symbol while the pointer is across the top of the pane.
-  public override func updateTrackingAreas() {
-    trackingAreas.forEach(removeTrackingArea)
-    addTrackingArea(
-      NSTrackingArea(
-        rect: PaneDrop.handleBand(in: bounds),
-        options: [.mouseEnteredAndExited, .activeAlways], owner: self))
-    super.updateTrackingAreas()
-  }
-
-  public override func mouseEntered(with event: NSEvent) {
-    handle.pointerInBand = true
-  }
-
-  public override func mouseExited(with event: NSEvent) {
-    handle.pointerInBand = false
+  /// Whether this pane draws a header now: it has a pane to describe and room for one.
+  var showsHeader: Bool {
+    paneID != nil && PaneHeaderModel.isShown(paneHeight: bounds.height)
   }
 
   public override func layout() {
     super.layout()
-    surface.frame = bounds.insetBy(dx: PaneAppearance.inset, dy: PaneAppearance.inset)
-    // Inside the state ring and the gap, so the two never touch. A layer's border is drawn
-    // inward from its frame, which is why this is the outer edge of the focus ring rather
-    // than its inner one.
-    let focusInset = PaneAppearance.stateWidth + PaneAppearance.focusGap
-    focusRing.frame = bounds.insetBy(dx: focusInset, dy: focusInset)
-    badge.frame = bounds
+    let area = bounds.insetBy(dx: PaneAppearance.inset, dy: PaneAppearance.inset)
+    header.isHidden = !showsHeader
+    let headerHeight = showsHeader ? PaneHeaderModel.height : 0
+    header.frame = CGRect(
+      x: area.minX, y: area.maxY - PaneHeaderModel.height, width: area.width,
+      height: PaneHeaderModel.height)
+    surface.frame = CGRect(
+      x: area.minX, y: area.minY, width: area.width, height: max(0, area.height - headerHeight))
+    overlay?.frame = surface.frame
+    badge.frame = surface.frame
     linkBanner.frame = linkBanner.frame(in: surface.frame)
     imagePasteLabel.sizeToFit()
     imagePasteLabel.setFrameOrigin(
       NSPoint(
         x: surface.frame.maxX - imagePasteLabel.frame.width - 8, y: surface.frame.minY + 8))
-    handle.frame = PaneDrop.handleFrame(in: bounds)
-    window?.invalidateCursorRects(for: handle)
+    window?.invalidateCursorRects(for: header)
   }
 
   private func applyAppearance() {
-    let highlighted = PaneAppearance.isHighlighted(state: state)
-    layer?.borderWidth = highlighted ? PaneAppearance.stateWidth : 0
-    layer?.borderColor = PaneAppearance.borderColor(state: state).cgColor
-    focusRing.borderWidth = PaneAppearance.focusWidth
-    focusRing.borderColor =
-      isFocused ? PaneAppearance.focusColor.cgColor : NSColor.clear.cgColor
+    layer?.borderWidth = isFocused ? PaneAppearance.focusWidth : 0
+    layer?.borderColor = PaneAppearance.focusColor.cgColor
     needsLayout = true
   }
 }

@@ -10,11 +10,12 @@ if your harness wants one.
 
 **Early, and specific about which parts.** Built, and covered by the suite: splits and tabs, a rebindable keymap that
 ships Ghostty's chords where Ghostty has one, an agent list carrying a state on every row with a chord to each of the
-first nine and one to whichever is asking for you, states an agent reports itself where the screen cannot say them -
+first nine and one to whichever is asking for you, a header across each pane saying which agent it is and what it is
+doing, states an agent reports itself where the screen cannot say them -
 `waiting` on its own build among them - an agent read as `stuck` once its program stops reading its input, a callsign
 for every pane (`otter`) taken wherever its id is, messages included and through a rename, renaming, which names the
 agent's session in its harness too and follows a session renamed there, trading two agents' places by dragging a row,
-dragging a pane by its handle onto another pane's edge on either machine, right-click menus on a pane, a tab and an
+dragging a pane by its header onto another pane's edge on either machine, right-click menus on a pane, a tab and an
 agent row, including a split onto any attached machine, hiding a pane from every window with its agent running and
 bringing it back from a list, a pane closed by mistake reopened by its callsign within the hour, in its place and with
 its agent back in its session, an agent's helpers made hidden and quiet into one tab of their own, listed under it in the

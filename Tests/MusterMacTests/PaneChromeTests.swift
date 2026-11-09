@@ -3,10 +3,10 @@ import Testing
 
 @testable import MusterMac
 
-// The window's whole contribution to "agent states are the point": a border and a title.
-// Small, and worth pinning anyway - the core sends every pane's transitions, so a window
-// that forgets to filter shows its neighbor's agent as its own, and that failure is
-// invisible until there are two panes to confuse.
+// What a pane's chrome says that is not the header's: the focus ring, where the terminal sits under
+// the header, and the window's title. Small, and worth pinning anyway - the core sends every pane's
+// transitions, so a window that forgets to filter shows its neighbor's agent as its own, and that
+// failure is invisible until there are two panes to confuse.
 
 @Suite("pane chrome")
 struct PaneChromeTests {
@@ -15,24 +15,12 @@ struct PaneChromeTests {
     // Not the same assertion twice: the point is that a state the daemon invents next week
     // gets the resting appearance of something unreadable rather than being colored as an
     // agent that finished. A user who learns the colors lie stops reading them.
-    #expect(PaneAppearance.isHighlighted(state: "compacting") == false)
     #expect(
       PaneAppearance.defaultBorderColor(state: "compacting")
         == PaneAppearance.defaultBorderColor(state: "unknown"))
     #expect(
       PaneAppearance.defaultBorderColor(state: "compacting")
         != PaneAppearance.defaultBorderColor(state: "done"))
-  }
-
-  @Test("only the states worth noticing get a border")
-  func restingStatesAreBare() {
-    #expect(PaneAppearance.isHighlighted(state: "working"))
-    #expect(PaneAppearance.isHighlighted(state: "blocked"))
-    #expect(PaneAppearance.isHighlighted(state: "stuck"))
-    #expect(PaneAppearance.isHighlighted(state: "done"))
-    // Every pane carrying a border all the time is every pane carrying none.
-    #expect(PaneAppearance.isHighlighted(state: "idle") == false)
-    #expect(PaneAppearance.isHighlighted(state: "unknown") == false)
   }
 
   @Test("the window's palette is the canonical default legend")
@@ -87,18 +75,104 @@ struct PaneChromeTests {
     #expect(PaneAppearance.focusColor == NSColor(hex: "#bb9af7"))
   }
 
-  @Test("the focus ring is a different kind of edge, not a different colour")
-  func theRingsDifferInKind() {
-    // The bug this replaced: two 2pt rings touching, the outer following the agent's state
-    // and the inner following `controlAccentColor`. On the default accent both were blue and
-    // the pair read as one thick edge. Colour cannot fix it - the accent is chosen in System
-    // Settings, so a fixed state palette collides with green for somebody and orange for
-    // somebody else - so what has to hold is that they differ in weight and do not touch.
-    #expect(PaneAppearance.focusWidth < PaneAppearance.stateWidth)
-    #expect(PaneAppearance.focusGap > 0)
-    // And the surface starts outside both, so neither ring is drawn over terminal text.
-    let rings = PaneAppearance.stateWidth + PaneAppearance.focusGap + PaneAppearance.focusWidth
-    #expect(PaneAppearance.inset == rings)
+  @MainActor
+  @Test("a pane has a border only while the keyboard is in it, whatever its agent is doing")
+  func focusIsTheOnlyBorder() {
+    // The border that said what an agent was doing went to the header (Fencil `pane-headers`).
+    // What is left is one ring that says which pane a keystroke reaches, and that follows the
+    // accent rather than a state's color - so no state can collide with somebody's accent.
+    let chrome = pane()
+    chrome.attach(paneID: "w1:p1")
+    for state in ["working", "blocked", "stuck", "done", "idle", "unknown"] {
+      chrome.apply(header: testHeaderRow("w1:p1", state: state))
+      #expect(chrome.layer?.borderWidth == 0, "a \(state) pane carries a border")
+    }
+    chrome.apply(focused: true)
+    #expect(chrome.layer?.borderWidth == PaneAppearance.focusWidth)
+    chrome.apply(focused: false)
+    #expect(chrome.layer?.borderWidth == 0)
+  }
+
+  @MainActor
+  @Test("the terminal starts below the header and inside the ring, focused or not")
+  func theSurfaceSitsBelowTheHeader() {
+    // The ring's room is reserved whether or not it is drawn, so moving the keyboard from one
+    // pane to another never resizes a terminal and reflows what is in it.
+    let chrome = pane(width: 400, height: 300)
+    chrome.attach(paneID: "w1:p1")
+    let inset = PaneAppearance.inset
+    let expected = CGRect(
+      x: inset, y: inset, width: 400 - 2 * inset,
+      height: 300 - 2 * inset - PaneHeaderModel.height)
+
+    chrome.layoutSubtreeIfNeeded()
+    #expect(chrome.surface.frame == expected)
+    #expect(
+      chrome.header.frame
+        == CGRect(
+          x: inset, y: 300 - inset - PaneHeaderModel.height, width: 400 - 2 * inset,
+          height: PaneHeaderModel.height))
+    #expect(chrome.header.frame.minY == chrome.surface.frame.maxY, "flush: nothing between")
+
+    chrome.apply(focused: true)
+    chrome.layoutSubtreeIfNeeded()
+    #expect(chrome.surface.frame == expected)
+  }
+
+  @MainActor
+  @Test(
+    "a pane gains its header at 60 points, and a pane at the tree's minimum has no negative size")
+  func theHeaderNeedsRoom() {
+    let inset = PaneAppearance.inset
+    let short = pane(width: 400, height: 59)
+    short.attach(paneID: "w1:p1")
+    short.layoutSubtreeIfNeeded()
+    #expect(short.header.isHidden)
+    #expect(short.surface.frame.height == 59 - 2 * inset, "a pane too short to carry a header")
+
+    let enough = pane(width: 400, height: 60)
+    enough.attach(paneID: "w1:p1")
+    enough.layoutSubtreeIfNeeded()
+    #expect(!enough.header.isHidden)
+    #expect(enough.surface.frame.height == 60 - 2 * inset - PaneHeaderModel.height)
+
+    // `PaneTree.minimumPaneSize`: a pane this small must not be given a header it has no room for.
+    let smallest = pane(width: 400, height: 8)
+    smallest.attach(paneID: "w1:p1")
+    smallest.layoutSubtreeIfNeeded()
+    #expect(smallest.surface.frame.height >= 0)
+  }
+
+  @MainActor
+  @Test("a click over the terminal is still measured from the terminal's own top")
+  func theMouseStillLandsOnItsCell() throws {
+    // The header pushes the surface down inside the pane. A position reported from the pane's top
+    // would be a cell too low for every row of the header, so this clicks a few points under the
+    // surface's top edge and checks the position did not pick up the header's height.
+    let chrome = pane(width: 400, height: 300)
+    chrome.attach(paneID: "w1:p1")
+    chrome.layoutSubtreeIfNeeded()
+    chrome.surface.attach(typeable: true)
+    var reported: [Core.Mouse] = []
+    chrome.onPointerRequested = { _, pointer in
+      if case .mouse(let mouse) = pointer { reported.append(mouse) }
+    }
+    let surface = chrome.surface.frame
+    // Five points in and three down, in the pane's own coordinates: an event in a view with no
+    // window is positioned in its ancestors' coordinates.
+    let event = try #require(
+      NSEvent.mouseEvent(
+        with: .leftMouseDown, location: NSPoint(x: surface.minX + 5, y: surface.maxY - 3),
+        modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0,
+        clickCount: 1, pressure: 1))
+
+    chrome.surface.mouseDown(with: event)
+
+    let landed = try #require(reported.first)
+    // Pixels are points times the backing scale, whatever that is here, so the two are in the
+    // ratio of the offsets, and the vertical one is nowhere near a header's height.
+    #expect(landed.x > 0)
+    #expect(abs(landed.y / landed.x - 3.0 / 5.0) < 0.01, "x \(landed.x), y \(landed.y)")
   }
 
   @Test("a stale backend is admitted in the title")
@@ -177,10 +251,10 @@ struct PaneChromeTests {
     let chrome = pane()
     chrome.attach(paneID: "w1:p1")
 
-    chrome.apply(paneID: "w1:p2", state: "blocked")
+    chrome.apply(header: testHeaderRow("w1:p2", state: "blocked"))
     #expect(chrome.state == "unknown")
 
-    chrome.apply(paneID: "w1:p1", state: "blocked")
+    chrome.apply(header: testHeaderRow("w1:p1", state: "blocked"))
     #expect(chrome.state == "blocked")
   }
 
@@ -193,7 +267,7 @@ struct PaneChromeTests {
     let chrome = pane()
     chrome.attach(paneID: "w1:p1")
 
-    chrome.apply(paneID: "w1:p1", state: "working")
+    chrome.apply(header: testHeaderRow("w1:p1", state: "working"))
     chrome.apply(focused: false)
     #expect(chrome.isFocused == false)
     #expect(chrome.state == "working")
@@ -308,7 +382,7 @@ struct PaneChromeTests {
 }
 
 @MainActor
-private func pane() -> PaneChrome {
-  let frame = NSRect(x: 0, y: 0, width: 100, height: 100)
+private func pane(width: CGFloat = 100, height: CGFloat = 100) -> PaneChrome {
+  let frame = NSRect(x: 0, y: 0, width: width, height: height)
   return PaneChrome(frame: frame, surface: SurfaceView(frame: frame))
 }

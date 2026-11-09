@@ -29,8 +29,17 @@ public final class MusterWindow: NSObject {
   /// The window's rather than the list's: a folded tab takes its rows off screen and leaves its
   /// panes' headers drawing a time.
   private lazy var minute = MinuteTicker(
-    needed: { [weak self] in self?.sidebar.showsTime ?? false },
-    tick: { [weak self] in self?.sidebar.tick() })
+    needed: { [weak self] in
+      guard let self else { return false }
+      return sidebar.showsTime || headers.showsTime
+    },
+    tick: { [weak self] in
+      self?.sidebar.tick()
+      self?.headers.tick()
+    })
+
+  /// Each pane's header, kept joined to the roster and the agents.
+  private lazy var headers = PaneHeaders { [weak self] key in self?.surfaces.chrome(for: key) }
   private let shortcuts = ShortcutsPanel()
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let empty = EmptyWindowView(frame: .zero)
@@ -257,6 +266,8 @@ public final class MusterWindow: NSObject {
     // click in a window's list is that window's, whichever window had the keyboard.
     sidebar.clock = { [weak self] in self?.minute.clock() ?? Date() }
     sidebar.onShowsTimeChanged = { [weak self] in self?.minute.reconsider() }
+    headers.clock = { [weak self] in self?.minute.clock() ?? Date() }
+    headers.onShowsTimeChanged = { [weak self] in self?.minute.reconsider() }
     sidebar.onPanePicked = { [weak self] pane in
       self?.speaking { Core.focus(daemonID: pane.daemon, paneID: pane.pane) }
     }
@@ -407,6 +418,8 @@ public final class MusterWindow: NSObject {
     for leaf in contents.tree?.leaves ?? [] {
       report(tabView.chrome(for: leaf.key)?.surface.setFontSizeOffset(leaf.fontSizeOffset) ?? [])
     }
+    // A pane this view just made has no header yet; one that has its row ignores it.
+    headers.refreshAll()
 
     keyboardPane = contents.keyboard?.pane
     keyboardKey = contents.keyboard
@@ -441,10 +454,10 @@ public final class MusterWindow: NSObject {
     let rangBefore = agents[pane]?.rang ?? false
     agents[pane] = agent
     conversation.members.apply(pane: pane, agent: agent)
-    // Whether or not it is on screen. A pane parked off screen keeps its border
-    // painted, so the tab somebody switches back to is right on its first frame rather than
-    // on the agent's next transition.
-    surfaces.chrome(for: pane)?.apply(paneID: pane.pane, state: agent.state)
+    // Whether or not it is on screen. A pane parked off screen keeps its header drawn, so the
+    // tab somebody switches back to is right on its first frame rather than on the agent's next
+    // transition.
+    headers.apply(pane: pane, agent: agent)
     if Self.bellBouncesDock(
       rang: agent.rang, rangBefore: rangBefore, appActive: NSApp.isActive,
       quiet: namedPane(pane)?.quiet ?? false)
@@ -475,6 +488,7 @@ public final class MusterWindow: NSObject {
     // tabs would hold fifteen tabs' worth of bridges until it quit.
     surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+    headers.apply(roster: roster, agents: agents)
     conversation.members.apply(roster: roster)
     applyBadges()
   }
@@ -712,9 +726,7 @@ public final class MusterWindow: NSObject {
   ) {
     guard let paneID = chrome.paneID else { return }
     let daemonID = pane.daemon
-    if let agent = agents[PaneKey(daemon: daemonID, pane: paneID)] {
-      chrome.apply(paneID: paneID, state: agent.state)
-    }
+    headers.refresh(PaneKey(daemon: daemonID, pane: paneID))
     guard let linkSocketPath = pane.linkSocketPath else {
       // No link is bound for this pane yet, and a bridge the window cannot hear from is one
       // whose death nobody notices. The core binds one and republishes, and the surface is

@@ -293,7 +293,7 @@ report (`observations/herdr-0.8.0.md` section 3); so it answered for a window it
 
 A finish on a seen pane is `idle` at once; anywhere else it is `done` until somebody looks, and gaining focus and
 bringing a pane on screen both settle it. The window paints a pane it has just reported as `idle` before the daemon
-answers, so the border never contradicts somebody reading the pane for a round trip. Looking away does not un-see what
+answers, so its header never contradicts somebody reading the pane for a round trip. Looking away does not un-see what
 was already seen. A daemon that reconnects may never have heard a report, so the window takes its reports to that
 daemon back: what is on screen is reported again, and the rest read `done` until somebody looks. A report the daemon
 refuses, as it refuses every change partway through a handoff, is taken back the same way, and the pane reads `done`
@@ -303,7 +303,7 @@ that too.
 **One legend, and the window holds it.** working cyan, blocked orange, stuck pink, waiting indigo, done green, idle
 grey, and unknown a fainter grey rather than a hue of its own, which unreachable shares: neither is an answer the
 window can vouch for. The window's palette is canonical because that is where attention lives: a person reads
-borders and dots all day and reads `muster window` when something has already gone strangely, so the surface with
+headers and icons all day and reads `muster window` when something has already gone strangely, so the surface with
 the smaller audience is the one that moves. The two did disagree once, working and done inverted between them,
 and what it cost was not a wrong pixel - it was somebody learning that the colours could not be trusted, in the one
 vocabulary this product is about.
@@ -331,14 +331,17 @@ blue, the nearest of the sixteen, and blue's poor legibility matters less on a r
 and red would be loudest; but red is the full end of the context ring, kept off every state so that a nearly full
 ring never reads as an agent asking for something. The CLI spells pink magenta.
 
-**The two rings differ in kind, not only in hue.** The outer ring is the agent's state, at full weight on all four
-edges; the focus ring is thinner and sits inside it with a gap. That is not a decoration: the focus ring follows
-`controlAccentColor`, which a person chooses in System Settings and Muster cannot know, so *any* fixed state palette
-collides with somebody's accent - green with done, orange with blocked. Painting the two different colours fixes
-whichever collision you happen to have and leaves the same bug for the next person, who reports it as a different one.
-Weight and a gap read whatever the accent turns out to be. The state ring is the one that keeps its full weight,
-because it is what this product is about; the focus ring says one small thing about the window and is the one that
-gives way.
+**A pane says its state in a header, and its edge says only where the keyboard is.** Each pane has a 24 point header
+across its top - a pane under 60 points tall has none - carrying what its row carries: the chord as keycaps, the
+state's icon, the callsign and name, the state's word and how long it has held, and how full the agent's context is.
+A blocked or stuck header is tinted and has a colored left edge, as its row does. Panes stay flush, with the divider
+between them and no gaps. The only border a pane has is the focus ring, two points in the accent, and that is the
+reason the state border went: the ring follows `controlAccentColor`, which a person chooses in System Settings and
+Muster cannot know, so *any* fixed state palette collides with somebody's accent - green with done, orange with
+blocked. A state drawn on the pane's edge could only be told from focus by weight and a gap; a state drawn in a header
+is told from it by being somewhere else. The header's colors are the terminal's background and foreground moved a
+little toward each other (Fencil `chrome-colors`), so it reads as part of the terminal. It is also what a pane is
+dragged by.
 
 **Alignment is hue for hue where both surfaces paint a hue, and no further.** The ANSI sixteen have no orange, so the
 CLI spells blocked yellow - the medium's limit rather than a second opinion, and what it names is a slot, so a user

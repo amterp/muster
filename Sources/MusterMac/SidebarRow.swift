@@ -475,7 +475,7 @@ final class SidebarRowView: NSView {
   ///
   /// The core sends nothing else, and this is the shell agreeing rather than deciding: a digit
   /// drawn beside a row that no key can produce would be worse than an unlabelled row.
-  private static func pressable(_ press: Int) -> Bool {
+  static func pressable(_ press: Int) -> Bool {
     (1...9).contains(press)
   }
 
