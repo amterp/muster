@@ -203,12 +203,13 @@ public struct ChromePalette: Equatable, Sendable {
       stateText[state] = color.pushed(
         toward: foreground, until: minimumContrast, on: [background, raised, tinted])
     }
-    let text = foreground.pushed(
-      toward: foreground, until: minimumContrast, on: [background, raised])
-    let dim = text.mixed(toward: background, 0.3).pushed(
-      toward: text, until: minimumContrast, on: [background, raised])
-    let keycapFill = background.mixed(toward: text, keycapFillAmount)
+    // Body text also sits on the accent's tint, which is where a message to the person is drawn.
     let accentTint = background.mixed(toward: accent, tintAmount)
+    let text = foreground.pushed(
+      toward: foreground, until: minimumContrast, on: [background, raised, accentTint])
+    let dim = text.mixed(toward: background, 0.3).pushed(
+      toward: text, until: minimumContrast, on: [background, raised, accentTint])
+    let keycapFill = background.mixed(toward: text, keycapFillAmount)
     return Surface(
       background: background, raised: raised, text: text, dimText: dim, tint: tint,
       stateText: stateText, keycapFill: keycapFill,

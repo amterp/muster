@@ -63,6 +63,15 @@ final class PaneLookBoard: ObservableObject {
 
   init() {
     refresh()
+    // The accent is the system's, and moves without Muster's own colors having changed.
+    NotificationCenter.default.addObserver(
+      forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        ChromePalette.forgetResolved()
+        self?.refresh()
+      }
+    }
   }
 
   /// Takes the palette for the app's appearance, after the colors may have moved.

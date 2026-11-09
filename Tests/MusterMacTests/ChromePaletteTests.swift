@@ -151,6 +151,27 @@ struct ChromePaletteTests {
     }
   }
 
+  @Test("body text reads on the accent's tint too, where a message to the person is drawn")
+  func textOnTheAccentTint() {
+    let themes =
+      self.themes.map { $0.terminal } + [
+        .init(background: rgb("#101010"), foreground: rgb("#808080"))
+      ]
+    for terminal in themes {
+      for list in lists {
+        let palette = ChromePalette.make(
+          terminal: terminal, agents: list.agents, appearance: list.list)
+        for surface in [palette.list, palette.header, palette.pane] {
+          for text in [surface.text, surface.dimText] {
+            #expect(
+              text.contrast(with: surface.accentTint) >= ChromePalette.minimumContrast,
+              "\(terminal.background.hex) on \(terminal.foreground.hex)")
+          }
+        }
+      }
+    }
+  }
+
   @Test("text whose own foreground cannot be read goes to black or white instead")
   func unreadableForegroundFallsBack() {
     let murky = ChromePalette.Terminal(background: rgb("#808080"), foreground: rgb("#888888"))

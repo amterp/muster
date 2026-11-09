@@ -25,7 +25,10 @@ struct AvatarView: View {
             .font(.system(size: size * 0.5, weight: .semibold))
             .foregroundStyle(Color.white))
       if let state {
+        // Made again when the agent's color changes in the config, which a state icon would
+        // otherwise keep: it is drawn once, from the color it was made with.
         StateIconRepresentable.icon(state)
+          .id(RGB(PaneAppearance.borderColor(state: state)).hex)
           .frame(width: StateIcon.size, height: StateIcon.size)
           .scaleEffect(0.7)
           .background(Circle().fill(look.background).scaleEffect(0.8))
