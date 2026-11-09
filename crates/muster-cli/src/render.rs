@@ -1692,6 +1692,14 @@ fn daemons_text(daemons: &muster_proto::Daemons) -> String {
     }
 
     let mut lines = Vec::new();
+    if daemons.answered_without_window {
+        lines.push(
+            "No window answered, so this is every daemon recorded on this machine, dialed from \
+             here. It cannot say which of them a window is using."
+                .to_string(),
+        );
+        lines.push(String::new());
+    }
     for daemon in &daemons.daemons {
         let here = if daemon.attached_here { " · this window" } else { "" };
         lines.push(format!("{}{}{}{here}", NAME.render(), described(daemon), NAME.render_reset()));
@@ -1762,6 +1770,7 @@ fn described(daemon: &muster_proto::KnownDaemon) -> String {
 fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
     json!({
         "remembered": daemons.remembered,
+        "answered_without_window": daemons.answered_without_window,
         "daemons": daemons
             .daemons
             .iter()
@@ -1776,7 +1785,11 @@ fn daemons_json(daemons: &muster_proto::Daemons) -> Value {
                     "panes": if unknown { Value::Null } else { json!(daemon.panes) },
                     "directories": if unknown { Value::Null } else { json!(daemon.directories) },
                     "holdings_unknown": if unknown { json!(daemon.holdings_unknown) } else { Value::Null },
-                    "attached_here": daemon.attached_here,
+                    "attached_here": if daemons.answered_without_window {
+                        Value::Null
+                    } else {
+                        json!(daemon.attached_here)
+                    },
                     "version": daemon.version,
                 })
             })
@@ -1902,6 +1915,7 @@ mod tests {
         };
         let text = daemons_text(&muster_proto::Daemons {
             remembered: true,
+            answered_without_window: false,
             daemons: vec![
                 daemon("/home/a/.config/herdr/sessions/muster/herdr.sock", "herdr"),
                 daemon("/home/a/.muster/daemon/i1.sock", "answering"),
@@ -1928,6 +1942,7 @@ mod tests {
         };
         let text = daemons_text(&muster_proto::Daemons {
             remembered: true,
+            answered_without_window: false,
             daemons: vec![
                 daemon("/home/a/.muster/daemon/release.sock", "0.17.1-dev"),
                 daemon("/home/a/.muster/daemon/dev-0a1b2c3d4e5f.sock", ""),
@@ -1987,6 +2002,29 @@ mod tests {
         assert_eq!(known["panes"], 0);
         assert!(known["holdings_unknown"].is_null(), "{json}");
         assert_eq!(known["attached_here"], true);
+        assert_eq!(json["answered_without_window"], false);
+    }
+
+    /// With no window to ask, which daemons a window uses is unknown, and the output says it is
+    /// reading the records alone instead of printing a `false` that means "not this window".
+    #[test]
+    fn an_answer_without_a_window_does_not_claim_to_know_what_a_window_uses() {
+        let daemons = muster_proto::Daemons {
+            remembered: true,
+            answered_without_window: true,
+            daemons: vec![muster_proto::KnownDaemon {
+                socket: "/s/a.sock".to_string(),
+                state: "answering".to_string(),
+                panes: 1,
+                ..muster_proto::KnownDaemon::default()
+            }],
+        };
+        let text = daemons_text(&daemons);
+        assert!(text.starts_with("No window answered"), "{text}");
+        assert!(!text.contains("this window"), "{text}");
+        let json = daemons_json(&daemons);
+        assert_eq!(json["answered_without_window"], true);
+        assert!(json["daemons"][0]["attached_here"].is_null(), "{json}");
     }
 
     /// The line is there to be pasted, and a home directory can have a space in it.
@@ -1994,6 +2032,7 @@ mod tests {
     fn the_way_to_end_a_herdr_daemon_pastes_whatever_its_path() {
         let text = daemons_text(&muster_proto::Daemons {
             remembered: true,
+            answered_without_window: false,
             daemons: vec![muster_proto::KnownDaemon {
                 socket: "/Users/Jo Smith/.config/herdr/herdr.sock".to_string(),
                 state: "herdr".to_string(),

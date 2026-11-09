@@ -81,7 +81,7 @@ pub(crate) fn start(socket: &Path, error: &std::io::Error, may: MayStart) -> Res
     // a rival started belongs to whoever started it.
     if reached == launch::Reached::Started {
         records::started(
-            &home.join("state").join("daemons").to_string_lossy(),
+            &crate::environment::daemon_records(&home).to_string_lossy(),
             &socket.to_string_lossy(),
         );
     }

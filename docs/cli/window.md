@@ -544,9 +544,17 @@ that.
 - `attached_here` says whether the Muster answering is using it; every window of an app follows
   the same daemons. An app can only speak for itself, so `false` means "not this Muster" rather
   than "nothing". With two installs listening, pass `--socket` to hear one's answer; `muster docs
-  limits` says why.
+  limits` says why. It is null when `answered_without_window` is true.
 - `started` is when Muster started it. It is there to be recognised, not sorted by: age is
   exactly what picks the wrong process.
+
+**With no window answering, the CLI answers itself.** A window that has quit, hung or run out of
+memory does not stop `muster daemons`, which is when it is most useful. The CLI reads the same
+records and dials the same sockets, so it lists the same daemons, and says so first: `No window
+answered, so this is every daemon recorded on this machine`. What it cannot say is which of them a
+window is using: `answered_without_window` is true in `--json` and `attached_here` is null on every
+row. `--no-window` asks for this answer even when a window is up. When a window did not answer,
+stderr names it, as `muster window` does.
 
 **Nothing here ends a daemon, and nothing ever will.** A process holding somebody's live agent
 is the wrong thing to reap on a schedule, in a tool whose promise is that agents outlive the

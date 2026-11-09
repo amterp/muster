@@ -229,8 +229,10 @@ docs msg`), and `harness install`, `docs` and `completions`, which ask neither. 
 resizing, zooming and moving panes, and anything about tabs, is laying out a window's tabs, which
 a window composes from each machine's copy of them, a tab's parts on several machines
 included; focus, the asking chord, font, the sidebar and reload are about what a window shows;
-which window holds a tab is a window's record; and `muster daemons` marks which daemons that
-window is using.
+and which window holds a tab is a window's record.
+`muster daemons` is about the machine, so it answers with no window too: the CLI reads the records
+under `~/.muster/state/daemons/` and dials each socket itself, and then cannot say which daemons a
+window is using (`muster docs window`, "The daemons on this machine").
 `muster upgrade` needs the app, since only the app knows whether Homebrew installed it.
 
 ## Upgrading

@@ -17,12 +17,14 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use muster_core::composition::{DaemonId, Rect, ViewPane, ViewTree, places_in};
+use muster_core::daemons::{Census, Dial, Holding};
 use muster_core::harnesses;
 use muster_core::mirror::backend::{Adapter, PaneId, SplitAxis};
 use muster_core::names::{Mint, Minter};
 use muster_core::pane_address::{self, Address, Candidate};
 use muster_core::pane_text::{self, PaneText, Scope};
 use muster_core::{AgentState, Until};
+use muster_daemon_launch::records::read_directory;
 use muster_daemon_proto::{self as daemon_proto, ConnectionKind, connection, making};
 use muster_proto::{Request, Response, request, response};
 
@@ -59,6 +61,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::ClosePane(_)
                     | request::Payload::ReopenPane(_)
                     | request::Payload::ReadClosedPanes(_)
+                    | request::Payload::ReadDaemons(_)
             )
         ),
     }
@@ -76,6 +79,10 @@ pub enum Answered {
 
 /// Answers `request` from this machine's daemon.
 pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<Answered, Trouble> {
+    // About the machine rather than any one daemon, so it needs no socket of this machine's own.
+    if let Some(request::Payload::ReadDaemons(_)) = &request.payload {
+        return Ok(Answered::Response(Box::new(read_daemons(environment))));
+    }
     let socket = daemon::socket_or_refusal(environment)?;
     let mut request = request.clone();
     if let Some(payload) = request.payload.as_mut() {
@@ -277,11 +284,21 @@ fn asked_of_one_since(
 
 /// Sends one request on `stream` and waits for its answer.
 fn answered(
-    mut stream: UnixStream,
+    stream: UnixStream,
     socket: &Path,
     service: daemon_proto::request::Service,
 ) -> Result<daemon_proto::Answer, Trouble> {
-    let _ = stream.set_read_timeout(Some(PATIENCE));
+    answered_within(stream, socket, service, PATIENCE)
+}
+
+/// [`answered`], giving up on an answer that has not come within `patience`.
+fn answered_within(
+    mut stream: UnixStream,
+    socket: &Path,
+    service: daemon_proto::request::Service,
+    patience: Duration,
+) -> Result<daemon_proto::Answer, Trouble> {
+    let _ = stream.set_read_timeout(Some(patience));
     connection::send(&mut stream, &daemon_proto::Request { id: 1, service: Some(service) })
         .map_err(|error| Trouble::Unreachable(format!("{}: {error}", socket.display())))?;
     loop {
@@ -301,13 +318,21 @@ fn answered(
 }
 
 fn snapshot(socket: &Path) -> Result<daemon_proto::Snapshot, Trouble> {
-    let asked = asked(
+    snapshot_within(socket, PATIENCE)
+}
+
+/// [`snapshot`], giving up on a daemon that has not answered within `patience`.
+fn snapshot_within(socket: &Path, patience: Duration) -> Result<daemon_proto::Snapshot, Trouble> {
+    let stream = daemon::connect(socket, ConnectionKind::Control)?;
+    let asked = answered_within(
+        stream,
         socket,
         daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
             request: Some(daemon_proto::session_request::Request::Snapshot(
                 daemon_proto::session_request::Snapshot {},
             )),
         }),
+        patience,
     )?;
     match asked.detail {
         Some(daemon_proto::answer::Detail::Snapshot(snapshot)) => Ok(snapshot),
@@ -878,6 +903,85 @@ fn changed(answer: daemon_proto::Answer) -> Response {
     match answer.outcome() {
         daemon_proto::Outcome::Done | daemon_proto::Outcome::AlreadySo => ok(),
         _ => failure(answer.reason),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The daemons on this machine
+
+/// How long a daemon that answered its handshake gets to say what it holds. Short, because a
+/// census of twenty records that waited a minute on each stuck daemon would not finish.
+const CENSUS_PATIENCE: Duration = Duration::from_secs(5);
+
+/// Every daemon Muster recorded starting on this machine, dialed from here: the census a window
+/// answers `muster daemons` with, without the window's part, which is saying which of them it is
+/// attached to.
+fn read_daemons(environment: &BTreeMap<String, String>) -> Response {
+    let directory = environment::muster_home(environment)
+        .map(|home| environment::daemon_records(Path::new(&home)));
+    let daemons = directory
+        .as_deref()
+        .map(|directory| {
+            let records = read_directory(directory).into_iter().map(|(_, record)| record);
+            muster_core::daemons::census(records, &Dialed)
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(known_daemon)
+        .collect();
+    Response {
+        payload: Some(response::Payload::Daemons(muster_proto::Daemons {
+            daemons,
+            remembered: directory.is_some(),
+            answered_without_window: true,
+        })),
+    }
+}
+
+fn known_daemon(census: Census) -> muster_proto::KnownDaemon {
+    let (panes, directories, holdings_unknown) = match census.holding {
+        Holding::Known { panes, directories } => (panes, directories, String::new()),
+        Holding::Unknown(why) => (0, Vec::new(), why),
+        Holding::NotAsked => (0, Vec::new(), String::new()),
+    };
+    muster_proto::KnownDaemon {
+        socket: census.socket,
+        started: i64::try_from(census.started).unwrap_or(i64::MAX),
+        state: census.state.as_str().to_string(),
+        panes,
+        directories,
+        attached_here: false,
+        version: census.version,
+        holdings_unknown,
+    }
+}
+
+/// The census's four questions, put over this CLI's own connections.
+struct Dialed;
+
+impl Dial for Dialed {
+    fn exists(&self, socket: &str) -> bool {
+        Path::new(socket).exists()
+    }
+
+    fn listening(&self, socket: &str) -> bool {
+        UnixStream::connect(socket).is_ok()
+    }
+
+    fn welcome(&self, socket: &str) -> Option<String> {
+        daemon::connect_welcomed(Path::new(socket), ConnectionKind::Control)
+            .ok()
+            .map(|(_, welcome)| welcome.daemon_version)
+    }
+
+    fn holding(&self, socket: &str) -> Result<(u32, Vec<String>), String> {
+        let snapshot = snapshot_within(Path::new(socket), CENSUS_PATIENCE).map_err(|trouble| {
+            format!("asking what it holds failed: {}", trouble.detail().trim_end_matches('.'))
+        })?;
+        let mut directories: Vec<String> =
+            snapshot.panes.iter().map(|pane| pane.cwd.clone()).collect();
+        directories.dedup();
+        Ok((u32::try_from(snapshot.panes.len()).unwrap_or(u32::MAX), directories))
     }
 }
 

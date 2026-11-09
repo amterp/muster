@@ -482,6 +482,7 @@ fn reading(home: &Path, pid: u32, holds: &str) {
                         state: "answering".to_string(),
                         ..KnownDaemon::default()
                     }],
+                    ..Daemons::default()
                 }),
                 _ => response::Payload::Failure(Failure {
                     reason: "no window here holds that pane".to_string(),

@@ -1906,6 +1906,11 @@ message Daemons {
   // then the list above is empty for that reason rather than because the machine is clean -
   // which are opposite things to tell somebody about to end a process.
   bool remembered = 2;
+
+  // Whether no window answered, so the CLI read the records on this machine and dialed each
+  // socket itself. Then `attached_here` is false on every row for want of a window to say, and
+  // means nothing: which daemons a window is using is a window's to know.
+  bool answered_without_window = 3;
 }
 
 // One daemon Muster started, and what it is doing now.

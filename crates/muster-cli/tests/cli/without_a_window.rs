@@ -776,6 +776,96 @@ fn only_a_missing_window_is_answered_by_the_daemon() {
     assert!(refused.contains("needs a window"), "{refused}");
 }
 
+/// `muster daemons` is about the machine, so it answers with no window: the records this machine
+/// wrote are read and each socket dialed from the CLI itself. A record whose daemon is not there
+/// still reads `gone`, and what a window would add - which daemon it uses - is not claimed.
+#[test]
+fn the_daemons_on_this_machine_are_listed_with_no_window() {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let records = here.home.join("state").join("daemons").display().to_string();
+    let socket = here.daemon.socket_path().display().to_string();
+    muster_daemon_client::records::started(&records, &socket);
+    let ended = here.daemon.root().join("ended.sock").display().to_string();
+    muster_daemon_client::records::started(&records, &ended);
+
+    let text = ok(&here.muster(&["daemons"]));
+    assert!(text.starts_with("No window answered"), "{text}");
+    assert!(text.contains("1 pane(s)") && text.contains(&socket), "{text}");
+    assert!(text.contains("gone ·") && text.contains(&ended), "{text}");
+    assert!(!text.contains("this window"), "{text}");
+
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "daemons"]))).unwrap();
+    assert_eq!(listed["answered_without_window"], json!(true), "{listed}");
+    let row = |socket: &str| {
+        listed["daemons"].as_array().unwrap().iter().find(|row| row["socket"] == json!(socket))
+    };
+    let live = row(&socket).expect("the live daemon is listed");
+    assert_eq!((&live["state"], &live["panes"]), (&json!("answering"), &json!(1)), "{listed}");
+    assert!(live["attached_here"].is_null(), "{listed}");
+    assert_eq!(row(&ended).expect("the ended daemon is listed")["state"], json!("gone"));
+}
+
+/// A daemon that answers its handshake and then does not say what it holds is listed with its
+/// count unknown, in both outputs, and not as one that holds nothing.
+#[test]
+fn a_daemon_that_does_not_say_what_it_holds_is_listed_as_unknown() {
+    let here = Here::new(Daemon::start_built());
+    let relay = here.daemon.withholding_answers_where(|request| {
+        matches!(
+            &request.service,
+            Some(proto::request::Service::Session(proto::SessionRequest {
+                request: Some(session_request::Request::Snapshot(_)),
+            }))
+        )
+    });
+    let records = here.home.join("state").join("daemons").display().to_string();
+    let socket = relay.socket_path().display().to_string();
+    muster_daemon_client::records::started(&records, &socket);
+
+    let text = ok(&here.muster(&["daemons"]));
+    assert!(text.contains("holds an unknown number of panes"), "{text}");
+    assert!(!text.contains("holding nothing"), "{text}");
+
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "daemons"]))).unwrap();
+    let live = &listed["daemons"][0];
+    assert_eq!(live["state"], json!("answering"), "{listed}");
+    assert!(live["panes"].is_null(), "an unknown count must not read as zero: {listed}");
+    assert!(live["holdings_unknown"].is_string(), "{listed}");
+}
+
+/// A window that takes the connection and never answers does not stop `muster daemons`, which is
+/// when it is most wanted: it says which daemons are alive before anyone decides what to restart.
+#[test]
+fn the_daemons_are_listed_while_the_window_never_answers() {
+    let here = Here::new(Daemon::start_built());
+    let listener = std::os::unix::net::UnixListener::bind(&here.window).unwrap();
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+    let records = here.home.join("state").join("daemons").display().to_string();
+    muster_daemon_client::records::started(
+        &records,
+        &here.daemon.socket_path().display().to_string(),
+    );
+
+    let started = std::time::Instant::now();
+    let asked = here.muster(&["daemons"]);
+    let text = ok(&asked);
+
+    assert!(started.elapsed() < std::time::Duration::from_secs(20), "{:?}", started.elapsed());
+    assert!(text.contains("answering"), "{text}");
+    assert!(
+        complained(&asked).contains("muster-daemon answered instead"),
+        "{}",
+        complained(&asked)
+    );
+}
+
 /// A window that takes the connection and never answers - a devenv's forward of a laptop that has
 /// gone to sleep - is passed over for the daemon as a missing one is, and the answer says so
 /// (kan a_2ZNnSyiXR). A verb only a window carries out is refused just as soon, with nothing sent.

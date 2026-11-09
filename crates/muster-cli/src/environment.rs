@@ -8,6 +8,11 @@
 
 pub use muster_daemon_launch::environment::{PANE_NAME, WINDOW_SOCKET};
 
+/// Where Muster writes down the daemons it starts, under its home.
+pub fn daemon_records(home: &std::path::Path) -> std::path::PathBuf {
+    home.join("state").join("daemons")
+}
+
 /// Where Muster keeps everything that is its own rather than the user's.
 ///
 /// The same rule `MusterHome.swift` applies, reimplemented rather than asked for, because the

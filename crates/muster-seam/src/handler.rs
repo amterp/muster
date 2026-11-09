@@ -583,6 +583,7 @@ fn read_daemons() -> Response {
                 })
                 .collect(),
             remembered,
+            answered_without_window: false,
         })),
     }
 }
