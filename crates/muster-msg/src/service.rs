@@ -3570,6 +3570,30 @@ impl<S: Store> Messaging<S> {
         HumanWhoState { groups, linked }
     }
 
+    /// Whether the state a window was told still describes the human's groups.
+    pub fn human_who_unchanged(&self, told: &HumanWhoState) -> bool {
+        let mut groups = told.groups.iter();
+        let mut has_groups = false;
+        for (name, group) in &self.groups {
+            if !group.members.iter().any(|member| is_human(member)) {
+                continue;
+            }
+            has_groups = true;
+            let Some((old_name, old_members)) = groups.next() else { return false };
+            if name != old_name || group.members.len() != old_members.len() {
+                return false;
+            }
+            for member in &group.members {
+                let pane = self.participants.get(member).and_then(|p| p.pane.as_ref());
+                if old_members.get(member).map(Option::as_ref) != Some(pane) {
+                    return false;
+                }
+            }
+        }
+        groups.next().is_none()
+            && if has_groups { self.linked == told.linked } else { told.linked.is_empty() }
+    }
+
     /// Whether this machine's human is in `group`.
     pub fn human_is_in(&self, group: &str) -> bool {
         self.groups.get(group).is_some_and(|kept| kept.members.contains(HUMAN))

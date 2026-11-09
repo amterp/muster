@@ -217,9 +217,10 @@ impl Messages {
     /// What the request just handled changed for the human, in the order the service decided
     /// it, for [`tell_human`] once this lock is let go.
     fn take_told(&mut self) -> Told {
-        let who = self.service.human_who_state();
-        let messaging_changed = self.human_who != who;
-        self.human_who = who;
+        let messaging_changed = !self.service.human_who_unchanged(&self.human_who);
+        if messaging_changed {
+            self.human_who = self.service.human_who_state();
+        }
         let groups = self.service.human_groups();
         for group in groups.difference(&self.human_groups) {
             self.told.push(self.for_human(&self.service.human_notice(group)));
@@ -665,6 +666,14 @@ fn respond(
     panes: &Panes,
     cause: Option<&Cause>,
 ) -> Reply {
+    let needs_drain = matches!(
+        &asked,
+        Asked::Post(_)
+            | Asked::Resume(_)
+            | Asked::Join(_)
+            | Asked::Leave(_)
+            | Asked::GroupMembers(_)
+    );
     let reply = match asked {
         Asked::Post(post) => posting(shared, caller, &post, panes, cause),
         Asked::Resume(resume) => resuming(shared, caller, &resume.group, panes),
@@ -698,8 +707,10 @@ fn respond(
             reply
         }
     };
-    let told = shared.messages().take_told();
-    tell_human(shared, told);
+    if needs_drain {
+        let told = shared.messages().take_told();
+        tell_human(shared, told);
+    }
     reply
 }
 
