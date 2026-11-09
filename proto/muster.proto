@@ -2020,6 +2020,7 @@ message Window {
   // than the field.
   string install = 10;
   repeated AskingEntry asking = 11;
+  repeated MessageGroup groups = 12;
 }
 
 // One tab's arrangement, as it is drawn when the tab is on screen.
@@ -2590,6 +2591,13 @@ message MessageGroup {
   uint64 unread = 3;
   // How many of those were addressed to the human.
   uint64 to_you = 4;
+  // The other member's pane, which may be on a different daemon than this group.
+  MessageGroupPane partner_pane = 5;
+}
+
+message MessageGroupPane {
+  string daemon_id = 1;
+  string pane_id = 2;
 }
 
 // The banners Muster draws for messages to the human (mip/0009-group-conversation.md, section 5):

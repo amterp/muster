@@ -394,12 +394,16 @@ public enum SidebarModel {
     public let group: String
     public let unread: Int
     public let toYou: Int
+    public let partnerPane: PaneKey?
 
-    public init(daemon: String, group: String, unread: Int, toYou: Int) {
+    public init(
+      daemon: String, group: String, unread: Int, toYou: Int, partnerPane: PaneKey? = nil
+    ) {
       self.daemon = daemon
       self.group = group
       self.unread = unread
       self.toYou = toYou
+      self.partnerPane = partnerPane
     }
   }
 

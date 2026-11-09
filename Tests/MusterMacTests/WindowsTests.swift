@@ -10,6 +10,30 @@ import Testing
 @Suite("several windows in one process", .ownsTheSeam)
 @MainActor
 struct WindowsTests {
+  @Test("a group keeps the partner pane on another daemon")
+  func aGroupKeepsItsPartnerPane() {
+    Windows.forgetAll()
+    defer {
+      var cleared = Muster_Event()
+      cleared.groupsChanged = Muster_GroupsChanged()
+      Core.deliver(cleared)
+      Windows.forgetAll()
+    }
+    var pane = Muster_MessageGroupPane()
+    pane.daemonID = "far"
+    pane.paneID = "p2"
+    var group = Muster_MessageGroup()
+    group.daemonID = "home"
+    group.group = "g"
+    group.partnerPane = pane
+    var groups = Muster_GroupsChanged()
+    groups.groups = [group]
+    var event = Muster_Event()
+    event.groupsChanged = groups
+    Core.deliver(event)
+    #expect(Core.messageGroups.first?.partnerPane == PaneKey(daemon: "far", pane: "p2"))
+  }
+
   @Test("a request names the window in front, or the window it was sent for")
   func aRequestNamesItsWindow() {
     Windows.forgetAll()

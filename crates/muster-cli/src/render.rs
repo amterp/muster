@@ -1529,6 +1529,13 @@ fn window_json(window: &Window, others: Others) -> Value {
             "since_ms": entry.since_ms,
             "preview": entry.preview,
         })).collect::<Vec<_>>(),
+        "groups": window.groups.iter().map(|group| json!({
+            "daemon": group.daemon_id,
+            "group": group.group,
+            "unread": group.unread,
+            "to_you": group.to_you,
+            "partner_pane": group.partner_pane.as_ref().map(|pane| json!({"daemon": pane.daemon_id, "pane": pane.pane_id})),
+        })).collect::<Vec<_>>(),
         "tabs": tabs_out,
         "panes": panes,
     })
@@ -1774,6 +1781,27 @@ mod tests {
         Others, QUIET, agent_style, daemons_text, held_for, window_json, window_text, windows,
     };
     use anstyle::{AnsiColor, Color, Style};
+
+    #[test]
+    fn window_json_names_a_groups_partner_on_its_own_daemon() {
+        use muster_proto::{MessageGroup, MessageGroupPane, Window};
+        let window = Window {
+            groups: vec![MessageGroup {
+                daemon_id: "home".into(),
+                group: "g".into(),
+                partner_pane: Some(MessageGroupPane {
+                    daemon_id: "far".into(),
+                    pane_id: "p2".into(),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let json = window_json(&window, Others::All);
+        assert_eq!(json["groups"][0]["daemon"], "home");
+        assert_eq!(json["groups"][0]["partner_pane"]["daemon"], "far");
+        assert_eq!(json["groups"][0]["partner_pane"]["pane"], "p2");
+    }
 
     #[test]
     fn window_json_keeps_the_asking_order_and_identity() {

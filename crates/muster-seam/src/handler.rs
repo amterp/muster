@@ -2235,6 +2235,7 @@ fn read_window(window: WindowId, layout: bool) -> Response {
             layouts,
             grids,
             asking: now.asking,
+            groups: now.groups,
         })),
     }
 }

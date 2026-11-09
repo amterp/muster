@@ -697,7 +697,7 @@ fn refresh_members(following: &Following) {
 /// The pane a member is in, when this window follows it: on the group's daemon, or for a member
 /// on another machine, whichever attached daemon holds it. A pane's name is unique across
 /// machines.
-fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option<PaneKey> {
+pub(super) fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option<PaneKey> {
     let id = PaneId::new(pane.split('@').next().unwrap_or(pane));
     let holds = |daemon: &DaemonId| {
         session.backends.get(daemon).is_some_and(|backend| {
@@ -708,6 +708,13 @@ fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option<PaneKey> {
         return Some(PaneKey::new(&group.daemon, &id));
     }
     session.backends.keys().find(|daemon| holds(daemon)).map(|daemon| PaneKey::new(daemon, &id))
+}
+
+pub(super) fn messaging_changed() {
+    let mut session = poison::lock(&SESSION, "session");
+    for shared in session.conversations.values_mut() {
+        shared.members_moved = true;
+    }
 }
 
 /// Fetches the page of `group`'s log before the earliest entry held, for every window showing it.

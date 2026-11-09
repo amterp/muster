@@ -7,6 +7,7 @@
 
 use crate::attention::HumanNotice;
 use crate::composition::DaemonId;
+use crate::composition::PaneKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageGroup {
@@ -16,6 +17,7 @@ pub struct MessageGroup {
     pub unread: u64,
     /// How many of those were addressed to the human.
     pub to_you: u64,
+    pub partner_pane: Option<PaneKey>,
 }
 
 /// Every group held, by name and then by daemon: a list somebody scans for a name, where the
@@ -31,6 +33,7 @@ pub fn listed<'a>(
             group: group.clone(),
             unread: notice.count,
             to_you: notice.to_you,
+            partner_pane: None,
         })
         .collect();
     groups.sort_by(|a, b| (&a.group, &a.daemon).cmp(&(&b.group, &b.daemon)));

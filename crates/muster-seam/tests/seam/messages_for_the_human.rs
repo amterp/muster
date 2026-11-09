@@ -180,6 +180,196 @@ fn the_humans_groups_are_listed_with_what_waits_in_each_until_they_leave() {
     until_groups(&[]);
 }
 
+#[test]
+fn read_pair_tracks_local_members_and_partner_without_posts() {
+    pair_changes(false, false);
+}
+
+#[test]
+fn read_pair_tracks_remote_members_and_partner_without_posts() {
+    pair_changes(true, false);
+}
+
+#[test]
+fn a_remote_partner_move_is_found_after_the_peer_link_returns() {
+    pair_changes(true, true);
+}
+
+fn pair_changes(remote: bool, cut_link: bool) {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let home = Daemon::start_detecting();
+    let far = Daemon::start_detecting();
+    let mut here = home.connect();
+    let mut there = far.connect();
+    make(&mut here, create("homepane", in_new_tab("hometab")));
+    if remote {
+        make(&mut there, create("partner1", in_new_tab("partnertab1")));
+        make(&mut there, create("partner2", in_new_tab("partnertab2")));
+    } else {
+        make(&mut here, create("partner1", in_new_tab("partnertab1")));
+        make(&mut here, create("partner2", in_new_tab("partnertab2")));
+    }
+    let partner_daemon = if remote { &far } else { &home };
+    partner_daemon.run_agent("partner1");
+    partner_daemon.run_agent("partner2");
+    let mut logs = home.connect();
+    let follow = daemon_proto::session_request::Request::FollowLog(
+        daemon_proto::session_request::FollowLog { after: None },
+    );
+    expect(
+        &mut logs,
+        daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(follow),
+        }),
+        daemon_proto::Outcome::Done,
+    );
+    let mut link = if remote {
+        let mut holding = home.connect();
+        let peer = msg_request::Peer {
+            name: "far".into(),
+            socket: far.socket_path().to_string_lossy().into_owned(),
+        };
+        holding.send(msg(&named("app"), Asked::Peer(peer)));
+        let lines = logs.logged_until("msg.peer.linked", std::time::Duration::from_secs(20));
+        assert!(lines.iter().any(|line| line.line.contains("msg.peer.linked")), "link failed");
+        open_window_with(&home.muster_config_naming("home", &[("far", &far)]));
+        Some(holding)
+    } else {
+        open_window(&home);
+        None
+    };
+    join_pair(&mut here, &the_human(), "@human");
+    let partner = |pane: &str| msg_request::Caller {
+        as_name: Some("partner".into()),
+        pane: Some(pane.into()),
+        ..Default::default()
+    };
+    let control = if remote { &mut there } else { &mut here };
+    let joined = join_pair(control, &partner("partner1"), "partner");
+    if remote {
+        assert!(joined.starts_with("g@"), "remote joined a different group: {joined}");
+    }
+    let human = if remote { remote_human(control, &partner("partner1")) } else { "@human".into() };
+    let sent = posted(control, &partner("partner1"), &human, "initial message", &[]);
+    assert!(matches!(sent.answer, Some(Answer::Posted(_))), "post refused: {sent:?}");
+    until_groups(&[("g", 1, 1)]);
+    expect(
+        &mut here,
+        msg(&the_human(), Asked::Read(msg_request::Read { group: Some("g".into()) })),
+        daemon_proto::Outcome::Done,
+    );
+    until_groups(&[("g", 0, 0)]);
+    until_partner(Some((if remote { "far" } else { "local" }, "partner1")));
+
+    join_pair(&mut here, &named("third"), "third");
+    until_partner(None);
+    expect(
+        &mut here,
+        msg(&named("third"), Asked::Leave(msg_request::Leave { group: Some("g".into()) })),
+        daemon_proto::Outcome::Done,
+    );
+    until_partner(Some((if remote { "far" } else { "local" }, "partner1")));
+
+    if cut_link {
+        drop(link.take());
+        let lines = logs.logged_until("msg.peer.unlinked", std::time::Duration::from_secs(20));
+        assert!(lines.iter().any(|line| line.line.contains("msg.peer.unlinked")), "link stayed up");
+    }
+    quit_partner(partner_daemon);
+    let control = if remote { &mut there } else { &mut here };
+    expect(
+        control,
+        msg(&partner("partner2"), Asked::Read(msg_request::Read { group: Some("g".into()) })),
+        daemon_proto::Outcome::Done,
+    );
+    if cut_link {
+        until_partner(Some(("far", "partner1")));
+        let mut holding = home.connect();
+        let peer = msg_request::Peer {
+            name: "far".into(),
+            socket: far.socket_path().to_string_lossy().into_owned(),
+        };
+        holding.send(msg(&named("app"), Asked::Peer(peer)));
+        let lines = logs.logged_until("msg.peer.linked", std::time::Duration::from_secs(20));
+        assert!(
+            lines.iter().any(|line| line.line.contains("msg.peer.linked")),
+            "link did not return"
+        );
+        link = Some(holding);
+    }
+    until_partner(Some((if remote { "far" } else { "local" }, "partner2")));
+    drop(link);
+}
+
+fn quit_partner(daemon: &Daemon) {
+    daemon.type_into("partner1", "quit");
+    let mut control = daemon.connect();
+    until(
+        "the first agent to exit without closing its pane",
+        || snapshot(&mut control).panes.iter().any(|p| p.pane == "partner1" && p.agent.is_none()),
+        || "the first pane still has an agent".to_string(),
+    );
+}
+
+fn remote_human(control: &mut Control, caller: &msg_request::Caller) -> String {
+    let asked = Asked::Who(msg_request::Who { group: Some("g".into()) });
+    let answer = expect(control, msg(caller, asked), daemon_proto::Outcome::Done);
+    let Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
+        answer: Some(Answer::Members(members)),
+        ..
+    })) = answer.answer.detail
+    else {
+        panic!("Who did not return members")
+    };
+    members
+        .members
+        .iter()
+        .find(|m| m.name.starts_with("@human@"))
+        .unwrap_or_else(|| panic!("remote human missing: {:?}", members.members))
+        .name
+        .clone()
+}
+
+fn join_pair(control: &mut Control, caller: &msg_request::Caller, name: &str) -> String {
+    let join = Asked::Join(msg_request::Join {
+        name: Some(name.into()),
+        group: Some("g".into()),
+        pull: false,
+    });
+    let joined = expect(control, msg(caller, join), daemon_proto::Outcome::Done);
+    let Some(daemon_proto::answer::Detail::Msg(daemon_proto::MsgAnswer {
+        answer: Some(Answer::Joined(joined)),
+        ..
+    })) = joined.answer.detail
+    else {
+        panic!("join did not return a group")
+    };
+    joined.group.expect("join named a group")
+}
+
+fn until_partner(expected: Option<(&str, &str)>) {
+    until(
+        "the group's partner pane",
+        || {
+            GROUPS
+                .lock()
+                .expect("groups")
+                .as_ref()
+                .and_then(|groups| groups.groups.iter().find(|g| g.group == "g"))
+                .is_some_and(|group| {
+                    group
+                        .partner_pane
+                        .as_ref()
+                        .map(|pane| (pane.daemon_id.as_str(), pane.pane_id.as_str()))
+                        == expected
+                })
+        },
+        || format!("wanted {expected:?}, groups: {:?}", GROUPS.lock().expect("groups")),
+    );
+}
+
 /// The sidebar's verbs on a group row: leaving takes the group off the list and leaves it be,
 /// deleting takes it off the list and off its daemon, and a refusal comes back in the daemon's
 /// words.

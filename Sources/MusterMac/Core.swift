@@ -2100,7 +2100,9 @@ public enum Core {
     case .groupsChanged(let changed):
       messageGroups = changed.groups.map {
         SidebarModel.MessageGroup(
-          daemon: $0.daemonID, group: $0.group, unread: Int($0.unread), toYou: Int($0.toYou))
+          daemon: $0.daemonID, group: $0.group, unread: Int($0.unread), toYou: Int($0.toYou),
+          partnerPane: $0.hasPartnerPane
+            ? PaneKey(daemon: $0.partnerPane.daemonID, pane: $0.partnerPane.paneID) : nil)
       }
       info("groups.received", ["count": String(messageGroups.count)])
       for window in windows(for: event) {

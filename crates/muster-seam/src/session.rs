@@ -73,6 +73,7 @@ pub(crate) mod banners;
 pub(crate) mod conversation;
 pub(crate) mod lifecycle;
 mod other_installs;
+mod partners;
 pub(crate) mod posting;
 pub(crate) mod problems;
 mod starting_again;
@@ -240,9 +241,14 @@ fn announce_groups() {
                     .collect::<Vec<_>>()
             })
             .collect();
-        let groups = message_groups::listed(
+        let mut groups = message_groups::listed(
             held.iter().map(|(daemon, group, notice)| (daemon, group, notice)),
         );
+        for group in &mut groups {
+            let key = GroupKey { daemon: group.daemon.clone(), group: group.group.clone() };
+            group.partner_pane =
+                session.partners.get(&key).and_then(|partner| partner.pane.clone());
+        }
         if groups == session.groups_sent {
             return;
         }
@@ -250,16 +256,21 @@ fn announce_groups() {
         groups
     };
     ffi::emit(&Event::new(event::Payload::GroupsChanged(GroupsChanged {
-        groups: groups
-            .into_iter()
-            .map(|group| GroupMessage {
-                daemon_id: group.daemon.to_string(),
-                group: group.group,
-                unread: group.unread,
-                to_you: group.to_you,
-            })
-            .collect(),
+        groups: groups.into_iter().map(group_message).collect(),
     })));
+}
+
+fn group_message(group: MessageGroup) -> GroupMessage {
+    GroupMessage {
+        daemon_id: group.daemon.to_string(),
+        group: group.group,
+        unread: group.unread,
+        to_you: group.to_you,
+        partner_pane: group.partner_pane.map(|pane| crate::proto::MessageGroupPane {
+            daemon_id: pane.daemon.to_string(),
+            pane_id: pane.pane.to_string(),
+        }),
+    }
 }
 
 /// Where the first window's arrangement is written, as Startup says.
@@ -960,6 +971,7 @@ pub(crate) struct Session {
 
     /// The human's groups as the shell was last told them, so it is told only of a change.
     groups_sent: Vec<MessageGroup>,
+    partners: BTreeMap<GroupKey, partners::Partner>,
 
     /// The banners for messages to the human (`banners`), and what the shell was last told of
     /// them.
@@ -4953,6 +4965,7 @@ pub(crate) struct WindowNow {
     /// How big each pane's terminal is, when the caller asked for the layout.
     pub grids: Vec<(DaemonId, PaneId, Grid)>,
     pub asking: Vec<crate::proto::AskingEntry>,
+    pub groups: Vec<GroupMessage>,
 }
 
 /// Another window, as this one can describe it.
@@ -5169,6 +5182,7 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
         (Vec::new(), Vec::new())
     };
     let asking = session.asking_entries(&agents);
+    let groups = session.groups_sent.clone().into_iter().map(group_message).collect();
     drop(session);
     let grids = grids(channels);
     let others = others
@@ -5180,7 +5194,19 @@ pub(crate) fn window(window: WindowId, layout: bool) -> WindowNow {
         })
         .collect();
 
-    WindowNow { view, roster, numbering, agents, daemons, name, others, layouts, grids, asking }
+    WindowNow {
+        view,
+        roster,
+        numbering,
+        agents,
+        daemons,
+        name,
+        others,
+        layouts,
+        grids,
+        asking,
+        groups,
+    }
 }
 
 /// Why a pane could not be attached.
@@ -5954,6 +5980,7 @@ fn announce(daemon: &DaemonId, notice: Notice) {
             reconcile(daemon);
             publish("bootstrap");
             health(daemon, Health::Connected, "");
+            partners::dirty();
             catch_up_tab_names(daemon);
             catch_up_tab_trees(daemon);
             for change in &changes {
@@ -6198,6 +6225,7 @@ fn report(daemon: &DaemonId, change: &Change) {
         human_noticed(daemon, group);
         announce_groups();
     }
+    messaging_change(change);
 
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
@@ -6215,6 +6243,21 @@ fn report(daemon: &DaemonId, change: &Change) {
     if let Change::PaneRemoved { pane, .. } = change {
         cancel_image(daemon, pane);
         watch::publish(&Seen::Closed(PaneKey::new(daemon, pane)));
+    }
+}
+
+fn messaging_change(change: &Change) {
+    if matches!(
+        change,
+        Change::HumanNoticed(_)
+            | Change::MessagingChanged
+            | Change::PaneAdded(_)
+            | Change::PaneRemoved { .. }
+    ) {
+        partners::dirty();
+    }
+    if matches!(change, Change::MessagingChanged) {
+        conversation::messaging_changed();
     }
 }
 

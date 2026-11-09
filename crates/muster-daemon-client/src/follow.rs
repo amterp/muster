@@ -97,6 +97,7 @@ pub struct Following {
 /// One daemon's connections as they stand now, shared by everything that talks to it.
 #[derive(Debug, Default)]
 pub struct Connection {
+    old_messaging_reported: AtomicBool,
     control: Mutex<Option<Arc<Control>>>,
     /// A control connection still being set up, which is published as `control` by its own
     /// reader once its snapshot is in the mirror. Held so that letting go of the daemon can hang
@@ -459,6 +460,18 @@ fn connect(
             .map_err(|error| format!("could not open a control connection: {error}"))?,
     );
     let instance = control.welcome().instance;
+    if control.welcome().protocol.unwrap_or_default().minor
+        < muster_daemon_proto::version::MESSAGING_CHANGED
+        && !connection.old_messaging_reported.swap(true, Ordering::Relaxed)
+    {
+        log::info(
+            "messaging.old_daemon",
+            fields! {
+                "daemon" => following.daemon.clone(),
+                "impact" => "this daemon predates protocol 1.13; partner placement refreshes only on posts, notice changes, pane-set changes and reconnects",
+            },
+        );
+    }
     // Ready before the snapshot publishes, but not usable until old process input is canceled.
     *lock(&connection.connecting_input) = Some(open_input(following, connection)?);
     *lock(&connection.connecting) = Some(Arc::clone(&control));
