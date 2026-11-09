@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-quiet-helper-s",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794188632279,
+  "creator": "Alexander Terp",
+  "description": "unreachable::a_quiet_helper_asks_for_the_person_while_its_maker_cannot_be_reached timed out on 2026-11-08 in a full gate on main (3f1e0b63) at load 21.7, waiting for the helper to go quiet again once its maker answers (asking still held laptop/p2). Alone it passed twice, but in 11 s each time: over half its 20 s budget on an idle machine, so either the wait it measures is slow on purpose and the budget is tight, or the return to quiet waits on a timer. Find which before widening the budget.",
+  "id": "a_2wTPddV7n",
+  "position": "b2U",
+  "title": "🎲 A quiet helper's return to quiet can outlive its 20-second wait under load",
+  "type": "bug",
+  "updated_at_millis": 1794188632279,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794188632279}
+  ]
+}
