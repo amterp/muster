@@ -91,6 +91,36 @@ struct PaneHeaderTests {
     #expect(RGB(tint).hex == palette.tint["stuck"]?.hex)
   }
 
+  @Test("every header is painted in the palette's header color, tinted or not")
+  func everyHeaderIsPainted() throws {
+    // The text was worked out against this color. A header left unpainted lets the window's own
+    // background through, so a dark terminal under a light appearance drew light text on light.
+    for state in ["working", "idle", "done", "blocked", "stuck"] {
+      let header = header(row: testHeaderRow("w1:p1", state: state, since: 60)).header
+      let palette = ChromePalette.current(for: header.effectiveAppearance).header
+      let fill = try #require(header.fillColor, "\(state)")
+      #expect(RGB(fill).hex == palette.background.hex, "\(state)")
+      #expect(header.layer?.backgroundColor != nil, "\(state)")
+    }
+  }
+
+  @Test("the header's text keeps its contrast against the color it is painted in")
+  func theTextIsReadableOnTheFill() {
+    // The two terminals that disagree with the macOS appearance in each direction: the check
+    // that was missing, since the palette's own tests never saw what the view painted.
+    for terminal in [
+      ChromePalette.Terminal(background: RGB(hex: "#282c34")!, foreground: RGB(hex: "#ffffff")!),
+      ChromePalette.Terminal(background: RGB(hex: "#fdf6e3")!, foreground: RGB(hex: "#222222")!),
+    ] {
+      let palette = ChromePalette.make(
+        terminal: terminal, agents: [:],
+        appearance: .init(background: RGB(hex: "#ececec")!, foreground: RGB(hex: "#000000")!)
+      ).header
+      #expect(palette.text.contrast(with: palette.background) >= ChromePalette.minimumContrast)
+      #expect(palette.dimText.contrast(with: palette.background) >= ChromePalette.minimumContrast)
+    }
+  }
+
   @Test("the directory is on a named pane's header and not on an unnamed one's")
   func theDirectoryOnlyWhenNamed() {
     let named = header(

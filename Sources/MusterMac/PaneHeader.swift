@@ -96,6 +96,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
   var shownIcon: String? { icon.superlayer == nil ? nil : icon.state }
   var showsTint: Bool { tintLayer.superlayer != nil }
   private(set) var tintColor: NSColor?
+  /// What the whole header is painted in, under its tint.
+  private(set) var fillColor: NSColor?
   var showsDirectory: Bool { directory.superview != nil && !directory.isHidden }
   var showsContext: Bool { contextBar.map { $0.superview != nil && !$0.isHidden } ?? false }
   var shownName: String { name.stringValue }
@@ -143,10 +145,17 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     guard let row = shown else {
       name.stringValue = ""
       toolTip = nil
+      fillColor = nil
+      layer?.backgroundColor = nil
       needsLayout = true
       return
     }
     let palette = ChromePalette.current(for: effectiveAppearance).header
+    // Every header is painted, not only a tinted one: its text was worked out against this color
+    // (the terminal's background moved toward its foreground), and on the window's own background
+    // a light terminal under a dark appearance, or the reverse, is unreadable.
+    fillColor = palette.background.color
+    layer?.backgroundColor = palette.background.color.cgColor
     let tinted = PaneHeaderModel.isTinted(row)
     var layers: [CALayer] = []
     tintColor = nil
