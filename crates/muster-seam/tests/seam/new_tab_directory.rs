@@ -43,7 +43,8 @@ fn a_new_tab_beside_a_pane_whose_directory_is_gone_opens_at_home() {
         take_focus: true,
         ..CreateTab::default()
     })));
-    let home = daemon.root().join("home").display().to_string();
+    // Resolved, as the daemon records a directory a pane started in: /tmp is /private/tmp.
+    let home = std::fs::canonicalize(daemon.root().join("home")).unwrap().display().to_string();
     let cwds: Vec<String> = snapshot(&mut control).panes.into_iter().map(|pane| pane.cwd).collect();
     assert!(cwds.contains(&home), "the new tab's pane did not start at home, {home}: {cwds:?}");
 
