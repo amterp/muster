@@ -38,7 +38,7 @@ impl Pump for DaemonPump {
         else {
             return;
         };
-        let (mut to_client, mut from_daemon) = (client, upstream);
+        let (to_client, mut from_daemon) = (Arc::new(Mutex::new(client)), upstream);
         let ids: Arc<Mutex<HashSet<u64>>> = Arc::default();
 
         let withheld = Arc::clone(&self.withheld);
@@ -73,17 +73,36 @@ impl Pump for DaemonPump {
         let mut welcomed = false;
         while let Ok(Some(frame)) = read_frame_or_end(&mut from_daemon, LARGEST_MESSAGE) {
             if welcomed && withholds(&frame, &ids) {
-                match self.holding {
+                match &self.holding {
                     Holding::Forever => continue,
-                    Holding::For(delay) => std::thread::sleep(delay),
+                    Holding::For(delay) => {
+                        let to_client = Arc::clone(&to_client);
+                        let delay = *delay;
+                        std::thread::spawn(move || {
+                            std::thread::sleep(delay);
+                            let mut to_client = to_client.lock().expect("the relay's writer");
+                            let _ = write_frame(&mut *to_client, &frame);
+                        });
+                        continue;
+                    }
+                    Holding::Until(gate) => {
+                        let to_client = Arc::clone(&to_client);
+                        let gate = Arc::clone(gate);
+                        std::thread::spawn(move || {
+                            gate.wait();
+                            let mut to_client = to_client.lock().expect("the relay's writer");
+                            let _ = write_frame(&mut *to_client, &frame);
+                        });
+                        continue;
+                    }
                 }
             }
             welcomed = true;
-            if write_frame(&mut to_client, &frame).is_err() {
+            if write_frame(&mut *to_client.lock().expect("the relay's writer"), &frame).is_err() {
                 break;
             }
         }
-        let _ = to_client.shutdown(Shutdown::Both);
+        let _ = to_client.lock().expect("the relay's writer").shutdown(Shutdown::Both);
     }
 }
 

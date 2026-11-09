@@ -376,6 +376,16 @@ impl Daemon {
         Relay::start(&self.root, &self.socket_path, Arc::new(pump))
     }
 
+    /// Holds chosen answers until the returned gate releases them; events continue through.
+    pub fn holding_answers_where(
+        &self,
+        withheld: impl Fn(&proto::Request) -> bool + Send + Sync + 'static,
+    ) -> (Relay, Arc<crate::relay::AnswerGate>) {
+        let gate = Arc::new(crate::relay::AnswerGate::default());
+        let pump = DaemonPump::new(Arc::new(withheld), Holding::Until(Arc::clone(&gate)));
+        (Relay::start(&self.root, &self.socket_path, Arc::new(pump)), gate)
+    }
+
     /// Asks the daemon to hand every pane to `program` (the same binary when `None`), with
     /// this harness's data directory, and returns the answer. Once it is done and the daemon
     /// handing over has exited, this handle is the new daemon: `pid`, `kill` and the cleanup on

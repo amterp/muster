@@ -16,7 +16,6 @@ use muster_harness::{Control, Daemon, until};
 use prost::Message;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn a_second_message_updates_the_asking_preview_without_moving_it() {
@@ -297,7 +296,67 @@ fn a_remote_partner_resolves_when_its_late_snapshot_arrives() {
 }
 
 #[test]
+fn a_partner_with_a_callsign_also_held_on_another_machine_resolves_to_its_pane() {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let home = Daemon::start_detecting();
+    let far = Daemon::start_detecting();
+    let mut here = home.connect();
+    let mut there = far.connect();
+    make(&mut here, create("homepane", in_new_tab("hometab")));
+    let word = snapshot(&mut here)
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "homepane")
+        .and_then(|pane| pane.callsign)
+        .expect("home callsign");
+    for name in muster_core::callsigns::CALLSIGNS.iter().filter(|name| **name != word) {
+        let caller = named(name);
+        let join = Asked::Join(msg_request::Join {
+            name: Some((*name).to_string()),
+            group: Some("reserved".into()),
+            pull: false,
+        });
+        expect(&mut there, msg(&caller, join), daemon_proto::Outcome::Done);
+    }
+    make(&mut there, create("partner", in_new_tab("partnertab")));
+    let other = snapshot(&mut there)
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "partner")
+        .and_then(|pane| pane.callsign)
+        .expect("far callsign");
+    assert_eq!(other, word);
+    far.run_agent("partner");
+    let mut logs = home.connect();
+    let follow = daemon_proto::session_request::Request::FollowLog(
+        daemon_proto::session_request::FollowLog { after: None },
+    );
+    expect(
+        &mut logs,
+        daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(follow),
+        }),
+        daemon_proto::Outcome::Done,
+    );
+    let _link = link_peer(&home, &far, &mut logs);
+    open_window_with(&home.muster_config_naming("home", &[("far", &far)]));
+    join_pair(&mut here, &the_human(), "@human");
+    let caller = msg_request::Caller { pane: Some("partner".into()), ..Default::default() };
+    assert!(join_pair(&mut there, &caller, "partner").starts_with("g@"));
+    until_group_partner("g", Some(("far", "partner")));
+}
+
+#[test]
 fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
+    struct Release(Arc<muster_harness::AnswerGate>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            self.0.release_all();
+        }
+    }
+
     let _turn = muster::testing::fresh_session();
     GROUPS.lock().expect("groups").take();
     muster::ffi::muster_set_event_callback(Some(note));
@@ -322,25 +381,17 @@ fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
             daemon_proto::Outcome::Done,
         );
     }
-    let asked = Arc::new(AtomicUsize::new(0));
-    let seen = Arc::clone(&asked);
-    let relay = daemon.delaying_answers_where(
-        move |request| {
-            let Some(daemon_proto::request::Service::Msg(message)) = &request.service else {
-                return false;
-            };
-            let Some(Asked::Who(who)) = &message.request else { return false };
-            if who.group.as_deref() != Some("g") {
-                return false;
-            }
-            seen.fetch_add(1, Ordering::SeqCst);
-            true
-        },
-        std::time::Duration::from_secs(3),
-    );
+    let (relay, gate) = daemon.holding_answers_where(|request| {
+        let Some(daemon_proto::request::Service::Msg(message)) = &request.service else {
+            return false;
+        };
+        let Some(Asked::Who(who)) = &message.request else { return false };
+        who.group.as_deref() == Some("g")
+    });
+    let _release = Release(Arc::clone(&gate));
     open_window_with(&relay.muster_config());
-    until("the slow Who request", || asked.load(Ordering::SeqCst) > 0, || "no Who".into());
-    assert_eq!(asked.load(Ordering::SeqCst), 1, "the first Who is still pending");
+    until("the first Who answer to be held", || gate.held() >= 1, || "no Who".into());
+    let before = muster::testing::partner_notice_progress("local", "h");
     expect(
         &mut control,
         msg(
@@ -355,20 +406,24 @@ fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
         daemon_proto::Outcome::Done,
     );
     until(
-        "the next Who to start after the overtaken pass",
-        || asked.load(Ordering::SeqCst) >= 2,
+        "the unrelated notice to invalidate the worker while Who is held",
+        || muster::testing::partner_notice_progress("local", "h") > before,
+        || "the worker has not heard the notice".into(),
+    );
+    gate.release_one();
+    until(
+        "the next Who answer to be held after the overtaken pass",
+        || gate.held() >= 2,
         || "the worker has not started another pass".into(),
     );
-    let groups = GROUPS.lock().expect("groups");
-    let pane = groups
+    let pane = GROUPS
+        .lock()
+        .expect("groups")
         .as_ref()
         .and_then(|groups| groups.groups.iter().find(|group| group.group == "g"))
-        .and_then(|group| group.partner_pane.as_ref());
-    assert_eq!(
-        pane.map(|pane| (pane.daemon_id.as_str(), pane.pane_id.as_str())),
-        Some(("local", "p1"))
-    );
-    drop(groups);
+        .and_then(|group| group.partner_pane.as_ref())
+        .map(|pane| (pane.daemon_id.clone(), pane.pane_id.clone()));
+    assert_eq!(pane, Some(("local".into(), "p1".into())));
     drop(relay);
 }
 

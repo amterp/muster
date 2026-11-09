@@ -18,17 +18,56 @@
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 /// How long a relay keeps an answer to one of the requests it was told about.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Holding {
     /// Never delivered: a lost answer.
     Forever,
     /// Delivered this long after the daemon gave it: a late one.
     For(Duration),
+    /// Held until a test releases it, while other frames continue through the relay.
+    Until(Arc<AnswerGate>),
+}
+
+#[derive(Debug, Default)]
+pub struct AnswerGate {
+    state: Mutex<(usize, usize, bool)>,
+    changed: Condvar,
+}
+
+impl AnswerGate {
+    /// How many answers have reached the gate.
+    pub fn held(&self) -> usize {
+        self.state.lock().expect("answer gate").0
+    }
+
+    /// Lets one answer through.
+    pub fn release_one(&self) {
+        let mut state = self.state.lock().expect("answer gate");
+        state.1 += 1;
+        self.changed.notify_one();
+    }
+
+    /// Lets all current and future answers through.
+    pub fn release_all(&self) {
+        self.state.lock().expect("answer gate").2 = true;
+        self.changed.notify_all();
+    }
+
+    pub(crate) fn wait(&self) {
+        let mut state = self.state.lock().expect("answer gate");
+        state.0 += 1;
+        while state.1 == 0 && !state.2 {
+            state = self.changed.wait(state).expect("answer gate");
+        }
+        if !state.2 {
+            state.1 -= 1;
+        }
+    }
 }
 
 /// Carries one connection between a caller and the daemon, withholding what it was told to.

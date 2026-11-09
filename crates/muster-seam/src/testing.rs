@@ -71,6 +71,11 @@ pub fn partner_refresh_progress(daemon: &str) -> (u64, u64) {
     session::partner_refresh_progress(daemon)
 }
 
+/// The last group notice observed by the partner worker's invalidation path.
+pub fn partner_notice_progress(daemon: &str, group: &str) -> u64 {
+    session::partner_notice_progress(daemon, group)
+}
+
 /// How long a pane may go without its bridge dialing in before it is reported untypeable, in
 /// place of `MUSTER_TYPEABLE_DEADLINE_MS`, until the next reset. Zero switches the watch off.
 pub fn set_typeable_deadline(deadline: Duration) {

@@ -19,6 +19,7 @@ pub(super) struct Partner {
 struct Revisions {
     next: u64,
     observed: BTreeMap<DaemonId, u64>,
+    notices: BTreeMap<GroupKey, u64>,
     completed: u64,
 }
 
@@ -28,6 +29,22 @@ static START: Once = Once::new();
 
 pub(super) fn dirty() {
     wake();
+}
+
+pub(super) fn noticed(group: &GroupKey) {
+    wake();
+    let mut revisions = poison::lock(&WAKE.0, "message-partners");
+    let revision = revisions.next;
+    revisions.notices.insert(group.clone(), revision);
+}
+
+pub(super) fn notice_progress(daemon: &str, group: &str) -> u64 {
+    let revisions = poison::lock(&WAKE.0, "message-partners");
+    revisions
+        .notices
+        .get(&GroupKey { daemon: DaemonId::new(daemon), group: group.into() })
+        .copied()
+        .unwrap_or(0)
 }
 
 pub(super) fn changed_on(daemon: &DaemonId) {
@@ -100,7 +117,7 @@ fn run() {
                 ),
             }
         }
-        let generation = poison::lock(&WAKE.0, "message-partners");
+        let mut generation = poison::lock(&WAKE.0, "message-partners");
         {
             let mut session = poison::lock(&SESSION, "session");
             let current: BTreeSet<GroupKey> = session
@@ -116,6 +133,7 @@ fn run() {
                 })
                 .collect();
             session.partners.retain(|group, _| current.contains(group));
+            generation.notices.retain(|group, _| current.contains(group));
             for (group, members) in answers {
                 if !current.contains(&group) {
                     continue;

@@ -21,6 +21,6 @@ pub use daemon::{
     DAEMON_DATA, Daemon, FIRST_ANSWER_BUDGET, Replacing, built_daemon, built_linux_daemons,
 };
 pub use input::Input;
-pub use relay::{Holding, Pump, Relay};
+pub use relay::{AnswerGate, Holding, Pump, Relay};
 pub use stream::Stream;
 pub use until::{Detail, PATIENCE, until, until_file, until_some, until_within};

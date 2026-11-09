@@ -6249,10 +6249,9 @@ fn report(daemon: &DaemonId, change: &Change) {
 fn messaging_change(daemon: &DaemonId, change: &Change) {
     if matches!(change, Change::MessagingChanged) {
         partners::changed_on(daemon);
-    } else if matches!(
-        change,
-        Change::HumanNoticed(_) | Change::PaneAdded(_) | Change::PaneRemoved { .. }
-    ) {
+    } else if let Change::HumanNoticed(group) = change {
+        partners::noticed(&GroupKey { daemon: daemon.clone(), group: group.clone() });
+    } else if matches!(change, Change::PaneAdded(_) | Change::PaneRemoved { .. }) {
         partners::dirty();
     }
     if matches!(change, Change::MessagingChanged) {
@@ -6262,6 +6261,10 @@ fn messaging_change(daemon: &DaemonId, change: &Change) {
 
 pub(crate) fn partner_refresh_progress(daemon: &str) -> (u64, u64) {
     partners::progress(daemon)
+}
+
+pub(crate) fn partner_notice_progress(daemon: &str, group: &str) -> u64 {
+    partners::notice_progress(daemon, group)
 }
 
 /// A daemon refused this window's report that it saw these panes, so they are `done` here again,
