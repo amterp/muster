@@ -145,8 +145,9 @@ pub enum Verb {
         /// own words. --to defaults to who asked
         #[arg(long, value_name = "Q[:N]", requires = "group", value_parser = pick)]
         answer: Option<Pick>,
-        /// The message, or `-` to read it from stdin
-        #[arg(value_name = "TEXT", num_args = 0.., trailing_var_arg = true)]
+        /// The message, or `-` to read it from stdin. Flags may follow it; a word of the message
+        /// that looks like a flag needs `--` before the message, or --file
+        #[arg(value_name = "TEXT", num_args = 0..)]
         text: Vec<String>,
     },
 
@@ -1678,6 +1679,59 @@ fn notice_json(notice: &msg_answer::Notice) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What `muster msg post <words>` would send, or the kind of refusal clap gave.
+    fn posted(words: &[&str]) -> Result<(String, Vec<String>, bool, Option<TextSource>), String> {
+        let argv: Vec<String> =
+            ["msg", "post", "--to", "otter"].iter().chain(words).map(ToString::to_string).collect();
+        match crate::args::parse(&argv, &BTreeMap::new(), None) {
+            Ok(crate::args::Invocation { asking: crate::args::Asking::Message(sent), .. }) => {
+                match sent.request.request {
+                    Some(Asked::Post(post)) => {
+                        Ok((post.body, post.answers, post.urgent, sent.body_from))
+                    }
+                    other => Err(format!("not a post: {other:?}")),
+                }
+            }
+            Ok(_) => Err("not a message".to_string()),
+            Err(Failure::Usage(error)) => Err(format!("{:?}", error.kind())),
+            Err(Failure::Refused(refusal)) => Err(refusal),
+        }
+    }
+
+    /// Flags typed after the message are the flags they look like. They used to be swallowed as
+    /// more message text, so a question went out with no answers to tap.
+    #[test]
+    fn a_post_reads_flags_after_its_text() {
+        let (body, answers, urgent, _) =
+            posted(&["Ready?", "--option", "Yes", "--option", "No", "--urgent"]).unwrap();
+        assert_eq!(body, "Ready?");
+        assert_eq!(answers, ["Yes", "No"]);
+        assert!(urgent);
+    }
+
+    /// `--help` after the message asks for help, and a post that was never meant is not sent.
+    #[test]
+    fn help_after_a_posts_text_is_help_and_posts_nothing() {
+        assert_eq!(posted(&["Ready?", "--help"]).unwrap_err(), "DisplayHelp");
+    }
+
+    /// A flag-shaped word that is no flag of `post` is refused rather than posted as text.
+    #[test]
+    fn an_unknown_flag_after_a_posts_text_is_refused() {
+        assert_eq!(posted(&["Ready?", "--bogus"]).unwrap_err(), "UnknownArgument");
+    }
+
+    /// Words that really are the message, flags among them, go through `--`, and several
+    /// unquoted words still join.
+    #[test]
+    fn a_post_after_two_dashes_is_all_text() {
+        let (body, answers, _, _) = posted(&["--", "pass", "--help", "to", "it"]).unwrap();
+        assert_eq!(body, "pass --help to it");
+        assert!(answers.is_empty());
+        assert_eq!(posted(&["hello", "there"]).unwrap().0, "hello there");
+        assert!(matches!(posted(&["-"]).unwrap().3, Some(TextSource::Stdin)));
+    }
 
     /// A join says which groups the name is in besides the one joined, and a name taken over
     /// says so together with how to leave what came with it.

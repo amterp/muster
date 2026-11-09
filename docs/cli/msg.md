@@ -592,6 +592,12 @@ the human's alone: an agent running it is refused, since it reads its own with `
 | `open --group G` | shows the group's conversation in the window, as its notification does |
 | `close` | returns the window from its conversation to its panes, as Esc does |
 
+A post's flags may come before or after its text: `post --to otter "Ready?" --option Yes --option
+No` offers two answers, and `post --to otter "Ready?" --help` prints help and posts nothing. A word
+of the message that looks like a flag is refused (`unexpected argument '--bogus'`) rather than sent
+as text. To send one, put `--` before the message, as in `post --to otter -- "pass --help to it"`,
+or use `--file` or `-`.
+
 Every verb takes `--as NAME` and `--json`. Exit codes are the CLI's own: 1 refused, including
 by a group's policy, 3 no daemon to ask and none started, 4 no answer, so it may or may not have happened (the
 daemon hung up, or another machine never answered), 5 a wait that timed out, 6 a post that woke
