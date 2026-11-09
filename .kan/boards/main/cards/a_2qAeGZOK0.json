@@ -18,6 +18,12 @@
       "body": "Again 2026-11-02 in the 0.21.0 release's gate (load 16.5, qm --steady): timed out after 20 s, 'the window heard []'. Passed alone straight after in 0.09 s; the release's rerun went green.",
       "author": "Alexander Terp",
       "created_at_millis": 1793682800378
+    },
+    {
+      "id": "c_2wRHaj9Lr",
+      "body": "2026-11-08: surface_input::a_programs_clipboard_write_reaches_the_window timed out (window heard nothing in 20 s) in a full gate on main at load 9.6 with two worker builds beside it; passed alone three times in 0.1 s.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794183556330
     }
   ],
   "created_at_millis": 1793257332079,
@@ -27,7 +33,7 @@
   "position": "b27",
   "title": "🎲 Two seam window tests time out at 20 s when the machine's fast cores are committed",
   "type": "bug",
-  "updated_at_millis": 1793682800378,
+  "updated_at_millis": 1794183556330,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793257332079}
   ]
