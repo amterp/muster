@@ -257,6 +257,7 @@ impl Mirror {
                 };
                 if before == progress { Vec::new() } else { vec![Change::ProgressChanged(pane)] }
             }
+            BackendEvent::MessagingChanged => vec![Change::MessagingChanged],
             BackendEvent::HumanNotice { group, notice } => {
                 let before = if notice.listed() {
                     self.human.insert(group.clone(), notice.clone())

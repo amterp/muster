@@ -1574,8 +1574,12 @@ message Event {
     Presence presence = 24;
     // Since 1.9. The app showed the human something, as the app told it with Shown.
     Shown shown = 25;
+    // Since 1.13. A Who asked of this daemon may now answer differently in members or panes.
+    MessagingChanged messaging_changed = 26;
   }
 }
+
+message MessagingChanged {}
 
 // This daemon is stopping, sent once before it closes anything. Every tab and pane it closes
 // from here on is one it has written down for its next run to bring back, not one that is

@@ -101,6 +101,7 @@ pub(crate) struct Messages {
     /// The groups the human is in, as the windows were last told: one joined since is told of
     /// with what waits there, so a window lists it before anything is posted to it.
     human_groups: BTreeSet<String>,
+    human_who: muster_msg::HumanWhoState,
     /// The questions the windows were last told have their answer, in each of the human's groups.
     answered_told: BTreeMap<String, AnsweredTold>,
     /// Follows of a log waiting for its next entry, woken by anything that may have appended.
@@ -136,6 +137,7 @@ impl Messages {
         let service = Messaging::restore(files, found.saved, found.logs);
         // A window that attends this daemon is told these by its snapshot.
         let human_groups = service.human_groups();
+        let human_who = service.human_who_state();
         let joined = Arc::new(Mutex::new(service.joined()));
         Messages {
             // A wake the daemon before this one deferred and never rang is lost with it, and one
@@ -157,6 +159,7 @@ impl Messages {
             told: Vec::new(),
             tellings: 0,
             human_groups,
+            human_who,
             answered_told: BTreeMap::new(),
             follows: Vec::new(),
             telling: Vec::new(),
@@ -214,6 +217,9 @@ impl Messages {
     /// What the request just handled changed for the human, in the order the service decided
     /// it, for [`tell_human`] once this lock is let go.
     fn take_told(&mut self) -> Told {
+        let who = self.service.human_who_state();
+        let messaging_changed = self.human_who != who;
+        self.human_who = who;
         let groups = self.service.human_groups();
         for group in groups.difference(&self.human_groups) {
             self.told.push(self.for_human(&self.service.human_notice(group)));
@@ -238,7 +244,7 @@ impl Messages {
         }
         self.human_groups = groups;
         self.tellings += 1;
-        Told { order: self.tellings, notices: std::mem::take(&mut self.told) }
+        Told { order: self.tellings, notices: std::mem::take(&mut self.told), messaging_changed }
     }
 
     /// Wakes every follow of a log, each to look for entries of its own group, and tells the
@@ -659,7 +665,7 @@ fn respond(
     panes: &Panes,
     cause: Option<&Cause>,
 ) -> Reply {
-    match asked {
+    let reply = match asked {
         Asked::Post(post) => posting(shared, caller, &post, panes, cause),
         Asked::Resume(resume) => resuming(shared, caller, &resume.group, panes),
         Asked::Wait(wait) => waiting(shared, caller, &wait, hung_up, panes),
@@ -691,7 +697,10 @@ fn respond(
             peer::tell(shared, &telling);
             reply
         }
-    }
+    };
+    let told = shared.messages().take_told();
+    tell_human(shared, told);
+    reply
 }
 
 /// Deletes a group kept here (MIP-4, section 8). Its follows are woken to find it gone, the
@@ -750,14 +759,19 @@ struct AnsweredTold {
 pub(crate) struct Told {
     order: u64,
     notices: Vec<msg_answer::Notice>,
+    messaging_changed: bool,
 }
 
 /// Tells the windows attending this daemon what waits for the human now. The session is
 /// locked here and never with the messages lock held, so [`Told::order`] is what keeps two
 /// requests that raced to this point from leaving the older word standing.
 fn tell_human(shared: &Shared, told: Told) {
-    if !told.notices.is_empty() {
-        shared.lock().tell_human(told.order, told.notices);
+    if !told.notices.is_empty() || told.messaging_changed {
+        let mut session = shared.lock();
+        session.tell_human(told.order, told.notices);
+        if told.messaging_changed {
+            session.emit(proto::event::Event::MessagingChanged(proto::MessagingChanged {}));
+        }
     }
 }
 
@@ -1879,10 +1893,18 @@ fn waiting(
         if messages.handing_over {
             return refused_as("", "handing_over", HANDING_OVER);
         }
-        match messages.service.wait(caller, wait.group.as_deref(), wait.due, panes) {
-            Err(refusal) => return refused("", &refusal),
-            Ok(muster_msg::Waited::Ready(notices)) => {
+        let result = messages.service.wait(caller, wait.group.as_deref(), wait.due, panes);
+        match result {
+            Err(refusal) => {
+                let told = messages.take_told();
                 drop(messages);
+                tell_human(shared, told);
+                return refused("", &refusal);
+            }
+            Ok(muster_msg::Waited::Ready(notices)) => {
+                let told = messages.take_told();
+                drop(messages);
+                tell_human(shared, told);
                 for notice in &notices {
                     waits::heard_notice(shared, &reader, &notice.group, notice.first, notice.last);
                 }
@@ -1896,6 +1918,9 @@ fn waiting(
                 let (end, ended) = mpsc::channel();
                 messages.waits.insert(ticket, end);
                 log::debug("msg.waiting", fields! { "ticket" => ticket });
+                let told = messages.take_told();
+                drop(messages);
+                tell_human(shared, told);
                 (ticket, ended)
             }
         }

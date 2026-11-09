@@ -256,6 +256,7 @@ pub fn named(event: &proto::Event) -> String {
         E::Asking(asking) => format!("asking:{}", asking.pane),
         E::Presence(_) => "presence".to_string(),
         E::Shown(_) => "shown".to_string(),
+        E::MessagingChanged(_) => "messaging_changed".to_string(),
     }
 }
 

@@ -74,6 +74,7 @@ pub fn closed(record: proto::ClosedPane) -> ClosedPane {
 /// keeps of the human's attention, which a window works out for itself (`muster_core::attention`).
 pub fn event(event: proto::Event) -> Option<BackendEvent> {
     Some(match event.event? {
+        event::Event::MessagingChanged(_) => BackendEvent::MessagingChanged,
         event::Event::PaneOpened(opened) => BackendEvent::PaneOpened(pane(opened.pane?)),
         event::Event::PaneChanged(changed) => BackendEvent::PaneChanged(pane(changed.pane?)),
         event::Event::PaneClosed(gone) => {

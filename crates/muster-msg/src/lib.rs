@@ -31,8 +31,9 @@ pub use policy::Policy;
 pub use refusal::{Action, Refusal};
 pub use service::{
     Acked, Activity, AnsweredWait, Caller, Changed, Deleted, Draft, Forgot, GroupSummary, Holding,
-    Inbox, Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page, Paged, Participant,
-    Posted, Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited, Waiting, Wake,
+    HumanWhoState, Inbox, Joined, Left, Liveness, Member, Messaging, Notice, Operation, Page,
+    Paged, Participant, Posted, Presence, Reach, Read, Removed, Ringable, Unread, Via, Waited,
+    Waiting, Wake,
 };
 pub use store::{GroupRecord, Log, Memory, Operated, Saved, Sent, Store};
 

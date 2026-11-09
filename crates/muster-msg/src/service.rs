@@ -13,6 +13,12 @@ use crate::{
     pair_group,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HumanWhoState {
+    groups: BTreeMap<String, BTreeMap<String, Option<String>>>,
+    linked: BTreeSet<String>,
+}
+
 /// A Claude Code session's inbox socket. The socket's path is the session's process id, which
 /// the system hands out again once that process is gone, so the file's inode goes with it: a
 /// new session bound to a reused path is a different socket file, and is not taken for the old
@@ -3533,6 +3539,35 @@ impl<S: Store> Messaging<S> {
             .filter(|(_, group)| group.members.contains(HUMAN))
             .map(|(name, _)| name.clone())
             .collect()
+    }
+
+    /// Membership, local pane bindings and peer links that can change a human group's Who answer.
+    pub fn human_who_state(&self) -> HumanWhoState {
+        let groups: BTreeMap<String, BTreeMap<String, Option<String>>> = self
+            .groups
+            .iter()
+            .filter(|(_, group)| {
+                group.members.iter().any(|name| {
+                    name == HUMAN || split_machine(name).is_some_and(|(base, _)| base == HUMAN)
+                })
+            })
+            .map(|(name, group)| {
+                let members = group
+                    .members
+                    .iter()
+                    .map(|member| {
+                        let pane = self
+                            .participants
+                            .get(member)
+                            .and_then(|participant| participant.pane.clone());
+                        (member.clone(), pane)
+                    })
+                    .collect();
+                (name.clone(), members)
+            })
+            .collect();
+        let linked = if groups.is_empty() { BTreeSet::new() } else { self.linked.clone() };
+        HumanWhoState { groups, linked }
     }
 
     /// Whether this machine's human is in `group`.

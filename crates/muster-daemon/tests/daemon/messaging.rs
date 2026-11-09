@@ -450,9 +450,12 @@ fn post_to(caller: &msg_request::Caller, to: &str, body: &str) -> Service {
 
 /// What the next event says waits for the human.
 fn human_notice(window: &mut Control) -> msg_answer::Notice {
-    match window.next_event().event {
-        Some(proto::event::Event::HumanNotice(notice)) => notice,
-        other => panic!("expected what waits for the human, got {other:?}"),
+    loop {
+        match window.next_event().event {
+            Some(proto::event::Event::HumanNotice(notice)) => return notice,
+            Some(proto::event::Event::MessagingChanged(_)) => continue,
+            other => panic!("expected what waits for the human, got {other:?}"),
+        }
     }
 }
 
@@ -468,6 +471,50 @@ fn attend(window: &mut Control) -> proto::Snapshot {
         panic!("a subscription answered without a snapshot");
     };
     snapshot
+}
+
+#[test]
+fn a_named_read_that_moves_a_human_groups_member_invalidates_who_once() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p1");
+    daemon.run_agent("p2");
+    attend(&mut control);
+    join(&mut control, &the_human(), "@human", "g");
+    let caller = |pane: &str| msg_request::Caller {
+        as_name: Some("partner".into()),
+        pane: Some(pane.into()),
+        ..Default::default()
+    };
+    join(&mut control, &caller("p1"), "partner", "g");
+    daemon.type_into("p1", "quit");
+    until(
+        "the first agent to exit",
+        || {
+            snapshot(&mut control)
+                .panes
+                .iter()
+                .any(|pane| pane.pane == "p1" && pane.agent.is_none())
+        },
+        || "the first agent is still running".to_string(),
+    );
+    let changed = |asked: &muster_harness::Asked| {
+        asked
+            .events
+            .iter()
+            .filter(|event| matches!(event.event, Some(proto::event::Event::MessagingChanged(_))))
+            .count()
+    };
+    let moved = expect(&mut control, read(&caller("p2")), DONE);
+    assert_eq!(changed(&moved), 1);
+    let unchanged = expect(&mut control, read(&caller("p2")), DONE);
+    assert_eq!(changed(&unchanged), 0);
+    join(&mut control, &named("a"), "a", "elsewhere");
+    join(&mut control, &named("b"), "b", "elsewhere");
+    let unrelated = expect(&mut control, post_to(&named("a"), "b", "hello"), DONE);
+    assert_eq!(changed(&unrelated), 0);
 }
 
 /// A window attending the daemon hears of each message that wakes the human, once, and of

@@ -1672,7 +1672,7 @@ impl Session {
 
     /// Numbers an event and queues it for every subscriber. One that cannot take it has fallen
     /// too far behind to catch up from here, so it is dropped and resubscribes.
-    fn emit(&mut self, payload: Payload) {
+    pub(crate) fn emit(&mut self, payload: Payload) {
         self.tell_api(&payload);
         if !matches!(
             payload,
@@ -1683,6 +1683,7 @@ impl Session {
                 | Payload::Asking(_)
                 | Payload::Presence(_)
                 | Payload::Shown(_)
+                | Payload::MessagingChanged(_)
         ) {
             self.persister.changed();
         }

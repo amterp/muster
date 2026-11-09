@@ -11,7 +11,9 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 12 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 13 };
+
+pub const MESSAGING_CHANGED: u32 = 13;
 
 /// The first minor whose daemon ends a declared wait on a message from its named sender.
 pub const WAIT_UNTIL_MESSAGE: u32 = 11;

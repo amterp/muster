@@ -14,6 +14,7 @@ use crate::mirror::backend::{ClosedPane, Pane, PaneId, Progress, Tab, TabId};
 /// it once.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendEvent {
+    MessagingChanged,
     /// A pane exists. Its tab is whichever tree names it; the daemon names a pane in a tree only
     /// after it has opened it.
     PaneOpened(Pane),
@@ -82,6 +83,7 @@ pub struct Restored {
 /// intended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
+    MessagingChanged,
     PaneAdded(PaneId),
     /// A pane its daemon no longer holds, with what it was called as it went: its name, or its
     /// callsign.
@@ -167,6 +169,7 @@ impl Change {
     /// What kind of change this is, for a log line that has to say why the window moved.
     pub fn kind(&self) -> &'static str {
         match self {
+            Change::MessagingChanged => "messaging_changed",
             Change::PaneAdded(_) => "pane_added",
             Change::PaneRemoved { .. } => "pane_removed",
             Change::AgentStateChanged { .. } => "agent_state",
@@ -211,6 +214,7 @@ impl Change {
                 | Change::Notified { .. }
                 | Change::ProgressChanged(_)
                 | Change::HumanNoticed(_)
+                | Change::MessagingChanged
         )
     }
 

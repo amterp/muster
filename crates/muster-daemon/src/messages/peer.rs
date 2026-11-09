@@ -506,6 +506,8 @@ fn up(shared: &Arc<Shared>, link: &Arc<Link>, dialed: bool) {
     let _ = std::thread::Builder::new().name("peer-refetch".to_string()).spawn(move || {
         refold(&shared, &link);
         refetch(&shared, &link);
+        let told = shared.messages().take_told();
+        super::tell_human(&shared, told);
     });
 }
 
@@ -518,7 +520,12 @@ fn ended(shared: &Shared, link: &Arc<Link>, why: &str) {
         links.iter().any(|held| held.peer.name == link.peer.name)
     };
     if !still {
-        shared.messages().service.unlinked(&link.peer.name);
+        let told = {
+            let mut messages = shared.messages();
+            messages.service.unlinked(&link.peer.name);
+            messages.take_told()
+        };
+        super::tell_human(shared, told);
     }
     log::info("msg.peer.unlinked", fields! { "machine" => link.peer.name, "why" => why });
 }

@@ -219,6 +219,7 @@ fn describe(change: &Change) -> String {
         Change::Notified { pane, title, body } => format!("notified:{pane}:{title}:{body}"),
         Change::ProgressChanged(pane) => format!("progress:{pane}"),
         Change::HumanNoticed(group) => format!("humanNoticed:{group}"),
+        Change::MessagingChanged => "messagingChanged".to_string(),
     }
 }
 
