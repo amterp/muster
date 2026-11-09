@@ -4,12 +4,12 @@ tags = ["ui", "agent-list", "attention"]
 paths = ["crates/muster-core/src/attention.rs", "Sources/MusterMac/Sidebar.swift"]
 
 [[revisions]]
-n = 1
+id = "ekbxd7ml"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
-level = "agent"
-proposed_by = "agent"
+level = "none"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 The core's ranking of what asks for the person, `Attention::asking()`, exactly: blocked, then
@@ -23,6 +23,6 @@ mock-ups showed a blocked pane in the strip while it was on screen; under this r
 strip while the person is looking at it, whose header already says it is blocked.'''
 
   [[revisions.evidence]]
-  by = "agent"
+  by = "other"
   date = 2026-11-08
   note = "The implementation plan for the redesign, reviewed by a Codex agent (gpt-6.1-sol, xhigh) over four rounds, which raised no finding against this choice."

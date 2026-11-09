@@ -4,12 +4,12 @@ tags = ["ui", "theming", "configuration"]
 paths = ["Sources/MusterMac/PaneChrome.swift", "Sources/MusterMac/Sidebar.swift", "Sources/MusterMac/Conversation.swift", "Sources/MusterMac/Banners.swift", "docs/configuration.md"]
 
 [[revisions]]
-n = 1
+id = "ih67m962"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-nodded"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 Muster has no theme of its own. The agent list uses macOS's own colors, as it does today. The pane

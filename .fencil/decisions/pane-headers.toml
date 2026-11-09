@@ -4,12 +4,12 @@ tags = ["ui", "panes"]
 paths = ["Sources/MusterMac/PaneChrome.swift", "docs/architecture.md"]
 
 [[revisions]]
-n = 1
+id = "cf2f5et7"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-nodded"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 A header at the top of each pane: its chord, state icon, callsign, name, directory, state word and

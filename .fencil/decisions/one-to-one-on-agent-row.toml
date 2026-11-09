@@ -4,12 +4,12 @@ tags = ["ui", "agent-list", "messages"]
 paths = ["Sources/MusterMac/Sidebar.swift"]
 
 [[revisions]]
-n = 1
+id = "y4ewbnp2"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-decided"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 On that agent's row in the agent list, as an envelope with the unread count that opens the

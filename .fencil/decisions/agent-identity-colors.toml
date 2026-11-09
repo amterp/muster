@@ -4,12 +4,12 @@ tags = ["ui", "messages", "agent-list"]
 paths = ["Sources/MusterMac/Conversation.swift", "Sources/MusterMac/Banners.swift", "Sources/MusterMac/Sidebar.swift"]
 
 [[revisions]]
-n = 1
+id = "umox3ogs"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "shown"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 On its avatar in conversations and banners only. Callsigns in the agent list stay one neutral
@@ -20,17 +20,18 @@ a second state. Card a_2o5jIMI5J proposed sharing the color with the agent list'
 mock-ups showed the avatar-only version, and the owner has not ruled on the difference.'''
 
   [[revisions.evidence]]
-  by = "agent"
+  by = "other"
   date = 2026-11-08
   note = "Decision 5 on the page recommended avatar colors only. The owner's replies approved the page as a whole (\"This all looks great.\") without answering this one."
 
 [[revisions]]
-n = 2
+id = "qx9xijt9"
+base = "umox3ogs"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-nodded"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = '''
 On its avatar in conversations and banners only. Callsigns in the agent list stay one neutral

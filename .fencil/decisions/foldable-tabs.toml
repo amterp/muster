@@ -4,9 +4,9 @@ tags = ["ui", "agent-list"]
 paths = ["Sources/MusterMac/Sidebar.swift"]
 
 [[revisions]]
-n = 1
+id = "is8wglk7"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-decided"
 proposed_by = "owner"

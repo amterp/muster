@@ -4,12 +4,12 @@ tags = ["ui", "agent-list", "keyboard"]
 paths = ["Sources/MusterMac/Sidebar.swift"]
 
 [[revisions]]
-n = 1
+id = "ynxx6km6"
 date = 2026-11-08
-recorded_by = "claude-code"
+recorded_by = "other"
 discussion = "ui-redesign-2026-11"
 level = "owner-decided"
-proposed_by = "agent"
+proposed_by = "other"
 reversibility = "two-way"
 answer = "The whole chord, tab digit and pane digit, as two keycaps at full contrast on every row."
 why = '''
