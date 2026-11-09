@@ -171,7 +171,11 @@ fn second_looks<L: Line>(
                 // A Return it never took, or one pressed into a turn that started without it,
                 // can leave it unsent in the prompt, where it would hold every later wake.
                 if L::SENT_LATE {
-                    let left = doorbell::Left::line(&prompt::as_typed(&typed.line), typed.written);
+                    let left = doorbell::Left::line(
+                        &prompt::as_typed(&typed.line),
+                        typed.written,
+                        typed.presses,
+                    );
                     shared.messages().left.insert(pane.clone(), left);
                     // Nothing else may wake the doorbell for it: an idle pane announces nothing.
                     doorbell::sooner(next, Instant::now());

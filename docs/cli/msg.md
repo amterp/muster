@@ -228,7 +228,8 @@ show it yet - the ring ends, and the next post rings afresh. An agent going to w
 is not proof it took the ring, since a turn can start from a hook or a background task with the
 ring still in the prompt: so a ring that ended, or whose agent went to work, is looked at again
 once the agent is idle, and if its text is still alone in the prompt, with nothing typed into the
-pane since, Return is pressed for it a few more times, without typing it again. A pane's name
+pane since, Return is pressed for it again, without typing it again, until it has had the same few
+Returns in all. A later post that finds it still there gives it those Returns again. A pane's name
 Muster typed into the agent's session and gave up on is sent the same way. A ring whose Return
 never reached the agent is erased from a prompt holding it and nothing else once the agent has
 read what it was for, whether Return is still being pressed for it or the ring has ended: left,

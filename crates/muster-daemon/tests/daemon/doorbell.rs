@@ -1046,6 +1046,29 @@ fn a_ring_left_in_the_prompt_is_not_sent_once_something_is_typed_after_it() {
     assert_eq!(agent.heard(), ["heedless"], "a Return was pressed beside what was typed");
 }
 
+/// A ring whose every Return was swallowed is left once they run out, with no more pressed for it.
+/// Once the harness takes Returns again, the next post for the pane finds the old ring alone in
+/// the prompt and has Return pressed for it, rather than waiting on it as somebody's draft for
+/// good; then the new wake is rung.
+#[test]
+fn a_ring_whose_returns_ran_out_is_sent_when_a_later_post_finds_it() {
+    let mut agent = heedless_agent();
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+    let unsent = r#""event":"msg.ring.left_unsent""#;
+    // The ring's six Returns, five seconds apart, all swallowed, and no more after them.
+    let logged = logging.logged_until(unsent, ANSWER * 10);
+    assert!(logged.iter().any(|line| line.line.contains(unsent)), "{logged:?}");
+
+    agent.daemon.end_turn_unasked();
+    std::thread::sleep(QUIET + ANSWER);
+    assert_eq!(agent.rung(), Vec::<String>::new(), "sent with its Returns spent");
+
+    agent.post("p1", "and another");
+    let rung = agent.until_rung(2);
+    assert!(rung[0].contains("1 new"), "the old ring first: {rung:?}");
+}
+
 fn heedless_agent() -> Agent {
     let agent = Agent::in_a_pane();
     agent.type_in("heedless", true);

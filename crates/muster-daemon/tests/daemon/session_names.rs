@@ -343,10 +343,12 @@ fn a_rename_left_in_the_prompt_as_its_agent_went_to_work_is_sent_once_it_is_idle
     assert_eq!(p1.renames_heard(), ["/rename cxp"], "typed again");
 }
 
-/// A rename whose every Return was swallowed while its agent stayed idle is given up, and is still
-/// sent once the agent takes a Return again.
+/// A rename whose every Return was swallowed while its agent stayed idle is given up, and no more
+/// Returns are pressed for it. Once the agent takes Returns again, a message posted to it finds
+/// the rename alone in the prompt and has Return pressed for it, rather than waiting on it as
+/// somebody's draft for good.
 #[test]
-fn a_rename_given_up_at_an_idle_prompt_is_sent_once_its_agent_takes_returns() {
+fn a_rename_whose_returns_ran_out_is_sent_when_a_later_post_finds_it() {
     let mut p1 = Pane::named(None);
     p1.daemon.run_agent("p1");
     p1.daemon.type_into("p1", "heedless");
@@ -362,14 +364,29 @@ fn a_rename_given_up_at_an_idle_prompt_is_sent_once_its_agent_takes_returns() {
     });
     expect(&mut logging, session(follow), proto::Outcome::Done);
     p1.renamed("cxp");
-    let given_up = r#""event":"session.name.given_up""#;
-    let logged = logging.logged_until(given_up, Duration::from_mins(1));
-    assert!(logged.iter().any(|line| line.line.contains(given_up)), "{logged:?}");
+    let unsent = r#""event":"msg.line.left_unsent""#;
+    let logged = logging.logged_until(unsent, Duration::from_mins(1));
+    assert!(logged.iter().any(|line| line.line.contains(unsent)), "{logged:?}");
 
-    let heeding = std::time::Instant::now();
     p1.daemon.end_turn_unasked();
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.renames_heard(), Vec::<String>::new(), "sent with its Returns spent");
+
+    let post = proto::msg_request::Request::Post(proto::msg_request::Post {
+        body: "the brief".to_string(),
+        to: vec!["p1".to_string()],
+        ..Default::default()
+    });
+    let caller = proto::msg_request::Caller {
+        as_name: Some("integrator".to_string()),
+        ..proto::msg_request::Caller::default()
+    };
+    let service = proto::request::Service::Msg(proto::MsgRequest {
+        caller: Some(caller),
+        request: Some(post),
+    });
+    expect(&mut p1.control, service, proto::Outcome::Done);
     p1.until_renamed("/rename cxp");
-    assert!(heeding.elapsed() < Duration::from_secs(20), "sent after {:?}", heeding.elapsed());
 }
 
 /// With `name_sessions = false` a pane's name is never typed into its agent's session, while a
