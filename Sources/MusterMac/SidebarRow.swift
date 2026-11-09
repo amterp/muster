@@ -88,6 +88,9 @@ final class SidebarRowView: NSView {
   /// How full the context bar is, or nil when the row draws none.
   var shownContext: Float? { marks.compactMap { ($0 as? ContextBar)?.used }.first }
 
+  /// The color the context bar is filled with, or nil when the row draws none.
+  var contextBarFill: CGColor? { marks.compactMap { ($0 as? ContextBar)?.fillColor }.first }
+
   /// How many marks sit at the trailing edge, and whether a progress bar runs under the text.
   var shownMarks: Int { marks.count }
   var showsProgress: Bool { progressBar.superlayer != nil }
@@ -373,6 +376,8 @@ final class SidebarRowView: NSView {
         highlight.borderColor = NSColor.controlAccentColor.cgColor
       }
       icon.resolve()
+      // A bar kept across a reload of the config file keeps the colors it was made with otherwise.
+      for case let bar as ContextBar in marks { bar.resolveColors() }
     }
   }
 
@@ -770,6 +775,9 @@ final class ContextBar: NSView {
   private let track = CALayer()
   private let fill = CALayer()
 
+  /// What the fill is painted in now, for the tests.
+  var fillColor: CGColor? { fill.backgroundColor }
+
   init(used: Float) {
     self.used = min(max(used, 0), 100)
     super.init(frame: .zero)
@@ -802,7 +810,7 @@ final class ContextBar: NSView {
 
   /// Its colors move from `[colors] context_empty` toward `context_full` as it fills, as the ring
   /// they replace did, so a person who repainted the ends still has them.
-  private func resolveColors() {
+  func resolveColors() {
     effectiveAppearance.performAsCurrentDrawingAppearance {
       track.backgroundColor = NSColor.quaternaryLabelColor.cgColor
       fill.backgroundColor = SidebarModel.contextColor(used: used).cgColor

@@ -1384,6 +1384,29 @@ struct SidebarTests {
     #expect(sidebar.redrawCount == afterChange + timed, "ten seconds redrew a row")
   }
 
+  @Test("a context bar kept across a reload of the colors takes the new ones")
+  @MainActor func aReusedContextBarRepaints() throws {
+    defer { PaneAppearance.adopt(chrome: .none) }
+    PaneAppearance.adopt(chrome: .none)
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let one = pane("local", "w1:p1")
+    var busy = PaneAgent(state: "working")
+    busy.contextUsed = 100
+    sidebar.apply(roster: roster([one]), agents: [one.key: busy])
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    let before = try #require(view.contextBarFill)
+
+    PaneAppearance.adopt(
+      chrome: Core.Chrome(
+        divider: nil, focusRing: nil, agents: Core.AgentColors(), contextFull: "#00ff00"))
+    // What a reload of the colors does to a row the table hands back for reuse.
+    view.show(sidebar.rows[0])
+    let after = try #require(view.contextBarFill)
+
+    #expect(before != after, "the bar kept the color it was made with")
+  }
+
   @Test("the minute is counted only while a row shows a time")
   @MainActor func theTimerRunsOnlyWhenNeeded() {
     let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))

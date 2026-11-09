@@ -1513,8 +1513,14 @@ public final class SidebarView: NSView {
     }
     let now = clock().timeIntervalSince1970
     let next = Date(timeIntervalSince1970: (now / 60).rounded(.down) * 60 + 60)
-    let timer = Timer(fire: next, interval: 60, repeats: true) { [weak self] _ in
-      MainActor.assumeIsolated { self?.tick() }
+    // A list that has gone - its window closed - ends its own timer: the run loop holds a
+    // repeating timer for as long as it is valid, and nothing else would stop this one.
+    let timer = Timer(fire: next, interval: 60, repeats: true) { [weak self] timer in
+      guard let self else {
+        timer.invalidate()
+        return
+      }
+      MainActor.assumeIsolated { self.tick() }
     }
     timer.tolerance = 1
     RunLoop.main.add(timer, forMode: .common)
