@@ -6225,7 +6225,7 @@ fn report(daemon: &DaemonId, change: &Change) {
         human_noticed(daemon, group);
         announce_groups();
     }
-    messaging_change(change);
+    messaging_change(daemon, change);
 
     if let Some(pane) = change.announces_agent_state() {
         announce_state(&PaneKey::new(daemon, pane));
@@ -6246,19 +6246,22 @@ fn report(daemon: &DaemonId, change: &Change) {
     }
 }
 
-fn messaging_change(change: &Change) {
-    if matches!(
+fn messaging_change(daemon: &DaemonId, change: &Change) {
+    if matches!(change, Change::MessagingChanged) {
+        partners::changed_on(daemon);
+    } else if matches!(
         change,
-        Change::HumanNoticed(_)
-            | Change::MessagingChanged
-            | Change::PaneAdded(_)
-            | Change::PaneRemoved { .. }
+        Change::HumanNoticed(_) | Change::PaneAdded(_) | Change::PaneRemoved { .. }
     ) {
         partners::dirty();
     }
     if matches!(change, Change::MessagingChanged) {
         conversation::messaging_changed();
     }
+}
+
+pub(crate) fn partner_refresh_progress(daemon: &str) -> (u64, u64) {
+    partners::progress(daemon)
 }
 
 /// A daemon refused this window's report that it saw these panes, so they are `done` here again,

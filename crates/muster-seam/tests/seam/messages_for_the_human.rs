@@ -14,7 +14,9 @@ use muster_daemon_proto::msg_request::{self, Request as Asked};
 use muster_harness::requests::{create, expect, in_new_tab, make, snapshot, until_text};
 use muster_harness::{Control, Daemon, until};
 use prost::Message;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn a_second_message_updates_the_asking_preview_without_moving_it() {
@@ -195,6 +197,127 @@ fn a_remote_partner_move_is_found_after_the_peer_link_returns() {
     pair_changes(true, true);
 }
 
+#[test]
+fn a_remote_groups_replica_tracks_membership_at_its_keeper() {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let home = Daemon::start_detecting();
+    let far = Daemon::start_detecting();
+    let mut here = home.connect();
+    let mut there = far.connect();
+    make(&mut here, create("homepane", in_new_tab("hometab")));
+    make(&mut there, create("partner", in_new_tab("partnertab")));
+    far.run_agent("partner");
+    let mut logs = home.connect();
+    let follow = daemon_proto::session_request::Request::FollowLog(
+        daemon_proto::session_request::FollowLog { after: None },
+    );
+    expect(
+        &mut logs,
+        daemon_proto::request::Service::Session(daemon_proto::SessionRequest {
+            request: Some(follow),
+        }),
+        daemon_proto::Outcome::Done,
+    );
+    let _link = link_peer(&home, &far, &mut logs);
+    open_window_with(&home.muster_config_naming("home", &[("far", &far)]));
+    let partner = msg_request::Caller { pane: Some("partner".into()), ..Default::default() };
+    assert_eq!(join_pair(&mut there, &partner, "partner"), "g");
+    let group = join_pair(&mut here, &the_human(), "@human");
+    assert_eq!(group, "g@far");
+    expect(
+        &mut here,
+        msg(&the_human(), Asked::Read(msg_request::Read { group: Some(group.clone()) })),
+        daemon_proto::Outcome::Done,
+    );
+    until_group_partner(&group, Some(("far", "partner")));
+    join_pair(&mut there, &named("third"), "third");
+    until_group_partner(&group, None);
+    expect(
+        &mut there,
+        msg(&named("third"), Asked::Leave(msg_request::Leave { group: Some("g".into()) })),
+        daemon_proto::Outcome::Done,
+    );
+    until_group_partner(&group, Some(("far", "partner")));
+}
+
+#[test]
+fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    join_pair(&mut control, &the_human(), "@human");
+    let partner = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    join_pair(&mut control, &partner, "partner");
+    for (caller, name) in [(the_human(), "@human"), (named("other"), "other")] {
+        expect(
+            &mut control,
+            msg(
+                &caller,
+                Asked::Join(msg_request::Join {
+                    name: Some(name.into()),
+                    group: Some("h".into()),
+                    pull: false,
+                }),
+            ),
+            daemon_proto::Outcome::Done,
+        );
+    }
+    let asked = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&asked);
+    let relay = daemon.delaying_answers_where(
+        move |request| {
+            let Some(daemon_proto::request::Service::Msg(message)) = &request.service else {
+                return false;
+            };
+            let Some(Asked::Who(who)) = &message.request else { return false };
+            if who.group.as_deref() != Some("g") {
+                return false;
+            }
+            seen.fetch_add(1, Ordering::SeqCst);
+            true
+        },
+        std::time::Duration::from_secs(3),
+    );
+    open_window_with(&relay.muster_config());
+    until("the slow Who request", || asked.load(Ordering::SeqCst) > 0, || "no Who".into());
+    let before = muster::testing::partner_refresh_progress("local").1;
+    expect(
+        &mut control,
+        msg(
+            &named("other"),
+            Asked::Post(msg_request::Post {
+                group: Some("h".into()),
+                to: vec!["@human".into()],
+                body: "hello".into(),
+                ..Default::default()
+            }),
+        ),
+        daemon_proto::Outcome::Done,
+    );
+    until(
+        "the first partner pass to finish",
+        || muster::testing::partner_refresh_progress("local").1 > before,
+        || "the pass has not finished".into(),
+    );
+    let groups = GROUPS.lock().expect("groups");
+    let pane = groups
+        .as_ref()
+        .and_then(|groups| groups.groups.iter().find(|group| group.group == "g"))
+        .and_then(|group| group.partner_pane.as_ref());
+    assert_eq!(
+        pane.map(|pane| (pane.daemon_id.as_str(), pane.pane_id.as_str())),
+        Some(("local", "p1"))
+    );
+    drop(groups);
+    drop(relay);
+}
+
 fn pair_changes(remote: bool, cut_link: bool) {
     let _turn = muster::testing::fresh_session();
     GROUPS.lock().expect("groups").take();
@@ -226,14 +349,7 @@ fn pair_changes(remote: bool, cut_link: bool) {
         daemon_proto::Outcome::Done,
     );
     let mut link = if remote {
-        let mut holding = home.connect();
-        let peer = msg_request::Peer {
-            name: "far".into(),
-            socket: far.socket_path().to_string_lossy().into_owned(),
-        };
-        holding.send(msg(&named("app"), Asked::Peer(peer)));
-        let lines = logs.logged_until("msg.peer.linked", std::time::Duration::from_secs(20));
-        assert!(lines.iter().any(|line| line.line.contains("msg.peer.linked")), "link failed");
+        let holding = link_peer(&home, &far, &mut logs);
         open_window_with(&home.muster_config_naming("home", &[("far", &far)]));
         Some(holding)
     } else {
@@ -278,6 +394,7 @@ fn pair_changes(remote: bool, cut_link: bool) {
         assert!(lines.iter().any(|line| line.line.contains("msg.peer.unlinked")), "link stayed up");
     }
     quit_partner(partner_daemon);
+    let before_move = muster::testing::partner_refresh_progress("far").0;
     let control = if remote { &mut there } else { &mut here };
     expect(
         control,
@@ -285,22 +402,42 @@ fn pair_changes(remote: bool, cut_link: bool) {
         daemon_proto::Outcome::Done,
     );
     if cut_link {
-        until_partner(Some(("far", "partner1")));
-        let mut holding = home.connect();
-        let peer = msg_request::Peer {
-            name: "far".into(),
-            socket: far.socket_path().to_string_lossy().into_owned(),
-        };
-        holding.send(msg(&named("app"), Asked::Peer(peer)));
-        let lines = logs.logged_until("msg.peer.linked", std::time::Duration::from_secs(20));
-        assert!(
-            lines.iter().any(|line| line.line.contains("msg.peer.linked")),
-            "link did not return"
+        until(
+            "the far invalidation to be followed by a partner refresh while the link is down",
+            || {
+                let (observed, completed) = muster::testing::partner_refresh_progress("far");
+                observed > before_move && completed >= observed
+            },
+            || format!("refresh: {:?}", muster::testing::partner_refresh_progress("far")),
         );
-        link = Some(holding);
+        until_partner(Some(("far", "partner1")));
+        link = Some(link_peer(&home, &far, &mut logs));
     }
     until_partner(Some((if remote { "far" } else { "local" }, "partner2")));
+    close_partner(partner_daemon);
+    until_partner(None);
     drop(link);
+}
+
+fn close_partner(daemon: &Daemon) {
+    let mut control = daemon.connect();
+    expect(
+        &mut control,
+        muster_harness::requests::close_request("partner2"),
+        daemon_proto::Outcome::Done,
+    );
+}
+
+fn link_peer(home: &Daemon, far: &Daemon, logs: &mut Control) -> Control {
+    let mut holding = home.connect();
+    let peer = msg_request::Peer {
+        name: "far".into(),
+        socket: far.socket_path().to_string_lossy().into_owned(),
+    };
+    holding.send(msg(&named("app"), Asked::Peer(peer)));
+    let lines = logs.logged_until("msg.peer.linked", std::time::Duration::from_secs(20));
+    assert!(lines.iter().any(|line| line.line.contains("msg.peer.linked")), "link failed");
+    holding
 }
 
 fn quit_partner(daemon: &Daemon) {
@@ -350,6 +487,10 @@ fn join_pair(control: &mut Control, caller: &msg_request::Caller, name: &str) ->
 }
 
 fn until_partner(expected: Option<(&str, &str)>) {
+    until_group_partner("g", expected);
+}
+
+fn until_group_partner(name: &str, expected: Option<(&str, &str)>) {
     until(
         "the group's partner pane",
         || {
@@ -357,7 +498,7 @@ fn until_partner(expected: Option<(&str, &str)>) {
                 .lock()
                 .expect("groups")
                 .as_ref()
-                .and_then(|groups| groups.groups.iter().find(|g| g.group == "g"))
+                .and_then(|groups| groups.groups.iter().find(|g| g.group == name))
                 .is_some_and(|group| {
                     group
                         .partner_pane

@@ -271,6 +271,52 @@ fn a_tab_nobody_asked_for_joins_the_window_in_front() {
     assert!(!listed("window-2").contains(&"t-outside-2".to_string()), "both windows took the tab");
 }
 
+#[test]
+fn a_conversations_partner_stays_the_same_when_its_tab_moves() {
+    use crate::group_messages::{in_pane, msg, the_human};
+    use daemon_proto::msg_request::{self, Request as Asked};
+    use muster_harness::requests::expect;
+
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_detecting();
+    let (first, _) = two_windows(&daemon);
+    let pane = keyboard_in("window-1").expect("the first window's pane");
+    daemon.run_agent(&pane);
+    let mut control = daemon.connect();
+    for (caller, name) in [(the_human(), "@human"), (in_pane(&pane), "partner")] {
+        let join = Asked::Join(msg_request::Join {
+            name: Some(name.into()),
+            group: Some("g".into()),
+            pull: false,
+        });
+        expect(&mut control, msg(&caller, join), daemon_proto::Outcome::Done);
+    }
+    let group =
+        |window: &str| read_window(window).groups.into_iter().find(|group| group.group == "g");
+    until(
+        "both windows to see the partner",
+        || {
+            ["window-1", "window-2"].iter().all(|window| {
+                group(window).is_some_and(|group| {
+                    group.unread == 0
+                        && group.partner_pane.is_some_and(|partner| partner.pane_id == pane)
+                })
+            })
+        },
+        || format!("groups: {:?}, {:?}", group("window-1"), group("window-2")),
+    );
+    let before = group("window-1");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab { tab_id: first.clone(), window: "window-2".into() }),
+    )));
+    assert!(!listed("window-1").contains(&first));
+    assert!(listed("window-2").contains(&first));
+    assert_eq!(group("window-1"), before);
+    assert_eq!(group("window-2"), before);
+}
+
 /// Moving a tab from one window to another in the same process moves it at once, with nothing
 /// waiting on the record's file to be read back.
 #[test]

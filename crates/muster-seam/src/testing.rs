@@ -66,6 +66,11 @@ pub fn set_startup_grace(grace: Duration) {
     session::attaching::set_startup_grace(grace);
 }
 
+/// The last messaging invalidation observed from this daemon, and the last partner pass finished.
+pub fn partner_refresh_progress(daemon: &str) -> (u64, u64) {
+    session::partner_refresh_progress(daemon)
+}
+
 /// How long a pane may go without its bridge dialing in before it is reported untypeable, in
 /// place of `MUSTER_TYPEABLE_DEADLINE_MS`, until the next reset. Zero switches the watch off.
 pub fn set_typeable_deadline(deadline: Duration) {
