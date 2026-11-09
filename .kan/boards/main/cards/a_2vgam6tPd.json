@@ -24,6 +24,12 @@
       "body": "Another instance, 2026-11-08 (Mac, a parallel-work round in another repo): the integrator's idle Claude Code pane had a wake for one group typed into its prompt at 10:17 and never submitted; every later wake to it was held (\"its prompt holds something typed and not sent\") for 20+ minutes, until a worker pressed Enter in that pane, which submitted the stuck wake and the integrator resumed.",
       "author": "Alexander Terp",
       "created_at_millis": 1794156087085
+    },
+    {
+      "id": "c_2wRXwf1w6",
+      "body": "Instance 2026-11-08 18:19-18:29, Mac, Claude Code 2.1.319: worker plum declared a wait for its Codex reviewer (elder) and ended its turn; a Heads up notice covered its prompt. elder posted its review at about 18:19, then cleared plum's notice itself with `pane send --key 0` and one `--key ctrl+c`. Muster then typed the held wake into plum's prompt but did not submit it, so plum sat 'waiting' for 10 minutes with '[muster] elder+plum: 1 new (#5) ...' unsent in its prompt; `msg who` said 'a wake for it is held because its prompt holds something typed and not sent', which was Muster's own wake. One Return from the integrator submitted it. The ring delivered right after a notice is cleared seems to be the one that is left unsent (see also a_2wLq4e7rc).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794184184979
     }
   ],
   "created_at_millis": 1794072279667,
@@ -37,7 +43,7 @@
   ],
   "title": "Wake notices can stay unsent in the prompt of a waiting Claude Code pane",
   "type": "bug",
-  "updated_at_millis": 1794156087085,
+  "updated_at_millis": 1794184184979,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794072279667}
   ]
