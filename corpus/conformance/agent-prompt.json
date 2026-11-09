@@ -568,8 +568,8 @@
       }
     },
     {
-      "name": "claude 2.1.301: a Heads up notice holds typing above an idle prompt",
-      "why": "The screen is the exact scrubbed 2.1.301 pane read in corpus/claude-code-2.1.301/tip-box.txt. Later owner sightings on 2026-11-01 and 2026-11-02 establish that this notice can intercept input: 0 then one Ctrl+C clears it. Geometry alone did not establish that Return reaches the prompt, so hold typing until it is dismissed.",
+      "name": "claude 2.1.301: a Heads up notice leaves the idle prompt under it empty",
+      "why": "The screen is the exact scrubbed 2.1.301 pane read in corpus/claude-code-2.1.301/tip-box.txt. The notice is drawn between the done line and the prompt box and covers no part of the prompt, which a person can still type into while it shows. The owner chose to ring and compact under it rather than hold every wake until somebody dismisses it; whether it can swallow a Return was never recorded, and a ring left unsent has Return pressed again.",
       "given": {
         "agent": "claude",
         "progress": "",
@@ -577,7 +577,7 @@
         "title": "✳ Claude Code"
       },
       "expect": {
-        "atPrompt": false
+        "atPrompt": true
       }
     },
     {
