@@ -94,6 +94,13 @@ final class NeedsYouStripView: NSView {
     needsLayout = true
   }
 
+  /// Paints every card and the header again from the colors now in force. The cards are compared
+  /// by what they say, and a saved config file changes colors without changing a word.
+  func recolor() {
+    for (view, card) in zip(cardViews, cards) { view.show(card) }
+    header.show(cards: cards, folded: isFolded)
+  }
+
   private func picked(_ card: NeedsYouModel.Card) {
     switch card.subject {
     case .pane(let key): onPanePicked?(key)
@@ -303,6 +310,8 @@ final class NeedsYouCardView: NSView {
   var shownDetail: String? { detail.superview == nil ? nil : detail.stringValue }
   var shownKeys: [Int] { keys.map(\.value) }
   var showsTint: Bool { card?.isTinted == true }
+  /// What the card's edge is painted in, for a test.
+  private(set) var edgeColor: NSColor?
 
   static let padding: CGFloat = 14
   static let textLeft: CGFloat = 34
@@ -358,6 +367,7 @@ final class NeedsYouCardView: NSView {
     let fill = card.isTinted ? palette.tint[card.state] ?? palette.raised : palette.raised
     background.backgroundColor = fill.color.cgColor
     edge.backgroundColor = edgeColor.cgColor
+    self.edgeColor = edgeColor
 
     title.stringValue = card.title
     title.font =

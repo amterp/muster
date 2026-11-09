@@ -1587,6 +1587,24 @@ struct SidebarTests {
     #expect(!(hit(NSPoint(x: control.maxX + 60, y: control.midY)) is FoldControl))
   }
 
+  @Test("widening a crowded caption until every icon fits takes its count away")
+  @MainActor func wideningDropsTheCount() throws {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 150, height: 400))
+    let window = foldedWindow(Array(repeating: "idle", count: 9))
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    view.frame.size.width = 150
+    view.layoutSubtreeIfNeeded()
+    #expect(view.foldedMore != nil)
+
+    view.frame.size.width = 400
+    view.needsLayout = true
+    view.layoutSubtreeIfNeeded()
+    #expect(view.shownFoldIcons.count == 9)
+    #expect(view.foldedMore == nil, "the old count stayed beside a full row of icons")
+  }
+
   @Test("a folded caption with more panes than room keeps the urgent icons and counts the rest")
   @MainActor func aCrowdedCaptionCountsTheRest() throws {
     let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 150, height: 400))

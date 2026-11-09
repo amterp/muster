@@ -1503,6 +1503,7 @@ public final class SidebarView: NSView {
   /// every agent transition would correctly decide there was nothing to do.
   public func reloadColors() {
     table.reloadData()
+    strip.recolor()
   }
 
   /// Redraws the rows that would come out different, and only those.

@@ -733,6 +733,7 @@ extension SidebarRowView {
       moreWidth = ceil(foldMore.fittingSize.width) + 4
     }
     for (index, icon) in foldIcons.enumerated() { icon.isHidden = !fit.shown.contains(index) }
+    if fit.more == 0 { foldMore.removeFromSuperview() }
     if fit.more > 0 {
       if foldMore.superview == nil { addSubview(foldMore) }
       foldMore.isHidden = false

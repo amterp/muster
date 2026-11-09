@@ -297,6 +297,24 @@ struct NeedsYouTests {
     #expect(list.needsYou.frame.height > NeedsYouStripView.headerHeight)
   }
 
+  @Test("a saved change of colors repaints the cards, though nothing they say has changed")
+  func colorsReachTheStrip() throws {
+    defer { PaneAppearance.adopt(chrome: .none) }
+    PaneAppearance.adopt(chrome: .none)
+    let list = sidebar(
+      entries: [entry("blocked", pane: "w1:p1")], roster: roster([p1]), agents: agents)
+    let before = try #require(list.needsYou.shownCards.first?.edgeColor)
+
+    PaneAppearance.adopt(
+      chrome: Core.Chrome(
+        divider: nil, focusRing: nil, agents: Core.AgentColors(blocked: "#00ff00")))
+    list.reloadColors()
+
+    let after = try #require(list.needsYou.shownCards.first?.edgeColor)
+    #expect(before != after, "the card kept the color it was drawn with")
+    #expect(after == NSColor(hex: "#00ff00"))
+  }
+
   @Test("a time is on the clock while a card shows one, even if no row does")
   func theStripKeepsTheMinute() {
     let idle = [p3.key: agent("idle")]
