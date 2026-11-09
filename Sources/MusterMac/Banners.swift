@@ -368,19 +368,49 @@ extension BannerAuthor {
   }
 }
 
-/// What a window knows of its banners' authors, which changes when its agents' states do: the
-/// stack redraws when a lookup result has.
+/// What a banner's header says it is from and in, which depends on whether the conversation is
+/// one with a single agent (`OneToOne.name`).
+enum BannerCaption {
+  /// The bold name, and the words after it when there are any.
+  ///
+  /// A one-to-one conversation is named after its agent rather than as `human+otter`: a message
+  /// from that agent needs nothing after its name, one from somebody else (Muster) says whose
+  /// conversation it is, and a banner that could not fetch its message names the agent.
+  static func make(author: String, conversation: String?, group: String) -> (
+    title: String, suffix: String?
+  ) {
+    guard let conversation else {
+      return author.isEmpty ? (group, nil) : (author, "in \(group)")
+    }
+    if author.isEmpty { return (conversation, nil) }
+    let theAgent = BannerAuthor.name(in: author) == conversation
+    return (author, theAgent ? nil : "in \(conversation)")
+  }
+}
+
+/// What a window knows of its banners' authors and conversations, which changes when its agents'
+/// states and panes do: the stack redraws when a lookup result has.
 @MainActor
 final class BannerAuthors: ObservableObject {
   @Published private(set) var revision = 0
   private var held: [String: BannerAuthor?] = [:]
+  private var conversations: [String: String?] = [:]
 
-  /// Looks each banner's author up again, and says so to the stack when any answer moved.
-  func refresh(banners: [Muster_Banner], identify: (String) -> BannerAuthor?) {
+  /// Looks each banner's author and conversation up again, and says so to the stack when any
+  /// answer moved.
+  func refresh(
+    banners: [Muster_Banner], identify: (String) -> BannerAuthor?,
+    conversation: (String, String) -> String? = { _, _ in nil }
+  ) {
     let fresh = Dictionary(
       banners.map { ($0.author, identify($0.author)) }, uniquingKeysWith: { first, _ in first })
-    guard fresh != held else { return }
+    let named = Dictionary(
+      banners.map {
+        (BannerBoard.key(daemon: $0.daemonID, group: $0.group), conversation($0.daemonID, $0.group))
+      }, uniquingKeysWith: { first, _ in first })
+    guard fresh != held || named != conversations else { return }
     held = fresh
+    conversations = named
     revision += 1
   }
 }
@@ -390,6 +420,8 @@ struct BannerStackView: View {
   @ObservedObject var board: BannerBoard
   /// Finds an author by callsign among this window's panes.
   let identify: (String) -> BannerAuthor?
+  /// What the agent is called when the conversation a banner is in is one with a single agent.
+  let conversation: (String, String) -> String?
   @ObservedObject var authors: BannerAuthors
   @State private var expanded = false
   /// Gives the keyboard back to the pane it came from.
@@ -406,6 +438,7 @@ struct BannerStackView: View {
       ForEach(layout.full, id: \.identity) { banner in
         BannerCard(
           banner: banner, board: board, author: identify(banner.author),
+          conversation: conversation(banner.daemonID, banner.group),
           onLeave: onLeave, endComposition: endComposition
         )
         .environment(
@@ -473,6 +506,8 @@ struct BannerCard: View {
   @ObservedObject var board: BannerBoard
   /// The author's pane in this window, when the callsign names one.
   var author: BannerAuthor?
+  /// The agent's name when this banner is in a conversation with that one agent.
+  var conversation: String?
   let onLeave: () -> Void
   let endComposition: () -> Bool
   @FocusState private var focus: BannerFocus?
@@ -498,7 +533,11 @@ struct BannerCard: View {
     .shadow(radius: 4)
   }
 
-  private var shownAuthor: String { banner.author.isEmpty ? banner.group : banner.author }
+  private var caption: (title: String, suffix: String?) {
+    BannerCaption.make(author: banner.author, conversation: conversation, group: banner.group)
+  }
+
+  private var shownAuthor: String { caption.title }
 
   private var content: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -541,8 +580,8 @@ struct BannerCard: View {
     HStack(spacing: 6) {
       // Who wrote it, then which conversation: "linen in human+linen".
       Text(shownAuthor).bold()
-      if !banner.author.isEmpty {
-        Text("in \(banner.group)").foregroundStyle(look.dimText).lineLimit(1)
+      if let suffix = caption.suffix {
+        Text(suffix).foregroundStyle(look.dimText).lineLimit(1)
       }
       TagView(text: "To you", foreground: look.accent, fill: look.raised)
       if banner.urgent {
@@ -730,7 +769,8 @@ public final class BannerHost {
   private(set) lazy var hosting: NSHostingView<BannerStackView> = {
     let view = NSHostingView(
       rootView: BannerStackView(
-        board: board, identify: { [weak self] in self?.identify($0) }, authors: authors,
+        board: board, identify: { [weak self] in self?.identify($0) },
+        conversation: { [weak self] in self?.conversationName($0, $1) }, authors: authors,
         onLeave: { [weak self] in self?.onLeave?() },
         endComposition: { [weak self] in self?.endComposition() ?? false },
         onLink: { [weak self] url, daemon, group in self?.onLink?(url, daemon, group) }))
@@ -748,9 +788,15 @@ public final class BannerHost {
     didSet { refreshAuthors() }
   }
 
-  /// Looks the banners' authors up again after this window's agents or panes changed.
+  /// Names the agent a group is a conversation with, when this window has its pane.
+  var conversationName: (String, String) -> String? = { _, _ in nil } {
+    didSet { refreshAuthors() }
+  }
+
+  /// Looks the banners' authors and conversations up again after this window's agents, panes or
+  /// groups changed.
   func refreshAuthors() {
-    authors.refresh(banners: board.banners, identify: identify)
+    authors.refresh(banners: board.banners, identify: identify, conversation: conversationName)
   }
   let authors = BannerAuthors()
 

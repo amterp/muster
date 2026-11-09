@@ -250,6 +250,10 @@ public final class MusterWindow: NSObject {
       guard let self else { return nil }
       return BannerAuthor.find(callsign: callsign, roster: roster, agents: agents)
     }
+    banners.conversationName = { [weak self] daemon, group in
+      guard let self else { return nil }
+      return OneToOne.name(daemon: daemon, group: group, groups: sidebar.groups, roster: roster)
+    }
     banners.onLeave = { [weak self] in
       guard let self, let surface = keyboardChrome()?.surface else { return }
       window.makeFirstResponder(surface)
@@ -842,6 +846,7 @@ public final class MusterWindow: NSObject {
   public func apply(groups: [SidebarModel.MessageGroup]) {
     sidebar.groups = groups
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
+    banners.refreshAuthors()
   }
 
   public func apply(asking: [AskingEntry]) {

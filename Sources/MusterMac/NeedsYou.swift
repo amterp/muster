@@ -58,7 +58,11 @@ public enum NeedsYouModel {
         let group = groups.first { $0.daemon == entry.daemon && $0.group == entry.group }
         return Card(
           subject: .group(daemon: entry.daemon, group: entry.group), alert: entry.alert,
-          state: "", title: entry.group, word: groupWord(group), detail: entry.preview, keys: [],
+          state: "",
+          title: OneToOne.name(
+            daemon: entry.daemon, group: entry.group, groups: groups, roster: roster)
+            ?? entry.group,
+          word: groupWord(group), detail: entry.preview, keys: [],
           isTimed: false)
       }
       let key = PaneKey(daemon: entry.daemon, pane: entry.pane)
