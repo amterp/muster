@@ -524,7 +524,7 @@ final class SidebarRowView: NSView {
   ///
   /// The core sends nothing else, and this is the shell agreeing rather than deciding: a digit
   /// drawn beside a row that no key can produce would be worse than an unlabelled row.
-  static func pressable(_ press: Int) -> Bool {
+  nonisolated static func pressable(_ press: Int) -> Bool {
     (1...9).contains(press)
   }
 
@@ -865,7 +865,11 @@ final class MachineTag: NSView {
 final class CountBadge: NSView {
   private let label = NSTextField(labelWithString: "")
 
+  /// The number it shows.
+  let count: Int
+
   init(count: Int, saying: String) {
+    self.count = count
     super.init(frame: .zero)
     wantsLayer = true
     layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor

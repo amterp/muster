@@ -293,6 +293,9 @@ public final class MusterWindow: NSObject {
     sidebar.onHiddenToggled = { [weak self] collapsed in
       self?.speaking { Core.setHiddenCollapsed(collapsed) }
     }
+    sidebar.onNeedsYouToggled = { [weak self] folded in
+      self?.speaking { Core.setNeedsYouFolded(folded) }
+    }
     // The core keeps each tab's fold and sends it back on the roster; this only asks.
     sidebar.onTabFolded = { [weak self] tab, folded in
       self?.speaking { Core.setTabFolded(tab, folded: folded) }

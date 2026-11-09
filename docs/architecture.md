@@ -322,6 +322,15 @@ color mixed into the list's background and carries a colored left edge. The stat
 come first on the row's second line for blocked, stuck and done, and what a waiting agent waits on for waiting. The
 colors are the ones below; the shapes are what let the legend be read without them.
 
+**Who wants you is a strip above the list, and the core says who.** The Needs you strip has a card for each agent
+or group asking for the person - blocked, stuck, finished and unseen, a program's notification, or messages for
+them - in exactly the order `focus --asking` walks (`Attention::asking`), so the strip, the chord and the banners
+cannot disagree about who is waiting first. The shell never reorders it and draws only words it can join by key: a
+card's name, state and chord come from the roster and the agents the rows already use, so a renamed pane is redrawn
+without a new list. An agent in the strip keeps its row below, which is what stops the list from reordering under
+somebody reading it. It is absent while nothing asks, folds to one line of icons, and is held to under half of the
+agent list so that a long line of askers cannot push the agents off screen.
+
 **Waiting is indigo because it is the calmest thing that is not resting.** An agent waiting on its own gate needs
 nobody, so it must not read as blocked; it has not finished, so it must not read as idle grey or done green; and it is
 not working either. Indigo sits apart from all three and from the accent ring's blue by weight. The CLI spells it

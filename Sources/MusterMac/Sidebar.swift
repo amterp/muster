@@ -1304,8 +1304,18 @@ public final class SidebarView: NSView {
   /// Whether the Hidden caption is folded, as the core's presentation last said. Drawn on the
   /// next `apply(roster:agents:keyboard:)`, like `groups`.
   public var hiddenCollapsed = false
-  public var needsYouFolded = false
-  public var asking: [AskingEntry] = []
+  /// Whether the Needs you strip is folded to one line, as the core's presentation last said.
+  public var needsYouFolded = false {
+    didSet { if needsYouFolded != oldValue { redrawStrip() } }
+  }
+
+  /// Who is asking for the person, in the order the core ranks them. Drawn by the strip.
+  public var asking: [AskingEntry] = [] {
+    didSet { if asking != oldValue { redrawStrip() } }
+  }
+
+  /// Called when somebody clicks the strip's header, with whether they are asking to fold it.
+  public var onNeedsYouToggled: ((Bool) -> Void)?
 
   /// Called when somebody clicks the Hidden caption, with whether they are asking to fold it.
   public var onHiddenToggled: ((Bool) -> Void)?
@@ -1374,6 +1384,7 @@ public final class SidebarView: NSView {
   static let draggedTab = NSPasteboard.PasteboardType("dev.muster.tab")
 
   private let table = SidebarTable()
+  private let strip = NeedsYouStripView()
   private let scroll = NSScrollView()
   private let problemsView = ProblemsView()
 
@@ -1425,6 +1436,10 @@ public final class SidebarView: NSView {
     scroll.drawsBackground = false
     scroll.frame = bounds
     addSubview(scroll)
+    strip.onPanePicked = { [weak self] in self?.onPanePicked?($0) }
+    strip.onGroupPicked = { [weak self] in self?.onGroupPicked?($0, $1) }
+    strip.onFoldToggled = { [weak self] in self?.onNeedsYouToggled?($0) }
+    addSubview(strip)
 
     problemsView.onDismiss = { [weak self] in
       guard let self, case .raised(let showing) = self.problems else { return }
@@ -1468,8 +1483,13 @@ public final class SidebarView: NSView {
     let wanted = problemsView.height(forWidth: bounds.width)
     let height = min(wanted, bounds.height)
     problemsView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+    // The strip across the top, and the list in what is left between it and the problems.
+    let above = min(
+      strip.height(forWidth: bounds.width, limit: (bounds.height * Self.stripShare).rounded(.down)),
+      max(0, bounds.height - height))
+    strip.frame = CGRect(x: 0, y: bounds.height - above, width: bounds.width, height: above)
     scroll.frame = CGRect(
-      x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height))
+      x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height - above))
   }
 
   required init?(coder: NSCoder) {
@@ -1529,9 +1549,17 @@ public final class SidebarView: NSView {
   /// roster none.
   private(set) var redrawCount = 0
 
-  /// Whether some row shows how long a state has held, which is whether a minute passing can
-  /// change what the list draws.
-  var showsTime: Bool { rows.contains(where: SidebarModel.showsTime(in:)) }
+  /// How many of the strip's cards have been drawn, counted the way `redrawCount` counts rows.
+  var stripRedrawCount: Int { strip.redrawCount }
+
+  /// The strip, so a test can read what it draws.
+  var needsYou: NeedsYouStripView { strip }
+
+  /// Whether some row or card shows how long a state has held, which is whether a minute passing
+  /// can change what the list draws.
+  var showsTime: Bool {
+    rows.contains(where: SidebarModel.showsTime(in:)) || NeedsYouModel.showsTime(strip.cards)
+  }
 
   /// Called after the rows were drawn, for whoever keeps the minute counted.
   var onShowsTimeChanged: (() -> Void)?
@@ -1545,6 +1573,7 @@ public final class SidebarView: NSView {
     let previous = rows
     rows = fresh
     defer { onShowsTimeChanged?() }
+    redrawStrip(notifying: false)
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
       redrawCount += fresh.count
       table.reloadData()
@@ -1560,6 +1589,20 @@ public final class SidebarView: NSView {
       table.noteHeightOfRows(withIndexesChanged: changed.remeasure)
     }
   }
+
+  /// Draws the strip from the asking list and what the list was last given, and gives it the room.
+  private func redrawStrip(notifying: Bool = true) {
+    guard let inputs else { return }
+    let cards = NeedsYouModel.cards(
+      entries: asking, roster: inputs.roster, agents: inputs.agents, groups: groups, now: clock())
+    strip.show(cards: cards, folded: needsYouFolded)
+    needsLayout = true
+    if notifying { onShowsTimeChanged?() }
+  }
+
+  /// The most of the sidebar the strip may take, so that a long list of askers leaves the agents
+  /// listed under it somewhere to be seen.
+  static let stripShare: CGFloat = 0.45
 
   /// The view drawing a row, or nil when the table has none loaded for it.
   func rowView(at row: Int) -> SidebarRowView? {

@@ -735,6 +735,16 @@ Folded, it shows how many panes are under it and a dot in the most urgent state 
 blocked, then stuck, then done, then working - so a hidden agent waiting on you still shows. The
 fold is the window's, kept under `[window]` with the width.
 
+**A strip at the top of the agent list says who wants you.** One card for each agent that is
+blocked, stuck, or finished and not yet looked at, for a program's notification, and for each group
+holding a message for you, in the order `cmd+shift+a` walks them: the first card is where that chord
+goes. A card has the agent's icon and callsign, what it wants and for how long, the keys that reach
+it and, for a blocked agent, the subtitle its row has; a group's has its name and the start of its
+latest message. Click a card to go to its agent or open its conversation. The agent keeps its row
+below, so the list does not reorder. The strip is not there while nothing asks, and the chevron in
+its header folds it to one line of icons; that fold is kept under `[window]` too. A quiet pane,
+a pane this window is showing and anything on a machine that cannot be reached are not in it.
+
 **Fold any tab in the agent list with the chevron on its caption.** A window with two or more tabs
 draws one on every caption; a window with one tab draws none, since folding its only tab would hide
 every agent. A folded tab keeps its caption and draws each of its agents' state icons in a row at
