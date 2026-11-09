@@ -24,6 +24,13 @@ public final class MusterWindow: NSObject {
   private let renderer: Renderer
   private let executable: String
   private let sidebar = SidebarView(frame: .zero)
+
+  /// The one timer that redraws how long each state has held, for as long as anything shows one.
+  /// The window's rather than the list's: a folded tab takes its rows off screen and leaves its
+  /// panes' headers drawing a time.
+  private lazy var minute = MinuteTicker(
+    needed: { [weak self] in self?.sidebar.showsTime ?? false },
+    tick: { [weak self] in self?.sidebar.tick() })
   private let shortcuts = ShortcutsPanel()
   private let split = WindowLayout(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
   private let empty = EmptyWindowView(frame: .zero)
@@ -248,6 +255,8 @@ public final class MusterWindow: NSObject {
     window.center()
     // Everything the list sends is about this window, which need not be the one in front: a
     // click in a window's list is that window's, whichever window had the keyboard.
+    sidebar.clock = { [weak self] in self?.minute.clock() ?? Date() }
+    sidebar.onShowsTimeChanged = { [weak self] in self?.minute.reconsider() }
     sidebar.onPanePicked = { [weak self] pane in
       self?.speaking { Core.focus(daemonID: pane.daemon, paneID: pane.pane) }
     }
@@ -994,6 +1003,7 @@ extension MusterWindow: NSWindowDelegate {
   /// Lets go of every pane's surface, which ends its bridge: the panes stay in their tabs, and
   /// the window that shows those tabs next starts bridges of its own.
   public func windowWillClose(_ notification: Notification) {
+    minute.stop()
     surfaces.releaseAll()
     onClosed?(self)
   }

@@ -635,18 +635,11 @@ public enum SidebarModel {
       (under[maker] ?? []).flatMap { [$0.pane] + everyHelper(of: $0.pane.key.pane) }
     }
     func appendHidden(_ pane: Roster.Pane, tab: String, depth: Int) {
-      let agent = agents[pane.key] ?? "unknown"
       rows.append(
-        Row(
-          kind: .pane(tabPress: 0, press: 0), daemon: pane.key.daemon, tab: tab,
-          pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
-          givenName: pane.givenName, state: agent.state, agent: agent, onScreen: false,
-          hasKeyboard: false, reservedPresses: twoPress ? 2 : 0,
-          machine: mark(pane.key.daemon), isSecondPress: false, quiet: pane.quiet,
-          hidden: true, callsign: pane.callsign, besideCallsign: pane.besideCallsign, depth: depth,
-          member: members.contains(pane.key), directory: pane.directory,
-          directoryName: directoryName(pane.directory), tier: Tier(state: agent.state),
-          stateLine: stateLine(for: agent, now: now)))
+        paneRow(
+          pane, in: tab, agent: agents[pane.key] ?? "unknown", now: now, presses: (0, 0),
+          onScreen: false, reservedPresses: twoPress ? 2 : 0, machine: mark(pane.key.daemon),
+          hidden: true, depth: depth, member: members.contains(pane.key)))
       appendHelpers(of: pane, tab: tab, depth: depth)
     }
     func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
@@ -687,22 +680,13 @@ public enum SidebarModel {
       for pane in tab.panes {
         // A pane the core has said nothing about is unknown, not idle. An agent we have not
         // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
-        let agent = agents[pane.key] ?? "unknown"
         rows.append(
-          Row(
-            kind: .pane(tabPress: pane.tabPress, press: pane.press), daemon: pane.key.daemon,
-            tab: tab.id, pane: pane.key, label: pane.label,
-            subtitle: subtitle(pane.subtitle, agent: agent), givenName: pane.givenName,
-            state: agent.state, agent: agent,
-            onScreen: pane.onScreen,
-            hasKeyboard: pane.key == keyboard,
-            reservedPresses: twoPress ? 2 : 0,
-            machine: mark(pane.key.daemon),
-            isSecondPress: tab.armed,
-            quiet: pane.quiet, callsign: pane.callsign, besideCallsign: pane.besideCallsign,
-            member: members.contains(pane.key), directory: pane.directory,
-            directoryName: directoryName(pane.directory), tier: Tier(state: agent.state),
-            stateLine: stateLine(for: agent, now: now)))
+          paneRow(
+            pane, in: tab.id, agent: agents[pane.key] ?? "unknown", now: now,
+            presses: (pane.tabPress, pane.press), onScreen: pane.onScreen,
+            hasKeyboard: pane.key == keyboard, reservedPresses: twoPress ? 2 : 0,
+            machine: mark(pane.key.daemon), isSecondPress: tab.armed,
+            member: members.contains(pane.key)))
         appendHelpers(of: pane, tab: tab.id, depth: 0)
       }
     }
@@ -748,6 +732,30 @@ public enum SidebarModel {
           isSecondPress: false))
     }
     return rows
+  }
+
+  /// The row for one pane, as the list draws it and as the pane's header reads it.
+  ///
+  /// One place, so the two cannot disagree about what a pane's line says. A pane the core has
+  /// said nothing about is unknown, not idle: an agent we have not heard from is not an agent
+  /// that finished (`corpus/conformance/agent-state.json`), which is why the callers default
+  /// `agent` that way. What a header does not know - the machine mark, the keyboard, the
+  /// conversation - keeps its default.
+  public static func paneRow(
+    _ pane: Roster.Pane, in tab: String, agent: PaneAgent, now: Date,
+    presses: (tab: Int, pane: Int), onScreen: Bool, hasKeyboard: Bool = false,
+    reservedPresses: Int = 0, machine: MachineMark? = nil, isSecondPress: Bool = false,
+    hidden: Bool = false, depth: Int = 0, member: Bool = false
+  ) -> Row {
+    Row(
+      kind: .pane(tabPress: presses.tab, press: presses.pane), daemon: pane.key.daemon, tab: tab,
+      pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
+      givenName: pane.givenName, state: agent.state, agent: agent, onScreen: onScreen,
+      hasKeyboard: hasKeyboard, reservedPresses: reservedPresses, machine: machine,
+      isSecondPress: isSecondPress, quiet: pane.quiet, hidden: hidden, callsign: pane.callsign,
+      besideCallsign: pane.besideCallsign, depth: depth, member: member,
+      directory: pane.directory, directoryName: directoryName(pane.directory),
+      tier: Tier(state: agent.state), stateLine: stateLine(for: agent, now: now))
   }
 
   /// Marks the rows from `first` to the end as one raised panel: the tab on screen's caption, its
@@ -1458,11 +1466,12 @@ public final class SidebarView: NSView {
   /// roster none.
   private(set) var redrawCount = 0
 
-  /// The timer that ticks on the minute, while some row shows a time.
-  private var minuteTimer: Timer?
+  /// Whether some row shows how long a state has held, which is whether a minute passing can
+  /// change what the list draws.
+  var showsTime: Bool { rows.contains(where: SidebarModel.showsTime(in:)) }
 
-  /// Whether the minute timer is running, which it is only while some row shows a time.
-  var isTicking: Bool { minuteTimer != nil }
+  /// Called after the rows were drawn, for whoever keeps the minute counted.
+  var onShowsTimeChanged: (() -> Void)?
 
   private func redraw() {
     guard let inputs else { return }
@@ -1472,7 +1481,7 @@ public final class SidebarView: NSView {
       now: clock())
     let previous = rows
     rows = fresh
-    defer { scheduleMinuteTick() }
+    defer { onShowsTimeChanged?() }
     guard let changed = SidebarModel.changes(from: previous, to: fresh) else {
       redrawCount += fresh.count
       table.reloadData()
@@ -1495,36 +1504,9 @@ public final class SidebarView: NSView {
   }
 
   /// Draws the list again against the time now, which changes only the rows showing how long a
-  /// state has held. Called by the minute timer, and by tests that have moved `clock`.
+  /// state has held. Called by the window's minute ticker, and by tests that have moved `clock`.
   func tick() {
     redraw()
-  }
-
-  /// Keeps one timer running, on the minute, for as long as some row shows a time, and none
-  /// otherwise. One per list rather than one per row: at fifteen panes that is one wakeup a
-  /// minute instead of fifteen, and a list with nothing blocked, stuck or done wakes for nothing.
-  private func scheduleMinuteTick() {
-    let needed = rows.contains(where: SidebarModel.showsTime(in:))
-    guard needed != (minuteTimer != nil) else { return }
-    guard needed else {
-      minuteTimer?.invalidate()
-      minuteTimer = nil
-      return
-    }
-    let now = clock().timeIntervalSince1970
-    let next = Date(timeIntervalSince1970: (now / 60).rounded(.down) * 60 + 60)
-    // A list that has gone - its window closed - ends its own timer: the run loop holds a
-    // repeating timer for as long as it is valid, and nothing else would stop this one.
-    let timer = Timer(fire: next, interval: 60, repeats: true) { [weak self] timer in
-      guard let self else {
-        timer.invalidate()
-        return
-      }
-      MainActor.assumeIsolated { self.tick() }
-    }
-    timer.tolerance = 1
-    RunLoop.main.add(timer, forMode: .common)
-    minuteTimer = timer
   }
 
   @objc private func rowClicked() {

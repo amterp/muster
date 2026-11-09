@@ -1360,7 +1360,7 @@ struct SidebarTests {
 
     sidebar.apply(roster: roster(panes), agents: agents(lastIs: "idle"))
     #expect(sidebar.redrawCount == count, "the first draw is every row")
-    #expect(sidebar.isTicking, "a blocked row shows a time, so the minute is being counted")
+    #expect(sidebar.showsTime, "a blocked row shows a time, so the minute has to be counted")
 
     // The same roster and states again, as a republish that changed nothing sends them.
     let before = sidebar.redrawCount
@@ -1407,19 +1407,22 @@ struct SidebarTests {
     #expect(before != after, "the bar kept the color it was made with")
   }
 
-  @Test("the minute is counted only while a row shows a time")
-  @MainActor func theTimerRunsOnlyWhenNeeded() {
+  @Test("the list says whether a row shows a time, and tells the window when that may have moved")
+  @MainActor func theListSaysWhenATimeIsShown() {
     let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    var told = 0
+    sidebar.onShowsTimeChanged = { told += 1 }
     let one = pane("local", "w1:p1")
 
     sidebar.apply(roster: roster([one]), agents: [one.key: agent("idle", since: 90)])
-    #expect(!sidebar.isTicking)
+    #expect(!sidebar.showsTime)
 
     sidebar.apply(roster: roster([one]), agents: [one.key: agent("blocked", since: 90)])
-    #expect(sidebar.isTicking)
+    #expect(sidebar.showsTime)
 
     sidebar.apply(roster: roster([one]), agents: [one.key: agent("working", since: 90)])
-    #expect(!sidebar.isTicking)
+    #expect(!sidebar.showsTime)
+    #expect(told == 3)
   }
 
   @Test("a caption draws its press as a key, and the tab on screen sits on a panel")
