@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-folded-helpers",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794266601791,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-09 on 0.24.0: a laptop window showing a maker pane on the devenv with two worker helpers, one on each machine's daemon, both mid-task. The folded line under the maker read `2 helpers · 2 done`, and the owner took it to mean both had finished. At the same moment `muster window --json` gave both helpers `state: working` (context 44% and 26%, both editing files).\n\nShortly before, the window had hung up in the middle of a `muster pane wait` (\"the window ... hung up in the middle of the watch\"), so the shell may have kept states from before it reconnected. A third helper, a reviewer, had been closed earlier; whether the line still counts it is not known. `SidebarModel.helpersLine` counts the helpers in the most urgent state among them, and `mostUrgent` ranks done above working, so the shell held both helpers as done while their daemons said working.\n\nPossibly: find out whether the shell's helper states go stale across a window reconnect, or whether a closed helper is still counted. Separately, consider whether a folded line should prefer the live state over done, so it cannot read as \"finished\" while agents work.",
+  "id": "a_2x07yswZt",
+  "position": "b2Z",
+  "related": [
+    "a_2v2Bmo9Pr"
+  ],
+  "title": "A folded helpers line read 2 done while both helpers were working",
+  "type": "bug",
+  "updated_at_millis": 1794266607369,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794266601791}
+  ]
+}

@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2x0802LuN",
+      "body": "Another instance, 2026-11-09 on 0.24 on the devenv, where the agent was found late for a different reason. A Codex helper started with `muster pane new --helper --run '\u003ccodex launcher\u003e'` in a directory Codex had not seen opened on its folder-trust dialog. A brief posted with `muster msg post --to \u003chelper\u003e --file` answered \"rung once an agent is found\". Muster reported the helper blocked at a dialog after 3 minutes. After the dialog was answered with `muster pane send --key Enter`, Codex sat idle at its prompt, and `muster window --json` showed the pane `state: done, rang: false`. The brief was never delivered and nothing said so; it went in with `pane send --file`.\n\nSo the ring wants to fire whenever an agent is first found in the pane, after a dialog as well as after a restart. Possibly also: mark a post as not delivered when its recipient never became reachable, so the sender sees it.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794266602425
+    }
+  ],
   "created_at_millis": 1794072281013,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-06. A brief was posted while Codex sat at its upgrade prompt; accepting the upgrade made Codex exit, and it was restarted in the same pane with `pane send`. Muster showed it `done` at an empty prompt but never rang post #4, whose own answer had said \"rung once an agent is found\". A later notice said \"no agent is in its pane any more\". A second post rang at once.\n\nRing for any unread post to a pane when an agent is detected there, or say on the post that a restart will not ring it.",
@@ -16,7 +24,7 @@
   ],
   "title": "A post to a pane whose agent died does not ring the agent restarted there",
   "type": "bug",
-  "updated_at_millis": 1794072303259,
+  "updated_at_millis": 1794266602425,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794072281013}
   ]
