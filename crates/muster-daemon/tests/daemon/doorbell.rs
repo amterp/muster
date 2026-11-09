@@ -1069,6 +1069,28 @@ fn a_ring_whose_returns_ran_out_is_sent_when_a_later_post_finds_it() {
     assert!(rung[0].contains("1 new"), "the old ring first: {rung:?}");
 }
 
+/// A post re-arms a spent left ring once: while its wake waits behind a prompt that keeps
+/// swallowing Returns, the doorbell looks at the wake again every few seconds, and none of those
+/// looks gives the ring more Returns.
+#[test]
+fn a_spent_left_ring_gets_its_returns_again_once_per_post() {
+    let mut agent = heedless_agent();
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+    let unsent = r#""event":"msg.ring.left_unsent""#;
+    let logged = logging.logged_until(unsent, ANSWER * 10);
+    assert!(logged.iter().any(|line| line.line.contains(unsent)), "{logged:?}");
+
+    agent.post("p1", "and another");
+    let logged = logging.logged_times_until(unsent, 2, ANSWER * 10);
+    assert_eq!(logged.iter().filter(|line| line.line.contains(unsent)).count(), 2, "{logged:?}");
+    let sent = r#""event":"msg.ring.left_sent""#;
+    let before = logged.iter().filter(|line| line.line.contains(sent)).count();
+    let logged = logging.logged_times_until(sent, before + 1, ANSWER * 4);
+    let after = logged.iter().filter(|line| line.line.contains(sent)).count();
+    assert_eq!(after, before, "Returns pressed again with no new post");
+}
+
 fn heedless_agent() -> Agent {
     let agent = Agent::in_a_pane();
     agent.type_in("heedless", true);

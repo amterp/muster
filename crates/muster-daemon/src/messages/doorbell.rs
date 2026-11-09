@@ -164,6 +164,9 @@ pub(crate) struct Left {
     /// How many times Return has been pressed for it since it was left, and when last.
     presses: u8,
     pressed: Option<Instant>,
+    /// The wake that last gave it its Returns again, by group and newest message: the same wake
+    /// looked at again while it waits gives none, so they stay bounded per post.
+    rearmed_by: Option<(String, u64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,7 +181,14 @@ impl Left {
     /// `presses` counts the Returns already pressed again for it before it was left: one bound
     /// covers them and the sweep's.
     pub(crate) fn line(text: &str, typed: Instant, presses: u8) -> Left {
-        Left { text: text.to_string(), typed, of: LeftOf::Line, presses, pressed: None }
+        Left {
+            text: text.to_string(),
+            typed,
+            of: LeftOf::Line,
+            presses,
+            pressed: None,
+            rearmed_by: None,
+        }
     }
 
     fn ring(rung: &Rung) -> Left {
@@ -189,6 +199,7 @@ impl Left {
             of: LeftOf::Ring { name: wake.name.clone(), group: wake.notice.group.clone() },
             presses: rung.presses,
             pressed: None,
+            rearmed_by: None,
         }
     }
 
@@ -378,7 +389,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                 }
             }
             AtPrompt::Holds(draft) => {
-                rearm_left(shared, pane_of(&wake), &draft);
+                rearm_left(shared, &wake, &draft);
                 waits(&wake, "its prompt is not empty");
                 held.push((pane_of(&wake).to_string(), Held::Draft));
                 waiting.push(wake);
@@ -818,16 +829,22 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
     }
 }
 
-/// Gives a line left in a prompt, whose Returns ran out, its Returns again when a new wake finds
-/// the prompt holding it and nothing else: whatever swallowed them may have gone since, and a
-/// prompt the doorbell filled must not hold every later wake for good.
-fn rearm_left(shared: &Shared, pane: &str, held: &str) {
+/// Gives a line left in a prompt, whose Returns ran out, its Returns again when a wake newer than
+/// the last one that did finds the prompt holding it and nothing else: whatever swallowed them may
+/// have gone since, and a prompt the doorbell filled must not hold every later wake for good. A
+/// wake held behind it is looked at again every few seconds, and only a new post re-arms it.
+fn rearm_left(shared: &Shared, wake: &Wake, held: &str) {
+    let by = (wake.notice.group.clone(), wake.notice.last);
     let mut messages = shared.messages();
-    let Some(left) = messages.left.get_mut(pane) else { return };
-    if left.presses > PRESSES && prompt::is_only(held, &left.text) {
+    let Some(left) = messages.left.get_mut(pane_of(wake)) else { return };
+    if left.presses > PRESSES
+        && left.rearmed_by.as_ref() != Some(&by)
+        && prompt::is_only(held, &left.text)
+    {
         left.presses = 0;
         left.pressed = None;
-        log::info("msg.ring.left_rearmed", fields! { "pane" => pane });
+        left.rearmed_by = Some(by);
+        log::info("msg.ring.left_rearmed", fields! { "pane" => pane_of(wake) });
     }
 }
 
