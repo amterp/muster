@@ -347,11 +347,41 @@ struct BannerAuthor: Equatable {
   /// The one pane in `roster` whose callsign is `callsign`; nil when none is, or when two are,
   /// since a banner cannot say which of two was meant and the name's own color is the safer
   /// answer than another agent's.
-  static func find(callsign: String, roster: Roster, agents: [PaneKey: PaneAgent]) -> Self? {
+  static func find(callsign shown: String, roster: Roster, agents: [PaneKey: PaneAgent]) -> Self? {
+    let callsign = name(in: shown)
     guard !callsign.isEmpty else { return nil }
     let named = roster.panes.filter { $0.callsign == callsign }
     guard named.count == 1, let pane = named.first else { return nil }
     return BannerAuthor(paneID: pane.key.pane, state: agents[pane.key]?.state)
+  }
+}
+
+extension BannerAuthor {
+  /// The participant behind a banner's author text, which the core words for reading: a post from
+  /// a program says "otter via dashboard", and Muster's own is "Muster".
+  static func name(in shown: String) -> String {
+    shown.components(separatedBy: " via ").first ?? shown
+  }
+
+  static func isMuster(_ shown: String) -> Bool {
+    name(in: shown).drop(while: { $0 == "@" }).lowercased() == "muster"
+  }
+}
+
+/// What a window knows of its banners' authors, which changes when its agents' states do: the
+/// stack redraws when a lookup result has.
+@MainActor
+final class BannerAuthors: ObservableObject {
+  @Published private(set) var revision = 0
+  private var held: [String: BannerAuthor?] = [:]
+
+  /// Looks each banner's author up again, and says so to the stack when any answer moved.
+  func refresh(banners: [Muster_Banner], identify: (String) -> BannerAuthor?) {
+    let fresh = Dictionary(
+      banners.map { ($0.author, identify($0.author)) }, uniquingKeysWith: { first, _ in first })
+    guard fresh != held else { return }
+    held = fresh
+    revision += 1
   }
 }
 
@@ -360,6 +390,7 @@ struct BannerStackView: View {
   @ObservedObject var board: BannerBoard
   /// Finds an author by callsign among this window's panes.
   let identify: (String) -> BannerAuthor?
+  @ObservedObject var authors: BannerAuthors
   @State private var expanded = false
   /// Gives the keyboard back to the pane it came from.
   let onLeave: () -> Void
@@ -398,6 +429,10 @@ struct BannerStackView: View {
     }
     .frame(width: 380)
     .inPaneLook()
+    // Show is for the burst it was pressed on, not for the window from then on.
+    .onChange(of: board.banners.isEmpty) { _, empty in
+      if empty { expanded = false }
+    }
   }
 
 }
@@ -448,8 +483,8 @@ struct BannerCard: View {
       AvatarView(
         name: shownAuthor,
         color: IdentityColor.color(
-          paneID: author?.paneID ?? "", name: banner.author,
-          isMuster: banner.author.drop(while: { $0 == "@" }) == "muster"),
+          paneID: author?.paneID ?? "", name: BannerAuthor.name(in: banner.author),
+          isMuster: BannerAuthor.isMuster(banner.author)),
         state: author?.state)
       content
     }
@@ -695,7 +730,7 @@ public final class BannerHost {
   private(set) lazy var hosting: NSHostingView<BannerStackView> = {
     let view = NSHostingView(
       rootView: BannerStackView(
-        board: board, identify: { [weak self] in self?.identify($0) },
+        board: board, identify: { [weak self] in self?.identify($0) }, authors: authors,
         onLeave: { [weak self] in self?.onLeave?() },
         endComposition: { [weak self] in self?.endComposition() ?? false },
         onLink: { [weak self] url, daemon, group in self?.onLink?(url, daemon, group) }))
@@ -709,7 +744,15 @@ public final class BannerHost {
 
   /// Finds the pane an author's callsign names among this window's, for the avatar's color and
   /// state.
-  var identify: (String) -> BannerAuthor? = { _ in nil }
+  var identify: (String) -> BannerAuthor? = { _ in nil } {
+    didSet { refreshAuthors() }
+  }
+
+  /// Looks the banners' authors up again after this window's agents or panes changed.
+  func refreshAuthors() {
+    authors.refresh(banners: board.banners, identify: identify)
+  }
+  let authors = BannerAuthors()
 
   /// Opens a link in a banner's message, with its daemon and group, by the window's link policy.
   var onLink: ((URL, String, String) -> Void)?

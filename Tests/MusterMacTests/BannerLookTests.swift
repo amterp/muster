@@ -105,4 +105,30 @@ struct BannerLookTests {
     #expect(BannerAuthor.find(callsign: "linen", roster: roster, agents: agents) == nil)
     #expect(BannerAuthor.find(callsign: "", roster: roster, agents: agents) == nil)
   }
+
+  @Test("the author text the core words for reading is taken back to who wrote it")
+  func authorTextIsReadBack() {
+    #expect(BannerAuthor.name(in: "otter via dashboard") == "otter")
+    #expect(BannerAuthor.name(in: "otter") == "otter")
+    #expect(BannerAuthor.isMuster("Muster"))
+    #expect(BannerAuthor.isMuster("@muster"))
+    #expect(!BannerAuthor.isMuster("musterfan"))
+  }
+
+  @Test("a lookup that moved, and only that, tells the stack to redraw")
+  func authorsRedrawOnlyWhenTheyMove() {
+    let authors = BannerAuthors()
+    var state: String? = "working"
+    let identify: (String) -> BannerAuthor? = { _ in BannerAuthor(paneID: "w1:p1", state: state) }
+    let banners = [banner("otter")]
+
+    authors.refresh(banners: banners, identify: identify)
+    let first = authors.revision
+    authors.refresh(banners: banners, identify: identify)
+    #expect(authors.revision == first, "nothing moved")
+
+    state = "blocked"
+    authors.refresh(banners: banners, identify: identify)
+    #expect(authors.revision == first + 1, "its agent changed state under a banner on screen")
+  }
 }

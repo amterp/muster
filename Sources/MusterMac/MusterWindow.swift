@@ -465,6 +465,7 @@ public final class MusterWindow: NSObject {
     let rangBefore = agents[pane]?.rang ?? false
     agents[pane] = agent
     conversation.members.apply(pane: pane, agent: agent)
+    banners.refreshAuthors()
     // Whether or not it is on screen. A pane parked off screen keeps its header drawn, so the
     // tab somebody switches back to is right on its first frame rather than on the agent's next
     // transition.
@@ -500,6 +501,7 @@ public final class MusterWindow: NSObject {
     surfaces.release(everythingBut: Set(roster.panes.map(\.key)))
     sidebar.apply(roster: roster, agents: agents, keyboard: keyboardKey)
     headers.apply(roster: roster, agents: agents)
+    banners.refreshAuthors()
     conversation.members.apply(roster: roster)
     applyBadges()
   }
