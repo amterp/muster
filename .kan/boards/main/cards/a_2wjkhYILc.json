@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "a-narrow-pane-header",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794227574429,
+  "creator": "Alexander Terp",
+  "description": "In a 940 pt window with four side-by-side panes, a blocked pane's header showed `is...` for the callsign and `Bloc` for the state word, cut at the header's edge with no ellipsis. The callsign truncates properly; the state word should too, or give way before the callsign does. Seen in a stand-in window screenshot after the redesign landed.",
+  "id": "a_2wjkhYILc",
+  "position": "b2V",
+  "title": "A narrow pane header clips its state word without an ellipsis",
+  "type": "bug",
+  "updated_at_millis": 1794227574429,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794227574429}
+  ]
+}
