@@ -5,19 +5,20 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1794168220079,
   "creator": "Alexander Terp",
   "description": "Fencil decision chrome-colors (owner-nodded, 2026-11-08): Muster has no theme of its own, and the redesign's new surfaces take their colors from settings that already exist.\n\n- The agent list keeps macOS's own colors, as it does today.\n- The pane area, pane headers and the conversation view included, takes the terminal's background and foreground from [colors]. A header is the background shifted a little toward the foreground, so it reads as part of the pane. The owner's config sets neither, so his headers would come from the renderer's default background.\n- A tint for a state, behind a blocked row or header, is that state's agent_* color mixed into the surface it sits on, so changing agent_blocked recolors the tint too.\n\nNo color setting is added. One pure function derives every color, with a minimum contrast between text and the surface under it, and is tested against a light theme, a dark theme and the renderer's default: a computed color can lose contrast on an unusual theme, such as a light terminal beside a dark-mode sidebar. The rows, pane-header, conversation and banner cards all draw with it.\n\n## Plan (reviewed 2026-11-08)\n\nFrom the plan for the redesign, step 5; the parent card a_2wKW8eBfM has its overall shape, order and checks.\n\n`[colors] background` and `foreground` reach the shell (`Core.read` into\n`MusterRenderer.Appearance`) but nothing keeps them for chrome code, and when the file sets neither,\nnothing reads the renderer's default.\n\n- `PaneAppearance` keeps the pane half of the appearance it adopts, beside `Core.Chrome`.\n- For a color the file leaves out, `Renderer` reads the effective value from libghostty with\n  `ghostty_config_get(config, \u0026color, \"background\", ...)`, which Muster has not called before; the\n  call is wrapped in `Renderer` so nothing else touches libghostty's config.\n- One pure function, `ChromePalette.make(terminal:agents:appearance:)`, returns every derived color:\n  header background (terminal background moved toward the foreground), header text and its dimmer\n  step, the tint for each state on each surface it sits on (the agent list's background and a\n  header's), and the keycap fill and edge. Text colors are pushed toward the foreground until they\n  reach 4.5:1 against their surface.\n- Swift tests run it against a dark theme, a light theme and the renderer's default, and assert the\n  contrast floor for every text and surface pair.",
   "id": "a_2wKqcjyIY",
   "parent": "a_2wKW8eBfM",
-  "position": "Zz",
+  "position": "Yuw",
   "title": "Derive the redesign's colors from the terminal colors, macOS and the state legend",
   "type": "enhancement",
-  "updated_at_millis": 1794171670038,
+  "updated_at_millis": 1794192000688,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794168220079},
     {"field":"column","value":"next","at":1794170829060},
-    {"field":"column","value":"in-progress","at":1794171670038}
+    {"field":"column","value":"in-progress","at":1794171670038},
+    {"field":"column","value":"done","at":1794192000688}
   ]
 }
