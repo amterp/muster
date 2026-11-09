@@ -64,7 +64,9 @@ struct ChromePaletteTests {
       for list in lists {
         let palette = ChromePalette.make(
           terminal: theme.terminal, agents: list.agents, appearance: list.list)
-        for (surfaceName, surface) in [("list", palette.list), ("header", palette.header)] {
+        for (surfaceName, surface) in [
+          ("list", palette.list), ("header", palette.header), ("pane", palette.pane),
+        ] {
           let context = "\(theme.name) terminal, \(list.name), \(surfaceName)"
           let floor = ChromePalette.minimumContrast
           for (name, text) in [("text", surface.text), ("dim text", surface.dimText)] {
@@ -90,6 +92,14 @@ struct ChromePaletteTests {
             surface.keycapText.contrast(with: surface.keycapFill) >= floor,
             "keycap digit: \(context)")
           checked += 1
+          for (under, behind) in [
+            ("background", surface.background), ("raised", surface.raised),
+            ("its tint", surface.accentTint),
+          ] {
+            #expect(
+              surface.accentText.contrast(with: behind) >= floor, "accent on \(under): \(context)")
+            checked += 1
+          }
         }
       }
     }
@@ -125,6 +135,19 @@ struct ChromePaletteTests {
       #expect(
         header.contrast(with: theme.terminal.background) < 1.3,
         "\(theme.name): a header that stands apart from its pane is not part of it")
+    }
+  }
+
+  @Test("the pane surface is the terminal's own colors, and the tint is the accent in them")
+  func paneIsTheTerminal() {
+    for theme in themes {
+      let palette = ChromePalette.make(
+        terminal: theme.terminal, agents: lists[0].agents, appearance: lists[0].list)
+      #expect(palette.pane.background == theme.terminal.background, "\(theme.name)")
+      #expect(palette.pane.accentTint != palette.pane.background, "\(theme.name)")
+      #expect(
+        palette.pane.accentTint.contrast(with: palette.pane.background) < 1.5,
+        "\(theme.name): a tint behind text, not a fill")
     }
   }
 

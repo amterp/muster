@@ -122,10 +122,15 @@ public struct ChromePalette: Equatable, Sendable {
   public struct ListAppearance: Equatable, Sendable {
     public var background: RGB
     public var foreground: RGB
+    /// The platform's accent color, which marks what is addressed to the person.
+    public var accent: RGB
 
-    public init(background: RGB, foreground: RGB) {
+    public init(
+      background: RGB, foreground: RGB, accent: RGB = RGB(red: 0.0, green: 0.48, blue: 1.0)
+    ) {
       self.background = background
       self.foreground = foreground
+      self.accent = accent
     }
   }
 
@@ -147,10 +152,16 @@ public struct ChromePalette: Equatable, Sendable {
     public var keycapFill: RGB
     public var keycapEdge: RGB
     public var keycapText: RGB
+    /// The accent mixed into `background`: what a message to the person sits on.
+    public var accentTint: RGB
+    /// The accent as text or a bar, readable on `background`, `raised` and `accentTint`.
+    public var accentText: RGB
   }
 
   public var list: Surface
   public var header: Surface
+  /// The pane area: what the group conversation and the message banner are drawn on.
+  public var pane: Surface
 
   /// Every derived color for these three inputs.
   ///
@@ -160,14 +171,19 @@ public struct ChromePalette: Equatable, Sendable {
     terminal: Terminal, agents: [String: RGB], appearance: ListAppearance
   ) -> ChromePalette {
     ChromePalette(
-      list: surface(background: appearance.background, text: appearance.foreground, agents: agents),
+      list: surface(
+        background: appearance.background, text: appearance.foreground, agents: agents,
+        accent: appearance.accent),
       header: surface(
         background: terminal.background.mixed(toward: terminal.foreground, raisedAmount),
-        text: terminal.foreground, agents: agents))
+        text: terminal.foreground, agents: agents, accent: appearance.accent),
+      pane: surface(
+        background: terminal.background, text: terminal.foreground, agents: agents,
+        accent: appearance.accent))
   }
 
   private static func surface(
-    background: RGB, text foreground: RGB, agents: [String: RGB]
+    background: RGB, text foreground: RGB, agents: [String: RGB], accent: RGB
   ) -> Surface {
     // A panel standing above the background, but never so far that the text cannot be read on it:
     // on a mid-gray background the lighter panel is the surface text has the least contrast with,
@@ -192,11 +208,15 @@ public struct ChromePalette: Equatable, Sendable {
     let dim = text.mixed(toward: background, 0.3).pushed(
       toward: text, until: minimumContrast, on: [background, raised])
     let keycapFill = background.mixed(toward: text, keycapFillAmount)
+    let accentTint = background.mixed(toward: accent, tintAmount)
     return Surface(
       background: background, raised: raised, text: text, dimText: dim, tint: tint,
       stateText: stateText, keycapFill: keycapFill,
       keycapEdge: background.mixed(toward: text, keycapEdgeAmount),
-      keycapText: text.pushed(toward: text, until: minimumContrast, on: [keycapFill]))
+      keycapText: text.pushed(toward: text, until: minimumContrast, on: [keycapFill]),
+      accentTint: accentTint,
+      accentText: accent.pushed(
+        toward: foreground, until: minimumContrast, on: [background, raised, accentTint]))
   }
 }
 
@@ -234,16 +254,18 @@ extension ChromePalette {
     var background = RGB.black
     var foreground = RGB.white
     var agents: [String: RGB] = [:]
+    var accent = ListAppearance(background: .black, foreground: .white).accent
     appearance.performAsCurrentDrawingAppearance {
       background = RGB(NSColor.windowBackgroundColor)
       foreground = RGB(NSColor.labelColor)
+      accent = RGB(NSColor.controlAccentColor)
       for state in ChromePalette.states {
         agents[state] = RGB(PaneAppearance.borderColor(state: state))
       }
     }
     let palette = make(
       terminal: PaneAppearance.terminal, agents: agents,
-      appearance: ListAppearance(background: background, foreground: foreground))
+      appearance: ListAppearance(background: background, foreground: foreground, accent: accent))
     resolved[dark] = palette
     return palette
   }

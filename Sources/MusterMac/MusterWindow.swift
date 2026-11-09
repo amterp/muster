@@ -626,6 +626,8 @@ public final class MusterWindow: NSObject {
       chrome.recolor()
     }
     sidebar.reloadColors()
+    // The conversation and the banner draw in the terminal's colors, which are what changed.
+    PaneLookBoard.shared.refresh()
   }
 
   /// Takes the chords the config file now says, after it was read again. The menu bar, which is
