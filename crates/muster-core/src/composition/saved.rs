@@ -360,6 +360,21 @@ pub fn to_toml(saved: &Saved) -> String {
         "hidden_collapsed".to_string(),
         toml::Value::Boolean(saved.presentation.hidden_collapsed),
     );
+    window.insert(
+        "needs_you_folded".to_string(),
+        toml::Value::Boolean(saved.presentation.needs_you_folded),
+    );
+    window.insert(
+        "folded_tabs".to_string(),
+        toml::Value::Array(
+            saved
+                .presentation
+                .folded_tabs
+                .iter()
+                .map(|tab| toml::Value::String(tab.to_string()))
+                .collect(),
+        ),
+    );
     // The four numbers go flat beside the two above rather than into a table of their own. They
     // are the same kind of value - what the window looked like, not what session it was
     // showing - and a level of nesting for four scalars makes this file slower to read for
@@ -597,7 +612,7 @@ fn names(daemons: &[Daemon]) -> String {
 /// Worth reading that way rather than refusing the file: the version is for a format that
 /// moved, and a key that merely arrived has not moved anything.
 fn read_presentation(window: Option<&toml::Table>) -> Presentation {
-    Presentation::default()
+    let mut presentation = Presentation::default()
         .with_sidebar(
             window
                 .and_then(|window| window.get("sidebar"))
@@ -630,6 +645,21 @@ fn read_presentation(window: Option<&toml::Table>) -> Presentation {
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(Presentation::default().hidden_collapsed),
         )
+        .with_needs_you_folded(
+            window
+                .and_then(|window| window.get("needs_you_folded"))
+                .and_then(toml::Value::as_bool)
+                .unwrap_or_default(),
+        );
+    presentation.folded_tabs = window
+        .and_then(|window| window.get("folded_tabs"))
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_str)
+        .map(TabId::new)
+        .collect();
+    presentation
 }
 
 /// Says so when a file remembers a text size for the whole window.

@@ -9,6 +9,14 @@ import Testing
 
 @Suite("the sidebar lists what exists")
 struct SidebarTests {
+  @Test("the roster keeps the core's tab fold")
+  func readsTabFold() {
+    var tab = Muster_RosterTab()
+    tab.tabID = "t1"
+    tab.folded = true
+    #expect(Roster.Tab(tab).folded)
+  }
+
   /// One pane, numbered as the core would have numbered it.
   ///
   /// The place is stated rather than counted here, for the same reason a tab's is: the core

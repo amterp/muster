@@ -148,10 +148,10 @@ fn set_sidebar(window: WindowId, shown: bool) {
         if showing.presentation.sidebar == shown {
             return;
         }
-        showing.presentation = showing.presentation.with_sidebar(shown);
-        (showing.name.clone(), showing.presentation)
+        showing.presentation.sidebar = shown;
+        (showing.name.clone(), showing.presentation.clone())
     };
-    announce_presentation(&name, presentation);
+    announce_presentation(&name, &presentation);
     publish("sidebar");
 }
 
@@ -164,12 +164,12 @@ pub(crate) fn set_sidebar_width(window: WindowId, width: f64) {
     let (name, presentation) = {
         let mut session = poison::lock(&SESSION, "session");
         let sized = &mut session.windows[window];
-        sized.presentation = sized.presentation.with_sidebar_width(width);
-        let answer = (sized.name.clone(), sized.presentation);
+        sized.presentation = sized.presentation.clone().with_sidebar_width(width);
+        let answer = (sized.name.clone(), sized.presentation.clone());
         save(&mut session, window);
         answer
     };
-    announce_presentation(&name, presentation);
+    announce_presentation(&name, &presentation);
 }
 
 /// Folds the roster's Hidden caption, or opens it, and says so.
@@ -180,13 +180,43 @@ pub(crate) fn set_hidden_collapsed(window: WindowId, collapsed: bool) {
     let (name, presentation) = {
         let mut session = poison::lock(&SESSION, "session");
         let folded = &mut session.windows[window];
-        folded.presentation = folded.presentation.with_hidden_collapsed(collapsed);
-        let answer = (folded.name.clone(), folded.presentation);
+        folded.presentation.hidden_collapsed = collapsed;
+        let answer = (folded.name.clone(), folded.presentation.clone());
         save(&mut session, window);
         answer
     };
     log::info("presentation.hidden", fields! { "collapsed" => collapsed });
-    announce_presentation(&name, presentation);
+    announce_presentation(&name, &presentation);
+}
+
+pub(crate) fn set_needs_you_folded(window: WindowId, folded: bool) {
+    let (name, presentation) = {
+        let mut session = poison::lock(&SESSION, "session");
+        let held = &mut session.windows[window];
+        held.presentation.needs_you_folded = folded;
+        let answer = (held.name.clone(), held.presentation.clone());
+        save(&mut session, window);
+        answer
+    };
+    announce_presentation(&name, &presentation);
+}
+
+pub(crate) fn set_tab_folded(window: WindowId, tab: &TabId, folded: bool) {
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        let held = &mut session.windows[window];
+        if !held.composition.tabs().any(|held| &held.id == tab)
+            || (folded && held.composition.tabs().count() <= 1)
+        {
+            return;
+        }
+        if folded {
+            held.presentation.folded_tabs.insert(tab.clone());
+        } else {
+            held.presentation.folded_tabs.remove(tab);
+        }
+    }
+    publish("tab_folded");
 }
 
 /// Tells the shell the human's groups on every daemon, if they changed since it was last told.
@@ -1025,6 +1055,8 @@ pub(crate) struct Window {
     /// looking at: one history for every window would walk into whichever window was used last.
     /// Spans the daemons, because a step back from a devenv pane can land on a laptop one.
     focus_history: FocusHistory,
+    last_keyboard: Option<PaneKey>,
+    last_tab_count: Option<usize>,
 
     /// The last view and roster the shell was sent, so one it already has is not sent again.
     ///
@@ -1169,6 +1201,8 @@ impl Default for Window {
             presentation: Presentation::default(),
             armed: None,
             focus_history: FocusHistory::new(),
+            last_keyboard: None,
+            last_tab_count: None,
             sent: Sent::default(),
             arrangement: None,
             lifecycle: Lifecycle::Unopened,
@@ -2280,11 +2314,17 @@ impl Session {
         view: &View,
         mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
     ) -> Roster {
-        Roster::of(
+        let mut roster = Roster::of(
             &self.windows[window].composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
             view.showing(),
-        )
+        );
+        let can_fold = roster.tabs.len() > 1;
+        for tab in &mut roster.tabs {
+            tab.folded =
+                can_fold && self.windows[window].presentation.folded_tabs.contains(&tab.id);
+        }
+        roster
     }
 
     /// Every other window the record knows, with a roster of the tabs each holds.
@@ -2457,6 +2497,9 @@ impl Session {
             None => self.surface(window, daemon, pane)?,
         };
         self.windows[window].composition.focus_pane(region, pane.clone());
+        if let Some((_, tab)) = self.locate(pane) {
+            self.windows[window].presentation.folded_tabs.remove(&tab);
+        }
         Ok(())
     }
 
@@ -2874,6 +2917,9 @@ pub(crate) fn submit_from(
         });
         if let (Some(region), Keyboard::Follows) = (region, keyboard) {
             composition.focus_pane(region, created.clone());
+            if let Some((_, tab)) = session.locate(created) {
+                session.windows[window].presentation.folded_tabs.remove(&tab);
+            }
         }
     }
     drop(session);
@@ -5225,6 +5271,7 @@ pub(crate) fn attach(window: WindowId, pane_id: &str) -> Result<Arc<AttachedPane
             .surface(&daemon, &tab)
             .expect("the daemon holding this pane is one being followed");
         session.windows[window].composition.focus_pane(region, pane.clone());
+        session.windows[window].presentation.folded_tabs.remove(&tab);
         session.reconcile(&daemon);
 
         session
@@ -5397,8 +5444,9 @@ fn save(session: &mut Session, window: WindowId) {
     };
     let window = &mut session.windows[window];
     let Some((path, written)) = window.arrangement.as_mut() else { return };
-    let mut arrangement = Saved::of(&window.composition, window.presentation, &session.font_sizes)
-        .forgetting_weights(|tab| kept.contains(tab));
+    let mut arrangement =
+        Saved::of(&window.composition, window.presentation.clone(), &session.font_sizes)
+            .forgetting_weights(|tab| kept.contains(tab));
     // Only a draft with words or a pick in it: recipients alone are what the conversation opens
     // with anyway, and writing an empty draft for every group ever shown would grow the file
     // forever.
@@ -5541,7 +5589,7 @@ pub(crate) fn saved_presentation(window: WindowId) -> Presentation {
 pub(crate) fn set_window_frame(window: WindowId, frame: Option<Frame>, full_screen: bool) {
     let mut session = poison::lock(&SESSION, "session");
     session.windows[window].presentation =
-        session.windows[window].presentation.with_frame(frame, full_screen);
+        session.windows[window].presentation.clone().with_frame(frame, full_screen);
     save(&mut session, window);
 }
 
@@ -5580,6 +5628,48 @@ fn publish(cause: &str) {
         let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
         for daemon in &daemons {
             session.reconcile(daemon);
+        }
+        let holding = &session.holding;
+        for window in session.windows.values_mut() {
+            if window.is_open() {
+                let tabs: BTreeSet<_> =
+                    window.composition.tabs().map(|tab| tab.id.clone()).collect();
+                let pending: BTreeSet<_> = window
+                    .left
+                    .iter()
+                    .flat_map(|left| &left.tabs)
+                    .filter(|tab| {
+                        holding.holds(&window.name, &tab.id)
+                            && tab
+                                .regions
+                                .iter()
+                                .any(|region| window.awaiting.contains(&region.daemon))
+                    })
+                    .map(|tab| tab.id.clone())
+                    .collect();
+                window
+                    .presentation
+                    .folded_tabs
+                    .retain(|tab| tabs.contains(tab) || pending.contains(tab));
+                if tabs.len() == 1
+                    && (window.awaiting.is_empty()
+                        || window.last_tab_count.is_some_and(|count| count > 1))
+                {
+                    window.presentation.folded_tabs.remove(tabs.first().expect("one tab"));
+                }
+                window.last_tab_count = Some(tabs.len());
+            }
+        }
+        for window in session.windows.opened() {
+            if let Some(pane) = session.keyboard_key(window) {
+                let held = &mut session.windows[window];
+                if held.last_keyboard.as_ref().is_some_and(|last| last != &pane)
+                    && let Some(tab) = held.composition.showing()
+                {
+                    held.presentation.folded_tabs.remove(tab);
+                }
+                held.last_keyboard = Some(pane);
+            }
         }
         session.rebase_bridge_counts();
         // Only the windows that have opened: one not yet open has no shell window to draw in,
@@ -7226,12 +7316,13 @@ fn close_daemons(daemons: &[(DaemonId, String)]) {
 /// Sent whole and sent on startup as well as on every change, so a shell holds no default of
 /// its own. A shell that guessed would be a second answer to a question the core owns, and
 /// the two would disagree the first time the default moved.
-fn announce_presentation(window: &WindowName, presentation: Presentation) {
+fn announce_presentation(window: &WindowName, presentation: &Presentation) {
     ffi::emit(
         &Event::new(event::Payload::PresentationChanged(PresentationChanged {
             sidebar: presentation.sidebar,
             sidebar_width: presentation.sidebar_width,
             hidden_collapsed: presentation.hidden_collapsed,
+            needs_you_folded: presentation.needs_you_folded,
         }))
         .for_window(window.as_str()),
     );

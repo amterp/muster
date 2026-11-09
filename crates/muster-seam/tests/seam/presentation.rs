@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use muster::proto::{
     Event, OpenWindow, PresentationChanged, ReloadConfig, Request, Response, SetHiddenCollapsed,
-    Startup, ToggleSidebar, event, request, response,
+    SetNeedsYouFolded, Startup, ToggleSidebar, event, request, response,
 };
 use muster_harness::{Daemon, until};
 use prost::Message;
@@ -195,6 +195,30 @@ fn folding_the_hidden_caption_is_remembered() {
 
     // And open again, which is the same request with the other answer.
     fold(false);
+}
+
+#[test]
+fn folding_needs_you_is_announced_and_saved() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    let state = daemon.muster_config().with_file_name("window.toml");
+    *PRESENTATION.lock().expect("presentation") = None;
+    muster::ffi::muster_set_event_callback(Some(note_presentation));
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        state_path: state.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    assert_ok(&answer(request::Payload::SetNeedsYouFolded(SetNeedsYouFolded { folded: true })));
+    until(
+        "fold announcement",
+        || latest().is_some_and(|p| p.needs_you_folded),
+        || format!("{:?}", latest()),
+    );
+    let file = std::fs::read_to_string(state).expect("saved window");
+    let saved = muster_core::composition::saved::from_toml(&file).expect("read saved window");
+    assert!(saved.presentation.needs_you_folded);
 }
 
 static PRESENTATION: Mutex<Option<PresentationChanged>> = Mutex::new(None);

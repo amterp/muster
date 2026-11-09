@@ -92,6 +92,7 @@ public struct Roster: Equatable {
   }
 
   public struct Tab: Equatable {
+    public let folded: Bool
     public let id: String
 
     /// The machines holding panes in it, in the order their regions sit on screen. One for
@@ -131,7 +132,7 @@ public struct Roster: Equatable {
 
     public init(
       id: String, daemons: [String] = [], place: Int, press: Int = 0, armed: Bool = false,
-      label: String, onScreen: Bool, givenName: String = "", panes: [Pane]
+      label: String, onScreen: Bool, givenName: String = "", folded: Bool = false, panes: [Pane]
     ) {
       self.id = id
       self.daemons = daemons
@@ -141,6 +142,7 @@ public struct Roster: Equatable {
       self.label = label
       self.onScreen = onScreen
       self.givenName = givenName
+      self.folded = folded
       self.panes = panes
     }
   }
@@ -275,13 +277,16 @@ public struct Presentation: Equatable {
 
   /// Whether the roster's Hidden caption is folded over the panes under it.
   public let hiddenCollapsed: Bool
+  public let needsYouFolded: Bool
 
   public init(
-    sidebar: Bool, sidebarWidth: CGFloat = SidebarModel.width, hiddenCollapsed: Bool = false
+    sidebar: Bool, sidebarWidth: CGFloat = SidebarModel.width, hiddenCollapsed: Bool = false,
+    needsYouFolded: Bool = false
   ) {
     self.sidebar = sidebar
     self.sidebarWidth = sidebarWidth
     self.hiddenCollapsed = hiddenCollapsed
+    self.needsYouFolded = needsYouFolded
   }
 }
 
@@ -1059,6 +1064,7 @@ public final class SidebarView: NSView {
   /// Whether the Hidden caption is folded, as the core's presentation last said. Drawn on the
   /// next `apply(roster:agents:keyboard:)`, like `groups`.
   public var hiddenCollapsed = false
+  public var needsYouFolded = false
 
   /// Called when somebody clicks the Hidden caption, with whether they are asking to fold it.
   public var onHiddenToggled: ((Bool) -> Void)?

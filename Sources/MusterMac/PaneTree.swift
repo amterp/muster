@@ -99,6 +99,7 @@ extension Roster.Tab {
       label: tab.label,
       onScreen: tab.onScreen,
       givenName: tab.givenName,
+      folded: tab.folded,
       panes: tab.panes.map(Roster.Pane.init))
   }
 }

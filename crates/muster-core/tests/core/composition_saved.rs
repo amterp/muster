@@ -270,6 +270,24 @@ fn a_file_from_before_the_hidden_caption_folded_reads_as_open() {
     assert!(!read.presentation.hidden_collapsed);
 }
 
+#[test]
+fn tab_and_needs_you_folds_round_trip_and_old_files_open_them() {
+    let mut presentation = Presentation::default().with_needs_you_folded(true);
+    presentation.folded_tabs.insert(TabId::new("t1"));
+    presentation.folded_tabs.insert(TabId::new("t2"));
+    let written = Saved { presentation, ..Saved::default() };
+    let file = to_toml(&written);
+    assert_eq!(from_toml(&file).expect("saved window"), written);
+    let mut older: toml::Value = toml::from_str(&file).expect("saved TOML");
+    let window = older.get_mut("window").and_then(toml::Value::as_table_mut).expect("window");
+    assert!(window.remove("folded_tabs").is_some());
+    assert!(window.remove("needs_you_folded").is_some());
+    let older = toml::to_string(&older).expect("older TOML");
+    let read = from_toml(&older).expect("older window");
+    assert!(read.presentation.folded_tabs.is_empty());
+    assert!(!read.presentation.needs_you_folded);
+}
+
 /// Half a rectangle is no rectangle.
 ///
 /// Only a hand-edit produces this, and the answer is the one every other refusal in this file

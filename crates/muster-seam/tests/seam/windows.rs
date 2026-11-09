@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use muster::proto::{
     AskForWindow, AskToCloseWindow, ClosePane, CloseWindow, CreateTab, Event, FocusAsking,
     FocusHistory, FocusPane, FocusTab, MoveTab, OpenWindow, Quitting, ReadAsking, ReadReopening,
-    ReadWindow, ReattachPane, Request, Response, SplitPane, Startup, StillOpen, ToggleSidebar,
-    WindowFocus, event, request, response,
+    ReadWindow, ReattachPane, Request, Response, SetTabFolded, SplitPane, Startup, StillOpen,
+    ToggleSidebar, WindowFocus, event, request, response,
 };
 use muster_core::composition::holding::from_toml;
 use muster_daemon_proto::{self as daemon_proto, AgentState, session_request};
@@ -98,6 +98,122 @@ fn two_windows_in_one_process_each_list_their_own_tabs() {
             "{window}'s arrangement does not name {tab}:\n{written}"
         );
     }
+}
+
+#[test]
+fn tab_folds_belong_to_the_window_and_focusing_unfolds() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    let first_pane = keyboard_in("window-1").expect("first pane");
+    new_tab_in("window-1");
+    let fold = |window: &str, tab: &str| {
+        assert_ok(&answer(&in_window(
+            window,
+            request::Payload::SetTabFolded(SetTabFolded { tab_id: tab.to_string(), folded: true }),
+        )));
+    };
+    let folded = |window: &str, tab: &str| {
+        read_window(window)
+            .roster
+            .iter()
+            .flat_map(|roster| &roster.tabs)
+            .find(|held| held.tab_id == tab)
+            .map(|held| held.folded)
+    };
+    fold("window-1", &first);
+    assert_eq!(folded("window-1", &first), Some(true));
+    assert_eq!(folded("window-2", &first), None);
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::FocusPane(FocusPane { pane_id: first_pane, ..FocusPane::default() }),
+    )));
+    assert_eq!(folded("window-1", &first), Some(false));
+    fold("window-1", &first);
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab {
+            tab_id: first.clone(),
+            window: "window-2".to_string(),
+        }),
+    )));
+    assert_eq!(folded("window-2", &first), Some(false));
+    let saved = std::fs::read_to_string(arrangement(&daemon, "window-1")).expect("saved window");
+    let saved = muster_core::composition::saved::from_toml(&saved).expect("read saved window");
+    assert!(saved.presentation.folded_tabs.is_empty());
+}
+
+#[test]
+fn moving_one_of_two_tabs_unfolds_and_saves_the_remaining_tab() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (first, _) = two_windows(&daemon);
+    new_tab_in("window-1");
+    let second = listed("window-1").into_iter().find(|tab| tab != &first).expect("second tab");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::SetTabFolded(SetTabFolded { tab_id: first.clone(), folded: true }),
+    )));
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::MoveTab(MoveTab { tab_id: second, window: "window-2".to_string() }),
+    )));
+    let roster = read_window("window-1").roster.expect("roster");
+    assert_eq!(roster.tabs.len(), 1);
+    assert!(!roster.tabs[0].folded);
+    let saved = std::fs::read_to_string(arrangement(&daemon, "window-1")).expect("saved window");
+    let saved = muster_core::composition::saved::from_toml(&saved).expect("read saved window");
+    assert!(
+        !saved.presentation.folded_tabs.contains(&muster_core::mirror::backend::TabId::new(first))
+    );
+}
+
+#[test]
+fn a_folded_tab_stays_folded_when_its_window_reopens() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    let (_, tab) = two_windows(&daemon);
+    new_tab_in("window-2");
+    assert_ok(&answer(&in_window(
+        "window-2",
+        request::Payload::SetTabFolded(SetTabFolded { tab_id: tab.clone(), folded: true }),
+    )));
+    assert_ok(&answer(&in_window("window-2", request::Payload::CloseWindow(CloseWindow {}))));
+    assert_ok(&answer(&Request::new(request::Payload::OpenWindow(OpenWindow {
+        state_path: arrangement_text(&daemon, "window-2"),
+        ..OpenWindow::default()
+    }))));
+    let roster = read_window("window-2").roster.expect("roster");
+    assert!(roster.tabs.iter().find(|held| held.tab_id == tab).expect("restored tab").folded);
+}
+
+#[test]
+fn closing_a_tab_unfolds_the_tab_that_receives_the_keyboard() {
+    let _turn = muster::testing::fresh_session();
+    muster::testing::set_typeable_deadline(std::time::Duration::ZERO);
+    let daemon = Daemon::start_built();
+    two_windows(&daemon);
+    new_tab_in("window-1");
+    let receiving = showing_in("window-1").expect("second tab");
+    let closing_pane = new_tab_in("window-1");
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::SetTabFolded(SetTabFolded { tab_id: receiving.clone(), folded: true }),
+    )));
+    assert_ok(&answer(&in_window(
+        "window-1",
+        request::Payload::ClosePane(ClosePane { pane_id: closing_pane, ..ClosePane::default() }),
+    )));
+    until(
+        "the keyboard to move to the preceding tab",
+        || showing_in("window-1").as_deref() == Some(&receiving),
+        || format!("window-1 shows {:?}", showing_in("window-1")),
+    );
+    let roster = read_window("window-1").roster.expect("roster");
+    assert!(!roster.tabs.iter().find(|tab| tab.tab_id == receiving).expect("receiving tab").folded);
 }
 
 /// A tab made from one window is that window's, whichever window is in front.

@@ -420,8 +420,9 @@ pub(super) fn restore_late_in(session: &mut Session, window: WindowId, daemon: &
             regions += 1;
         }
     }
-    let wanted = Saved::of(&restored.composition, restored.presentation, &session.font_sizes)
-        .keeping(&left, &BTreeSet::from([daemon.clone()]));
+    let wanted =
+        Saved::of(&restored.composition, restored.presentation.clone(), &session.font_sizes)
+            .keeping(&left, &BTreeSet::from([daemon.clone()]));
     restored.composition.arrange_like(&wanted);
     log::info(
         "composition.restored_late",

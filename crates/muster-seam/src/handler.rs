@@ -320,6 +320,14 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             session::set_hidden_collapsed(window, set.collapsed);
             Response::ok()
         }
+        request::Payload::SetTabFolded(set) => {
+            session::set_tab_folded(window, &TabId::new(&set.tab_id), set.folded);
+            Response::ok()
+        }
+        request::Payload::SetNeedsYouFolded(set) => {
+            session::set_needs_you_folded(window, set.folded);
+            Response::ok()
+        }
         request::Payload::ToggleSidebar(_) => {
             session::toggle_sidebar(window);
             Response::ok()

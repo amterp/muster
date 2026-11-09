@@ -20,9 +20,10 @@
 //! the window - so a map keyed by pane stays outside the record that everything else reads as
 //! "how the window looked".
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::composition::record::PaneKey;
+use crate::mirror::backend::TabId;
 
 /// A rectangle in whatever coordinates the platform draws windows in.
 ///
@@ -129,7 +130,8 @@ impl Frame {
 }
 
 /// The window's own chrome, as much of it as outlives the process.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::struct_excessive_bools, reason = "independent window settings")]
 pub struct Presentation {
     /// Whether the roster is on screen.
     pub sidebar: bool,
@@ -167,6 +169,8 @@ pub struct Presentation {
     /// Per window for the reason the width is: which panes are hidden is every window's answer,
     /// but whether one window's list has room to show them is that window's.
     pub hidden_collapsed: bool,
+    pub folded_tabs: BTreeSet<TabId>,
+    pub needs_you_folded: bool,
 }
 
 impl Default for Presentation {
@@ -180,6 +184,8 @@ impl Default for Presentation {
             frame: None,
             full_screen: false,
             hidden_collapsed: false,
+            folded_tabs: BTreeSet::new(),
+            needs_you_folded: false,
         }
     }
 }
@@ -216,6 +222,11 @@ impl Presentation {
     #[must_use]
     pub fn with_hidden_collapsed(self, hidden_collapsed: bool) -> Presentation {
         Presentation { hidden_collapsed, ..self }
+    }
+
+    #[must_use]
+    pub fn with_needs_you_folded(self, needs_you_folded: bool) -> Presentation {
+        Presentation { needs_you_folded, ..self }
     }
 
     /// Where the window is, and whether it is full-screen, as one answer.
@@ -459,8 +470,8 @@ mod tests {
         assert_eq!(presentation.frame, Some(frame));
         assert!(presentation.full_screen);
 
-        assert_eq!(presentation.with_sidebar(true).frame, Some(frame));
-        assert_eq!(presentation.with_frame(None, false).sidebar, presentation.sidebar);
+        assert_eq!(presentation.clone().with_sidebar(true).frame, Some(frame));
+        assert_eq!(presentation.clone().with_frame(None, false).sidebar, presentation.sidebar);
         assert_eq!(presentation.with_sidebar_width(300.0).frame, Some(frame));
     }
 

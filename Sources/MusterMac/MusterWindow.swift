@@ -552,6 +552,7 @@ public final class MusterWindow: NSObject {
   /// Applied rather than toggled: the core holds the answer and sends it whole, including
   /// once at startup, so this window never has a default of its own to disagree with.
   public func apply(presentation: Presentation) {
+    sidebar.needsYouFolded = presentation.needsYouFolded
     split.sidebarShown = presentation.sidebar
     split.sidebarWidth = presentation.sidebarWidth
     if sidebar.hiddenCollapsed != presentation.hiddenCollapsed {

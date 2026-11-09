@@ -114,6 +114,8 @@ message Request {
     ReadImagePasteTarget read_image_paste_target = 105;
     PasteImage paste_image = 106;
     PrepareImagePaste prepare_image_paste = 107;
+    SetTabFolded set_tab_folded = 108;
+    SetNeedsYouFolded set_needs_you_folded = 109;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -296,6 +298,15 @@ message SetSidebarWidth {
 // clicks in quick succession cannot cross each other on the way.
 message SetHiddenCollapsed {
   bool collapsed = 1;
+}
+
+message SetTabFolded {
+  string tab_id = 1;
+  bool folded = 2;
+}
+
+message SetNeedsYouFolded {
+  bool folded = 1;
 }
 
 // Asks what this window is showing, and what it holds that it is not showing.
@@ -3088,6 +3099,7 @@ message PresentationChanged {
   // Whether the roster's Hidden caption is folded, drawing a count and the most urgent state
   // among its panes in place of their rows.
   bool hidden_collapsed = 4;
+  bool needs_you_folded = 5;
 
   // 2 was a font size for the whole window, from when `cmd+=` sized every pane at once. Text
   // is sized per pane now and travels on `ViewPane.font_size_offset`, where the shell is
@@ -3188,6 +3200,7 @@ message RosterMachine {
 }
 
 message RosterTab {
+  bool folded = 12;
   // The machines holding panes in this tab, in the order their regions sit on screen. One
   // for every tab until somebody groups two.
   //

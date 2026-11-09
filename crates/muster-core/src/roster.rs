@@ -119,6 +119,7 @@ fn fnv1a(bytes: &[u8]) -> u32 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RosterTab {
     pub id: TabId,
+    pub folded: bool,
 
     /// The machines holding panes in it, in the order their regions sit on screen.
     ///
@@ -576,6 +577,7 @@ impl Roster {
                 let name = own.and_then(tab_name);
                 RosterTab {
                     id: tab.id.clone(),
+                    folded: false,
                     daemons: tab.daemons().cloned().collect(),
                     place: tab_place,
                     label: name.map_or_else(|| format!("Tab {tab_place}"), str::to_string),
@@ -702,6 +704,7 @@ fn hidden_tabs<'a>(
                 let name = tab_name(part);
                 hidden.push(RosterTab {
                     id: part.id.clone(),
+                    folded: false,
                     daemons: Vec::new(),
                     place: 0,
                     label: name.unwrap_or_default().to_string(),

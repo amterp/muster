@@ -299,7 +299,7 @@ pub(super) fn restore_presentation(window: WindowId) {
             ),
             None => saved,
         };
-        session.windows[window].presentation = presentation;
+        session.windows[window].presentation = presentation.clone();
         presentation
     };
     // Then let anything already wrong have its say. A config refused during `Startup` raised
@@ -308,7 +308,7 @@ pub(super) fn restore_presentation(window: WindowId) {
     // announces for itself when it moves anything, which is why this one is conditional.
     if !reconcile_sidebar_with_problems(window) {
         let name = poison::lock(&SESSION, "session").windows[window].name.clone();
-        announce_presentation(&name, presentation);
+        announce_presentation(&name, &presentation);
     }
 }
 

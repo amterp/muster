@@ -180,6 +180,7 @@ pub(crate) fn roster(
 fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTab {
     proto::RosterTab {
         tab_id: tab.id.to_string(),
+        folded: tab.folded,
         daemon_ids: tab.daemons.iter().map(ToString::to_string).collect(),
         // Zero is proto3's own spelling for a field nobody set, and the handler
         // already reads it as no place at all - so a number too large to send

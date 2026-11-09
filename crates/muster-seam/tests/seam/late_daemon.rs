@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use std::path::Path;
 
 use muster::proto::{
-    CreateTab, Event, OpenWindow, ProblemsChanged, Quitting, ReadWindow, Request, Response,
-    Startup, event, request, response,
+    ClosePane, CreateTab, Event, MoveTab, OpenWindow, ProblemsChanged, Quitting, ReadWindow,
+    Request, Response, SetTabFolded, Startup, event, request, response,
 };
 use muster_core::composition::{DaemonId, saved};
 use muster_core::mirror::{PaneId, TabId};
@@ -219,6 +219,181 @@ fn a_daemon_on_its_way_takes_neither_the_screen_nor_the_keyboard() {
         "the devenv answering moved the screen or the keyboard"
     );
     drop(relay);
+}
+
+#[test]
+fn the_only_visible_tab_unfolds_while_another_daemon_is_missing() {
+    let _turn = muster::testing::fresh_session();
+    let local = Daemon::start_built();
+    make(&mut local.connect(), create("a1", in_new_tab("t1")));
+    make(&mut local.connect(), create("a3", in_new_tab("t3")));
+    let missing = local.root().join("missing.sock");
+    let config = local.root().join("muster-late.toml");
+    std::fs::write(&config, format!(
+        "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\nsocket = {:?}\n",
+        local.socket_path().to_string_lossy(), missing.to_string_lossy()
+    )).expect("config");
+    let region = |daemon: &str, pane: &str| saved::SavedRegion {
+        daemon: DaemonId::new(daemon),
+        weight: Some(1.0),
+        pane: Some(PaneId::new(pane)),
+        keyboard: true,
+    };
+    let tab = |id: &str, region| saved::SavedTab { id: TabId::new(id), regions: vec![region] };
+    let arrangement = local.root().join("window-1.toml");
+    let left = saved::Saved {
+        tabs: vec![
+            tab("t1", region("local", "a1")),
+            tab("t3", region("local", "a3")),
+            tab("t2", region("devenv", "b2")),
+        ],
+        showing: Some(TabId::new("t1")),
+        ..saved::Saved::default()
+    };
+    std::fs::write(&arrangement, saved::to_toml(&left)).expect("arrangement");
+    start(&config, &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until("two local tabs", || listed_tabs() == ["t1", "t3"], || format!("{:?}", listed_tabs()));
+    assert_ok(&answer(request::Payload::SetTabFolded(SetTabFolded {
+        tab_id: "t1".to_string(),
+        folded: true,
+    })));
+    assert_ok(&answer(request::Payload::ClosePane(ClosePane {
+        pane_id: "a3".to_string(),
+        ..ClosePane::default()
+    })));
+    until("one local tab", || listed_tabs() == ["t1"], || format!("{:?}", listed_tabs()));
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    assert!(!window.roster.expect("roster").tabs[0].folded);
+    let saved = saved::from_toml(&std::fs::read_to_string(arrangement).expect("saved"))
+        .expect("arrangement");
+    assert!(!saved.presentation.folded_tabs.contains(&TabId::new("t1")));
+}
+
+#[test]
+fn a_fold_survives_a_daemon_that_arrives_after_the_window_opens() {
+    let _turn = muster::testing::fresh_session();
+    let local = Daemon::start_built();
+    make(&mut local.connect(), create("a1", in_new_tab("t1")));
+    let remote = Daemon::start_built();
+    make(&mut remote.connect(), create("b2", in_new_tab("t2")));
+    let relay = remote.delaying_answers_where(subscribes, SLOW);
+    let region = |daemon: &str, pane: &str| saved::SavedRegion {
+        daemon: DaemonId::new(daemon),
+        weight: Some(1.0),
+        pane: Some(PaneId::new(pane)),
+        keyboard: true,
+    };
+    let tab = |id: &str, region| saved::SavedTab { id: TabId::new(id), regions: vec![region] };
+    let arrangement = local.root().join("window-1.toml");
+    let mut left = saved::Saved {
+        tabs: vec![tab("t1", region("local", "a1")), tab("t2", region("devenv", "b2"))],
+        showing: Some(TabId::new("t1")),
+        ..saved::Saved::default()
+    };
+    left.presentation.folded_tabs.insert(TabId::new("t1"));
+    std::fs::write(&arrangement, saved::to_toml(&left)).expect("arrangement");
+    let config = local.root().join("muster-late.toml");
+    std::fs::write(&config, format!(
+        "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\nsocket = {:?}\n",
+        local.socket_path().to_string_lossy(), relay.socket_path().to_string_lossy()
+    )).expect("config");
+    start(&config, &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    assert_eq!(listed_tabs(), ["t1"]);
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    assert!(!window.roster.expect("roster").tabs[0].folded);
+    let saved = saved::from_toml(&std::fs::read_to_string(&arrangement).expect("saved"))
+        .expect("arrangement");
+    assert!(saved.presentation.folded_tabs.contains(&TabId::new("t1")));
+    until("the remote tab", || listed_tabs() == ["t1", "t2"], || format!("{:?}", listed_tabs()));
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    assert!(window.roster.expect("roster").tabs[0].folded);
+}
+
+#[test]
+fn a_tab_moved_away_and_back_does_not_recover_its_fold_while_a_daemon_is_missing() {
+    let _turn = muster::testing::fresh_session();
+    let local = Daemon::start_built();
+    for (pane, tab) in [("a1", "t1"), ("a2", "t2"), ("a3", "t3")] {
+        make(&mut local.connect(), create(pane, in_new_tab(tab)));
+    }
+    let missing = local.root().join("missing.sock");
+    let config = local.root().join("muster-late.toml");
+    std::fs::write(&config, format!(
+        "[[daemon]]\nid = \"local\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\nsocket = {:?}\n",
+        local.socket_path().to_string_lossy(), missing.to_string_lossy()
+    )).expect("config");
+    let region = |daemon: &str, pane: &str| saved::SavedRegion {
+        daemon: DaemonId::new(daemon),
+        weight: Some(1.0),
+        pane: Some(PaneId::new(pane)),
+        keyboard: true,
+    };
+    let tab = |id: &str, region| saved::SavedTab { id: TabId::new(id), regions: vec![region] };
+    let arrangement = local.root().join("window-1.toml");
+    let left = saved::Saved {
+        tabs: vec![
+            tab("t1", region("local", "a1")),
+            tab("t2", region("local", "a2")),
+            tab("t3", region("local", "a3")),
+            tab("t4", region("devenv", "b4")),
+        ],
+        showing: Some(TabId::new("t3")),
+        ..saved::Saved::default()
+    };
+    std::fs::write(&arrangement, saved::to_toml(&left)).expect("arrangement");
+    start(&config, &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "three local tabs",
+        || listed_tabs() == ["t1", "t2", "t3"],
+        || format!("{:?}", listed_tabs()),
+    );
+    let opened = answer(request::Payload::OpenWindow(OpenWindow {
+        state_path: local.root().join("window-2.toml").to_string_lossy().into_owned(),
+        ..OpenWindow::default()
+    }));
+    assert_ok(&opened);
+    let send = |payload| {
+        let bytes = Request::new(payload).for_window("window-1").encode_to_vec();
+        Response::decode(muster::dispatch(&bytes).as_slice()).expect("response")
+    };
+    assert_ok(&send(request::Payload::SetTabFolded(SetTabFolded {
+        tab_id: "t1".to_string(),
+        folded: true,
+    })));
+    for to in ["window-2", "window-1"] {
+        assert_ok(&send(request::Payload::MoveTab(MoveTab {
+            tab_id: "t1".to_string(),
+            window: to.to_string(),
+        })));
+    }
+    let Some(response::Payload::Window(window)) =
+        send(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    let tab = window
+        .roster
+        .expect("roster")
+        .tabs
+        .into_iter()
+        .find(|tab| tab.tab_id == "t1")
+        .expect("returned tab");
+    assert!(!tab.folded);
 }
 
 /// The tab on screen and the pane the keyboard is in.
