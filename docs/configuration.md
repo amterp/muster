@@ -720,8 +720,8 @@ turns up late, and it goes with the pane if you close it.
 live under `<install>/windows/` - `release/windows/` for the app you installed - one file per
 window rather than one for the machine, and each is rewritten
 whenever that window settles: which tabs it was showing, in what order, at what widths; under
-`[window]`, whether the agent list was open, how wide, and whether its Hidden caption was folded,
-and how big the window itself was; and one `[[pane]]` row for each pane whose text somebody sized. Delete the
+`[window]`, whether the agent list was open, how wide, which of its tabs and whether its Hidden
+caption and Needs you strip were folded, and how big the window itself was; and one `[[pane]]` row for each pane whose text somebody sized. Delete the
 directory and the next launch opens fresh. Nothing about a session is in any of them - what a tab
 holds is the daemon's answer, asked again on every launch.
 
@@ -734,6 +734,16 @@ the window instead, and a window narrower than 400 points still puts the list aw
 Folded, it shows how many panes are under it and a dot in the most urgent state among them -
 blocked, then stuck, then done, then working - so a hidden agent waiting on you still shows. The
 fold is the window's, kept under `[window]` with the width.
+
+**Fold any tab in the agent list with the chevron on its caption.** A window with two or more tabs
+draws one on every caption; a window with one tab draws none, since folding its only tab would hide
+every agent. A folded tab keeps its caption and draws each of its agents' state icons in a row at
+the caption's end, in the order the tab lists them, so a blocked agent inside it still shows; if
+they do not all fit, the most urgent keep their icons and a count says how many more there are.
+Hovering the caption names each agent and its state. Clicking the caption still shows the tab, and
+folding is not hiding: the chords still reach a folded tab's agents, and moving the keyboard into
+one unfolds its tab. Each window folds on its own, and the folds are kept under `[window]`; a tab
+moved to another window arrives open.
 
 **A window opens at the size and position it was left, and full-screen if that is how you left
 it.** The rectangle is written down as the window settles rather than at quit, because quitting

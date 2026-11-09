@@ -36,6 +36,11 @@ final class SidebarRowView: NSView {
   private let stateField = NSTextField(labelWithString: "")
   private let directoryField = NSTextField(labelWithString: "")
   private var machineTag: MachineTag?
+  /// A tab caption's fold control, and while the tab is folded the icons of the panes it is over
+  /// and the count of those that did not fit.
+  private var foldControl: FoldControl?
+  private var foldIcons: [StateIcon] = []
+  private let foldMore = NSTextField(labelWithString: "")
   private var firstKey: KeycapView?
   private var secondKey: KeycapView?
   /// Whether each column of the chord is reserved, so labels line up down the list whether or not a
@@ -59,6 +64,9 @@ final class SidebarRowView: NSView {
   /// The row this view last drew, so a change of appearance can draw it again from the palette for
   /// the new one.
   private var shown: SidebarModel.Row?
+
+  /// Called when somebody clicks the caption's fold control, with the row it is on.
+  var onFoldToggled: ((SidebarModel.Row) -> Void)?
 
   /// Whether this row carries the keyboard marker.
   var marksKeyboard: Bool { highlight.superlayer != nil }
@@ -90,6 +98,17 @@ final class SidebarRowView: NSView {
 
   /// The color the context bar is filled with, or nil when the row draws none.
   var contextBarFill: CGColor? { marks.compactMap { ($0 as? ContextBar)?.fillColor }.first }
+
+  /// Whether the caption has a fold control, and whether it shows the tab as folded.
+  var showsFoldControl: Bool { foldControl != nil }
+  var foldControlIsFolded: Bool? { foldControl?.isFolded }
+  var foldControlFrame: CGRect? { foldControl?.frame }
+  func pressFoldControl() { foldControl?.onPressed?() }
+
+  /// The states of the icons a folded caption draws now, in order, and how many panes did not fit
+  /// (nil when all did). Meaningful after layout, which is what decides the room.
+  var shownFoldIcons: [String] { foldIcons.filter { !$0.isHidden }.map(\.state) }
+  var foldedMore: String? { foldMore.superview == nil ? nil : foldMore.stringValue }
 
   /// How many marks sit at the trailing edge, and whether a progress bar runs under the text.
   var shownMarks: Int { marks.count }
@@ -146,6 +165,11 @@ final class SidebarRowView: NSView {
     (firstKey, secondKey) = (nil, nil)
     machineTag?.removeFromSuperview()
     machineTag = nil
+    foldControl?.removeFromSuperview()
+    foldControl = nil
+    for icon in foldIcons { icon.removeFromSuperlayer() }
+    foldIcons = []
+    foldMore.removeFromSuperview()
     progressFilled = 0
 
     // Behind everything else, in the order they stack. The keyboard marker is on the one row the
@@ -219,6 +243,16 @@ final class SidebarRowView: NSView {
       name.stringValue = row.label
       name.textColor = row.onScreen ? .labelColor : .secondaryLabelColor
       draw(tabPress: reached, press: 0, in: row, palette: palette)
+      if row.foldable {
+        let control = FoldControl(folded: row.folded)
+        control.onPressed = { [weak self] in
+          guard let self, let shown else { return }
+          onFoldToggled?(shown)
+        }
+        addSubview(control)
+        foldControl = control
+      }
+      if row.folded { drawFoldedPanes(row.foldedPanes) }
     case .pane(let first, let second):
       draw(tabPress: first, press: second, in: row, palette: palette)
       // A pane no region is showing is reachable, not absent - dimming it says "not here yet"
@@ -269,6 +303,20 @@ final class SidebarRowView: NSView {
     }
     resolveColors()
     needsLayout = true
+  }
+
+  /// The icons of the panes a folded caption stands in for, so a blocked agent inside still shows.
+  /// Laid out later, when the room is known.
+  private func drawFoldedPanes(_ panes: [SidebarModel.FoldedPane]) {
+    foldIcons = panes.map { pane in
+      let icon = StateIcon()
+      icon.show(state: pane.state, color: PaneAppearance.borderColor(state: pane.state))
+      layer?.addSublayer(icon)
+      return icon
+    }
+    foldMore.font = .systemFont(ofSize: 10, weight: .semibold)
+    foldMore.textColor = .secondaryLabelColor
+    foldMore.isHidden = true
   }
 
   /// Which corners of the raised panel a row at `place` rounds: the top ones of its first row and
@@ -376,6 +424,7 @@ final class SidebarRowView: NSView {
         highlight.borderColor = NSColor.controlAccentColor.cgColor
       }
       icon.resolve()
+      for folded in foldIcons { folded.resolve() }
       // A bar kept across a reload of the config file keeps the colors it was made with otherwise.
       for case let bar as ContextBar in marks { bar.resolveColors() }
     }
@@ -609,7 +658,14 @@ final class SidebarRowView: NSView {
   }
 
   private func layoutOtherRow() {
-    let left = SidebarRowView.inset + CGFloat(indent) * SidebarRowView.indent
+    var left = SidebarRowView.inset + CGFloat(indent) * SidebarRowView.indent
+    if let control = foldControl {
+      // Where a pane row's keys start, so the chord column runs straight down the list.
+      control.frame = CGRect(
+        x: 4, y: (bounds.height - FoldControl.height) / 2, width: FoldControl.width,
+        height: FoldControl.height)
+      left = SidebarRowView.paneInset
+    }
     // Keys, then dot, then label, laid out from a running left edge rather than each from
     // `left`, because a row can carry both: the chord says how to reach the row and the dot says
     // why you would want to.
@@ -638,6 +694,7 @@ final class SidebarRowView: NSView {
         height: size.height)
       right -= size.width + SidebarRowView.markGap
     }
+    if !foldIcons.isEmpty { layoutFoldedIcons(from: textLeft, right: &right) }
     // Sized to the text and then centred, rather than given the whole row. A label draws its
     // text at the top of whatever frame it is handed, so a full-height frame puts the words
     // above the dot beside them - which reads as the dot being wrong rather than the text.
@@ -654,6 +711,90 @@ final class SidebarRowView: NSView {
     let top = (bounds.height - textHeight - secondHeight) / 2
     name.frame = CGRect(x: textLeft, y: top + secondHeight, width: width, height: textHeight)
     subtitle.frame = CGRect(x: textLeft, y: top, width: width, height: secondHeight)
+  }
+}
+
+extension SidebarRowView {
+  /// Puts as many of a folded caption's icons at its trailing edge as leave the name room, and a
+  /// count of the rest.
+  fileprivate func layoutFoldedIcons(from textLeft: CGFloat, right: inout CGFloat) {
+    let step = StateIcon.size + 4
+    let nameRoom: CGFloat = 60
+    let states = foldIcons.map(\.state)
+    let available = max(0, right - textLeft - nameRoom)
+    var fit = SidebarModel.foldedIcons(states: states, capacity: Int(available / step))
+    var moreWidth: CGFloat = 0
+    if fit.more > 0 {
+      foldMore.stringValue = "+\(fit.more)"
+      moreWidth = ceil(foldMore.fittingSize.width) + 4
+      fit = SidebarModel.foldedIcons(
+        states: states, capacity: Int(max(0, available - moreWidth) / step))
+      foldMore.stringValue = "+\(fit.more)"
+      moreWidth = ceil(foldMore.fittingSize.width) + 4
+    }
+    for (index, icon) in foldIcons.enumerated() { icon.isHidden = !fit.shown.contains(index) }
+    if fit.more > 0 {
+      if foldMore.superview == nil { addSubview(foldMore) }
+      foldMore.isHidden = false
+      let size = foldMore.fittingSize
+      foldMore.frame = CGRect(
+        x: right - size.width, y: (bounds.height - size.height) / 2, width: size.width,
+        height: size.height)
+      right -= moreWidth
+    }
+    var x = right - step * CGFloat(fit.shown.count) + 4
+    for index in fit.shown {
+      foldIcons[index].frame = CGRect(
+        x: x, y: ((bounds.height - StateIcon.size) / 2).rounded(), width: StateIcon.size,
+        height: StateIcon.size)
+      x += step
+    }
+    right -= step * CGFloat(fit.shown.count) + 4
+  }
+}
+
+/// A tab caption's fold control: a chevron that turns, in a view of its own so that a click on it
+/// folds the tab and a click anywhere else on the caption still shows it.
+@MainActor
+final class FoldControl: NSView {
+  static let width: CGFloat = 16
+  static let height: CGFloat = 16
+
+  let isFolded: Bool
+  var onPressed: (() -> Void)?
+
+  init(folded: Bool) {
+    isFolded = folded
+    super.init(frame: .zero)
+    let words = folded ? "unfold tab" : "fold tab"
+    let image = NSImage(
+      systemSymbolName: folded ? "chevron.right" : "chevron.down", accessibilityDescription: words)?
+      .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+    let symbol = NSImageView(image: image ?? NSImage())
+    symbol.contentTintColor = .secondaryLabelColor
+    symbol.frame = CGRect(x: 2, y: 2, width: 12, height: 12)
+    addSubview(symbol)
+    toolTip = words
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel(words)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override var fittingSize: NSSize { NSSize(width: Self.width, height: Self.height) }
+
+  /// Every point of it is the control's, so a press on the chevron is not a press on the caption.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    bounds.contains(convert(point, from: superview)) ? self : nil
+  }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func mouseDown(with event: NSEvent) {
+    onPressed?()
   }
 }
 

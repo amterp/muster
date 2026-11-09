@@ -60,11 +60,12 @@ struct SidebarTests {
   /// No press reaches it unless a case says one does, which is the only tab in a window.
   private func tab(
     _ daemon: String, _ id: String = "w1:t1", place: Int = 1, press: Int = 0,
-    armed: Bool = false, label: String? = nil, onScreen: Bool = false, panes: [Roster.Pane]
+    armed: Bool = false, label: String? = nil, onScreen: Bool = false, folded: Bool = false,
+    panes: [Roster.Pane]
   ) -> Roster.Tab {
     Roster.Tab(
       id: id, daemons: [daemon], place: place, press: press, armed: armed, label: label ?? id,
-      onScreen: onScreen, panes: panes)
+      onScreen: onScreen, folded: folded, panes: panes)
   }
 
   /// The color the core draws for the two machine names these cases use.
@@ -1424,6 +1425,184 @@ struct SidebarTests {
     sidebar.apply(roster: roster([one]), agents: [one.key: agent("working", since: 90)])
     #expect(!sidebar.showsTime)
     #expect(told == 3)
+  }
+
+  // MARK: Folded tabs
+
+  /// A window of two tabs, the first holding `states` and folded as the core says.
+  private func foldedWindow(
+    _ states: [String], folded: Bool = true
+  ) -> (roster: Roster, agents: [PaneKey: PaneAgent]) {
+    let panes = states.indices.map { pane("local", "w1:p\($0 + 1)", place: $0 + 1) }
+    let other = pane("local", "w1:p99", place: 99)
+    var agents = Dictionary(
+      uniqueKeysWithValues: zip(panes.map(\.key), states).map { ($0, PaneAgent(state: $1)) })
+    agents[other.key] = PaneAgent(state: "idle")
+    return (
+      roster(
+        [
+          tab("local", "w1:t1", press: 1, folded: folded, panes: panes),
+          tab("local", "w1:t2", place: 2, press: 2, panes: [other]),
+        ], numbering: .tabs), agents
+    )
+  }
+
+  @Test("a folded tab is its caption alone, with the state of each pane it is folded over")
+  func aFoldedCaptionStandsInForItsPanes() {
+    let window = foldedWindow(["working", "blocked", "idle"])
+    let rows = SidebarModel.rows(roster: window.roster, agents: window.agents)
+
+    #expect(rows.filter(\.isTab).count == 2)
+    #expect(rows.filter(\.isPane).count == 1, "only the other tab's pane is a row")
+    let caption = rows[0]
+    #expect(caption.folded && caption.foldable)
+    #expect(caption.foldedPanes.map(\.state) == ["working", "blocked", "idle"])
+    #expect(caption.foldedPanes.map(\.name) == ["w1:p1", "w1:p2", "w1:p3"], "the roster's order")
+    #expect(!rows[1].folded && rows[1].foldable, "the other tab can be folded and is not")
+    #expect(SidebarModel.height(of: caption) == SidebarModel.oneLine)
+  }
+
+  @Test("an open tab draws its panes, and a fold the roster does not hold draws nothing")
+  func anOpenTabIsUnchanged() {
+    let window = foldedWindow(["working", "blocked"], folded: false)
+    let rows = SidebarModel.rows(roster: window.roster, agents: window.agents)
+    #expect(rows.filter(\.isPane).count == 3)
+    #expect(rows.allSatisfy { !$0.folded && $0.foldedPanes.isEmpty })
+  }
+
+  @Test("a window of one tab has no fold control, even if the roster says folded")
+  func aLoneTabCannotBeFolded() {
+    // The core clears a lone tab's fold; this is the shell not trusting a stale one with the only
+    // thing there is to show.
+    let one = pane("local", "w1:p1", place: 1)
+    let roster = roster([tab("local", press: 1, folded: true, panes: [one])], numbering: .tabs)
+    let rows = SidebarModel.rows(roster: roster, agents: [one.key: PaneAgent(state: "blocked")])
+    let caption = rows[0]
+    #expect(!caption.foldable && !caption.folded)
+    #expect(rows.contains { $0.isPane }, "its agent is still listed")
+  }
+
+  @Test("a folded caption's hover names each pane and its state")
+  func aFoldedCaptionIsReadable() {
+    let window = foldedWindow(["working", "blocked"])
+    let rows = SidebarModel.rows(roster: window.roster, agents: window.agents)
+    #expect(SidebarModel.summary(of: rows[0]) == "w1:p1: working\nw1:p2: blocked")
+    #expect(SidebarModel.summary(of: rows[1]) == nil)
+  }
+
+  @Test("when the icons do not all fit, the urgent ones stay and the roster's order is kept")
+  func foldedIconsKeepTheUrgentOnes() {
+    let states = ["idle", "idle", "blocked", "working", "done", "idle"]
+    #expect(SidebarModel.foldedIcons(states: states, capacity: 6).shown == [0, 1, 2, 3, 4, 5])
+    #expect(SidebarModel.foldedIcons(states: states, capacity: 6).more == 0)
+
+    let fewer = SidebarModel.foldedIcons(states: states, capacity: 3)
+    #expect(fewer.shown == [0, 2, 4], "blocked and done are kept, then the first calm one")
+    #expect(fewer.more == 3)
+
+    let stuck = SidebarModel.foldedIcons(
+      states: ["working", "working", "working", "stuck"], capacity: 1)
+    #expect(stuck.shown == [3], "a stuck agent last in the tab still shows")
+
+    let none = SidebarModel.foldedIcons(states: states, capacity: 0)
+    #expect(none.shown.isEmpty && none.more == 6)
+  }
+
+  @Test("a state changing inside a folded tab changes its caption and nothing else")
+  func aChangeInAFoldedTabRedrawsTheCaption() {
+    let before = foldedWindow(["working", "idle", "idle"])
+    var agents = before.agents
+    agents[PaneKey(daemon: "local", pane: "w1:p2")] = PaneAgent(state: "blocked")
+    let previous = SidebarModel.rows(roster: before.roster, agents: before.agents)
+    let fresh = SidebarModel.rows(roster: before.roster, agents: agents)
+
+    let changed = SidebarModel.changes(from: previous, to: fresh)
+    #expect(changed?.redraw == IndexSet(integer: 0))
+    #expect(changed?.remeasure.isEmpty == true)
+  }
+
+  @Test(
+    "what a change inside a folded tab costs in redrawn rows, at one pane and at fifteen",
+    arguments: [1, 15])
+  @MainActor func foldedRedrawCost(panes count: Int) {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 800))
+    let states = Array(repeating: "idle", count: count)
+    let window = foldedWindow(states)
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    let before = sidebar.redrawCount
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    #expect(sidebar.redrawCount == before, "an unchanged republish redrew rows")
+
+    var agents = window.agents
+    agents[PaneKey(daemon: "local", pane: "w1:p1")] = PaneAgent(state: "blocked")
+    sidebar.apply(roster: window.roster, agents: agents)
+    #expect(sidebar.redrawCount == before + 1, "the caption is the only row that says it")
+  }
+
+  @Test(
+    "a caption draws a fold control and its folded panes' icons, and the control asks to unfold")
+  @MainActor func theCaptionDrawsTheFold() throws {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let window = foldedWindow(["working", "blocked", "done"])
+    var asked: [(String, Bool)] = []
+    sidebar.onTabFolded = { asked.append(($0, $1)) }
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    view.layoutSubtreeIfNeeded()
+
+    #expect(view.showsFoldControl)
+    #expect(view.foldControlIsFolded == true)
+    #expect(view.shownFoldIcons == ["working", "blocked", "done"])
+    #expect(view.foldedMore == nil)
+
+    view.pressFoldControl()
+    #expect(asked.count == 1)
+    #expect(asked.first?.0 == "w1:t1")
+    #expect(asked.first?.1 == false, "folded already, so the press asks to unfold")
+
+    // The other tab is open, so its control asks to fold.
+    let open = try #require(sidebar.rowView(at: 1))
+    #expect(open.foldControlIsFolded == false)
+    open.pressFoldControl()
+    #expect(asked.last?.0 == "w1:t2")
+    #expect(asked.last?.1 == true)
+  }
+
+  @Test(
+    "a click on the control is the control's, and one on the rest of the caption is the caption's")
+  @MainActor func theControlTakesOnlyItsOwnClicks() throws {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    let window = foldedWindow(["working"])
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    view.layoutSubtreeIfNeeded()
+    let control = try #require(view.foldControlFrame)
+
+    func hit(_ point: NSPoint) -> NSView? {
+      view.hitTest(view.convert(point, to: view.superview))
+    }
+    #expect(hit(NSPoint(x: control.midX, y: control.midY)) is FoldControl)
+    #expect(!(hit(NSPoint(x: control.maxX + 60, y: control.midY)) is FoldControl))
+  }
+
+  @Test("a folded caption with more panes than room keeps the urgent icons and counts the rest")
+  @MainActor func aCrowdedCaptionCountsTheRest() throws {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 150, height: 400))
+    var states = Array(repeating: "idle", count: 9)
+    states[7] = "blocked"
+    let window = foldedWindow(states)
+    sidebar.apply(roster: window.roster, agents: window.agents)
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    view.frame.size.width = 150
+    view.layoutSubtreeIfNeeded()
+
+    let shown = view.shownFoldIcons
+    #expect(shown.count < 9)
+    #expect(shown.contains("blocked"), "a blocked agent never drops out for want of room")
+    #expect(view.foldedMore == "+\(9 - shown.count)")
   }
 
   @Test("a caption draws its press as a key, and the tab on screen sits on a panel")

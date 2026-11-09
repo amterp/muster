@@ -380,6 +380,14 @@ public enum SidebarModel {
     case only
   }
 
+  /// One pane a folded tab caption stands in for.
+  public struct FoldedPane: Equatable {
+    public let key: PaneKey
+    /// What to call it in the caption's hover text: its callsign, or its label without one.
+    public let name: String
+    public let state: String
+  }
+
   /// A group the human is in, as the core listed it (MIP-4, Decision 1b).
   public struct MessageGroup: Equatable {
     public let daemon: String
@@ -512,6 +520,16 @@ public enum SidebarModel {
     /// Where this row sits in the raised panel the tab on screen is drawn on, or nil when it is
     /// not part of one.
     public var panel: PanelPlace?
+
+    /// On a tab caption: whether it can be folded, and whether it is. A window with one tab draws a
+    /// caption only when a chord names it, and folding its only tab would hide every agent, so
+    /// that caption has no control.
+    public var foldable = false
+    public var folded = false
+
+    /// On a folded caption, the panes it is folded over, in the order the roster lists them, so
+    /// that a state changing inside it changes the caption and redraws exactly that row.
+    public var foldedPanes: [FoldedPane] = []
 
     /// Whether the row is drawn with a tint and a colored edge: the states that ask for somebody.
     public var isTinted: Bool { tier == .asks }
@@ -666,18 +684,30 @@ public enum SidebarModel {
       defer {
         if captions && tab.onScreen { markPanel(&rows, from: first) }
       }
+      let foldable = roster.tabs.count > 1
+      let folded = foldable && tab.folded
       if captions {
-        rows.append(
-          Row(
-            kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
-            label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
-            onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
-            machine: nil,
-            // A caption carries the one press that reaches its tab, which is a first press or
-            // none - so there is no such thing as a second press onto a caption.
-            isSecondPress: false))
+        var caption = Row(
+          kind: .tab(press: tab.press), daemon: "", tab: tab.id, pane: nil,
+          label: tab.label, subtitle: "", givenName: tab.givenName, state: "", agent: nil,
+          onScreen: tab.onScreen, hasKeyboard: false, reservedPresses: twoPress ? 1 : 0,
+          machine: nil,
+          // A caption carries the one press that reaches its tab, which is a first press or
+          // none - so there is no such thing as a second press onto a caption.
+          isSecondPress: false)
+        caption.foldable = foldable
+        caption.folded = folded
+        if folded {
+          caption.foldedPanes = tab.panes.map {
+            FoldedPane(
+              key: $0.key, name: $0.callsign.isEmpty ? $0.label : $0.callsign,
+              state: (agents[$0.key] ?? "unknown").state)
+          }
+        }
+        rows.append(caption)
       }
-      for pane in tab.panes {
+      // A folded tab draws no pane of its own: its caption says what they are doing.
+      for pane in tab.panes where !(captions && folded) {
         // A pane the core has said nothing about is unknown, not idle. An agent we have not
         // heard from is not an agent that finished (`corpus/conformance/agent-state.json`).
         rows.append(
@@ -863,11 +893,35 @@ public enum SidebarModel {
     return state.isEmpty ? helpers : "\(helpers) · \(urgent) \(state)"
   }
 
+  /// Which of a folded caption's panes get an icon when only `capacity` fit, and how many do not.
+  ///
+  /// All of them when they fit. Otherwise the most urgent ones, in the order the roster lists them,
+  /// so that an agent that is blocked inside a folded tab never drops out for want of room; the
+  /// count of the rest is drawn beside them.
+  public static func foldedIcons(states: [String], capacity: Int) -> (shown: [Int], more: Int) {
+    guard states.count > capacity else { return (Array(states.indices), 0) }
+    let capacity = max(0, capacity)
+    func rank(_ state: String) -> Int {
+      switch Tier(state: state) {
+      case .asks: 0
+      case .look: 1
+      case .calm: 2
+      case .absent: 3
+      }
+    }
+    let urgent = states.indices.sorted { (rank(states[$0]), $0) < (rank(states[$1]), $1) }
+    return (Array(urgent.prefix(capacity)).sorted(), states.count - capacity)
+  }
+
   /// What hovering a Hidden caption says, and what VoiceOver reads for it: `3 hidden panes ·
-  /// 1 blocked` while folded, nil while its rows say it themselves. A helpers line says what it
-  /// reads.
+  /// 1 blocked` while folded, nil while its rows say it themselves. A folded tab's caption says
+  /// each pane it is folded over and that pane's state, and a helpers line says what it reads.
   public static func summary(of row: Row) -> String? {
     if row.isHelpers { return row.label }
+    if row.folded {
+      // One line per pane, so a folded tab can be read by hovering it.
+      return row.foldedPanes.map { "\($0.name): \($0.state)" }.joined(separator: "\n")
+    }
     guard case .hidden(let panes, let urgent, let collapsed) = row.kind, collapsed else {
       return nil
     }
@@ -1227,6 +1281,10 @@ public final class SidebarView: NSView {
   /// numbering it: the numbers name panes, and a click already knows which caption it hit.
   public var onTabPicked: ((String) -> Void)?
 
+  /// Called when somebody clicks a tab caption's fold control, with the tab and whether they are
+  /// asking to fold it. The core keeps the answer and sends it back on the roster.
+  public var onTabFolded: ((String, Bool) -> Void)?
+
   /// Called when somebody picks a machine's row, meaning they want a pane on it.
   ///
   /// The only way into a machine holding nothing, and what makes it safe for Muster to stop
@@ -1573,6 +1631,7 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
       tableView.makeView(withIdentifier: SidebarRowView.identifier, owner: self)
       as? SidebarRowView ?? SidebarRowView()
     view.show(rows[row])
+    view.onFoldToggled = { [weak self] row in self?.onTabFolded?(row.tab, !row.folded) }
     return view
   }
 
