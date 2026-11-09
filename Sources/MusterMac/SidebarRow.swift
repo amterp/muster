@@ -83,6 +83,33 @@ final class SidebarRowView: NSView {
   /// The directory a pane's second line ends in, or nil when it has none.
   var shownDirectory: String? { directoryField.superview == nil ? nil : directoryField.stringValue }
 
+  /// Whether a pane's second line gives its directory all the room it asks for, or nil when it has
+  /// none. Meaningful after layout.
+  var directoryFits: Bool? {
+    directoryField.superview == nil
+      ? nil : directoryField.frame.width >= ceil(directoryField.fittingSize.width)
+  }
+
+  /// The width the state phrase was given, or nil when the row has none.
+  var stateFieldWidth: CGFloat? { stateField.superview == nil ? nil : stateField.frame.width }
+
+  /// How the first line ends when it does not fit.
+  var firstLineBreak: NSLineBreakMode? {
+    let style = name.attributedStringValue.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+    return (style as? NSParagraphStyle)?.lineBreakMode
+  }
+
+  /// How the state phrase ends when it does not fit, or nil when the row has none.
+  var stateLineBreak: NSLineBreakMode? {
+    guard stateField.superview != nil else { return nil }
+    let style = stateField.attributedStringValue.attribute(
+      .paragraphStyle, at: 0, effectiveRange: nil)
+    return (style as? NSParagraphStyle)?.lineBreakMode
+  }
+
+  /// The width the context bar was given, or nil when the row draws none.
+  var contextBarWidth: CGFloat? { marks.compactMap { $0 as? ContextBar }.first?.frame.width }
+
   /// The state the row's icon is drawn for, or nil when the row has no icon.
   var shownIcon: String? { icon.superlayer == nil ? nil : icon.state }
 
@@ -347,7 +374,7 @@ final class SidebarRowView: NSView {
         string: row.stateLine,
         attributes: [
           .font: NSFont.systemFont(ofSize: 11, weight: loud ? .semibold : .regular),
-          .foregroundColor: word,
+          .foregroundColor: word, .paragraphStyle: Self.truncating(.byTruncatingTail),
         ])
       if hasWhere {
         line.append(
@@ -355,6 +382,7 @@ final class SidebarRowView: NSView {
             string: " · ",
             attributes: [
               .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+              .paragraphStyle: Self.truncating(.byTruncatingTail),
             ]))
       }
       stateField.attributedStringValue = line
@@ -382,6 +410,7 @@ final class SidebarRowView: NSView {
   static func firstLine(for row: SidebarModel.Row, color: NSColor) -> NSAttributedString {
     let plain: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 12, weight: .regular), .foregroundColor: color,
+      .paragraphStyle: truncating(.byTruncatingTail),
     ]
     guard !row.callsign.isEmpty else {
       return NSAttributedString(string: row.label, attributes: plain)
@@ -390,12 +419,23 @@ final class SidebarRowView: NSView {
       string: row.callsign,
       attributes: [
         .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .semibold),
-        .foregroundColor: color,
+        .foregroundColor: color, .paragraphStyle: truncating(.byTruncatingTail),
       ])
     if !row.besideCallsign.isEmpty {
       line.append(NSAttributedString(string: "  \(row.besideCallsign)", attributes: plain))
     }
     return line
+  }
+
+  /// A paragraph style that ends a line that does not fit with an ellipsis.
+  ///
+  /// An attributed string carries its own paragraph style, whose default wraps by word and so
+  /// overrides the field's `lineBreakMode`: in a one-line field the cut text then simply stops,
+  /// with nothing to say it was cut.
+  static func truncating(_ mode: NSLineBreakMode) -> NSParagraphStyle {
+    let style = NSMutableParagraphStyle()
+    style.lineBreakMode = mode
+    return style
   }
 
   /// Replaces the trailing marks, unless they are the ones already drawn.
@@ -547,6 +587,12 @@ final class SidebarRowView: NSView {
   /// panel and inside the tint.
   static let paneInset: CGFloat = 20
   static let paneTrailing: CGFloat = 16
+  /// The least a pane's state phrase keeps of its line when the directory takes room: a word and
+  /// its time, "Blocked 2m".
+  static let stateFloor: CGFloat = 56
+  /// The least of a machine's tag worth drawing: a row too short for that much leaves it out, and
+  /// its hover text still names the machine.
+  static let tagFloor: CGFloat = 28
 
   override func layout() {
     super.layout()
@@ -601,51 +647,53 @@ final class SidebarRowView: NSView {
     let secondY = top
     let firstY = top + secondHeight + 2
 
-    // The marks on the first line from the trailing edge in; the context bar is the second
-    // line's, so a column of them lines up down the list whatever the first line carries.
+    // Every mark on the first line, from the trailing edge in, the context bar at the very edge
+    // so a column of them lines up down the list. The second line is the state and the directory
+    // and nothing else: with the bar there too it left the directory "le…rn", and the first line,
+    // whose name ends in an ellipsis and says all of itself on hover, is the one that can give.
+    let stateWanted = stateField.superview != nil ? ceil(stateField.fittingSize.width) : 0
+    let directoryWanted =
+      directoryField.superview != nil ? ceil(directoryField.fittingSize.width) : 0
+    let tagSize = machineTag?.fittingSize
     var firstRight = right
-    var secondRight = right
     for mark in marks.reversed() {
       let size = mark.fittingSize
-      if mark is ContextBar {
-        mark.frame = CGRect(
-          x: secondRight - size.width, y: secondY + (secondHeight - size.height) / 2,
-          width: size.width, height: size.height)
-        secondRight -= size.width + 8
-      } else {
-        mark.frame = CGRect(
-          x: firstRight - size.width, y: firstY + (nameHeight - size.height) / 2,
-          width: size.width, height: size.height)
-        firstRight -= size.width + SidebarRowView.markGap
-      }
+      mark.frame = CGRect(
+        x: firstRight - size.width, y: firstY + (nameHeight - size.height) / 2,
+        width: size.width, height: size.height)
+      firstRight -= size.width + (mark is ContextBar ? 8 : SidebarRowView.markGap)
     }
     name.frame = CGRect(
       x: textLeft, y: firstY, width: max(0, firstRight - textLeft), height: nameHeight)
 
-    // The second line: state, then the machine's tag, then the directory taking what is left. The
-    // state gives way first when the row is narrow, but never to less than a word's worth.
-    let room = max(0, secondRight - textLeft)
+    // The second line: state, then the machine's tag, then the directory. The directory's last
+    // part is where the agent is, and cut to "le…rn" it says nothing, so it is given its whole width
+    // first. The state gives way to it, never to less than a word's worth, and ends in an ellipsis
+    // when it does.
+    let room = max(0, right - textLeft)
+    // The machine's tag comes after the directory and the state's floor, and is cut rather than
+    // taking the line: a long daemon id must not leave a row with no state and no directory.
+    let spare = room - min(stateWanted, SidebarRowView.stateFloor) - directoryWanted - 5
+    let tagWidth = tagSize.map { spare >= SidebarRowView.tagFloor ? min($0.width, spare) : 0 } ?? 0
+    let free = max(0, room - (tagWidth > 0 ? tagWidth + 5 : 0))
+    let directoryWidth = min(
+      directoryWanted, max(0, free - min(stateWanted, SidebarRowView.stateFloor)))
+    let stateWidth = min(stateWanted, max(0, free - directoryWidth))
     var cursor = textLeft
     if stateField.superview != nil {
-      let wanted = ceil(stateField.fittingSize.width)
-      let hasMore = directoryField.superview != nil || machineTag != nil
-      // With a machine tag to fit as well, the state gives up more, so the directory is not the
-      // thing that goes.
-      let share = machineTag == nil ? 0.65 : 0.45
-      let width = hasMore ? min(wanted, room * share) : min(wanted, room)
-      stateField.frame = CGRect(x: cursor, y: secondY, width: width, height: secondHeight)
-      cursor += width
+      stateField.frame = CGRect(x: cursor, y: secondY, width: stateWidth, height: secondHeight)
+      cursor += stateWidth
     }
-    if let tag = machineTag {
-      let size = tag.fittingSize
-      let width = min(size.width, max(0, secondRight - cursor))
+    if let tag = machineTag, let size = tagSize {
+      tag.isHidden = tagWidth == 0
       tag.frame = CGRect(
-        x: cursor, y: secondY + (secondHeight - size.height) / 2, width: width, height: size.height)
-      cursor += width + 5
+        x: cursor, y: secondY + (secondHeight - size.height) / 2, width: tagWidth,
+        height: size.height)
+      cursor += tagWidth > 0 ? tagWidth + 5 : 0
     }
     if directoryField.superview != nil {
       directoryField.frame = CGRect(
-        x: cursor, y: secondY, width: max(0, secondRight - cursor), height: secondHeight)
+        x: cursor, y: secondY, width: max(0, right - cursor), height: secondHeight)
     }
 
     if progressBar.superlayer != nil {
@@ -913,7 +961,8 @@ final class CountBadge: NSView {
 /// hover.
 @MainActor
 final class ContextBar: NSView {
-  static let width: CGFloat = 22
+  /// Long enough to read a fill against its track without waiting for it to turn red.
+  static let width: CGFloat = 32
   static let height: CGFloat = 4
 
   /// Percent, 0 to 100.

@@ -1645,6 +1645,78 @@ struct SidebarTests {
     #expect(views.map { $0?.shownPanel } == [nil, nil, .top, .bottom])
   }
 
+  /// The pane row of a window of one pane, laid out `width` wide.
+  @MainActor private func paneRowView(
+    _ pane: Roster.Pane, agent: PaneAgent, width: CGFloat
+  ) throws -> SidebarRowView {
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: width, height: 400))
+    sidebar.apply(roster: roster([pane]), agents: [pane.key: agent])
+    let count = sidebar.drawnRows.count
+    let views = (0..<count).compactMap { sidebar.rowView(at: $0) }
+    let view = try #require(views.first { $0.shownIcon != nil })
+    view.frame.size.width = width
+    view.needsLayout = true
+    view.layoutSubtreeIfNeeded()
+    return view
+  }
+
+  @Test(
+    "a blocked row keeps its directory whole beside the state and the context bar",
+    arguments: [SidebarModel.width, 240, 200])
+  @MainActor func theDirectoryKeepsItsWholeLastPart(width: CGFloat) throws {
+    var blocked = agent("blocked", since: 120)
+    blocked.contextUsed = 40
+    let view = try paneRowView(
+      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: blocked, width: width)
+
+    #expect(view.shownDirectory == "lectern")
+    #expect(view.directoryFits == true, "the directory was cut to make room for the state")
+    #expect(view.stateLineBreak == .byTruncatingTail, "a state phrase that is cut says so")
+    #expect(view.shownStateLine?.hasPrefix("Blocked") == true)
+  }
+
+  @Test("a name that does not fit ends in an ellipsis, and the hover text has all of it")
+  @MainActor func aCutNameSaysSo() throws {
+    let name = "Muster UI redesign with a long tail of words"
+    let row = pane("local", "w1:p1", label: name, givenName: name, directory: "/src/muster")
+    let view = try paneRowView(row, agent: agent("working", since: 30), width: 200)
+
+    #expect(view.firstLineBreak == .byTruncatingTail)
+    let rows = SidebarModel.rows(roster: roster([row]), agents: [row.key: agent("working")])
+    let shown = try #require(rows.first { $0.isPane })
+    #expect(SidebarModel.details(of: shown).contains(name))
+  }
+
+  @Test("a long machine name is cut to leave the state and the directory their room")
+  @MainActor func aLongMachineTagDoesNotTakeTheLine() throws {
+    let long = "development-workstation-linux-aarch64"
+    let there = pane(long, "w1:p1", directory: "/Users/a/src/lectern")
+    let here = pane("local", "w1:p2", place: 2, directory: "/src/x")
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: 200, height: 400))
+    sidebar.apply(
+      roster: roster([tab(long, panes: [there]), tab("local", place: 2, panes: [here])]),
+      agents: [there.key: agent("blocked", since: 120)])
+    let count = sidebar.drawnRows.count
+    let views = (0..<count).compactMap { sidebar.rowView(at: $0) }
+    let view = try #require(views.first { $0.shownDirectory == "lectern" })
+    view.frame.size.width = 200
+    view.needsLayout = true
+    view.layoutSubtreeIfNeeded()
+
+    #expect(view.directoryFits == true)
+    #expect(view.shownStateLine?.hasPrefix("Blocked") == true)
+    #expect((view.stateFieldWidth ?? 0) >= SidebarRowView.stateFloor)
+  }
+
+  @Test("the context bar is long enough to read before it turns red")
+  @MainActor func theContextBarIsLongEnough() throws {
+    var working = agent("working", since: 30)
+    working.contextUsed = 20
+    let view = try paneRowView(
+      pane("local", "w1:p1", directory: "/src/muster"), agent: working, width: SidebarModel.width)
+    #expect(view.contextBarWidth == 32)
+  }
+
   /// An agent as the core last said it, `seconds` before `now`.
   private func agent(
     _ state: String, since seconds: Double? = nil,
