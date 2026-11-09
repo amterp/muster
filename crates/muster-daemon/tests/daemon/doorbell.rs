@@ -976,8 +976,8 @@ fn an_urgent_ring_read_before_its_return_is_taken_back_from_the_prompt() {
     assert_eq!(agent.heard(), ["working", "next"], "the ring was sent, or left in the prompt");
 }
 
-/// A ring whose Return the agent never takes, as Claude Code's "Heads up" banner swallows one, is
-/// given up with its text still in the prompt. Once the agent has read what it was rung for, the
+/// A ring whose Return the agent never takes, as a harness that swallows one does, is given up
+/// with its text still in the prompt. Once the agent has read what it was rung for, the
 /// ring is taken back, rather than left for the next Return anybody presses to send.
 #[test]
 fn a_ring_given_up_in_a_prompt_is_taken_back_once_its_messages_are_read() {
@@ -1006,6 +1006,46 @@ fn a_ring_whose_return_was_swallowed_is_taken_back_once_its_messages_are_read() 
 }
 
 /// The fake agent idle in p1, discarding every Return typed into it from now on.
+/// A ring returned and then a turn that did not take it, as Claude Code started one from a hook
+/// with the ring still in its prompt: once the turn ends, Return is pressed for the ring again,
+/// without its text typed again.
+#[test]
+fn a_ring_left_in_the_prompt_by_a_turn_that_did_not_take_it_is_sent_once_the_agent_is_idle() {
+    let mut agent = heedless_agent();
+    let mut logging = following(&agent.daemon);
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+    agent.daemon.unblock_agent_unasked();
+    agent.daemon.until_agent("p1", proto::AgentState::Working);
+    std::thread::sleep(ANSWER + Duration::from_secs(1));
+    assert_eq!(agent.rung(), Vec::<String>::new(), "a Return reached an agent discarding them");
+
+    agent.daemon.end_turn_unasked();
+    let sent = r#""event":"msg.ring.left_sent""#;
+    let logged = logging.logged_until(sent, QUIET + ANSWER * 2);
+    assert!(logged.iter().any(|line| line.line.contains(sent)), "{logged:?}");
+    let rung = agent.until_rung(1);
+    assert_eq!(rung.len(), 1, "typed again: {rung:?}");
+}
+
+/// The same, with something typed after the ring: a Return would send that too, so none is
+/// pressed, and what sits in the prompt is left for whoever typed it.
+#[test]
+fn a_ring_left_in_the_prompt_is_not_sent_once_something_is_typed_after_it() {
+    let mut agent = heedless_agent();
+    agent.post("p1", "a brief");
+    agent.until_shows("PROBE-PROMPT> [muster]");
+    agent.daemon.unblock_agent_unasked();
+    agent.daemon.until_agent("p1", proto::AgentState::Working);
+    agent.type_in("z", false);
+    std::thread::sleep(ANSWER + Duration::from_secs(1));
+
+    agent.daemon.end_turn_unasked();
+    agent.daemon.until_agent("p1", proto::AgentState::Idle);
+    std::thread::sleep(QUIET + ANSWER * 2);
+    assert_eq!(agent.heard(), ["heedless"], "a Return was pressed beside what was typed");
+}
+
 fn heedless_agent() -> Agent {
     let agent = Agent::in_a_pane();
     agent.type_in("heedless", true);

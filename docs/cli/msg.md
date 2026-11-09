@@ -224,10 +224,15 @@ again, a few times, but only while its prompt holds the ring's own text and noth
 nobody has typed into the pane since the ring. Claude Code keeps what is typed while it is
 starting as its prompt, unsent, and the later Return sends it. If the prompt then holds anything
 else, or somebody types into the pane - even something they take back, since the screen may not
-show it yet - the ring ends, and the next post rings afresh. A ring whose Return never reached the
-agent is erased from a prompt holding it and nothing else once the agent has read what it was for,
-whether Return is still being pressed for it or the ring has ended: left, the next Return anybody
-presses would send it.
+show it yet - the ring ends, and the next post rings afresh. An agent going to work after a ring
+is not proof it took the ring, since a turn can start from a hook or a background task with the
+ring still in the prompt: so a ring that ended, or whose agent went to work, is looked at again
+once the agent is idle, and if its text is still alone in the prompt, with nothing typed into the
+pane since, Return is pressed for it a few more times, without typing it again. A pane's name
+Muster typed into the agent's session and gave up on is sent the same way. A ring whose Return
+never reached the agent is erased from a prompt holding it and nothing else once the agent has
+read what it was for, whether Return is still being pressed for it or the ring has ended: left,
+the next Return anybody presses would send it.
 
 An agent that goes idle with what it was woken for still unread is woken once more, with `still
 unread` on the end, and then not again until it reads.

@@ -27,12 +27,14 @@
 //! ring can sit unsent. Return is pressed again for it, a few times, but only while nobody has
 //! typed into the pane since and the prompt holds the ring's own text and nothing else: that
 //! Return can send nothing but the ring. The first is what the daemon saw written, since the
-//! screen can lag it. A ring given up with its text still in the prompt is sent by the next ring
-//! that finds exactly that text there, so a prompt the doorbell filled never reads as somebody's
-//! draft for good. One whose message its agent reads while its text may still be in the prompt is
-//! erased instead: sent, it would wake the agent for nothing, and left, it would be sent with
-//! whatever is typed next. That is a ring typed at work before its Return, one returned to an agent
-//! that never took the Return, or one given up.
+//! screen can lag it. A ring given up, or one its agent went to work after without being seen to
+//! take it, is left: once its agent is idle, Return is pressed for it a few more times while the
+//! prompt holds exactly its text, so a prompt the doorbell filled never reads as somebody's draft
+//! for good. A session's name the doorbell's thread typed and gave up is left the same way. A ring
+//! whose message its agent reads while its text may still be in the prompt is erased instead:
+//! sent, it would wake the agent for nothing, and left, it would be sent with whatever is typed
+//! next. That is a ring typed at work before its Return, one returned to an agent that never took
+//! the Return, or one left.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -150,14 +152,54 @@ impl Rung {
     }
 }
 
-/// A ring given up with its text possibly left unsent in its prompt.
+/// A line the doorbell's thread typed with its Return, possibly left unsent in its prompt: a ring
+/// given up, one its agent went to work after without being seen to take it, or a session's name.
 #[derive(Debug, Clone)]
 pub(crate) struct Left {
-    pub(crate) text: String,
+    text: String,
     /// When it was typed: anything typed into the pane after it sits beside it.
-    pub(crate) typed: Instant,
-    pub(crate) name: String,
-    pub(crate) group: String,
+    typed: Instant,
+    of: LeftOf,
+    /// How many times Return has been pressed for it since it was left, and when last.
+    presses: u8,
+    pressed: Option<Instant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LeftOf {
+    /// A wake for `name` about `group`: sent while what it was for is unread, taken back after.
+    Ring { name: String, group: String },
+    /// A line typed on Muster's own behalf, sent whenever it is found alone in an idle prompt.
+    Line,
+}
+
+impl Left {
+    pub(crate) fn line(text: &str, typed: Instant) -> Left {
+        Left { text: text.to_string(), typed, of: LeftOf::Line, presses: 0, pressed: None }
+    }
+
+    fn ring(wake: &Wake, typed: Instant) -> Left {
+        Left {
+            text: messaging::wake_text(&notice_of(&wake.notice)),
+            typed,
+            of: LeftOf::Ring { name: wake.name.clone(), group: wake.notice.group.clone() },
+            presses: 0,
+            pressed: None,
+        }
+    }
+
+    /// A ring whose messages have been read since, or whose group was paused: to be taken back.
+    fn read(&self, messages: &Messages) -> bool {
+        match &self.of {
+            LeftOf::Ring { name, group } => !messages.service.unread_for(name, group),
+            LeftOf::Line => false,
+        }
+    }
+
+    /// Whether the doorbell still has something to do with it: take it back, or press its Return.
+    fn wants_look(&self, messages: &Messages) -> bool {
+        self.read(messages) || self.presses <= PRESSES
+    }
 }
 
 /// What held the last wake the doorbell looked to ring in a pane, by what its prompt showed: what
@@ -331,8 +373,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                     came.push(Came::Refused);
                 }
             }
-            AtPrompt::Holds(draft) => {
-                send_left(shared, &wake, &seen, &draft);
+            AtPrompt::Holds(_) => {
                 waits(&wake, "its prompt is not empty");
                 held.push((pane_of(&wake).to_string(), Held::Draft));
                 waiting.push(wake);
@@ -665,73 +706,107 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
     next
 }
 
-/// Sends a ring an earlier one gave up and left in the prompt, when the prompt holds exactly that
-/// and nobody has typed into the pane since: otherwise the prompt reads as a draft for good, and
-/// nothing is rung there again. The wake waiting meanwhile is rung once the prompt is empty.
-fn send_left(shared: &Shared, wake: &Wake, seen: &Seen, held: &str) {
-    let Via::Pane(pane) = &wake.via else { return };
-    let Some(left) = shared.messages().left.get(pane).cloned() else { return };
-    if !prompt::is_only(held, &left.text)
-        || seen.io.someone_typed_at().is_some_and(|typed| typed > left.typed)
-    {
-        return;
-    }
-    // One whose messages were read since is taken back instead ([`take_back_left`]), never sent.
-    if !shared.messages().service.unread_for(&left.name, &left.group) {
-        return;
-    }
-    if seen.io.queue(Input::Ring { text: String::new(), enter: true }) {
-        shared.messages().left.remove(pane);
-        log::info("msg.ring.left_sent", fields! { "name" => wake.name, "pane" => pane });
-    }
-}
-
-/// Takes back each ring left in a prompt whose messages its agent has read since, or whose group
-/// was paused: sent, it would wake the agent for nothing, and left, the next Return anybody
-/// presses sends it. Only a prompt holding that ring and nothing else is erased. A ring that can
-/// be neither sent nor taken back any more - its prompt empty, something typed after it, its agent
-/// gone - is forgotten. Called with no lock held, before anything is rung in the same look, so a
-/// wake finds the prompt as this leaves it; says through `next` when to look again at one kept.
-/// A doorbell with nothing else to do still looks while one is due ([`standing`]).
-fn take_back_left(shared: &Shared, panes: &Panes, next: &mut Option<Instant>) {
-    let due = due_back(&shared.messages());
+/// Settles each line left in a prompt, before anything is rung in the same look, so a wake finds
+/// the prompt as this leaves it. Called with no lock held; says through `next` when to look again.
+///
+/// A ring whose messages its agent has read since, or whose group was paused, is taken back: sent,
+/// it would wake the agent for nothing, and left, the next Return anybody presses sends it. Any
+/// other is sent: once its agent is idle and the pane quiet, as a ring is rung, Return is pressed
+/// for it again, a few times at most, without typing it again. Either is done only at a prompt
+/// holding that line and nothing else, with nobody having typed into the pane since it was typed,
+/// so neither can erase or send anything else. One whose prompt is empty was sent or cleared, and
+/// one that can be neither sent nor taken back any more - something typed after it, its agent
+/// gone - is forgotten. A doorbell with nothing else to do still looks while one is due
+/// ([`standing`]).
+fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut Option<Instant>) {
+    let due: Vec<(String, Left, bool)> = {
+        let messages = shared.messages();
+        messages
+            .left
+            .iter()
+            .filter(|(_, left)| left.wants_look(&messages))
+            .map(|(pane, left)| (pane.clone(), left.clone(), left.read(&messages)))
+            .collect()
+    };
     if due.is_empty() {
         return;
     }
+    let now = Instant::now();
     let mut kept = false;
-    let mut done = Vec::new();
-    for (pane, left) in due {
+    let mut settled: Vec<(String, Instant, Option<Left>)> = Vec::new();
+    for (pane, mut left, read) in due {
         let typed_after =
             |seen: &Seen| seen.io.someone_typed_at().is_some_and(|at| at > left.typed);
         let Some(seen) = panes.get(&pane).filter(|seen| !typed_after(seen)) else {
-            done.push((pane, left.typed));
+            settled.push((pane, left.typed, None));
             continue;
         };
-        match prompt::look(&seen.io, &seen.agent, &shared.detecting, true) {
-            AtPrompt::Holds(held) if prompt::is_only(&held, &left.text) => {
-                let chars = prompt::as_typed(&left.text).chars().count();
-                if seen.io.queue(Input::TakeBack { chars }) {
-                    log::info(
-                        "msg.ring.taken_back",
-                        fields! {
-                            "name" => left.name,
-                            "group" => left.group,
-                            "chars" => chars,
-                            "left" => true,
-                        },
-                    );
-                }
-                done.push((pane, left.typed));
+        if read {
+            if took_back(shared, seen, &left) {
+                settled.push((pane, left.typed, None));
+            } else {
+                kept = true;
             }
-            AtPrompt::Empty { .. } => done.push((pane, left.typed)),
-            AtPrompt::Holds(_) | AtPrompt::Not(..) => kept = true,
+            continue;
+        }
+        // Not at work, where a Return can answer a dialog drawn a moment ago; and as a ring is
+        // rung, once nobody has typed into the pane for a while and its screen has settled.
+        if waits_for(seen.activity, false).is_some() {
+            kept = true;
+            continue;
+        }
+        if let Some(due) = left.pressed.map(|at| at + ANSWER).filter(|due| *due > now) {
+            sooner(next, due);
+            continue;
+        }
+        match may_ring(seen, now, false, moving_since(moving, &pane, seen, now)) {
+            Now::Ring => {}
+            Now::At(at) => {
+                sooner(next, at);
+                continue;
+            }
+            Now::AtIdle | Now::Unblocked | Now::Reading => {
+                kept = true;
+                continue;
+            }
+        }
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
+            AtPrompt::Holds(held) if prompt::is_only(&held, &left.text) => {
+                if left.presses >= PRESSES {
+                    left_unsent(&pane, &left);
+                    left.presses = PRESSES + 1;
+                    let keep = matches!(left.of, LeftOf::Ring { .. }).then_some(left.clone());
+                    settled.push((pane, left.typed, keep));
+                    continue;
+                }
+                let press = match left.of {
+                    LeftOf::Ring { .. } => Input::Ring { text: String::new(), enter: true },
+                    LeftOf::Line => Input::Chore { text: String::new(), enter: true },
+                };
+                if !seen.io.queue(press) {
+                    settled.push((pane, left.typed, None));
+                    continue;
+                }
+                left.presses += 1;
+                left.pressed = Some(Instant::now());
+                left_sent(&pane, &left);
+                sooner(next, Instant::now() + ANSWER);
+                settled.push((pane, left.typed, Some(left)));
+            }
+            AtPrompt::Holds(_) | AtPrompt::Empty { .. } => {
+                settled.push((pane, left.typed, None));
+            }
+            AtPrompt::Not(..) => kept = true,
         }
     }
     let mut messages = shared.messages();
-    for (pane, typed) in done {
-        // Unless a later ring has been given up there meanwhile.
+    for (pane, typed, keep) in settled {
+        // Unless a later line has been left there meanwhile.
         if messages.left.get(&pane).is_some_and(|left| left.typed == typed) {
-            messages.left.remove(&pane);
+            match keep {
+                Some(left) => messages.left.insert(pane, left),
+                None => messages.left.remove(&pane),
+            };
         }
     }
     if kept {
@@ -739,14 +814,62 @@ fn take_back_left(shared: &Shared, panes: &Panes, next: &mut Option<Instant>) {
     }
 }
 
-/// The rings left in prompts whose agent has nothing unread for them any more, by pane.
-fn due_back(messages: &Messages) -> Vec<(String, Left)> {
-    messages
-        .left
-        .iter()
-        .filter(|(_, left)| !messages.service.unread_for(&left.name, &left.group))
-        .map(|(pane, left)| (pane.clone(), left.clone()))
-        .collect()
+/// Takes back a ring left in a prompt whose messages were read, at a prompt holding it and nothing
+/// else; true once it is done with, false while its prompt cannot say.
+fn took_back(shared: &Shared, seen: &Seen, left: &Left) -> bool {
+    match prompt::look(&seen.io, &seen.agent, &shared.detecting, true) {
+        AtPrompt::Holds(held) if prompt::is_only(&held, &left.text) => {
+            let chars = prompt::as_typed(&left.text).chars().count();
+            if seen.io.queue(Input::TakeBack { chars })
+                && let LeftOf::Ring { name, group } = &left.of
+            {
+                log::info(
+                    "msg.ring.taken_back",
+                    fields! { "name" => name, "group" => group, "chars" => chars, "left" => true },
+                );
+            }
+            true
+        }
+        AtPrompt::Empty { .. } => true,
+        AtPrompt::Holds(_) | AtPrompt::Not(..) => false,
+    }
+}
+
+fn left_sent(pane: &str, left: &Left) {
+    match &left.of {
+        LeftOf::Ring { name, group } => log::info(
+            "msg.ring.left_sent",
+            fields! { "name" => name, "group" => group, "pane" => pane, "presses" => left.presses },
+        ),
+        LeftOf::Line => {
+            log::info("msg.line.left_sent", fields! { "pane" => pane, "presses" => left.presses });
+        }
+    }
+}
+
+fn left_unsent(pane: &str, left: &Left) {
+    let (event, impact) = match &left.of {
+        LeftOf::Ring { .. } => (
+            "msg.ring.left_unsent",
+            "its text stays in the agent's prompt, so every later wake for the pane is held; it \
+             is taken back once its messages are read",
+        ),
+        LeftOf::Line => (
+            "msg.line.left_unsent",
+            "its text stays in the agent's prompt, so every later wake for the pane is held",
+        ),
+    };
+    log::warn(
+        event,
+        fields! {
+            "pane" => pane,
+            "presses" => left.presses,
+            "impact" => impact,
+            "check" => "what the pane shows: whether its harness takes a Return at its prompt at \
+                        all, or something drawn over the prompt swallows it; a Return pressed in \
+                        the pane sends the line",
+        },
+    );
 }
 
 fn waits(wake: &Wake, why: &str) {
@@ -941,7 +1064,7 @@ fn look(
     for wait in taken {
         wait.finish(shared);
     }
-    deliver(shared, &panes, commanding, ringing, pressing, &mut next);
+    deliver(shared, &panes, moving, commanding, ringing, pressing, &mut next);
     until(next, unfound)
 }
 
@@ -989,17 +1112,18 @@ fn also<'a>(busy: &'a HashSet<String>, typed: impl Iterator<Item = &'a String>) 
     busy.iter().chain(typed).cloned().collect()
 }
 
-/// Takes back the rings left in prompts that nobody needs, then runs, rings and presses Return for
-/// what a look found due, with no lock held, and says through `next` when to look again.
+/// Settles the lines left in prompts, then runs, rings and presses Return for what a look found
+/// due, with no lock held, and says through `next` when to look again.
 fn deliver(
     shared: &Arc<Shared>,
     panes: &Panes,
+    moving: &mut Moving,
     commanding: Reaching,
     ringing: Reaching,
     pressing: Vec<Pressing>,
     next: &mut Option<Instant>,
 ) {
-    take_back_left(shared, panes, next);
+    settle_left(shared, panes, moving, next);
     let came = [command_all(shared, commanding), ring_all(shared, ringing)].concat();
     shared.messages().in_hand.clear();
     // A ring is looked at again once it is due its Return, or a Return pressed again; nothing
@@ -1024,7 +1148,7 @@ fn standing(shared: &Shared) -> (bool, bool) {
         && messages.commanded.is_empty()
         && messages.commanding.is_empty()
         && messages.service.watched().is_empty()
-        && due_back(&messages).is_empty();
+        && !messages.left.values().any(|left| left.wants_look(&messages));
     (quiet, messages.handing_over)
 }
 
@@ -1101,17 +1225,22 @@ fn unanswered_rings(
         // Read, or its group paused. One still waiting for its Return is in the prompt, unsent,
         // whatever its agent read: forgotten there, the next thing anybody types is added to it.
         let read = !messages.service.woken_for(&rung.wake.name, &rung.wake.notice.group);
+        // Gone to work, or to a dialog: taken, most likely. But a turn can start from something
+        // other than the ring - a hook, a background task ending - and leave the ring in its
+        // prompt, unsent, as Claude Code has been seen to; so it is left, for its Return to be
+        // pressed again if it is still there once its agent is idle ([`settle_left`]).
         if rung.returned && waits_for(seen.activity, urgent).is_some() {
             if seen.activity == Some(Activity::Working)
                 && let Some(wait) = rung.wait
             {
                 taken.push(wait);
             }
+            messages.left.insert(pane.clone(), Left::ring(&rung.wake, rung.typed));
             continue;
         }
         // Read with its agent still where a ring finds it: its Return may never have reached the
-        // agent, as behind Claude Code's banner, so its text may still be in the prompt, where
-        // the next Return anybody presses would send it. Looked at now, not once due.
+        // agent, so its text may still be in the prompt, where the next Return anybody presses
+        // would send it. Looked at now, not once due.
         if rung.returned && read {
             pressing.push(Pressing { rung, seen: seen.clone(), unneeded: true });
             continue;
@@ -1298,13 +1427,7 @@ fn covered(mut rung: Rung, unseen: &Unseen, judged: &Judged) -> Rung {
 /// message unread, which forgetting would lose.
 fn ended(messages: &mut Messages, rung: &Rung, why: &str) {
     if let Via::Pane(pane) = &rung.wake.via {
-        let left = Left {
-            text: messaging::wake_text(&notice_of(&rung.wake.notice)),
-            typed: rung.typed,
-            name: rung.wake.name.clone(),
-            group: rung.wake.notice.group.clone(),
-        };
-        messages.left.insert(pane.clone(), left);
+        messages.left.insert(pane.clone(), Left::ring(&rung.wake, rung.typed));
     }
     if rung.at_work {
         log::info(

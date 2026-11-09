@@ -25,6 +25,7 @@ impl Line for Rename {
     const NOUN: &'static str = "rename";
     const TYPED: &'static str = "session.name.typed";
     const TAKEN_AT_WORK: bool = false;
+    const SENT_LATE: bool = true;
 
     fn wanted(seen: &Seen) -> Option<(String, &str)> {
         seen.rename.as_ref().map(|rename| (rename.name.clone(), rename.line.as_str()))

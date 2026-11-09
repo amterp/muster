@@ -32,6 +32,9 @@ impl Line for Compaction {
     const NOUN: &'static str = "compaction";
     const TYPED: &'static str = "daemon.compact.typed";
     const TAKEN_AT_WORK: bool = true;
+    // A compaction given up is dropped with the prompt it was to be followed by, and sent late it
+    // would compact an agent that was told it had not been.
+    const SENT_LATE: bool = false;
 
     /// The prompt it is followed by is somebody's work, which the agent goes to.
     fn chore(step: &Step) -> bool {

@@ -316,6 +316,33 @@ fn a_pane_renamed_again_while_its_last_rename_sits_unsent_names_the_session_both
     assert_eq!(p1.renames_heard(), ["/rename first", "/rename second"]);
 }
 
+/// A rename whose Return was not taken and whose agent went to work, as Codex took up a first
+/// prompt with `/rename` still in its composer: it is given up then, and once the agent is idle
+/// with the rename alone in its prompt, Return is pressed for it again, rather than leaving it
+/// there to hold every later wake.
+#[test]
+fn a_rename_left_in_the_prompt_as_its_agent_went_to_work_is_sent_once_it_is_idle() {
+    let mut p1 = Pane::named(None);
+    p1.daemon.run_agent("p1");
+    p1.daemon.type_into("p1", "heedless");
+    until_some("the agent to start discarding Returns", || {
+        std::fs::read_to_string(p1.heard_file())
+            .unwrap_or_default()
+            .contains("heedless")
+            .then_some(())
+    });
+    p1.renamed("cxp");
+    until_text(&mut p1.control, "p1", "PROBE-PROMPT> /rename cxp");
+    p1.daemon.unblock_agent_unasked();
+    p1.daemon.until_agent("p1", proto::AgentState::Working);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.renames_heard(), Vec::<String>::new(), "a Return reached a heedless agent");
+
+    p1.daemon.end_turn_unasked();
+    p1.until_renamed("/rename cxp");
+    assert_eq!(p1.renames_heard(), ["/rename cxp"], "typed again");
+}
+
 /// With `name_sessions = false` a pane's name is never typed into its agent's session, while a
 /// session renamed in its harness still renames the pane, which types nothing.
 #[test]

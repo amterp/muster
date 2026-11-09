@@ -138,6 +138,12 @@ impl Daemon {
         self.signal_agent("-USR2");
     }
 
+    /// Ends the fake agent's turn, with nothing typed into it: idle again, taking Returns again if
+    /// it was discarding them, and whatever sat unsent in its prompt still there.
+    pub fn end_turn_unasked(&self) {
+        self.signal_agent("-ALRM");
+    }
+
     fn signal_agent(&self, signal: &str) {
         let pid = std::fs::read_to_string(self.root().join("home/fake-agent-pid"))
             .expect("the fake agent wrote down its process id");

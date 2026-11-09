@@ -42,6 +42,10 @@ pub(crate) trait Line {
     /// that starts a turn of its own.
     const TAKEN_AT_WORK: bool;
 
+    /// Whether a line given up is still sent if it is later found alone in its agent's idle
+    /// prompt ([`super::doorbell`]): one that still means what it meant when it was typed.
+    const SENT_LATE: bool;
+
     /// Whether the line is a chore of Muster's own, a rename or a compaction, rather than a line
     /// for somebody's work, such as the prompt a compaction is followed by: the turn a chore
     /// starts is not the agent going to work.
@@ -75,6 +79,8 @@ pub(crate) type Typing<W> = HashMap<String, Typed<W>>;
 pub(crate) struct Typed<W> {
     what: W,
     line: String,
+    /// When it was typed: anything typed into the pane after it sits beside it.
+    written: Instant,
     /// When it was typed, or Return last pressed for it.
     at: Instant,
     presses: u8,
@@ -125,7 +131,7 @@ pub(crate) fn look<L: Line>(
         );
         let at = Instant::now();
         let line = line.to_string();
-        typing.insert(pane.clone(), Typed { what, line, at, presses: 0 });
+        typing.insert(pane.clone(), Typed { what, line, written: at, at, presses: 0 });
         doorbell::sooner(next, at + doorbell::SETTLE);
     }
 }
@@ -162,6 +168,12 @@ fn second_looks<L: Line>(
                 true
             }
             Second::Ended(why) => {
+                // A Return it never took, or one pressed into a turn that started without it,
+                // can leave it unsent in the prompt, where it would hold every later wake.
+                if L::SENT_LATE {
+                    let left = doorbell::Left::line(&prompt::as_typed(&typed.line), typed.written);
+                    shared.messages().left.insert(pane.clone(), left);
+                }
                 ended.push((pane.clone(), typed.what.clone(), Some(why)));
                 false
             }

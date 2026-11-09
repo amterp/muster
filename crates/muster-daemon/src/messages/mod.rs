@@ -86,9 +86,9 @@ pub(crate) struct Messages {
     /// Agents whose hooks fetch their messages, seen idle with none fetching, and when the
     /// doorbell may ring them: a `Stop` hook's wait may connect just after its turn ends.
     hook_grace: HashMap<String, Instant>,
-    /// Rings given up with their text possibly left unsent in a prompt, by pane. A later ring
-    /// finding exactly that in the prompt sends it, unless what it was for has been read since,
-    /// when it is taken back.
+    /// Lines the doorbell's thread typed with their Return and possibly left unsent in a prompt,
+    /// by pane: sent while the prompt holds exactly that, unless a ring's messages have been read
+    /// since, when it is taken back.
     left: HashMap<String, doorbell::Left>,
     /// Why the doorbell's last look held a wake in each pane where one still waits, which a
     /// stall notice says.
