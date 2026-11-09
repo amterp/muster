@@ -24,6 +24,12 @@
       "body": "2026-11-08: surface_input::a_programs_clipboard_write_reaches_the_window timed out (window heard nothing in 20 s) in a full gate on main at load 9.6 with two worker builds beside it; passed alone three times in 0.1 s.",
       "author": "Alexander Terp",
       "created_at_millis": 1794183556330
+    },
+    {
+      "id": "c_2wu8ZbJNe",
+      "body": "2026-11-09 13:25, Mac, main at dabdd5a5 (gate after a CLI-only change): surface_input::a_programs_clipboard_write_reaches_the_window timed out at 20 s with 'the window heard []' while load reached 10.7 on 6 performance cores. Passed alone in 0.16 s. Same family as this card: a seam window test starved when the fast cores are committed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794252324797
     }
   ],
   "created_at_millis": 1793257332079,
@@ -33,7 +39,7 @@
   "position": "b27",
   "title": "🎲 Two seam window tests time out at 20 s when the machine's fast cores are committed",
   "type": "bug",
-  "updated_at_millis": 1794183556330,
+  "updated_at_millis": 1794252324797,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793257332079}
   ]

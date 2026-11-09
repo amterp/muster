@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1793894591032,
   "creator": "Alexander Terp",
   "description": "Found 2026-11-05 recording Claude Code 2.1.318's 'Waiting for 1 background agent to finish' screen (d0b60f46 and the commits before it read that screen as idle with a readable prompt). The parent's Stop hook ran at 15:22:57.244 UTC; the background agent's PostToolUse, with a nonempty agent_id, ran at 15:22:58.188 UTC; and the parent's pane read working at 15:22:59 despite the Waiting line, because the hooks adapter's report outranks the screen. So a wake to that pane still waits until the background agent's turn ends. Both probe traces are in corpus as background-hooks.jsonl, labeled by probe; see docs/observations for 2.1.318. Decide whether a hook carrying agent_id should report for the parent at all. Likely also behind older tooling feedback about integrators waiting on background agents reading working (a_2lUBzmpNB, a_2o5tCfSnl).",
   "id": "a_2uU2Hat6d",
-  "position": "Zz",
+  "position": "Yul",
   "title": "A Claude Code background agent's PostToolUse reads its idle parent as working",
   "type": "bug",
-  "updated_at_millis": 1793901364377,
+  "updated_at_millis": 1794253869096,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793894591032},
-    {"field":"column","value":"next","at":1793901357557}
+    {"field":"column","value":"next","at":1793901357557},
+    {"field":"column","value":"done","at":1794253869096}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-blocked-report",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1794253879372,
+  "creator": "Alexander Terp",
+  "description": "Seen in simulation only, 2026-11-09 while investigating a_2pOzktc35. A PermissionRequest hook's blocked report that the screen rules never read stays in force when the screen redraws less often than every 1.5 s, because reporting.rs's 3-seconds-of-output rule never fires, so a long foreground command could read blocked for its whole run. Real Claude Code 2.1.319 redrew about 5 times a second, so no real pane has been seen doing this; a loaded machine is the likely case. A fix that let a visible spinner retire the report after 2 s was written and withdrawn: a background sub-agent keeps the busy title animating (osc_title_working), so a real unrecognized dialog's report would be dropped, and visible_working_since is not cleared when a menu covers the screen. A fix needs a foreground-spinner vs busy-title distinction and state cleared on covered screens.",
+  "id": "a_2wun0tzEt",
+  "position": "am",
+  "title": "A blocked report nobody read may hold over a sparsely redrawn spinner screen",
+  "type": "bug",
+  "updated_at_millis": 1794253889885,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794253879372}
+  ]
+}

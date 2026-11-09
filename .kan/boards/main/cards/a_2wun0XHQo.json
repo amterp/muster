@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "put-a-claude-code",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "uncommitted",
+  "created_at_millis": 1794253879157,
+  "creator": "Alexander Terp",
+  "description": "Since Muster stopped holding wakes for Claude Code's Heads up / You should know notice (2026-11-09, a_2wLq4e7rc), it no longer detects the notice at all, so muster window does not name it and nobody is told. Some notices carry a warning meant for the person rather than the agent: 2026-11-08 23:28, frost's pane: 'The release you asked for would ship the whole redesign before you've seen any of it in a real window, since the screenshots failed.' Another, 2026-11-09 on an integrator's pane, pointed out that a push another agent was waiting to make would also ship that round's unreviewed work. Open: whether Muster should read such a notice and surface it (for example in the Needs you strip) without holding anything, and whether screen text leaving the screen this way needs a Fencil decision (6c6c625d kept screen text out of prompt_covered_by).",
+  "id": "a_2wun0XHQo",
+  "position": "al",
+  "title": "Put a Claude Code Heads up notice's warning in front of the owner",
+  "type": "feature",
+  "updated_at_millis": 1794253889803,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794253879157}
+  ]
+}

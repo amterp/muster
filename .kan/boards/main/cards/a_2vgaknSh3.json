@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1794072278868,
   "creator": "Alexander Terp",
   "description": "crates/muster-daemon-client/src/records.rs: `look` marks a daemon `answering` after its handshake, then `held_by` returns `(0, [])` if opening the second connection, waiting 5 s for the snapshot, or decoding it fails. `muster daemons --json` then reports an answering daemon holding zero panes, the same as one that really holds nothing.\n\nThis is the output CLAUDE.md says makes ending a stray daemon safe, and a script reviewed on 2026-11-06 used it to decide whether clearing Cargo output was safe. A slow daemon with live agents reads as empty.\n\nKeep the failure in the census: a state or completeness field, and text output that says the count is unknown. Found by reading the code on 2026-11-06 and confirmed against main on 2026-11-07; no live daemon has been seen misreported yet.",
@@ -13,14 +13,15 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "Zy",
+  "position": "Yuo",
   "related": [
     "a_2oZsvVaop"
   ],
   "title": "`muster daemons` says a daemon holds no panes when asking it failed",
   "type": "bug",
-  "updated_at_millis": 1794072301755,
+  "updated_at_millis": 1794253868677,
   "history": [
-    {"field":"column","value":"next","at":1794072278868}
+    {"field":"column","value":"next","at":1794072278868},
+    {"field":"column","value":"done","at":1794253868677}
   ]
 }
