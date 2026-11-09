@@ -1763,3 +1763,96 @@ fn a_covering_screen_is_published_and_cleared_without_a_state_change() {
         assert_eq!(exited.prompt_covered_by, None);
     }
 }
+
+// ---- a foreground command behind a permission prompt ----
+
+/// Claude's own rules, read off what Claude Code 2.1.319 drew in a pane
+/// (corpus/claude-code-2.1.319/foreground-command.txt).
+mod foreground_command {
+    use super::*;
+
+    fn recorded(name: &str) -> String {
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../corpus/conformance/agent-detection-recorded.json"
+        ))
+        .unwrap();
+        let case = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["name"] == name)
+            .unwrap_or_else(|| panic!("the corpus has a case named {name}"));
+        case["given"]["screen"].as_str().unwrap().to_string()
+    }
+
+    fn dialog() -> String {
+        recorded("claude 2.1.319: a Bash permission prompt before a long foreground command")
+    }
+
+    fn command() -> String {
+        recorded("claude 2.1.319: a long foreground command at work, its prompt answered")
+    }
+
+    /// A pane on Claude's real manifest, the agent identified and at the recorded prompt.
+    fn at_the_permission_prompt() -> Run {
+        let mut run = Run::with_manifest(include_str!("../../manifests/claude.toml"));
+        run.tick();
+        run.start_agent();
+        run.report(State::Blocked);
+        run.paint(&dialog());
+        assert_eq!(
+            run.until_published(Duration::from_secs(1)).unwrap().1,
+            reported(State::Blocked)
+        );
+        run
+    }
+
+    /// The prompt was answered with something the daemon does not count as an answer (a digit,
+    /// a click), and the command is running. `PermissionRequest` was the last hook to fire: an
+    /// approved tool runs none until it ends, so nothing but the screen says what came of it.
+    #[test]
+    fn a_prompt_answered_without_a_return_gives_way_to_the_command_it_started() {
+        let mut run = at_the_permission_prompt();
+        let published = run.run_for(Duration::from_secs(10), Some(&command()));
+        assert_eq!(published.last(), Some(&published_working()), "{published:?}");
+        assert!(published.iter().all(|publication| publication.state != State::Blocked));
+        assert_eq!(run.run_for(Duration::from_mins(2), Some(&command())), []);
+    }
+
+    /// `PermissionRequest` fires for an approval nobody is asked for too, while the spinner runs
+    /// and no prompt ever draws.
+    #[test]
+    fn a_permission_report_with_no_prompt_never_reads_blocked_over_a_command() {
+        let mut run = Run::with_manifest(include_str!("../../manifests/claude.toml"));
+        run.tick();
+        run.start_agent();
+        run.paint(&command());
+        assert_eq!(run.until_published(Duration::from_secs(1)).unwrap().1, published_working());
+        run.report(State::Blocked);
+        let published = run.run_for(Duration::from_mins(2), Some(&command()));
+        assert!(published.iter().all(|publication| publication.state != State::Blocked));
+    }
+
+    /// A prompt the rules cannot read still counts, as it did: the spinner is gone from the
+    /// screen it drew.
+    #[test]
+    fn a_permission_report_for_a_prompt_the_rules_cannot_read_still_counts() {
+        let mut run = Run::with_manifest(include_str!("../../manifests/claude.toml"));
+        run.tick();
+        run.start_agent();
+        run.paint(&command());
+        run.until_published(Duration::from_secs(1)).unwrap();
+        run.report(State::Blocked);
+        run.paint("Approve this tool call?\n  a) once\n  b) never\n");
+        let published = run.run_for(Duration::from_secs(5), None);
+        assert!(
+            published.iter().any(|publication| publication.state == State::Blocked),
+            "{published:?}"
+        );
+        assert_eq!(run.run_for(Duration::from_mins(1), None), []);
+    }
+
+    fn published_working() -> Publication {
+        published(Some(claude()), State::Working)
+    }
+}

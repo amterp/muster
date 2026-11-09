@@ -873,6 +873,30 @@
         "state": "idle",
         "waiting": "its background agents"
       }
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "claude",
+        "screen": "❯ Run exactly this one Bash command in the foreground (do not background it),\n  wait for it to finish, then reply with the single word DONE: python3\n  $PROBE_ROOT\n  $PROBE_ROOT/work.py\n· $ python3 $PROBE_ROOT\n\n────────────────────────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\"\n below\n Run the probe work script in the foreground\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n │ python3 $PROBE_ROOT\n │ $PROBE_ROOT/work.py\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n This command requires approval\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don’t ask again for: python3 *\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n\n Esc to cancel · Tab to amend",
+        "title": ""
+      },
+      "name": "claude 2.1.319: a Bash permission prompt before a long foreground command",
+      "why": "The prompt a foreground command waits behind. The turn's spinner is gone while it is up, and the words `Do you want to proceed?` with the numbered options and `Esc to cancel` are what say somebody has to answer. Its mirror below is the same turn once the prompt is answered, which must not read blocked."
+    },
+    {
+      "expect": {
+        "state": "working"
+      },
+      "given": {
+        "agent": "claude",
+        "screen": "▐▛███▛█   Claude Code v2.1.319\n▝▜██████▀  Haiku 5.5 with low effort · Claude Ultra\n ▝▝   ▝▝   /…/probe\n\n\n❯ Run exactly this one Bash command in the foreground (do not background it),\n  wait for it to finish, then reply with the single word DONE: python3\n  $PROBE_ROOT\n  $PROBE_ROOT/work.py\n… $ python3 $PROBE_ROOT\n     (ctrl+b to run in background)\n\n\n\n\n\n· Doodling… (14s · ↓ 144 tokens)\n\n────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  [13:05:23] $PROBE_ROOT\n  ⏸ manual mode on",
+        "title": ""
+      },
+      "name": "claude 2.1.319: a long foreground command at work, its prompt answered",
+      "why": "A person or agent told this pane was at a dialog while it only ran a command. The screen holds the command, `(ctrl+b to run in background)` under it and a spinner with a timer, and nothing in it asks for an answer: work, waiting on nothing."
     }
   ]
 }

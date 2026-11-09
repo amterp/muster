@@ -1,0 +1,75 @@
+How Claude Code 2.1.319 draws a Bash permission prompt, and the long foreground command it
+approves, in manual permission mode with Haiku.
+
+Captured 2026-11-09 on macOS from a Claude Code 2.1.319 pane in Muster, by `muster pane read
+--pane <that pane> --rows 30` from outside it, in a scratch directory `$PROBE_ROOT`. The turn asked for
+`python3 $PROBE_ROOT/work.py`, a script that prints a line and sleeps for ten seconds, eight times.
+The first read is the prompt, with the pane reading blocked; Return was pressed three seconds later
+(`muster pane send --key enter`), and the second read is twelve seconds into the command. Not
+recorded by `tools/detection-capture.py`: this is the pane's text as a read returned it, not the
+bytes Claude Code wrote, and the pane's title and size were not noted. Paths are replaced with
+`$PROBE_ROOT`, which also reflows two lines the paths wrapped. The rendered screens are the two
+"claude 2.1.319" foreground-command cases in corpus/conformance/agent-detection-recorded.json.
+
+While the command runs, the screen shows the command, `(ctrl+b to run in background)` under it, and
+a spinner line with a timer, `Doodling... (14s)`. No dialog is up and nobody is asked anything.
+Auto mode shows the same screen without the prompt first. Sampling the pane's text every 0.2
+seconds through an 80-second command, it changed about five times a second, and the pane read
+working from the Return to the end of the turn in manual mode and in auto mode.
+
+Dialog, read blocked:
+
+```
+❯ Run exactly this one Bash command in the foreground (do not background it),
+  wait for it to finish, then reply with the single word DONE: python3
+  $PROBE_ROOT
+  $PROBE_ROOT/work.py
+· $ python3 $PROBE_ROOT
+
+────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode"
+ below
+ Run the probe work script in the foreground
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ python3 $PROBE_ROOT
+ │ $PROBE_ROOT/work.py
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ This command requires approval
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don’t ask again for: python3 *
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+
+ Esc to cancel · Tab to amend
+```
+
+Twelve seconds into the command, read working:
+
+```
+▐▛███▛█   Claude Code v2.1.319
+▝▜██████▀  Haiku 5.5 with low effort · Claude Ultra
+ ▝▝   ▝▝   /…/probe
+
+
+❯ Run exactly this one Bash command in the foreground (do not background it),
+  wait for it to finish, then reply with the single word DONE: python3
+  $PROBE_ROOT
+  $PROBE_ROOT/work.py
+… $ python3 $PROBE_ROOT
+     (ctrl+b to run in background)
+
+
+
+
+
+· Doodling… (14s · ↓ 144 tokens)
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  [13:05:23] $PROBE_ROOT
+  ⏸ manual mode on
+```
