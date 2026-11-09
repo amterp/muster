@@ -345,6 +345,11 @@ window; two members can share one. Those colors appear on avatars only, never in
 where color means a state. A message to you has an accent bar and a "To you" tag, and a member shows
 the keys that reach its pane.
 
+**The message banner is drawn the same way**, over the panes: the author's avatar, who wrote it and in
+which conversation, the time with seconds, the answers numbered, and a reply field with the chord that
+sends on a cap. The first banner is drawn in full; the rest fold into one line, "2 more, from cactus
+and lynx", and Show draws them again. A banner you are writing a reply in is never folded.
+
 A pane on another machine lights nothing, because a pane cannot change machines; drop it on that
 tab's caption instead and it joins the tab as its own machine's part. Dropping on itself, outside
 the window, on a divider or on empty space does nothing, and `Escape` cancels. Ghostty opens a new

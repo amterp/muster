@@ -130,6 +130,14 @@ final class BannerBoard: ObservableObject {
     }
   }
 
+  /// Whether a banner has to stay in full: its reply is being written or the keyboard is in it, or
+  /// it is showing what a reply came to.
+  func keeps(_ banner: Muster_Banner) -> Bool {
+    let key = Self.key(daemon: banner.daemonID, group: banner.group)
+    return banner.held || focused == key || !(replies[key] ?? "").isEmpty
+      || banner.sent.state != .none || pending(banner)
+  }
+
   func dismiss(_ banner: Muster_Banner) {
     guard dismissable(banner) else { return }
     core.dismiss(banner.daemonID, banner.group, banner.seq)
@@ -248,6 +256,8 @@ enum BannerMarkdown {
 struct MarkdownBlocksView: View {
   let blocks: [Muster_MarkdownBlock]
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
@@ -260,7 +270,7 @@ struct MarkdownBlocksView: View {
             ForEach(Array(list.items.enumerated()), id: \.offset) { index, item in
               HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(list.numbered ? "\(list.start + UInt64(index))." : "•")
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(look.dimText)
                 MarkdownBlocksView(blocks: item.blocks)
               }
             }
@@ -271,7 +281,7 @@ struct MarkdownBlocksView: View {
             .textSelection(.enabled)
             .padding(6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.06))
+            .background(look.raised)
             .clipShape(RoundedRectangle(cornerRadius: 4))
         case nil:
           EmptyView()
@@ -281,9 +291,76 @@ struct MarkdownBlocksView: View {
   }
 }
 
-/// The stack: at most three banners, newest on top, and a count of the rest.
+/// Which banners the stack draws in full and which it folds into one line.
+///
+/// The first is drawn in full and the rest fold, so a burst of messages is one line rather than a
+/// column of cards over the panes. A banner the human is writing a reply in, or that holds the
+/// keyboard, or that shows what a reply came to, is never folded: the core keeps such a banner among
+/// those shown for that reason, and folding it would hide the words being written.
+enum BannerStackModel {
+  struct Layout: Equatable {
+    var full: [Muster_Banner]
+    var folded: [Muster_Banner]
+    /// Banners the core holds back beyond the ones it shows.
+    var others: Int
+
+    /// "2 more, from cactus and lynx", or nil when nothing is folded.
+    var summary: String? {
+      let count = folded.count + others
+      guard count > 0 else { return nil }
+      var names: [String] = []
+      for banner in folded {
+        let name = banner.author.isEmpty ? banner.group : banner.author
+        if !names.contains(name) { names.append(name) }
+      }
+      var from = ""
+      switch (names.count, others) {
+      case (0, _): break
+      case (1, 0): from = names[0]
+      case (_, 0): from = names.dropLast().joined(separator: ", ") + " and " + names.last!
+      default:
+        from = names.joined(separator: ", ") + " and \(others) other\(others == 1 ? "" : "s")"
+      }
+      return from.isEmpty ? "\(count) more" : "\(count) more, from \(from)"
+    }
+  }
+
+  static func layout(
+    banners: [Muster_Banner], others: Int, keeps: (Muster_Banner) -> Bool, expanded: Bool
+  ) -> Layout {
+    guard !expanded else { return Layout(full: banners, folded: [], others: others) }
+    var full: [Muster_Banner] = []
+    var folded: [Muster_Banner] = []
+    for (index, banner) in banners.enumerated() {
+      if index == 0 || keeps(banner) { full.append(banner) } else { folded.append(banner) }
+    }
+    return Layout(full: full, folded: folded, others: others)
+  }
+}
+
+/// Which pane an author's callsign is in this window, and what its agent is doing, so a banner's
+/// avatar is the one the conversation draws for the same agent.
+struct BannerAuthor: Equatable {
+  let paneID: String
+  let state: String?
+
+  /// The one pane in `roster` whose callsign is `callsign`; nil when none is, or when two are,
+  /// since a banner cannot say which of two was meant and the name's own color is the safer
+  /// answer than another agent's.
+  static func find(callsign: String, roster: Roster, agents: [PaneKey: PaneAgent]) -> Self? {
+    guard !callsign.isEmpty else { return nil }
+    let named = roster.panes.filter { $0.callsign == callsign }
+    guard named.count == 1, let pane = named.first else { return nil }
+    return BannerAuthor(paneID: pane.key.pane, state: agents[pane.key]?.state)
+  }
+}
+
+/// The stack: the first banner in full, and one line for the rest.
 struct BannerStackView: View {
   @ObservedObject var board: BannerBoard
+  /// Finds an author by callsign among this window's panes.
+  let identify: (String) -> BannerAuthor?
+  @State private var expanded = false
   /// Gives the keyboard back to the pane it came from.
   let onLeave: () -> Void
   /// Ends an input method's composition in the reply field holding the keyboard, if there is one.
@@ -292,10 +369,13 @@ struct BannerStackView: View {
   let onLink: (URL, String, String) -> Void
 
   var body: some View {
+    let layout = BannerStackModel.layout(
+      banners: board.banners, others: board.folded, keeps: board.keeps, expanded: expanded)
     VStack(alignment: .trailing, spacing: 8) {
-      ForEach(board.banners, id: \.identity) { banner in
+      ForEach(layout.full, id: \.identity) { banner in
         BannerCard(
-          banner: banner, board: board, onLeave: onLeave, endComposition: endComposition
+          banner: banner, board: board, author: identify(banner.author),
+          onLeave: onLeave, endComposition: endComposition
         )
         .environment(
           \.openURL,
@@ -304,15 +384,46 @@ struct BannerStackView: View {
             return .handled
           })
       }
-      if board.folded > 0, let oldest = board.oldest {
-        Button("\(board.folded) more - open the oldest") {
-          board.core.open(oldest.daemonID, oldest.group)
-        }
-        .buttonStyle(.link)
-        .padding(.horizontal, 8)
+      if let summary = layout.summary {
+        FoldedBannersLine(
+          summary: summary,
+          show: {
+            if !layout.folded.isEmpty {
+              expanded = true
+            } else if let oldest = board.oldest {
+              board.core.open(oldest.daemonID, oldest.group)
+            }
+          })
       }
     }
     .frame(width: 380)
+    .inPaneLook()
+  }
+
+}
+
+/// The banners past the first as one line. Show draws them in full; with none of them shown, it
+/// opens the oldest conversation, as the count of unshown ones always did.
+struct FoldedBannersLine: View {
+  let summary: String
+  let show: () -> Void
+
+  @Environment(\.paneLook) private var look
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text(summary).foregroundStyle(look.dimText).lineLimit(1)
+      Spacer(minLength: 0)
+      Button("Show", action: show).buttonStyle(.link)
+    }
+    .font(.callout)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .frame(width: 380)
+    .background(look.background)
+    .overlay(alignment: .leading) { Rectangle().fill(look.accent).frame(width: 3) }
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .shadow(radius: 3)
   }
 }
 
@@ -325,14 +436,39 @@ enum BannerFocus: Hashable {
 struct BannerCard: View {
   let banner: Muster_Banner
   @ObservedObject var board: BannerBoard
+  /// The author's pane in this window, when the callsign names one.
+  var author: BannerAuthor?
   let onLeave: () -> Void
   let endComposition: () -> Bool
   @FocusState private var focus: BannerFocus?
+  @Environment(\.paneLook) private var look
 
   var body: some View {
+    HStack(alignment: .top, spacing: 8) {
+      AvatarView(
+        name: shownAuthor,
+        color: IdentityColor.color(
+          paneID: author?.paneID ?? "", name: banner.author,
+          isMuster: banner.author.drop(while: { $0 == "@" }) == "muster"),
+        state: author?.state)
+      content
+    }
+    .padding(10)
+    .background(look.background)
+    .overlay(alignment: .leading) {
+      // A banner is a message to the person, which the conversation marks with the same bar.
+      Rectangle().fill(look.accent).frame(width: 3)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .shadow(radius: 4)
+  }
+
+  private var shownAuthor: String { banner.author.isEmpty ? banner.group : banner.author }
+
+  private var content: some View {
     VStack(alignment: .leading, spacing: 6) {
       header
-      content
+      messageBody
       if !banner.answers.isEmpty, banner.sent.state != .posted {
         AnswerButtons(
           answers: banner.answers, picked: banner.hasPicked ? Int(banner.picked) : nil,
@@ -346,7 +482,7 @@ struct BannerCard: View {
       if !banner.waitingAuthor.isEmpty {
         Text("\(banner.waitingAuthor) wrote since\(banner.waitingUrgent ? " - urgent" : "")")
           .font(.caption)
-          .foregroundStyle(banner.waitingUrgent ? .red : .secondary)
+          .foregroundStyle(banner.waitingUrgent ? look.alert : look.dimText)
       }
       if banner.replyable || banner.sent.state == .refused || banner.sent.state == .unknown {
         BannerReplyField(
@@ -364,27 +500,27 @@ struct BannerCard: View {
         board.focused = nil
       }
     }
-    .padding(10)
-    .background(.background)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-    .shadow(radius: 4)
   }
 
   private var header: some View {
     HStack(spacing: 6) {
-      Text(banner.group).bold()
+      // Who wrote it, then which conversation: "linen in human+linen".
+      Text(shownAuthor).bold()
       if !banner.author.isEmpty {
-        Text(banner.author).foregroundStyle(.secondary)
+        Text("in \(banner.group)").foregroundStyle(look.dimText).lineLimit(1)
       }
+      TagView(text: "To you", foreground: look.accent, fill: look.raised)
       if banner.urgent {
-        Text("urgent").font(.caption.bold()).foregroundStyle(.red)
+        TagView(text: "Urgent", foreground: look.alert, fill: look.raised)
       }
       Spacer()
       if banner.atMs > 0 {
         Text(BannerTime.shown(atMs: banner.atMs))
           .font(.caption)
           .monospacedDigit()
-          .foregroundStyle(.secondary)
+          .foregroundStyle(look.dimText)
+          .lineLimit(1)
+          .fixedSize()
           .help(BannerTime.exact(atMs: banner.atMs))
       }
       Button("Open") { board.core.open(banner.daemonID, banner.group) }
@@ -393,23 +529,23 @@ struct BannerCard: View {
       if board.dismissable(banner) {
         Button(action: { board.dismiss(banner) }) { Image(systemName: "xmark") }
           .buttonStyle(.plain)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(look.dimText)
           .help("Dismiss, leaving the message unread")
       }
     }
   }
 
-  @ViewBuilder private var content: some View {
+  @ViewBuilder private var messageBody: some View {
     if !banner.unloaded.isEmpty {
       let from = banner.from.joined(separator: ", ")
       let count = banner.count == 1 ? "1 message" : "\(banner.count) messages"
       Text("\(count) for you\(from.isEmpty ? "" : " from \(from)"). \(banner.unloaded)")
-        .foregroundStyle(.secondary)
+        .foregroundStyle(look.dimText)
         .fixedSize(horizontal: false, vertical: true)
     } else {
       MarkdownBlocksView(blocks: banner.body)
       if banner.more {
-        Text("More in the conversation").font(.caption).foregroundStyle(.secondary)
+        Text("More in the conversation").font(.caption).foregroundStyle(look.dimText)
       }
     }
   }
@@ -417,18 +553,18 @@ struct BannerCard: View {
   @ViewBuilder private var outcome: some View {
     switch board.pending(banner) ? Muster_PostOutcome.State.pending : banner.sent.state {
     case .pending:
-      Text("Sending…").font(.caption).foregroundStyle(.secondary)
+      Text("Sending…").font(.caption).foregroundStyle(look.dimText)
     case .posted:
       Text("Sent - \(banner.sent.said)")
         .font(.caption)
-        .foregroundStyle(banner.sent.heard ? Color.secondary : Color.orange)
+        .foregroundStyle(banner.sent.heard ? look.dimText : look.warning)
     case .refused:
       Text("Not sent: \(banner.sent.said)")
-        .font(.caption).foregroundStyle(.red)
+        .font(.caption).foregroundStyle(look.alert)
         .fixedSize(horizontal: false, vertical: true)
     case .unknown:
       Text("Perhaps sent: \(banner.sent.said)")
-        .font(.caption).foregroundStyle(.orange)
+        .font(.caption).foregroundStyle(look.warning)
         .fixedSize(horizontal: false, vertical: true)
     default:
       EmptyView()
@@ -445,6 +581,8 @@ struct BannerReplyField: View {
   let onLeave: () -> Void
   let endComposition: () -> Bool
 
+  @Environment(\.paneLook) private var look
+
   /// The answer picked from the banner's question, shown beside what is written.
   private var picked: String? {
     guard banner.hasPicked, banner.answers.indices.contains(Int(banner.picked)) else { return nil }
@@ -459,7 +597,7 @@ struct BannerReplyField: View {
           Text("Answer: \(picked)").bold()
           Button(action: { board.unpick(banner) }) { Image(systemName: "xmark.circle.fill") }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(look.dimText)
             .disabled(board.pending(banner))
             .help("Take the answer back")
         }
@@ -477,14 +615,15 @@ struct BannerReplyField: View {
         .frame(minHeight: 22, maxHeight: 88)
         .fixedSize(horizontal: false, vertical: true)
         .padding(4)
-        .background(Color.primary.opacity(0.08))
+        .background(look.raised)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(look.rule))
         .overlay(alignment: .topLeading) {
           if text.wrappedValue.isEmpty {
             Text(
               picked == nil ? "Reply to \(banner.author)" : "Add a note, or send the answer alone"
             )
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(look.dimText)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .allowsHitTesting(false)
@@ -514,11 +653,15 @@ struct BannerReplyField: View {
         .disabled(board.pending(banner))
         .focused(focus, equals: .reply)
       let sendable = BannerBoard.canSend(text: text.wrappedValue, picked: picked != nil)
-      Button(action: { board.send(banner) }) { Image(systemName: "paperplane.fill") }
-        .buttonStyle(.plain)
-        .foregroundStyle(sendable ? .primary : .tertiary)
-        .disabled(board.pending(banner) || !banner.replyable || !sendable)
-        .help("Send (\(BannerReplyField.chord(board.sendChord)))")
+      // The chord that sends, on a cap, is the send button: it says what to press and can be
+      // clicked.
+      Button(action: { board.send(banner) }) {
+        ChordCap(text: BannerReplyField.chord(board.sendChord))
+          .opacity(sendable ? 1 : 0.5)
+      }
+      .buttonStyle(.plain)
+      .disabled(board.pending(banner) || !banner.replyable || !sendable)
+      .help("Send (\(BannerReplyField.chord(board.sendChord)))")
     }
   }
 
@@ -552,7 +695,8 @@ public final class BannerHost {
   private(set) lazy var hosting: NSHostingView<BannerStackView> = {
     let view = NSHostingView(
       rootView: BannerStackView(
-        board: board, onLeave: { [weak self] in self?.onLeave?() },
+        board: board, identify: { [weak self] in self?.identify($0) },
+        onLeave: { [weak self] in self?.onLeave?() },
         endComposition: { [weak self] in self?.endComposition() ?? false },
         onLink: { [weak self] url, daemon, group in self?.onLink?(url, daemon, group) }))
     view.sizingOptions = [.intrinsicContentSize]
@@ -562,6 +706,10 @@ public final class BannerHost {
 
   /// Gives the keyboard back to the window's pane.
   var onLeave: (() -> Void)?
+
+  /// Finds the pane an author's callsign names among this window's, for the avatar's color and
+  /// state.
+  var identify: (String) -> BannerAuthor? = { _ in nil }
 
   /// Opens a link in a banner's message, with its daemon and group, by the window's link policy.
   var onLink: ((URL, String, String) -> Void)?

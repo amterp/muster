@@ -142,6 +142,8 @@ struct TagView: View {
   var body: some View {
     Text(text)
       .font(.caption.weight(.semibold))
+      .lineLimit(1)
+      .fixedSize()
       .foregroundStyle(foreground)
       .padding(.horizontal, 6)
       .padding(.vertical, 1)

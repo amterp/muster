@@ -246,6 +246,10 @@ public final class MusterWindow: NSObject {
     banners.onLink = { [weak self] url, daemon, group in
       self?.open(messageLink: url, daemon: daemon, group: group)
     }
+    banners.identify = { [weak self] callsign in
+      guard let self else { return nil }
+      return BannerAuthor.find(callsign: callsign, roster: roster, agents: agents)
+    }
     banners.onLeave = { [weak self] in
       guard let self, let surface = keyboardChrome()?.surface else { return }
       window.makeFirstResponder(surface)
