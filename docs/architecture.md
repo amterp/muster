@@ -314,6 +314,14 @@ on a dark background, which costs more on this row than any other because workin
 its time in. Cyan is legible in both mediums, distinct from green and orange at a glance, and calm - which is what the
 busy-but-not-waiting state should be while blocked is the loud one.
 
+**A row says its state by shape as well as color.** In the agent list each state is an icon of its own: a solid
+circle with an exclamation mark for blocked, a solid octagon for stuck and a solid circle with a check for done - the
+three that want somebody - and an open ring with a gap for working, an hourglass for waiting and a plain ring for
+idle; unknown is a dashed ring and unreachable a slashed one. A blocked or stuck row is also tinted with its state's
+color mixed into the list's background and carries a colored left edge. The state's word and how long it has held
+come first on the row's second line for blocked, stuck and done, and what a waiting agent waits on for waiting. The
+colors are the ones below; the shapes are what let the legend be read without them.
+
 **Waiting is indigo because it is the calmest thing that is not resting.** An agent waiting on its own gate needs
 nobody, so it must not read as blocked; it has not finished, so it must not read as idle grey or done green; and it is
 not working either. Indigo sits apart from all three and from the accent ring's blue by weight. The CLI spells it

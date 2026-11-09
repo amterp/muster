@@ -65,7 +65,7 @@ selection_foreground = "#c0caf5"
 bold = "#e5c07b"              # bold text; omit and it keeps whatever colour it already had
 divider = "#4a4a4a"            # the line between two regions; omit for the platform's
 focus_ring = "#bb9af7"         # which pane has the keyboard; omit to follow the macOS accent
-agent_working = "#7aa2f7"      # the seven agent states, on a pane's edge and its row's dot
+agent_working = "#7aa2f7"      # the seven agent states, on a pane's edge and its row's icon
 agent_blocked = "#ff9e64"      # each optional on its own; omit for the one Muster ships
 agent_stuck = "#ff79c6"        # its program has stopped reading its input
 agent_waiting = "#7c7fd8"      # idle, and waiting on work it started itself
@@ -423,15 +423,15 @@ nothing else distinguishing it - so a Claude pane reads flat until you give bold
 own. Omitting it is the behaviour every terminal has by default.
 
 **The colours Muster invented are yours too, and only in the window.** `agent_working` and its
-six siblings are what a pane's edge and its row's dot are painted in; `focus_ring` is the thin
+six siblings are what a pane's edge and its row's state icon are painted in; `focus_ring` is the thin
 inner ring saying which pane the keyboard feeds. Each is optional on its own - fixing the one row
 you cannot see is not adopting a theme - and leaving one out gives you the colour Muster ships.
 
-`context_empty` and `context_full` are the two ends of the small ring beside an agent's row, which
+`context_empty` and `context_full` are the two ends of the short bar on an agent's row, which
 fills as the agent's context does. Its colour moves from one end to the other as it fills, slowly at
 first and most of the way by 80%, so a glance says how close the agent is to compacting rather than
 only whether it has passed a line. What ships is the grey of the row's other quiet marks and the
-platform's red - red because no agent state is red, so a full ring is never read as an agent
+platform's red - red because no agent state is red, so a full bar is never read as an agent
 waiting on you.
 
 Leaving `focus_ring` out follows the macOS accent, which is a decision rather than a shortfall:
