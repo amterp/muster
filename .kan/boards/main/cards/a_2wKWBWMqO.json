@@ -5,20 +5,21 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1794167434405,
   "creator": "Alexander Terp",
   "description": "From the Lectern page muster-ui-redesign, section \"Messages\". The banner takes the conversation's parts: the author's avatar, the conversation's name (the agent's name for a one-to-one, not @human+linen), the time with seconds, numbered answers, and a reply field showing the chord that sends. Banners past the first fold into one line naming who they are from.\n\nColors: the banner sits over the panes, so it takes the terminal's background and foreground (decision chrome-colors, and the color card).\n\n## Plan (reviewed 2026-11-08)\n\nFrom the plan for the redesign, step 8; the parent card a_2wKW8eBfM has its overall shape, order and checks.\n\nA restyle that keeps each view's structure: `ConversationView` keeps its thread, message box and\nmembers column, and `BannerCard` its parts.\n\n- The message box keeps `MessageBoxTextView` where `field(in:)` finds it, and `AnswerButtons` keeps\n  its `@FocusState` behavior; `ConversationTests` and `BannerTests` must pass unchanged.\n- Colors come from `ChromePalette`. Avatars take the agent's identity color (card `a_2o5jIMI5J`: a\n  hash of the pane id into a fixed palette clear of the state colors).\n- A banner for a one-to-one conversation is named after the agent, not `@human+\u003ccallsign\u003e`, once\n  step 4 knows the partner; until then it keeps the group's name.",
   "id": "a_2wKWBWMqO",
   "parent": "a_2wKW8eBfM",
-  "position": "Zuzt",
+  "position": "Yuq",
   "related": [
     "a_2wKqcjyIY"
   ],
   "title": "Restyle the message banner as on the Lectern page",
   "type": "enhancement",
-  "updated_at_millis": 1794170691802,
+  "updated_at_millis": 1794196921771,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794167434405}
+    {"field":"column","value":"backlog-hi","at":1794167434405},
+    {"field":"column","value":"done","at":1794196921771}
   ]
 }
