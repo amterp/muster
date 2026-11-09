@@ -343,6 +343,35 @@ fn a_rename_left_in_the_prompt_as_its_agent_went_to_work_is_sent_once_it_is_idle
     assert_eq!(p1.renames_heard(), ["/rename cxp"], "typed again");
 }
 
+/// A rename whose every Return was swallowed while its agent stayed idle is given up, and is still
+/// sent once the agent takes a Return again.
+#[test]
+fn a_rename_given_up_at_an_idle_prompt_is_sent_once_its_agent_takes_returns() {
+    let mut p1 = Pane::named(None);
+    p1.daemon.run_agent("p1");
+    p1.daemon.type_into("p1", "heedless");
+    until_some("the agent to start discarding Returns", || {
+        std::fs::read_to_string(p1.heard_file())
+            .unwrap_or_default()
+            .contains("heedless")
+            .then_some(())
+    });
+    let mut logging = p1.daemon.connect();
+    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
+        after: None,
+    });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    p1.renamed("cxp");
+    let given_up = r#""event":"session.name.given_up""#;
+    let logged = logging.logged_until(given_up, Duration::from_mins(1));
+    assert!(logged.iter().any(|line| line.line.contains(given_up)), "{logged:?}");
+
+    let heeding = std::time::Instant::now();
+    p1.daemon.end_turn_unasked();
+    p1.until_renamed("/rename cxp");
+    assert!(heeding.elapsed() < Duration::from_secs(20), "sent after {:?}", heeding.elapsed());
+}
+
 /// With `name_sessions = false` a pane's name is never typed into its agent's session, while a
 /// session renamed in its harness still renames the pane, which types nothing.
 #[test]

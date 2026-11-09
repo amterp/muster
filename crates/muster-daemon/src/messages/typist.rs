@@ -173,6 +173,8 @@ fn second_looks<L: Line>(
                 if L::SENT_LATE {
                     let left = doorbell::Left::line(&prompt::as_typed(&typed.line), typed.written);
                     shared.messages().left.insert(pane.clone(), left);
+                    // Nothing else may wake the doorbell for it: an idle pane announces nothing.
+                    doorbell::sooner(next, Instant::now());
                 }
                 ended.push((pane.clone(), typed.what.clone(), Some(why)));
                 false
