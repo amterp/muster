@@ -12,6 +12,18 @@
       "body": "Data point for the dismissing sequence, 2026-11-08 14:42, Claude Code 2.1.319: a Heads up notice held a ring to an idle worker in plan mode with an empty prompt. `muster pane send --pane \u003cp\u003e \"0\"` (as text, no Return) dismissed it at once; the screen then showed 'Dismissed. 1: That was helpful 2: Not relevant 3: Couldn't understand 4: Turn off suggestions 0: Dismiss', the held ring rang within a second, and the worker went to work. No Ctrl+C was needed.",
       "author": "Alexander Terp",
       "created_at_millis": 1794170744635
+    },
+    {
+      "id": "c_2wNweJIYs",
+      "body": "Quartermaster reviewer instance, 2026-11-08: birch+cinder review #16 waited unread for 17 minutes behind a Heads up notice while Birch was also stopped at its Claude usage limit. muster pane send --pane birch --key 0 typed 0 into the prompt instead of dismissing the notice; backspace removed the stray character. I avoided Ctrl+C because it could alter the scheduled resume at 18:10. Relayed the pending P1/P2 review findings to the integrator directly. New angle: the advertised notice-clearing sequence is unsafe to attempt when a usage-limit resume is also pending.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794175601477
+    },
+    {
+      "id": "c_2wTrFgRlU",
+      "body": "2026-11-08 about 20:00, Mac, fencil-1: moth posted review #5 to waiting requester plum. A Claude Code Heads up notice held the wake for at least two minutes; @muster woke moth to report it. After inspecting the pane, moth sent one --key 0. The notice changed to Dismissed and plum received the review and started fixing it. No Ctrl+C was needed. Another review handoff required the sender to clear the recipient notice manually.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794189693683
     }
   ],
   "created_at_millis": 1794170582222,
@@ -27,7 +39,7 @@
   ],
   "title": "Dismiss a Claude Code notice that holds a ring or compaction, and hand its text to the agent",
   "type": "feature",
-  "updated_at_millis": 1794170744635,
+  "updated_at_millis": 1794189693683,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794170582222}
   ]
