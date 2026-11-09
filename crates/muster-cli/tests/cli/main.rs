@@ -2,6 +2,7 @@
 
 mod argv;
 mod asking_for_a_window;
+mod claude_code_hooks;
 mod docs;
 mod driving_a_window;
 mod exit_codes;

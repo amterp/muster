@@ -34,6 +34,13 @@ shows:
 | `PermissionRequest`, and `Notification` for a permission prompt or a question | waiting on you |
 | `Stop`, `StopFailure` | idle |
 
+A sub-agent's tool calls run the same hooks as the session's own, with an `agent_id` in the
+input. `PostToolUse` and `PostToolUseFailure` report nothing for them: a call a sub-agent makes
+says nothing about whether the session is working, and a background sub-agent keeps making them
+after the session's `Stop`, when the session shows `Waiting for 1 background agent` and takes
+input. A sub-agent's `PermissionRequest` still reports waiting on you, since somebody has to
+answer it.
+
 A working state with nothing moving on the screen for ten seconds is let go, since pressing Esc
 mid-turn fires no hook, and Muster reads the screen again. It is also set aside while Muster's
 screen rules read a permission prompt that was up before it came, or has been for two seconds, since one sub-agent's tool calls go

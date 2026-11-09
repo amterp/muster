@@ -40,6 +40,8 @@ ordinary wake then waited until the child's short turn ended. The selected first
 is included in `background-input.jsonl`, and its parent Stop and child PostToolUse are retained
 in `background-hooks.jsonl` under `background-shell-child`.
 
-The screen-rule correction removes the recorded prompt hold. The separate effect of child
-PostToolUse state reports needs its own regression before changing hook authority; these
-records do not establish how every child tool sequence affects it.
+The screen-rule correction removes the recorded prompt hold. The hooks adapter now ignores a
+`PostToolUse` or `PostToolUseFailure` whose input carries `agent_id`, so the child's call above
+no longer reports the parent working; `crates/muster-cli/tests/cli/claude_code_hooks.rs` feeds it
+the recorded inputs and fails on the unguarded hook. The records do not establish how every
+child tool sequence affects a parent, only that `agent_id` marks which hooks are the child's.
