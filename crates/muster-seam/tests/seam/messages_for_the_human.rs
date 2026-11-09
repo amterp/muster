@@ -286,7 +286,7 @@ fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
     );
     open_window_with(&relay.muster_config());
     until("the slow Who request", || asked.load(Ordering::SeqCst) > 0, || "no Who".into());
-    let before = muster::testing::partner_refresh_progress("local").1;
+    assert_eq!(asked.load(Ordering::SeqCst), 1, "the first Who is still pending");
     expect(
         &mut control,
         msg(
@@ -301,9 +301,9 @@ fn an_unrelated_notice_does_not_discard_a_slow_partner_refresh() {
         daemon_proto::Outcome::Done,
     );
     until(
-        "the first partner pass to finish",
-        || muster::testing::partner_refresh_progress("local").1 > before,
-        || "the pass has not finished".into(),
+        "the next Who to start after the overtaken pass",
+        || asked.load(Ordering::SeqCst) >= 2,
+        || "the worker has not started another pass".into(),
     );
     let groups = GROUPS.lock().expect("groups");
     let pane = groups
