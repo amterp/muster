@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "reach-a-one-to-one",
+  "alias_explicit": false,
+  "column": "uncommitted",
+  "created_at_millis": 1794201798359,
+  "creator": "Alexander Terp",
+  "description": "Once a one-to-one conversation moves to its agent's row, Leave Group and Delete Group are reached only by right-clicking the envelope; a right-click elsewhere on the row gives the pane's menu. Consider adding the group's items to the pane row's menu.",
+  "id": "a_2wYw9F5pg",
+  "position": "ak",
+  "title": "Reach a one-to-one group's Leave and Delete from the whole agent row",
+  "type": "enhancement",
+  "updated_at_millis": 1794201798359,
+  "history": [
+    {"field":"column","value":"uncommitted","at":1794201798359}
+  ]
+}
