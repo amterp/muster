@@ -89,12 +89,17 @@ final class ConversationThread: ObservableObject {
 
   /// The latest question the human may answer, which Tab from the message box reaches; older
   /// ones take a click.
-  var newestQuestion: UInt64? {
+  var newestQuestion: UInt64? { newestQuestionMessage?.seq }
+
+  /// Who asked it, for the message box to say whose answers Tab reaches.
+  var newestQuestionAuthor: String? { newestQuestionMessage?.author }
+
+  private var newestQuestionMessage: Muster_ConversationMessage? {
     for row in shown.rows.reversed() {
       if case .message(let message) = row.kind, message.answerable, message.answeredBy.isEmpty,
         !message.answers.isEmpty
       {
-        return message.seq
+        return message
       }
     }
     return nil
@@ -121,8 +126,15 @@ final class ConversationMembers: ObservableObject {
   @Published private(set) var agents: [PaneKey: PaneAgent] = [:]
   /// The roster's line for each member's pane: what its agent says it is doing.
   @Published private(set) var subtitles: [PaneKey: String] = [:]
+  /// The keys that reach each member's pane, as the core numbered them for the agent list.
+  @Published private(set) var chords: [PaneKey: Chord] = [:]
   /// The members' panes, which the sidebar marks.
   private(set) var panes: Set<PaneKey> = []
+
+  struct Chord: Equatable {
+    let first: Int
+    let second: Int
+  }
 
   func apply(
     _ changed: Muster_ConversationMembersChanged, agents: [PaneKey: PaneAgent], roster: Roster
@@ -143,6 +155,11 @@ final class ConversationMembers: ObservableObject {
       roster.panes.filter { panes.contains($0.key) }.map { ($0.key, $0.subtitle) },
       uniquingKeysWith: { first, _ in first })
     if fresh != subtitles { subtitles = fresh }
+    let keys = Dictionary(
+      roster.panes.filter { panes.contains($0.key) }.map {
+        ($0.key, Chord(first: $0.tabPress, second: $0.press))
+      }, uniquingKeysWith: { first, _ in first })
+    if keys != chords { chords = keys }
   }
 }
 
@@ -549,22 +566,26 @@ struct ConversationView: View {
   let leaveChord: @MainActor () -> Core.Binding?
   let onLink: @MainActor (URL, ConversationGroup) -> Void
 
+  /// The terminal's colors, which the conversation is drawn in (`PaneLook`).
+  @ObservedObject private var lookBoard = PaneLookBoard.shared
+
   var body: some View {
     VStack(spacing: 0) {
       ConversationHeader(thread: thread, requests: requests, leaveChord: leaveChord)
-      Divider()
+      PaneRule()
       HStack(spacing: 0) {
         VStack(spacing: 0) {
-          ConversationThreadView(thread: thread, box: box, requests: requests)
-          Divider()
-          MessageBoxView(box: box)
+          ConversationThreadView(thread: thread, box: box, members: members, requests: requests)
+          PaneRule()
+          MessageBoxView(box: box, thread: thread)
         }
-        Divider()
+        PaneRule(vertical: true)
         ConversationMembersView(members: members, requests: requests)
           .frame(width: 220)
       }
     }
-    .background(Color(nsColor: .textBackgroundColor))
+    .background(lookBoard.look.background)
+    .inPaneLook(lookBoard)
     // Every link an agent writes, through the policy the terminal's links follow, rather than
     // opened as whatever scheme it names.
     .environment(
@@ -581,17 +602,19 @@ struct ConversationHeader: View {
   let requests: @MainActor () -> ConversationRequests?
   let leaveChord: @MainActor () -> Core.Binding?
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     let header = thread.shown.header
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 8) {
         Text(header.group).font(.headline)
         if !header.keeper.isEmpty {
-          Text("kept on \(header.keeper)").foregroundStyle(.secondary)
+          Text("kept on \(header.keeper)").foregroundStyle(look.dimText)
         }
         if header.membersKnown {
           Text(header.members == 1 ? "1 member" : "\(header.members) members")
-            .foregroundStyle(.secondary)
+            .foregroundStyle(look.dimText)
         }
         Spacer()
         if let group = thread.group {
@@ -610,16 +633,16 @@ struct ConversationHeader: View {
           "\(header.behind) cannot be reached, so this group may be missing what was posted "
             + "there since, and a post here is refused until it answers."
         )
-        .font(.callout).foregroundStyle(.orange)
+        .font(.callout).foregroundStyle(look.warning)
         .fixedSize(horizontal: false, vertical: true)
       }
       if header.paused {
         Text("Paused: a post here wakes nobody until the group resumes.")
-          .font(.callout).foregroundStyle(.secondary)
+          .font(.callout).foregroundStyle(look.dimText)
       }
       if let failed = Self.failure(thread.shown) {
         Text(failed)
-          .font(.callout).foregroundStyle(.red)
+          .font(.callout).foregroundStyle(look.alert)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -639,6 +662,7 @@ extension ConversationHeader {
 struct ConversationThreadView: View {
   @ObservedObject var thread: ConversationThread
   let box: MessageBox
+  let members: ConversationMembers
   let requests: @MainActor () -> ConversationRequests?
 
   /// The opening whose first rows this thread has scrolled to, so it does that once each time a
@@ -669,8 +693,8 @@ struct ConversationThreadView: View {
           }
           ForEach(rows, id: \.id) { entry in
             ConversationRowView(
-              row: entry.row, group: thread.group, box: box, requests: requests,
-              focus: $answerFocus
+              row: entry.row, group: thread.group, box: box, members: members,
+              requests: requests, focus: $answerFocus
             )
             .id(entry.id)
           }
@@ -753,26 +777,30 @@ struct ConversationRowView: View {
   let row: Muster_ConversationRow
   let group: ConversationGroup?
   let box: MessageBox
+  let members: ConversationMembers
   let requests: @MainActor () -> ConversationRequests?
   var focus: FocusState<AnswerFocus?>.Binding
+
+  @Environment(\.paneLook) private var look
 
   var body: some View {
     switch row.kind {
     case .divider(let date):
       HStack(spacing: 8) {
         rule
-        Text(date).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        Text(date).font(.caption.monospacedDigit()).foregroundStyle(look.dimText)
         rule
       }
     case .changes(let changes):
       HStack(spacing: 6) {
         Text(changes.text)
         Spacer()
-        time(changes.atMs)
+        time(changes.atMs, look: look)
       }
       .font(.caption)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(look.dimText)
     case .fold(let fold):
+      // Messages between agents, none to the person, as one line: a chevron, how many and when.
       Button(action: { if let group { requests()?.openFold(group, fold.first) } }) {
         HStack(spacing: 6) {
           Image(systemName: "chevron.right")
@@ -784,20 +812,24 @@ struct ConversationRowView: View {
           .monospacedDigit()
           .help("\(BannerTime.exact(atMs: fold.fromMs)) to \(BannerTime.exact(atMs: fold.toMs))")
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(look.raised))
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .font(.callout)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(look.dimText)
       .help("Show these messages")
     case .message(let message):
       ConversationMessageView(
-        message: message, group: group, box: box, requests: requests, focus: focus)
+        message: message, group: group, box: box, members: members, requests: requests,
+        focus: focus)
     case .unread:
       HStack(spacing: 8) {
-        Rectangle().fill(Color.red).frame(height: 1)
-        Text("Unread").font(.caption.bold()).foregroundStyle(.red)
-        Rectangle().fill(Color.red).frame(height: 1)
+        Rectangle().fill(look.alert).frame(height: 1)
+        Text("Unread").font(.caption.bold()).foregroundStyle(look.alert)
+        Rectangle().fill(look.alert).frame(height: 1)
       }
     case nil:
       EmptyView()
@@ -805,61 +837,109 @@ struct ConversationRowView: View {
   }
 
   private var rule: some View {
-    Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 1)
+    Rectangle().fill(look.rule).frame(height: 1)
   }
 }
 
 /// A time in the thread: the time of day, under its day's divider, with the milliseconds and the
 /// UTC offset when the pointer is on it.
 @MainActor
-private func time(_ atMs: UInt64) -> some View {
+private func time(_ atMs: UInt64, look: PaneLook) -> some View {
   Text(BannerTime.timeOfDay(atMs: atMs))
     .font(.caption)
     .monospacedDigit()
-    .foregroundStyle(.secondary)
+    .foregroundStyle(look.dimText)
     .help(BannerTime.exact(atMs: atMs))
+}
+
+/// A message's author as an avatar: their identity color and, for an agent this window shows, its
+/// state. Observes the members alone, so an agent changing state redraws this and not the message.
+struct AuthorAvatar: View {
+  let message: Muster_ConversationMessage
+  @ObservedObject var members: ConversationMembers
+
+  var body: some View {
+    let pane =
+      message.authorPaneID.isEmpty
+      ? nil : PaneKey(daemon: message.authorDaemonID, pane: message.authorPaneID)
+    AvatarView(
+      name: message.author,
+      color: IdentityColor.color(
+        paneID: message.authorPaneID, name: message.authorName, isHuman: message.byYou,
+        isMuster: message.fromMuster),
+      state: pane.flatMap { members.agents[$0]?.state })
+  }
+}
+
+/// "Go to Pane", with the keys that reach the pane as the agent list draws them.
+struct PaneLink: View {
+  let pane: PaneKey
+  let help: String
+  @ObservedObject var members: ConversationMembers
+  let requests: @MainActor () -> ConversationRequests?
+
+  var body: some View {
+    HStack(spacing: 4) {
+      Button("Go to Pane") { requests()?.focus(pane) }
+        .buttonStyle(.link)
+        .help(help)
+      if let chord = members.chords[pane] {
+        ChordKeys(first: chord.first, second: chord.second)
+      }
+    }
+  }
 }
 
 struct ConversationMessageView: View {
   let message: Muster_ConversationMessage
   let group: ConversationGroup?
   let box: MessageBox
+  let members: ConversationMembers
   let requests: @MainActor () -> ConversationRequests?
   var focus: FocusState<AnswerFocus?>.Binding
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 6) {
-        Text(message.author).bold()
-        if !message.to.isEmpty {
-          Text("to \(message.to.joined(separator: ", "))").foregroundStyle(.secondary)
+    HStack(alignment: .top, spacing: 8) {
+      AuthorAvatar(message: message, members: members)
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 6) {
+          Text(message.author).bold()
+          if !message.to.isEmpty {
+            Text("to \(message.to.joined(separator: ", "))").foregroundStyle(look.dimText)
+          }
+          if message.toYou {
+            TagView(text: "To you", foreground: look.accent, fill: look.raised)
+          }
+          if message.urgent {
+            TagView(text: "Urgent", foreground: look.alert, fill: look.raised)
+          }
+          Spacer()
+          time(message.atMs, look: look)
         }
-        if message.toYou {
-          Text("to you").font(.caption.bold()).foregroundStyle(Color.accentColor)
+        MarkdownBlocksView(blocks: message.body)
+          .textSelection(.enabled)
+          .foregroundStyle(message.fromMuster ? look.dimText : look.text)
+        if message.more, let group {
+          Button("Show all") { requests()?.showWhole(group, message.seq) }
+            .buttonStyle(.link)
         }
-        if message.urgent {
-          Text("urgent").font(.caption.bold()).foregroundStyle(.red)
+        if !message.answers.isEmpty {
+          QuestionAnswersView(message: message, box: box, focus: focus)
         }
-        Spacer()
-        time(message.atMs)
+        if !message.said.isEmpty {
+          Text(message.said).font(.caption).foregroundStyle(look.dimText)
+        }
+        actions
       }
-      MarkdownBlocksView(blocks: message.body)
-        .textSelection(.enabled)
-        .foregroundStyle(message.fromMuster ? .secondary : .primary)
-      if message.more, let group {
-        Button("Show all") { requests()?.showWhole(group, message.seq) }
-          .buttonStyle(.link)
-      }
-      if !message.answers.isEmpty {
-        QuestionAnswersView(message: message, box: box, focus: focus)
-      }
-      if !message.said.isEmpty {
-        Text(message.said).font(.caption).foregroundStyle(.secondary)
-      }
-      actions
     }
     .padding(10)
     .background(tint)
+    .overlay(alignment: .leading) {
+      // A message to the person has a bar down its edge, which a tint alone did not give.
+      if message.toYou { Rectangle().fill(look.accent).frame(width: 3) }
+    }
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
@@ -875,9 +955,9 @@ struct ConversationMessageView: View {
             .help("Address the message box to \(message.author)")
         }
         if let pane {
-          Button("Go to Pane") { requests()?.focus(pane) }
-            .buttonStyle(.link)
-            .help("Return to the panes, on \(message.author)'s")
+          PaneLink(
+            pane: pane, help: "Return to the panes, on \(message.author)'s", members: members,
+            requests: requests)
         }
       }
       .font(.callout)
@@ -885,8 +965,8 @@ struct ConversationMessageView: View {
   }
 
   private var tint: Color {
-    if message.toYou { return Color.accentColor.opacity(0.12) }
-    if message.byYou { return Color.primary.opacity(0.05) }
+    if message.toYou { return look.accentTint }
+    if message.byYou { return look.raised }
     return .clear
   }
 }
@@ -905,6 +985,8 @@ struct QuestionAnswersView: View {
   @ObservedObject var box: MessageBox
   var focus: FocusState<AnswerFocus?>.Binding
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     if !message.answeredBy.isEmpty {
       Text(
@@ -913,7 +995,7 @@ struct QuestionAnswersView: View {
           : "Answered by \(message.answeredBy): \(message.answeredWith)"
       )
       .font(.callout)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(look.dimText)
     } else if message.answerable {
       let question = message.seq
       AnswerButtons(
@@ -930,7 +1012,8 @@ struct QuestionAnswersView: View {
       VStack(alignment: .leading, spacing: 2) {
         ForEach(Array(message.answers.enumerated()), id: \.offset) { index, answer in
           HStack(spacing: 6) {
-            Label(answer, systemImage: "circle").foregroundStyle(.secondary)
+            Text("\(index + 1)").monospacedDigit().foregroundStyle(look.dimText)
+            Text(answer).foregroundStyle(look.dimText)
             if message.hasRecommended, Int(message.recommended) == index { RecommendedLabel() }
           }
         }
@@ -950,10 +1033,12 @@ struct ConversationMembersView: View {
   @ObservedObject var members: ConversationMembers
   let requests: @MainActor () -> ConversationRequests?
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 12) {
-        Text("Members").font(.caption.bold()).foregroundStyle(.secondary)
+        Text("Members").font(.caption.bold()).foregroundStyle(look.dimText)
         ForEach(members.members, id: \.name) { member in
           memberRow(member)
         }
@@ -967,19 +1052,28 @@ struct ConversationMembersView: View {
     let agent = member.pane.flatMap { members.agents[$0] }
     let doing = MemberLine.doing(
       member, agent: agent, subtitle: member.pane.flatMap { members.subtitles[$0] })
-    return HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Circle()
-        .fill(Color(nsColor: SidebarModel.dotColor(state: MemberLine.state(member, agent: agent))))
-        .frame(width: 8, height: 8)
-        .opacity(member.you ? 0 : 1)
+    let isHuman = member.liveness == .human
+    return HStack(alignment: .top, spacing: 8) {
+      AvatarView(
+        name: member.shown,
+        color: IdentityColor.color(
+          paneID: member.paneID, name: member.name, isHuman: isHuman,
+          isMuster: member.name.drop(while: { $0 == "@" }) == "muster"),
+        state: isHuman ? nil : MemberLine.state(member, agent: agent), size: 22)
       VStack(alignment: .leading, spacing: 2) {
-        Text(member.shown).bold()
+        HStack(spacing: 6) {
+          Text(member.shown).bold()
+          Spacer(minLength: 0)
+          if let pane = member.pane, let chord = members.chords[pane] {
+            ChordKeys(first: chord.first, second: chord.second)
+          }
+        }
         if !doing.isEmpty {
-          Text(doing).font(.caption).foregroundStyle(.secondary)
+          Text(doing).font(.caption).foregroundStyle(look.dimText)
             .fixedSize(horizontal: false, vertical: true)
         }
         if let unread = MemberLine.unread(member) {
-          Text(unread).font(.caption).foregroundStyle(.orange)
+          Text(unread).font(.caption).foregroundStyle(look.warning)
             .fixedSize(horizontal: false, vertical: true)
         }
         if let pane = member.pane {
@@ -992,43 +1086,77 @@ struct ConversationMembersView: View {
   }
 }
 
-struct MessageBoxView: View {
-  @ObservedObject var box: MessageBox
+/// A hairline between regions, in the terminal's colors rather than the system's.
+struct PaneRule: View {
+  var vertical = false
+
+  @Environment(\.paneLook) private var look
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    Rectangle().fill(look.rule)
+      .frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
+  }
+}
+
+/// Says that Tab reaches a question's answers while one waits for the person.
+struct AnswerHint: View {
+  @ObservedObject var thread: ConversationThread
+
+  @Environment(\.paneLook) private var look
+
+  var body: some View {
+    if let author = thread.newestQuestionAuthor {
+      Text("Tab reaches \(author)'s answers").font(.caption).foregroundStyle(look.dimText)
+    }
+  }
+}
+
+struct MessageBoxView: View {
+  @ObservedObject var box: MessageBox
+  let thread: ConversationThread
+
+  @Environment(\.paneLook) private var look
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
       if !box.draft.completions.isEmpty {
         completions
       }
-      recipients
-      if let picked = box.picked {
-        HStack(spacing: 4) {
-          Text("Answer: \(picked.answer)").bold()
-          Button(action: { box.unpick() }) { Image(systemName: "xmark.circle.fill") }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .disabled(box.pending)
-            .help("Take the answer back")
-        }
-        .font(.callout)
-      }
-      HStack(alignment: .bottom, spacing: 8) {
-        MessageBoxField(box: box)
-          .frame(height: 72)
-          .padding(4)
-          .background(Color.primary.opacity(0.06))
-          .clipShape(RoundedRectangle(cornerRadius: 6))
-        VStack(alignment: .trailing, spacing: 6) {
-          Toggle("Urgent", isOn: Binding(get: { box.draft.urgent }, set: { box.setUrgent($0) }))
-            .toggleStyle(.checkbox)
-            .disabled(box.pending)
-            .help("Reach an agent at work, mid-turn; the group's policy may refuse it")
-          Button(action: { box.send() }) {
-            Label("Send", systemImage: "paperplane.fill")
+      VStack(alignment: .leading, spacing: 6) {
+        recipients
+        if let picked = box.picked {
+          HStack(spacing: 4) {
+            Text("Answer: \(picked.answer)").bold()
+            Button(action: { box.unpick() }) { Image(systemName: "xmark.circle.fill") }
+              .buttonStyle(.plain)
+              .foregroundStyle(look.dimText)
+              .disabled(box.pending)
+              .help("Take the answer back")
           }
-          .disabled(!box.sendable)
-          .help("Send (\(BannerReplyField.chord(box.sendChord)))")
+          .font(.callout)
         }
+        MessageBoxField(box: box)
+          .frame(height: 64)
+      }
+      .padding(8)
+      .background(RoundedRectangle(cornerRadius: 8).fill(look.raised))
+      .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(look.rule))
+      HStack(spacing: 10) {
+        Toggle("Urgent", isOn: Binding(get: { box.draft.urgent }, set: { box.setUrgent($0) }))
+          .toggleStyle(.checkbox)
+          .disabled(box.pending)
+          .help("Reach an agent at work, mid-turn; the group's policy may refuse it")
+        AnswerHint(thread: thread)
+        Spacer()
+        Button(action: { box.send() }) {
+          HStack(spacing: 6) {
+            Text("Send")
+            ChordCap(text: BannerReplyField.chord(box.sendChord), onAccent: true)
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!box.sendable)
+        .help("Send (\(BannerReplyField.chord(box.sendChord)))")
       }
       outcome
     }
@@ -1038,10 +1166,10 @@ struct MessageBoxView: View {
   @ViewBuilder private var recipients: some View {
     if box.draft.to.isEmpty {
       Text("To nobody in particular: the group's policy decides whom this wakes")
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(look.dimText)
     } else {
       HStack(spacing: 6) {
-        Text("To").font(.caption).foregroundStyle(.secondary)
+        Text("To").font(.caption).foregroundStyle(look.dimText)
         ForEach(box.draft.to, id: \.name) { recipient in
           HStack(spacing: 2) {
             Text(recipient.shown)
@@ -1049,14 +1177,14 @@ struct MessageBoxView: View {
               Image(systemName: "xmark.circle.fill")
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(look.dimText)
             .disabled(box.pending)
             .help("Address the message to the group's policy instead of \(recipient.shown)")
           }
           .font(.callout)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
-          .background(Color.accentColor.opacity(0.15))
+          .background(look.accentTint)
           .clipShape(Capsule())
         }
       }
@@ -1070,10 +1198,10 @@ struct MessageBoxView: View {
           .buttonStyle(.plain)
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
-          .background(index == box.highlighted ? Color.accentColor.opacity(0.25) : .clear)
+          .background(index == box.highlighted ? look.accentTint : .clear)
           .clipShape(RoundedRectangle(cornerRadius: 4))
       }
-      Text("Tab to complete").font(.caption).foregroundStyle(.tertiary)
+      Text("Tab to complete").font(.caption).foregroundStyle(look.dimText)
     }
     .font(.callout)
   }
@@ -1081,18 +1209,18 @@ struct MessageBoxView: View {
   @ViewBuilder private var outcome: some View {
     switch box.pending ? Muster_PostOutcome.State.pending : box.sent.state {
     case .pending:
-      Text("Sending…").font(.caption).foregroundStyle(.secondary)
+      Text("Sending…").font(.caption).foregroundStyle(look.dimText)
     case .posted:
       Text("Sent - \(box.sent.said)")
         .font(.caption)
-        .foregroundStyle(box.sent.heard ? Color.secondary : Color.orange)
+        .foregroundStyle(box.sent.heard ? look.dimText : look.warning)
     case .refused:
       Text("Not sent: \(box.sent.said)")
-        .font(.caption).foregroundStyle(.red)
+        .font(.caption).foregroundStyle(look.alert)
         .fixedSize(horizontal: false, vertical: true)
     case .unknown:
       Text("Perhaps sent: \(box.sent.said)")
-        .font(.caption).foregroundStyle(.orange)
+        .font(.caption).foregroundStyle(look.warning)
         .fixedSize(horizontal: false, vertical: true)
     default:
       EmptyView()

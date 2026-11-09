@@ -337,6 +337,14 @@ selection, or the program's when it uses the mouse. A pane too short for a heade
 its row in the agent list. A pane dropped on a row or a tab caption in the agent list does what a
 row does there, and a row dragged out of the list onto a pane's edge goes to that side too.
 
+**A group's conversation takes the terminal's colors, since it replaces the panes.** Its background
+and text are `[colors] background` and `foreground`, with the secondary text, the hairlines and the
+accent worked out from them so that every pair keeps 4.5:1 contrast. Each author has an avatar in a color taken from who they are - the pane
+id for an agent in a pane, the name for anybody else - so an agent keeps its color in every group and
+window; two members can share one. Those colors appear on avatars only, never in the agent list,
+where color means a state. A message to you has an accent bar and a "To you" tag, and a member shows
+the keys that reach its pane.
+
 A pane on another machine lights nothing, because a pane cannot change machines; drop it on that
 tab's caption instead and it joins the tab as its own machine's part. Dropping on itself, outside
 the window, on a divider or on empty space does nothing, and `Escape` cancels. Ghostty opens a new

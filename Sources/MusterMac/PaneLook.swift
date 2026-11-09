@@ -27,6 +27,7 @@ struct PaneLook: Equatable {
   var rule: Color { Color(nsColor: surface.keycapEdge.color) }
   var accent: Color { Color(nsColor: surface.accentText.color) }
   var accentTint: Color { Color(nsColor: surface.accentTint.color) }
+  var keycapFill: Color { Color(nsColor: surface.keycapFill.color) }
 
   /// A state's word, readable on this surface.
   func stateText(_ state: String) -> Color {

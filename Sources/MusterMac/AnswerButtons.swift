@@ -5,7 +5,8 @@ import SwiftUI
 /// sending it. Space or Return picks the button holding the keyboard, and Tab and Shift-Tab move
 /// between them whatever the system's keyboard navigation setting, since a question is answered
 /// from the keyboard as often as with the pointer; past either end the keyboard goes back to
-/// whatever the owner says. No digit picks one, since a reply may start with "1.".
+/// whatever the owner says. No digit picks one, since a reply may start with "1.": the numbers on
+/// the buttons name them, as a chord's keys name a pane, and are not themselves a chord.
 struct AnswerButtons<Focus: Hashable>: View {
   let answers: [String]
   /// The answer picked, by its place from 0.
@@ -20,22 +21,37 @@ struct AnswerButtons<Focus: Hashable>: View {
   /// Tab past the last answer, or Shift-Tab (`back`) before the first.
   let onTabOut: (_ back: Bool) -> Void
 
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       ForEach(Array(answers.enumerated()), id: \.offset) { index, answer in
         let isPicked = picked == index
         Button(action: { onPick(index) }) {
-          HStack(spacing: 6) {
-            Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
-              .foregroundStyle(isPicked ? Color.accentColor : .secondary)
+          HStack(spacing: 8) {
+            Text("\(index + 1)")
+              .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+              .frame(width: KeycapView.width, height: KeycapView.height)
+              .background(
+                RoundedRectangle(cornerRadius: 4).fill(look.keycapFill)
+              )
+              .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(look.rule))
             Text(answer)
             if recommended == index { RecommendedLabel() }
             Spacer(minLength: 0)
+            if isPicked {
+              Image(systemName: "checkmark").foregroundStyle(look.accent)
+            }
           }
+          .padding(.horizontal, 6)
+          .padding(.vertical, 4)
+          .background(RoundedRectangle(cornerRadius: 6).fill(isPicked ? look.accentTint : .clear))
+          .overlay(
+            RoundedRectangle(cornerRadius: 6).strokeBorder(isPicked ? look.accent : look.rule)
+          )
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 2)
         .focusable()
         .focused(focus, equals: focusing(index))
         .disabled(!enabled)
@@ -64,12 +80,14 @@ struct AnswerButtons<Focus: Hashable>: View {
 /// Says which answer a question's author recommends, beside it, in words rather than by a color
 /// alone, which a picked answer's checkmark already uses.
 struct RecommendedLabel: View {
+  @Environment(\.paneLook) private var look
+
   var body: some View {
     Text("Recommended")
       .font(.caption)
-      .foregroundStyle(.secondary)
+      .foregroundStyle(look.dimText)
       .padding(.horizontal, 5)
       .padding(.vertical, 1)
-      .overlay(Capsule().strokeBorder(.secondary.opacity(0.5)))
+      .overlay(Capsule().strokeBorder(look.rule))
   }
 }

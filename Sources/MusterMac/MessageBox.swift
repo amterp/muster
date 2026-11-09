@@ -31,6 +31,7 @@ enum ScalarOffsets {
 
 struct MessageBoxField: NSViewRepresentable {
   @ObservedObject var box: MessageBox
+  @Environment(\.paneLook) private var look
 
   func makeCoordinator() -> Coordinator {
     Coordinator(box: box)
@@ -58,6 +59,7 @@ struct MessageBoxField: NSViewRepresentable {
     field.textContainer?.widthTracksTextView = true
     field.setAccessibilityLabel("Message box")
     scroll.documentView = field
+    paint(field)
     field.take(box.draft)
     context.coordinator.applied = box.revision
     return scroll
@@ -67,12 +69,19 @@ struct MessageBoxField: NSViewRepresentable {
     guard let field = scroll.documentView as? MessageBoxTextView else { return }
     field.box = box
     field.isEditable = !box.pending
+    paint(field)
     // What the core changed that the field did not: a post's outcome, Reply, a recipient taken
     // away. Never into a composition, which would break the input method's hold on its text.
     if context.coordinator.applied != box.revision, !field.hasMarkedText() {
       field.take(box.draft)
       context.coordinator.applied = box.revision
     }
+  }
+
+  /// In the terminal's colors: a text view takes the Mac's appearance, not the SwiftUI scheme.
+  private func paint(_ field: MessageBoxTextView) {
+    field.textColor = look.surface.text.color
+    field.insertionPointColor = look.surface.text.color
   }
 
   @MainActor
