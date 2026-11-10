@@ -175,6 +175,7 @@ fn is_zero(value: &u64) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[expect(clippy::struct_excessive_bools, reason = "independent facts, one each")]
 pub(crate) struct Pane {
     #[serde(rename = "pane")]
     pub(crate) name: String,
