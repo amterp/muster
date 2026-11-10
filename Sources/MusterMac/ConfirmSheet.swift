@@ -12,10 +12,17 @@ import AppKit
 /// make them recognisable. So the body is a list of what would end, and the button says what it
 /// does rather than "OK".
 ///
-/// Return is *not* bound to the confirming button, unlike the rename sheet. There, return
-/// commits because the whole gesture is type-and-enter; here, the reflex this exists to
-/// interrupt is exactly a keystroke, and a sheet that took one would be no sheet at all. Escape
-/// still cancels, because a way out is not the same as a way through.
+/// **Whether Return confirms is each question's own choice** (`confirmOnReturn`), and it follows
+/// what the question can cost. Return stays unbound for the questions that exist to interrupt a
+/// reflexive keystroke over something nothing brings back - Quit and Close Sessions, which ends
+/// every agent on every machine - where a sheet that took the keystroke would be no sheet at all,
+/// and they confirm by click only. It is bound for closing a pane or a tab, where the question is
+/// there so that a misclick or a reflexive ⌘W does not end an agent unseen, and answering it
+/// should be as quick as asking: a closed pane comes back with its agent in its session (Reopen
+/// Pane), so a yes given too fast is cheap to take back. The default is click only, so a new
+/// question has to say it wants Return. Escape cancels either way, because a way out is not the
+/// same as a way through; the rename sheet commits on Return because its whole gesture is
+/// type-and-enter.
 ///
 /// `tell` is the same sheet with nothing to agree to: one button, on Return, for an act that was
 /// refused and has to say why somewhere a person will see it.
@@ -29,28 +36,37 @@ public enum ConfirmSheet {
   /// `preview` is the thing being agreed to, shown as it is: in a monospaced font, scrollable,
   /// and not editable, because what is confirmed is exactly what was shown. `otherwise` is
   /// called on cancel, for a caller that has something waiting on the answer either way.
+  ///
+  /// `confirmOnReturn` is whether Return presses the confirming button; see the type's comment
+  /// for which questions say yes.
   public static func ask(
     on host: NSWindow, question: String, body: String, confirm: String,
-    preview: String? = nil, then act: @escaping () -> Void,
+    preview: String? = nil, confirmOnReturn: Bool = false, then act: @escaping () -> Void,
     otherwise cancelled: @escaping () -> Void = {}
   ) {
     present(
       on: host, heading: question, body: body, confirm: confirm, cancel: "Cancel",
-      preview: preview, then: act, otherwise: cancelled)
+      preview: preview, confirmOnReturn: confirmOnReturn, then: act, otherwise: cancelled)
   }
 
   /// Says why something did not happen, with one button to put the sheet away.
   public static func tell(on host: NSWindow, heading: String, body: String) {
     present(
       on: host, heading: heading, body: body, confirm: "OK", cancel: nil, preview: nil,
-      then: {}, otherwise: {})
+      confirmOnReturn: false, then: {}, otherwise: {})
   }
 
-  /// The sheet both of the above run. With no `cancel` the one button is the way out, so Return
-  /// takes it.
+  /// The key that presses the confirming button: Return when the question asked for it, and
+  /// always when there is no cancel, because the one button is then the way out.
+  static func confirmKey(confirmOnReturn: Bool, cancellable: Bool) -> String {
+    confirmOnReturn || !cancellable ? "\r" : ""
+  }
+
+  /// The sheet both of the above run.
   private static func present(
     on host: NSWindow, heading question: String, body: String, confirm: String, cancel: String?,
-    preview: String?, then act: @escaping () -> Void, otherwise cancelled: @escaping () -> Void
+    preview: String?, confirmOnReturn: Bool, then act: @escaping () -> Void,
+    otherwise cancelled: @escaping () -> Void
   ) {
     let sheet = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 420, height: 10),
@@ -72,7 +88,8 @@ public enum ConfirmSheet {
 
     let confirming = NSButton(title: confirm, target: nil, action: nil)
     confirming.bezelStyle = .rounded
-    if cancelling == nil { confirming.keyEquivalent = "\r" }
+    confirming.keyEquivalent = confirmKey(
+      confirmOnReturn: confirmOnReturn, cancellable: cancelling != nil)
 
     let buttons = NSStackView(views: [cancelling, confirming].compactMap { $0 })
     buttons.orientation = .horizontal

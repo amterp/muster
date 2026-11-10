@@ -1179,12 +1179,46 @@ extension MusterWindow {
     }
   }
 
-  /// Closes the tab the keyboard is in, and every pane in it.
-  ///
-  /// No confirmation, on the same terms as Close Pane: Muster does not ask before closing a
-  /// pane either, and a sheet in front of one of the two would say the other is safe.
+  /// Closes the tab the keyboard is in, and every pane in it - after asking, when one of them
+  /// runs an agent, on the same terms as Close Pane (`CloseQuestion`).
   @objc public func closeTab(_ sender: Any?) {
-    if let why = Core.closeTab() { tell(TabRefusal.close, why) }
+    guard let tab = tabHolding(keyboardKey)?.id else {
+      if let why = Core.closeTab() { tell(TabRefusal.close, why) }
+      return
+    }
+    close(tab: tab)
+  }
+
+  /// Closes a tab by its id, asking first when it holds an agent. The one place both the keyboard
+  /// and the tab's context menu close a tab through, so a way of closing one cannot skip the
+  /// question. The close names the tab asked about, so a focus change while the sheet is up
+  /// cannot send it to another.
+  func close(tab: String) {
+    let roster = roster.tabs.first { $0.id == tab }
+    let closeIt = { [weak self] in
+      if let why = Core.closeTab(tabID: tab) { self?.tell(TabRefusal.close, why) }
+    }
+    ask(CloseQuestion.tab(roster), then: closeIt)
+  }
+
+  /// Closes a pane by its key, asking first when it runs an agent. The one place the keyboard
+  /// and every pane menu close a pane through, and not `muster pane close`, which agents drive.
+  func close(pane: PaneKey) {
+    let closeIt = { [weak self] in
+      if let why = Core.closePane(daemonID: pane.daemon, paneID: pane.pane) {
+        self?.tell(PaneRefusal.close, why)
+      }
+    }
+    ask(CloseQuestion.pane(namedPane(pane)), then: closeIt)
+  }
+
+  /// Asks `question`, if there is one, and otherwise just does it. Return confirms: closing is
+  /// cheap to take back, since Reopen Pane brings the pane back in its session.
+  private func ask(_ question: CloseQuestion?, then act: @escaping () -> Void) {
+    guard let question else { return act() }
+    ConfirmSheet.ask(
+      on: window, question: question.heading, body: question.body, confirm: question.confirm,
+      confirmOnReturn: true, then: act)
   }
 
   /// Pulls the pane the keyboard is on out of its split and into a tab of its own.
@@ -1375,6 +1409,7 @@ extension MusterWindow {
       quiet: namedPane(pane)?.quiet ?? false, window: name,
       rename: { [weak self] in self?.rename(pane: $0) },
       restart: { [weak self] in self?.confirmRestart($0) },
+      close: { [weak self] in self?.close(pane: $0) },
       refused: { [weak self] in self?.tell($0, $1) })
   }
 
@@ -1394,6 +1429,7 @@ extension MusterWindow {
       return ContextMenus.hiddenRow(
         pane, quiet: row.quiet, helpers: roster.helpers(of: pane), window: name,
         rename: { [weak self] in self?.rename(pane: $0) },
+        close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .pane:
       guard let pane = row.pane else { return nil }
@@ -1403,19 +1439,22 @@ extension MusterWindow {
         helpers: roster.helpers(of: pane),
         window: name, rename: { [weak self] in self?.rename(pane: $0) },
         restart: { [weak self] in self?.confirmRestart($0) },
+        close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(
         row.tab, firstPane: first, machines: speaking { Core.machines() }.map(\.daemon),
         window: name, rename: { [weak self] in self?.rename(tab: $0) },
+        close: { [weak self] in self?.close(tab: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
     case .group:
       return groupMenu(daemon: row.daemon, group: row.label)
     case .helpers:
       guard let maker = row.pane, let helpers = roster.helpers(of: maker) else { return nil }
       return ContextMenus.helpersRow(
-        maker, helpers: helpers, window: name, refused: { [weak self] in self?.tell($0, $1) })
+        maker, helpers: helpers, window: name, close: { [weak self] in self?.close(pane: $0) },
+        refused: { [weak self] in self?.tell($0, $1) })
     case .machine, .messages, .hidden:
       return nil
     }
@@ -1476,8 +1515,17 @@ extension MusterWindow {
     return roster.tabs.first { tab in tab.panes.contains { $0.key == key } }
   }
 
+  /// Closes the pane the keyboard is on, after asking when it runs an agent (`CloseQuestion`).
+  ///
+  /// Which pane that is is the window's own idea here, unlike most items, because the question
+  /// has to name it and the close has to go to it. With no keyboard pane there is nothing to ask
+  /// about, and the core's relative close answers.
   @objc public func closePane(_ sender: Any?) {
-    if let why = Core.closePane() { tell(PaneRefusal.close, why) }
+    guard let key = keyboardKey else {
+      if let why = Core.closePane() { tell(PaneRefusal.close, why) }
+      return
+    }
+    close(pane: key)
   }
 
   // Each of the four reports the cell it is resizing by and the tab it is resizing inside,

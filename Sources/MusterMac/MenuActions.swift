@@ -87,9 +87,8 @@ public enum MenuActions {
     // it does anything, which is what separates these two from every other item here.
     "rename_tab": Described(
       title: "Rename Tab…", selector: #selector(MusterWindow.renameTab(_:)), group: .tab),
-    // No ellipsis and no confirmation, on the same terms as Close Pane: Muster does not ask
-    // before closing a pane either, and a sheet in front of one of the two would say the other
-    // is safe.
+    // No ellipsis, though it asks when the tab holds an agent: the ellipsis promises a question
+    // every time, and a tab of shells closes at once, as Close Pane does.
     "close_tab": Described(
       title: "Close Tab", selector: #selector(MusterWindow.closeTab(_:)), group: .tab),
     "split_right": Described(

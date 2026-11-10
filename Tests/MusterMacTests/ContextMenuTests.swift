@@ -181,6 +181,46 @@ struct ContextMenuTests {
       sent.contains { $0.closePane.paneID == "p1w3r07bsd" && $0.closePane.daemonID == "laptop" })
   }
 
+  @Test("with a close given, Close Pane hands the pane over and sends nothing itself")
+  func closePaneIsHandedToTheWindow() {
+    let recorder = recorder()
+    var closed: [PaneKey] = []
+    let menus = [
+      ContextMenus.pane(
+        laptopPane, surface: nil, machines: [], rename: { _ in }, close: { closed.append($0) }),
+      ContextMenus.agentRow(
+        laptopPane, onScreen: true, rename: { _ in }, close: { closed.append($0) }),
+      ContextMenus.hiddenRow(
+        laptopPane, quiet: false, rename: { _ in }, close: { closed.append($0) }),
+    ]
+    let mark = recorder.requests.count
+
+    for menu in menus { choose("Close Pane", in: menu) }
+
+    #expect(closed == [laptopPane, laptopPane, laptopPane])
+    #expect(
+      recorder.sent(since: mark) { if case .closePane = $0.payload { true } else { false } }
+        .isEmpty,
+      "the window asks first, so the menu must not have closed anything itself")
+  }
+
+  @Test("with a close given, Close Tab hands the tab over and sends nothing itself")
+  func closeTabIsHandedToTheWindow() {
+    let recorder = recorder()
+    var closed: [String] = []
+    let menu = ContextMenus.tab(
+      "t1w3r07bsd", firstPane: laptopPane, machines: [], rename: { _ in },
+      close: { closed.append($0) })
+    let mark = recorder.requests.count
+
+    choose("Close Tab", in: menu)
+
+    #expect(closed == ["t1w3r07bsd"])
+    #expect(
+      recorder.sent(since: mark) { if case .closeTab = $0.payload { true } else { false } }
+        .isEmpty)
+  }
+
   @Test("Copy Pane ID puts the id muster takes on the clipboard")
   func copyPaneID() {
     _ = recorder()

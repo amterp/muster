@@ -330,7 +330,8 @@ rename too.
 
 `muster pane close` acts on the pane it is running in unless told otherwise, like every other
 command here - which kills the shell that ran it. It is listed here because it is the one
-command whose default destroys something.
+command whose default destroys something. It does not ask first, which the window does for a
+pane that runs an agent: an agent drives this verb, and nobody is there to answer.
 
 It reaches a pane wherever it is, including one in a tab the window is not showing. That used to
 be refused, and the rule stopped being usable when a window came to show one tab at a time: every

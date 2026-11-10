@@ -138,7 +138,11 @@ same act with a name for the tab.
 `close_tab` is the fourth, and that one is unbound because of what it does rather than because
 nobody has asked for it: it ends every pane in the tab, and a chord that destroys several panes
 is one somebody reaches by accident. `cmd+w` stays on `close_pane`, where the damage is one
-pane and the muscle memory is everybody's.
+pane and the muscle memory is everybody's. Closing a pane that runs an agent asks first, however
+it is closed from the window - the chord, the menu item, or Close Pane in a right-click menu on a
+pane, a tab or an agent row - and Return confirms; a plain shell closes at once. Close Tab asks
+the same way when any pane in the tab runs an agent. `muster pane close` and `muster tab close`
+never ask.
 
 `reopen_window` is the fifth. `cmd+shift+t` is what a browser puts on reopening what `cmd+w`
 closed, which in Muster is a pane, so the chord is `reopen_pane`'s: it brings back the pane closed

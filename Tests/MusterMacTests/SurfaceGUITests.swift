@@ -205,6 +205,108 @@ extension SurfaceGUITests {
   }
 
   @MainActor
+  @Test("every way of closing a pane or tab asks when it holds an agent", .ownsTheSeam)
+  func closingAsksWhenAnAgentIsInIt() async throws {
+    _ = NSApplication.shared
+    let renderer = try sharedRenderer()
+    let recording = recorder()
+    let previousWindow = Core.windowInFront
+    let shell = MusterWindow(renderer: renderer, executable: "/unused")
+    shell.name = "window-origin"
+    defer {
+      Windows.remove(shell)
+      shell.window.delegate = nil
+      shell.window.close()
+      Core.windowInFront = previousWindow
+    }
+    let agent = PaneKey(daemon: "laptop", pane: "p1")
+    let plain = PaneKey(daemon: "laptop", pane: "p2")
+    shell.apply(
+      Roster(
+        tabs: [
+          Roster.Tab(
+            id: "t1", place: 1, label: "work", onScreen: true,
+            panes: [
+              Roster.Pane(key: agent, label: "alpha · claude", onScreen: true, agent: "claude"),
+              Roster.Pane(key: plain, label: "beta", onScreen: true),
+            ]),
+          Roster.Tab(
+            id: "t2", place: 2, label: "shells", onScreen: false,
+            panes: [
+              Roster.Pane(
+                key: PaneKey(daemon: "laptop", pane: "p3"), label: "gamma", onScreen: false)
+            ]),
+        ], machines: [], numbering: .panes))
+
+    func closes() -> [Muster_Request] {
+      recording.requests.filter {
+        switch $0.payload {
+        case .closePane, .closeTab: true
+        default: false
+        }
+      }
+    }
+    func button(_ title: String) -> NSButton? {
+      func find(_ view: NSView?) -> NSButton? {
+        guard let view else { return nil }
+        if let button = view as? NSButton, button.title == title { return button }
+        return view.subviews.lazy.compactMap(find).first
+      }
+      return find(shell.window.attachedSheet?.contentView)
+    }
+    func answer(_ title: String) {
+      guard let sheet = shell.window.attachedSheet, let button = button(title) else {
+        Issue.record("no sheet with a \(title) button")
+        return
+      }
+      button.performClick(nil)
+      #expect(shell.window.attachedSheet == nil || shell.window.attachedSheet !== sheet)
+    }
+
+    // The keyboard path and both menus ask, and nothing closes until the sheet is answered.
+    shell.apply(WindowContents(tab: "t1", tree: nil, keyboard: agent))
+    shell.closePane(nil)
+    #expect(shell.window.attachedSheet != nil)
+    // AppKit makes the button that took Return the sheet's default button, and a button that is
+    // the default reads its own key equivalent back as empty.
+    #expect(
+      shell.window.attachedSheet?.defaultButtonCell?.title == "Close Pane",
+      "Return confirms closing")
+    #expect(button("Cancel")?.keyEquivalent.unicodeScalars.map(\.value) == [27])
+    #expect(closes().isEmpty)
+    answer("Cancel")
+    #expect(closes().isEmpty)
+
+    shell.menu(forPane: agent)?.performActionForItem(
+      at: try #require(shell.menu(forPane: agent)?.items.firstIndex { $0.title == "Close Pane" }))
+    #expect(shell.window.attachedSheet != nil)
+    #expect(closes().isEmpty)
+    answer("Close Pane")
+    #expect(closes().map(\.closePane.paneID) == ["p1"])
+    #expect(closes().map(\.closePane.daemonID) == ["laptop"])
+
+    // A plain shell closes at once, by the chord and by the menu.
+    shell.apply(WindowContents(tab: "t1", tree: nil, keyboard: plain))
+    shell.closePane(nil)
+    #expect(shell.window.attachedSheet == nil)
+    #expect(closes().map(\.closePane.paneID) == ["p1", "p2"])
+
+    // A tab asks when it holds an agent and not when it holds only shells.
+    shell.apply(WindowContents(tab: "t1", tree: nil, keyboard: plain))
+    shell.closeTab(nil)
+    #expect(shell.window.attachedSheet != nil)
+    #expect(button("Close Tab") != nil)
+    answer("Close Tab")
+    #expect(closes().last?.closeTab.tabID == "t1")
+
+    shell.apply(
+      WindowContents(tab: "t2", tree: nil, keyboard: PaneKey(daemon: "laptop", pane: "p3")))
+    shell.closeTab(nil)
+    #expect(shell.window.attachedSheet == nil)
+    #expect(closes().last?.closeTab.tabID == "t2")
+  }
+
+  @MainActor
   @Test("reports a web link with remote terminal state", arguments: [false, true], [false, true])
   func aRemoteWebLinkIsReported(hyperlink: Bool, mouseReporting: Bool) async throws {
     let renderer = try sharedRenderer()

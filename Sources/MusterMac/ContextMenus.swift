@@ -323,6 +323,7 @@ public enum ContextMenus {
     canRestart: Bool = false, quiet: Bool = false, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
+    close: (@MainActor (PaneKey) -> Void)? = nil,
     refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     let pasteboard = surface?.pasteboard ?? .general
@@ -342,19 +343,23 @@ public enum ContextMenus {
         }
       case .action("restart_agent"): restart(pane)
       default:
-        perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+        perform(
+          choice, on: pane, pasteboard: pasteboard, rename: rename, close: close,
+          refused: refused)
       }
     }
   }
 
   /// `restart` is called rather than the agent restarted outright, because a restart ends it
-  /// and the window asks first.
+  /// and the window asks first. So is `close`, because closing a pane that runs an agent ends it
+  /// too; a menu with no `close` closes at once, which only a test wants.
   public static func agentRow(
     _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false,
     quiet: Bool = false, helpers: ContextMenuModel.Helpers? = nil,
     pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
+    close: (@MainActor (PaneKey) -> Void)? = nil,
     refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
@@ -366,7 +371,9 @@ public enum ContextMenus {
       if case .action("restart_agent") = choice {
         restart(pane)
       } else {
-        perform(choice, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+        perform(
+          choice, on: pane, pasteboard: pasteboard, rename: rename, close: close,
+          refused: refused)
       }
     }
   }
@@ -375,25 +382,28 @@ public enum ContextMenus {
   public static func hiddenRow(
     _ pane: PaneKey, quiet: Bool, helpers: ContextMenuModel.Helpers? = nil,
     pasteboard: NSPasteboard = .general, window: String = "",
-    rename: @escaping @MainActor (PaneKey) -> Void, refused: @escaping Refused = { _, _ in }
+    rename: @escaping @MainActor (PaneKey) -> Void,
+    close: (@MainActor (PaneKey) -> Void)? = nil, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.hiddenRow(quiet: quiet, helpers: helpers), subject: subject(pane),
       window: window
     ) {
-      perform($0, on: pane, pasteboard: pasteboard, rename: rename, refused: refused)
+      perform(
+        $0, on: pane, pasteboard: pasteboard, rename: rename, close: close, refused: refused)
     }
   }
 
   /// A maker's helpers line, whose subject is the maker.
   public static func helpersRow(
     _ maker: PaneKey, helpers: ContextMenuModel.Helpers, window: String = "",
-    refused: @escaping Refused = { _, _ in }
+    close: (@MainActor (PaneKey) -> Void)? = nil, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.helpersRow(helpers), subject: subject(maker), window: window
     ) {
-      perform($0, on: maker, pasteboard: .general, rename: { _ in }, refused: refused)
+      perform(
+        $0, on: maker, pasteboard: .general, rename: { _ in }, close: close, refused: refused)
     }
   }
 
@@ -402,7 +412,7 @@ public enum ContextMenus {
   public static func tab(
     _ tab: String, firstPane: PaneKey?, machines: [String], pasteboard: NSPasteboard = .general,
     window: String = "", rename: @escaping @MainActor (String) -> Void,
-    refused: @escaping Refused = { _, _ in }
+    close: (@MainActor (String) -> Void)? = nil, refused: @escaping Refused = { _, _ in }
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.tab(machines: machines), subject: ["tab": tab], tab: tab, window: window
@@ -417,7 +427,11 @@ public enum ContextMenus {
         }
       case .action("rename_tab"): rename(tab)
       case .action("close_tab"):
-        if let why = Core.closeTab(tabID: tab) { refused(TabRefusal.close, why) }
+        if let close {
+          close(tab)
+        } else if let why = Core.closeTab(tabID: tab) {
+          refused(TabRefusal.close, why)
+        }
       case .newTabOn(let machine):
         Core.createTab(daemonID: machine) { why in
           if let why { refused(TabRefusal.create, why) }
@@ -454,7 +468,8 @@ public enum ContextMenus {
 
   private static func perform(
     _ choice: ContextChoice, on pane: PaneKey, pasteboard: NSPasteboard,
-    rename: @MainActor (PaneKey) -> Void, refused: @escaping Refused
+    rename: @MainActor (PaneKey) -> Void, close: (@MainActor (PaneKey) -> Void)?,
+    refused: @escaping Refused
   ) {
     switch choice {
     case .action(let name) where name.hasPrefix("split_"):
@@ -494,7 +509,9 @@ public enum ContextMenus {
         refused(PaneRefusal.hideHelpers, why)
       }
     case .action("close_pane"):
-      if let why = Core.closePane(daemonID: pane.daemon, paneID: pane.pane) {
+      if let close {
+        close(pane)
+      } else if let why = Core.closePane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.close, why)
       }
     case .copyPaneID: copy(pane.pane, "pane", to: pasteboard)
