@@ -26,3 +26,30 @@ stay where the person's eye expects them.'''
   date = 2026-11-08
   quote = "I also like the [Needs] you strip from B, so definitely have that. ... So A and B, as I said before, with that B strip, make it collapsible."
   note = "On the page's question: which direction for the agent list, A, B, C, or A now with B's strip added later?"
+
+[[revisions]]
+id = "vbil8c9w"
+base = "zffn39k1"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+Yes: a Needs you strip under the agent list, which folds. It has one card for each agent that is
+blocked, stuck, finished and unseen, or holding messages for the person, and is absent while
+nothing needs anyone. An agent in the strip keeps its row in the list above, so the list never
+reorders.'''
+why = '''
+At the top, the strip's coming and going moved every row of the list under it, and a card
+arriving pushed the agents down while somebody was reading them. Under the list it takes its room
+from the bottom, so the rows and their chords stay where the person's eye expects them, which is
+what keeping each agent's row was for in the first place.'''
+change = "The strip moves from the top of the agent list to under it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "I actually think let's put it below the agents ..."
+  note = "Asked whether the Needs you strip should move from the top of the agent list to below the agents."

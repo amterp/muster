@@ -1638,14 +1638,20 @@ public final class SidebarView: NSView {
     let wanted = problemsView.height(forWidth: bounds.width)
     let height = min(wanted, bounds.height)
     problemsView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
-    // The strip across the top, and the list in what is left between it and the problems.
-    let above = min(
+    // The list from the top, and the strip under it, over the problems. Under rather than over,
+    // so that a card arriving or leaving does not move a single row of the list (Fencil
+    // `needs-you-strip`).
+    let below = min(
       strip.height(forWidth: bounds.width, limit: (bounds.height * Self.stripShare).rounded(.down)),
       max(0, bounds.height - height))
-    strip.frame = CGRect(x: 0, y: bounds.height - above, width: bounds.width, height: above)
+    strip.frame = CGRect(x: 0, y: height, width: bounds.width, height: below)
     scroll.frame = CGRect(
-      x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height - above))
+      x: 0, y: height + below, width: bounds.width,
+      height: max(0, bounds.height - height - below))
   }
+
+  /// Where the list of agents is, beside the strip and the problems.
+  var listFrame: CGRect { scroll.frame }
 
   required init?(coder: NSCoder) {
     fatalError("muster builds its views in code")

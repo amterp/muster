@@ -241,7 +241,11 @@ struct NeedsYouTests {
     #expect(list.needsYou.shownCards.count == 2)
     #expect(list.needsYou.shownCount == 2)
     #expect(list.needsYou.frame.height > NeedsYouStripView.headerHeight)
-    #expect(list.needsYou.frame.maxY == list.bounds.maxY, "across the top")
+    // Under the list, so the rows keep their place when a card comes or goes: the list still
+    // starts at the top, and gave the strip its room from the bottom.
+    #expect(list.needsYou.frame.minY == 0, "under the list")
+    #expect(list.listFrame.minY == list.needsYou.frame.maxY)
+    #expect(list.listFrame.maxY == list.bounds.maxY, "the list no longer starts at the top")
 
     list.asking = []
     list.layoutSubtreeIfNeeded()

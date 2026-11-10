@@ -1,6 +1,6 @@
 import AppKit
 
-/// The strip above the agent list that says who wants you (Fencil `needs-you-strip`).
+/// The strip under the agent list that says who wants you (Fencil `needs-you-strip`).
 ///
 /// One card per agent or group the core says is asking, in the core's order. An agent in it keeps
 /// its row in the list below, so the list never reorders. Absent, with no height, while nothing
