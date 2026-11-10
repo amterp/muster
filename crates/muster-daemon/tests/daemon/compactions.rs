@@ -304,11 +304,11 @@ fn a_pane_is_compacted_at_the_most_specific_threshold_set_for_it() {
         thresholds: thresholds(off(), None),
     };
 
-    p1.rules(proto::CompactionRules { root: root, ..Default::default() });
+    p1.rules(proto::CompactionRules { root, ..Default::default() });
     assert_eq!(p1.applied(), [(Some(85), Source::Root), unset]);
 
     p1.rules(proto::CompactionRules {
-        root: root,
+        root,
         harnesses: vec![claude_exempt.clone()],
         ..Default::default()
     });
