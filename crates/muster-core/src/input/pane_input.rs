@@ -8,7 +8,9 @@
 
 use std::sync::{Arc, RwLock};
 
-use super::{InputEvent, InputSink, KeyEvent, Keymap, NotSent, PaneInputSettings, Resolution};
+use super::{
+    InputEvent, InputSink, KeyAction, KeyEvent, Keymap, NotSent, PaneInputSettings, Resolution,
+};
 use crate::diagnostics::log;
 use crate::fields;
 use crate::mirror::backend::PaneId;
@@ -96,6 +98,7 @@ impl PaneInput {
             }
             Resolution::Unbound => {
                 let key = as_alt.unwrap_or_else(|| key.clone());
+                let is_release = key.action == KeyAction::Release;
                 log::debug(
                     "input.key",
                     fields! {
@@ -104,7 +107,14 @@ impl PaneInput {
                         "action" => key.action.as_str(),
                     },
                 );
-                self.deliver(InputEvent::Key { key, option_as_alt });
+                let event = InputEvent::Key { key, option_as_alt };
+                // The daemon writes a release only to a program that asked for them, so a
+                // release owes the pane no frame.
+                if is_release {
+                    self.send_uncounted(event);
+                } else {
+                    self.deliver(event);
+                }
                 true
             }
         }

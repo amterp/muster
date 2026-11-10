@@ -99,3 +99,27 @@ fn describe(event: &InputEvent) -> Value {
         InputEvent::Reset => json!({ "event": "reset" }),
     }
 }
+
+/// A program that did not ask for key releases is never written one, so a release owes the pane
+/// no frame: counted, it opened a debt the pane could not settle and raised a painting warning
+/// about a healthy shell. Presses and repeats are written, and counted.
+#[test]
+fn a_release_is_sent_but_not_counted_as_input_that_owes_a_frame() {
+    let sink = Arc::new(RecordingSink::default());
+    let counted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let watcher = {
+        let counted = counted.clone();
+        Arc::new(move || {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+    };
+    let pane = PaneInput::new(PaneId::new("p1"), sink.clone(), &PaneInputSettings::default())
+        .delivering_to(watcher);
+    let key = Key::parse("KeyQ").expect("KeyQ is a W3C key name");
+    for action in [KeyAction::Press, KeyAction::Repeated, KeyAction::Release] {
+        pane.send(&KeyEvent { action, key, ..KeyEvent::default() });
+    }
+
+    assert_eq!(sink.sent().len(), 3);
+    assert_eq!(counted.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
