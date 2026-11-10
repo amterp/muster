@@ -23,7 +23,7 @@ public enum NeedsYouModel {
     public let alert: String
     /// The state its icon is drawn for, or empty on a group.
     public let state: String
-    /// Its callsign, or the group's name as the Messages list shows it.
+    /// Its callsign, or the group's name.
     public let title: String
     /// What it wants, in words, with how long it has waited where that is known: `Blocked 1m`,
     /// `2 to you`.

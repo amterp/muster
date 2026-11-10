@@ -144,6 +144,10 @@ public enum AppMenu {
       if group == .tab {
         groupMenu.addItem(MoveTabMenu.shared.item())
       }
+      if group == .window {
+        groupMenu.addItem(.separator())
+        groupMenu.addItem(WindowConversationsMenu.shared.item())
+      }
       groupItem.submenu = groupMenu
       menu.addItem(groupItem)
     }

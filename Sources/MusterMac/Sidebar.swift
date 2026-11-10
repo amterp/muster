@@ -354,11 +354,6 @@ public enum SidebarModel {
     /// The caption over the panes no window shows: how many there are, how many of those are in
     /// the state the caption's dot takes from them, and whether it is folded over them.
     case hidden(panes: Int, urgent: Int, collapsed: Bool)
-    /// The caption over the groups the human is in.
-    case messages
-    /// A group the human is in, with how many messages there would wake them and how many of
-    /// those were addressed to them.
-    case group(unread: Int, toYou: Int)
   }
 
   /// How loudly a pane's state asks for the person (Fencil `agent-list-rows`).
@@ -608,21 +603,20 @@ public enum SidebarModel {
     public var foldedPanes: [FoldedPane] = []
 
     /// On a pane row, the conversation between the person and this pane's agent, when this window
-    /// draws it here rather than under Messages (`OneToOne`).
+    /// draws that row (`OneToOne`).
     public var conversation: Conversation?
 
     /// Whether the row is drawn with a tint and a colored edge: the states that ask for somebody.
     public var isTinted: Bool { tier == .asks }
 
-    public var isHeader: Bool { kind == .machine || kind == .messages || isHiddenCaption }
+    public var isHeader: Bool { kind == .machine || isHiddenCaption }
 
     /// Whether picking this row means something.
     ///
-    /// Every row does but the messages caption, including a machine's: picking one asks for a
+    /// Every row does but the Hidden caption, including a machine's: picking one asks for a
     /// pane on it, which is the only way into a machine holding nothing (kan a_2HpkpfIfq) and
     /// what makes it safe to stop giving every machine a column of its own (kan a_2I6h18OU6).
-    /// A group's shows its conversation.
-    public var isDestination: Bool { kind != .messages && !isHiddenCaption }
+    public var isDestination: Bool { !isHiddenCaption }
 
     public var isMachine: Bool { kind == .machine }
 
@@ -633,11 +627,6 @@ public enum SidebarModel {
 
     public var isPane: Bool {
       if case .pane = kind { return true }
-      return false
-    }
-
-    public var isGroup: Bool {
-      if case .group = kind { return true }
       return false
     }
 
@@ -689,9 +678,9 @@ public enum SidebarModel {
   /// does. Passed in rather than derived here: which pane that is arrives on the view, and
   /// the roster is a separate message - the same join the window already makes for states.
   ///
-  /// **The human's groups come last, under a caption of their own**, and only when they are in
-  /// any: a list of tabs is about this window, and the groups are about the person, so they sit
-  /// apart rather than among the tabs (MIP-4, Decision 1b).
+  /// **The human's groups are not listed.** The one with an agent is an envelope on that agent's
+  /// row, a group holding something for the person has a card in the Needs you strip, and every
+  /// group is in the Conversations menus (`ConversationsMenu`; Fencil `conversations-menus`).
   ///
   /// **A folded Hidden caption draws none of its panes**, and says what it is folded over
   /// instead: how many there are, and the dot of the most urgent state among them, so a hidden
@@ -842,24 +831,6 @@ public enum SidebarModel {
         continue
       }
       rows[index].conversation = Conversation(group)
-    }
-    let kept = groups.filter { group in
-      !claimed.values.contains { $0.daemon == group.daemon && $0.group == group.group }
-    }
-    if !kept.isEmpty {
-      rows.append(
-        Row(
-          kind: .messages, daemon: "", tab: "", pane: nil, label: "Messages", subtitle: "",
-          givenName: "", state: "", agent: nil, onScreen: false, hasKeyboard: false,
-          reservedPresses: 0, machine: nil, isSecondPress: false))
-    }
-    for group in kept {
-      rows.append(
-        Row(
-          kind: .group(unread: group.unread, toYou: group.toYou), daemon: group.daemon, tab: "",
-          pane: nil, label: group.group, subtitle: "", givenName: "", state: "", agent: nil,
-          onScreen: false, hasKeyboard: false, reservedPresses: 0, machine: mark(group.daemon),
-          isSecondPress: false))
     }
     return rows
   }
@@ -1064,10 +1035,6 @@ public enum SidebarModel {
     case bell
     /// Sub-agents running, as a count like Mail's unread one.
     case subagents(Int)
-    /// Messages in a group that would wake the human, as Mail's unread count.
-    case unread(Int)
-    /// Messages in a group addressed to the human.
-    case toYou(Int)
     /// How full the agent's context is, from 0 to 100, as a ring.
     case context(Float)
     /// Nothing about the pane is raised for the person.
@@ -1087,9 +1054,6 @@ public enum SidebarModel {
   /// nearest the name; the gauges, which are read rather than noticed, sit at the edge where a
   /// column of them lines up down the list.
   public static func accessories(of row: Row) -> [Accessory] {
-    if case .group(let unread, let toYou) = row.kind {
-      return (toYou > 0 ? [.toYou(toYou)] : []) + (unread > 0 ? [.unread(unread)] : [])
-    }
     if case .hidden(let panes, _, let collapsed) = row.kind {
       return (collapsed ? [.hiddenPanes(panes)] : []) + [.disclosure(collapsed: collapsed)]
     }
@@ -1510,8 +1474,8 @@ public final class SidebarView: NSView {
   /// because what the menu offers depends on the bindings and the machines.
   public var onRowMenu: ((SidebarModel.Row) -> NSMenu?)?
 
-  /// A right-clicked envelope's menu. A group on an agent's row has no row of its own under
-  /// Messages to take Leave Group and Delete Group from, so the envelope carries them.
+  /// A right-clicked envelope's menu. A group has no row of its own
+  /// to take Leave Group and Delete Group from, so the envelope carries them.
   public var onConversationMenu: ((SidebarModel.Conversation) -> NSMenu?)?
 
   public private(set) var rows: [SidebarModel.Row] = []
@@ -1788,12 +1752,8 @@ public final class SidebarView: NSView {
       onTabPicked?(rows[clicked].tab)
     case .machine:
       onMachinePicked?(rows[clicked].daemon)
-    case .group:
-      onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
     case .hidden(_, _, let collapsed):
       onHiddenToggled?(!collapsed)
-    case .messages:
-      break
     }
   }
 

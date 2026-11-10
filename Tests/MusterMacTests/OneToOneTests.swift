@@ -3,9 +3,11 @@ import Testing
 
 @testable import MusterMac
 
-// A conversation between the person and one agent with a pane sits on that agent's row, and the
-// rest stay under Messages (Fencil `one-to-one-on-agent-row`). The core says the same partner to
-// every window; each window decides from its own roster, and these cases pin that decision.
+// A conversation between the person and one agent with a pane sits on that agent's row (Fencil
+// `one-to-one-on-agent-row`). No group has a row of its own, and every group is in the window's
+// Conversations menu, whichever row carries it (Fencil `conversations-menus`). The core says the
+// same partner to every window; each window decides from its own roster, and these cases pin that
+// decision.
 
 @MainActor
 @Suite("a one-to-one conversation sits on its agent's row")
@@ -41,26 +43,28 @@ struct OneToOneTests {
 
   private let otter = PaneKey(daemon: "local", pane: "w1:p1")
 
-  private func messagesRows(_ rows: [SidebarModel.Row]) -> [String] {
-    rows.compactMap { row in
-      if case .group = row.kind { return row.label }
-      return nil
-    }
+  /// The groups whose conversation some row carries as an envelope.
+  private func onRows(_ rows: [SidebarModel.Row]) -> [String] {
+    rows.compactMap(\.conversation?.group)
   }
 
-  @Test("a pair with a pane leaves Messages and puts its unread count on the pane's row")
-  func aPairMovesToItsRow() throws {
+  /// The groups the window's Conversations menu lists for `roster`.
+  private func inWindowMenu(_ groups: [SidebarModel.MessageGroup], _ roster: Roster) -> [String] {
+    ConversationsMenu.entries(groups: groups, roster: roster).map(\.group)
+  }
+
+  @Test("a pair with a pane puts its unread count on the pane's row, and no group has a row")
+  func aPairSitsOnItsRow() throws {
     let pair = group("human+otter", unread: 2, toYou: 1, partner: otter)
     let roster = roster([pane("w1:p1", callsign: "otter")])
 
     let before = SidebarModel.rows(
       roster: roster, agents: [:], groups: [group("human+otter", unread: 2, toYou: 1)])
-    #expect(messagesRows(before) == ["human+otter"])
+    #expect(before.allSatisfy { $0.isPane }, "a group with no partner took a row")
     #expect(before.first { $0.isPane }?.conversation == nil)
 
     let after = SidebarModel.rows(roster: roster, agents: [:], groups: [pair])
-    #expect(messagesRows(after).isEmpty)
-    #expect(!after.contains { $0.kind == .messages }, "the caption goes with its last row")
+    #expect(after.allSatisfy { $0.isPane })
     let row = try #require(after.first { $0.isPane })
     #expect(row.conversation?.unread == 2)
     #expect(row.conversation?.toYou == 1)
@@ -76,16 +80,15 @@ struct OneToOneTests {
       groups: [group("human+otter", partner: otter)])
     let row = try #require(rows.first { $0.isPane })
     #expect(SidebarModel.accessories(of: row).first == .conversation(unread: 0, toYou: 0))
-    #expect(messagesRows(rows).isEmpty)
   }
 
-  @Test("a pair whose partner's pane closed goes back under Messages")
-  func aClosedPaneReturnsItsPair() {
+  @Test("a pair whose partner's pane closed is on no row, and still in the window's menu")
+  func aClosedPaneLeavesItsPairInTheMenu() {
     let pair = group("human+otter", unread: 1, partner: otter)
-    let rows = SidebarModel.rows(
-      roster: roster([pane("w1:p2", callsign: "lynx")]), agents: [:], groups: [pair])
-    #expect(messagesRows(rows) == ["human+otter"])
-    #expect(rows.allSatisfy { $0.conversation == nil })
+    let without = roster([pane("w1:p2", callsign: "lynx")])
+    let rows = SidebarModel.rows(roster: without, agents: [:], groups: [pair])
+    #expect(rows.allSatisfy { $0.isPane && $0.conversation == nil })
+    #expect(inWindowMenu([pair], without) == ["human+otter"])
   }
 
   @Test("each window decides from its own roster, so moving the agent's tab moves the envelope")
@@ -100,18 +103,75 @@ struct OneToOneTests {
       let badged = a.contains { $0.conversation != nil } ? a : b
       let listed = a.contains { $0.conversation != nil } ? b : a
       #expect(badged.first { $0.conversation != nil }?.conversation?.unread == 3)
-      #expect(messagesRows(badged).isEmpty)
-      #expect(messagesRows(listed) == ["human+otter"])
+      #expect(onRows(listed).isEmpty)
     }
+    #expect(inWindowMenu([pair], holding) == inWindowMenu([pair], without))
   }
 
-  @Test("a group with several members has no partner and stays under Messages")
-  func aGroupOfSeveralStays() {
-    let rows = SidebarModel.rows(
-      roster: roster([pane("w1:p1", callsign: "otter")]), agents: [:],
-      groups: [group("review", unread: 4)])
-    #expect(messagesRows(rows) == ["review"])
-    #expect(rows.allSatisfy { $0.conversation == nil })
+  @Test("a group with several members is on no row, and in the window's menu under its name")
+  func aGroupOfSeveralIsInTheMenu() {
+    let here = roster([pane("w1:p1", callsign: "otter")])
+    let groups = [group("review", unread: 4)]
+    let rows = SidebarModel.rows(roster: here, agents: [:], groups: groups)
+    #expect(rows.allSatisfy { $0.isPane && $0.conversation == nil })
+    #expect(
+      ConversationsMenu.entries(groups: groups, roster: here).map(\.title)
+        == ["review (4 unread)"])
+    #expect(
+      ConversationsMenu.entries(groups: groups, roster: here, pane: otter).isEmpty,
+      "the core names no members of a group of several, so no agent's menu can list it")
+  }
+
+  @Test("the window's menu names a one-to-one conversation after its agent, an agent's by group")
+  func menusTitleAConversation() {
+    let here = roster([pane("w1:p1", callsign: "otter"), pane("w1:p2", callsign: "lynx")])
+    let groups = [
+      group("human+lynx", partner: PaneKey(daemon: "local", pane: "w1:p2")),
+      group("human+otter", unread: 1, partner: otter),
+      group("human+otter-2", partner: otter),
+      group("review", daemon: "devenv"),
+      group("review"),
+    ]
+    #expect(
+      ConversationsMenu.entries(groups: groups, roster: here).map(\.title) == [
+        "lynx", "otter (1 unread)", "otter", "review on devenv", "review on local",
+      ])
+    // Listed in the core's order, each naming the machine that keeps it.
+    #expect(
+      ConversationsMenu.entries(groups: groups, roster: here).map(\.daemon) == [
+        "local", "local", "local", "devenv", "local",
+      ])
+    let otters = ConversationsMenu.entries(groups: groups, roster: here, pane: otter)
+    #expect(otters.map(\.title) == ["human+otter (1 unread)", "human+otter-2"])
+    #expect(
+      ConversationsMenu.entries(
+        groups: groups, roster: here, pane: PaneKey(daemon: "local", pane: "w1:p9")
+      ).isEmpty)
+    #expect(ConversationsMenu.entries(groups: [], roster: here).isEmpty)
+  }
+
+  @Test("a group's submenu opens it, leaves it or deletes it, and an empty list makes no menu")
+  func aGroupsSubmenuOffersItsThreeVerbs() throws {
+    let here = roster([pane("w1:p1", callsign: "otter")])
+    let entries = ConversationsMenu.entries(
+      groups: [group("human+otter", partner: otter), group("review")], roster: here)
+    var picked: [String] = []
+    let item = try #require(
+      ConversationsMenu.item(entries) { choice, entry in
+        picked.append("\(choice) \(entry.daemon)/\(entry.group)")
+      })
+    #expect(item.title == "Conversations")
+    let groups = try #require(item.submenu?.items)
+    #expect(groups.map(\.title) == ["otter", "review"])
+    let verbs = try #require(groups[1].submenu?.items)
+    #expect(
+      verbs.map { $0.isSeparatorItem ? "-" : $0.title }
+        == ["Open Conversation", "Leave Group", "-", "Delete Group…"])
+    for verb in verbs where !verb.isSeparatorItem {
+      _ = verb.target?.perform(verb.action, with: verb)
+    }
+    #expect(picked == ["open local/review", "leave local/review", "delete local/review"])
+    #expect(ConversationsMenu.item([]) { _, _ in } == nil)
   }
 
   @Test("the envelope opens the group on the group's machine, not the pane's")
@@ -133,11 +193,15 @@ struct OneToOneTests {
       roster: roster([pane("w1:p1", callsign: "otter")]), agents: [:], groups: [old, current])
     let row = try #require(rows.first { $0.isPane })
     #expect(row.conversation?.group == "human+otter-2")
-    #expect(messagesRows(rows) == ["human+otter"], "the other is still reachable")
+    let reachable = ConversationsMenu.entries(
+      groups: [old, current], roster: roster([pane("w1:p1", callsign: "otter")]), pane: otter)
+    #expect(
+      reachable.map(\.group) == ["human+otter", "human+otter-2"],
+      "the other is still reachable, from the agent's own menu")
   }
 
   @Test("a row nobody sees claims nothing: a folded tab, a collapsed Hidden caption")
-  func anUndrawnRowKeepsTheGroupInMessages() throws {
+  func anUndrawnRowClaimsNothing() throws {
     let pair = group("human+otter", unread: 1, partner: otter)
     let two = Roster(
       tabs: [
@@ -145,23 +209,24 @@ struct OneToOneTests {
         tab("w1:t2", panes: [pane("w1:p2", callsign: "lynx")]),
       ], machines: [])
     let folded = SidebarModel.rows(roster: two, agents: [:], groups: [pair])
-    #expect(messagesRows(folded) == ["human+otter"])
+    #expect(onRows(folded).isEmpty)
+    #expect(inWindowMenu([pair], two) == ["human+otter"], "the menu still reaches it")
 
     let open = Roster(
       tabs: [
         tab("w1:t1", panes: [pane("w1:p1", callsign: "otter")]),
         tab("w1:t2", panes: [pane("w1:p2", callsign: "lynx")]),
       ], machines: [])
-    #expect(messagesRows(SidebarModel.rows(roster: open, agents: [:], groups: [pair])).isEmpty)
+    #expect(
+      onRows(SidebarModel.rows(roster: open, agents: [:], groups: [pair])) == ["human+otter"])
 
     let hidden = roster(
       [pane("w1:p2", callsign: "lynx")], hidden: [pane("w1:p1", callsign: "otter")])
     let collapsed = SidebarModel.rows(
       roster: hidden, agents: [:], groups: [pair], hiddenCollapsed: true)
-    #expect(messagesRows(collapsed) == ["human+otter"])
+    #expect(onRows(collapsed).isEmpty)
     let expanded = SidebarModel.rows(
       roster: hidden, agents: [:], groups: [pair], hiddenCollapsed: false)
-    #expect(messagesRows(expanded).isEmpty)
     #expect(expanded.first { $0.conversation != nil }?.pane == otter)
   }
 

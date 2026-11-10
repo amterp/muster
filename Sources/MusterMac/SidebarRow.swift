@@ -290,7 +290,7 @@ final class SidebarRowView: NSView {
     }
 
     switch row.kind {
-    case .machine, .messages, .hidden:
+    case .machine, .hidden:
       name.font = .systemFont(ofSize: 10, weight: .semibold)
       name.stringValue = row.label.uppercased()
       name.textColor = .secondaryLabelColor
@@ -304,12 +304,6 @@ final class SidebarRowView: NSView {
         subtitle.stringValue = row.subtitle
         addSubview(subtitle)
       }
-    case .group(let unread, _):
-      // Bold while something waits, as a mailbox is: the badge says how much, the weight says
-      // that the row is worth reading at all.
-      name.font = .systemFont(ofSize: 12, weight: unread > 0 ? .semibold : .regular)
-      name.stringValue = row.label
-      name.textColor = unread > 0 ? .labelColor : .secondaryLabelColor
     case .tab(let reached):
       // Its own press is the whole of its chord: a caption is somewhere you go, not a step on the
       // way to a pane. The tab on screen is named in full and the ones behind it are quieter, and
@@ -569,12 +563,8 @@ final class SidebarRowView: NSView {
       return symbol("bell.fill", tint: .secondaryLabelColor, saying: "the bell rang")
     case .subagents(let count):
       return CountBadge(count: count, saying: count == 1 ? "1 sub-agent" : "\(count) sub-agents")
-    case .unread(let count):
-      return CountBadge(count: count, saying: "\(count) unread")
     case .conversation(let unread, let toYou):
       return ConversationBadge(unread: unread, toYou: toYou)
-    case .toYou(let count):
-      return symbol("at", tint: .controlAccentColor, saying: "\(count) addressed to you")
     case .context(let used):
       return ContextBar(used: used)
     case .quiet:

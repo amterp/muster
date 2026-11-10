@@ -1402,7 +1402,7 @@ extension MusterWindow {
   /// The machines are asked for as the menu opens, because one can attach or drop between one
   /// right-click and the next.
   func menu(forPane pane: PaneKey) -> NSMenu? {
-    ContextMenus.pane(
+    let menu = ContextMenus.pane(
       pane, surface: surfaces.chrome(for: pane)?.surface,
       machines: speaking { Core.machines() }.map(\.daemon),
       canCompact: namedPane(pane)?.compactable ?? false,
@@ -1412,9 +1412,10 @@ extension MusterWindow {
       restart: { [weak self] in self?.confirmRestart($0) },
       close: { [weak self] in self?.close(pane: $0) },
       refused: { [weak self] in self?.tell($0, $1) })
+    return addingConversations(with: pane, to: menu)
   }
 
-  /// The menu of a group, from its Messages row or from the envelope on its agent's row.
+  /// The menu of a group, from the envelope on its agent's row.
   private func groupMenu(daemon: String, group: String) -> NSMenu {
     ContextMenus.groupRow(daemon: daemon, group: group, window: name) {
       [weak self] in self?.confirmDelete(daemon: daemon, group: group)
@@ -1427,14 +1428,15 @@ extension MusterWindow {
     switch row.kind {
     case .pane where row.hidden:
       guard let pane = row.pane else { return nil }
-      return ContextMenus.hiddenRow(
+      let menu = ContextMenus.hiddenRow(
         pane, quiet: row.quiet, helpers: roster.helpers(of: pane), window: name,
         rename: { [weak self] in self?.rename(pane: $0) },
         close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
+      return addingConversations(with: pane, to: menu)
     case .pane:
       guard let pane = row.pane else { return nil }
-      return ContextMenus.agentRow(
+      let menu = ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
         canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true), quiet: row.quiet,
         helpers: roster.helpers(of: pane),
@@ -1442,6 +1444,7 @@ extension MusterWindow {
         restart: { [weak self] in self?.confirmRestart($0) },
         close: { [weak self] in self?.close(pane: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
+      return addingConversations(with: pane, to: menu)
     case .tab:
       let first = roster.tabs.first { $0.id == row.tab }?.panes.first?.key
       return ContextMenus.tab(
@@ -1449,11 +1452,43 @@ extension MusterWindow {
         window: name, rename: { [weak self] in self?.rename(tab: $0) },
         close: { [weak self] in self?.close(tab: $0) },
         refused: { [weak self] in self?.tell($0, $1) })
-    case .group:
-      return groupMenu(daemon: row.daemon, group: row.label)
-    case .machine, .messages, .hidden:
+    case .machine, .hidden:
       return nil
     }
+  }
+
+  /// The groups a Conversations menu lists in this window: every one the person is in, or with
+  /// `pane` the conversations with that pane's agent.
+  func conversations(with pane: PaneKey? = nil) -> [ConversationsMenu.Entry] {
+    ConversationsMenu.entries(groups: sidebar.groups, roster: roster, pane: pane)
+  }
+
+  /// Carries out a pick from a Conversations menu, with the requests a group's row used to send.
+  func perform(_ choice: ConversationsMenu.Choice, on entry: ConversationsMenu.Entry) {
+    switch choice {
+    case .open:
+      speaking { Core.openConversation(daemonID: entry.daemon, group: entry.group) }
+    case .leave:
+      speaking {
+        Core.leaveGroup(daemonID: entry.daemon, group: entry.group) { left in
+          if !left { NSSound.beep() }
+        }
+      }
+    case .delete:
+      confirmDelete(daemon: entry.daemon, group: entry.group)
+    }
+  }
+
+  /// Adds Conversations to a pane's or an agent row's menu, above its last block, when the
+  /// person has a conversation with that pane's agent.
+  private func addingConversations(with pane: PaneKey, to menu: NSMenu) -> NSMenu {
+    let item = ConversationsMenu.item(conversations(with: pane)) { [weak self] choice, entry in
+      self?.perform(choice, on: entry)
+    }
+    guard let item else { return menu }
+    // The last block is a separator and Close Pane, which stays at the foot.
+    menu.insertItem(item, at: max(0, menu.items.count - 2))
+    return menu
   }
 
   /// The menu for a right-click on the pills of a pane's entry: what can be done with its helpers

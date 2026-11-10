@@ -1,0 +1,32 @@
+id = "conversations-menus"
+question = "How does the person open a group's conversation when it has nothing unread?"
+tags = ["ui", "messages", "menus"]
+paths = ["Sources/MusterMac/ConversationsMenu.swift"]
+
+[[revisions]]
+id = "ej3sngz1"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "shown"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+From a Conversations submenu in two places. A right-click on an agent's row or on its pane lists
+the person's one-to-one conversations with that agent. The Window menu lists every group the
+person is in, so a group whose agents have no pane stays reachable. Each group is a submenu with
+Open Conversation, Leave Group and Delete Group. The envelope on an agent's row
+(one-to-one-on-agent-row) still opens its conversation with a click.'''
+why = '''
+The Messages section was the only list of the person's groups, and its rows were where Leave
+Group and Delete Group lived, so removing it needed another way in. The owner suggested a
+right-click on the pane. A right-click alone cannot reach a group none of whose agents has a pane,
+so the Window menu lists them all. An agent's menu lists only its one-to-one conversations because
+the core tells the shell who a group's other member is only for a group of two; listing an agent's
+larger groups there needs the daemon to send each group's members.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "if I want to enter a conversation or bring back that kind of window with a given agent, I wonder if I can just right-click on the pane or we can come up with some sort of other control for viewing the conversation of the group with that agent"
+  note = "Said when asking for the Messages section to be removed. He wondered about a right-click and left the control open; the Window menu and the per-group submenus were proposed afterwards and he has not ruled on them."
