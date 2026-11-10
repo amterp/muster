@@ -7,7 +7,7 @@
 //! nobody could account for.
 
 use conformance::{CaseError, strings};
-use muster_core::input::{Key, KeyEvent, Modifiers, OptionAsAlt};
+use muster_core::input::{Key, KeyAction, KeyEvent, Modifiers, OptionAsAlt};
 use muster_vt::{KeyModes, kitty_flags};
 use serde_json::Value;
 
@@ -87,7 +87,13 @@ pub(crate) fn key_event(given: &Value) -> Result<KeyEvent, CaseError> {
         Modifiers::parse(&strings(given, "consumedModifiers")).ok_or_else(|| {
             CaseError::new("`consumedModifiers` names something that is not a modifier")
         })?;
+    let action = match given.get("action").and_then(Value::as_str) {
+        None => KeyAction::Press,
+        Some(name) => KeyAction::parse(name)
+            .ok_or_else(|| CaseError::new(format!("`{name}` is not a key action")))?,
+    };
     Ok(KeyEvent {
+        action,
         key,
         modifiers,
         consumed_modifiers,
@@ -102,6 +108,5 @@ pub(crate) fn key_event(given: &Value) -> Result<KeyEvent, CaseError> {
             .and_then(Value::as_str)
             .and_then(|text| text.chars().next()),
         is_composing: given.get("isComposing").and_then(Value::as_bool).unwrap_or(false),
-        ..KeyEvent::default()
     })
 }

@@ -2,7 +2,7 @@
   "concept": "keyEncoder.encode",
   "source": "ported",
   "citation": "libghostty-vt is the encoder; ghostty src/input/function_keys.zig:199 for the shift+enter entry.",
-  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe broad survey of common keys is not cases: it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream, so it lives as `survey` below and renders to `corpus/snapshots/keys-*.txt`. A port reproduces the same rendering from the same list.",
+  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe cases under modifyOtherKeys 2, which Claude Code turns on, record what the pinned libghostty-vt sends today so that moving the pin shows what changes as a reviewed diff; several record no bytes at all, because this pin sends nothing for those keys.\n\nThe broad survey of common keys is not cases: it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream, so it lives as `survey` below and renders to `corpus/snapshots/keys-*.txt`. A port reproduces the same rendering from the same list.",
   "survey": {
     "why": "What Muster puts on a pane's input for the keys people press constantly. One matrix with one reason rather than nineteen behaviours, and its oracle is libghostty upstream, so it stays a rendered snapshot instead of becoming cases above with nineteen manufactured justifications.\n\nThe keystrokes are here rather than in a driver because they are the only part of it that is ours to state. A second implementation renders this list to the same file, and a snapshot that has to be re-recorded to make a rewrite pass was never an oracle - which is exactly what nineteen hand-copied entries would have cost, since a wrong entry changes the file it is checked against.",
     "snapshots": [
@@ -359,6 +359,377 @@
       },
       "expect": {
         "bytes_hex": "1b54"
+      }
+    },
+    {
+      "name": "ctrl+c under modifyOtherKeys 2",
+      "why": "The interrupt byte, and the first thing to look at after the move: 1.0.0 sends Ctrl keys as `CSI 27;...` instead of C0 bytes (#14144), and an agent that stops taking ctrl+c is one that cannot be interrupted.",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "KeyC",
+        "modifiers": [
+          "control"
+        ],
+        "unshiftedCodepoint": "c"
+      },
+      "expect": {
+        "bytes_hex": "03"
+      }
+    },
+    {
+      "name": "ctrl+a under modifyOtherKeys 2",
+      "why": "A second letter, so a change that touches only some Ctrl keys shows.",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "KeyA",
+        "modifiers": [
+          "control"
+        ],
+        "unshiftedCodepoint": "a"
+      },
+      "expect": {
+        "bytes_hex": "01"
+      }
+    },
+    {
+      "name": "ctrl+[ under modifyOtherKeys 2",
+      "why": "Ctrl+[ is Escape as a C0 byte; whether it stays one is part of the same change (#14144).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "BracketLeft",
+        "modifiers": [
+          "control"
+        ],
+        "unshiftedCodepoint": "["
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "ctrl+space under modifyOtherKeys 2",
+      "why": "NUL as a C0 byte (#14144).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Space",
+        "modifiers": [
+          "control"
+        ],
+        "unshiftedCodepoint": " "
+      },
+      "expect": {
+        "bytes_hex": "00"
+      }
+    },
+    {
+      "name": "ctrl+enter under modifyOtherKeys 2",
+      "why": "A Ctrl key that is not a letter or punctuation (#14144).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Enter",
+        "modifiers": [
+          "control"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "1b5b32373b353b31337e"
+      }
+    },
+    {
+      "name": "ctrl+backspace under modifyOtherKeys 2",
+      "why": "A Ctrl key with a C0 byte of its own (#14144).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Backspace",
+        "modifiers": [
+          "control"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "08"
+      }
+    },
+    {
+      "name": "shift+ctrl+a under modifyOtherKeys 2",
+      "why": "Ctrl with another modifier, where a modifyOtherKeys encoding carries both (#14144).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "KeyA",
+        "modifiers": [
+          "control",
+          "shift"
+        ],
+        "unshiftedCodepoint": "a"
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "F13 under modifyOtherKeys 2",
+      "why": "The first of the keys past F12, which change under modifyOtherKeys 2 (#14145).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "F13"
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "shift+F20 under modifyOtherKeys 2",
+      "why": "A modified key past F12 (#14145).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "F20",
+        "modifiers": [
+          "shift"
+        ]
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "F25 under modifyOtherKeys 2",
+      "why": "The last of the keys past F12 (#14145).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "f25"
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "keypad 1 under modifyOtherKeys 2",
+      "why": "A keypad digit with the keypad in numeric mode (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Numpad1",
+        "text": "1",
+        "unshiftedCodepoint": "1"
+      },
+      "expect": {
+        "bytes_hex": "31"
+      }
+    },
+    {
+      "name": "keypad 1 in application keypad mode under modifyOtherKeys 2",
+      "why": "The same key with a program having put the keypad in application mode (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "applicationKeypad": true
+        },
+        "key": "Numpad1",
+        "text": "1",
+        "unshiftedCodepoint": "1"
+      },
+      "expect": {
+        "bytes_hex": "1b4f71"
+      }
+    },
+    {
+      "name": "keypad enter under modifyOtherKeys 2",
+      "why": "Keypad enter, which is submit in a harness that reads it (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "NumpadEnter"
+      },
+      "expect": {
+        "bytes_hex": "0d"
+      }
+    },
+    {
+      "name": "keypad enter in application keypad mode under modifyOtherKeys 2",
+      "why": "The same with the keypad in application mode (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "applicationKeypad": true
+        },
+        "key": "NumpadEnter"
+      },
+      "expect": {
+        "bytes_hex": "1b4f4d"
+      }
+    },
+    {
+      "name": "keypad add under modifyOtherKeys 2",
+      "why": "A keypad operator (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "NumpadAdd",
+        "text": "+",
+        "unshiftedCodepoint": "+"
+      },
+      "expect": {
+        "bytes_hex": "2b"
+      }
+    },
+    {
+      "name": "help under modifyOtherKeys 2",
+      "why": "The Help key (#14146).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Help"
+      },
+      "expect": {
+        "bytes_hex": ""
+      }
+    },
+    {
+      "name": "alt+escape under modifyOtherKeys 2",
+      "why": "Alt+Escape is what a harness sees when someone presses escape with meta held, and the card names it as changed (#14508).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Escape",
+        "modifiers": [
+          "alt"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "1b1b"
+      }
+    },
+    {
+      "name": "alt+escape without the escape prefix under modifyOtherKeys 2",
+      "why": "The same keystroke for a terminal where alt does not send the escape prefix (#14508).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "altSendsEscapePrefix": false
+        },
+        "key": "Escape",
+        "modifiers": [
+          "alt"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "1b1b"
+      }
+    },
+    {
+      "name": "alt with a non-ASCII letter under modifyOtherKeys 2",
+      "why": "Option as alt on a keystroke whose text is not ASCII: the prefix and then what, which 1.0.0 changes (#13861).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "optionActsAsAlt": "always"
+        },
+        "key": "KeyE",
+        "modifiers": [
+          "alt"
+        ],
+        "text": "é",
+        "unshiftedCodepoint": "e"
+      },
+      "expect": {
+        "bytes_hex": "1b65"
+      }
+    },
+    {
+      "name": "alt with a non-ASCII letter under modifyOtherKeys 2, not as alt",
+      "why": "The same keystroke with option composing, so the layout's own text goes through (#13861).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "KeyE",
+        "modifiers": [
+          "alt"
+        ],
+        "text": "é",
+        "unshiftedCodepoint": "e",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": "e"
+      },
+      "expect": {
+        "bytes_hex": "c3a9"
+      }
+    },
+    {
+      "name": "ctrl+alt+shift+backspace under modifyOtherKeys 2",
+      "why": "Three modifiers on a key that has a C0 byte of its own, which 1.0.0 changes (#13861).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true
+        },
+        "key": "Backspace",
+        "modifiers": [
+          "control",
+          "alt",
+          "shift"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "1b5b32373b383b3132377e"
+      }
+    },
+    {
+      "name": "a kitty release carries no text under modifyOtherKeys 2",
+      "why": "A release under kitty flags 27 (disambiguate, event types, all keys as escape codes, associated text), with the text the press had. Whether a release reports the text changes in 1.0.0 (#13861).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "kittyFlags": 27
+        },
+        "key": "KeyA",
+        "action": "release",
+        "text": "a",
+        "unshiftedCodepoint": "a"
+      },
+      "expect": {
+        "bytes_hex": "1b5b39373b313a3375"
+      }
+    },
+    {
+      "name": "a kitty press carries its text under modifyOtherKeys 2",
+      "why": "The press beside the release above, so a change that moves both shows as one and a change that moves only the release shows as one (#13861).",
+      "given": {
+        "profile": {
+          "modifyOtherKeys": true,
+          "kittyFlags": 27
+        },
+        "key": "KeyA",
+        "text": "a",
+        "unshiftedCodepoint": "a"
+      },
+      "expect": {
+        "bytes_hex": "1b5b39373b3b393775"
       }
     }
   ]
