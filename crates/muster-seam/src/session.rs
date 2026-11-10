@@ -2065,6 +2065,19 @@ impl Session {
         agents
     }
 
+    /// What the roster calls `pane`, for an entry in the asking list: its callsign, if it has one,
+    /// and its label. Both empty when no followed daemon holds the pane.
+    fn callsign_and_label(&self, pane: &PaneKey) -> (String, String) {
+        let Some(backend) = self.backends.get(&pane.daemon) else { return Default::default() };
+        let mirror = poison::lock(&backend.mirror, "mirror");
+        mirror.pane(&pane.pane).map_or_else(Default::default, |held| {
+            (
+                held.callsign.clone().filter(|word| !word.is_empty()).unwrap_or_default(),
+                muster_core::roster::pane_label(held),
+            )
+        })
+    }
+
     fn asking_entries(&self, agents: &[PaneAgent]) -> Vec<crate::proto::AskingEntry> {
         self.attention
             .asking()
@@ -2072,20 +2085,25 @@ impl Session {
             .map(|(asker, alert)| {
                 let raised_at = self.attention.raised_at(&asker).unwrap_or_default();
                 match asker {
-                    Asker::Pane(pane) => crate::proto::AskingEntry {
-                        daemon_id: pane.daemon.to_string(),
-                        pane_id: pane.pane.to_string(),
-                        alert: alert.as_str().to_string(),
-                        since_ms: if alert == Alert::Notified {
-                            raised_at
-                        } else {
-                            agents
-                                .iter()
-                                .find(|agent| agent.pane == pane)
-                                .map_or(0, |agent| agent.since_ms)
-                        },
-                        ..Default::default()
-                    },
+                    Asker::Pane(pane) => {
+                        let (callsign, label) = self.callsign_and_label(&pane);
+                        crate::proto::AskingEntry {
+                            daemon_id: pane.daemon.to_string(),
+                            pane_id: pane.pane.to_string(),
+                            callsign,
+                            label,
+                            alert: alert.as_str().to_string(),
+                            since_ms: if alert == Alert::Notified {
+                                raised_at
+                            } else {
+                                agents
+                                    .iter()
+                                    .find(|agent| agent.pane == pane)
+                                    .map_or(0, |agent| agent.since_ms)
+                            },
+                            ..Default::default()
+                        }
+                    }
                     Asker::Group(group) => {
                         let preview = self
                             .attention

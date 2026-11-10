@@ -2990,6 +2990,12 @@ message AskingEntry {
   string alert = 4;
   int64 since_ms = 5;
   string preview = 6;
+  // A pane entry's names, as the roster gives them (`RosterPane.callsign` and `label`), carried
+  // here because the list spans every window and a window's roster holds only its own tabs. Both
+  // empty on a group entry and on a pane no daemon holds any more; the callsign alone is empty on a
+  // daemon from before callsigns.
+  string callsign = 7;
+  string label = 8;
 }
 
 message AskingListChanged {

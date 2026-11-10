@@ -275,6 +275,9 @@ public struct AskingEntry: Equatable {
   public let alert: String
   public let sinceMs: Int64
   public let preview: String
+  /// A pane's names as the core gives them, empty on a group or a pane no daemon holds any more.
+  public let callsign: String
+  public let label: String
 
   init(_ entry: Muster_AskingEntry) {
     daemon = entry.daemonID
@@ -283,6 +286,8 @@ public struct AskingEntry: Equatable {
     alert = entry.alert
     sinceMs = entry.sinceMs
     preview = entry.preview
+    callsign = entry.callsign
+    label = entry.label
   }
 }
 

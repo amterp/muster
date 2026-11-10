@@ -87,7 +87,20 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
         entry.since_ms >= before_notification,
         "notification borrowed the pane's old state time"
     );
-    assert_rename_preserves_asking(hidden_pane);
+    let held = window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .find(|pane| pane.pane_id == hidden_pane)
+        .expect("the window's roster holds the pane that asks");
+    assert!(!entry.callsign.is_empty(), "the entry names no callsign: {entry:?}");
+    assert_eq!(
+        (&entry.callsign, &entry.label),
+        (&held.callsign, &held.label),
+        "an entry names its pane as the roster does, so a window holding no roster for it can"
+    );
+    assert_rename_reaches_asking(hidden_pane);
 
     let went = focus_asking();
     assert_eq!(went, would, "went somewhere other than where it said it would");
@@ -103,7 +116,7 @@ fn going_to_the_pane_that_asked_shows_it_and_then_nothing_is_left() {
     assert_eq!(told(), [false, true, false], "told only when the answer changed");
 }
 
-fn assert_rename_preserves_asking(hidden_pane: &str) {
+fn assert_rename_reaches_asking(hidden_pane: &str) {
     until(
         "the asking list to arrive",
         || {
@@ -115,26 +128,23 @@ fn assert_rename_preserves_asking(hidden_pane: &str) {
         },
         || "no asking list".to_string(),
     );
-    let before = LISTS.lock().expect("asking lists").len();
     assert_ok(&answer(request::Payload::RenamePane(RenamePane {
         pane_id: hidden_pane.to_string(),
         name: "renamed".to_string(),
         ..RenamePane::default()
     })));
-    let renamed = || match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
-        Some(response::Payload::Window(window)) => window
-            .roster
-            .into_iter()
-            .flat_map(|roster| roster.tabs)
-            .flat_map(|tab| tab.panes)
-            .any(|pane| pane.pane_id == hidden_pane && pane.given_name == "renamed"),
-        _ => false,
+    let label_in_list = || {
+        LISTS
+            .lock()
+            .expect("asking lists")
+            .last()
+            .and_then(|list| list.entries.iter().find(|entry| entry.pane_id == hidden_pane))
+            .map(|entry| entry.label.clone())
     };
-    until("the renamed pane", renamed, || "the old name remains".to_string());
-    assert_eq!(
-        LISTS.lock().expect("asking lists").len(),
-        before,
-        "a name is not part of an asking entry"
+    until(
+        "the asking list to carry the new name",
+        || label_in_list().as_deref() == Some("renamed"),
+        || format!("the last list names the pane {:?}", label_in_list()),
     );
 }
 

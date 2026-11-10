@@ -32,14 +32,19 @@ private func roster(_ panes: [Roster.Pane], hidden: [Roster.Pane] = []) -> Roste
       ? [] : [Roster.Tab(id: "w1:t9", place: 9, label: "h", onScreen: false, panes: hidden)])
 }
 
+/// The callsigns the core would name these panes by, as the entries carry them.
+private let callsigns = ["w1:p1": "ivory", "w1:p2": "lynx", "w1:p3": "otter", "w1:p8": "walrus"]
+
 @MainActor
 private func entry(
   _ alert: String, pane: String = "", group: String = "", since: Double? = nil,
-  preview: String = ""
+  preview: String = "", callsign: String? = nil, label: String = ""
 ) -> AskingEntry {
   var raw = Muster_AskingEntry()
   raw.daemonID = "local"
   raw.paneID = pane
+  raw.callsign = callsign ?? callsigns[pane] ?? ""
+  raw.label = label
   raw.group = group
   raw.alert = alert
   raw.sinceMs = since.map { Int64((epoch.timeIntervalSince1970 - $0) * 1000) } ?? 0
@@ -136,8 +141,8 @@ struct NeedsYouTests {
     #expect(word(nil) == "Message")
   }
 
-  @Test("a pane the roster does not hold still has a card, named by its id")
-  func anUnknownPaneIsStillAsking() {
+  @Test("a pane the core could not name still has a card, titled by its id")
+  func anUnnamedPaneIsStillAsking() {
     let made = cards([entry("done", pane: "w9:p9", since: 60)], roster: roster([]))
     #expect(made.count == 1)
     #expect(made[0].title == "w9:p9")
@@ -145,12 +150,22 @@ struct NeedsYouTests {
     #expect(made[0].word == "Done 1m")
   }
 
-  @Test("a pane renamed since the list was sent is drawn under its new name")
-  func aRenameNeedsNoNewList() {
-    let entries = [entry("done", pane: "w1:p3", since: 60)]
-    let before = cards(entries, roster: roster([p3]), agents: agents)
-    let renamed = pane("w1:p3", callsign: "heron")
-    let after = cards(entries, roster: roster([renamed]), agents: agents)
+  @Test("a pane another window holds is titled by the name its entry carries, not its id")
+  func anotherWindowsPaneIsNamed() {
+    let named = entry("done", pane: "w9:p9", since: 60, callsign: "prairie", label: "prairie · src")
+    let unlabeled = entry("done", pane: "w9:p8", since: 60, label: "src")
+    let made = cards([named, unlabeled], roster: roster([]))
+    #expect(made.map(\.title) == ["prairie", "src"], "the callsign, else the label")
+  }
+
+  @Test("a renamed pane is drawn under the name its next list carries")
+  func aRenameArrivesWithTheList() {
+    let before = cards(
+      [entry("done", pane: "w1:p3", since: 60, callsign: "otter", label: "otter · a")],
+      roster: roster([p3]), agents: agents)
+    let after = cards(
+      [entry("done", pane: "w1:p3", since: 60, callsign: "heron", label: "heron · a")],
+      roster: roster([p3]), agents: agents)
     #expect(before[0].title == "otter")
     #expect(after[0].title == "heron")
   }

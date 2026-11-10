@@ -765,6 +765,26 @@ fn what_going_to_an_agent_asking_would_do_names_the_other_windows_agent() {
         windows_sent(|payload| matches!(payload, event::Payload::RaiseWindow(_))).is_empty(),
         "asking brought a window forward"
     );
+
+    // The first window's list holds the agent the second window shows, and names it, though the
+    // first window's own roster has no row for it to take the name from.
+    let Some(response::Payload::Window(window)) =
+        answer(&in_window("window-1", request::Payload::ReadWindow(ReadWindow::default()))).payload
+    else {
+        panic!("reading the first window did not answer a window")
+    };
+    let holds_it = window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .any(|pane| pane.pane_id == "p1");
+    assert!(!holds_it, "the first window's roster still holds the pane the second window shows");
+    let entry = window.asking.iter().find(|entry| entry.pane_id == "p1").expect("p1 asks");
+    assert!(
+        !entry.callsign.is_empty() && !entry.label.is_empty(),
+        "an agent another window holds is listed without its names: {entry:?}"
+    );
 }
 
 /// A problem's Reattach is listed in every window, so it can be clicked in a window that does

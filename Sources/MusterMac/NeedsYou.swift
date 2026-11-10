@@ -5,9 +5,10 @@ import Foundation
 ///
 /// The core decides who is in the list and in what order (`Attention::asking()`, the same list
 /// `focus --asking` walks), and this never reorders it: a person told "someone needs you" and a
-/// chord that goes to someone must agree on who. An entry carries keys rather than labels, so the
-/// words come from the roster, the agents and the groups, which the list already joins by key for
-/// every row - and a renamed pane is redrawn without a new list.
+/// chord that goes to someone must agree on who. A pane entry carries its own names, because the
+/// list spans every window and this window's roster holds only its own tabs; the rest of the words
+/// come from the roster, the agents and the groups, which the list already joins by key for every
+/// row. A renamed pane is drawn under its new name once the core sends the list again.
 public enum NeedsYouModel {
   /// One card: an agent or a group that wants the person.
   public struct Card: Equatable {
@@ -44,7 +45,7 @@ public enum NeedsYouModel {
 
   /// The cards for the asking list, in the order the core sent it.
   ///
-  /// A pane the roster does not hold is still asking, so it still gets a card, named by its id: a
+  /// A pane the core could not name is still asking, so it still gets a card, named by its id: a
   /// strip that dropped an entry would disagree with the chord. The list is computed at `now`,
   /// which only the time held depends on.
   public static func cards(
@@ -78,7 +79,8 @@ public enum NeedsYouModel {
         }
       return Card(
         subject: .pane(key), alert: entry.alert, state: agent.state,
-        title: pane.map { $0.callsign.isEmpty ? $0.label : $0.callsign } ?? entry.pane, word: word,
+        title: [entry.callsign, entry.label, entry.pane].first { !$0.isEmpty } ?? entry.pane,
+        word: word,
         // What a blocked agent asked is a card of its own; until it lands, its row's subtitle.
         detail: entry.alert == "blocked"
           ? pane.map { SidebarModel.subtitle($0.subtitle, agent: agent) } ?? "" : "",
