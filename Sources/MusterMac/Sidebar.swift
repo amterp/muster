@@ -354,9 +354,6 @@ public enum SidebarModel {
     /// The caption over the panes no window shows: how many there are, how many of those are in
     /// the state the caption's dot takes from them, and whether it is folded over them.
     case hidden(panes: Int, urgent: Int, collapsed: Bool)
-    /// The line under a pane over its hidden helpers (MIP-7): how many it has, how many of them
-    /// and theirs are in the state the line's dot takes from them, and whether it is open.
-    case helpers(count: Int, urgent: Int, open: Bool)
     /// The caption over the groups the human is in.
     case messages
     /// A group the human is in, with how many messages there would wake them and how many of
@@ -391,6 +388,20 @@ public enum SidebarModel {
     case top, middle, bottom
     /// A caption with nothing under it.
     case only
+  }
+
+  /// One of a pane's hidden helpers, or a helper of one of those, as its maker's entry draws it: a
+  /// pill whose height and fill say its state (MIP-7; Fencil `helper-pills`).
+  public struct HelperPill: Equatable {
+    public let key: PaneKey
+    /// Its callsign, or its label without one.
+    public let name: String
+    public let state: String
+    /// What its own row would say of its state, with the time worked out (`stateLine(for:now:)`).
+    public let stateLine: String
+    public let directory: String
+    /// The name of the pane that made it, which for a helper of a helper is not the entry's pane.
+    public let madeBy: String
   }
 
   /// One pane a folded tab caption stands in for.
@@ -541,18 +552,36 @@ public enum SidebarModel {
     public var directory = ""
     public var directoryName = ""
 
-    /// The directory's last part as line two of the row draws it: only for a pane somebody named.
-    /// An unnamed pane's first line is already its directory and harness, which the core builds it
-    /// from, so a second line repeating it would say the same thing twice; the whole path stays in
-    /// the row's hover text (`SidebarModel.details`).
+    /// The directory's last part as a pane's header draws it beside the label: only for a pane
+    /// somebody named. An unnamed pane's label is already its directory and harness, which the core
+    /// builds it from, so repeating it would say the same thing twice.
     ///
-    /// Not a comparison of the two strings: the first line says `a` for the home directory where
-    /// `directoryName` says `~`, and what decides it is whether the core built the first line from
-    /// the directory, which is whether the pane has a given name. The root is the exception: the core
-    /// leaves it out of the first line as it does a missing directory, so line two keeps it.
+    /// Not a comparison of the two strings: the label says `a` for the home directory where
+    /// `directoryName` says `~`, and what decides it is whether the core built the label from the
+    /// directory, which is whether the pane has a given name. The root is the exception: the core
+    /// leaves it out of the label as it does a missing directory, so the header keeps it.
     public var namedDirectory: String {
       givenName.isEmpty && directoryName != "/" ? "" : directoryName
     }
+
+    /// What the pane's harness titles its session, as the core passed it on: empty for most panes
+    /// (`pane_subtitle`, in `crates/muster-core/src/roster.rs`).
+    public var title = ""
+
+    /// What an entry's task line says: the name somebody gave the pane, or else its harness's title
+    /// (Fencil `agent-list-rows`). The other of the two is in the hover text. A pane with no
+    /// callsign already draws its name on line one, so its task line is the title.
+    public var taskLine: String {
+      givenName.isEmpty || callsign.isEmpty ? title : givenName
+    }
+
+    /// On a pane's entry, its hidden helpers and theirs in one flat list, in the order the roster
+    /// lists them, and whether the list of them under the entry is open.
+    public var helpers: [HelperPill] = []
+    public var helpersOpen = false
+
+    /// Whether this pane is drawn as one line under its maker's open entry.
+    public var isHelper = false
 
     /// How much of the person's attention this pane's state is asking for, and nil on the rows
     /// that are not panes.
@@ -616,11 +645,6 @@ public enum SidebarModel {
       if case .hidden = kind { return true }
       return false
     }
-
-    public var isHelpers: Bool {
-      if case .helpers = kind { return true }
-      return false
-    }
   }
 
   /// The rows to draw, in order: a caption per tab with its panes under it, then the machines
@@ -673,11 +697,12 @@ public enum SidebarModel {
   /// instead: how many there are, and the dot of the most urgent state among them, so a hidden
   /// agent that is blocked is still something the list shows.
   ///
-  /// **A pane's hidden helpers are listed under it, folded into one line** - `3 helpers · 1
-  /// blocked`, the dot the most urgent state among them and theirs - until `helpersOpen` holds
-  /// the pane (MIP-7, section 3). Which helpers go under which pane is the core's answer
-  /// (`Roster.Pane.under`), the one `muster window` lists them by. They leave the Hidden caption,
-  /// which keeps the panes somebody hid by hand, and carry no presses, as no hidden pane does.
+  /// **A pane's hidden helpers are pills on its own entry**, one each, helpers of helpers among
+  /// them in one flat list, and `helpersOpen` holding the pane lists them under it a line apiece
+  /// (MIP-7, section 3; Fencil `helper-pills`). Which helpers go under which pane is the
+  /// core's answer (`Roster.Pane.under`), the one `muster window` lists them by, and their order
+  /// is the roster's. They leave the Hidden caption, which keeps the panes somebody hid by hand,
+  /// and carry no presses, as no hidden pane does.
   public static func rows(
     roster: Roster, agents: [PaneKey: PaneAgent], keyboard: PaneKey? = nil,
     groups: [MessageGroup] = [], hiddenCollapsed: Bool = false, helpersOpen: Set<PaneKey> = [],
@@ -700,34 +725,44 @@ public enum SidebarModel {
         under[pane.under, default: []].append((pane, tab.id))
       }
     }
-    func everyHelper(of maker: String) -> [Roster.Pane] {
-      (under[maker] ?? []).flatMap { [$0.pane] + everyHelper(of: $0.pane.key.pane) }
+    func name(_ pane: Roster.Pane) -> String {
+      pane.callsign.isEmpty ? pane.label : pane.callsign
     }
-    func appendHidden(_ pane: Roster.Pane, tab: String, depth: Int) {
+    func everyHelper(of maker: Roster.Pane) -> [(pane: Roster.Pane, tab: String, madeBy: String)] {
+      (under[maker.key.pane] ?? []).flatMap {
+        [($0.pane, $0.tab, name(maker))] + everyHelper(of: $0.pane)
+      }
+    }
+    func appendHidden(_ pane: Roster.Pane, tab: String) {
       rows.append(
         paneRow(
           pane, in: tab, agent: agents[pane.key] ?? "unknown", now: now, presses: (0, 0),
           onScreen: false, reservedPresses: twoPress ? 2 : 0, machine: mark(pane.key.daemon),
-          hidden: true, depth: depth, member: members.contains(pane.key)))
-      appendHelpers(of: pane, tab: tab, depth: depth)
+          hidden: true, member: members.contains(pane.key)))
+      appendHelpers(of: pane)
     }
-    func appendHelpers(of maker: Roster.Pane, tab: String, depth: Int) {
-      guard let helpers = under[maker.key.pane], !helpers.isEmpty else { return }
+    // Puts a pane's helpers on the entry just appended for it, and lists them under it when its
+    // list is open.
+    func appendHelpers(of maker: Roster.Pane) {
+      let helpers = everyHelper(of: maker)
+      guard !helpers.isEmpty else { return }
       let open = helpersOpen.contains(maker.key)
-      let states = everyHelper(of: maker.key.pane).map { (agents[$0.key] ?? "unknown").state }
-      let urgent = open ? nil : mostUrgent(states)
-      let kind = Kind.helpers(
-        count: helpers.count, urgent: states.filter { $0 == urgent }.count, open: open)
-      rows.append(
-        Row(
-          kind: kind, daemon: maker.key.daemon, tab: tab, pane: maker.key,
-          label: helpersLine(kind, state: urgent ?? ""), subtitle: "", givenName: "",
-          state: urgent ?? "", agent: nil, onScreen: false, hasKeyboard: false,
-          reservedPresses: twoPress ? 2 : 0, machine: nil, isSecondPress: false,
-          depth: depth + 1))
+      rows[rows.count - 1].helpers = helpers.map { helper in
+        let agent = agents[helper.pane.key] ?? "unknown"
+        return HelperPill(
+          key: helper.pane.key, name: name(helper.pane), state: agent.state,
+          stateLine: stateLine(for: agent, now: now), directory: helper.pane.directory,
+          madeBy: helper.madeBy)
+      }
+      rows[rows.count - 1].helpersOpen = open
       guard open else { return }
       for helper in helpers {
-        appendHidden(helper.pane, tab: helper.tab, depth: depth + 1)
+        var row = paneRow(
+          helper.pane, in: helper.tab, agent: agents[helper.pane.key] ?? "unknown", now: now,
+          presses: (0, 0), onScreen: false, machine: mark(helper.pane.key.daemon), hidden: true,
+          depth: 1, member: members.contains(helper.pane.key))
+        row.isHelper = true
+        rows.append(row)
       }
     }
     for tab in roster.tabs {
@@ -768,7 +803,7 @@ public enum SidebarModel {
             hasKeyboard: pane.key == keyboard, reservedPresses: twoPress ? 2 : 0,
             machine: mark(pane.key.daemon), isSecondPress: tab.armed,
             member: members.contains(pane.key)))
-        appendHelpers(of: pane, tab: tab.id, depth: 0)
+        appendHelpers(of: pane)
       }
     }
     for machine in roster.machines where machine.worthDrawing {
@@ -794,7 +829,7 @@ public enum SidebarModel {
     }
     for tab in roster.hidden where !hiddenCollapsed {
       for pane in tab.panes where pane.under.isEmpty {
-        appendHidden(pane, tab: tab.id, depth: 0)
+        appendHidden(pane, tab: tab.id)
       }
     }
     // A conversation sits on its agent's row only when this window draws that row: a folded tab or
@@ -842,7 +877,7 @@ public enum SidebarModel {
     reservedPresses: Int = 0, machine: MachineMark? = nil, isSecondPress: Bool = false,
     hidden: Bool = false, depth: Int = 0, member: Bool = false
   ) -> Row {
-    Row(
+    var row = Row(
       kind: .pane(tabPress: presses.tab, press: presses.pane), daemon: pane.key.daemon, tab: tab,
       pane: pane.key, label: pane.label, subtitle: subtitle(pane.subtitle, agent: agent),
       givenName: pane.givenName, state: agent.state, agent: agent, onScreen: onScreen,
@@ -851,6 +886,8 @@ public enum SidebarModel {
       besideCallsign: pane.besideCallsign, depth: depth, member: member,
       directory: pane.directory, directoryName: directoryName(pane.directory),
       tier: Tier(state: agent.state), stateLine: stateLine(for: agent, now: now))
+    row.title = pane.subtitle
+    return row
   }
 
   /// Marks the rows from `first` to the end as one raised panel: the tab on screen's caption, its
@@ -950,15 +987,28 @@ public enum SidebarModel {
     ["blocked", "stuck", "done", "working"].first { states.contains($0) }
   }
 
-  /// What a pane's helpers line reads: `3 helpers`, and while folded `3 helpers · 1 blocked`
-  /// for the most urgent state among them, `state`.
-  public static func helpersLine(_ kind: Kind, state: String) -> String {
-    guard case .helpers(let count, let urgent, _) = kind else { return "" }
-    let helpers = count == 1 ? "1 helper" : "\(count) helpers"
-    return state.isEmpty ? helpers : "\(helpers) · \(urgent) \(state)"
+  /// What hovering a helper's pill says: its name and state, where it is, and who made it.
+  public static func details(of helper: HelperPill) -> String {
+    // A working or idle helper's row would say nothing of its state, so the pill says the word.
+    var lines = ["\(helper.name): \(helper.stateLine.isEmpty ? helper.state : helper.stateLine)"]
+    if !helper.directory.isEmpty { lines.append(abbreviated(helper.directory)) }
+    lines.append("made by \(helper.madeBy)")
+    return lines.joined(separator: "\n")
   }
 
-  /// Which of a folded caption's panes get an icon when only `capacity` fit, and how many do not.
+  /// What VoiceOver reads for an entry's pills, and what hovering their count says: `3 helpers`,
+  /// then how many are in each state that asks for somebody.
+  public static func helpersSummary(_ helpers: [HelperPill]) -> String {
+    let count = helpers.count == 1 ? "1 helper" : "\(helpers.count) helpers"
+    let asking = ["blocked", "stuck", "done"].compactMap { state -> String? in
+      let held = helpers.filter { $0.state == state }.count
+      return held == 0 ? nil : "\(held) \(state)"
+    }
+    return ([count] + asking).joined(separator: " · ")
+  }
+
+  /// Which of a folded caption's panes get an icon, or of an entry's helpers a pill, when only
+  /// `capacity` fit, and how many do not.
   ///
   /// All of them when they fit. Otherwise the most urgent ones, in the order the roster lists them,
   /// so that an agent that is blocked inside a folded tab never drops out for want of room; the
@@ -980,9 +1030,8 @@ public enum SidebarModel {
 
   /// What hovering a Hidden caption says, and what VoiceOver reads for it: `3 hidden panes ·
   /// 1 blocked` while folded, nil while its rows say it themselves. A folded tab's caption says
-  /// each pane it is folded over and that pane's state, and a helpers line says what it reads.
+  /// each pane it is folded over and that pane's state.
   public static func summary(of row: Row) -> String? {
-    if row.isHelpers { return row.label }
     if row.folded {
       // One line per pane, so a folded tab can be read by hovering it.
       return row.foldedPanes.map { "\($0.name): \($0.state)" }.joined(separator: "\n")
@@ -1032,8 +1081,6 @@ public enum SidebarModel {
     case hiddenPanes(Int)
     /// Whether the Hidden caption is folded, as the chevron a click on it turns.
     case disclosure(collapsed: Bool)
-    /// Whether a pane's helpers line is open, as the chevron a click on it turns.
-    case helpers(open: Bool)
   }
 
   /// The marks a row carries, left to right. The ones that ask somebody to look come first,
@@ -1045,9 +1092,6 @@ public enum SidebarModel {
     }
     if case .hidden(let panes, _, let collapsed) = row.kind {
       return (collapsed ? [.hiddenPanes(panes)] : []) + [.disclosure(collapsed: collapsed)]
-    }
-    if case .helpers(_, _, let open) = row.kind {
-      return [.helpers(open: open)]
     }
     guard let agent = row.agent else { return [] }
     var marks: [Accessory] = []
@@ -1134,9 +1178,9 @@ public enum SidebarModel {
       lines.append("its adapter is not reporting (muster docs harnesses)")
     }
     if !agent.waiting.isEmpty { lines.append("waiting on \(agent.waiting)") }
-    if !row.subtitle.isEmpty && row.subtitle != subtitle("", agent: agent) {
-      lines.append(row.subtitle)
-    }
+    // A title is a live agent's word, so a pane whose machine cannot be reached leaves it out.
+    if !row.title.isEmpty && agent.state != "unreachable" { lines.append(row.title) }
+    if !row.helpers.isEmpty { lines.append(helpersSummary(row.helpers)) }
     if let used = agent.contextUsed { lines.append("\(Int(used.rounded()))% of its context used") }
     switch agent.subagents {
     case 0: break
@@ -1276,16 +1320,33 @@ public enum SidebarModel {
 
   /// How tall a row is.
   ///
-  /// **Two heights and no more**, and deliberately not a function of how long the text is. A
-  /// list of fifteen agents is read by scanning it, so a height that varied with what an agent
-  /// happened to be writing would move every row below it each time one of them wrote a longer
-  /// sentence. The only thing that can move a row is a second line arriving or going away.
+  /// **A few heights, and deliberately not a function of how long the text is.** A list of fifteen
+  /// agents is read by scanning it, so a height that varied with what an agent happened to be
+  /// writing would move every row below it each time one of them wrote a longer sentence. What
+  /// moves a row is a whole line arriving or going away.
   ///
-  /// A pane row is always two lines - its second line is its directory - and a caption is one.
+  /// A pane's entry is its callsign's line and the line saying its state and directory, with a
+  /// task line between them when it has a name or a title, and a line of pills under them when it
+  /// has helpers (Fencil `agent-list-rows`). A helper listed under an open
+  /// entry is one line, and so is a caption; a machine's heading saying what its restart cost is
+  /// two.
   public static let oneLine: CGFloat = 20
   public static let twoLines: CGFloat = 40
+  public static let helperLine: CGFloat = 22
+  public static let entry: CGFloat = 42
+  public static let taskLine: CGFloat = 16
+  public static let pillsLine: CGFloat = 15
   public static func height(of row: Row) -> CGFloat {
-    row.isPane || !row.subtitle.isEmpty ? twoLines : oneLine
+    guard row.isPane else { return row.subtitle.isEmpty ? oneLine : twoLines }
+    if row.isHelper { return helperLine }
+    return entry + (hasTaskLine(row) ? taskLine : 0) + (row.helpers.isEmpty ? 0 : pillsLine)
+  }
+
+  /// Whether a pane's entry has a task line. Its marks do not earn it one: they come and go with
+  /// what the agent is doing, a bell or a sub-agent, and a row must not move for that, so an entry
+  /// with no name and no title draws them at the end of its state line.
+  public static func hasTaskLine(_ row: Row) -> Bool {
+    row.isPane && !row.isHelper && !row.taskLine.isEmpty
   }
 
   /// What the list has to be told when the rows come out different.
@@ -1314,7 +1375,7 @@ public enum SidebarModel {
 
   /// How wide the list is until the core has said otherwise. The core holds the real answer,
   /// which is whatever the list was last dragged to.
-  public static let width: CGFloat = 280
+  public static let width: CGFloat = 200
 
   /// The window width below which the list is put away altogether, whatever it was dragged to.
   public static let minimumWindow: CGFloat = 400
@@ -1409,9 +1470,12 @@ public final class SidebarView: NSView {
   /// and a relaunch folding them all again is the default anyway.
   public var helpersOpen: Set<PaneKey> = []
 
-  /// Called when somebody clicks a pane's helpers line, with the pane and whether they are
-  /// asking to open it.
+  /// Called when somebody clicks the pills on a pane's entry, with the pane and whether they are
+  /// asking to open the list of its helpers.
   public var onHelpersToggled: ((PaneKey, Bool) -> Void)?
+
+  /// Builds the menu for a right-click on an entry's pills, which is about its helpers together.
+  public var onHelpersMenu: ((SidebarModel.Row) -> NSMenu?)?
 
   /// Called when somebody double-clicks a row, meaning they want to rename what it names.
   ///
@@ -1497,6 +1561,9 @@ public final class SidebarView: NSView {
     // agent said what it is working on, and a table with a size style of its own ignores what
     // `heightOfRow` answers.
     table.rowSizeStyle = .custom
+    // A table left to choose its own style insets every row 16 points from each edge, which at
+    // 200 points is a sixth of the list. A row keeps its own margins instead.
+    table.style = .fullWidth
     // No gap between rows: the tab on screen's raised panel is drawn a row at a time and has to
     // read as one rectangle.
     table.intercellSpacing = .zero
@@ -1719,9 +1786,6 @@ public final class SidebarView: NSView {
       onGroupPicked?(rows[clicked].daemon, rows[clicked].label)
     case .hidden(_, _, let collapsed):
       onHiddenToggled?(!collapsed)
-    case .helpers(_, _, let open):
-      guard let maker = rows[clicked].pane else { return }
-      onHelpersToggled?(maker, !open)
     case .messages:
       break
     }
@@ -1765,6 +1829,11 @@ extension SidebarView: NSTableViewDataSource, NSTableViewDelegate {
     view.show(rows[row])
     view.onFoldToggled = { [weak self] row in self?.onTabFolded?(row.tab, !row.folded) }
     view.onGroupPicked = { [weak self] daemon, group in self?.onGroupPicked?(daemon, group) }
+    view.onHelpersToggled = { [weak self] row in
+      guard let maker = row.pane else { return }
+      self?.onHelpersToggled?(maker, !row.helpersOpen)
+    }
+    view.onHelpersMenu = { [weak self] row in self?.onHelpersMenu?(row) }
     view.onConversationMenu = { [weak self] conversation in
       self?.onConversationMenu?(conversation)
     }

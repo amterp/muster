@@ -322,11 +322,21 @@ busy-but-not-waiting state should be while blocked is the loud one.
 
 **A row says its state by shape as well as color.** In the agent list each state is an icon of its own: a solid
 circle with an exclamation mark for blocked, a solid octagon for stuck and a solid circle with a check for done - the
-three that want somebody - and an open ring with a gap for working, an hourglass for waiting and a plain ring for
+three that want somebody - and an open ring for working, which turns once every four seconds unless macOS is set to
+reduce motion, an hourglass for waiting and a plain ring for
 idle; unknown is a dashed ring and unreachable a slashed one. A blocked or stuck row is also tinted with its state's
 color mixed into the list's background and carries a colored left edge. The state's word and how long it has held
-come first on the row's second line for blocked, stuck and done, and what a waiting agent waits on for waiting. The
-colors are the ones below; the shapes are what let the legend be read without them.
+come before the directory on a pane's entry for blocked, stuck and done, and what a waiting agent waits on for
+waiting. The colors are the ones below; the shapes are what let the legend be read without them.
+
+**A pane's entry in the list is up to four lines, so the list reads at 200 points.** The first is the state's icon,
+the pane's callsign and its machine's tag, with the chord that reaches it as keycaps at the far edge. The task line
+is the name somebody gave the pane, or else its harness's title, with the small marks and the context bar at its far
+edge. Then the state and the directory's last part. Last, a pill for each of the pane's hidden helpers and theirs,
+in the roster's order: tall for blocked or stuck, short for done, between for the calm states, and solid, outlined
+or dashed as the icons are. A click on the pills lists the helpers under the entry, a line each. An entry with no
+name and no title has no task line and draws its marks at the end of the state line, and one with no helpers has no
+pills line.
 
 **Who wants you is a strip above the list, and the core says who.** The Needs you strip has a card for each agent or
 group asking for the person - blocked, stuck, finished and unseen, a program's notification, or messages for them - in
@@ -763,15 +773,16 @@ a state blinks.
 writes it down, so it survives a daemon restart - and it wins over anything derived, because it is the only line
 written for that pane rather than worked out from where it sits. Under it, when there is something to say, goes what
 the agent calls itself: volatile status, lost on a restart because the process that would set it again is new
-(MIP-3, section 2). Between them a row has a first line stable enough to learn and a second
-that changes as work happens, which is what fifteen rows reading `<directory> · claude` could never do.
+(MIP-3, section 2). An entry's task line shows the name when there is one and the title otherwise, and the other of
+the two is in its hover text.
 
-The second line is drawn only for a pane with a detected harness whose title says something the first line does not,
+A title is passed on only for a pane with a detected harness whose title says something its label does not,
 and that rule is the core's on the same terms as the ordering. A plain shell titles itself too - usually with the
-path the row already leads with - so "draw it when it exists" would double the height of the list to repeat it, and
+path the row already shows - so "draw it when it exists" would give every shell a task line to repeat it, and
 suppressing that by matching shell prompt conventions would be a guess about somebody's dotfiles where a detected
-harness is a fact the daemon reports. A row is one line or two and never taller: a height that varied with the length
-of what an agent wrote would move the rows below it while somebody was reading them.
+harness is a fact the daemon reports. An entry's height follows which lines it has and never how long they are: a
+height that varied with the length of what an agent wrote would move the rows below it while somebody was reading
+them.
 
 Naming is an ordinary intent through the one action path, so a chord, a menu item, the CLI and an agent all reach it,
 and nothing is rendered optimistically - a rename is applied from the daemon's event, the way a split is, so a rename

@@ -44,12 +44,12 @@ struct SidebarTests {
   private func pane(
     _ daemon: String, _ id: String, place: Int = 1, tabPress: Int = 0, press: Int? = nil,
     label: String? = nil, subtitle: String = "", givenName: String = "", onScreen: Bool = false,
-    directory: String = ""
+    callsign: String = "", directory: String = ""
   ) -> Roster.Pane {
     Roster.Pane(
       key: PaneKey(daemon: daemon, pane: id), place: place, tabPress: tabPress,
       press: press ?? place, label: label ?? id, subtitle: subtitle, givenName: givenName,
-      onScreen: onScreen, directory: directory)
+      onScreen: onScreen, callsign: callsign, directory: directory)
   }
 
   /// One tab, numbered as the core would have numbered it.
@@ -571,17 +571,13 @@ struct SidebarTests {
     #expect(SidebarModel.summary(of: open[1]) == nil)
   }
 
-  /// A hidden helper of a pane with a row is listed under it, as the core says, folded into one
-  /// line that counts them and paints the most urgent state among them and theirs (MIP-7).
-  /// Opened, each helper's row follows a level further in, numbered by nothing, and a helper's
-  /// own helpers fold under it in turn. They leave the Hidden caption, which keeps only what
-  /// somebody hid by hand and is gone when nobody did.
-  @Test("a pane's hidden helpers fold under it into one line, and open a level further in")
-  func helpersFoldUnderTheirMaker() {
-    let key = { PaneKey(daemon: "local", pane: $0) }
+  /// The panes and hidden helpers the helper cases share: `w1:p1` made `w1:h1` and `w1:h2`, and
+  /// `w1:h1` made `w1:g1`, which the roster lists last.
+  private func rosterWithHelpers() -> (roster: Roster, base: Roster, helpersTab: Roster.Tab) {
     let helper = { (id: String, maker: String) in
       Roster.Pane(
-        key: key(id), label: id, onScreen: false, maker: maker, under: maker)
+        key: PaneKey(daemon: "local", pane: id), label: id, onScreen: false,
+        directory: "/src/\(id.suffix(2))", maker: maker, under: maker)
     }
     let helpersTab = tab(
       "local", "w1:t2", place: 0,
@@ -591,27 +587,48 @@ struct SidebarTests {
     ])
     let roster = Roster(
       tabs: base.tabs, machines: base.machines, numbering: base.numbering, hidden: [helpersTab])
+    return (roster, base, helpersTab)
+  }
+
+  /// A hidden helper of a pane with a row is a pill on that pane's entry, as the core says who is
+  /// under whom, and a helper's own helpers are pills on the same entry, in one flat list (MIP-7;
+  /// Fencil `agent-list-rows`). Opened, each is listed under the entry on a line of its own,
+  /// numbered by nothing. They leave the Hidden caption, which keeps only what somebody hid by
+  /// hand and is gone when nobody did.
+  @Test("a pane's hidden helpers, and theirs, are pills on its entry and open into one flat list")
+  func helpersArePillsOnTheirMaker() {
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let (roster, base, helpersTab) = rosterWithHelpers()
     let agents: [PaneKey: PaneAgent] = [
-      key("w1:h1"): "working", key("w1:h2"): "idle", key("w1:g1"): "blocked",
+      key("w1:h1"): "working", key("w1:h2"): "idle",
+      key("w1:g1"): agent("blocked", since: 120, now: now),
     ]
 
-    let folded = SidebarModel.rows(roster: roster, agents: agents)
-    #expect(folded.map(\.label) == ["w1:p1", "2 helpers · 1 blocked", "w1:p2"])
-    let line = folded[1]
-    #expect(line.kind == .helpers(count: 2, urgent: 1, open: false))
-    #expect(line.isHelpers && line.pane == key("w1:p1") && line.depth == 1)
-    #expect(line.state == "blocked", "a blocked helper of a helper was lost behind the fold")
-    #expect(SidebarModel.accessories(of: line) == [.helpers(open: false)])
+    let folded = SidebarModel.rows(roster: roster, agents: agents, now: now)
+    #expect(folded.map(\.label) == ["w1:p1", "w1:p2"], "helpers took rows of their own")
+    let entry = folded[0]
+    // Depth-first in the roster's order: a helper, then the helpers it made, then the next.
+    #expect(entry.helpers.map(\.name) == ["w1:h1", "w1:g1", "w1:h2"])
+    #expect(entry.helpers.map(\.state) == ["working", "blocked", "idle"])
+    #expect(entry.helpers.map(\.madeBy) == ["w1:p1", "w1:h1", "w1:p1"])
+    #expect(!entry.helpersOpen)
+    #expect(folded[1].helpers.isEmpty)
     #expect(!folded.contains { $0.isHiddenCaption }, "only helpers were hidden")
+    #expect(
+      SidebarModel.details(of: entry.helpers[1]) == "w1:g1: Blocked 2m\n/src/g1\nmade by w1:h1")
+    #expect(SidebarModel.details(of: entry.helpers[0]).hasPrefix("w1:h1: working\n"))
+    #expect(SidebarModel.helpersSummary(entry.helpers) == "3 helpers · 1 blocked")
+    #expect(SidebarModel.details(of: entry).contains("3 helpers · 1 blocked"))
 
     let open = SidebarModel.rows(roster: roster, agents: agents, helpersOpen: [key("w1:p1")])
-    #expect(
-      open.map(\.label) == [
-        "w1:p1", "2 helpers", "w1:h1", "1 helper · 1 blocked", "w1:h2", "w1:p2",
-      ])
-    #expect(open[1].state.isEmpty, "an open line's rows carry their own states")
-    #expect(open[2].hidden && open[2].kind == .pane(tabPress: 0, press: 0) && open[2].depth == 1)
-    #expect(open[3].depth == 2 && open[3].pane == key("w1:h1"))
+    #expect(open.map(\.label) == ["w1:p1", "w1:h1", "w1:g1", "w1:h2", "w1:p2"])
+    #expect(open[0].helpersOpen && open[0].helpers.count == 3)
+    for row in open[1...3] {
+      #expect(row.isHelper && row.hidden && row.depth == 1, "\(row.label) is not listed flat")
+      #expect(row.kind == .pane(tabPress: 0, press: 0))
+      #expect(row.helpers.isEmpty, "a listed helper draws no pills of its own")
+    }
+    #expect(!open[0].isHelper && !open[4].isHelper)
     #expect(
       roster.helpers(of: key("w1:p1")) == ContextMenuModel.Helpers(canShow: true, canHide: false))
     #expect(roster.helpers(of: key("w1:p2")) == nil, "a pane with no helpers has nothing to offer")
@@ -670,13 +687,20 @@ struct SidebarTests {
     let rows = SidebarModel.rows(
       roster: roster([tab("local", panes: [named, unnamed, uncalled])]), agents: [:])
 
+    // The callsign alone: a name is the task line's to say, and the directory the state line's.
     let lines = rows.map { SidebarRowView.firstLine(for: $0, color: .labelColor).string }
-    #expect(lines == ["otter  🤖 builder", "maple  muster · claude", "muster"])
+    #expect(lines == ["otter", "maple", "muster"])
+    // A pane's header has the one line, so it keeps what the core puts beside the callsign.
+    let headers = rows.map {
+      SidebarRowView.firstLine(for: $0, color: .labelColor, withBeside: true).string
+    }
+    #expect(headers == ["otter  🤖 builder", "maple  muster · claude", "muster"])
     let first = SidebarRowView.firstLine(for: rows[0], color: .labelColor)
     let callsignFont = try #require(first.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
-    let nameFont = try #require(
-      first.attribute(.font, at: first.length - 1, effectiveRange: nil) as? NSFont)
-    #expect(callsignFont.isFixedPitch && !nameFont.isFixedPitch, "the callsign is not set apart")
+    let labelFont = try #require(
+      SidebarRowView.firstLine(for: rows[2], color: .labelColor)
+        .attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+    #expect(callsignFont.isFixedPitch && !labelFont.isFixedPitch, "the callsign is not set apart")
 
     #expect(SidebarModel.details(of: rows[0]).contains("callsign otter"))
     #expect(!SidebarModel.details(of: rows[1]).contains("callsign"))
@@ -1087,13 +1111,12 @@ struct SidebarTests {
     #expect(lines.last?.hasSuffix(" - 2817 bytes are waiting") == true)
   }
 
-  @Test("a pane row is two lines whatever its agent says, and a caption is one")
-  func panesAreTwoLinesAndCaptionsOne() {
+  @Test("an entry's height is its lines, never how long they are, and a caption is one line")
+  func entriesAreAsTallAsTheirLines() {
     // The reason this is asserted rather than left to look right: a list of fifteen agents is
     // read by scanning it, and a height that varied with what an agent happened to be writing
-    // would move every row below it whenever one of them wrote a longer sentence. A pane's
-    // second line is its directory, which it always has, so no pane's height depends on its
-    // agent at all.
+    // would move every row below it whenever one of them wrote a longer sentence. What an entry's
+    // height follows is whether it has a task line and whether it has helpers.
     let roster = roster([
       tab(
         "local",
@@ -1106,9 +1129,65 @@ struct SidebarTests {
     ])
 
     let rows = SidebarModel.rows(roster: roster, agents: [:])
-    #expect(rows.filter(\.isPane).map(SidebarModel.height(of:)) == Array(repeating: 40, count: 4))
+    #expect(rows.filter(\.isPane).map(SidebarModel.height(of:)) == [58, 58, 42, 42])
     #expect(rows.filter(\.isTab).map(SidebarModel.height(of:)) == [20, 20])
-    #expect(SidebarModel.twoLines == 40)
+
+    let key = { PaneKey(daemon: "local", pane: $0) }
+    let helped = rosterWithHelpers().roster
+    let folded = SidebarModel.rows(roster: helped, agents: [:])
+    #expect(folded.map(SidebarModel.height(of:)) == [57, 42], "pills are a line of their own")
+    let open = SidebarModel.rows(roster: helped, agents: [:], helpersOpen: [key("w1:p1")])
+    #expect(open.map(SidebarModel.height(of:)) == [57, 22, 22, 22, 42])
+
+    var titled = folded[0]
+    titled.title = "integrate the round"
+    #expect(SidebarModel.height(of: titled) == 73)
+  }
+
+  @Test("the task line is the name somebody gave the pane, or else its harness's title")
+  func theTaskLineIsTheNameOrElseTheTitle() {
+    func row(name: String = "", title: String = "", callsign: String = "otter") -> SidebarModel.Row
+    {
+      SidebarModel.paneRow(
+        pane(
+          "local", "w1:p1", label: name.isEmpty ? "otter · muster · claude" : name,
+          subtitle: title, givenName: name, callsign: callsign),
+        in: "w1:t1", agent: agent("working"), now: now, presses: (0, 1), onScreen: true)
+    }
+    #expect(row(name: "release-notes", title: "Draft the notes").taskLine == "release-notes")
+    #expect(row(title: "Draft the notes").taskLine == "Draft the notes")
+    #expect(row().taskLine == "")
+    #expect(!SidebarModel.hasTaskLine(row()))
+    // A pane with no callsign draws its name on line one, so the task line does not say it again.
+    #expect(
+      row(name: "release-notes", title: "Draft the notes", callsign: "").taskLine
+        == "Draft the notes")
+    #expect(row(name: "release-notes", callsign: "").taskLine == "")
+
+    // Whichever of the two the row does not show is in its hover text.
+    let both = SidebarModel.details(of: row(name: "release-notes", title: "Draft the notes"))
+    #expect(both.contains("release-notes") && both.contains("Draft the notes"))
+
+    // A waiting agent keeps its title on the task line: what it waits on is the state line's.
+    var waiting = agent("waiting", waiting: "the full gate")
+    waiting.contextUsed = 10
+    let held = SidebarModel.paneRow(
+      pane("local", "w1:p1", subtitle: "Draft the notes", callsign: "otter"), in: "w1:t1",
+      agent: waiting, now: now, presses: (0, 1), onScreen: true)
+    #expect(held.taskLine == "Draft the notes")
+    #expect(held.stateLine == "Waiting on the full gate")
+  }
+
+  @Test("a mark arriving on an entry with no task line does not make it taller")
+  func aMarkDoesNotMoveARow() {
+    let shell = pane("local", "w1:p1", callsign: "linen")
+    var rang = agent("idle")
+    rang.rang = true
+    rang.subagents = 2
+    let before = SidebarModel.rows(roster: roster([shell]), agents: [shell.key: agent("idle")])
+    let after = SidebarModel.rows(roster: roster([shell]), agents: [shell.key: rang])
+    #expect(SidebarModel.accessories(of: after[0]).count == 2)
+    #expect(SidebarModel.changes(from: before, to: after)?.remeasure.isEmpty == true)
   }
 
   @Test("a rename starts from what somebody typed, not from what is drawn")
@@ -1224,13 +1303,13 @@ struct SidebarTests {
     sidebar.apply(
       roster: roster([tab("local", panes: panes)], machines: machines(restarted: "")),
       agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines, SidebarModel.oneLine])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.entry, SidebarModel.oneLine])
 
     sidebar.apply(
       roster: roster(
         [tab("local", panes: panes)], machines: machines(restarted: "restarted 2m ago")),
       agents: [:])
-    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.twoLines, SidebarModel.twoLines])
+    #expect(sidebar.drawnRows.map(\.height) == [SidebarModel.entry, SidebarModel.twoLines])
   }
 
   @Test("rows are drawn against the width the list was given, not the one it was born with")
@@ -1718,72 +1797,215 @@ struct SidebarTests {
     #expect(view.contextBarWidth == 32)
   }
 
-  // MARK: An unnamed pane says its directory once
+  // MARK: The entry's lines
 
-  @Test("an unnamed pane's second line leaves its directory to line one, a named pane's keeps it")
-  @MainActor func anUnnamedPaneSaysItsDirectoryOnce() throws {
-    let unnamed = try paneRowView(
-      pane("local", "w1:p1", label: "otter · lectern · claude", directory: "/Users/a/src/lectern"),
-      agent: agent("blocked", since: 120), width: SidebarModel.width)
-    #expect(unnamed.shownDirectory == nil)
-    #expect(unnamed.shownStateLine?.hasPrefix("Blocked") == true, "the state phrase stays")
-    #expect(unnamed.shownStateText?.hasSuffix(" · ") == false, "no separator left over nothing")
-
-    let named = try paneRowView(
-      pane("local", "w1:p1", givenName: "review", directory: "/Users/a/src/lectern"),
-      agent: agent("blocked", since: 120), width: SidebarModel.width)
-    #expect(named.shownDirectory == "lectern")
+  /// An agent's pane as the core would send it: a callsign, a title from its harness and a
+  /// directory, reached by ⌘1 then ⌘2.
+  private func agentPane(
+    _ daemon: String = "local", _ id: String = "w1:p1", callsign: String = "heron",
+    name: String = "", title: String = "Port the colony walkthrough to the new schema",
+    directory: String = "/Users/a/src/agent-engine"
+  ) -> Roster.Pane {
+    Roster.Pane(
+      key: PaneKey(daemon: daemon, pane: id), place: 1, tabPress: 1, press: 2,
+      label: name.isEmpty ? "\(callsign) · agent-engine · claude" : name, subtitle: title,
+      givenName: name, onScreen: true, callsign: callsign, directory: directory)
   }
 
-  @Test("an unnamed pane on another machine keeps its machine tag and draws no directory")
-  @MainActor func anUnnamedPaneKeepsItsMachineTag() throws {
-    let there = pane("devenv", "w1:p1", directory: "/home/a/src/lectern")
-    let here = pane("local", "w1:p2", place: 2, directory: "/src/x")
-    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
-    sidebar.apply(
-      roster: roster([tab("devenv", panes: [there]), tab("local", place: 2, panes: [here])]),
-      agents: [there.key: agent("blocked", since: 120)])
-    let views = (0..<sidebar.drawnRows.count).compactMap { sidebar.rowView(at: $0) }
-    let view = try #require(views.first { $0.shownStateLine?.hasPrefix("Blocked") == true })
-    view.frame.size.width = SidebarModel.width
+  @Test(
+    "an entry's lines run top to bottom: callsign and chord, task and marks, state and directory",
+    arguments: [SidebarModel.width, 280])
+  @MainActor func theEntrysLinesAreInOrder(width: CGFloat) throws {
+    var blocked = agent("blocked", since: 120)
+    blocked.contextUsed = 40
+    blocked.rang = true
+    let view = try paneRowView(agentPane(), agent: blocked, width: width)
+
+    #expect(view.bounds.height == 58)
+    #expect(view.shownFirstLine == "heron")
+    #expect(view.shownTaskLine == "Port the colony walkthrough to the new schema")
+    #expect(view.shownStateLine?.hasPrefix("Blocked") == true)
+    #expect(view.shownDirectory == "agent-engine")
+    let task = try #require(view.taskLineFrame)
+    let state = try #require(view.stateLineFrame)
+    #expect(view.firstLineFrame.minY >= task.maxY - 1, "the task line is not under the callsign")
+    #expect(task.minY >= state.maxY - 1, "the state line is not under the task line")
+    #expect(state.minY >= 4, "the state line runs off the entry")
+
+    // The icon and the chord are on the callsign's line, the chord at the far edge.
+    let icon = try #require(view.iconFrame)
+    #expect(abs(icon.midY - view.firstLineFrame.midY) <= 1.5)
+    #expect(icon.maxX <= view.firstLineFrame.minX)
+    #expect(view.shownKeys == [1, 2])
+    let keys = view.keyFrames
+    #expect(keys.map(\.minX) == keys.map(\.minX).sorted(), "the chord reads right to left")
+    #expect(keys.last?.maxX == width - SidebarRowView.paneTrailing)
+    #expect(keys.allSatisfy { abs($0.midY - view.firstLineFrame.midY) <= 1.5 })
+    #expect(view.firstLineFrame.maxX <= (keys.first?.minX ?? 0))
+    #expect(view.firstLineFits, "the callsign was cut")
+
+    // The marks are on the task line, the context bar last, and the title stops short of them.
+    #expect(view.shownMarks == 2)
+    #expect(view.markFrames.allSatisfy { abs($0.midY - task.midY) <= 1.5 })
+    #expect(view.markFrames.last?.maxX == width - SidebarRowView.paneTrailing)
+    #expect(view.contextBarWidth == 32)
+    #expect(task.maxX <= (view.markFrames.first?.minX ?? 0))
+    #expect(view.directoryFits == true)
+  }
+
+  @Test("a pane with no name and no title is two lines, with its marks at the end of the second")
+  @MainActor func aPlainShellIsTwoLines() throws {
+    var idle = agent("idle")
+    idle.rang = true
+    let view = try paneRowView(
+      agentPane(callsign: "linen", title: "", directory: "/Users/a/src/memri"), agent: idle,
+      width: SidebarModel.width)
+
+    #expect(view.bounds.height == 42)
+    #expect(view.shownTaskLine == nil)
+    #expect(view.shownStateLine == nil, "an idle agent's row says only where it is")
+    #expect(view.shownDirectory == "memri", "an unnamed pane's directory is on its state line")
+    let directory = try #require(view.directoryFrame)
+    #expect(view.shownMarks == 1)
+    #expect(view.markFrames.allSatisfy { abs($0.midY - directory.midY) <= 1.5 })
+    #expect(directory.maxX <= (view.markFrames.first?.minX ?? 0))
+    #expect(view.firstLineToolTip?.contains("/src/memri") == true)
+  }
+
+  @Test("a named pane's task line is its name, and its title is in the hover text")
+  @MainActor func aNamedPaneShowsItsName() throws {
+    let view = try paneRowView(
+      agentPane(name: "release-notes"), agent: agent("working"), width: SidebarModel.width)
+    #expect(view.shownFirstLine == "heron")
+    #expect(view.shownTaskLine == "release-notes")
+    #expect(view.firstLineToolTip?.contains("Port the colony walkthrough") == true)
+  }
+
+  @Test("the machine's tag follows the callsign, and is cut or left out before the callsign is")
+  @MainActor func theMachineTagGivesWayToTheCallsign() throws {
+    func entry(on daemon: String, callsign: String) throws -> SidebarRowView {
+      let there = agentPane(daemon, callsign: callsign)
+      let here = pane("local", "w1:p2", place: 2)
+      let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+      sidebar.apply(
+        roster: roster([tab(daemon, panes: [there]), tab("local", place: 2, panes: [here])]),
+        agents: [there.key: agent("blocked", since: 120)])
+      let views = (0..<sidebar.drawnRows.count).compactMap { sidebar.rowView(at: $0) }
+      let view = try #require(views.first { $0.shownFirstLine == callsign })
+      view.frame.size.width = SidebarModel.width
+      view.needsLayout = true
+      view.layoutSubtreeIfNeeded()
+      return view
+    }
+
+    let short = try entry(on: "devenv", callsign: "heron")
+    let tag = try #require(short.machineTagFrame)
+    #expect(tag.minX >= short.firstLineFrame.maxX)
+    #expect(abs(tag.midY - short.firstLineFrame.midY) <= 1.5)
+    #expect(tag.maxX <= (short.keyFrames.first?.minX ?? 0))
+
+    let long = try entry(on: "development-workstation-linux-aarch64", callsign: "heron")
+    let cut = try #require(long.machineTagFrame)
+    #expect(long.firstLineFits, "a long machine name cut the callsign")
+    #expect(cut.maxX <= (long.keyFrames.first?.minX ?? 0), "the tag ran under the chord")
+    #expect(long.directoryFits == true)
+
+    // A callsign that leaves the tag no room worth reading leaves it out; hovering names it.
+    let crowded = try entry(on: "devenv", callsign: "a-callsign-as-long-as-they-come")
+    #expect(!crowded.showsMachineTag)
+    #expect(crowded.firstLineToolTip?.contains("on devenv") == true)
+  }
+
+  // MARK: Helper pills
+
+  /// The entry of a pane that made `states.count` helpers, in those states, `width` wide.
+  @MainActor private func entryWithHelpers(_ states: [String], width: CGFloat, open: Bool = false)
+    throws -> (sidebar: SidebarView, view: SidebarRowView)
+  {
+    let maker = agentPane()
+    let helpers = states.indices.map { index in
+      Roster.Pane(
+        key: PaneKey(daemon: "local", pane: "w1:h\(index)"), label: "helper-\(index)",
+        onScreen: false, maker: maker.key.pane, under: maker.key.pane)
+    }
+    let base = roster([maker])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering,
+      hidden: [tab("local", "w1:t2", place: 0, panes: helpers)])
+    var agents: [PaneKey: PaneAgent] = [maker.key: agent("working")]
+    for (helper, state) in zip(helpers, states) { agents[helper.key] = agent(state) }
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: width, height: 600))
+    if open { sidebar.helpersOpen = [maker.key] }
+    sidebar.apply(roster: roster, agents: agents)
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 0))
+    view.frame.size.width = width
     view.needsLayout = true
     view.layoutSubtreeIfNeeded()
-
-    #expect(view.showsMachineTag)
-    #expect(view.shownDirectory == nil)
+    view.helperPills?.layoutSubtreeIfNeeded()
+    return (sidebar, view)
   }
 
-  @Test("an unnamed pane's whole path is still on hover, on both lines' text")
-  @MainActor func theWholePathStaysOnHover() throws {
-    let view = try paneRowView(
-      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: agent("working"),
-      width: SidebarModel.width)
-    #expect(view.firstLineToolTip?.contains("/src/lectern") == true)
+  @Test("each helper is a pill whose height says its state, in the order the roster lists them")
+  @MainActor func helpersArePillsInOrder() throws {
+    let states = ["working", "blocked", "done", "idle", "stuck", "unknown"]
+    let (_, view) = try entryWithHelpers(states, width: SidebarModel.width)
+    let pills = try #require(view.helperPills)
+
+    #expect(view.bounds.height == 73)
+    #expect(pills.shownStates == states, "the pills were sorted or dropped")
+    #expect(pills.shownMore == nil)
+    #expect(pills.shownCount == "6")
+    #expect(pills.pillFrames.map(\.height) == [10, 14, 6, 10, 14, 10])
+    #expect(pills.pillFrames.allSatisfy { $0.width == 6 })
+    let lefts = pills.pillFrames.map(\.minX)
+    #expect(zip(lefts, lefts.dropFirst()).allSatisfy { $1 - $0 == 8 }, "pills are 2 points apart")
+    #expect(pills.frame.maxY <= (view.stateLineFrame?.minY ?? view.directoryFrame?.minY ?? 0) + 1)
+    #expect(pills.toolTip(forPill: 1)?.hasPrefix("helper-1: ") == true)
+    #expect(pills.toolTip(forPill: 1)?.hasSuffix("made by heron") == true)
   }
 
-  @Test("a row with nothing on line two centers its first line, and keeps its height")
-  @MainActor func aCalmUnnamedRowCentersItsFirstLine() throws {
-    let calm = try paneRowView(
-      pane("local", "w1:p1", directory: "/Users/a/src/lectern"), agent: agent("idle"),
-      width: SidebarModel.width)
-    #expect(abs(calm.firstLineMidY - calm.bounds.midY) <= 1)
+  @Test("more helpers than fit keep the most urgent pills, in order, and count the rest")
+  @MainActor func crowdedPillsKeepTheUrgent() throws {
+    var states = Array(repeating: "working", count: 30)
+    states[27] = "blocked"
+    states[29] = "stuck"
+    let (_, view) = try entryWithHelpers(states, width: SidebarModel.width)
+    let pills = try #require(view.helperPills)
 
-    let blocked = try paneRowView(
-      pane("local", "w1:p1", directory: "/Users/a/src/lectern"),
-      agent: agent("blocked", since: 120), width: SidebarModel.width)
-    #expect(blocked.firstLineMidY > blocked.bounds.midY + 3, "a second line sits under it")
-
-    let named = try paneRowView(
-      pane("local", "w1:p1", givenName: "review", directory: "/Users/a/src/lectern"),
-      agent: agent("idle"), width: SidebarModel.width)
-    #expect(named.firstLineMidY > named.bounds.midY + 3, "its directory is on line two")
-
-    let rows = SidebarModel.rows(
-      roster: roster([pane("local", "w1:p1", directory: "/src/x")]), agents: [:])
-    #expect(rows.filter(\.isPane).map(SidebarModel.height(of:)) == [40])
+    let shown = pills.shownStates
+    #expect(shown.count < 30)
+    #expect(shown.suffix(2) == ["blocked", "stuck"], "an asking helper dropped out for room")
+    #expect(pills.shownMore == "+\(30 - shown.count)")
+    #expect(pills.shownCount == "30")
+    #expect((pills.pillFrames.last?.maxX ?? 0) < pills.bounds.width, "pills ran under the count")
   }
 
-  @Test("the home directory is not said on line two as ~ when line one says it as the user's name")
+  @Test("pressing an entry's pills asks to list its helpers, and pressing again to fold them")
+  @MainActor func pressingThePillsTogglesTheList() throws {
+    let (sidebar, view) = try entryWithHelpers(["working", "done"], width: SidebarModel.width)
+    var asked: [Bool] = []
+    sidebar.onHelpersToggled = { _, open in asked.append(open) }
+    view.helperPills?.onPressed?()
+    #expect(asked == [true])
+
+    let (opened, openView) = try entryWithHelpers(
+      ["working", "done"], width: SidebarModel.width, open: true)
+    opened.onHelpersToggled = { _, open in asked.append(open) }
+    #expect(openView.helperPills?.isOpen == true)
+    openView.helperPills?.onPressed?()
+    #expect(asked == [true, false])
+
+    // Listed, each helper is one line under the entry: its name, then its state or directory.
+    #expect(opened.drawnRows.map(\.height) == [73, 22, 22])
+    let helper = try #require(opened.rowView(at: 2))
+    #expect(helper.shownFirstLine == "helper-1")
+    #expect(helper.shownStateLine == "Done")
+    #expect(helper.helperPills == nil)
+    #expect(helper.shownTaskLine == nil)
+  }
+
+  @Test("a header does not say the home directory as ~ when the label says it as the user's name")
   func theHomeDirectoryIsNotRepeated() throws {
     let row = SidebarModel.paneRow(
       pane("local", "w1:p1", directory: NSHomeDirectory()), in: "w1:t1", agent: agent("idle"),
@@ -1792,7 +2014,7 @@ struct SidebarTests {
     #expect(row.namedDirectory == "")
   }
 
-  @Test("the directory line two draws is the pane's only when somebody named the pane")
+  @Test("the directory a header draws is the pane's only when somebody named the pane")
   func namedDirectoryFollowsTheName() {
     func row(_ given: String, _ directory: String) -> SidebarModel.Row {
       SidebarModel.paneRow(
@@ -1802,7 +2024,7 @@ struct SidebarTests {
     #expect(row("review", "/src/lectern").namedDirectory == "lectern")
     #expect(row("", "/src/lectern").namedDirectory == "")
     #expect(row("review", "").namedDirectory == "")
-    #expect(row("", "/").namedDirectory == "/", "the core leaves the root off line one")
+    #expect(row("", "/").namedDirectory == "/", "the core leaves the root out of the label")
     #expect(
       PaneHeaderModel.parts(width: 400, for: row("review", "/src/lectern")).directory,
       "the header's rule is the same one")
@@ -1946,7 +2168,7 @@ struct SidebarTests {
     }
   }
 
-  @Test("the tab on screen, its panes and the helper lines under them are one raised panel")
+  @Test("the tab on screen and its panes are one raised panel")
   func theShowingTabIsOnAPanel() {
     let roster = roster([
       tab("local", "w1:t1", press: 1, panes: [pane("local", "w1:p1")]),
@@ -1997,10 +2219,11 @@ struct SidebarTests {
 
   @Test("the list is put away below the same window width it always was, whatever its default")
   func theCutoffDidNotMoveWithTheDefault() {
-    #expect(SidebarModel.width == 280)
+    #expect(SidebarModel.width == 200)
     #expect(SidebarModel.widths(in: 399).sidebar == 0)
     #expect(SidebarModel.widths(in: 400).sidebar == 200)
-    #expect(SidebarModel.widths(in: 1000).sidebar == 280)
+    #expect(SidebarModel.widths(in: 1000).sidebar == 200)
+    #expect(SidebarModel.widths(in: 500, wanted: 280).sidebar == 250)
   }
 
   @Test("a pane's directory crosses the seam whole, beside a label that does not carry it")

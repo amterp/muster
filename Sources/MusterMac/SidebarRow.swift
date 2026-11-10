@@ -1,13 +1,16 @@
 import AppKit
 
-/// One row of the agent list, drawn as direction A (Fencil `agent-list-rows`).
+/// One row of the agent list (Fencil `agent-list-rows`).
 ///
-/// A pane row is two lines. The first is its callsign and name with the small marks at the far
-/// edge; the second is what its state wants you to know - the word and how long it has held, for a
-/// state that asks for you - then the directory's last part, with a context bar at the far edge.
-/// To the left are the chord that reaches it as two keycaps and an icon whose shape says its state.
-/// A blocked or stuck row is tinted and carries a colored edge; the tab on screen sits on a raised
-/// panel.
+/// A pane's entry is up to four lines, so that it reads at 200 points. The first is an icon whose
+/// shape says its state, its callsign and its machine's tag, with the chord that reaches it as
+/// keycaps at the far edge. The task line is the name somebody gave it, or else its harness's
+/// title, with the small marks and the context bar at the far edge. Then what its state wants you
+/// to know - the word and how long it has held, for a state that asks for you - and the
+/// directory's last part. Last, a pill for each of its helpers. An entry with no name and no title
+/// leaves the task line out and draws its marks at the end of the state line, and one with no
+/// helpers has no pills line. A blocked or stuck entry is tinted and carries a
+/// colored edge; the tab on screen sits on a raised panel.
 ///
 /// Built once and shown many times. A focus change moves the keyboard marker on two rows and an
 /// agent going idle repaints one, and rebuilding a row's fields and layers for that cost about a
@@ -24,18 +27,21 @@ final class SidebarRowView: NSView {
   private let tintLayer = CALayer()
   private let highlight = CALayer()
   private let edgeBar = CALayer()
-  /// A state's small dot on a folded caption or a helpers line, where an icon would be too much.
+  /// A state's small dot on a folded Hidden caption, where an icon would be too much.
   private let dot = CALayer()
   private let icon = StateIcon()
-  /// Which machine the row is on, for the rows that are not panes. A pane says it in line two.
+  /// Which machine the row is on, for the rows that are not panes. A pane says it with a tag.
   private let swatch = CALayer()
   private let name = NSTextField(labelWithString: "")
   /// A machine heading's note on what its restart cost.
   private let subtitle = NSTextField(labelWithString: "")
-  /// A pane's second line: the state, then the directory.
+  /// A pane's task line.
+  private let taskField = NSTextField(labelWithString: "")
+  /// The line under it: the state, then the directory.
   private let stateField = NSTextField(labelWithString: "")
   private let directoryField = NSTextField(labelWithString: "")
   private var machineTag: MachineTag?
+  private var pills: HelperPillsView?
   /// A tab caption's fold control, and while the tab is folded the icons of the panes it is over
   /// and the count of those that did not fit.
   private var foldControl: FoldControl?
@@ -43,8 +49,9 @@ final class SidebarRowView: NSView {
   private let foldMore = NSTextField(labelWithString: "")
   private var firstKey: KeycapView?
   private var secondKey: KeycapView?
-  /// Whether each column of the chord is reserved, so labels line up down the list whether or not a
-  /// row has a press in it.
+  /// Whether each column of a caption's chord is reserved, so captions' labels line up down the
+  /// list whether or not one has a press in it. A pane's keycaps sit at the far edge of its first
+  /// line and reserve nothing.
   private var reservesFirst = false
   private var reservesSecond = false
   /// The marks at the trailing edge, left to right (`SidebarModel.accessories(of:)`).
@@ -74,10 +81,19 @@ final class SidebarRowView: NSView {
   /// Asked for the menu of the envelope on this row's pane, which is the group's menu.
   var onConversationMenu: ((SidebarModel.Conversation) -> NSMenu?)?
 
+  /// Called when somebody clicks the pills on a pane's entry, with the row they are on.
+  var onHelpersToggled: ((SidebarModel.Row) -> Void)?
+
+  /// Asked for the menu of the pills on this row's pane, which is its helpers' together.
+  var onHelpersMenu: ((SidebarModel.Row) -> NSMenu?)?
+
   /// The envelope on this row, for the tests to press.
   var conversationBadge: ConversationBadge? {
     marks.compactMap { $0 as? ConversationBadge }.first
   }
+
+  /// The pills on this row, or nil when its pane has no helpers.
+  var helperPills: HelperPillsView? { pills }
 
   /// Whether this row carries the keyboard marker.
   var marksKeyboard: Bool { highlight.superlayer != nil }
@@ -85,28 +101,44 @@ final class SidebarRowView: NSView {
   /// What a machine heading's second line says, or nil when the row has none.
   var shownSubtitle: String? { subtitle.superview == nil ? nil : subtitle.stringValue }
 
-  /// What a pane's second line says before its directory, without the separator, or nil for none.
+  /// What a pane's first line says.
+  var shownFirstLine: String { name.stringValue }
+
+  /// What a pane's task line says, or nil when the entry has none.
+  var shownTaskLine: String? { taskField.superview == nil ? nil : taskField.stringValue }
+
+  /// What a pane says of its state before its directory, without the separator, or nil for none.
   var shownStateLine: String? {
     stateField.superview == nil
       ? nil : stateField.stringValue.replacingOccurrences(of: " · ", with: "")
   }
 
-  /// The first line's hover text, which holds the whole path for a pane whose second line does not.
+  /// The first line's hover text.
   var firstLineToolTip: String? { name.toolTip }
 
   /// What the state field says, with its separator.
   var shownStateText: String? { stateField.superview == nil ? nil : stateField.stringValue }
 
-  /// Whether the machine's tag is drawn on line two.
+  /// Whether the machine's tag is drawn, and where.
   var showsMachineTag: Bool { machineTag.map { $0.superview != nil && !$0.isHidden } ?? false }
+  var machineTagFrame: CGRect? { showsMachineTag ? machineTag?.frame : nil }
 
-  /// Where line one sits, which a row with nothing on line two centers.
-  var firstLineMidY: CGFloat { name.frame.midY }
+  /// Where each of a pane's lines was laid out. Meaningful after layout.
+  var firstLineFrame: CGRect { name.frame }
+  var taskLineFrame: CGRect? { taskField.superview == nil ? nil : taskField.frame }
+  var stateLineFrame: CGRect? { stateField.superview == nil ? nil : stateField.frame }
+  var directoryFrame: CGRect? { directoryField.superview == nil ? nil : directoryField.frame }
+  var iconFrame: CGRect? { icon.superlayer == nil ? nil : icon.frame }
+  var keyFrames: [CGRect] { [firstKey, secondKey].compactMap { $0?.frame } }
+  var markFrames: [CGRect] { marks.map(\.frame) }
 
-  /// The directory a pane's second line ends in, or nil when it has none.
+  /// Whether the first line gives the callsign all the room it asks for.
+  var firstLineFits: Bool { name.frame.width >= ceil(name.fittingSize.width) }
+
+  /// The directory a pane's entry ends in, or nil when it has none.
   var shownDirectory: String? { directoryField.superview == nil ? nil : directoryField.stringValue }
 
-  /// Whether a pane's second line gives its directory all the room it asks for, or nil when it has
+  /// Whether a pane's entry gives its directory all the room it asks for, or nil when it has
   /// none. Meaningful after layout.
   var directoryFits: Bool? {
     directoryField.superview == nil
@@ -192,6 +224,8 @@ final class SidebarRowView: NSView {
     directoryField.lineBreakMode = .byTruncatingMiddle
     directoryField.font = .systemFont(ofSize: 11, weight: .regular)
     directoryField.textColor = .secondaryLabelColor
+    taskField.lineBreakMode = .byTruncatingTail
+    taskField.font = .systemFont(ofSize: 12, weight: .regular)
     // Long directory names truncate rather than spilling past the row, for the same reason.
     name.lineBreakMode = .byTruncatingTail
     addSubview(name)
@@ -202,19 +236,21 @@ final class SidebarRowView: NSView {
     shown = row
     let palette = ChromePalette.current(for: effectiveAppearance).list
     // Panes indent under their tab caption, and stay indented in a list that draws none; a
-    // helper and its maker's helpers line go further in, a step for each level.
-    indent = (row.isPane || row.isHelpers ? 1 : 0) + row.depth
+    // helper listed under its maker's entry goes a step further in.
+    indent = (row.isPane ? 1 : 0) + row.depth
     isPaneRow = row.isPane
     layerColors = []
     for layer in [panelLayer, tintLayer, highlight, edgeBar, dot, swatch, icon] {
       layer.removeFromSuperlayer()
     }
     for layer in [progressTrack, progressBar] { layer.removeFromSuperlayer() }
-    for field in [subtitle, stateField, directoryField] { field.removeFromSuperview() }
+    for field in [subtitle, taskField, stateField, directoryField] { field.removeFromSuperview() }
     for key in [firstKey, secondKey] { key?.removeFromSuperview() }
     (firstKey, secondKey) = (nil, nil)
     machineTag?.removeFromSuperview()
     machineTag = nil
+    pills?.removeFromSuperview()
+    pills = nil
     foldControl?.removeFromSuperview()
     foldControl = nil
     for icon in foldIcons { icon.removeFromSuperlayer() }
@@ -268,16 +304,6 @@ final class SidebarRowView: NSView {
         subtitle.stringValue = row.subtitle
         addSubview(subtitle)
       }
-    case .helpers:
-      name.font = .systemFont(ofSize: 11, weight: .regular)
-      name.stringValue = row.label
-      name.textColor = .secondaryLabelColor
-      // Folded, it carries the most urgent state of the helpers it is folded over, as a folded
-      // Hidden caption does.
-      if !row.state.isEmpty {
-        paint(dot, SidebarModel.dotColor(state: row.state))
-        layer?.addSublayer(dot)
-      }
     case .group(let unread, _):
       // Bold while something waits, as a mailbox is: the badge says how much, the weight says
       // that the row is worth reading at all.
@@ -313,7 +339,30 @@ final class SidebarRowView: NSView {
       name.attributedStringValue = Self.firstLine(for: row, color: color)
       icon.show(state: row.state, color: PaneAppearance.borderColor(state: row.state))
       layer?.addSublayer(icon)
-      drawSecondLine(of: row, palette: palette)
+      if let machine = row.machine {
+        let tag = MachineTag(name: machine.daemon, color: NSColor(hex: machine.color))
+        addSubview(tag)
+        machineTag = tag
+      }
+      if SidebarModel.hasTaskLine(row) {
+        taskField.stringValue = row.taskLine
+        taskField.textColor = color
+        addSubview(taskField)
+      }
+      drawStateLine(of: row, palette: palette)
+      if !row.isHelper, !row.helpers.isEmpty {
+        let pills = HelperPillsView(helpers: row.helpers, open: row.helpersOpen)
+        pills.onPressed = { [weak self] in
+          guard let self, let shown else { return }
+          onHelpersToggled?(shown)
+        }
+        pills.onMenu = { [weak self] in
+          guard let self, let shown else { return nil }
+          return onHelpersMenu?(shown)
+        }
+        addSubview(pills)
+        self.pills = pills
+      }
       if let progress = SidebarModel.progress(of: row) {
         let failed = progress.state == "error"
         progressFilled = failed ? 1 : CGFloat(min(max(progress.percent ?? 0, 0), 100)) / 100
@@ -331,6 +380,7 @@ final class SidebarRowView: NSView {
       let details = SidebarModel.details(of: row)
       toolTip = details
       name.toolTip = details
+      taskField.toolTip = details
       stateField.toolTip = details
       subtitle.toolTip = details
       setAccessibilityElement(true)
@@ -382,13 +432,13 @@ final class SidebarRowView: NSView {
     }
   }
 
-  /// A pane's second line: what its state wants you to know, then the directory.
+  /// The line saying what a pane's state wants you to know, then its directory.
   ///
   /// The state's word is in its own color for the states that ask for somebody or want a look, at
   /// a contrast the palette has checked against the tint behind it; everything else is quiet,
   /// because a calm agent's row is there to say where it is.
-  private func drawSecondLine(of row: SidebarModel.Row, palette: ChromePalette.Surface) {
-    let hasWhere = !row.namedDirectory.isEmpty || row.machine != nil
+  private func drawStateLine(of row: SidebarModel.Row, palette: ChromePalette.Surface) {
+    let hasWhere = !row.directoryName.isEmpty
     if !row.stateLine.isEmpty {
       let loud = row.tier == .asks || row.tier == .look
       let word: NSColor =
@@ -411,26 +461,25 @@ final class SidebarRowView: NSView {
       stateField.attributedStringValue = line
       addSubview(stateField)
     }
-    if let machine = row.machine {
-      let tag = MachineTag(name: machine.daemon, color: NSColor(hex: machine.color))
-      addSubview(tag)
-      machineTag = tag
-    }
-    if !row.namedDirectory.isEmpty {
-      directoryField.stringValue = row.namedDirectory
+    if !row.directoryName.isEmpty {
+      directoryField.stringValue = row.directoryName
       directoryField.toolTip = SidebarModel.abbreviated(row.directory)
       addSubview(directoryField)
     }
   }
 
-  /// A pane row's first line: its callsign, in a style of its own, then what the core puts beside
-  /// it - or the whole label for a pane with no callsign.
+  /// A pane's first line: its callsign, in a style of its own - or the whole label for a pane
+  /// with no callsign. `withBeside` adds what the core puts beside the callsign, the pane's name or
+  /// its directory and harness, for a pane's header, which has the one line; an entry in the list
+  /// says those on lines of their own.
   ///
   /// Monospaced and semibold, because the callsign is the pane's handle rather than a
   /// description of it, and a renamed pane keeps it: it reads as the same kind of thing on every
   /// row whatever follows it. Neutral in color, since the one color a row has to give is its
   /// state's (Fencil `agent-identity-colors`).
-  static func firstLine(for row: SidebarModel.Row, color: NSColor) -> NSAttributedString {
+  static func firstLine(
+    for row: SidebarModel.Row, color: NSColor, withBeside: Bool = false
+  ) -> NSAttributedString {
     let plain: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 12, weight: .regular), .foregroundColor: color,
       .paragraphStyle: truncating(.byTruncatingTail),
@@ -444,7 +493,7 @@ final class SidebarRowView: NSView {
         .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .semibold),
         .foregroundColor: color, .paragraphStyle: truncating(.byTruncatingTail),
       ])
-    if !row.besideCallsign.isEmpty {
+    if withBeside, !row.besideCallsign.isEmpty {
       line.append(NSAttributedString(string: "  \(row.besideCallsign)", attributes: plain))
     }
     return line
@@ -541,14 +590,10 @@ final class SidebarRowView: NSView {
       return symbol(
         collapsed ? "chevron.right" : "chevron.down", tint: .tertiaryLabelColor,
         saying: collapsed ? "show hidden panes" : "fold hidden panes")
-    case .helpers(let open):
-      return symbol(
-        open ? "chevron.down" : "chevron.right", tint: .tertiaryLabelColor,
-        saying: open ? "fold helpers" : "show helpers")
     }
   }
 
-  private static func symbol(_ name: String, tint: NSColor, saying: String) -> NSView {
+  static func symbol(_ name: String, tint: NSColor, saying: String) -> NSView {
     let image = NSImage(systemSymbolName: name, accessibilityDescription: saying)?
       .withSymbolConfiguration(.init(pointSize: 9, weight: .regular))
     let view = NSImageView(image: image ?? NSImage())
@@ -556,7 +601,8 @@ final class SidebarRowView: NSView {
     return view
   }
 
-  /// The chord that reaches this row, drawn as keycaps beside the icon rather than instead of it.
+  /// The chord that reaches this row, drawn as keycaps as well as the icon rather than instead of
+  /// it: before a caption's name, and at the far edge of a pane's first line.
   ///
   /// The icon is what the row is for and the chord is how to get there, so a row wants both. Zero
   /// draws no key, which is what a press a row does not have carries - the tab column in a window
@@ -571,8 +617,8 @@ final class SidebarRowView: NSView {
   /// for. The second press of a chord already begun is the one the next keystroke can make, and is
   /// drawn live.
   ///
-  /// A row reserving a column draws no key in it and still advances past it, which is what keeps
-  /// every label in the list on one edge.
+  /// A caption reserving a column draws no key in it and still advances past it, which is what
+  /// keeps every caption's label on one edge.
   private func draw(
     tabPress first: Int, press second: Int, in row: SidebarModel.Row,
     palette: ChromePalette.Surface
@@ -620,8 +666,19 @@ final class SidebarRowView: NSView {
   static let keyGap: CGFloat = 2
   /// Where a pane row's content starts and stops, in from the list's edges: inside the raised
   /// panel and inside the tint.
-  static let paneInset: CGFloat = 20
-  static let paneTrailing: CGFloat = 16
+  static let paneInset: CGFloat = 16
+  static let paneTrailing: CGFloat = 14
+  /// Where a tab caption's keys start, beside its fold control.
+  static let captionInset: CGFloat = 20
+  /// A pane entry's lines, top to bottom, the space between two of them and above and below them
+  /// all. `SidebarModel.height(of:)` is their sum.
+  static let firstLineHeight: CGFloat = 16
+  static let textLineHeight: CGFloat = 15
+  static let pillsLineHeight: CGFloat = 14
+  static let lineGap: CGFloat = 1
+  static let entryPadding: CGFloat = 5
+  /// Between a line's text and what sits at its far edge.
+  static let edgeGap: CGFloat = 6
   /// The least a pane's state phrase keeps of its line when the directory takes room: a word and
   /// its time, "Blocked 2m".
   static let stateFloor: CGFloat = 56
@@ -663,77 +720,114 @@ final class SidebarRowView: NSView {
     let marked = bounds.insetBy(dx: side, dy: 1)
     tintLayer.frame = marked
     highlight.frame = marked
-    edgeBar.frame = CGRect(x: marked.minX, y: marked.minY + 7, width: 3, height: marked.height - 14)
+    // A helper's one line is too short for the inset an entry's edge takes.
+    let edgeInset: CGFloat = shown?.isHelper == true ? 3 : 7
+    edgeBar.frame = CGRect(
+      x: marked.minX, y: marked.minY + edgeInset, width: 3, height: marked.height - edgeInset * 2)
 
-    var left = SidebarRowView.paneInset + CGFloat(indent - 1) * SidebarRowView.indent
-    placeKeys(from: &left)
-    if reservesFirst || reservesSecond { left += 7 }
-    icon.frame = CGRect(
-      x: left, y: ((bounds.height - StateIcon.size) / 2).rounded(), width: StateIcon.size,
-      height: StateIcon.size)
-    left += StateIcon.size + 7
-    let textLeft = left
+    let iconLeft = SidebarRowView.paneInset + CGFloat(indent - 1) * SidebarRowView.indent
+    let textLeft = iconLeft + StateIcon.size + 7
     let right = bounds.width - SidebarRowView.paneTrailing
 
-    let nameHeight = min(bounds.height, name.fittingSize.height)
-    let secondHeight = ceil(
-      max(stateField.fittingSize.height, directoryField.fittingSize.height, 13))
-    let stateWanted = stateField.superview != nil ? ceil(stateField.fittingSize.width) : 0
-    let directoryWanted =
-      directoryField.superview != nil ? ceil(directoryField.fittingSize.width) : 0
-    let tagSize = machineTag?.fittingSize
-    let room = max(0, right - textLeft)
-    // The machine's tag comes after the directory and the state's floor, and is cut rather than
-    // taking the line: a long daemon id must not leave a row with no state and no directory.
-    let spare = room - min(stateWanted, SidebarRowView.stateFloor) - directoryWanted - 5
-    let tagWidth = tagSize.map { spare >= SidebarRowView.tagFloor ? min($0.width, spare) : 0 } ?? 0
-
-    // With nothing on the second line - a calm unnamed pane on one machine, whose first line is
-    // already its directory - the first line is centered in the row rather than left over a blank
-    // one. The row is as tall as ever, so nothing below it moves.
-    let hasSecondLine = stateWanted > 0 || directoryWanted > 0 || tagWidth > 0
-    let top = (bounds.height - nameHeight - secondHeight - 2) / 2
-    let secondY = top
-    let firstY = hasSecondLine ? top + secondHeight + 2 : (bounds.height - nameHeight) / 2
-
-    // Every mark on the first line, from the trailing edge in, the context bar at the very edge
-    // so a column of them lines up down the list. The second line is the state and the directory
-    // and nothing else: with the bar there too it left the directory "le…rn", and the first line,
-    // whose name ends in an ellipsis and says all of itself on hover, is the one that can give.
-    var firstRight = right
-    for mark in marks.reversed() {
-      let size = mark.fittingSize
-      mark.frame = CGRect(
-        x: firstRight - size.width, y: firstY + (nameHeight - size.height) / 2,
-        width: size.width, height: size.height)
-      firstRight -= size.width + (mark is ContextBar ? 8 : SidebarRowView.markGap)
+    // Lines are handed out from the top, each a slot its text is centered in.
+    var top = bounds.height - SidebarRowView.entryPadding
+    func slot(_ height: CGFloat) -> CGRect {
+      top -= height
+      defer { top -= SidebarRowView.lineGap }
+      return CGRect(x: textLeft, y: top, width: max(0, right - textLeft), height: height)
     }
-    name.frame = CGRect(
-      x: textLeft, y: firstY, width: max(0, firstRight - textLeft), height: nameHeight)
-
-    // The second line: state, then the machine's tag, then the directory. The directory's last
-    // part is where the agent is, and cut to "le…rn" it says nothing, so it is given its whole width
-    // first. The state gives way to it, never to less than a word's worth, and ends in an ellipsis
-    // when it does.
-    let free = max(0, room - (tagWidth > 0 ? tagWidth + 5 : 0))
-    let directoryWidth = min(
-      directoryWanted, max(0, free - min(stateWanted, SidebarRowView.stateFloor)))
-    let stateWidth = min(stateWanted, max(0, free - directoryWidth))
-    var cursor = textLeft
-    if stateField.superview != nil {
-      stateField.frame = CGRect(x: cursor, y: secondY, width: stateWidth, height: secondHeight)
-      cursor += stateWidth
-    }
-    if let tag = machineTag, let size = tagSize {
-      tag.isHidden = tagWidth == 0
-      tag.frame = CGRect(
-        x: cursor, y: secondY + (secondHeight - size.height) / 2, width: tagWidth,
+    func centered(_ size: NSSize, in line: CGRect, x: CGFloat, width: CGFloat) -> CGRect {
+      CGRect(
+        x: x, y: line.minY + ((line.height - size.height) / 2).rounded(), width: max(0, width),
         height: size.height)
-      cursor += tagWidth > 0 ? tagWidth + 5 : 0
+    }
+    let isHelper = shown?.isHelper ?? false
+    // A helper's one line is as tall as its row, so its text sits in the middle of it.
+    let first =
+      isHelper
+      ? CGRect(x: textLeft, y: 0, width: max(0, right - textLeft), height: bounds.height)
+      : slot(SidebarRowView.firstLineHeight)
+    icon.frame = CGRect(
+      x: iconLeft, y: (first.midY - StateIcon.size / 2).rounded(), width: StateIcon.size,
+      height: StateIcon.size)
+
+    // The chord at the far edge of the first line, where a column of them reads down the list
+    // and costs the text nothing on the lines below.
+    var firstRight = right
+    for key in [secondKey, firstKey] {
+      guard let key else { continue }
+      key.frame = CGRect(
+        x: firstRight - KeycapView.width, y: (first.midY - KeycapView.height / 2).rounded(),
+        width: KeycapView.width, height: KeycapView.height)
+      firstRight -= KeycapView.width + SidebarRowView.keyGap
+    }
+    if firstKey != nil || secondKey != nil {
+      firstRight -= SidebarRowView.edgeGap - SidebarRowView.keyGap
+    }
+
+    if isHelper {
+      layoutHelperLine(in: first, right: firstRight)
+      return
+    }
+
+    // The callsign whole, then the machine's tag in what is left: the tag is cut before the
+    // callsign is, and left out when too little of it would show to read.
+    let nameSize = name.fittingSize
+    let firstRoom = max(0, firstRight - textLeft)
+    let nameWidth = min(ceil(nameSize.width), firstRoom)
+    name.frame = centered(nameSize, in: first, x: textLeft, width: nameWidth)
+    if let tag = machineTag {
+      let size = tag.fittingSize
+      let spare = firstRoom - nameWidth - SidebarRowView.edgeGap
+      let width = spare >= SidebarRowView.tagFloor ? min(size.width, spare) : 0
+      tag.isHidden = width == 0
+      tag.frame = centered(
+        size, in: first, x: textLeft + nameWidth + SidebarRowView.edgeGap, width: width)
+    }
+
+    // Every mark at the far edge of a line, the context bar at the very edge so a column of bars
+    // lines up down the list: the task line's when the entry has one, whose name or title ends in
+    // an ellipsis and says all of itself on hover, and otherwise the state line's.
+    func placeMarks(in line: CGRect) -> CGFloat {
+      var lineRight = right
+      for mark in marks.reversed() {
+        let size = mark.fittingSize
+        mark.frame = centered(size, in: line, x: lineRight - size.width, width: size.width)
+        lineRight -= size.width + (mark is ContextBar ? 8 : SidebarRowView.markGap)
+      }
+      return lineRight
+    }
+    let hasTask = taskField.superview != nil
+    if hasTask {
+      let task = slot(SidebarRowView.textLineHeight)
+      let taskRight = placeMarks(in: task)
+      taskField.frame = centered(
+        taskField.fittingSize, in: task, x: textLeft, width: taskRight - textLeft)
+    }
+
+    // The state, then the directory. The directory's last part is where the agent is, and cut to
+    // "le…rn" it says nothing, so it is given its whole width first. The state gives way to it,
+    // never to less than a word's worth, and ends in an ellipsis when it does.
+    var state = slot(SidebarRowView.textLineHeight)
+    if !hasTask { state.size.width = max(0, placeMarks(in: state) - textLeft) }
+    let stateSize = stateField.superview != nil ? stateField.fittingSize : .zero
+    let directorySize = directoryField.superview != nil ? directoryField.fittingSize : .zero
+    let stateWanted = ceil(stateSize.width)
+    let directoryWidth = min(
+      ceil(directorySize.width),
+      max(0, state.width - min(stateWanted, SidebarRowView.stateFloor)))
+    let stateWidth = min(stateWanted, max(0, state.width - directoryWidth))
+    if stateField.superview != nil {
+      stateField.frame = centered(stateSize, in: state, x: textLeft, width: stateWidth)
     }
     if directoryField.superview != nil {
-      directoryField.frame = CGRect(
-        x: cursor, y: secondY, width: max(0, right - cursor), height: secondHeight)
+      directoryField.frame = centered(
+        directorySize, in: state, x: textLeft + stateWidth,
+        width: min(ceil(directorySize.width), state.width - stateWidth))
+    }
+
+    if let pills {
+      pills.frame = slot(SidebarRowView.pillsLineHeight)
     }
 
     if progressBar.superlayer != nil {
@@ -745,14 +839,46 @@ final class SidebarRowView: NSView {
     }
   }
 
+  /// A helper listed under its maker's entry: its callsign, then its state or else its directory,
+  /// with its marks at the far edge, all on the one line.
+  private func layoutHelperLine(in line: CGRect, right: CGFloat) {
+    func centered(_ size: NSSize, x: CGFloat, width: CGFloat) -> CGRect {
+      CGRect(
+        x: x, y: line.minY + ((line.height - size.height) / 2).rounded(), width: max(0, width),
+        height: size.height)
+    }
+    var lineRight = right
+    for mark in marks.reversed() {
+      let size = mark.fittingSize
+      mark.frame = centered(size, x: lineRight - size.width, width: size.width)
+      lineRight -= size.width + (mark is ContextBar ? 8 : SidebarRowView.markGap)
+    }
+    machineTag?.isHidden = true
+    let nameSize = name.fittingSize
+    let nameWidth = min(ceil(nameSize.width), max(0, lineRight - line.minX))
+    name.frame = centered(nameSize, x: line.minX, width: nameWidth)
+    var cursor = line.minX + nameWidth + SidebarRowView.edgeGap
+    // The state when it has one to say, and the directory in whatever is left after it.
+    if stateField.superview != nil {
+      let size = stateField.fittingSize
+      let width = min(ceil(size.width), max(0, lineRight - cursor))
+      stateField.frame = centered(size, x: cursor, width: width)
+      cursor += width
+    }
+    if directoryField.superview != nil {
+      let size = directoryField.fittingSize
+      directoryField.frame = centered(
+        size, x: cursor, width: min(ceil(size.width), lineRight - cursor))
+    }
+  }
+
   private func layoutOtherRow() {
     var left = SidebarRowView.inset + CGFloat(indent) * SidebarRowView.indent
     if let control = foldControl {
-      // Where a pane row's keys start, so the chord column runs straight down the list.
       control.frame = CGRect(
         x: 4, y: (bounds.height - FoldControl.height) / 2, width: FoldControl.width,
         height: FoldControl.height)
-      left = SidebarRowView.paneInset
+      left = SidebarRowView.captionInset
     }
     // Keys, then dot, then label, laid out from a running left edge rather than each from
     // `left`, because a row can carry both: the chord says how to reach the row and the dot says
@@ -839,6 +965,204 @@ extension SidebarRowView {
       x += step
     }
     right -= step * CGFloat(fit.shown.count) + 4
+  }
+}
+
+/// A pane's helpers on its entry: a pill each, and at the far edge how many there are with a
+/// chevron that says whether they are listed under it (Fencil `helper-pills`).
+///
+/// A pill's height and fill say its helper's state without its color. Tall for a helper that is
+/// blocked or stuck, short for one that is done, between them for the calm states; solid for the
+/// three that want somebody, an outline for the calm ones and dashed for the two Muster cannot
+/// read, as `StateIcon` draws them. They stay in the order the roster lists them, so a pill keeps
+/// its place while its state changes, and when they do not all fit the most urgent are the ones
+/// kept (`SidebarModel.foldedIcons`).
+@MainActor
+final class HelperPillsView: NSView {
+  static let pillWidth: CGFloat = 6
+  static let pillGap: CGFloat = 2
+
+  /// How tall a helper's pill is.
+  static func pillHeight(state: String) -> CGFloat {
+    switch SidebarModel.Tier(state: state) {
+    case .asks: 14
+    case .look: 6
+    case .calm, .absent: 10
+    }
+  }
+
+  let helpers: [SidebarModel.HelperPill]
+  let isOpen: Bool
+  var onPressed: (() -> Void)?
+  var onMenu: (() -> NSMenu?)?
+
+  private let bars: [CAShapeLayer]
+  private let more = NSTextField(labelWithString: "")
+  private let count = NSTextField(labelWithString: "")
+  private let chevron: NSView
+
+  /// The states of the pills drawn now, in order, and the count of those that did not fit (nil
+  /// when all did). Meaningful after layout, which is what decides the room.
+  var shownStates: [String] { zip(helpers, bars).filter { !$0.1.isHidden }.map(\.0.state) }
+  var shownMore: String? { more.isHidden ? nil : more.stringValue }
+  var pillFrames: [CGRect] { bars.filter { !$0.isHidden }.map(\.frame) }
+  var shownCount: String { count.stringValue }
+
+  init(helpers: [SidebarModel.HelperPill], open: Bool) {
+    self.helpers = helpers
+    isOpen = open
+    bars = helpers.map { _ in CAShapeLayer() }
+    chevron = SidebarRowView.symbol(
+      open ? "chevron.down" : "chevron.right", tint: .secondaryLabelColor,
+      saying: open ? "fold helpers" : "show helpers")
+    super.init(frame: .zero)
+    wantsLayer = true
+    for bar in bars {
+      bar.actions = ["path": NSNull(), "position": NSNull(), "bounds": NSNull()]
+      layer?.addSublayer(bar)
+    }
+    for label in [more, count] {
+      label.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+      label.textColor = .secondaryLabelColor
+      addSubview(label)
+    }
+    more.isHidden = true
+    count.stringValue = String(helpers.count)
+    addSubview(chevron)
+    let words = SidebarModel.helpersSummary(helpers)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+    setAccessibilityLabel("\(words), \(open ? "listed" : "folded")")
+    resolveColors()
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("muster builds its views in code")
+  }
+
+  override func layout() {
+    super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    defer { CATransaction.commit() }
+
+    let chevronSize = chevron.fittingSize
+    chevron.frame = CGRect(
+      x: bounds.width - chevronSize.width, y: (bounds.height - chevronSize.height) / 2,
+      width: chevronSize.width, height: chevronSize.height)
+    let countSize = count.fittingSize
+    count.frame = CGRect(
+      x: chevron.frame.minX - 1 - ceil(countSize.width),
+      y: (bounds.height - countSize.height) / 2, width: ceil(countSize.width),
+      height: countSize.height)
+
+    let step = Self.pillWidth + Self.pillGap
+    let states = helpers.map(\.state)
+    let room = max(0, count.frame.minX - SidebarRowView.edgeGap)
+    func capacity(leaving taken: CGFloat) -> Int { Int(max(0, room - taken + Self.pillGap) / step) }
+    var fit = SidebarModel.foldedIcons(states: states, capacity: capacity(leaving: 0))
+    var moreWidth: CGFloat = 0
+    if fit.more > 0 {
+      // The count's own width decides how many fit beside it, and how many fit decides the count,
+      // so it is measured at its widest first.
+      more.stringValue = "+\(helpers.count)"
+      moreWidth = ceil(more.fittingSize.width) + 3
+      fit = SidebarModel.foldedIcons(states: states, capacity: capacity(leaving: moreWidth))
+      more.stringValue = "+\(fit.more)"
+    }
+    more.isHidden = fit.more == 0
+
+    removeAllToolTips()
+    var x: CGFloat = 0
+    for (index, bar) in bars.enumerated() {
+      bar.isHidden = !fit.shown.contains(index)
+      guard !bar.isHidden else { continue }
+      let height = Self.pillHeight(state: states[index])
+      bar.frame = CGRect(
+        x: x, y: ((bounds.height - height) / 2).rounded(), width: Self.pillWidth, height: height)
+      draw(bar, state: states[index])
+      addToolTip(
+        CGRect(x: x - 1, y: 0, width: step, height: bounds.height), owner: self,
+        userData: UnsafeMutableRawPointer(bitPattern: index + 1))
+      x += step
+    }
+    if fit.more > 0 {
+      let size = more.fittingSize
+      more.frame = CGRect(
+        x: x + 1, y: (bounds.height - size.height) / 2, width: ceil(size.width),
+        height: size.height)
+    }
+  }
+
+  /// One pill's shape for its state: solid, an outline, or a dashed outline.
+  private func draw(_ bar: CAShapeLayer, state: String) {
+    let line: CGFloat = 1.5
+    switch SidebarModel.Tier(state: state) {
+    case .asks, .look:
+      bar.path = CGPath(
+        roundedRect: bar.bounds, cornerWidth: 2, cornerHeight: 2, transform: nil)
+      bar.lineWidth = 0
+      bar.lineDashPattern = nil
+    case .calm, .absent:
+      bar.path = CGPath(
+        roundedRect: bar.bounds.insetBy(dx: line / 2, dy: line / 2), cornerWidth: 1.5,
+        cornerHeight: 1.5, transform: nil)
+      bar.lineWidth = line
+      bar.lineDashPattern = SidebarModel.Tier(state: state) == .absent ? [2, 1.5] : nil
+    }
+  }
+
+  private func resolveColors() {
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      for (helper, bar) in zip(helpers, bars) {
+        let color = PaneAppearance.borderColor(state: helper.state).cgColor
+        let solid = StateIcon.isFilled(state: helper.state)
+        bar.fillColor = solid ? color : nil
+        bar.strokeColor = solid ? nil : color
+      }
+    }
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    resolveColors()
+  }
+
+  /// Every point of it is the pills', so a press on them is not a press on the row.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    bounds.contains(convert(point, from: superview)) ? self : nil
+  }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func mouseDown(with event: NSEvent) {
+    onPressed?()
+  }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    onMenu?()
+  }
+
+  /// What VoiceOver's press does, since it does not send the view a mouse event.
+  override func accessibilityPerformPress() -> Bool {
+    guard let onPressed else { return false }
+    onPressed()
+    return true
+  }
+
+  /// What hovering the pill at `index` says.
+  func toolTip(forPill index: Int) -> String? {
+    helpers.indices.contains(index) ? SidebarModel.details(of: helpers[index]) : nil
+  }
+}
+
+extension HelperPillsView: NSViewToolTipOwner {
+  nonisolated func view(
+    _ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint,
+    userData data: UnsafeMutableRawPointer?
+  ) -> String {
+    let index = Int(bitPattern: data) - 1
+    return MainActor.assumeIsolated { toolTip(forPill: index) ?? "" }
   }
 }
 

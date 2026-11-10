@@ -1,0 +1,30 @@
+id = "helper-pills"
+question = "How does the agent list show a pane's hidden helpers?"
+tags = ["ui", "agent-list", "helpers"]
+paths = ["Sources/MusterMac/Sidebar.swift", "Sources/MusterMac/SidebarRow.swift"]
+
+[[revisions]]
+id = "p4d9mfib"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+As compact vertical pills on their maker's entry, one for each helper, with helpers of helpers in
+the same flat list and no hierarchy shown. A pill's height and fill say its helper's state. Pills
+stay in the order the helpers were made, so a pill keeps its place while its state changes; when
+they do not all fit, the most urgent are kept and the rest are counted. The count and chevron
+beside them open a flat list of the helpers under the entry.'''
+why = '''
+The separate line under a pane, "3 helpers · 1 blocked", took a row to say one state and hid the
+rest. A pill each shows every helper's state at a glance in the width of the entry. The owner
+asked for pills like the Foreman app's. Most urgent first, as Foreman sorts them, was the
+alternative for the order: it moves every pill whenever one helper changes state.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "Yeah, I think your recommendation makes sense"
+  note = "Asked on the Lectern page muster-sidebar-entries: pill order, the order helpers were made, so a pill stays where it is (recommended), or the most urgent first, as Foreman sorts them? The pills themselves, one flat list including helpers of helpers, were his request in the brief for the page, relayed without his words."

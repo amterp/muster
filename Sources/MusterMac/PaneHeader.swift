@@ -183,7 +183,8 @@ final class PaneHeaderView: NSView, NSDraggingSource {
     icon.show(state: row.state, color: PaneAppearance.borderColor(state: row.state))
     layer?.addSublayer(icon)
 
-    name.attributedStringValue = SidebarRowView.firstLine(for: row, color: palette.text.color)
+    name.attributedStringValue = SidebarRowView.firstLine(
+      for: row, color: palette.text.color, withBeside: true)
     if !row.stateLine.isEmpty {
       let loud = row.tier == .asks || row.tier == .look
       stateWord.attributedStringValue = NSAttributedString(

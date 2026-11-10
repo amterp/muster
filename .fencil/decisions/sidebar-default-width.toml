@@ -22,3 +22,28 @@ the directory, which the owner asked to see, is the first thing lost. The altern
   date = 2026-11-08
   quote = "280 sounds fine"
   note = "Asked, on its own: should the sidebar's default width go from 200 to 280 px, or stay at 200 and let rows show less until you drag it wider?"
+
+[[revisions]]
+id = "l45540dm"
+base = "vb2lgq31"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+200 pt, down from 280. Dragging the edge still sets any width, and a window that already has a
+width written down keeps it.'''
+why = '''
+The Edge entry (agent-list-rows) is taller and gives each of its lines the list's whole width, so
+at 200 pt it shows the callsign, the chord, the name or title, the state and the directory, which
+is what 280 pt was chosen to make room for. The alternative was keeping 280 and leaving narrowing
+to the person.'''
+change = "Back to 200 pt, now that the Edge entry reads at that width."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "Yes"
+  note = "Asked on its own, on the Lectern page muster-sidebar-entries: should the default width drop from 280 pt to 200 pt with this change, or stay at 280 and leave narrowing to you? He was told the yes was taken as dropping to 200 pt and did not correct it."

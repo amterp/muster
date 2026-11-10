@@ -62,3 +62,56 @@ change = "An unnamed pane's first line is already its directory, so its second l
   date = 2026-11-09
   quote = "...if there's a clear right answer, just defer to you, use your judgment, but if there is something that really needs my input, then, yeah, feel free to ask."
   note = "Asked to explain three open questions from the redesign's screenshots, one of them whether an unnamed pane's row should stop repeating its directory on line two. The owner was then told the decision (drop the repeat) and did not rule on it."
+
+[[revisions]]
+id = "p1jr61hs"
+base = "plzbyvbn"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Direction Edge from the Lectern page muster-sidebar-entries. A pane's entry is up to four lines
+and is drawn to read at 200 pt. Only the state icon sits left of the text. Line one is the icon,
+the callsign and the machine's tag, with the chord's keycaps at its right end. The task line is the
+name somebody gave the pane, or else its harness's title, with the marks and the context bar at its
+right end; the other of the two is in the hover text. Then the state word and time held, or what a
+waiting agent waits on, and the directory's last part. A pane with helpers has a fourth line for
+them (helper-pills); one without has none, and a pane with no name and no title has no task line.
+The machine's tag is on every pane once the window spans machines, as before. State icons, the
+tint and colored edge of blocked and stuck rows, the context bar, the progress bar and the raised
+panel are as direction A drew them.'''
+why = '''
+At 280 pt the two-line row spent its width on keycaps and an icon left of the text, and at 200 pt
+it lost the directory. Taller entries with the chord moved to the right end of line one give every
+line the list's whole width, so the list can be narrower and leave the panes more room. Stack and
+Hang were the alternatives on the page. For the task line, showing the title for a named pane, or
+both on one line or on two, were the alternatives: a name is what the person chose and stays put,
+while a title changes from turn to turn.'''
+change = "Edge replaces direction A's two-line row: taller entries with the chord at the right end, a task line, and helpers on the entry. It also replaces the waiting change agent-list-rows@pbko6yiy, since every pane's directory is now on the state line and line one no longer carries it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "I agree with Edge. Let's try that. However, I just want to do one final mock, which is a bit more complete ..."
+  note = "Asked on the Lectern page muster-sidebar-entries: which direction for a pane's entry, Stack, Hang or Edge, with Edge recommended. The final mock he asked for was drawn, and his later answers below were given on it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "agreed A"
+  note = "Asked to pick a letter for a named pane's task line: A its name, B its harness's title, C both on one line, D both on two lines, with A recommended and the other of the two left to the hover text."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "as today"
+  note = "Asked whether the machine tag should be on every pane once the window spans machines, as it was before this change, or only on panes off this Mac as the first final mock drew it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "Yeah, I think we should have no helpers only take two lines because ... the presence of any helpers and no helpers, like that doesn't change super often. So I think this is fine"
+  note = "Asked whether an entry should keep a line for helpers when it has none, so the list never moves when a helper starts, or leave the line out. He was then shown the result, an entry without helpers taking three lines with its task line and a plain shell two, and did not object."

@@ -748,7 +748,7 @@ holds is the daemon's answer, asked again on every launch.
 
 **Drag the agent list's edge to make it wider or narrower**, anywhere from 140 to 480 points.
 The width is the window's, written down with the rest of `[window]`, so it comes back on the next
-launch and a new window starts at 280. A window too small to give the list its width gives it half
+launch and a new window starts at 200. A window too small to give the list its width gives it half
 the window instead, and a window narrower than 400 points still puts the list away altogether.
 
 **Click the agent list's Hidden caption to fold it** over the hidden panes, and again to open it.

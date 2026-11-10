@@ -474,11 +474,13 @@ no helpers is refused. Showing one helper with `pane show --pane`, or going to i
 notification or the chord, brings back the tab it shares with the others in the same way, and the
 keyboard lands on the helper you asked for.
 
-The agent list lists a maker's hidden helpers under its row rather than under Hidden, folded into
-one line, `3 helpers · 1 blocked`, whose dot is the most urgent state among them; a click opens it,
-and a helper's own helpers fold under it in turn. No chord reaches them, as none reaches a hidden
+The agent list draws a maker's hidden helpers on its own entry rather than under Hidden, as a row
+of pills, one for each helper and for each helper of a helper, in the order `muster window` lists
+them. A pill's height and fill say its helper's state, and hovering one names the helper, its
+state, its directory and who made it. A click on the pills lists the helpers under the entry, a
+line each. No chord reaches them, as none reaches a hidden
 pane, and a helper in a tab on screen keeps its row and its number there. The maker's right-click
-menu, and the line's, offer Show Helpers and Hide Helpers. A helper whose maker has closed stays
+menu, and the pills', offer Show Helpers and Hide Helpers. A helper whose maker has closed stays
 under Hidden, since there is no row to list it under.
 
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or

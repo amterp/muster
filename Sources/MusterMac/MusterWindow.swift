@@ -349,6 +349,7 @@ public final class MusterWindow: NSObject {
       }
     }
     sidebar.onRowMenu = { [weak self] row in self?.menu(for: row) }
+    sidebar.onHelpersMenu = { [weak self] row in self?.helpersMenu(for: row) }
     sidebar.onConversationMenu = { [weak self] conversation in
       self?.groupMenu(daemon: conversation.daemon, group: conversation.group)
     }
@@ -1450,14 +1451,18 @@ extension MusterWindow {
         refused: { [weak self] in self?.tell($0, $1) })
     case .group:
       return groupMenu(daemon: row.daemon, group: row.label)
-    case .helpers:
-      guard let maker = row.pane, let helpers = roster.helpers(of: maker) else { return nil }
-      return ContextMenus.helpersRow(
-        maker, helpers: helpers, window: name, close: { [weak self] in self?.close(pane: $0) },
-        refused: { [weak self] in self?.tell($0, $1) })
     case .machine, .messages, .hidden:
       return nil
     }
+  }
+
+  /// The menu for a right-click on the pills of a pane's entry: what can be done with its helpers
+  /// together.
+  func helpersMenu(for row: SidebarModel.Row) -> NSMenu? {
+    guard let maker = row.pane, let helpers = roster.helpers(of: maker) else { return nil }
+    return ContextMenus.helpersRow(
+      maker, helpers: helpers, window: name, close: { [weak self] in self?.close(pane: $0) },
+      refused: { [weak self] in self?.tell($0, $1) })
   }
 
   /// Asks before deleting a group: its log goes for every member, unread messages included,
