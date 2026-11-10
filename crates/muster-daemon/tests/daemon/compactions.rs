@@ -54,11 +54,15 @@ impl Pane {
     }
 
     /// Sets `p1`'s own thresholds, each left as it is when none.
-    fn own(&mut self, compact_at: Option<Option<u32>>, nudge_at: Option<Option<u32>>) {
+    fn own(
+        &mut self,
+        compact_at: Option<proto::CompactionThreshold>,
+        nudge_at: Option<proto::CompactionThreshold>,
+    ) {
         let set = proto::pane_request::SetCompaction {
             pane: "p1".to_string(),
-            compact_at: compact_at.map(threshold),
-            nudge_at: nudge_at.map(threshold),
+            compact_at,
+            nudge_at,
             clear: false,
         };
         expect(
@@ -265,18 +269,24 @@ fn a_compaction_is_refused_where_nothing_could_type_it() {
     assert_eq!(p1.compactions_heard(), Vec::<String>::new());
 }
 
-fn threshold(percent: Option<u32>) -> proto::CompactionThreshold {
-    proto::CompactionThreshold { percent }
+/// A threshold set to `percent`, as a place that sets one says it.
+#[expect(clippy::unnecessary_wraps, reason = "reads as the field it fills, which is optional")]
+fn at(percent: u32) -> Option<proto::CompactionThreshold> {
+    Some(proto::CompactionThreshold { percent: Some(percent) })
 }
 
+/// A threshold turned off, which is not one left unset.
+#[expect(clippy::unnecessary_wraps, reason = "reads as the field it fills, which is optional")]
+fn off() -> Option<proto::CompactionThreshold> {
+    Some(proto::CompactionThreshold { percent: None })
+}
+
+#[expect(clippy::unnecessary_wraps, reason = "reads as the field it fills, which is optional")]
 fn thresholds(
-    compact_at: Option<Option<u32>>,
-    nudge_at: Option<Option<u32>>,
+    compact_at: Option<proto::CompactionThreshold>,
+    nudge_at: Option<proto::CompactionThreshold>,
 ) -> Option<proto::CompactionThresholds> {
-    Some(proto::CompactionThresholds {
-        compact_at: compact_at.map(threshold),
-        nudge_at: nudge_at.map(threshold),
-    })
+    Some(proto::CompactionThresholds { compact_at, nudge_at })
 }
 
 /// The most specific place that sets a threshold decides it: the pane, then the directory it is
@@ -288,17 +298,17 @@ fn a_pane_is_compacted_at_the_most_specific_threshold_set_for_it() {
     let mut p1 = Pane::with_an_agent();
     p1.daemon.set_agent_state("p1", proto::AgentState::Working);
     let unset = (None, Source::Unset);
-    let root = thresholds(Some(Some(85)), None);
+    let root = thresholds(at(85), None);
     let claude_exempt = proto::CompactionHarness {
         name: "claude".to_string(),
-        thresholds: thresholds(Some(None), None),
+        thresholds: thresholds(off(), None),
     };
 
-    p1.rules(proto::CompactionRules { root: root.clone(), ..Default::default() });
+    p1.rules(proto::CompactionRules { root: root, ..Default::default() });
     assert_eq!(p1.applied(), [(Some(85), Source::Root), unset]);
 
     p1.rules(proto::CompactionRules {
-        root: root.clone(),
+        root: root,
         harnesses: vec![claude_exempt.clone()],
         ..Default::default()
     });
@@ -313,19 +323,19 @@ fn a_pane_is_compacted_at_the_most_specific_threshold_set_for_it() {
     let here = p1.record().cwd;
     let around = std::path::Path::new(&here).parent().unwrap().display().to_string();
     let directories = vec![
-        proto::CompactionDirectory { path: around, thresholds: thresholds(Some(Some(90)), None) },
-        proto::CompactionDirectory { path: here, thresholds: thresholds(Some(Some(50)), None) },
+        proto::CompactionDirectory { path: around, thresholds: thresholds(at(90), None) },
+        proto::CompactionDirectory { path: here, thresholds: thresholds(at(50), None) },
     ];
     p1.rules(proto::CompactionRules { root, harnesses: vec![claude_exempt], directories });
     assert_eq!(p1.applied(), [(Some(50), Source::Directory), unset], "the longest directory");
     p1.reports(60.0);
     assert!(p1.queued(), "past the directory's 50");
 
-    p1.own(Some(None), None);
+    p1.own(off(), None);
     assert_eq!(p1.applied(), [(None, Source::Pane), unset]);
     assert!(!p1.queued(), "the threshold that queued it no longer applies");
 
-    p1.own(Some(Some(70)), None);
+    p1.own(at(70), None);
     p1.reports(60.0);
     assert!(!p1.queued(), "60 is under the pane's own 70");
     p1.reports(75.0);
@@ -353,8 +363,8 @@ fn a_panes_own_thresholds_survive_a_restart_a_handoff_and_a_reopen() {
     use proto::ThresholdSource as Source;
     let mut p1 = Pane::with_an_agent();
     make(&mut p1.control, create("p2", beside("p1", proto::Side::Down)));
-    p1.own(Some(None), Some(Some(70)));
-    let own = thresholds(Some(None), Some(Some(70)));
+    p1.own(off(), at(70));
+    let own = thresholds(off(), at(70));
     until_saved(&p1.daemon, "nudge_at");
 
     stop(&mut p1.daemon, &mut p1.control);
@@ -379,10 +389,7 @@ fn a_panes_own_thresholds_survive_a_restart_a_handoff_and_a_reopen() {
 #[test]
 fn past_nudge_at_an_agent_is_told_to_compact_itself_once_per_crossing() {
     let mut p1 = Pane::with_an_agent();
-    p1.rules(proto::CompactionRules {
-        root: thresholds(Some(Some(85)), Some(Some(60))),
-        ..Default::default()
-    });
+    p1.rules(proto::CompactionRules { root: thresholds(at(85), at(60)), ..Default::default() });
     p1.reports(50.0);
     p1.reports(62.0);
     p1.until_nudged(1);
@@ -402,10 +409,7 @@ fn past_nudge_at_an_agent_is_told_to_compact_itself_once_per_crossing() {
 fn an_agent_about_to_be_compacted_is_not_nudged() {
     let mut p1 = Pane::with_an_agent();
     p1.daemon.set_agent_state("p1", proto::AgentState::Working);
-    p1.rules(proto::CompactionRules {
-        root: thresholds(Some(Some(85)), Some(Some(60))),
-        ..Default::default()
-    });
+    p1.rules(proto::CompactionRules { root: thresholds(at(85), at(60)), ..Default::default() });
     p1.reports(90.0);
     assert!(p1.queued());
     p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
@@ -420,16 +424,13 @@ fn an_agent_about_to_be_compacted_is_not_nudged() {
 #[test]
 fn a_nudge_that_would_do_no_good_is_withheld_and_the_record_says_why() {
     let mut p1 = Pane::with_an_agent();
-    p1.rules(proto::CompactionRules {
-        root: thresholds(Some(Some(85)), Some(Some(60))),
-        ..Default::default()
-    });
+    p1.rules(proto::CompactionRules { root: thresholds(at(85), at(60)), ..Default::default() });
     assert_eq!(p1.withheld(), proto::NudgeWithheld::None);
 
-    p1.own(None, Some(Some(85)));
+    p1.own(None, at(85));
     assert_eq!(p1.withheld(), proto::NudgeWithheld::AtOrAboveCompactAt);
     p1.reports(84.0);
-    p1.own(None, Some(Some(60)));
+    p1.own(None, at(60));
 
     let override_file = p1.daemon.root().join("home/.muster/agent-detection/claude.toml");
     let without: String = std::fs::read_to_string(&override_file)
@@ -456,7 +457,7 @@ fn a_change_of_threshold_leaves_a_compaction_somebody_asked_for() {
     p1.compact_at(Some(50.0));
     p1.reports(60.0);
     assert_eq!(p1.compact(Some("the plan")), proto::Outcome::Done);
-    p1.own(Some(None), None);
+    p1.own(off(), None);
     assert!(p1.queued());
 }
 
@@ -466,10 +467,10 @@ fn one_percent_for_every_agent_replaces_the_rules() {
     use proto::ThresholdSource as Source;
     let mut p1 = Pane::with_an_agent();
     p1.rules(proto::CompactionRules {
-        root: thresholds(Some(Some(85)), Some(Some(60))),
+        root: thresholds(at(85), at(60)),
         harnesses: vec![proto::CompactionHarness {
             name: "claude".to_string(),
-            thresholds: thresholds(Some(None), None),
+            thresholds: thresholds(off(), None),
         }],
         ..Default::default()
     });
@@ -479,7 +480,7 @@ fn one_percent_for_every_agent_replaces_the_rules() {
     let refused = p1.control.ask(pane(proto::pane_request::Request::SetCompaction(
         proto::pane_request::SetCompaction {
             pane: "p1".to_string(),
-            nudge_at: Some(threshold(Some(101))),
+            nudge_at: at(101),
             ..Default::default()
         },
     )));

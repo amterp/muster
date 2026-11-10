@@ -2478,7 +2478,7 @@ mod tests {
                 PaneStateChanged {
                     pane_id: "p1".to_string(),
                     state: "idle".to_string(),
-                    thresholds: Some(thresholds),
+                    thresholds: Some(Box::new(thresholds)),
                     ..PaneStateChanged::default()
                 },
                 PaneStateChanged {

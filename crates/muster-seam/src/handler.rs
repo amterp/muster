@@ -825,16 +825,16 @@ fn pane_compaction(window: WindowId, set: &proto::PaneCompaction) -> Response {
             .filter(|percent| (1..=100).contains(percent))
             .map(|percent| Some(Setting::At(percent)))
             .ok_or_else(|| {
-                Response::failure(format!(
+                Box::new(Response::failure(format!(
                     "{percent} is not a threshold, so nothing was changed. It is a whole \
                      percent from 1 to 100: how full the agent's context gets."
-                ))
+                )))
             }),
     };
     let (nudge_at, compact_at) =
         match (setting(set.nudge_at, set.no_nudge), setting(set.compact_at, set.no_compact)) {
             (Ok(nudge_at), Ok(compact_at)) => (nudge_at, compact_at),
-            (Err(refusal), _) | (_, Err(refusal)) => return refusal,
+            (Err(refusal), _) | (_, Err(refusal)) => return *refusal,
         };
     act(window, &set.daemon_id, &set.pane_id, Keyboard::StaysPut, |pane| {
         BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear: set.clear }

@@ -440,7 +440,7 @@ pub(crate) struct Session {
     home: PathBuf,
     /// The compaction rules in force as [`Session::placed_rules`] last worked them out, with
     /// the settings they were worked out from.
-    placed_rules: Option<((Option<proto::CompactionRules>, Option<f32>), Arc<Placed>)>,
+    placed_rules: Option<PlacedRules>,
     /// What the daemon gives its shells: the terminfo entry and the shell integration.
     data: Data,
     /// How a pane's programs reach this daemon, which every pane's environment says.
@@ -937,7 +937,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
         maker: pane.record.maker.clone(),
         maker_closed: pane.record.maker_closed,
         quiet_before_orphaned: pane.quiet_before_orphaned,
-        compaction: pane.record.own_compaction.clone(),
+        compaction: pane.record.own_compaction,
     }
 }
 
@@ -2149,7 +2149,7 @@ impl Session {
             // In its state before it closed, which this run of the agent did not see begin.
             record.state_since_ms = None;
         }
-        record.own_compaction.clone_from(&saved.compaction);
+        record.own_compaction = saved.compaction;
         if let Err(reply) = self.open(record.clone(), grid, master, child, program) {
             self.reopen_failed(&reopening.closed);
             return reply;
@@ -3337,6 +3337,23 @@ impl Session {
     /// Something a pane's program asked for, from the publisher. Nothing to do if the pane has
     /// closed since.
     pub(crate) fn reported(&mut self, report: Report) {
+        let serial = report.serial;
+        // A pane's agent and its directory decide which compaction thresholds apply to it.
+        let placed = |session: &Session| {
+            let pane = session.panes.iter().find(|pane| pane.serial == serial)?;
+            Some((pane.record.agent.clone(), pane.record.cwd.clone()))
+        };
+        let before = placed(self);
+        self.apply_report(report);
+        if before.is_some()
+            && placed(self) != before
+            && let Some(index) = self.panes.iter().position(|pane| pane.serial == serial)
+        {
+            self.refresh_compaction(index);
+        }
+    }
+
+    fn apply_report(&mut self, report: Report) {
         let Some(index) = self.panes.iter().position(|pane| pane.serial == report.serial) else {
             return;
         };
@@ -3344,7 +3361,6 @@ impl Session {
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
         let shown = record.state();
-        let moved = matches!(report.what, Reported::Cwd(_));
         let set = set_reported_field(record, report.what);
         let what = match set {
             Ok(changed) => {
@@ -3352,9 +3368,6 @@ impl Session {
                     state_since::dated(shown, record, state_since::now_ms());
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-                }
-                if changed && moved {
-                    self.refresh_compaction(index);
                 }
                 return;
             }
@@ -3445,13 +3458,9 @@ impl Session {
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());
                 }
-                let agent_changed = record.agent != before.agent;
                 if *record != before {
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-                }
-                if agent_changed {
-                    self.refresh_compaction(index);
                 }
             }
         }
@@ -4005,7 +4014,7 @@ impl Session {
         let Some(index) = self.pane_index(&set.pane) else {
             return Reply::not_there(format!("no pane {} on this daemon", set.pane));
         };
-        let held = self.panes[index].record.own_compaction.clone();
+        let held = self.panes[index].record.own_compaction;
         let mut own = if set.clear { Thresholds::default() } else { own_thresholds(held.as_ref()) };
         for (said, kept) in
             [(&set.compact_at, &mut own.compact_at), (&set.nudge_at, &mut own.nudge_at)]
@@ -4043,13 +4052,19 @@ impl Session {
     /// out again only when the settings' rules have changed, since it asks the filesystem where
     /// each directory really is and this is read on every report of a context.
     fn placed_rules(&mut self) -> Arc<Placed> {
-        let key = (self.settings.compaction_rules.clone(), self.settings.compact_at);
+        let (rules, compact_at) = (&self.settings.compaction_rules, self.settings.compact_at);
         match &self.placed_rules {
-            Some((held, placed)) if *held == key => Arc::clone(placed),
+            Some(held) if held.rules == *rules && held.compact_at == compact_at => {
+                Arc::clone(&held.placed)
+            }
             _ => {
                 let placed =
                     Arc::new(compaction_rules(&self.settings).placed(&self.home, physical));
-                self.placed_rules = Some((key, Arc::clone(&placed)));
+                self.placed_rules = Some(PlacedRules {
+                    rules: rules.clone(),
+                    compact_at,
+                    placed: Arc::clone(&placed),
+                });
                 placed
             }
         }
@@ -5140,6 +5155,14 @@ fn node_from_record(node: &proto::Node) -> Result<Node, String> {
 
 fn split_child(child: Option<&proto::Node>) -> Result<&proto::Node, String> {
     child.ok_or_else(|| "a split is missing a child".to_string())
+}
+
+/// The compaction rules as [`Session::placed_rules`] last worked them out, with the two settings
+/// they were worked out from.
+struct PlacedRules {
+    rules: Option<proto::CompactionRules>,
+    compact_at: Option<f32>,
+    placed: Arc<Placed>,
 }
 
 /// The compaction rules `settings` holds. A state written before there were rules holds one

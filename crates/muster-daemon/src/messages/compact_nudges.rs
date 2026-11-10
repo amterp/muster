@@ -82,16 +82,16 @@ pub(super) fn look(shared: &Arc<Shared>) {
 }
 
 fn body(nudge: &Due) -> String {
-    let mut body = format!(
+    let backstop = nudge
+        .compact_at
+        .map(|compact_at| format!(" Muster compacts you itself at {compact_at}%."))
+        .unwrap_or_default();
+    format!(
         "Your context is {:.0}% full, past the {}% this pane is set to be reminded at. If you \
          have not compacted since this was sent, compact yourself at your next clean break: \
-         `muster pane compact <what to keep> --then <prompt to carry on>`.",
+         `muster pane compact <what to keep> --then <prompt to carry on>`.{backstop}",
         nudge.used, nudge.nudge_at
-    );
-    if let Some(compact_at) = nudge.compact_at {
-        body.push_str(&format!(" Muster compacts you itself at {compact_at}%."));
-    }
-    body
+    )
 }
 
 #[cfg(test)]

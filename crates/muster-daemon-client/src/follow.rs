@@ -747,9 +747,9 @@ fn send_settings(
     }
     let minor = control.welcome().protocol.unwrap_or_default().minor;
     if previous.is_none_or(|previous| previous.compaction != settings.compaction) {
-        sent.push(match one_percent_for(minor, &settings.compaction) {
-            None => control.set_compaction_rules(&settings.compaction),
-            Some(percent) => control.set_compact_at(percent.map(f32::from)),
+        sent.push(match compaction_for(minor, &settings.compaction) {
+            Compaction::Rules => control.set_compaction_rules(&settings.compaction),
+            Compaction::EveryAgent(percent) => control.set_compact_at(percent.map(f32::from)),
         });
     }
     if previous.is_none_or(|previous| previous.human_name != settings.human_name) {
@@ -766,12 +766,24 @@ fn send_settings(
     sent
 }
 
-/// The one percent a daemon speaking protocol minor `minor` is sent in place of `rules`, when
-/// it is too old to take them: every agent is compacted at it, or none is. It is the root's
-/// percent only when that is all the rules say of compacting, because sent otherwise it would
-/// compact the agents a harness or a directory exempts. None for a daemon that takes the rules.
-fn one_percent_for(minor: u32, rules: &Rules) -> Option<Option<u8>> {
-    (minor < muster_daemon_proto::version::SCOPED_COMPACTION).then(|| rules.compact_at_everywhere())
+/// What a daemon is sent of the compaction rules.
+#[derive(Debug, PartialEq, Eq)]
+enum Compaction {
+    /// The rules themselves.
+    Rules,
+    /// One percent every agent is compacted at, or none, for a daemon too old to take rules.
+    EveryAgent(Option<u8>),
+}
+
+/// What a daemon speaking protocol minor `minor` is sent of `rules`. One too old to take them is
+/// sent the root's percent only when that is all the rules say of compacting, because sent
+/// otherwise it would compact the agents a harness or a directory exempts.
+fn compaction_for(minor: u32, rules: &Rules) -> Compaction {
+    if minor >= muster_daemon_proto::version::SCOPED_COMPACTION {
+        Compaction::Rules
+    } else {
+        Compaction::EveryAgent(rules.compact_at_everywhere())
+    }
 }
 
 /// What messages call the human: the file's name for them, or else the login name of whoever
@@ -822,15 +834,19 @@ mod tests {
         let mut rules = Rules { root: compact_at(Setting::At(85)), ..Rules::default() };
         rules.root.nudge_at = Some(Setting::At(60));
 
-        assert_eq!(one_percent_for(since, &rules), None, "a daemon that takes rules gets them");
-        assert_eq!(one_percent_for(since - 1, &rules), Some(Some(85)), "the nudge is dropped");
+        assert_eq!(compaction_for(since, &rules), Compaction::Rules);
+        assert_eq!(
+            compaction_for(since - 1, &rules),
+            Compaction::EveryAgent(Some(85)),
+            "the nudge is dropped"
+        );
 
         rules
             .directories
             .push(Directory { path: "~/src/quiet".to_string(), scope: compact_at(Setting::Off) });
         assert_eq!(
-            one_percent_for(since - 1, &rules),
-            Some(None),
+            compaction_for(since - 1, &rules),
+            Compaction::EveryAgent(None),
             "85 for every agent would compact the ones in ~/src/quiet"
         );
     }

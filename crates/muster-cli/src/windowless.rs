@@ -805,7 +805,10 @@ fn pane_thresholds(pane: &daemon_proto::Pane) -> Option<muster_proto::PaneThresh
     Some(muster_proto::PaneThresholds {
         compact_at: Some(threshold(&effective.compact_at)),
         compact_nudge_at: Some(threshold(&effective.nudge_at)),
-        nudge_withheld: withheld.map(|why| why.as_str()).unwrap_or_default().to_string(),
+        nudge_withheld: withheld
+            .map(muster_core::compaction::Withheld::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
@@ -1111,7 +1114,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
             daemon_proto::PendingCompaction::FollowUp => "follow_up",
         }
         .to_string(),
-        thresholds: pane_thresholds(pane),
+        thresholds: pane_thresholds(pane).map(Box::new),
     }
 }
 

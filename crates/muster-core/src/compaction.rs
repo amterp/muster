@@ -252,8 +252,8 @@ mod tests {
         Directory { path: path.to_string(), scope }
     }
 
-    fn resolve(rules: &Rules, pane: &Thresholds, harness: Option<&str>, cwd: &str) -> Effective {
-        rules.clone().placed(Path::new(HOME), |path| path).resolve(pane, harness, Path::new(cwd))
+    fn resolve(rules: &Rules, pane: Thresholds, harness: Option<&str>, cwd: &str) -> Effective {
+        rules.clone().placed(Path::new(HOME), |path| path).resolve(&pane, harness, Path::new(cwd))
     }
 
     #[test]
@@ -298,21 +298,21 @@ mod tests {
 
     #[test]
     fn nothing_set_is_off_and_says_so() {
-        let effective = resolve(&Rules::default(), &Thresholds::default(), Some("claude"), "/tmp");
+        let effective = resolve(&Rules::default(), Thresholds::default(), Some("claude"), "/tmp");
         assert_eq!(effective.compact_at, Resolved { percent: None, source: Source::Unset });
         assert_eq!(effective.nudge_at, Resolved { percent: None, source: Source::Unset });
     }
 
     #[test]
     fn the_root_answers_for_a_harness_and_a_directory_nothing_names() {
-        let effective = resolve(&rules(), &Thresholds::default(), Some("opencode"), "/tmp");
+        let effective = resolve(&rules(), Thresholds::default(), Some("opencode"), "/tmp");
         assert_eq!(effective.compact_at, Resolved { percent: Some(85), source: Source::Root });
         assert_eq!(effective.nudge_at, Resolved { percent: Some(60), source: Source::Root });
     }
 
     #[test]
     fn a_harness_table_beats_the_root_key_by_key() {
-        let effective = resolve(&rules(), &Thresholds::default(), Some("claude"), "/tmp");
+        let effective = resolve(&rules(), Thresholds::default(), Some("claude"), "/tmp");
         assert_eq!(effective.compact_at.source, Source::Root, "the table omits compact_at");
         assert_eq!(
             effective.nudge_at,
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn none_turns_a_root_value_off_for_a_harness() {
-        let effective = resolve(&rules(), &Thresholds::default(), Some("codex"), "/tmp");
+        let effective = resolve(&rules(), Thresholds::default(), Some("codex"), "/tmp");
         let codex = Source::Harness("codex".to_string());
         assert_eq!(effective.compact_at, Resolved { percent: None, source: codex.clone() });
         assert_eq!(effective.nudge_at, Resolved { percent: None, source: codex });
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn the_longest_directory_wins_and_a_key_it_omits_falls_to_a_shorter_one() {
         let cwd = "/Users/somebody/src/muster/crates";
-        let effective = resolve(&rules(), &Thresholds::default(), Some("codex"), cwd);
+        let effective = resolve(&rules(), Thresholds::default(), Some("codex"), cwd);
         assert_eq!(
             effective.nudge_at,
             Resolved { percent: Some(50), source: Source::Directory("~/src/muster".to_string()) }
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn a_directory_matches_whole_path_components() {
         let effective =
-            resolve(&rules(), &Thresholds::default(), None, "/Users/somebody/src/muster-4");
+            resolve(&rules(), Thresholds::default(), None, "/Users/somebody/src/muster-4");
         assert_eq!(effective.nudge_at.source, Source::Root, "muster-4 is not inside muster");
         assert_eq!(effective.compact_at.source, Source::Directory("~/src".to_string()));
     }
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn a_pane_setting_beats_everything_and_can_turn_a_threshold_off() {
         let pane = at(Some(Setting::Off), Some(Setting::At(70)));
-        let effective = resolve(&rules(), &pane, Some("claude"), "/Users/somebody/src/muster");
+        let effective = resolve(&rules(), pane, Some("claude"), "/Users/somebody/src/muster");
         assert_eq!(effective.compact_at, Resolved { percent: None, source: Source::Pane });
         assert_eq!(effective.nudge_at, Resolved { percent: Some(70), source: Source::Pane });
     }
@@ -368,11 +368,11 @@ mod tests {
             ],
             ..Rules::default()
         };
-        let at_home = resolve(&rules, &Thresholds::default(), None, "/Users/somebody/notes");
+        let at_home = resolve(&rules, Thresholds::default(), None, "/Users/somebody/notes");
         assert_eq!(at_home.nudge_at.percent, Some(40));
-        let at_work = resolve(&rules, &Thresholds::default(), None, "/srv/work/api");
+        let at_work = resolve(&rules, Thresholds::default(), None, "/srv/work/api");
         assert_eq!(at_work.nudge_at.percent, Some(45));
-        let elsewhere = resolve(&rules, &Thresholds::default(), None, "");
+        let elsewhere = resolve(&rules, Thresholds::default(), None, "");
         assert_eq!(
             elsewhere.nudge_at.source,
             Source::Unset,

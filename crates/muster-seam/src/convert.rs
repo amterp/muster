@@ -59,7 +59,7 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
             })
         }),
         compaction: agent.compaction.as_str().to_string(),
-        thresholds: agent.thresholds.as_deref().map(thresholds),
+        thresholds: agent.thresholds.as_deref().map(|applied| Box::new(thresholds(applied))),
     }
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn thresholds(applied: &muster_core::compaction::Applied) -> proto::P
         compact_nudge_at: Some(threshold(&applied.effective.nudge_at)),
         nudge_withheld: applied
             .nudge_withheld
-            .map(|why| why.as_str())
+            .map(muster_core::compaction::Withheld::as_str)
             .unwrap_or_default()
             .to_string(),
     }

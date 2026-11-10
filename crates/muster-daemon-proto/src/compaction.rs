@@ -12,13 +12,13 @@ use crate as proto;
 
 pub fn rules(rules: &Rules) -> proto::CompactionRules {
     proto::CompactionRules {
-        root: sent(&rules.root),
+        root: sent(rules.root),
         harnesses: rules
             .harnesses
             .iter()
             .map(|(name, set)| proto::CompactionHarness {
                 name: name.clone(),
-                thresholds: sent(set),
+                thresholds: sent(*set),
             })
             .collect(),
         directories: rules
@@ -26,7 +26,7 @@ pub fn rules(rules: &Rules) -> proto::CompactionRules {
             .iter()
             .map(|block| proto::CompactionDirectory {
                 path: block.path.clone(),
-                thresholds: sent(&block.scope),
+                thresholds: sent(block.scope),
             })
             .collect(),
     }
@@ -142,8 +142,8 @@ pub fn read_applied(
     Some((effective, withheld))
 }
 
-fn sent(set: &Thresholds) -> Option<proto::CompactionThresholds> {
-    (!set.is_empty()).then(|| thresholds(set))
+fn sent(set: Thresholds) -> Option<proto::CompactionThresholds> {
+    (!set.is_empty()).then(|| thresholds(&set))
 }
 
 fn applied_threshold(resolved: &Resolved) -> proto::AppliedThreshold {
