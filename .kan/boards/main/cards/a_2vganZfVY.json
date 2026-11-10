@@ -6,28 +6,35 @@
     "backend",
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2x5p7w2rg",
       "body": "Owner decided 2026-11-09: (a) a helper closes with its maker once the helper is idle. Reopening the maker (Reopen Pane / cmd+shift+T, within the hour) brings back the helpers that closed with it.",
       "author": "Alexander Terp",
       "created_at_millis": 1794280176643
+    },
+    {
+      "id": "c_2xAchugDy",
+      "body": "Landed 94edf9e8..2c3693de; gate green at 2c3693de. Follow-ups: a_2xA51GGrY, a_2xA51e2ZX, a_2xA525Iv4.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794291615627
     }
   ],
   "created_at_millis": 1794072280587,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-02: `muster window` showed 16 hidden, quiet helpers, all done for 16 hours, whose three makers had closed. The owner did not know they existed until a phone client listed 20 agents where they ran about 2. docs/cli/limits.md (\"A closed maker's helpers are listed under Hidden\") covers one notice to the owner and a list; nothing closes them or tells anyone again. Each one holds an agent and its memory on a machine where memory is the binding constraint.\n\nDecide what a helper becomes when its maker closes: close with it once idle, become an ordinary shown pane that can notify, or appear in the window as orphaned with one action to close them all. a_2jLn7Jakd is the smaller banner-click version of this.",
   "id": "a_2vganZfVY",
-  "position": "Zv",
+  "position": "YuN",
   "related": [
     "a_2jLn7Jakd"
   ],
   "title": "Helpers keep running hidden and quiet long after their maker closes",
   "type": "enhancement",
-  "updated_at_millis": 1794280344946,
+  "updated_at_millis": 1794291615627,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794072280587},
-    {"field":"column","value":"in-progress","at":1794280344946}
+    {"field":"column","value":"in-progress","at":1794280344946},
+    {"field":"column","value":"done","at":1794291615523}
   ]
 }
