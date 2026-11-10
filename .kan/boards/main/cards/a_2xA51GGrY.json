@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "reopening-a-maker",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290320732,
+  "creator": "Alexander Terp",
+  "description": "A maker reopened on one machine does not reopen, or take back, its helpers on another machine (docs/cli/limits.md, 2026-11-09). Needs a request the window sends the other daemons.",
+  "id": "a_2xA51GGrY",
+  "position": "b2q",
+  "title": "Reopening a maker brings back its helpers on its own machine only",
+  "type": "enhancement",
+  "updated_at_millis": 1794290320732,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290320732}
+  ]
+}

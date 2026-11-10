@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "muster-window-text",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290321764,
+  "creator": "Alexander Terp",
+  "description": "Ruling 1 of the compaction design: when the config holds a nudge or a harness or directory compaction rule and an attached daemon is older than protocol 1.14, muster window's text should say that daemon needs updating. pane compaction says it; window does not.",
+  "id": "a_2xA52vJpy",
+  "position": "b2u",
+  "title": "muster window text says when an attached daemon is too old for scoped compaction",
+  "type": "enhancement",
+  "updated_at_millis": 1794290321764,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290321764}
+  ]
+}

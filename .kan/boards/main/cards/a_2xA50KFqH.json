@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-daemon-test-hangs",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794290320151,
+  "creator": "Alexander Terp",
+  "description": "Seen 2026-11-09 ~22:40 in a worker's ./dev -tl at load 14: detection::claude_codes_hooks_report_working_blocked_and_idle sat 70 minutes until killed. A hook's sh was waiting in `cat` for stdin (`case \"$(cat)\"`), the test daemon idle, no deadlock. It passed alone in 8 s. A hook stdin that never closes stalls the whole suite with no timeout; find who holds the write end, and give the test a deadline so it fails instead of hanging.",
+  "id": "a_2xA50KFqH",
+  "position": "b1h",
+  "title": "A daemon test hangs for an hour when a Claude Code hook's stdin never closes",
+  "type": "bug",
+  "updated_at_millis": 1794290320151,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794290320151}
+  ]
+}

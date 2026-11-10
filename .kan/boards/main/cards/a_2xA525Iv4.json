@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "test-the-default",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290321246,
+  "creator": "Alexander Terp",
+  "description": "The default reopen (cmd+shift+T, muster pane reopen with no --pane) passes over a with-maker pane in muster-seam newest_closed and muster-cli windowless reopen_pane (94edf9e8); neither has a test.",
+  "id": "a_2xA525Iv4",
+  "position": "b2s",
+  "title": "Test the default reopen passing over a pane that closed with its maker",
+  "type": "enhancement",
+  "updated_at_millis": 1794290321246,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290321246}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "mark-panes-that",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290320982,
+  "creator": "Alexander Terp",
+  "description": "Since 94edf9e8 a helper closes with its maker and the default reopen passes over it, but muster pane reopen --list and the Recently Closed menu do not say which entries closed with their maker.",
+  "id": "a_2xA51e2ZX",
+  "position": "b2r",
+  "title": "Mark panes that closed with their maker in pane reopen --list and Recently Closed",
+  "type": "enhancement",
+  "updated_at_millis": 1794290320982,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290320982}
+  ]
+}

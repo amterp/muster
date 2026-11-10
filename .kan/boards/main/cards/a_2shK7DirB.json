@@ -18,6 +18,12 @@
       "body": "Seen again 2026-11-09 ~22:30 in a worker's ./dev -t at load 25-27 on 6 fast cores: muster-ssh left_behind::a_master_whose_muster_is_gone...; passed alone.",
       "author": "Alexander Terp",
       "created_at_millis": 1794288492592
+    },
+    {
+      "id": "c_2xA50dvNu",
+      "body": "Again 2026-11-09 ~23:30 in a worker's ./dev -tl (load 14): left_behind::a_master_whose_muster_is_gone_is_ended_and_a_running_ones_is_not, 'the master of a Muster that is gone is still running'. Passed alone in 0.4 s.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794290320274
     }
   ],
   "created_at_millis": 1793630732494,
@@ -27,7 +33,7 @@
   "position": "b1Y",
   "title": "🎲 A left-behind SSH master can outlive its 5-second deadline under load",
   "type": "bug",
-  "updated_at_millis": 1794288492592,
+  "updated_at_millis": 1794290320274,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793630732494}
   ]

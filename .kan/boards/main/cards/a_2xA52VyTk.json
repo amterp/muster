@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "restore-the-end-to",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290321508,
+  "creator": "Alexander Terp",
+  "description": "The test was removed in 8d016653: after a handover the new daemon refused the test's context reports as from another claude outside the pane's process group (foreign_report seeing the Claude Code the suite ran under, unconfirmed). A unit test covers the carried flag only.",
+  "id": "a_2xA52VyTk",
+  "position": "b2t",
+  "title": "Restore the end-to-end test that a handover carries a pane's nudged flag",
+  "type": "enhancement",
+  "updated_at_millis": 1794290321508,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290321508}
+  ]
+}

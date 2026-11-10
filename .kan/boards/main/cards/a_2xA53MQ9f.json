@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "resolve-directory",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1794290322035,
+  "creator": "Alexander Terp",
+  "description": "canonicalize runs under the daemon's session lock when compaction rules change (3471a12c..); a mount that does not answer stalls the daemon.",
+  "id": "a_2xA53MQ9f",
+  "position": "b2v",
+  "title": "Resolve [[directory]] compaction rule paths outside the session lock",
+  "type": "enhancement",
+  "updated_at_millis": 1794290322035,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794290322035}
+  ]
+}
