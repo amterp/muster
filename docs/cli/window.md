@@ -35,6 +35,17 @@ covering the prompt appears as `(prompt covered by ...)`, even while the pane re
 done. `prompt_covered_by` carries that description in JSON, and is null when none is known.
 The model, its effort and the cost are in `--json`.
 
+A machine's own block says one more thing, on the machine the `muster` you ran is on:
+
+    Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex
+
+Codex copies Muster's plugin once, when it is installed, so after Muster is updated every Codex session runs
+the adapter it had until that command runs again. It is said only when Codex has Muster's plugin
+installed, and when a file the plugin ships, other than its documentation, is not the one in the
+copy: the adapters are compared by content, since development builds share a version. Sessions
+already running take the new adapter when they restart, and Codex asks you to trust its hooks again
+only if they changed.
+
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more
 than one - so a pane's row says which machine it is on, and only while more than one is attached.
@@ -497,6 +508,8 @@ attached has none yet, and with nothing attached at all the plain answer says so
   today adopts a daemon started yesterday if it is still answering, so what is in it may
   predate the window.
 - `panes` and `directories` say how much it holds and where.
+- `adapter_copies` is `{"codex": "differs"}` on the machine this `muster` runs on when Codex's copy
+  of Muster's adapter is not this Muster's, as above, and null otherwise.
 - `color` is the color of the machine's swatch in the agent list, `#rrggbb`: its `[[daemon]]`
   block's `color`, or the one Muster draws from its name. The plain answer prints it at the end
   of the machine's second line, as text rather than painted, since the colors the CLI paints are

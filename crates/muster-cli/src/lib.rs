@@ -246,7 +246,7 @@ pub fn run(
             return 0;
         }
         if let Some((_, answer)) = answers.into_iter().next() {
-            return match answer.and_then(|response| render::answer(&response, json)) {
+            return match answer.and_then(|response| answer_here(&response, json, environment)) {
                 Ok(text) => {
                     if !text.is_empty() {
                         let _ = writeln!(out, "{}", text.trim_end());
@@ -303,6 +303,28 @@ fn held_by_one(
     answers
 }
 
+/// What is true of the machine this CLI runs on, for the window it describes.
+pub(crate) fn here(environment: &BTreeMap<String, String>) -> render::Local {
+    render::Local {
+        daemon_socket: daemon::socket(environment).map(|socket| socket.display().to_string()),
+        codex_adapter_differs: harness::codex_adapter_copy_differs(environment),
+    }
+}
+
+/// [`render::answer`], with what is true of this machine for an answer that is a window, and
+/// without reading its files for any other.
+pub(crate) fn answer_here(
+    response: &muster_proto::Response,
+    json: bool,
+    environment: &BTreeMap<String, String>,
+) -> Result<String, Trouble> {
+    let local = match response.payload {
+        Some(muster_proto::response::Payload::Window(_)) => here(environment),
+        _ => render::Local::default(),
+    };
+    render::answer_on(response, json, &local)
+}
+
 /// Asks the window the caller means, or this machine's daemon when no window answers at all.
 fn ask_a_window(
     request: &muster_proto::Request,
@@ -315,7 +337,7 @@ fn ask_a_window(
         Err(Trouble::NoWindow { reason, silent }) if request.window.is_empty() => {
             instead_of_a_window(request, &reason, &silent, environment, json, errors)
         }
-        asked => asked.and_then(|response| render::answer(&response, json)),
+        asked => asked.and_then(|response| answer_here(&response, json, environment)),
     }
 }
 
@@ -381,9 +403,9 @@ fn from_the_daemon(
         )));
     }
     match windowless::ask(request, environment)? {
-        windowless::Answered::Response(response) => render::answer(&response, json),
+        windowless::Answered::Response(response) => answer_here(&response, json, environment),
         windowless::Answered::Window { window, socket } => {
-            Ok(render::daemon_window(&window, &socket, json))
+            Ok(render::daemon_window(&window, &socket, json, &here(environment)))
         }
     }
 }

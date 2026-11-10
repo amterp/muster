@@ -113,8 +113,31 @@ fn closed_panes(closed: &muster_proto::ClosedPanes, now_ms: i64, json: bool) -> 
         .join("\n")
 }
 
+/// What only the machine the CLI runs on can say about a window it is describing: the CLI reads
+/// this machine's files, and a window may hold panes on others. The default says nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Local {
+    /// The socket of the daemon this CLI is on, which names the one machine in a window's answer
+    /// the rest of this describes.
+    pub daemon_socket: Option<String>,
+    /// Whether Codex's copy of Muster's adapter differs from this Muster's
+    /// ([`crate::harness::codex_copy_differs`]).
+    pub codex_adapter_differs: bool,
+}
+
+impl Local {
+    fn codex_adapter_differs_on(&self, machine: &muster_proto::Machine) -> bool {
+        self.codex_adapter_differs && self.daemon_socket.as_deref() == Some(machine.socket.as_str())
+    }
+}
+
 /// Turns an answer into what should be printed, or into the reason there is nothing to print.
 pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
+    answer_on(response, json, &Local::default())
+}
+
+/// [`answer`], for a CLI that knows what is true of the machine it is on.
+pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<String, Trouble> {
     match &response.payload {
         Some(response::Payload::Failure(failure)) => Err(Trouble::Refused(failure.reason.clone())),
         // The same exit as a window that took the request and never answered, one hop further
@@ -161,9 +184,9 @@ pub fn answer(response: &Response, json: bool) -> Result<String, Trouble> {
             (false, _) => went.pane_id.clone(),
         }),
         Some(response::Payload::Window(window)) => Ok(if json {
-            window_json(window, Others::All).to_string()
+            window_json(window, Others::All, local).to_string()
         } else {
-            window_text(window, now_ms(), Others::All, true)
+            window_text(window, now_ms(), Others::All, true, local)
         }),
         Some(response::Payload::PaneText(read)) => Ok(if json {
             json!({ "text": read.text, "rows": read.rows, "truncated": read.truncated }).to_string()
@@ -249,9 +272,9 @@ fn pane_state_answer(agent: &muster_proto::PaneStateChanged, json: bool) -> Stri
 /// A window's answer with what only a window has left out - places, the keyboard, what is on
 /// screen - and headed with which daemon answered, so nobody reads it as a window's.
 /// `answered_by` in the JSON says the same, and a window's own answer never carries it.
-pub fn daemon_window(window: &Window, socket: &str, json: bool) -> String {
+pub fn daemon_window(window: &Window, socket: &str, json: bool, local: &Local) -> String {
     if json {
-        let mut answer = window_json(window, Others::None);
+        let mut answer = window_json(window, Others::None, local);
         if let Value::Object(fields) = &mut answer {
             fields.insert("answered_by".to_string(), json!("daemon"));
             fields.insert("name".to_string(), Value::Null);
@@ -260,7 +283,7 @@ pub fn daemon_window(window: &Window, socket: &str, json: bool) -> String {
     }
     let heading =
         styled(&format!("no window answered; the muster-daemon at {socket} holds:"), QUIET);
-    format!("{heading}\n{}", window_text(window, now_ms(), Others::None, false))
+    format!("{heading}\n{}", window_text(window, now_ms(), Others::None, false, local))
 }
 
 /// What a payload is called, for the one message that says a build disagrees with itself.
@@ -451,7 +474,9 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                             // window's answer is the same object here as it is on its own and a
                             // filter written for one reads across all of them:
                             // `.windows[].panes[] | select(.state == "blocked")`.
-                            if let Value::Object(fields) = window_json(window, Others::All) {
+                            if let Value::Object(fields) =
+                                window_json(window, Others::All, &Local::default())
+                            {
                                 for (key, value) in fields {
                                     row[key] = value;
                                 }
@@ -489,7 +514,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
             let body = match answer {
                 Ok(response) => match &response.payload {
                     Some(response::Payload::Window(window)) => {
-                        window_text(window, now_ms(), Others::All, true)
+                        window_text(window, now_ms(), Others::All, true, &Local::default())
                     }
                     _ => answer_alone(response, false)
                         .unwrap_or_else(|detail| styled(&detail, QUIET)),
@@ -554,7 +579,7 @@ fn other_heading(other: &muster_proto::OtherWindow) -> String {
     if other.pid == 0 { format!("{} (closed)", other.name) } else { other.name.clone() }
 }
 
-fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> String {
+fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool, local: &Local) -> String {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let machines: Vec<&muster_proto::Machine> = window.daemons.iter().collect();
@@ -629,7 +654,7 @@ fn window_text(window: &Window, now_ms: i64, others: Others, drawn: bool) -> Str
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        lines.extend(daemon_lines(machine));
+        lines.extend(daemon_lines(machine, local));
     }
 
     if lines.is_empty() {
@@ -1022,7 +1047,7 @@ fn beside_callsign(pane: &muster_proto::RosterPane) -> &str {
 /// whether a herdr process was safe to end, when Muster ran herdr, could not pair a pid with the
 /// work it held, so the choice was made on age, and age picks the wrong process (kan
 /// a_28YghIUw2). Muster started the daemon or chose to attach to it, so it can simply say.
-fn daemon_lines(machine: &muster_proto::Machine) -> Vec<String> {
+fn daemon_lines(machine: &muster_proto::Machine, local: &Local) -> Vec<String> {
     let mut lines = vec![daemon_line(&machine.daemon_id, &machine.state, &machine.detail)];
     let where_it_runs =
         if machine.host.is_empty() { "this machine".to_string() } else { machine.host.clone() };
@@ -1041,8 +1066,16 @@ fn daemon_lines(machine: &muster_proto::Machine) -> Vec<String> {
         if machine.color.is_empty() { String::new() } else { format!(" · {}", machine.color) };
     lines.push(styled(&format!("  {where_it_runs} · {whose} · {holding}{color}"), QUIET));
     lines.push(styled(&format!("  {}", machine.socket), QUIET));
+    if local.codex_adapter_differs_on(machine) {
+        lines.push(styled(&format!("  {CODEX_COPY_DIFFERS}"), QUIET));
+    }
     lines
 }
+
+/// What a machine's block says when Codex runs an older adapter than the Muster there carries,
+/// which only `muster harness install codex` puts right: Codex copies the plugin once.
+const CODEX_COPY_DIFFERS: &str =
+    "Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex";
 
 fn daemon_line(daemon: &str, state: &str, detail: &str) -> String {
     let mut line = format!("{}  {}", styled(daemon, NAME), styled(state, health_style(state)));
@@ -1413,7 +1446,31 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
 ///
 /// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
 /// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
-fn window_json(window: &Window, others: Others) -> Value {
+/// The machines a window is attached to, as `daemons[]`.
+fn machines_json(window: &Window, local: &Local) -> Vec<Value> {
+    window
+        .daemons
+        .iter()
+        .map(|daemon| {
+            json!({
+                "daemon": daemon.daemon_id,
+                "state": daemon.state,
+                "detail": daemon.detail,
+                "host": daemon.host,
+                "socket": daemon.socket,
+                "started_by_muster": daemon.started_by_muster,
+                "panes": daemon.panes,
+                "directories": daemon.directories,
+                "color": (!daemon.color.is_empty()).then_some(&daemon.color),
+                "adapter_copies": local
+                    .codex_adapter_differs_on(daemon)
+                    .then(|| json!({ "codex": "differs" })),
+            })
+        })
+        .collect()
+}
+
+fn window_json(window: &Window, others: Others, local: &Local) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);
     let places = places(window);
@@ -1467,23 +1524,7 @@ fn window_json(window: &Window, others: Others) -> Value {
         }
     }
 
-    let daemons: Vec<Value> = window
-        .daemons
-        .iter()
-        .map(|daemon| {
-            json!({
-                "daemon": daemon.daemon_id,
-                "state": daemon.state,
-                "detail": daemon.detail,
-                "host": daemon.host,
-                "socket": daemon.socket,
-                "started_by_muster": daemon.started_by_muster,
-                "panes": daemon.panes,
-                "directories": daemon.directories,
-                "color": (!daemon.color.is_empty()).then_some(&daemon.color),
-            })
-        })
-        .collect();
+    let daemons = machines_json(window, local);
 
     // A pane says which tab holds it by name rather than by place, so one read is enough to act
     // on it: `.panes[] | select(.pane == $MUSTER_PANE) | .tab` is how a pane finds its own tab,
@@ -1815,8 +1856,8 @@ pub(crate) fn shell_word(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Others, QUIET, agent_style, daemons_json, daemons_text, held_for, window_json, window_text,
-        windows,
+        Local, Others, QUIET, agent_style, daemons_json, daemons_text, held_for, window_json,
+        window_text, windows,
     };
     use anstyle::{AnsiColor, Color, Style};
 
@@ -1835,7 +1876,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["groups"][0]["daemon"], "home");
         assert_eq!(json["groups"][0]["partner_pane"]["daemon"], "far");
         assert_eq!(json["groups"][0]["partner_pane"]["pane"], "p2");
@@ -1867,7 +1908,7 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["asking"][0]["pane"], "p1");
         assert_eq!(json["asking"][0]["group"], serde_json::Value::Null);
         assert_eq!(json["asking"][0]["callsign"], "otter");
@@ -2106,13 +2147,60 @@ mod tests {
                 .to_vec(),
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["adapter"], "silent", "{json}");
         assert!(json["panes"][1]["adapter"].is_null(), "{json}");
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(row("p1").contains("(adapter not reporting)"), "{text}");
         assert!(!row("p2").contains("adapter"), "{text}");
+    }
+
+    /// Codex's older adapter is said on the block of the machine the CLI is on, and on no other:
+    /// a window can hold a devenv whose `~/.codex` this CLI never looked at.
+    #[test]
+    fn a_stale_codex_adapter_is_noted_on_the_machine_it_is_on() {
+        use muster_proto::{Machine, Window};
+        let machine = |daemon: &str, host: &str, socket: &str| Machine {
+            daemon_id: daemon.to_string(),
+            host: host.to_string(),
+            socket: socket.to_string(),
+            state: "connected".to_string(),
+            ..Machine::default()
+        };
+        let window = Window {
+            daemons: vec![
+                machine("local", "", "/home/me/.muster/daemon/release.sock"),
+                machine("devenv", "devenv", "/home/me/.muster/state/forward-1.sock"),
+            ],
+            ..Window::default()
+        };
+        let stale = Local {
+            daemon_socket: Some("/home/me/.muster/daemon/release.sock".to_string()),
+            codex_adapter_differs: true,
+        };
+        let blocks = |local: &Local| -> Vec<String> {
+            let text = window_text(&window, 0, Others::All, false, local);
+            text.split("\n\n").map(str::to_string).collect()
+        };
+        let note = "Codex's copy of Muster's adapter differs from this Muster's: muster harness \
+                    install codex";
+        let stale_blocks = blocks(&stale);
+        assert!(stale_blocks[0].contains(note), "{stale_blocks:?}");
+        assert!(!stale_blocks[1].contains("Codex"), "{stale_blocks:?}");
+        for quiet in [
+            Local::default(),
+            Local { codex_adapter_differs: false, ..stale.clone() },
+            Local { daemon_socket: None, ..stale.clone() },
+        ] {
+            assert!(!window_text(&window, 0, Others::All, false, &quiet).contains("Codex"));
+        }
+
+        let json = window_json(&window, Others::All, &stale);
+        assert_eq!(json["daemons"][0]["adapter_copies"]["codex"], "differs", "{json}");
+        assert!(json["daemons"][1]["adapter_copies"].is_null(), "{json}");
+        let quiet = window_json(&window, Others::All, &Local::default());
+        assert!(quiet["daemons"][0]["adapter_copies"].is_null(), "{quiet}");
     }
 
     /// A program that stopped reading is a note on its row, naming it and what it left, and an
@@ -2157,12 +2245,12 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["state"], "stuck", "{json}");
         assert_eq!(json["panes"][0]["unread_input"]["bytes"], 2817, "{json}");
         assert_eq!(json["panes"][0]["unread_input"]["program"], "codex", "{json}");
         assert!(json["panes"][1]["unread_input"].is_null(), "{json}");
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(row("p1").contains("stuck"), "{text}");
         assert!(row("p1").contains("(codex has not read 2817 bytes of input)"), "{text}");
@@ -2211,7 +2299,7 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["session"], "s-1", "{json}");
         assert_eq!(
             json["panes"][0]["resume"],
@@ -2268,11 +2356,11 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["compaction"], "queued", "{json}");
         assert_eq!(json["panes"][1]["compaction"], "follow_up", "{json}");
         assert!(json["panes"][2]["compaction"].is_null(), "{json}");
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(
             row("p1")
@@ -2313,7 +2401,7 @@ mod tests {
             }],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         let hidden = &json["hidden"][0]["panes"][0];
         assert_eq!(hidden["state"], "stuck", "{json}");
         assert_eq!(hidden["since"], 1_700_000_000.0, "{json}");
@@ -2341,7 +2429,7 @@ mod tests {
             }),
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert!(json["panes"][0]["maker"].is_null(), "{json}");
         assert_eq!(json["panes"][1]["maker"], "p1", "{json}");
         assert_eq!(json["hidden"][0]["panes"][0]["maker"], "p1", "{json}");
@@ -2402,7 +2490,8 @@ mod tests {
     /// else in it.
     #[test]
     fn hidden_helpers_are_listed_under_their_maker() {
-        let text = unstyled(&window_text(&helpers_window(), 0, Others::All, false));
+        let text =
+            unstyled(&window_text(&helpers_window(), 0, Others::All, false, &Local::default()));
         let rows: Vec<&str> = text.lines().map(str::trim_end).collect();
         let lead = rows.iter().position(|row| row.contains("lead ")).expect("the maker is listed");
         let expected = [
@@ -2433,7 +2522,8 @@ mod tests {
     /// does.
     #[test]
     fn a_helpers_row_keeps_the_columns_in_line() {
-        let text = unstyled(&window_text(&helpers_window(), 0, Others::All, false));
+        let text =
+            unstyled(&window_text(&helpers_window(), 0, Others::All, false, &Local::default()));
         let column = |pane: &str| {
             let row = text.lines().find(|row| row.contains(pane)).unwrap_or_default();
             row.find("idle")
@@ -2483,7 +2573,7 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["state"], "unreachable", "{json}");
         assert_eq!(json["panes"][0]["last_state"], "blocked", "{json}");
         assert!(json["panes"][1]["last_state"].is_null(), "{json}");
@@ -2491,7 +2581,7 @@ mod tests {
             assert!(json["panes"][0].get(stale).is_none(), "{stale} read as current: {json}");
             assert!(json["panes"][1].get(stale).is_some(), "a live pane lost {stale}: {json}");
         }
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         let row = |pane: &str| text.lines().find(|line| line.contains(pane)).unwrap_or_default();
         assert!(row("p1").contains("unreachable"), "{text}");
         assert!(row("p1").contains("(was blocked)"), "{text}");
@@ -2538,7 +2628,7 @@ mod tests {
             layouts: vec![laid_out("t1", "p1"), laid_out("t3", "p3")],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         assert_eq!(json["panes"][0]["frame"]["width"], 1.0, "{json}");
         let closed = &json["other_windows"][1]["tabs"][0]["panes"][0];
         assert_eq!(closed["frame"]["height"], 1.0, "a closed window's pane: {json}");
@@ -2597,7 +2687,7 @@ mod tests {
             grids: vec![grid("p1", 160), grid("p2", 79)],
             ..Window::default()
         };
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         assert!(text.contains("160x40"), "the zoomed pane is drawn at its size: {text}");
         assert!(!text.contains("79x40"), "a pane behind the zoom is drawn: {text}");
         assert!(text.contains("behind the zoom: p2"), "{text}");
@@ -2657,7 +2747,7 @@ mod tests {
             grids: vec![grid("p1", 79), grid("p2", 39), grid("p3", 160)],
             ..Window::default()
         };
-        let text = window_text(&window, 0, Others::All, false);
+        let text = window_text(&window, 0, Others::All, false, &Local::default());
         assert!(text.contains("zoomed on p3"), "{text}");
         assert!(text.contains("160x40"), "the zoomed pane is drawn at its size: {text}");
         assert!(

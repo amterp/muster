@@ -196,7 +196,8 @@ still takes new sessions until `codex app-server daemon stop`, which install lea
 it ends the sessions running there. Codex installs a copy of the plugin, recorded against the
 resolved path of `<extras>`, so run the install again after updating Muster: it first removes a
 `muster` marketplace an earlier Muster install left, and leaves one added from anywhere else, such
-as a source checkout. Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed
+as a source checkout. `muster window` says when the copy no longer matches this Muster's adapter.
+Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed
 Codex cannot run `muster msg read` or `post` itself unless its sandbox may use the network; the
 messaging hooks hand it what it is sent regardless. `extras/codex/README.md` has both, and the
 setting's cost.

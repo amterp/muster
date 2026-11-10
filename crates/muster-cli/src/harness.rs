@@ -211,6 +211,72 @@ pub fn extras(
     }
 }
 
+/// Where Codex keeps what it installs: `$CODEX_HOME`, else `~/.codex`.
+pub fn codex_home(environment: &BTreeMap<String, String>) -> Option<PathBuf> {
+    if let Some(explicit) = environment.get("CODEX_HOME").filter(|home| !home.is_empty()) {
+        return Some(PathBuf::from(explicit));
+    }
+    let home = environment.get("HOME").filter(|home| !home.is_empty())?;
+    Some(Path::new(home).join(".codex"))
+}
+
+/// Whether the copy of Muster's Codex plugin that Codex installed differs from the one in
+/// `extras`. False when Codex has no copy: nothing is running an older adapter then, and there is
+/// nothing to tell the person to refresh.
+///
+/// Codex copies the plugin into `<codex home>/plugins/cache/muster/muster-codex/<version>/` when
+/// it is installed and never again, so the copy keeps whatever Muster it came from. Content is
+/// compared rather than a version, because development builds share one. Markdown is left out:
+/// it is documentation, and Codex asks for hooks to be trusted again only when they change, so
+/// telling somebody to reinstall over a README would cost them a review for nothing.
+pub fn codex_copy_differs(extras: &Path, codex_home: &Path) -> bool {
+    let Some(copy) = newest_subdirectory(&codex_home.join("plugins/cache/muster/muster-codex"))
+    else {
+        return false;
+    };
+    let plugin = extras.join("codex");
+    let mut files = Vec::new();
+    collect_files(&plugin, Path::new(""), &mut files);
+    files.iter().filter(|relative| relative.extension().is_none_or(|ext| ext != "md")).any(
+        |relative| {
+            std::fs::read(plugin.join(relative)).ok() != std::fs::read(copy.join(relative)).ok()
+        },
+    )
+}
+
+/// [`codex_copy_differs`] for this machine: the Codex under this environment's home, against the
+/// adapters of the Muster this CLI belongs to. False when either cannot be found.
+pub fn codex_adapter_copy_differs(environment: &BTreeMap<String, String>) -> bool {
+    let Some(home) = codex_home(environment) else { return false };
+    extras(environment, std::env::current_exe().ok())
+        .is_ok_and(|extras| codex_copy_differs(&extras, &home))
+}
+
+/// The directory in `directory` changed most recently: Codex names a local plugin's version
+/// itself, so which one it is is not Muster's to say.
+fn newest_subdirectory(directory: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(directory)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
+        .max()
+        .map(|(_, path)| path)
+}
+
+/// Every file under `root`, as paths relative to it.
+fn collect_files(root: &Path, relative: &Path, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root.join(relative)) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        let path = relative.join(entry.file_name());
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => collect_files(root, &path, found),
+            Ok(_) => found.push(path),
+            Err(_) => {}
+        }
+    }
+}
+
 /// Installs `harness`'s adapter, or with `dry_run` prints what that would run.
 pub fn install(
     harness: Harness,
@@ -425,6 +491,129 @@ mod tests {
         assert!(stale(Path::new("/Volumes/Old/Muster.app/Contents/Resources/extras")));
         assert!(!stale(&checkout.canonicalize().unwrap()), "somebody's checkout");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Muster's adapters with a Codex plugin in them, and a Codex home holding a copy of it.
+    struct Copies(PathBuf);
+
+    impl Copies {
+        const FILES: [(&'static str, &'static str); 4] = [
+            (".codex-plugin/plugin.json", "{\"name\": \"muster-codex\"}"),
+            ("hooks/hooks.json", "{\"hooks\": 1}"),
+            ("messaging-hooks.json", "{}"),
+            ("README.md", "# the plugin"),
+        ];
+
+        fn new(test: &str) -> Copies {
+            let root =
+                std::env::temp_dir().join(format!("muster-copy-{}-{test}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let copies = Copies(root);
+            for (name, text) in Self::FILES {
+                Copies::write(&copies.extras().join("codex"), name, text);
+            }
+            copies
+        }
+
+        fn extras(&self) -> PathBuf {
+            self.0.join("extras")
+        }
+
+        fn codex_home(&self) -> PathBuf {
+            self.0.join("codex-home")
+        }
+
+        fn version(&self, version: &str) -> PathBuf {
+            self.codex_home().join("plugins/cache/muster/muster-codex").join(version)
+        }
+
+        fn write(directory: &Path, name: &str, text: &str) {
+            let path = directory.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+
+        /// What Codex copies in when the plugin is installed: every file, as shipped.
+        fn install(&self, version: &str) {
+            for (name, text) in Self::FILES {
+                Self::write(&self.version(version), name, text);
+            }
+        }
+
+        fn differs(&self) -> bool {
+            codex_copy_differs(&self.extras(), &self.codex_home())
+        }
+    }
+
+    impl Drop for Copies {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_codex_copy_that_matches_the_shipped_plugin_says_nothing() {
+        let copies = Copies::new("matches");
+        copies.install("local");
+        assert!(!copies.differs());
+    }
+
+    #[test]
+    fn a_codex_copy_with_other_hooks_differs() {
+        let copies = Copies::new("hooks");
+        copies.install("local");
+        Copies::write(&copies.version("local"), "hooks/hooks.json", "{\"hooks\": 0}");
+        assert!(copies.differs());
+    }
+
+    #[test]
+    fn a_codex_copy_missing_a_file_the_plugin_ships_differs() {
+        let copies = Copies::new("missing");
+        copies.install("local");
+        std::fs::remove_file(copies.version("local").join("messaging-hooks.json")).unwrap();
+        assert!(copies.differs());
+    }
+
+    #[test]
+    fn a_documentation_change_alone_is_not_a_reason_to_reinstall() {
+        let copies = Copies::new("readme");
+        copies.install("local");
+        Copies::write(&copies.version("local"), "README.md", "# an older readme");
+        assert!(!copies.differs());
+    }
+
+    #[test]
+    fn without_a_codex_copy_there_is_nothing_to_refresh() {
+        let copies = Copies::new("none");
+        assert!(!copies.differs(), "no Codex home at all");
+        std::fs::create_dir_all(copies.codex_home().join("plugins/cache/muster")).unwrap();
+        assert!(!copies.differs(), "a marketplace Codex never installed the plugin from");
+    }
+
+    #[test]
+    fn the_newest_codex_copy_is_the_one_compared() {
+        let copies = Copies::new("newest");
+        copies.install("0.1");
+        Copies::write(&copies.version("0.1"), "hooks/hooks.json", "{\"hooks\": 0}");
+        std::thread::sleep(Duration::from_millis(30));
+        copies.install("0.2");
+        assert!(!copies.differs(), "the older copy is not what Codex runs");
+    }
+
+    #[test]
+    fn codex_keeps_its_plugins_where_it_was_told_to_or_in_the_home_directory() {
+        let environment = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+            pairs.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect()
+        };
+        assert_eq!(
+            codex_home(&environment(&[("HOME", "/home/me"), ("CODEX_HOME", "/elsewhere")])),
+            Some(PathBuf::from("/elsewhere"))
+        );
+        assert_eq!(
+            codex_home(&environment(&[("HOME", "/home/me")])),
+            Some(PathBuf::from("/home/me/.codex"))
+        );
+        assert_eq!(codex_home(&environment(&[])), None);
     }
 
     #[test]

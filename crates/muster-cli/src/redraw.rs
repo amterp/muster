@@ -129,13 +129,16 @@ fn drawn(
 ) -> Result<(Value, String), Trouble> {
     let (as_json, as_text) = match answered(read, named, no_window, environment)? {
         Answer::Window(response) => (
-            render::answer(&response, true)?,
-            (!json).then(|| render::answer(&response, false)).transpose()?,
+            crate::answer_here(&response, true, environment)?,
+            (!json).then(|| crate::answer_here(&response, false, environment)).transpose()?,
         ),
-        Answer::Daemon { window, socket } => (
-            render::daemon_window(&window, &socket, true),
-            (!json).then(|| render::daemon_window(&window, &socket, false)),
-        ),
+        Answer::Daemon { window, socket } => {
+            let local = crate::here(environment);
+            (
+                render::daemon_window(&window, &socket, true, &local),
+                (!json).then(|| render::daemon_window(&window, &socket, false, &local)),
+            )
+        }
     };
     let value: Value = serde_json::from_str(&as_json).map_err(|error| {
         Trouble::Refused(format!(

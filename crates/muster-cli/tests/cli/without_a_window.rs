@@ -98,6 +98,46 @@ fn panes() -> Here {
     Here::new(daemon)
 }
 
+/// Muster's Codex plugin as Codex installs it: every shipped file but the documentation, copied
+/// into `$HOME/.codex`, with Muster's own adapters linked into `here`'s home so that the CLI finds
+/// them as it does on an SSH machine. Returns the copy's directory.
+fn codex_copy(here: &Here) -> PathBuf {
+    let extras = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extras");
+    std::os::unix::fs::symlink(&extras, here.home.join("extras")).unwrap();
+    let copy = here.home.join(".codex/plugins/cache/muster/muster-codex/local");
+    for file in [".codex-plugin/plugin.json", "hooks/hooks.json", "messaging-hooks.json"] {
+        let to = copy.join(file);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(extras.join("codex").join(file), to).unwrap();
+    }
+    copy
+}
+
+#[test]
+fn a_window_says_when_codexs_copy_of_the_adapter_is_not_the_one_this_muster_carries() {
+    let here = Here::new(Daemon::start_detecting());
+    let said = |here: &Here| ok(&here.muster(&["window"]));
+    let json = |here: &Here| -> Value {
+        serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap()
+    };
+    let note = "Codex's copy of Muster's adapter differs from this Muster's";
+
+    assert!(!said(&here).contains(note), "no Codex here, so nothing to refresh");
+
+    let copy = codex_copy(&here);
+    let matching = said(&here);
+    assert!(!matching.contains(note), "a copy of this Muster's own plugin:\n{matching}");
+    assert!(json(&here)["daemons"][0]["adapter_copies"].is_null());
+
+    std::fs::write(copy.join("hooks/hooks.json"), "{}").unwrap();
+    let differing = said(&here);
+    assert!(
+        differing.contains(&format!("{note}: muster harness install codex")),
+        "an older adapter is said, with what to run:\n{differing}"
+    );
+    assert_eq!(json(&here)["daemons"][0]["adapter_copies"], json!({ "codex": "differs" }));
+}
+
 #[test]
 fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     let here = panes();
