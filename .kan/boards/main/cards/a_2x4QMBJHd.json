@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "dev-claude-code-does",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794276841268,
+  "creator": "Alexander Terp",
+  "description": "22efc8e9 and 925923c5 end a Claude Code Stop hook's `muster msg wait --due` when its pane closes (refusal pane_closed) or the agent starts a new turn (new_turn), both exit 1, which the hook `wait --due \u003e\u00262 \u0026\u0026 exit 2; exit 0` should treat as an ordinary end. That reading was checked against the hook text, not a real Claude Code. The --claude-code tier could close a hooked pane and start a second turn and check the hook's wait process is gone and no 'Stop hook feedback' arrived.",
+  "id": "a_2x4QMBJHd",
+  "position": "b2k",
+  "title": "./dev --claude-code does not check that a Stop hook's msg wait ends on a pane close or a new turn",
+  "type": "chore",
+  "updated_at_millis": 1794276841268,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794276841268}
+  ]
+}

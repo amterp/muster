@@ -5,30 +5,37 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2pP574xtG",
       "body": "2026-10-27 re-triage: promoted to backlog-hi. This observed shutdown leak leaves a closed pane's dead session and daemon connection alive for up to a day, so it precedes speculative features. The duplicate mid-turn notice, a_2pOTJDMPl, stays lower priority because the message body still reaches its agent.",
       "author": "Alexander Terp",
       "created_at_millis": 1793143966586
+    },
+    {
+      "id": "c_2x4QJGngy",
+      "body": "Done in 22efc8e9: a msg wait from a pane ends (refusal pane_closed, exit 1) within about half a second of that pane closing, checked in the wait's existing 500 ms look; the Stop hook treats exit 1 as an ordinary end. A wait from no pane is unaffected.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794276839389
     }
   ],
   "created_at_millis": 1793142513106,
   "creator": "Alexander Terp",
   "description": "Seen 2026-10-26 on 0.19.0 with Claude Code 2.1.310, closing panes that ran `extras/claude-code/messaging-hooks.json`. After `muster pane close`, the pane left `muster window`, but its shell, launcher and `claude` processes stayed in state `?E` (exiting). The Stop hook's `/bin/sh -c muster msg wait --due ...` and its `muster msg wait --due` child, which carries the closed pane's `MUSTER_PANE`, kept running. Claude Code cannot finish exiting while an async hook runs, and the hook's timeout is 86400 s, so each closed pane can hold a dead session and a daemon connection for up to a day. Killing the `muster msg wait` child let all of them exit at once.\n\nPossibly: have `muster msg wait` end when its pane closes, since the daemon knows, or have pane close end the pane's waits. Failing that, a shorter hook timeout re-armed each turn.",
   "id": "a_2pOTIVxnx",
-  "position": "a0",
+  "position": "YuV",
   "related": [
     "a_2j17531rW",
     "a_2pOTJDMPl"
   ],
   "title": "A closed pane's Claude Code stays exiting for up to a day while its Stop hook's msg wait runs",
   "type": "bug",
-  "updated_at_millis": 1794275436616,
+  "updated_at_millis": 1794276840070,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793142513106},
     {"field":"column","value":"backlog-hi","at":1793143966443},
-    {"field":"column","value":"in-progress","at":1794275436616}
+    {"field":"column","value":"in-progress","at":1794275436616},
+    {"field":"column","value":"done","at":1794276840070}
   ]
 }
