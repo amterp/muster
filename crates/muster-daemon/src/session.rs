@@ -50,7 +50,7 @@ use crate::data::Data;
 use crate::detect::{self, Detecting, Loaded};
 use crate::effects::{self, Report, Reported, Reports};
 use crate::facts;
-use crate::messages::{Declared, Doorbell, Messages, Need, Over, Peers};
+use crate::messages::{Declared, Doorbell, Messages, Need, Over, Peers, agent_to_come};
 use crate::operations::{Operations, Record};
 use crate::pane::{Ended, Pane, PaneIo, Process, Turns, TypedBy, Watching};
 use crate::persist::{self, Persister};
@@ -1161,6 +1161,8 @@ struct Reopening {
     /// Its callsign and its given name as it closed, when an open pane holds either now.
     callsign_taken: Option<String>,
     name_taken: Option<String>,
+    /// The daemon is reopening it after its maker, which nobody asked for by itself.
+    with_maker: bool,
 }
 
 /// What of a create a reopened pane's placing needs once its process has started.
@@ -1878,15 +1880,18 @@ impl Session {
     /// starts outside the lock once what ran in it has ended ([`Starting::start`]), and
     /// [`Session::started`] places it.
     fn reopen(&mut self, reopen: pane_request::Reopen) -> Handled {
-        match self.prepare_reopen(reopen) {
+        match self.prepare_reopen(reopen, false) {
             Ok(starting) => Handled::Start(Box::new(starting)),
             Err(reply) => Handled::Reply(reply),
         }
     }
 
+    /// `with_maker` when the daemon reopens a helper because its maker was reopened, rather than
+    /// somebody asking for the helper.
     pub(crate) fn prepare_reopen(
         &mut self,
         reopen: pane_request::Reopen,
+        with_maker: bool,
     ) -> Result<Starting, Reply> {
         if self.stopping {
             return Err(Reply::refused("the daemon is stopping"));
@@ -1967,6 +1972,7 @@ impl Session {
                 resume,
                 callsign_taken,
                 name_taken,
+                with_maker,
             })),
         })
     }
@@ -2139,8 +2145,9 @@ impl Session {
             && maker
                 .is_some_and(|maker| self.closed.iter().any(|closed| closed.pane.name == maker));
         let mut quiet_before_orphaned = saved.quiet_before_orphaned;
-        // Somebody asked for this helper while its maker is closed, so it is theirs to close.
-        let kept = maker.is_some() && !maker_open;
+        // Somebody asked for this helper while its maker is closed, so it is theirs to close. Not
+        // one coming back with a maker that closed again while it started.
+        let kept = maker.is_some() && !maker_open && !reopening.with_maker;
         if maker_open {
             if saved.maker_closed {
                 record.quiet = saved.quiet_before_orphaned.unwrap_or(saved.quiet);
@@ -3642,9 +3649,10 @@ impl Session {
         let record = &helper.record;
         let at_rest = record.unread_input.is_none()
             && !is_waiting(record.facts.as_ref())
+            && !helper.io.discards().is_restarting()
             && match record.agent {
                 Some(_) => record.agent_state() == proto::AgentState::Idle,
-                None => true,
+                None => helper.io.since_agent_started() >= agent_to_come(),
             };
         if !Self::closes_once_idle(helper) || !at_rest {
             return false;

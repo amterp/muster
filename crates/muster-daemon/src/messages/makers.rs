@@ -393,7 +393,9 @@ impl Makers {
             .chain(self.unsettled.iter().map(|(_, heard_ms)| heard_ms))
             .chain(self.agent_awaited.then_some(&now_ms))
             .map(|since_ms| {
-                Duration::from_millis(since_ms.saturating_add(self.settle_ms).saturating_sub(now_ms))
+                Duration::from_millis(
+                    since_ms.saturating_add(self.settle_ms).saturating_sub(now_ms),
+                )
             });
         self.watches
             .values()
@@ -706,7 +708,7 @@ fn reopen_with_maker(shared: &Arc<Shared>, session: &mut Session, helper: &str) 
         pane: helper.to_string(),
         tab: Minter::new(Mint::Drawn).tab().to_string(),
     };
-    let starting = match session.prepare_reopen(reopen) {
+    let starting = match session.prepare_reopen(reopen, true) {
         Ok(starting) => starting,
         Err(reply) => return not_reopened(helper, &reply.reason),
     };
@@ -747,15 +749,12 @@ fn names(orphaned: &Orphaned) -> Vec<&str> {
     orphaned.helpers.iter().map(|(_, name)| name.as_str()).collect()
 }
 
-/// `orphaned` with only the helpers still open, or nothing when none is. A helper closes with
-/// its maker once it is at rest, which `closed` did since `panes` was read, or after its maker in
-/// one request, as a tab holding both does.
-fn still_open(
-    mut orphaned: Orphaned,
-    panes: &Panes,
-    closed: &HashSet<String>,
-) -> Option<Orphaned> {
-    orphaned.helpers.retain(|(pane, _)| panes.exists(pane) && !closed.contains(pane));
+/// `orphaned` with only the helpers still open and still to close once idle, or nothing when none
+/// is. A helper closes with its maker once it is at rest, which `closed` did since `panes` was
+/// read, or after its maker in one request, as a tab holding both does; and one its maker took
+/// back, reopened within the settle, or somebody took over is no longer told of.
+fn still_open(mut orphaned: Orphaned, panes: &Panes, closed: &HashSet<String>) -> Option<Orphaned> {
+    orphaned.helpers.retain(|(pane, _)| panes.closes_once_idle(pane) && !closed.contains(pane));
     if orphaned.helpers.is_empty() {
         log::info("msg.helper.orphans_closed", fields! { "maker" => orphaned.maker });
         return None;

@@ -71,7 +71,7 @@ const AGENT_TO_COME: Duration = Duration::from_secs(30);
 /// A debug build's [`AGENT_TO_COME`] in milliseconds, when set, so a test need not wait for it.
 const AGENT_TO_COME_SAID: &str = "MUSTER_DAEMON_AGENT_TO_COME_MS";
 
-fn agent_to_come() -> Duration {
+pub(crate) fn agent_to_come() -> Duration {
     if cfg!(debug_assertions)
         && let Ok(said) = std::env::var(AGENT_TO_COME_SAID)
         && let Ok(millis) = said.trim().parse::<u64>()
@@ -246,6 +246,11 @@ impl Panes {
             };
             (pane, at_rest && !self.restoring)
         })
+    }
+
+    /// Whether `pane` is a helper open here that closes once idle.
+    pub(crate) fn closes_once_idle(&self, pane: &str) -> bool {
+        self.closing.iter().any(|closing| closing == pane)
     }
 
     /// The pane that made `pane`, when it is a helper open here whose maker has not closed.

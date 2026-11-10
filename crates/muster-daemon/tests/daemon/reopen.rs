@@ -379,7 +379,8 @@ fn a_reopened_maker_brings_back_the_helpers_that_closed_with_it() {
     }
     assert!(snapshot.closed.is_empty(), "every one reopened: {:?}", snapshot.closed);
     let holding = |pane: &str| {
-        let holds = |tab: &&proto::Tab| tab.root.as_ref().is_some_and(|root| shape(root).contains(pane));
+        let holds =
+            |tab: &&proto::Tab| tab.root.as_ref().is_some_and(|root| shape(root).contains(pane));
         snapshot.tabs.iter().find(holds).expect("a tab holding it")
     };
     assert_eq!(holding("h1").tab, holding("h2").tab, "m1's helpers share a tab again");

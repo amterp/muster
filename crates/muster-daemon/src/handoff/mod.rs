@@ -525,8 +525,7 @@ pub(crate) fn take_over(
         orphaned_quiet,
         kept_helpers,
         app_manifests,
-    } =
-        build(&mut link, socket, data, log)?;
+    } = build(&mut link, socket, data, log)?;
     if !app_manifests.is_empty() {
         shared.adopt_manifests(app_manifests);
     }

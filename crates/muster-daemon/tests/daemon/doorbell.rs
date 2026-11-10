@@ -2099,8 +2099,7 @@ fn a_helper_brought_forward_after_its_maker_closed_is_kept() {
     agent.daemon.set_agent_state("p2", proto::AgentState::Working);
     expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
 
-    let show =
-        proto::tab_request::SetHidden { tab: "t2".to_string(), hidden: false, label: None };
+    let show = proto::tab_request::SetHidden { tab: "t2".to_string(), hidden: false, label: None };
     let show = tab(proto::tab_request::Request::SetHidden(show));
     expect(&mut agent.control, show, proto::Outcome::Done);
     logging.logged_until(r#""event":"daemon.helper.kept""#, Duration::from_secs(20));
