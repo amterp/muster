@@ -53,3 +53,31 @@ change = "The strip moves from the top of the agent list to under it."
   date = 2026-11-09
   quote = "I actually think let's put it below the agents ..."
   note = "Asked whether the Needs you strip should move from the top of the agent list to below the agents."
+
+[[revisions]]
+id = "nbwkmefz"
+base = "vbil8c9w"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+Yes: a Needs you strip under the agent list, which folds. It has one card for each agent that is
+blocked, stuck, finished and unseen, or holding messages for the person, and is absent while
+nothing needs anyone. An agent in the strip keeps its row in the list above, so the list never
+reorders.'''
+why = '''
+At the top, the strip's coming and going moved every row of the list under it, and a card
+arriving pushed the agents down while somebody was reading them. Under the list it takes its room
+from the bottom, so the rows and their chords stay where the person's eye expects them, which is
+what keeping each agent's row was for in the first place.'''
+change = "The owner agreed to needs-you-strip@vbil8c9w's change: the strip moves under the agent list."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "1-3 confirmed yes"
+  note = "Item 1 of three asked together: is it a yes to both changes, the Needs you strip moving under the agent list and the Messages section removed?"
+  consents_to = "nbwkmefz"

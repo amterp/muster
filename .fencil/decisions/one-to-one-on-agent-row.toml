@@ -56,3 +56,30 @@ change = "The Messages section is removed; conversations it listed are reached f
   date = 2026-11-09
   quote = "I actually think we also want to just delete the messages panel entirely. I'm just so unlikely to ever click on one that doesn't have an active thing in it. So I feel like the needs you panel will show ... any conversation that I need to talk to. ... Right now I just have a massive list of messages and ... it just takes up space and I don't use it and it's awkward UX."
   note = "Said while answering where the Needs you strip should sit, about the Messages section of the agent list, which listed the groups he is in."
+
+[[revisions]]
+id = "8lyt7mgj"
+base = "9a927x5h"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+On that agent's row in the agent list, as an envelope with the unread count that opens the
+conversation. The agent list has no Messages section: a conversation with several members, or
+with an agent whose pane is gone, has no row. Anything unread in one reaches the person through
+the Needs you strip, and conversations-menus says how one is opened otherwise.'''
+why = '''
+With one-to-one conversations on their agents' rows, the Messages section still listed every
+other group the person was in, most with nothing unread. The owner did not use it and it took
+room from the agents. A group that wants the person already has a card in the Needs you strip.'''
+change = "The owner agreed to one-to-one-on-agent-row@9a927x5h's change: the Messages section is removed."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "1-3 confirmed yes"
+  note = "Item 1 of three asked together: is it a yes to both changes, the Needs you strip moving under the agent list and the Messages section removed?"
+  consents_to = "8lyt7mgj"

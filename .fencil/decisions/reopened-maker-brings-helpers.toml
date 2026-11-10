@@ -21,3 +21,24 @@ own machine come back: no daemon tells another that a maker is back.'''
   date = 2026-11-09
   quote = "i suppose resurrecting a closed tab with shift cmd t should also bring back hel[pe]rs"
   note = "Said after agreeing that a helper closes with its maker once idle."
+
+[[revisions]]
+id = "arty10o9"
+base = "o9jlx67w"
+date = 2026-11-10
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = "Yes. Reopening the maker, from Reopen Closed Pane, cmd+shift+T or `muster pane reopen`, reopens the helpers its daemon closed with it, and theirs, each hidden and quiet among its helpers again. A reopen that names no pane passes over such a helper, so it brings back the maker."
+why = '''
+A helper closes about 10 seconds after its maker, so the pane closed most recently is a helper, and
+a maker brought back alone would have lost the agents working for it. Only helpers on the maker's
+own machine come back: no daemon tells another that a maker is back.'''
+change = "The owner confirmed the cmd+shift+T remark as a decision."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "1-3 confirmed yes"
+  note = "Item 3 of three asked together: was the remark that reopening a tab with cmd+shift+T should also bring back helpers a firm decision that reopening an agent brings its helpers back?"

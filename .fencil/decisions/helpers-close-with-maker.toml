@@ -28,3 +28,25 @@ ran on.'''
   date = 2026-11-09
   quote = "helpers closing with their agent ships tonight as well"
   note = "Said when listing what goes into that night's release."
+
+[[revisions]]
+id = "ijw8insf"
+base = "fqjd6em0"
+date = 2026-11-10
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "It closes with its maker once the helper is idle."
+why = '''
+Sixteen hidden, quiet helpers were found done for 16 hours after their three makers had closed,
+each holding an agent and its memory, and the person did not know they existed. Running on with one
+notice left nothing to close them. This replaces MIP-7 section 6, where a closed maker's helpers
+ran on.'''
+change = "The owner confirmed that \"1a yes\" was a firm decision; the level stays owner-nodded because the confirmation answered three questions at once."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "1-3 confirmed yes"
+  note = "Item 2 of three asked together: was \"1a yes\" a firm decision that a helper closes with its maker once the helper is idle?"
