@@ -12,17 +12,18 @@ import AppKit
 /// make them recognisable. So the body is a list of what would end, and the button says what it
 /// does rather than "OK".
 ///
-/// **Whether Return confirms is each question's own choice** (`confirmOnReturn`), and it follows
-/// what the question can cost. Return stays unbound for the questions that exist to interrupt a
-/// reflexive keystroke over something nothing brings back - Quit and Close Sessions, which ends
-/// every agent on every machine - where a sheet that took the keystroke would be no sheet at all,
-/// and they confirm by click only. It is bound for closing a pane or a tab, where the question is
-/// there so that a misclick or a reflexive ⌘W does not end an agent unseen, and answering it
-/// should be as quick as asking: a closed pane comes back with its agent in its session (Reopen
-/// Pane), so a yes given too fast is cheap to take back. The default is click only, so a new
-/// question has to say it wants Return. Escape cancels either way, because a way out is not the
-/// same as a way through; the rename sheet commits on Return because its whole gesture is
-/// type-and-enter.
+/// **Whether Return confirms is each question's own choice** (`confirmOnReturn`). Return stays
+/// unbound for the questions that exist to interrupt a reflexive keystroke over something nothing
+/// brings back - Quit and Close Sessions, which ends every agent on every machine - where a sheet
+/// that took the keystroke would be no sheet at all, and they confirm by click only. It is bound
+/// for two questions, each the owner's decision. Closing a pane or a tab is there so that a
+/// misclick or a reflexive ⌘W does not end an agent unseen, and answering it should be as quick as
+/// asking: a closed pane comes back with its agent in its session (Reopen Pane), so a yes given
+/// too fast is cheap to take back. Deleting a group takes Return too, though it is not cheap to
+/// take back - its log is gone for every member - because the owner wanted the question answered
+/// from the keyboard. The default is click only, so a new question has to say it wants Return.
+/// Escape cancels either way, because a way out is not the same as a way through; the rename
+/// sheet commits on Return because its whole gesture is type-and-enter.
 ///
 /// `tell` is the same sheet with nothing to agree to: one button, on Return, for an act that was
 /// refused and has to say why somewhere a person will see it.

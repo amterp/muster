@@ -1461,14 +1461,14 @@ extension MusterWindow {
   }
 
   /// Asks before deleting a group: its log goes for every member, unread messages included,
-  /// and nothing brings it back.
-  private func confirmDelete(daemon: String, group: String) {
+  /// and nothing brings it back. Return confirms, which was the owner's choice for this question.
+  func confirmDelete(daemon: String, group: String) {
     ConfirmSheet.ask(
       on: window, question: "Delete \(group)?",
       body: "Deletes the group and its log for every member, unread messages included, on the "
         + "machine that keeps it, and lets each member go. To stop seeing it yourself, Leave "
         + "Group instead.",
-      confirm: "Delete Group",
+      confirm: "Delete Group", confirmOnReturn: true,
       then: { [weak self] in
         self?.speaking {
           Core.deleteGroup(daemonID: daemon, group: group) { deleted in

@@ -205,6 +205,49 @@ extension SurfaceGUITests {
   }
 
   @MainActor
+  @Test("Delete Group takes Return, Escape cancels, and a yes names the group", .ownsTheSeam)
+  func deleteGroupTakesReturn() async throws {
+    _ = NSApplication.shared
+    let renderer = try sharedRenderer()
+    let recording = recorder()
+    let previousWindow = Core.windowInFront
+    let shell = MusterWindow(renderer: renderer, executable: "/unused")
+    shell.name = "window-origin"
+    defer {
+      Windows.remove(shell)
+      shell.window.delegate = nil
+      shell.window.close()
+      Core.windowInFront = previousWindow
+    }
+    func deletions() -> [Muster_Request] {
+      recording.requests.filter { if case .deleteGroup = $0.payload { true } else { false } }
+    }
+    func button(_ title: String) -> NSButton? {
+      func find(_ view: NSView?) -> NSButton? {
+        guard let view else { return nil }
+        if let button = view as? NSButton, button.title == title { return button }
+        return view.subviews.lazy.compactMap(find).first
+      }
+      return find(shell.window.attachedSheet?.contentView)
+    }
+
+    shell.confirmDelete(daemon: "local", group: "review@devenv")
+    // AppKit makes the button that took Return the sheet's default, and reads its own key
+    // equivalent back as empty once it is.
+    #expect(shell.window.attachedSheet?.defaultButtonCell?.title == "Delete Group")
+    #expect(button("Cancel")?.keyEquivalent.unicodeScalars.map(\.value) == [27])
+    button("Cancel")?.performClick(nil)
+    #expect(shell.window.attachedSheet == nil)
+    #expect(deletions().isEmpty)
+
+    shell.confirmDelete(daemon: "local", group: "review@devenv")
+    button("Delete Group")?.performClick(nil)
+    await until("the delete request") { !deletions().isEmpty }
+    #expect(deletions().map(\.deleteGroup.group) == ["review@devenv"])
+    #expect(deletions().map(\.deleteGroup.daemonID) == ["local"])
+  }
+
+  @MainActor
   @Test("every way of closing a pane or tab asks when it holds an agent", .ownsTheSeam)
   func closingAsksWhenAnAgentIsInIt() async throws {
     _ = NSApplication.shared
