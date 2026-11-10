@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "an-agent-s",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794280244321,
+  "creator": "Alexander Terp",
+  "description": "The Conversations submenu on an agent row or pane (which replaced the sidebar's Messages section, 2026-11-09) lists only that agent's one-to-one groups, because the core sends the shell a group's partner_pane and no other members. Multi-member groups are reachable from Window \u003e Conversations only. Listing them per agent needs each group's member panes sent from the daemon through the core to the shell.",
+  "id": "a_2x5qsu1OS",
+  "position": "b2n",
+  "title": "An agent's Conversations menu lists its multi-member groups too",
+  "type": "enhancement",
+  "updated_at_millis": 1794280244321,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794280244321}
+  ]
+}
