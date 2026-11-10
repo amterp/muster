@@ -66,13 +66,14 @@ Codex, declares. When waiting on a reviewer or helper, declare the sender instea
 
     "$MUSTER_DAEMON" report --waiting "review from otter" --until-message-from otter
 
-That wait ends when Muster delivers a message from that pane, including one its hooks read.
-Other senders and compactions leave it active. A message queued behind a draft or dialog has
-not been delivered yet. The sender may be a pane id, callsign, or unique name, on this machine
-or a linked one. An unknown or ambiguous name, your own pane, an empty wait, or combining
-`--until-message-from` with `--until-exits` is refused. Declaring another wait or an empty wait
-replaces or clears either condition. Add `waiting` to the list to hear of a wait too.
-`--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
+That wait ends when Muster delivers a message from that pane, including one its hooks read, or
+when that pane closes. Declared after that pane's message reached you in the same turn, it is not
+held, since the answer has come. Other senders and compactions leave it active. A message queued
+behind a draft or dialog has not been delivered yet. The sender may be a pane id, callsign, or
+unique name, on this machine or a linked one. An unknown or ambiguous name, your own pane, an
+empty wait, or combining `--until-message-from` with `--until-exits` is refused. Declaring another
+wait or an empty wait replaces or clears either condition. Add `waiting` to the list to hear of a
+wait too. `--timeout` gives up with exit 5, and leaving it off waits for as long as it takes. Give
 `--pane` more than once to wait for the first of several agents.
 
 An agent that has just started reads `unknown` for about three seconds, until Muster has read its

@@ -1822,6 +1822,39 @@ fn long_helper_wait(pid: Option<u32>) {
     assert_eq!(held(&mut agent.control).as_deref(), Some("the full gate"));
 }
 
+/// A helper waiting on a message from a pane that then closes has no wait left to notice: its
+/// maker is not told after the notice limit that it is still waiting.
+#[test]
+fn a_helper_waiting_on_a_pane_that_closes_is_not_noticed_waiting() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_WAIT_MS", "2000")]);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "helpers")));
+    make(&mut agent.control, create("p3", in_new_tab("t3")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    expect(
+        &mut agent.control,
+        pane(proto::pane_request::Request::Report(proto::pane_request::Report {
+            pane: "p2".to_string(),
+            waiting: Some("the review".to_string()),
+            waiting_until_message_from: Some("p3".to_string()),
+            ..Default::default()
+        })),
+        proto::Outcome::Done,
+    );
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    crate::reopen::close(&mut agent.control, "p3");
+
+    std::thread::sleep(Duration::from_secs(5));
+    assert!(agent.read_in_its_pane().is_empty(), "the maker was told of a wait that had ended");
+    let held = snapshot(&mut agent.control)
+        .panes
+        .into_iter()
+        .find(|p| p.pane == "p2")
+        .and_then(|p| p.facts)
+        .and_then(|facts| facts.waiting);
+    assert_eq!(held, None);
+}
+
 /// A helper that blocks while its maker is at work is held until the maker can hear it, and told
 /// then while it is still blocked: a post to a maker at work would wait for its turn to end
 /// anyway. The advice names the helper by its callsign, which no other pane can hold.

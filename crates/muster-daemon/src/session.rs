@@ -2679,6 +2679,7 @@ impl Session {
         if kept != Kept::No {
             report.waiting = None;
         }
+        self.panes[index].drop_answered_wait(&mut report);
         let says_waiting = report.waiting.as_deref().is_some_and(|waiting| !waiting.is_empty());
         let speaks_of_waiting = report.waiting.is_some();
         let record = &mut self.panes[index].record;
@@ -2710,21 +2711,7 @@ impl Session {
         heard_of_waiting(pane, says_waiting, speaks_of_waiting, kept == Kept::ThroughPrompt);
         // Detection decides what the state comes to, and publishes it as any other change.
         if let Some(state) = own_state {
-            if pane.record.agent.as_deref() == Some(agent.as_str()) {
-                pane.turns.reports_turns = true;
-                if state == muster_detect::State::Idle
-                    && settle_wait(&mut pane.record, &mut pane.turns, "reported turn end")
-                {
-                    // The turn that ended the wait has finished. Detection marks a finish when it
-                    // sees the agent stop, and a pane it already reads idle shows it no stop.
-                    if pane.record.agent_state() == proto::AgentState::Idle {
-                        pane.record.finished_unseen = true;
-                    }
-                    let record = pane.record.clone();
-                    self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
-                }
-            }
-            self.panes[index].io.report_state(agent, state);
+            self.agent_reported_state(index, agent, state);
             return Reply::done();
         }
         let session_changed = renamed || identified || compacting || harness_compacts;
@@ -2734,6 +2721,30 @@ impl Session {
         } else {
             Reply::already()
         }
+    }
+
+    /// What the agent in pane `index` reported of its own state: its turns end when it says idle,
+    /// and what it was given in the turn goes with them.
+    fn agent_reported_state(&mut self, index: usize, agent: String, state: muster_detect::State) {
+        let pane = &mut self.panes[index];
+        if pane.record.agent.as_deref() == Some(agent.as_str()) {
+            pane.turns.reports_turns = true;
+            if state == muster_detect::State::Idle {
+                pane.heard_from.clear();
+            }
+            if state == muster_detect::State::Idle
+                && settle_wait(&mut pane.record, &mut pane.turns, "reported turn end")
+            {
+                // The turn that ended the wait has finished. Detection marks a finish when it
+                // sees the agent stop, and a pane it already reads idle shows it no stop.
+                if pane.record.agent_state() == proto::AgentState::Idle {
+                    pane.record.finished_unseen = true;
+                }
+                let record = pane.record.clone();
+                self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+            }
+        }
+        self.panes[index].io.report_state(agent, state);
     }
 
     /// Notes that the agent's harness began compacting its context by itself, when `agent` is the
@@ -2917,6 +2928,34 @@ impl Session {
             let pane = &self.panes[index];
             pane.holds_declared_wait() && pane.turns.wait_serial == serial
         })
+    }
+
+    /// Notes that `pane`'s agent has been given messages from the panes `authors` (`Pane::heard_from`).
+    pub(crate) fn heard_from(&mut self, pane: &str, authors: Vec<String>) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].heard_from.extend(authors);
+        }
+    }
+
+    /// Ends each wait an agent here declared on a message from `sender`, a pane that has just
+    /// closed: no message is coming. The agent is not woken for it. It may long since have
+    /// reported and gone idle, and a wake would start a turn for nothing. One whose sender died
+    /// before answering reads idle in the window instead.
+    fn end_waits_on_closed(&mut self, sender: &str) {
+        let held: Vec<(String, u64)> = self
+            .declared_waits()
+            .into_iter()
+            .filter(|wait| wait.until_message_from.as_deref() == Some(sender))
+            .map(|wait| (wait.pane, wait.serial))
+            .collect();
+        for (pane, serial) in held {
+            if self.wait_over(&pane, serial, Over::SenderClosed) {
+                log::info(
+                    "daemon.wait.over",
+                    fields! { "pane" => pane, "by" => Over::SenderClosed.as_str(), "sender" => sender },
+                );
+            }
+        }
     }
 
     /// Ends the wait `pane`'s agent declared, if it still holds the one numbered `serial`, and
@@ -3283,6 +3322,7 @@ impl Session {
                 // call can read as a turn here after the agent's turn has ended.
                 if turn == Turn::Ended && !pane.turns.reports_turns {
                     settle_wait(record, &mut pane.turns, "detected turn end");
+                    pane.heard_from.clear();
                 }
                 // Before a finish is weighed: a turn that ends waiting on its own work has not
                 // finished. One that ends with the agent still idle, run out or scrolled away,
@@ -3354,6 +3394,11 @@ impl Session {
     fn forget(&mut self, pane: &str, reason: proto::CloseReason, exit_status: Option<i32>) {
         let Some(index) = self.pane_index(pane) else { return };
         let removed = self.panes.remove(index);
+        // A daemon that stops or hands over closes its panes without ending anything: they come
+        // back, with their waits, from what it wrote or hands on.
+        if !self.stopping && self.replacing == Replacing::No {
+            self.end_waits_on_closed(pane);
+        }
         if let Some(callsign) = removed.record.callsign.clone() {
             self.released.push_back(callsign);
             if self.released.len() > RELEASED_CALLSIGNS {

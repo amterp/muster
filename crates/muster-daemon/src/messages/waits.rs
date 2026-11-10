@@ -69,6 +69,8 @@ pub(crate) enum Over {
     /// It ran out.
     RanOut,
     Message,
+    /// The pane it waited on a message from closed.
+    SenderClosed,
 }
 
 impl Over {
@@ -78,6 +80,7 @@ impl Over {
             Over::Exited => "exit",
             Over::RanOut => "limit",
             Over::Message => "message",
+            Over::SenderClosed => "sender_closed",
         }
     }
 }
@@ -87,10 +90,15 @@ pub(crate) fn exists(pid: u32) -> bool {
     i32::try_from(pid).is_ok_and(pty::process_exists)
 }
 
+/// Messages about to reach an agent, and the wait on a message from one of their authors that
+/// delivering them ends. Captured when they are queued and finished once the agent has them.
 #[derive(Debug)]
 pub(super) struct MessageWait {
     pane: String,
-    serial: u64,
+    /// The panes the messages are from.
+    authors: Vec<String>,
+    /// The serial of the agent's wait on one of those panes, if it holds one.
+    ends: Option<u64>,
 }
 
 impl MessageWait {
@@ -100,11 +108,12 @@ impl MessageWait {
         group: &str,
         first: u64,
         last: u64,
-    ) -> Option<Self> {
+    ) -> Self {
         let authors = shared.messages().service.notice_authors(reader, group, first, last);
         Self::capture(shared, reader, &authors)
     }
-    pub(super) fn capture(shared: &Shared, reader: &str, authors: &[String]) -> Option<Self> {
+
+    pub(super) fn capture(shared: &Shared, reader: &str, authors: &[String]) -> Self {
         let (pane, authors) = {
             let messages = shared.messages();
             let pane = messages
@@ -124,28 +133,33 @@ impl MessageWait {
                 .collect();
             (pane, authors)
         };
-        let wait = shared.lock().declared_waits().into_iter().find(|wait| {
-            wait.pane == pane
-                && wait.until_message_from.as_ref().is_some_and(|from| authors.contains(from))
-        })?;
-        Some(Self { pane, serial: wait.serial })
+        let ends = shared
+            .lock()
+            .declared_waits()
+            .into_iter()
+            .find(|wait| {
+                wait.pane == pane
+                    && wait.until_message_from.as_ref().is_some_and(|from| authors.contains(from))
+            })
+            .map(|wait| wait.serial);
+        Self { pane, authors, ends }
     }
 
     pub(super) fn finish(self, shared: &Shared) {
-        shared.lock().wait_over(&self.pane, self.serial, Over::Message);
+        let mut session = shared.lock();
+        if let Some(serial) = self.ends {
+            session.wait_over(&self.pane, serial, Over::Message);
+        }
+        session.heard_from(&self.pane, self.authors);
     }
 }
 
 pub(super) fn heard(shared: &Shared, name: &str, authors: &[String]) {
-    if let Some(wait) = MessageWait::capture(shared, name, authors) {
-        wait.finish(shared);
-    }
+    MessageWait::capture(shared, name, authors).finish(shared);
 }
 
 pub(super) fn heard_notice(shared: &Shared, name: &str, group: &str, first: u64, last: u64) {
-    if let Some(wait) = MessageWait::for_notice(shared, name, group, first, last) {
-        wait.finish(shared);
-    }
+    MessageWait::for_notice(shared, name, group, first, last).finish(shared);
 }
 
 /// A wait ended, by what.

@@ -562,3 +562,69 @@ fn sender_waits_refuse_unknown_ambiguous_and_self_targets_without_changing_facts
     }
     assert_eq!(worker.declares_from("reviewer").outcome(), proto::Outcome::Refused);
 }
+
+/// Pane `p1` and the panes `others`, each with an agent, and `p1` working: a turn in which what
+/// `p1` reads is read in the turn it declares in.
+fn worker_beside(others: &[(&str, &str)]) -> Pane {
+    let mut worker = Pane::with_an_agent();
+    for &(pane, tab) in others {
+        make(&mut worker.control, create(pane, in_new_tab(tab)));
+        worker.daemon.run_agent(pane);
+    }
+    worker.hook_reports(proto::AgentState::Working);
+    worker
+}
+
+fn reads(worker: &mut Pane) {
+    expect(
+        &mut worker.control,
+        message("p1", proto::msg_request::Request::Read(proto::msg_request::Read::default())),
+        proto::Outcome::Done,
+    );
+}
+
+#[test]
+fn an_answer_read_before_the_wait_is_declared_leaves_nothing_to_wait_for() {
+    let mut worker = worker_beside(&[("p2", "t2")]);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    reads(&mut worker);
+    let declared = worker.declares_from("p2");
+    assert_eq!(declared.outcome(), proto::Outcome::AlreadySo, "{}", declared.answer.reason);
+    worker.hook_reports(proto::AgentState::Idle);
+    assert_eq!(worker.waiting_on(), None, "p2 had answered in this turn");
+}
+
+#[test]
+fn an_answer_read_in_an_earlier_turn_does_not_end_a_later_wait() {
+    let mut worker = worker_beside(&[("p2", "t2")]);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    reads(&mut worker);
+    worker.hook_reports(proto::AgentState::Idle);
+    worker.hook_reports(proto::AgentState::Working);
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    worker.hook_reports(proto::AgentState::Idle);
+    assert!(worker.waiting_on().is_some(), "p2's earlier answer ended a wait for the next one");
+}
+
+#[test]
+fn another_senders_message_read_first_does_not_end_the_wait() {
+    let mut worker = worker_beside(&[("p2", "t2"), ("p3", "t3")]);
+    expect(&mut worker.control, review_from("p3"), proto::Outcome::Done);
+    reads(&mut worker);
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    worker.hook_reports(proto::AgentState::Idle);
+    assert!(worker.waiting_on().is_some(), "p3 is not who the wait is on");
+}
+
+#[test]
+fn a_wait_on_a_pane_ends_when_that_pane_closes() {
+    let mut worker = worker_beside(&[("p2", "t2"), ("p3", "t3")]);
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    worker.hook_reports(proto::AgentState::Idle);
+    assert!(worker.waiting_on().is_some());
+
+    crate::reopen::close(&mut worker.control, "p3");
+    assert!(worker.waiting_on().is_some(), "an unrelated pane closing ended the wait");
+    crate::reopen::close(&mut worker.control, "p2");
+    worker.until_wait_over();
+}

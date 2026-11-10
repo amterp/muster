@@ -250,6 +250,11 @@ The daemon resolves the sender when declared, using a local pane id or the parti
 machine names, so renaming the pane does not change who ends the wait. Delivery includes a typed
 wake, a harness session command, an inbox wake, and messages fetched by hooks. Posting a message
 that cannot yet reach the agent does not end it. A replacement or explicit clearing still does.
+It also ends when that sender's pane closes on the daemon holding the waiting pane, silently: the
+agent may long since have reported, and a wake would start a turn for nothing. A sender on a linked
+machine closing is not seen. A wait declared on a sender whose message the agent was already given
+since its last turn ended is not held at all, since its answer has come: the daemon notes the
+senders it delivered to each agent (`Pane::heard_from`) and clears them as a turn ends.
 
 A helper's declared wait also has a notice clock: after ten minutes its maker hears what it is
 waiting on and how to inspect it, once per declaration. The wait remains active. This covers

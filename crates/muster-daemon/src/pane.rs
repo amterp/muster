@@ -11,6 +11,7 @@
 //! waiter that reaps it. None of them takes the session lock except the waiter, whose pane
 //! has ended.
 
+use std::collections::HashSet;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
@@ -957,6 +958,12 @@ pub(crate) struct Pane {
     /// What the wait its agent declared was on, once it ran out with nothing ending it, until
     /// the agent goes to work or declares another; for the maker's notice of its idle.
     pub(crate) ran_out: Option<String>,
+    /// The panes whose messages the agent has been given since its last turn ended, which are the
+    /// ones it is answering in this turn. Cleared as a turn ends, not as one starts: a wake taken
+    /// at a prompt is noted before the turn it starts is seen. A wait on a message from one of
+    /// them, declared now, has nothing left to wait for. Not handed over or saved: a daemon that
+    /// took the pane over loses only that shortcut.
+    pub(crate) heard_from: HashSet<String>,
     /// What starts that session again after a restart, built when the session was reported;
     /// forgotten with it. Kept when a wake forgets the id: whether the session can be woken is
     /// a different question from whether it can be resumed.
@@ -1207,6 +1214,7 @@ impl Pane {
             session_id: None,
             context_session: None,
             ran_out: None,
+            heard_from: HashSet::new(),
             resume: None,
             resume_missed: None,
             maker_told: None,
@@ -1223,6 +1231,22 @@ impl Pane {
     pub(crate) fn groups(&self) -> Vec<i32> {
         let foreground = self.io.foreground_group().filter(|group| Some(*group) != self.process);
         self.process.into_iter().chain(foreground).collect()
+    }
+
+    /// Turns a report of a wait on a message from a pane the agent has already been given one
+    /// from (`heard_from`) into a report of no wait: its answer has come, so there is nothing to
+    /// wait for.
+    pub(crate) fn drop_answered_wait(&self, report: &mut proto::pane_request::Report) {
+        let answered = report
+            .waiting_until_message_from
+            .take_if(|sender| self.heard_from.contains(sender.as_str()));
+        if let Some(sender) = answered {
+            log::info(
+                "daemon.wait.answered",
+                fields! { "pane" => self.record.pane, "sender" => sender },
+            );
+            report.waiting = Some(String::new());
+        }
     }
 
     /// Whether the agent holds a wait it declared, rather than one its screen shows.

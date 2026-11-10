@@ -1839,9 +1839,7 @@ fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
         );
         match inbox::deliver(inbox, &messaging::wake_text(&notice)) {
             Ok(()) => {
-                if let Some(wait) = wait {
-                    wait.finish(shared);
-                }
+                wait.finish(shared);
                 log::info(
                     "msg.woke",
                     fields! {

@@ -373,7 +373,7 @@ pub(crate) fn ring_all(shared: &Shared, ringing: Vec<(Wake, Seen)>) -> Vec<Came>
                     drop(messages);
                     rung.push(Rung {
                         wake,
-                        wait,
+                        wait: Some(wait),
                         typed: at,
                         at,
                         presses: 0,
@@ -533,7 +533,7 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
             wake.notice.first,
             wake.notice.last,
         );
-        let ran = Ran { wake, pane, session, agent: seen.agent, wait };
+        let ran = Ran { wake, pane, session, agent: seen.agent, wait: Some(wait) };
         let unsettled_pane = ran.pane.clone();
         let mut unsettled = Unsettled { shared: Arc::downgrade(shared), ran: Some(ran) };
         let started =
