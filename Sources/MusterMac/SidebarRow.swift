@@ -195,6 +195,9 @@ final class SidebarRowView: NSView {
   /// How many marks sit at the trailing edge, and whether a progress bar runs under the text.
   var shownMarks: Int { marks.count }
   var showsProgress: Bool { progressBar.superlayer != nil }
+  var progressFrames: (track: CGRect, bar: CGRect)? {
+    showsProgress ? (progressTrack.frame, progressBar.frame) : nil
+  }
 
   init() {
     super.init(frame: .zero)
@@ -731,6 +734,7 @@ final class SidebarRowView: NSView {
         x: x, y: line.minY + ((line.height - size.height) / 2).rounded(), width: max(0, width),
         height: size.height)
     }
+    layoutProgress(from: textLeft, to: right)
     let isHelper = shown?.isHelper ?? false
     // A helper's one line is as tall as its row, so its text sits in the middle of it.
     let first =
@@ -820,13 +824,15 @@ final class SidebarRowView: NSView {
       pills.frame = slot(SidebarRowView.pillsLineHeight)
     }
 
-    if progressBar.superlayer != nil {
-      // Along the bottom edge under the text, the way a download's bar sits under its name.
-      let span = max(0, right - textLeft)
-      let height = SidebarRowView.progressHeight
-      progressTrack.frame = CGRect(x: textLeft, y: 2, width: span, height: height)
-      progressBar.frame = CGRect(x: textLeft, y: 2, width: span * progressFilled, height: height)
-    }
+  }
+
+  /// Along the bottom edge under the text, the way a download's bar sits under its name.
+  private func layoutProgress(from textLeft: CGFloat, to right: CGFloat) {
+    guard progressBar.superlayer != nil else { return }
+    let span = max(0, right - textLeft)
+    let height = SidebarRowView.progressHeight
+    progressTrack.frame = CGRect(x: textLeft, y: 2, width: span, height: height)
+    progressBar.frame = CGRect(x: textLeft, y: 2, width: span * progressFilled, height: height)
   }
 
   /// A helper listed under its maker's entry: its callsign, then its state or else its directory,

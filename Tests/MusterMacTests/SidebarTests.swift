@@ -610,6 +610,13 @@ struct SidebarTests {
     #expect(SidebarModel.details(of: entry.helpers[0]).hasPrefix("w1:h1: working\n"))
     #expect(SidebarModel.helpersSummary(entry.helpers) == "3 helpers · 1 blocked")
     #expect(SidebarModel.details(of: entry).contains("3 helpers · 1 blocked"))
+    // The pill's hover text shows a time though the entry's own lines show none, so the entry
+    // counts as timed and a minute passing draws it again.
+    #expect(SidebarModel.showsTime(in: entry), "a timed helper's hover text would go stale")
+    #expect(!SidebarModel.showsTime(in: folded[1]))
+    let later = SidebarModel.rows(
+      roster: roster, agents: agents, now: now.addingTimeInterval(60))
+    #expect(SidebarModel.changes(from: folded, to: later)?.redraw == IndexSet(integer: 0))
 
     let open = SidebarModel.rows(roster: roster, agents: agents, helpersOpen: [key("w1:p1")])
     #expect(open.map(\.label) == ["w1:p1", "w1:h1", "w1:g1", "w1:h2", "w1:p2"])
@@ -1958,6 +1965,40 @@ struct SidebarTests {
     #expect(pills.shownMore == "+\(30 - shown.count)")
     #expect(pills.shownCount == "30")
     #expect((pills.pillFrames.last?.maxX ?? 0) < pills.bounds.width, "pills ran under the count")
+  }
+
+  @Test("a listed helper draws its progress, at its own percent on a view an entry used before")
+  @MainActor func aListedHelperDrawsItsProgress() throws {
+    let maker = agentPane()
+    let helper = Roster.Pane(
+      key: PaneKey(daemon: "local", pane: "w1:h0"), label: "helper-0", onScreen: false,
+      maker: maker.key.pane, under: maker.key.pane)
+    let base = roster([maker])
+    let roster = Roster(
+      tabs: base.tabs, machines: base.machines, numbering: base.numbering,
+      hidden: [tab("local", "w1:t2", place: 0, panes: [helper])])
+    var building = agent("working")
+    building.progress = PaneAgent.Progress(state: "running", percent: 50)
+    var busy = agent("working")
+    busy.progress = PaneAgent.Progress(state: "running", percent: 90)
+    let sidebar = SidebarView(frame: NSRect(x: 0, y: 0, width: SidebarModel.width, height: 400))
+    sidebar.helpersOpen = [maker.key]
+    sidebar.apply(roster: roster, agents: [maker.key: busy, helper.key: building])
+    _ = sidebar.drawnRows
+    let view = try #require(sidebar.rowView(at: 1))
+    view.layoutSubtreeIfNeeded()
+    let drawn = try #require(view.progressFrames)
+    #expect(drawn.track.width > 100)
+    #expect(abs(drawn.bar.width - drawn.track.width * 0.5) < 0.5)
+
+    // The same view shown an entry at 90% and then the helper again, as a reused row is.
+    let rows = sidebar.rows
+    view.show(rows[0])
+    view.layoutSubtreeIfNeeded()
+    view.show(rows[1])
+    view.layoutSubtreeIfNeeded()
+    let again = try #require(view.progressFrames)
+    #expect(abs(again.bar.width - again.track.width * 0.5) < 0.5, "it kept the entry's percent")
   }
 
   @Test("pressing an entry's pills asks to list its helpers, and pressing again to fold them")

@@ -394,6 +394,8 @@ public enum SidebarModel {
     public let state: String
     /// What its own row would say of its state, with the time worked out (`stateLine(for:now:)`).
     public let stateLine: String
+    /// Whether `stateLine` says how long the state has held, so a minute passing can change it.
+    public let timed: Bool
     public let directory: String
     /// The name of the pane that made it, which for a helper of a helper is not the entry's pane.
     public let madeBy: String
@@ -740,7 +742,8 @@ public enum SidebarModel {
         let agent = agents[helper.pane.key] ?? "unknown"
         return HelperPill(
           key: helper.pane.key, name: name(helper.pane), state: agent.state,
-          stateLine: stateLine(for: agent, now: now), directory: helper.pane.directory,
+          stateLine: stateLine(for: agent, now: now), timed: showsTime(of: agent),
+          directory: helper.pane.directory,
           madeBy: helper.madeBy)
       }
       rows[rows.count - 1].helpersOpen = open
@@ -873,9 +876,12 @@ public enum SidebarModel {
   }
 
   /// Whether a row's second line shows a time, which is whether a minute passing can change it.
+  ///
+  /// A helper's pill says how long its state has held when hovered, so an entry whose helper is
+  /// timed counts, though the entry's own lines show no time.
   public static func showsTime(in row: Row) -> Bool {
     guard row.isPane, let agent = row.agent else { return false }
-    return showsTime(of: agent)
+    return showsTime(of: agent) || row.helpers.contains(where: \.timed)
   }
 
   /// Whether a line about this agent shows how long its state has held.
