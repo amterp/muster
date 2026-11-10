@@ -34,9 +34,6 @@ final class BannerBoard: ObservableObject {
     sendChord = bindings.first { $0.action == "send_message" }
   }
 
-  /// How long a reply that woke somebody stays up saying so before the banner comes down.
-  var postedLinger: Duration = .seconds(4)
-
   /// The requests a banner sends, through the core unless a test says otherwise.
   var core: BannerRequests = .core
 
@@ -63,11 +60,6 @@ final class BannerBoard: ObservableObject {
         core.shown(banner.daemonID, banner.group)
       }
       switch banner.sent.state {
-      case .posted:
-        replies[key] = nil
-        if banner.sent.heard, was?.sent.state != .posted || was?.seq != banner.seq {
-          linger(banner)
-        }
       case .refused, .unknown:
         // The words stay the human's: a field emptied while the reply was pending gets back
         // what the core kept.
@@ -162,20 +154,6 @@ final class BannerBoard: ObservableObject {
   /// Whether a key press is the chord that sends.
   func sends(key: String, modifiers: NSEvent.ModifierFlags) -> Bool {
     sendChord?.matches(key: key, modifiers: modifiers) ?? false
-  }
-
-  /// A reply that woke somebody says so for a moment and comes down; one nobody live heard
-  /// stays, since that is worth the human's attention.
-  private func linger(_ banner: Muster_Banner) {
-    let (daemon, group, seq, wait) = (banner.daemonID, banner.group, banner.seq, postedLinger)
-    Task { @MainActor [weak self] in
-      try? await Task.sleep(for: wait)
-      guard let self,
-        let still = banners.first(where: { $0.daemonID == daemon && $0.group == group }),
-        still.seq == seq, still.sent.state == .posted
-      else { return }
-      core.dismiss(daemon, group, seq)
-    }
   }
 }
 
@@ -543,7 +521,7 @@ struct BannerCard: View {
     VStack(alignment: .leading, spacing: 6) {
       header
       messageBody
-      if !banner.answers.isEmpty, banner.sent.state != .posted {
+      if !banner.answers.isEmpty {
         AnswerButtons(
           answers: banner.answers, picked: banner.hasPicked ? Int(banner.picked) : nil,
           recommended: banner.hasRecommended ? Int(banner.recommended) : nil,
@@ -628,10 +606,6 @@ struct BannerCard: View {
     switch board.pending(banner) ? Muster_PostOutcome.State.pending : banner.sent.state {
     case .pending:
       Text("Sending…").font(.caption).foregroundStyle(look.dimText)
-    case .posted:
-      Text("Sent - \(banner.sent.said)")
-        .font(.caption)
-        .foregroundStyle(banner.sent.heard ? look.dimText : look.warning)
     case .refused:
       Text("Not sent: \(banner.sent.said)")
         .font(.caption).foregroundStyle(look.alert)

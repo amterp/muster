@@ -1,7 +1,8 @@
 //! The banner for a message to the human, through a real daemon (mip/0009-group-conversation.md,
 //! section 5): it shows the message fetched from the group's log, a reply goes to the author it
-//! shows and reads nothing, a dismissal reads nothing, reading the group elsewhere takes it down,
-//! and a reply the daemon refuses or never answers stays in it.
+//! shows and reads the group through that message and no further, a dismissal reads nothing,
+//! reading the group elsewhere takes it down, and a reply the daemon refuses or never answers stays
+//! in it.
 
 use crate::group_messages::{
     entries, group_of_three, in_pane, log, msg, named, post, posted, the_human, unread,
@@ -77,10 +78,15 @@ fn a_banner_names_an_agent_in_a_pane_by_its_callsign() {
         panic!("the reply answered {replied:?}");
     };
     assert_eq!(ok.note, format!("woke {callsign}"), "whom it woke, named as the banner names them");
+    until(
+        "the banner to come down once the reply was sent",
+        || banners().shown.is_empty(),
+        || format!("the shell was told {:?}", banners()),
+    );
 }
 
 #[test]
-fn a_reply_goes_to_the_author_the_banner_shows_and_leaves_the_group_unread() {
+fn a_reply_goes_to_the_author_and_reads_the_group_through_the_banners_message() {
     let (_turn, _daemon, mut control) = window_on_a_group_of_three();
     let asked = post(&mut control, "a", "@human", "ok to merge?");
     until_banner(|banner| banner.seq == asked);
@@ -114,7 +120,51 @@ fn a_reply_goes_to_the_author_the_banner_shows_and_leaves_the_group_unread() {
 
     let next = until_banner(|banner| banner.seq == since);
     assert_eq!(next.author, "b", "the message that waited behind the reply takes the banner");
-    assert_eq!(unread(&mut control), 2, "a reply reads nothing");
+    assert_eq!(unread(&mut control), 1, "only what the banner showed is read, not what came after");
+    assert_eq!(asking_groups(), ["g"], "and the group still asks for what came after");
+}
+
+#[test]
+fn a_reply_reads_nothing_while_an_older_message_the_banner_never_showed_waits() {
+    let (_turn, _daemon, mut control) = window_on_a_group_of_three();
+    let older = post(&mut control, "b", "@human", "the build is red");
+    until_banner(|banner| banner.seq == older);
+    let asked = post(&mut control, "a", "@human", "ok to merge?");
+    until_banner(|banner| banner.seq == asked);
+
+    assert_ok(&answer(reply(asked, "yes")));
+    until(
+        "the banner to come down once the reply was sent",
+        || banners().shown.is_empty(),
+        || format!("the shell was told {:?}", banners()),
+    );
+    assert_eq!(unread(&mut control), 2, "the older message was never answered, so it is not read");
+    assert_eq!(asking_groups(), ["g"], "and the group keeps asking for it");
+}
+
+#[test]
+fn a_reply_takes_its_banner_down_and_the_group_out_of_what_asks_whether_or_not_it_was_heard() {
+    let (_turn, _daemon, mut control) = window_on_a_group_of_three();
+    let asked = post(&mut control, "a", "@human", "ok to merge?");
+    until_banner(|banner| banner.seq == asked);
+    until("the group to ask", || asking_groups() == ["g"], || format!("{:?}", asking_groups()));
+
+    let replied = answer(reply(asked, "yes"));
+    let Some(response::Payload::Ok(ok)) = &replied.payload else {
+        panic!("the reply answered {replied:?}");
+    };
+    assert_eq!(ok.note, "nobody live heard it", "a joined with no inbox, so nothing woke it");
+
+    until(
+        "the banner to come down once the reply was sent",
+        || banners().shown.is_empty(),
+        || format!("the shell was told {:?}", banners()),
+    );
+    until(
+        "the group to stop asking once the reply read it",
+        || asking_groups().is_empty() && unread(&mut control) == 0,
+        || format!("asking {:?}", asking_groups()),
+    );
 }
 
 #[test]
@@ -171,6 +221,7 @@ fn a_reply_the_daemon_refuses_stays_in_the_banner_with_its_words() {
     assert_eq!(sent.state(), post_outcome::State::Refused);
     assert_eq!((sent.body.as_str(), sent.said.as_str()), ("yes", failure.reason.as_str()));
     assert!(banner.replyable, "the human can send it again once they have fixed what was wrong");
+    assert_eq!(unread(&mut control), 1, "a reply that was not sent reads nothing");
 }
 
 #[test]
@@ -275,6 +326,16 @@ fn window_on_a_group_of_three() -> (muster::testing::Turn, Daemon, Control) {
     open_window_with(&daemon.muster_config());
     group_of_three(&mut control);
     (turn, daemon, control)
+}
+
+/// The groups the window says ask for the human, as the strip lists them.
+fn asking_groups() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => {
+            window.asking.into_iter().map(|entry| entry.group).filter(|g| !g.is_empty()).collect()
+        }
+        other => panic!("reading the window answered {other:?}"),
+    }
 }
 
 fn hold(seq: u64, held: bool) -> request::Payload {

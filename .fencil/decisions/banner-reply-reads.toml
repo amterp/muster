@@ -1,0 +1,48 @@
+id = "banner-reply-reads"
+question = "What does replying from a message banner do to the banner and to the group's unread messages?"
+tags = ["ui", "banner", "attention", "messaging"]
+paths = ["crates/muster-core/src/banners.rs", "crates/muster-seam/src/session/banners.rs", "Sources/MusterMac/Banners.swift"]
+
+[[revisions]]
+id = "wy1buti1"
+date = 2026-11-10
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+A reply from a banner that the daemon kept takes the banner down at once, and acknowledges the
+group through the banner's message (`msg.ack`), so the agent leaves the Needs you strip unless
+something newer still waits. It reads nothing past that message, and nothing at all while an older
+message than the banner's still waits: the banner showed only the newest, and the older one may never
+have been seen, or was dismissed to stay unread. The group then stays in the strip for it. A reply
+nobody live heard (no agent, no doorbell, or gone) takes its banner down too; the reply is kept in
+the group's log and the outcome is in the run log. A refused or unknown reply keeps its banner with the human's words
+and the reason. Dismissing a banner still reads nothing. If the acknowledgement fails, the reply
+stays posted and the banner still comes down; the failure is logged and the group stays in the
+strip.
+
+This supersedes the bullet in mip/0009-group-conversation.md section 5 that says answering from a
+banner does not read the group, and the banner lingering after a heard reply that section's
+implementation kept.'''
+why = '''
+The person answers from the banner and expects it to be done: a banner that lingers, or an agent
+left in Needs you after being answered, reads as an unanswered question. Acknowledging through the
+banner's message, not reading the group, keeps the reason the earlier rule gave: a message that
+arrived behind the banner was never seen, so it stays unread and raises the next banner.
+
+The owner's two sentences decide that the banner comes down once the reply is sent and that
+answering clears the Needs you entry. Acknowledging through the banner's message, and taking the
+banner down for a reply nobody live heard, were chosen while building it.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "banner should go away as soon as answer sent back"
+  note = "Reporting that a banner stayed up after he sent a reply from it."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "answering banner should remove the needs you entry"
+  note = "Reporting that an agent stayed in the Needs you strip after he answered its message from the banner."

@@ -12,7 +12,6 @@ func recordedBoard() -> (BannerBoard, BannerRecorder) {
   let board = BannerBoard()
   let recorder = BannerRecorder()
   board.core = recorder.requests
-  board.postedLinger = .milliseconds(10)
   return (board, recorder)
 }
 
@@ -143,7 +142,7 @@ struct BannerTests {
   }
 
   @MainActor
-  @Test("a refused reply keeps its words, and a posted one clears them")
+  @Test("a refused reply keeps its words, and a posted one, whose banner is gone, clears them")
   func theWordsStayUntilTheReplyIsPosted() {
     let (board, _) = recordedBoard()
     board.apply(bannerStack(aBanner("g", seq: 4)))
@@ -152,21 +151,8 @@ struct BannerTests {
     #expect(
       board.reply(for: aBanner("g", seq: 4)) == "yes", "the core kept the words, so does the field")
 
-    board.apply(bannerStack(aBanner("g", seq: 4, sent: outcome(.posted, said: "woke a"))))
+    board.apply(bannerStack())
     #expect(board.reply(for: aBanner("g", seq: 4)) == "")
-  }
-
-  @MainActor
-  @Test("a reply that woke somebody says so for a moment and the banner comes down")
-  func aHeardReplyLingersThenDismisses() async {
-    let (board, recorder) = recordedBoard()
-    board.apply(bannerStack(aBanner("g", seq: 4, sent: outcome(.posted, said: "woke a"))))
-
-    for _ in 0..<100 where recorder.sent.isEmpty {
-      try? await Task.sleep(for: .milliseconds(10))
-    }
-
-    #expect(recorder.sent == ["dismiss local/g#4"])
   }
 
   @Test("a reply of blank words sends nothing, and an answer picked alone does")

@@ -15,6 +15,7 @@ use muster_core::composition::DaemonId;
 use muster_core::conversation::{Answering, Entry, What};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
+use muster_core::posting::Sent;
 use muster_daemon_client::convert::messaging;
 use muster_daemon_proto::msg_request::{self, Request as Asked};
 
@@ -111,7 +112,10 @@ fn fetch_message(
 }
 
 /// Replies to the message the banner for `group` shows, as the human, to its author: `note`, and
-/// the answer picked in the banner, if any.
+/// the answer picked in the banner, if any. A reply that was kept reads the group through that
+/// message, since the human has seen it, and no further: what arrived after it stays unread. It
+/// reads nothing when an older message still waits, since the banner showed only the newest and
+/// that one may never have been seen, or was dismissed to stay unread.
 pub(crate) fn reply(daemon: &str, group: &str, seq: u64, note: &str) -> Response {
     let key = GroupKey { daemon: DaemonId::new(daemon), group: group.to_string() };
     let reply = poison::lock(&SESSION, "session").banners.reply(&key, seq, note);
@@ -123,19 +127,64 @@ pub(crate) fn reply(daemon: &str, group: &str, seq: u64, note: &str) -> Response
     let answering = reply.answering.map(|(question, answer)| Answering { question, answer });
     let sent =
         posting::post_as_human(&key, &reply.to, note, &reply.body, answering.as_ref(), false, seq);
+    let outcome = posting::outcome(&sent);
+    let posted = matches!(sent, Sent::Posted { .. });
+    let response = posting::response(&sent);
+    // The banner settles before the group is read: that is a second round trip to the daemon, and
+    // a kept reply's banner must not wait on it.
+    poison::lock(&SESSION, "session").banners.replied(&key, seq, sent);
+    announce();
+    let read = if !posted {
+        "not attempted"
+    } else if older_message_waits(&key, seq) {
+        "skipped, an older message still waits"
+    } else if read_through(&key, seq).is_ok() {
+        "yes"
+    } else {
+        "failed"
+    };
     log::info(
         "banner.replied",
         fields! {
             "daemon" => daemon,
             "group" => group,
             "seq" => seq,
-            "outcome" => posting::outcome(&sent),
+            "outcome" => outcome,
+            "read_through" => read,
         },
     );
-    let response = posting::response(&sent);
-    poison::lock(&SESSION, "session").banners.replied(&key, seq, sent);
-    announce();
     response
+}
+
+/// Whether a message before `seq` still waits for the human in `group`, which the banner for `seq`
+/// did not show.
+fn older_message_waits(group: &GroupKey, seq: u64) -> bool {
+    let session = poison::lock(&SESSION, "session");
+    session.attention.human_notice(group).is_some_and(|notice| notice.first < seq)
+}
+
+/// Moves the human's place in `group` on through message `seq`, so the group stops asking for what
+/// the human has now seen and answered. A kept reply stays kept when this fails.
+fn read_through(group: &GroupKey, seq: u64) -> Result<(), String> {
+    let ack = Asked::Ack(msg_request::Ack { group: group.group.clone(), through: seq });
+    let acked =
+        answer_as_human(&group.daemon, ack).map(|_| ()).map_err(|why| why.detail().to_string());
+    if let Err(why) = &acked {
+        log::warn(
+            "banner.read_through_failed",
+            fields! {
+                "daemon" => group.daemon.to_string(),
+                "group" => group.group.clone(),
+                "seq" => seq,
+                "error" => why.clone(),
+                "impact" => "the reply was posted and its banner is down, but the group still \
+                             counts the message as unread, so it stays in the Needs you strip",
+                "check" => "whether the daemon is older than the app (`msg.ack` needs 1.9) or \
+                            was unreachable; opening the conversation reads the group",
+            },
+        );
+    }
+    acked
 }
 
 /// Takes down the banner showing `seq`, without reading its group.

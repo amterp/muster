@@ -1534,13 +1534,14 @@ message DeleteGroup {
 // Replies to the message a banner shows, as the human, to that message's author: the banner holds
 // the message, so whatever the group has said since, the reply goes where the human was looking
 // (mip/0009-group-conversation.md, section 5). `seq` is the message's number as the banner showed
-// it; a banner that has moved on to a newer message refuses, and nothing is sent. It does not
-// read the group.
+// it; a banner that has moved on to a newer message refuses, and nothing is sent.
 //
 // Answered once the daemon has, with the post's outcome (section 4): Ok noting whom it reached,
 // a Failure in the daemon's words, or Unanswered, when the post may have been kept. An unanswered
 // post is never sent again on its own; the core asks the group's log once whether it was kept.
-// BannersChanged says each step as well.
+// A kept reply takes the banner down and reads the group through the message the banner showed,
+// and no further: what arrived after it stays unread. A refused or unknown one keeps the banner
+// with the human's words. BannersChanged says each step as well.
 message ReplyToBanner {
   string daemon_id = 1;
   string group = 2;
@@ -2639,12 +2640,13 @@ message Banner {
   // The message's first lines, parsed, and whether it goes on past them.
   repeated MarkdownBlock body = 7;
   bool more = 8;
-  // Whether it takes a reply now: not from @muster, not while one is pending or after one was
-  // posted, and not when its message could not be fetched.
+  // Whether it takes a reply now: not from @muster, not while one is pending, and not when its
+  // message could not be fetched.
   bool replyable = 9;
   // The human is writing a reply in it.
   bool held = 10;
-  // What a reply sent from it came to, when one was sent.
+  // What a reply sent from it came to, when one was sent and has not come to a kept post: a
+  // posted reply takes its banner down, so this is pending, refused or unknown.
   PostOutcome sent = 11;
   // Set when the message could not be fetched: why, and the notice's count and authors, which
   // the banner says instead of the message.
@@ -2654,8 +2656,8 @@ message Banner {
   // A newer message waiting behind this banner while it holds a reply. Empty author when none.
   string waiting_author = 15;
   bool waiting_urgent = 16;
-  // The answers the message offers, which make it a question (section 6). Drawn as buttons until
-  // a reply is posted.
+  // The answers the message offers, which make it a question (section 6). Drawn as buttons for as
+  // long as the banner stands.
   repeated string answers = 17;
   // Which of them the human picked, from 0, to go with the reply.
   optional uint32 picked = 18;

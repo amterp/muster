@@ -361,18 +361,10 @@ impl Banners {
         answer: Option<usize>,
     ) -> Result<bool, String> {
         let standing = self.showing(group, seq)?;
-        match &standing.sent {
-            Some(Sent::Pending { .. }) => {
-                return Err("a reply from this banner is still being sent, so its answer cannot \
-                            change now"
-                    .to_string());
-            }
-            Some(Sent::Posted { .. }) => {
-                return Err(
-                    "this banner's reply was sent already, so nothing was picked".to_string()
-                );
-            }
-            _ => {}
+        if matches!(standing.sent, Some(Sent::Pending { .. })) {
+            return Err("a reply from this banner is still being sent, so its answer cannot \
+                        change now"
+                .to_string());
         }
         if let Some(answer) = answer {
             let offered = match &standing.shown {
@@ -437,21 +429,15 @@ impl Banners {
         Ok(reply)
     }
 
-    /// What the reply sent from the banner showing `seq` came to. A posted one answers the
-    /// message, so the banner says whom it reached until a dismiss or the group's next message;
-    /// a refused or unknown one stays in the banner with the words the human wrote and the
-    /// answer they picked.
+    /// What the reply sent from the banner showing `seq` came to. A posted one has answered the
+    /// message, so the banner comes down as a dismissal takes it down; a refused or unknown one
+    /// stays in the banner with the words the human wrote and the answer they picked.
     pub fn replied(&mut self, group: &GroupKey, seq: u64, sent: Sent) -> bool {
-        let Ok(standing) = self.showing(group, seq) else { return false };
-        let posted = matches!(sent, Sent::Posted { .. });
-        standing.sent = Some(sent);
-        if posted {
-            standing.held = false;
-            standing.picked = None;
-            let settled = self.settled.entry(group.clone()).or_insert(seq);
-            *settled = (*settled).max(seq);
-            self.let_go(group);
+        if matches!(sent, Sent::Posted { .. }) {
+            return self.take_down(group, seq).is_ok();
         }
+        let Ok(standing) = self.showing(group, seq) else { return false };
+        standing.sent = Some(sent);
         true
     }
 
@@ -466,9 +452,13 @@ impl Banners {
                         daemon answers; nothing was dismissed"
                 .to_string());
         }
-        standing.held = false;
-        standing.picked = None;
-        standing.sent = None;
+        self.take_down(group, seq)
+    }
+
+    /// Takes down the banner showing `seq`, whatever it holds, and marks the message settled: a
+    /// newer message waiting behind it takes its place, and nothing through `seq` comes back.
+    fn take_down(&mut self, group: &GroupKey, seq: u64) -> Result<(), String> {
+        self.showing(group, seq)?;
         let settled = self.settled.entry(group.clone()).or_insert(seq);
         *settled = (*settled).max(seq);
         let Some(standing) = self.standing.get_mut(group) else { return Ok(()) };
@@ -542,7 +532,7 @@ impl Banners {
         }
         if let Some(newer) = standing.newer.take() {
             self.promote(group, newer);
-        } else if !standing.waiting && !matches!(standing.sent, Some(Sent::Posted { .. })) {
+        } else if !standing.waiting {
             self.standing.remove(group);
         }
     }
@@ -562,7 +552,7 @@ fn banner(group: &GroupKey, standing: &Standing) -> Banner {
     let replyable = match &standing.shown {
         Shown::Message(message) => {
             !posting::is_muster(&message.author)
-                && !matches!(standing.sent, Some(Sent::Pending { .. } | Sent::Posted { .. }))
+                && !matches!(standing.sent, Some(Sent::Pending { .. }))
         }
         _ => false,
     };

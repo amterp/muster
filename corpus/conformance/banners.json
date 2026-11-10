@@ -129,8 +129,8 @@
       }
     },
     {
-      "name": "a posted reply answers the banner and says whom it woke",
-      "why": "Section 4's posted outcome: the banner says whom the reply reached. It takes no second reply, and the group stays unread, since a reply never reads.",
+      "name": "a posted reply takes the banner down",
+      "why": "Section 4's posted outcome: the reply was kept, so the banner has nothing left to ask and comes down at once, whether or not anybody live heard it. A refused or unknown reply is what keeps a banner.",
       "given": {
         "steps": [
           { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
@@ -142,9 +142,7 @@
       "expect": {
         "fetch": ["g#4"],
         "said": ["to otter"],
-        "stack": [
-          { "group": "g", "seq": 4, "author": "otter", "sent": "posted #7: woke otter", "replyable": false }
-        ]
+        "stack": []
       }
     },
     {
@@ -642,8 +640,8 @@
       }
     },
     {
-      "name": "a posted reply takes the pick away",
-      "why": "A question takes one answer, and once the reply is posted it has it: the banner says whom the reply reached and takes no more.",
+      "name": "a posted reply to a question takes the banner down with its pick",
+      "why": "A question takes one answer, and once the reply is posted it has it: the banner is down, so nothing is left to pick.",
       "given": {
         "steps": [
           { "notice": "g", "last": 4, "count": 1, "from": ["otter"] },
@@ -658,9 +656,7 @@
         "said": [
           "to otter, answering #4 with Skip it: \"Answer: Skip it\""
         ],
-        "stack": [
-          { "group": "g", "seq": 4, "author": "otter", "answers": "Run it now / Skip it", "sent": "posted #7: woke otter", "replyable": false }
-        ]
+        "stack": []
       }
     },
     {

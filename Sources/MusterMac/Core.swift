@@ -1333,7 +1333,8 @@ public enum Core {
   ///
   /// Off the main thread, like `restartAgent`: the answer waits on the daemon keeping the post,
   /// and on one that never answers, on the group's log as well. What came of it reaches the
-  /// banner as the core's next word about the banners, so the answer is only logged.
+  /// banners as the core's next word about them: a kept reply takes its banner down, and a refused
+  /// or unknown one keeps it with the human's words. So the answer is only logged.
   @MainActor
   public static func replyToBanner(
     daemonID: String, group: String, seq: UInt64, body: String,
