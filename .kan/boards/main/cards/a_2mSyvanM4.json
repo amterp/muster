@@ -36,6 +36,12 @@
       "body": "Another instance from tooling feedback a_2neJkhNSM, 2026-11-09 in agent-engine: wind's last turn only dismissed a Heads up notice in anvil's pane, after wind had already posted its review (#9). Muster then told anvil 'wind went idle without posting to you since it went to work 2 minutes ago', which read as a failed review until anvil checked the pane. (Muster no longer holds on that notice since 1013c711, so this particular trigger will stop.)",
       "author": "Alexander Terp",
       "created_at_millis": 1794270003490
+    },
+    {
+      "id": "c_2x5oarWLO",
+      "body": "2026-11-09 instance, Lectern round: worker panda (slot 3) ended turns to wait on its own two reviewer helpers (stone, condor) after posting them briefs, and once while a background test ran under a declared wait. Muster twice told integrator lizard 'panda went idle without posting to you', though panda was mid-assignment and posted its done report minutes later. A worker waiting on its own helpers is not idle-without-posting.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794280156131
     }
   ],
   "created_at_millis": 1792709971945,
@@ -45,7 +51,7 @@
   "position": "b1c",
   "title": "A helper told to stay idle is reported to its maker as idle without posting",
   "type": "bug",
-  "updated_at_millis": 1794270003490,
+  "updated_at_millis": 1794280156131,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792709971945}
   ]
