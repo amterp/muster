@@ -82,6 +82,32 @@ impl Pane {
         })
     }
 
+    /// The wakes typed into the agent for messages from `@muster`, which is how a nudge
+    /// reaches it, each once: a wake says which messages are new, so a message rung again, as a
+    /// daemon rings what it took over unread, is the same line, and another message is not.
+    fn nudges_heard(&self) -> Vec<String> {
+        let mut heard: Vec<String> = Vec::new();
+        for line in std::fs::read_to_string(self.heard_file()).unwrap_or_default().lines() {
+            let rung = line.contains("[muster] ") && line.contains("from @muster");
+            if rung && !heard.iter().any(|known| known == line) {
+                heard.push(line.to_string());
+            }
+        }
+        heard
+    }
+
+    fn until_nudged(&self, times: usize) {
+        until(
+            &format!("{times} nudges to reach the agent"),
+            || self.nudges_heard().len() >= times,
+            (),
+        );
+    }
+
+    fn withheld(&mut self) -> proto::NudgeWithheld {
+        self.record().compaction.unwrap_or_default().nudge_withheld()
+    }
+
     fn queued(&mut self) -> bool {
         self.record().pending_compaction() == proto::PendingCompaction::Queued
     }
@@ -100,6 +126,23 @@ impl Pane {
             "the report was refused: {}",
             asked.answer.reason
         );
+    }
+
+    /// [`Pane::reports`], asked again while the daemon refuses it. A daemon that took the pane
+    /// over can take a report from this test for another agent's until it has placed the pane's
+    /// own, and refuses it.
+    fn reports_once_taken(&mut self, context_used: f32) {
+        let control = &mut self.control;
+        until_some("the daemon to take the agent's report", || {
+            let report = proto::pane_request::Report {
+                pane: "p1".to_string(),
+                agent: "claude".to_string(),
+                context_used: Some(context_used),
+                ..Default::default()
+            };
+            let asked = control.ask(pane(proto::pane_request::Request::Report(report)));
+            (asked.outcome() != proto::Outcome::Refused).then_some(())
+        });
     }
 
     /// Reports `state` as `claude`'s hooks do, with `waiting` as the prompt hook sends one.
@@ -346,6 +389,104 @@ fn a_panes_own_thresholds_survive_a_restart_a_handoff_and_a_reopen() {
     crate::reopen::close(&mut p1.control, "p1");
     crate::reopen::reopened(&mut p1.control, "p1", "t9");
     assert_eq!(p1.record().own_compaction, own, "reopened");
+}
+
+/// Past `nudge_at` the agent is posted a message from `@muster`, once each time its context
+/// crosses the line.
+#[test]
+fn past_nudge_at_an_agent_is_told_to_compact_itself_once_per_crossing() {
+    let mut p1 = Pane::with_an_agent();
+    p1.rules(proto::CompactionRules {
+        root: thresholds(Some(Some(85)), Some(Some(60))),
+        ..Default::default()
+    });
+    p1.reports(50.0);
+    p1.reports(62.0);
+    p1.until_nudged(1);
+    p1.reports(70.0);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.nudges_heard().len(), 1, "nudged again while still past it");
+    assert_eq!(p1.compactions_heard(), Vec::<String>::new(), "70 is under compact_at");
+
+    p1.reports(30.0);
+    p1.reports(61.0);
+    p1.until_nudged(2);
+}
+
+/// An agent that passes both thresholds in one turn is compacted and not also told to compact
+/// itself.
+#[test]
+fn an_agent_about_to_be_compacted_is_not_nudged() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    p1.rules(proto::CompactionRules {
+        root: thresholds(Some(Some(85)), Some(Some(60))),
+        ..Default::default()
+    });
+    p1.reports(90.0);
+    assert!(p1.queued());
+    p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    p1.until_heard(1);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.nudges_heard(), Vec::<String>::new());
+}
+
+/// A nudge that could do no good is not sent, and the pane's record says why: one at or above
+/// the percent the pane is compacted at, and one for an agent whose harness gives no way to
+/// compact it, as Codex's does not.
+#[test]
+fn a_nudge_that_would_do_no_good_is_withheld_and_the_record_says_why() {
+    let mut p1 = Pane::with_an_agent();
+    p1.rules(proto::CompactionRules {
+        root: thresholds(Some(Some(85)), Some(Some(60))),
+        ..Default::default()
+    });
+    assert_eq!(p1.withheld(), proto::NudgeWithheld::None);
+
+    p1.own(None, Some(Some(85)));
+    assert_eq!(p1.withheld(), proto::NudgeWithheld::AtOrAboveCompactAt);
+    p1.reports(84.0);
+    p1.own(None, Some(Some(60)));
+
+    let override_file = p1.daemon.root().join("home/.muster/agent-detection/claude.toml");
+    let without: String = std::fs::read_to_string(&override_file)
+        .expect("the harness wrote it")
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("compact"))
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    std::fs::write(&override_file, &without).expect("the override is rewritten");
+    p1.send_manifests();
+    p1.until_record_compacts(false);
+    assert_eq!(p1.withheld(), proto::NudgeWithheld::HarnessCannotCompact);
+    p1.reports(84.5);
+
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.nudges_heard(), Vec::<String>::new());
+}
+
+/// A daemon that takes a pane over posts no second nudge for the crossing the old one nudged.
+#[test]
+fn a_handoff_carries_that_an_agent_was_nudged() {
+    let mut p1 = Pane::with_an_agent();
+    p1.rules(proto::CompactionRules {
+        root: thresholds(None, Some(Some(60))),
+        ..Default::default()
+    });
+    p1.reports(62.0);
+    p1.until_nudged(1);
+
+    let answer = p1.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    p1.control = p1.daemon.connect();
+    p1.reports_once_taken(63.0);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    let heard = p1.nudges_heard();
+    assert_eq!(heard.len(), 1, "nudged again for the same crossing: {heard:?}");
+
+    p1.reports_once_taken(30.0);
+    p1.reports_once_taken(64.0);
+    p1.until_nudged(2);
 }
 
 /// A compaction somebody asked for is theirs: no change of threshold takes it back.

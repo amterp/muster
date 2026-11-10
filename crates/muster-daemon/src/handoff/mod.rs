@@ -741,6 +741,7 @@ fn adopt_panes(
                 maker_told,
                 turn,
                 quiet_before_orphaned,
+                nudged: pane.nudged,
             },
         );
         if let Err(problem) = adopted {
@@ -780,6 +781,7 @@ fn send_pane(link: &mut UnixStream, pane: &HandedPane) -> Result<(), String> {
             maker_told: told(pane.maker_told).into(),
             wait_started_ms: pane.turns.wait_started_ms,
             wait_noticed: pane.turns.wait_noticed,
+            nudged: pane.nudged,
         })),
     )?;
     for piece in replay.chunks(PIECE) {

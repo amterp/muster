@@ -7,6 +7,7 @@
 
 mod carry;
 mod command;
+mod compact_nudges;
 mod compacts;
 mod doorbell;
 mod inbox;
@@ -21,6 +22,7 @@ mod typist;
 mod waits;
 mod wire;
 
+pub(crate) use compact_nudges::Due as NudgeDue;
 pub(crate) use doorbell::Doorbell;
 pub(crate) use makers::Need;
 pub(crate) use peer::Peers;

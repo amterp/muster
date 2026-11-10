@@ -14,6 +14,10 @@
 //! The threshold compacts once per crossing. Reports arrive every few seconds while the context
 //! stays past it, and a compaction that did not bring it back under must not be typed again on
 //! each of them: the context has to fall below the threshold before it can cross it again.
+//!
+//! A second threshold, lower, has the agent told to compact itself instead: a nudge, posted as a
+//! message (`messages/compact_nudges.rs`). Once per crossing too, and counted apart from the
+//! compaction's, since an agent can be past one and not the other.
 
 /// One pane's compaction, still to be typed, and where its context stands against the threshold.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -26,6 +30,22 @@ pub(crate) struct Compaction {
     crossed: bool,
     /// How full its agent last said its context was.
     used: Option<f32>,
+    /// A nudge still to be posted.
+    nudge: Option<Nudge>,
+    /// The agent has been posted its nudge since its context was last below the nudge's
+    /// threshold.
+    nudged: bool,
+    /// Posting the nudge for this crossing has failed and been said to have.
+    nudge_refused: bool,
+}
+
+/// A nudge owed to a pane's agent: how full it said its context was, the percent that is past,
+/// and the percent it is compacted at, if it is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Nudge {
+    pub(crate) used: f32,
+    pub(crate) at: u8,
+    pub(crate) compact_at: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +130,49 @@ impl Compaction {
         self.crossed = false;
     }
 
+    /// The agent reported its context `used` percent full, against the percent it is nudged
+    /// `at`, none when it is not to be nudged. A nudge is owed when that is past and this
+    /// crossing has had none, unless a compaction waits to be typed: the agent is about to be
+    /// compacted, and told to compact itself it would do it twice.
+    pub(crate) fn nudge_reported(&mut self, used: f32, at: Option<u8>, compact_at: Option<u8>) {
+        let Some(at) = at.filter(|at| used >= f32::from(*at)) else {
+            self.nudge = None;
+            self.nudged = false;
+            self.nudge_refused = false;
+            return;
+        };
+        self.nudge =
+            (!self.nudged && self.wanted.is_none()).then_some(Nudge { used, at, compact_at });
+    }
+
+    pub(crate) fn nudge_due(&self) -> Option<Nudge> {
+        self.nudge
+    }
+
+    /// The nudge owed was posted.
+    pub(crate) fn nudge_posted(&mut self) {
+        self.nudge = None;
+        self.nudged = true;
+    }
+
+    /// The nudge owed could not be posted, and is owed again at the next report. True the first
+    /// time for this crossing.
+    pub(crate) fn nudge_not_posted(&mut self) -> bool {
+        self.nudge = None;
+        !std::mem::replace(&mut self.nudge_refused, true)
+    }
+
+    /// Whether the agent has had its nudge for the crossing its context is past, which a
+    /// handover carries.
+    pub(crate) fn nudged(&self) -> bool {
+        self.nudged
+    }
+
+    /// As a pane handed over arrives: nudged already, or not.
+    pub(crate) fn carry_nudged(&mut self, nudged: bool) {
+        self.nudged = nudged;
+    }
+
     /// The pane's threshold is `threshold` now. A compaction the old one asked for and nobody
     /// typed yet goes when the context is not past the new one, as when there is none.
     pub(crate) fn threshold_is(&mut self, threshold: Option<f32>) {
@@ -153,6 +216,67 @@ impl Compaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_nudge_is_owed_once_per_crossing() {
+        let mut compaction = Compaction::default();
+        compaction.nudge_reported(50.0, Some(60), Some(85));
+        assert_eq!(compaction.nudge_due(), None, "under the line");
+        compaction.nudge_reported(62.0, Some(60), Some(85));
+        let owed = Nudge { used: 62.0, at: 60, compact_at: Some(85) };
+        assert_eq!(compaction.nudge_due(), Some(owed));
+        compaction.nudge_posted();
+        compaction.nudge_reported(70.0, Some(60), Some(85));
+        assert_eq!(compaction.nudge_due(), None, "nudged for this crossing already");
+        compaction.nudge_reported(30.0, Some(60), Some(85));
+        compaction.nudge_reported(61.0, Some(60), Some(85));
+        assert!(compaction.nudge_due().is_some(), "it fell below and crossed again");
+    }
+
+    #[test]
+    fn a_nudge_that_could_not_be_posted_is_owed_again_and_said_once() {
+        let mut compaction = Compaction::default();
+        compaction.nudge_reported(62.0, Some(60), None);
+        assert!(compaction.nudge_not_posted(), "said the first time");
+        assert_eq!(compaction.nudge_due(), None);
+        compaction.nudge_reported(63.0, Some(60), None);
+        assert!(compaction.nudge_due().is_some(), "owed again at the next report");
+        assert!(!compaction.nudge_not_posted(), "and not said again");
+    }
+
+    #[test]
+    fn no_nudge_is_owed_while_a_compaction_waits_or_with_no_threshold() {
+        let mut compaction = Compaction::default();
+        compaction.crossed("/compact".to_string());
+        compaction.nudge_reported(90.0, Some(60), Some(85));
+        assert_eq!(compaction.nudge_due(), None, "about to be compacted");
+        compaction.taken("/compact");
+        compaction.nudge_reported(90.0, Some(60), Some(85));
+        assert!(compaction.nudge_due().is_some(), "still past it once the compaction was typed");
+        compaction.nudge_reported(90.0, None, Some(85));
+        assert_eq!(compaction.nudge_due(), None, "the threshold went");
+    }
+
+    #[test]
+    fn a_new_session_of_the_context_can_be_nudged_again() {
+        let mut compaction = Compaction::default();
+        compaction.nudge_reported(62.0, Some(60), None);
+        compaction.nudge_posted();
+        compaction.cleared();
+        compaction.nudge_reported(61.0, Some(60), None);
+        assert!(compaction.nudge_due().is_some());
+    }
+
+    #[test]
+    fn a_handover_carries_that_the_agent_was_nudged() {
+        let mut old = Compaction::default();
+        old.nudge_reported(62.0, Some(60), None);
+        old.nudge_posted();
+        let mut new = Compaction::default();
+        new.carry_nudged(old.nudged());
+        new.nudge_reported(63.0, Some(60), None);
+        assert_eq!(new.nudge_due(), None);
+    }
 
     #[test]
     fn the_threshold_compacts_once_per_crossing() {

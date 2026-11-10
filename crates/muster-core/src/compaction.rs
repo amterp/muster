@@ -76,6 +76,42 @@ pub struct Effective {
     pub nudge_at: Resolved,
 }
 
+/// What applies to one pane, as its daemon worked it out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Applied {
+    pub effective: Effective,
+    pub nudge_withheld: Option<Withheld>,
+}
+
+impl Source {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Source::Unset => "unset",
+            Source::Root => "root",
+            Source::Harness(_) => "harness",
+            Source::Directory(_) => "directory",
+            Source::Pane => "pane",
+        }
+    }
+
+    /// The harness's name or the directory's path, for those two.
+    pub fn from(&self) -> Option<&str> {
+        match self {
+            Source::Harness(from) | Source::Directory(from) => Some(from),
+            Source::Unset | Source::Root | Source::Pane => None,
+        }
+    }
+}
+
+impl Withheld {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Withheld::AtOrAboveCompactAt => "at_or_above_compact_at",
+            Withheld::HarnessCannotCompact => "harness_cannot_compact",
+        }
+    }
+}
+
 /// Why a pane with a nudge threshold is never nudged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Withheld {
@@ -85,7 +121,31 @@ pub enum Withheld {
     HarnessCannotCompact,
 }
 
+/// Rules with each directory's path as it is on one machine: under that machine's home, and
+/// with its symbolic links followed, as a pane's directory is reported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    rules: Rules,
+    /// One for each of `rules.directories`, in order.
+    paths: Vec<PathBuf>,
+}
+
+/// Whether a `[[directory]]` may have `path`: absolute, or under `~`. A pane's directory is
+/// absolute, so nothing else could be compared with it, and an empty path would hold every pane.
+pub fn is_directory_path(path: &str) -> bool {
+    path.starts_with('/') || path == "~" || path.starts_with("~/")
+}
+
 impl Rules {
+    /// These rules on a machine whose home is `home`. `physical` gives a directory as the
+    /// machine itself names it, with its symbolic links followed: a pane's directory comes from
+    /// the kernel that way, so `/tmp` on a Mac has to be compared as `/private/tmp`.
+    pub fn placed(self, home: &Path, physical: impl Fn(PathBuf) -> PathBuf) -> Placed {
+        let paths =
+            self.directories.iter().map(|block| physical(expanded(&block.path, home))).collect();
+        Placed { rules: self, paths }
+    }
+
     /// The one percent every agent is compacted at, when that is the whole of what the rules say
     /// about `compact_at`. None when nothing is compacted, and also when a harness or a
     /// directory says anything about it: a daemon that takes a single percent would compact
@@ -103,29 +163,29 @@ impl Rules {
     pub fn needs_scopes(&self) -> bool {
         self.root.nudge_at.is_some() || !self.harnesses.is_empty() || !self.directories.is_empty()
     }
+}
 
-    /// The thresholds for a pane running `harness` in `cwd`, on a machine whose home is `home`.
+impl Placed {
+    pub fn rules(&self) -> &Rules {
+        &self.rules
+    }
+
+    /// The thresholds for a pane running `harness` in `cwd`.
     ///
     /// For each key: the pane's own setting, then each directory block holding `cwd`, longest
     /// path first, then the harness's table, then the root. A place that omits the key passes
     /// the question on; `Setting::Off` answers it.
-    pub fn resolve(
-        &self,
-        pane: &Thresholds,
-        harness: Option<&str>,
-        cwd: &Path,
-        home: &Path,
-    ) -> Effective {
-        let mut holding: Vec<(usize, &Directory)> = self
+    pub fn resolve(&self, pane: &Thresholds, harness: Option<&str>, cwd: &Path) -> Effective {
+        let rules = &self.rules;
+        let mut holding: Vec<(usize, &Directory)> = rules
             .directories
             .iter()
-            .filter_map(|block| {
-                let path = expanded(&block.path, home);
-                cwd.starts_with(&path).then(|| (path.components().count(), block))
-            })
+            .zip(&self.paths)
+            .filter(|(_, path)| cwd.starts_with(path))
+            .map(|(block, path)| (path.components().count(), block))
             .collect();
         holding.sort_by_key(|(depth, _)| std::cmp::Reverse(*depth));
-        let harness = harness.and_then(|name| Some((name, self.harnesses.get(name)?)));
+        let harness = harness.and_then(|name| Some((name, rules.harnesses.get(name)?)));
 
         let resolve = |key: fn(&Thresholds) -> Option<Setting>| {
             let (setting, source) = key(pane)
@@ -139,7 +199,7 @@ impl Rules {
                     let (name, scope) = harness?;
                     Some((key(scope)?, Source::Harness(name.to_string())))
                 })
-                .or_else(|| Some((key(&self.root)?, Source::Root)))
+                .or_else(|| Some((key(&rules.root)?, Source::Root)))
                 .unzip();
             let percent = match setting {
                 Some(Setting::At(percent)) => Some(percent),
@@ -193,7 +253,33 @@ mod tests {
     }
 
     fn resolve(rules: &Rules, pane: &Thresholds, harness: Option<&str>, cwd: &str) -> Effective {
-        rules.resolve(pane, harness, Path::new(cwd), Path::new(HOME))
+        rules.clone().placed(Path::new(HOME), |path| path).resolve(pane, harness, Path::new(cwd))
+    }
+
+    #[test]
+    fn a_directory_is_compared_as_its_machine_names_it() {
+        let rules = Rules {
+            directories: vec![directory("/tmp", at(Some(Setting::Off), None))],
+            ..Rules::default()
+        };
+        let physical = |path: PathBuf| Path::new("/private").join(path.strip_prefix("/").unwrap());
+        let placed = rules.placed(Path::new(HOME), physical);
+        let effective = placed.resolve(&Thresholds::default(), None, Path::new("/private/tmp/x"));
+        assert_eq!(
+            effective.compact_at,
+            Resolved { percent: None, source: Source::Directory("/tmp".to_string()) },
+            "named as the file wrote it"
+        );
+    }
+
+    #[test]
+    fn a_directory_path_is_absolute_or_under_home() {
+        for path in ["/", "/srv/work", "~", "~/src"] {
+            assert!(is_directory_path(path), "{path}");
+        }
+        for path in ["", "src/muster", "~alex", "./x"] {
+            assert!(!is_directory_path(path), "{path:?}");
+        }
     }
 
     fn rules() -> Rules {

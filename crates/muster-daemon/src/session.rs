@@ -28,7 +28,7 @@ use std::process::Child;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
-use muster_core::compaction::{Rules, Setting, Thresholds, Withheld};
+use muster_core::compaction::{Placed, Rules, Setting, Thresholds, Withheld};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::helpers::MakerHearing;
@@ -206,6 +206,7 @@ impl Shared {
                     joined,
                     inherited,
                     home,
+                    placed_rules: None,
                     data,
                     reachable,
                     executable,
@@ -437,6 +438,9 @@ pub(crate) struct Session {
     inherited: Vec<(OsString, OsString)>,
     /// Where a pane starts when nothing says where.
     home: PathBuf,
+    /// The compaction rules in force as [`Session::placed_rules`] last worked them out, with
+    /// the settings they were worked out from.
+    placed_rules: Option<((Option<proto::CompactionRules>, Option<f32>), Arc<Placed>)>,
     /// What the daemon gives its shells: the terminfo entry and the shell integration.
     data: Data,
     /// How a pane's programs reach this daemon, which every pane's environment says.
@@ -622,6 +626,8 @@ pub(crate) struct Resuming<'a> {
     /// Who typed what started the agent's turn, and when it started.
     pub(crate) turn: (Option<TypedBy>, Option<std::time::Instant>),
     pub(crate) quiet_before_orphaned: Option<bool>,
+    /// Whether the agent has had its nudge for the crossing its context is past.
+    pub(crate) nudged: bool,
 }
 
 pub(crate) struct HandedPane {
@@ -631,6 +637,7 @@ pub(crate) struct HandedPane {
     pub(crate) turns: Turns,
     pub(crate) session_id: Option<String>,
     pub(crate) maker_told: Option<Need>,
+    pub(crate) nudged: bool,
 }
 
 /// Why a daemon being replaced refuses a request that changes anything. A caller that means to
@@ -2258,8 +2265,7 @@ impl Session {
         child: Child,
         program: &str,
     ) -> Result<(), Reply> {
-        let (effective, withheld) =
-            applying(&compaction_rules(&self.settings), &record, &self.home);
+        let (effective, withheld) = applying(&self.placed_rules(), &record);
         record.compaction = Some(thresholds::applied(&effective, withheld));
         let name = record.pane.clone();
         let cwd = PathBuf::from(&record.cwd);
@@ -2714,6 +2720,7 @@ impl Session {
         let identified = self.session_and_context(index, &agent, session_id, change);
         self.refresh_compaction(index);
         let compacting = self.past_compact_at(index, cleared, context_used);
+        self.past_nudge_at(index, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
         if says_waiting {
@@ -2893,6 +2900,60 @@ impl Session {
         );
         pane.compaction.crossed(line);
         pane.compaction.wanted().is_some()
+    }
+
+    /// What a report of the context says against the pane's `nudge_at`, after
+    /// [`Session::past_compact_at`] has queued any compaction the same report asks for.
+    fn past_nudge_at(&mut self, index: usize, context_used: Option<f32>) {
+        let Some(used) = context_used else { return };
+        let pane = &mut self.panes[index];
+        let applied = pane.record.compaction.clone().unwrap_or_default();
+        let percent = |threshold: Option<proto::AppliedThreshold>| {
+            threshold.and_then(|threshold| u8::try_from(threshold.percent?).ok())
+        };
+        let withheld = applied.nudge_withheld() != proto::NudgeWithheld::None;
+        let nudge_at =
+            percent(applied.nudge_at).filter(|_| !withheld && pane.record.agent.is_some());
+        pane.compaction.nudge_reported(used, nudge_at, percent(applied.compact_at));
+    }
+
+    /// The nudges owed to agents here, for the doorbell's thread to post
+    /// (`messages/compact_nudges.rs`).
+    pub(crate) fn nudges_due(&self) -> Vec<crate::messages::NudgeDue> {
+        self.panes
+            .iter()
+            .filter_map(|pane| {
+                let nudge = pane.compaction.nudge_due()?;
+                let source = pane.record.compaction.as_ref()?.nudge_at.as_ref()?.source();
+                Some(crate::messages::NudgeDue {
+                    pane: pane.record.pane.clone(),
+                    agent: pane.record.agent.clone().unwrap_or_default(),
+                    used: nudge.used,
+                    nudge_at: nudge.at,
+                    source: match source {
+                        proto::ThresholdSource::Unset => "unset",
+                        proto::ThresholdSource::Root => "root",
+                        proto::ThresholdSource::Harness => "harness",
+                        proto::ThresholdSource::Directory => "directory",
+                        proto::ThresholdSource::Pane => "pane",
+                    },
+                    compact_at: nudge.compact_at,
+                })
+            })
+            .collect()
+    }
+
+    /// The nudge owed to `pane`'s agent was posted.
+    pub(crate) fn nudged(&mut self, pane: &str) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].compaction.nudge_posted();
+        }
+    }
+
+    /// The nudge owed to `pane`'s agent could not be posted; true the first time for this
+    /// crossing, when it is worth saying.
+    pub(crate) fn nudge_not_posted(&mut self, pane: &str) -> bool {
+        self.pane_index(pane).is_some_and(|index| self.panes[index].compaction.nudge_not_posted())
     }
 
     /// Every wait an agent here declared and holds, for the watch that ends one whose process
@@ -3919,10 +3980,7 @@ impl Session {
     fn set_compaction_rules(&mut self, rules: &proto::CompactionRules) -> Reply {
         match thresholds::read_rules(rules) {
             Ok(rules) => self.replace_compaction_rules(&rules),
-            Err(percent) => Reply::refused(format!(
-                "a compaction rule holds {percent}, and a threshold is a whole percent from 1 to \
-                 100"
-            )),
+            Err(why) => Reply::refused(why),
         }
     }
 
@@ -3935,8 +3993,9 @@ impl Session {
         self.settings.compact_at = None;
         self.settings.compaction_rules =
             (*rules != Rules::default()).then(|| thresholds::rules(rules));
+        let placed = self.placed_rules();
         for index in 0..self.panes.len() {
-            self.refresh_compaction_under(rules, index);
+            self.refresh_compaction_under(&placed, index);
         }
         self.settings_changed()
     }
@@ -3976,14 +4035,31 @@ impl Session {
     /// Works out again which thresholds apply to pane `index`: after the rules, its own
     /// thresholds, its agent or its directory changed, and on each report of its context.
     fn refresh_compaction(&mut self, index: usize) {
-        let rules = compaction_rules(&self.settings);
+        let rules = self.placed_rules();
         self.refresh_compaction_under(&rules, index);
     }
 
-    fn refresh_compaction_under(&mut self, rules: &Rules, index: usize) {
+    /// The compaction rules in force, with their directories as this machine names them. Worked
+    /// out again only when the settings' rules have changed, since it asks the filesystem where
+    /// each directory really is and this is read on every report of a context.
+    fn placed_rules(&mut self) -> Arc<Placed> {
+        let key = (self.settings.compaction_rules.clone(), self.settings.compact_at);
+        match &self.placed_rules {
+            Some((held, placed)) if *held == key => Arc::clone(placed),
+            _ => {
+                let physical = |path: PathBuf| std::fs::canonicalize(&path).unwrap_or(path);
+                let placed =
+                    Arc::new(compaction_rules(&self.settings).placed(&self.home, physical));
+                self.placed_rules = Some((key, Arc::clone(&placed)));
+                placed
+            }
+        }
+    }
+
+    fn refresh_compaction_under(&mut self, rules: &Placed, index: usize) {
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
-        let (effective, withheld) = applying(rules, record, &self.home);
+        let (effective, withheld) = applying(rules, record);
         let applied = Some(thresholds::applied(&effective, withheld));
         pane.compaction.threshold_is(effective.compact_at.percent.map(f32::from));
         if record.compaction != applied {
@@ -4274,7 +4350,7 @@ impl Session {
         for record in changed {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
-        let rules = compaction_rules(&self.settings);
+        let rules = self.placed_rules();
         for index in 0..self.panes.len() {
             self.refresh_compaction_under(&rules, index);
         }
@@ -4583,6 +4659,7 @@ impl Session {
                     turns: pane.turns,
                     session_id: pane.session_id.clone(),
                     maker_told: pane.maker_told,
+                    nudged: pane.compaction.nudged(),
                 })
                 .collect(),
             persister: Arc::clone(&self.persister),
@@ -4601,6 +4678,7 @@ impl Session {
                 return Err(format!("pane {} ended during the handoff", handed.record.pane));
             };
             handed.record = pane.record.clone();
+            handed.nudged = pane.compaction.nudged();
         }
         if let Some(made) = self
             .panes
@@ -4707,6 +4785,7 @@ impl Session {
         pane.resume = resuming.resume.cloned();
         pane.maker_told = resuming.maker_told;
         pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
+        pane.compaction.carry_nudged(resuming.nudged);
         let (by, at) = resuming.turn;
         pane.io.resume_turn(by, at);
         if let Some(need) = resuming.maker_told {
@@ -5078,12 +5157,11 @@ fn compaction_rules(settings: &proto::Settings) -> Rules {
 
 /// The thresholds `rules` give the pane `record` describes, and why its nudge is withheld.
 fn applying(
-    rules: &Rules,
+    rules: &Placed,
     record: &proto::Pane,
-    home: &Path,
 ) -> (muster_core::compaction::Effective, Option<Withheld>) {
     let own = own_thresholds(record.own_compaction.as_ref());
-    let effective = rules.resolve(&own, record.agent.as_deref(), Path::new(&record.cwd), home);
+    let effective = rules.resolve(&own, record.agent.as_deref(), Path::new(&record.cwd));
     // A pane with no agent has nobody to nudge, which is not its harness's doing.
     let withheld = effective.nudge_withheld(record.agent.is_none() || record.agent_compacts);
     (effective, withheld)
@@ -5690,6 +5768,7 @@ mod tests {
                     maker_told: None,
                     turn: (None, None),
                     quiet_before_orphaned: None,
+                    nudged: false,
                 },
             )
             .unwrap();

@@ -32,8 +32,29 @@ pub fn rules(rules: &Rules) -> proto::CompactionRules {
     }
 }
 
-/// The rules a message holds, or the percent it holds that no agent's context can be at.
-pub fn read_rules(rules: &proto::CompactionRules) -> Result<Rules, u32> {
+/// The rules a message holds, or why they are not rules: a percent no agent's context can be
+/// at, or a directory that is not absolute or under `~`, which the config file's reader refuses
+/// and another client of the daemon could still send.
+pub fn read_rules(rules: &proto::CompactionRules) -> Result<Rules, String> {
+    let percent = |percent: u32| {
+        format!(
+            "a compaction rule holds {percent}, and a threshold is a whole percent from 1 to 100"
+        )
+    };
+    if let Some(block) = rules
+        .directories
+        .iter()
+        .find(|block| !muster_core::compaction::is_directory_path(&block.path))
+    {
+        return Err(format!(
+            "a compaction rule's directory is {:?}, and it has to start at `/` or at `~`",
+            block.path
+        ));
+    }
+    read_rules_percents(rules).map_err(percent)
+}
+
+fn read_rules_percents(rules: &proto::CompactionRules) -> Result<Rules, u32> {
     Ok(Rules {
         root: read_thresholds(rules.root.as_ref())?,
         harnesses: rules
@@ -176,6 +197,20 @@ mod tests {
             }],
         };
         assert_eq!(read_rules(&rules(&sent)), Ok(sent));
+    }
+
+    #[test]
+    fn a_directory_that_could_hold_every_pane_or_none_is_refused() {
+        let with = |path: &str| proto::CompactionRules {
+            directories: vec![proto::CompactionDirectory {
+                path: path.to_string(),
+                thresholds: None,
+            }],
+            ..Default::default()
+        };
+        assert!(read_rules(&with("")).unwrap_err().contains("directory is \"\""));
+        assert!(read_rules(&with("src/muster")).is_err());
+        assert!(read_rules(&with("~/src/muster")).is_ok());
     }
 
     #[test]

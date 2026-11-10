@@ -2434,6 +2434,11 @@ message Handoff {
     optional uint64 wait_started_ms = 14;
     // Since 1.11. The maker has been told that this declared wait has lasted too long.
     bool wait_noticed = 15;
+    // Since 1.14. The agent has been posted its nudge for the crossing of `nudge_at` its context
+    // is past, so the new daemon posts no second one. Whether it has been compacted for
+    // crossing `compact_at` is not carried, because the compaction queued for it is not: a new
+    // daemon that believed the crossing spent would leave a full agent uncompacted.
+    bool nudged = 16;
   }
 
   enum TypedBy {

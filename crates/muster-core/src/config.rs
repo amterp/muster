@@ -29,7 +29,7 @@ use crate::input::{
 };
 
 use crate::attention::Notifications;
-use crate::compaction::{Directory, Rules, Setting, Thresholds};
+use crate::compaction::{Directory, Rules, Setting, Thresholds, is_directory_path};
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
 /// Everything a config file says.
@@ -881,7 +881,7 @@ fn read_compaction(root: &toml::Table) -> Result<Rules, String> {
                  \"~/src/muster\"`."
             )
         })?;
-        if !(path.starts_with('/') || path == "~" || path.starts_with("~/")) {
+        if !is_directory_path(&path) {
             return Err(format!(
                 "{where_} has the `path` {path:?}, and it has to start at `/` or at `~`, since a \
                  pane's directory is compared with it whole. None of the file was applied."

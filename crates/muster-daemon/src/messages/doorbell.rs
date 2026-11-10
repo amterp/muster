@@ -50,6 +50,7 @@ use muster_detect::Agent;
 use muster_msg::{Activity, Presence, Ringable, Via, Wake};
 
 use super::command;
+use super::compact_nudges;
 use super::compacts::{self, Compacting};
 use super::makers::{self, Makers};
 use super::presence::{Panes, Seen};
@@ -976,6 +977,8 @@ fn run(shared: &Weak<Shared>) {
     loop {
         std::thread::park_timeout(sleep);
         let Some(shared) = shared.upgrade() else { return };
+        // Before the look, so a nudge posted is rung on the same pass.
+        compact_nudges::look(&shared);
         sleep = look(&shared, &mut before, &mut typing, &mut compacting, &mut moving);
         // On its own clock rather than the doorbell's: a stall is a group nothing moves, which
         // is exactly when nothing would wake the doorbell to look.
