@@ -6,6 +6,14 @@
     "testing"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2xAnDzIJw",
+      "body": "Same family 2026-11-10 00:25 in the full gate at 4aef7d6f, load 14.6: muster-seam windows::what_going_to_an_agent_asking_would_do_names_the_other_windows_agent timed out after 20 s waiting for p1's fake agent to be Blocked (it read Idle at PROBE-PROMPT\u003e). Passed 3 of 3 alone in 4 s.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794292019918
+    }
+  ],
   "created_at_millis": 1794272045501,
   "creator": "Alexander Terp",
   "description": "Failed once in the full gate on 2026-11-09 at c81e2812, at a load average of 67.8: `muster: \u003cpane\u003e was not blocked within 60s` (exit 5, expected 1) at crates/muster-cli/tests/cli/waiting_on_agents.rs:227. Passed on its own right after, in 23 s. Same family as a_2qAeGZOK0 and a_2wTPddV7n: a fixed wall-clock wait that a starved machine outlasts.",
@@ -13,7 +21,7 @@
   "position": "b2d",
   "title": "🎲 waiting_on_agents::a_caller_can_wait_on_an_agent_instead_of_polling saw no blocked within 60 s under load",
   "type": "bug",
-  "updated_at_millis": 1794272045501,
+  "updated_at_millis": 1794292019918,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794272045501}
   ]
