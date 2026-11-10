@@ -2489,7 +2489,7 @@ mod tests {
             ],
             ..Window::default()
         };
-        let json = window_json(&window, Others::All);
+        let json = window_json(&window, Others::All, &Local::default());
         let p1 = &json["panes"][0];
         assert_eq!(p1["compact_at"], json!({ "percent": 85, "source": "root", "from": null }));
         assert_eq!(
