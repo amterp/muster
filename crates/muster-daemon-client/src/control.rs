@@ -346,6 +346,12 @@ impl Control {
         self.ask(session(session_request::Request::SetCompactAt(proto::SetCompactAt { percent })))
     }
 
+    pub fn set_compaction_rules(&self, rules: &muster_core::compaction::Rules) -> Pending {
+        self.ask(session(session_request::Request::SetCompactionRules(proto::SetCompactionRules {
+            rules: Some(muster_daemon_proto::compaction::rules(rules)),
+        })))
+    }
+
     pub fn set_human_name(&self, name: Option<String>) -> Pending {
         self.ask(session(session_request::Request::SetHumanName(proto::SetHumanName { name })))
     }

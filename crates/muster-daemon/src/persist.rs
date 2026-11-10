@@ -201,6 +201,10 @@ pub(crate) struct Pane {
     /// when its maker is reopened. Absent while its maker has not closed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) quiet_before_orphaned: Option<bool>,
+    /// The compaction thresholds set for this pane itself (`proto::Pane::own_compaction`): each
+    /// absent when the pane leaves it to the rules, and holding no percent when it is off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) compaction: Option<proto::CompactionThresholds>,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -783,6 +787,7 @@ mod tests {
             maker: None,
             maker_closed: false,
             quiet_before_orphaned: None,
+            compaction: None,
         }
     }
 
@@ -969,7 +974,7 @@ mod tests {
 
     /// Every fixture, and the settings it holds at something other than their defaults. Each
     /// setting is held by exactly one, the first written after it was added.
-    const FIXTURES: [(&str, &[&str]); 12] = [
+    const FIXTURES: [(&str, &[&str]); 13] = [
         ("state-v1.json", &["shell", "scrollback_bytes", "palette", "clipboard_write", "cursor"]),
         ("state-v1-scroll-multiplier.json", &["scroll_multiplier"]),
         ("state-v1-name-sessions.json", &["name_sessions"]),
@@ -991,6 +996,8 @@ mod tests {
         // Also the first to hold closed panes a reopen can bring back, and a helper's quiet from
         // before its maker closed.
         ("state-v2-reopen-closed.json", &["reopen_closed_minutes"]),
+        // Also the first to hold a pane's own compaction thresholds.
+        ("state-v2-compaction.json", &["compaction_rules"]),
     ];
 
     fn fixture(name: &str) -> PathBuf {
@@ -1018,6 +1025,7 @@ mod tests {
             maker: None,
             maker_closed: false,
             quiet_before_orphaned: None,
+            compaction: None,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,

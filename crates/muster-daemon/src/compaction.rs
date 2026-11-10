@@ -24,6 +24,8 @@ pub(crate) struct Compaction {
     /// Its agent's context has crossed the threshold since it was last below it, so the
     /// threshold has had its one compaction for this crossing.
     crossed: bool,
+    /// How full its agent last said its context was.
+    used: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +86,7 @@ impl Compaction {
     /// The agent reported its context `used` percent full, against `threshold`. True when this
     /// report crossed it, and the threshold's compaction should be asked for now.
     pub(crate) fn reported(&mut self, used: f32, threshold: Option<f32>) -> bool {
+        self.used = Some(used);
         let past = threshold.is_some_and(|threshold| used >= threshold);
         let crossing = past && !self.crossed;
         self.crossed = past;
@@ -105,6 +108,15 @@ impl Compaction {
             self.wanted = None;
         }
         self.crossed = false;
+    }
+
+    /// The pane's threshold is `threshold` now. A compaction the old one asked for and nobody
+    /// typed yet goes when the context is not past the new one, as when there is none.
+    pub(crate) fn threshold_is(&mut self, threshold: Option<f32>) {
+        let past = threshold.zip(self.used).is_some_and(|(threshold, used)| used >= threshold);
+        if !past {
+            self.threshold_off();
+        }
     }
 
     /// `line` was typed and the agent took it. A compaction taken leaves the prompt it was asked

@@ -28,10 +28,11 @@ use std::process::Child;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
+use muster_core::compaction::{Rules, Setting, Thresholds, Withheld};
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::helpers::MakerHearing;
-use muster_daemon_proto::{self as proto, making};
+use muster_daemon_proto::{self as proto, compaction as thresholds, making};
 use prost::Message;
 use proto::answer::Detail;
 
@@ -929,6 +930,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
         maker: pane.record.maker.clone(),
         maker_closed: pane.record.maker_closed,
         quiet_before_orphaned: pane.quiet_before_orphaned,
+        compaction: pane.record.own_compaction.clone(),
     }
 }
 
@@ -1359,6 +1361,9 @@ impl Session {
                 S::SetReopenClosed(set) => self.set_reopen_closed(set.minutes),
                 S::SetHumanName(set) => self.set_human_name(set.name),
                 S::SetCompactAt(set) => self.set_compact_at(set.percent),
+                S::SetCompactionRules(set) => {
+                    self.set_compaction_rules(&set.rules.unwrap_or_default())
+                }
                 S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
                 S::Replace(replace) => return self.replace(replace),
@@ -1387,6 +1392,7 @@ impl Session {
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
                 P::Quiet(quiet) => self.quiet(&quiet),
+                P::SetCompaction(set) => self.set_compaction(&set),
                 P::MakerClosed(closed) => self.maker_closed(&closed),
                 P::Restart(restart) => match self.restart(&restart) {
                     Ok(restarting) => return Handled::Restart(Box::new(restarting)),
@@ -2136,6 +2142,7 @@ impl Session {
             // In its state before it closed, which this run of the agent did not see begin.
             record.state_since_ms = None;
         }
+        record.own_compaction.clone_from(&saved.compaction);
         if let Err(reply) = self.open(record.clone(), grid, master, child, program) {
             self.reopen_failed(&reopening.closed);
             return reply;
@@ -2245,12 +2252,15 @@ impl Session {
     /// Watches a pane whose process has started, and announces it. It is in no tab yet.
     fn open(
         &mut self,
-        record: proto::Pane,
+        mut record: proto::Pane,
         grid: Grid,
         master: OwnedFd,
         child: Child,
         program: &str,
     ) -> Result<(), Reply> {
+        let (effective, withheld) =
+            applying(&compaction_rules(&self.settings), &record, &self.home);
+        record.compaction = Some(thresholds::applied(&effective, withheld));
         let name = record.pane.clone();
         let cwd = PathBuf::from(&record.cwd);
         let screen = match Screen::new(grid, &self.settled) {
@@ -2702,6 +2712,7 @@ impl Session {
         }
         let renamed = self.session_named(index, cleared, &agent, session_name.as_deref());
         let identified = self.session_and_context(index, &agent, session_id, change);
+        self.refresh_compaction(index);
         let compacting = self.past_compact_at(index, cleared, context_used);
         self.compaction_changed(index);
         let pane = &mut self.panes[index];
@@ -2848,12 +2859,12 @@ impl Session {
         switched
     }
 
-    /// What a report of the context says against `compact_at` ([`crate::compaction`]); true when
+    /// What a report of the context says against the pane's `compact_at` ([`crate::compaction`]); true when
     /// it crossed it and a compaction is now to be typed, which the doorbell is told of.
     fn past_compact_at(&mut self, index: usize, cleared: bool, context_used: Option<f32>) -> bool {
-        let threshold = self.settings.compact_at;
         let manifests = self.detecting.manifests();
         let pane = &mut self.panes[index];
+        let threshold = applied_percent(&pane.record, |applied| applied.compact_at.as_ref());
         if cleared {
             pane.compaction.cleared();
         }
@@ -3272,6 +3283,7 @@ impl Session {
         let pane = &mut self.panes[index];
         let record = &mut pane.record;
         let shown = record.state();
+        let moved = matches!(report.what, Reported::Cwd(_));
         let set = set_reported_field(record, report.what);
         let what = match set {
             Ok(changed) => {
@@ -3279,6 +3291,9 @@ impl Session {
                     state_since::dated(shown, record, state_since::now_ms());
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+                if changed && moved {
+                    self.refresh_compaction(index);
                 }
                 return;
             }
@@ -3369,9 +3384,13 @@ impl Session {
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());
                 }
+                let agent_changed = record.agent != before.agent;
                 if *record != before {
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                }
+                if agent_changed {
+                    self.refresh_compaction(index);
                 }
             }
         }
@@ -3883,8 +3902,8 @@ impl Session {
         self.settings_changed()
     }
 
-    /// How full an agent's context gets before it is compacted unasked. None turns it off, and
-    /// takes back every compaction it asked for that is not typed yet.
+    /// One percent every agent is compacted at, from a client that knows no other rule, or
+    /// none: it replaces every compaction rule held.
     fn set_compact_at(&mut self, percent: Option<f32>) -> Reply {
         if let Some(percent) = percent
             && !(percent > 0.0 && percent <= 100.0)
@@ -3893,17 +3912,105 @@ impl Session {
                 "compact_at is {percent}, and a context is above 0 and at most 100 percent full"
             ));
         }
-        if self.settings.compact_at.map(f32::to_bits) == percent.map(f32::to_bits) {
+        let root = Thresholds { compact_at: percent.map(whole_percent), nudge_at: None };
+        self.replace_compaction_rules(&Rules { root, ..Rules::default() })
+    }
+
+    fn set_compaction_rules(&mut self, rules: &proto::CompactionRules) -> Reply {
+        match thresholds::read_rules(rules) {
+            Ok(rules) => self.replace_compaction_rules(&rules),
+            Err(percent) => Reply::refused(format!(
+                "a compaction rule holds {percent}, and a threshold is a whole percent from 1 to \
+                 100"
+            )),
+        }
+    }
+
+    /// Puts `rules` in place of the ones held and applies them to every pane, which takes back
+    /// each compaction a threshold asked for that no longer would.
+    fn replace_compaction_rules(&mut self, rules: &Rules) -> Reply {
+        if compaction_rules(&self.settings) == *rules {
             return Reply::already();
         }
-        self.settings.compact_at = percent;
-        if percent.is_none() {
-            for index in 0..self.panes.len() {
-                self.panes[index].compaction.threshold_off();
-                self.compaction_changed(index);
-            }
+        self.settings.compact_at = None;
+        self.settings.compaction_rules =
+            (*rules != Rules::default()).then(|| thresholds::rules(rules));
+        for index in 0..self.panes.len() {
+            self.refresh_compaction_under(rules, index);
         }
         self.settings_changed()
+    }
+
+    /// Sets the thresholds pane `set.pane` has for itself, which beat every rule.
+    fn set_compaction(&mut self, set: &pane_request::SetCompaction) -> Reply {
+        let Some(index) = self.pane_index(&set.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", set.pane));
+        };
+        let held = self.panes[index].record.own_compaction.clone();
+        let mut own = if set.clear { Thresholds::default() } else { own_thresholds(held.as_ref()) };
+        for (said, kept) in
+            [(&set.compact_at, &mut own.compact_at), (&set.nudge_at, &mut own.nudge_at)]
+        {
+            match said.as_ref().map(thresholds::read_threshold) {
+                None => {}
+                Some(Ok(setting)) => *kept = Some(setting),
+                Some(Err(percent)) => {
+                    return Reply::refused(format!(
+                        "{percent} is not a threshold: it is a whole percent from 1 to 100"
+                    ));
+                }
+            }
+        }
+        let own = (!own.is_empty()).then(|| thresholds::thresholds(&own));
+        if own == held {
+            return Reply::already();
+        }
+        self.panes[index].record.own_compaction = own;
+        let record = self.panes[index].record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        self.refresh_compaction(index);
+        self.persister.changed();
+        Reply::done()
+    }
+
+    /// Works out again which thresholds apply to pane `index`: after the rules, its own
+    /// thresholds, its agent or its directory changed, and on each report of its context.
+    fn refresh_compaction(&mut self, index: usize) {
+        let rules = compaction_rules(&self.settings);
+        self.refresh_compaction_under(&rules, index);
+    }
+
+    fn refresh_compaction_under(&mut self, rules: &Rules, index: usize) {
+        let pane = &mut self.panes[index];
+        let record = &mut pane.record;
+        let (effective, withheld) = applying(rules, record, &self.home);
+        let applied = Some(thresholds::applied(&effective, withheld));
+        pane.compaction.threshold_is(effective.compact_at.percent.map(f32::from));
+        if record.compaction != applied {
+            if let Some(why) = withheld {
+                log::info(
+                    "daemon.compact.nudge_suppressed",
+                    fields! {
+                        "pane" => record.pane,
+                        "agent" => record.agent.clone().unwrap_or_default(),
+                        "nudge_at" => effective.nudge_at.percent.unwrap_or_default(),
+                        "compact_at" => effective.compact_at.percent.unwrap_or_default(),
+                        "why" => match why {
+                            Withheld::AtOrAboveCompactAt => {
+                                "the pane is compacted at that percent or a lower one"
+                            }
+                            Withheld::HarnessCannotCompact => {
+                                "its manifest says no way to compact it"
+                            }
+                        },
+                    },
+                );
+            }
+            record.compaction = applied;
+            let record = record.clone();
+            self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        }
+        self.compaction_changed(index);
     }
 
     /// An empty name is none: the human is shown by the address alone.
@@ -4167,6 +4274,10 @@ impl Session {
         for record in changed {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
+        let rules = compaction_rules(&self.settings);
+        for index in 0..self.panes.len() {
+            self.refresh_compaction_under(&rules, index);
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -4326,6 +4437,7 @@ impl Session {
                 quiet: pane.saved.quiet,
                 maker: pane.saved.maker,
                 maker_closed: pane.saved.maker_closed,
+                own_compaction: pane.saved.compaction,
                 session_id: resume.as_ref().map(|resume| resume.session.clone()),
                 resume: resume.as_ref().map(persist::Resume::record),
                 // A resumed agent was in its state before the restart, which this daemon did not
@@ -4948,6 +5060,58 @@ fn node_from_record(node: &proto::Node) -> Result<Node, String> {
 
 fn split_child(child: Option<&proto::Node>) -> Result<&proto::Node, String> {
     child.ok_or_else(|| "a split is missing a child".to_string())
+}
+
+/// The compaction rules `settings` holds. A state written before there were rules holds one
+/// percent for every agent, which is those rules' root.
+fn compaction_rules(settings: &proto::Settings) -> Rules {
+    match (&settings.compaction_rules, settings.compact_at) {
+        // Refused before it was kept, so it reads.
+        (Some(rules), _) => thresholds::read_rules(rules).unwrap_or_default(),
+        (None, Some(percent)) => Rules {
+            root: Thresholds { compact_at: Some(whole_percent(percent)), nudge_at: None },
+            ..Rules::default()
+        },
+        (None, None) => Rules::default(),
+    }
+}
+
+/// The thresholds `rules` give the pane `record` describes, and why its nudge is withheld.
+fn applying(
+    rules: &Rules,
+    record: &proto::Pane,
+    home: &Path,
+) -> (muster_core::compaction::Effective, Option<Withheld>) {
+    let own = own_thresholds(record.own_compaction.as_ref());
+    let effective = rules.resolve(&own, record.agent.as_deref(), Path::new(&record.cwd), home);
+    // A pane with no agent has nobody to nudge, which is not its harness's doing.
+    let withheld = effective.nudge_withheld(record.agent.is_none() || record.agent_compacts);
+    (effective, withheld)
+}
+
+/// A percent a client sent as a fraction, as the whole percent the rules hold.
+fn whole_percent(percent: f32) -> Setting {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "clamped to a percent first"
+    )]
+    Setting::At(percent.round().clamp(1.0, 100.0) as u8)
+}
+
+/// The thresholds a pane's record says it has for itself.
+fn own_thresholds(own: Option<&proto::CompactionThresholds>) -> Thresholds {
+    // Refused before they were kept, so they read.
+    thresholds::read_thresholds(own).unwrap_or_default()
+}
+
+/// One of the percents applying to a pane, as its record holds it.
+fn applied_percent(
+    record: &proto::Pane,
+    which: impl Fn(&proto::AppliedCompaction) -> Option<&proto::AppliedThreshold>,
+) -> Option<f32> {
+    let percent = which(record.compaction.as_ref()?)?.percent?;
+    u8::try_from(percent).ok().map(f32::from)
 }
 
 /// Whether `agent` can be compacted from its prompt, by the manifests in use.

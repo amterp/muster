@@ -13,12 +13,17 @@ use sha2::{Digest, Sha256};
 /// setting uses goes here too; a new enum needs nothing, since enum fields are `i32`s, but a
 /// oneof inside a persisted message is a Rust enum of its own and needs the same derive through
 /// `enum_attribute`. Derived only with the `serde` feature, which only the daemon enables.
-const PERSISTED: [&str; 5] = [
+const PERSISTED: [&str; 10] = [
     ".muster.daemon.Settings",
     ".muster.daemon.Shell",
     ".muster.daemon.Palette",
     ".muster.daemon.Cursor",
     ".muster.daemon.Label",
+    ".muster.daemon.CompactionRules",
+    ".muster.daemon.CompactionThresholds",
+    ".muster.daemon.CompactionThreshold",
+    ".muster.daemon.CompactionHarness",
+    ".muster.daemon.CompactionDirectory",
 ];
 
 fn main() {

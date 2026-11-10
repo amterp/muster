@@ -513,11 +513,13 @@ pub(crate) fn handle(
                 pane_request::Request::Rename(_)
                     | pane_request::Request::Report(_)
                     | pane_request::Request::Compact(_)
+                    | pane_request::Request::SetCompaction(_)
             )
         }) | Service::Session(proto::SessionRequest {
             request: Some(
                 session_request::Request::SetNameSessions(_)
                     | session_request::Request::SetCompactAt(_)
+                    | session_request::Request::SetCompactionRules(_)
                     | session_request::Request::ReportPresence(_)
             )
         })

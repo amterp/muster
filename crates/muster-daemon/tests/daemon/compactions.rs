@@ -46,6 +46,46 @@ impl Pane {
         expect(&mut self.control, session(set), proto::Outcome::Done);
     }
 
+    fn rules(&mut self, rules: proto::CompactionRules) {
+        let set = proto::session_request::Request::SetCompactionRules(proto::SetCompactionRules {
+            rules: Some(rules),
+        });
+        expect(&mut self.control, session(set), proto::Outcome::Done);
+    }
+
+    /// Sets `p1`'s own thresholds, each left as it is when none.
+    fn own(&mut self, compact_at: Option<Option<u32>>, nudge_at: Option<Option<u32>>) {
+        let set = proto::pane_request::SetCompaction {
+            pane: "p1".to_string(),
+            compact_at: compact_at.map(threshold),
+            nudge_at: nudge_at.map(threshold),
+            clear: false,
+        };
+        expect(
+            &mut self.control,
+            pane(proto::pane_request::Request::SetCompaction(set)),
+            proto::Outcome::Done,
+        );
+    }
+
+    fn record(&mut self) -> proto::Pane {
+        let records = snapshot(&mut self.control).panes;
+        records.into_iter().find(|record| record.pane == "p1").expect("p1 is open")
+    }
+
+    /// The percent `p1` is compacted at and what set it, then the same for its nudge.
+    fn applied(&mut self) -> [(Option<u32>, proto::ThresholdSource); 2] {
+        let applied = self.record().compaction.expect("the daemon says what applies");
+        [applied.compact_at, applied.nudge_at].map(|threshold| {
+            let threshold = threshold.unwrap_or_default();
+            (threshold.percent, threshold.source())
+        })
+    }
+
+    fn queued(&mut self) -> bool {
+        self.record().pending_compaction() == proto::PendingCompaction::Queued
+    }
+
     /// How full the agent says its context is, as `claude`'s statusline would.
     fn reports(&mut self, context_used: f32) {
         let report = proto::pane_request::Report {
@@ -197,6 +237,153 @@ fn a_compaction_is_refused_where_nothing_could_type_it() {
     assert_eq!(asked.outcome(), proto::Outcome::NotThere);
     std::thread::sleep(WOULD_HAVE_TYPED);
     assert_eq!(p1.compactions_heard(), Vec::<String>::new());
+}
+
+fn threshold(percent: Option<u32>) -> proto::CompactionThreshold {
+    proto::CompactionThreshold { percent }
+}
+
+fn thresholds(
+    compact_at: Option<Option<u32>>,
+    nudge_at: Option<Option<u32>>,
+) -> Option<proto::CompactionThresholds> {
+    Some(proto::CompactionThresholds {
+        compact_at: compact_at.map(threshold),
+        nudge_at: nudge_at.map(threshold),
+    })
+}
+
+/// The most specific place that sets a threshold decides it: the pane, then the directory it is
+/// in, then its harness, then the root. Read off the pane's record, with the agent at work so
+/// that a compaction queued stays queued.
+#[test]
+fn a_pane_is_compacted_at_the_most_specific_threshold_set_for_it() {
+    use proto::ThresholdSource as Source;
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    let unset = (None, Source::Unset);
+    let root = thresholds(Some(Some(85)), None);
+    let claude_exempt = proto::CompactionHarness {
+        name: "claude".to_string(),
+        thresholds: thresholds(Some(None), None),
+    };
+
+    p1.rules(proto::CompactionRules { root: root.clone(), ..Default::default() });
+    assert_eq!(p1.applied(), [(Some(85), Source::Root), unset]);
+
+    p1.rules(proto::CompactionRules {
+        root: root.clone(),
+        harnesses: vec![claude_exempt.clone()],
+        ..Default::default()
+    });
+    assert_eq!(
+        p1.applied(),
+        [(None, Source::Harness), unset],
+        "\"none\" for claude beats the root"
+    );
+    p1.reports(99.0);
+    assert!(!p1.queued(), "claude is exempt");
+
+    let here = p1.record().cwd;
+    let around = std::path::Path::new(&here).parent().unwrap().display().to_string();
+    let directories = vec![
+        proto::CompactionDirectory { path: around, thresholds: thresholds(Some(Some(90)), None) },
+        proto::CompactionDirectory { path: here, thresholds: thresholds(Some(Some(50)), None) },
+    ];
+    p1.rules(proto::CompactionRules { root, harnesses: vec![claude_exempt], directories });
+    assert_eq!(p1.applied(), [(Some(50), Source::Directory), unset], "the longest directory");
+    p1.reports(60.0);
+    assert!(p1.queued(), "past the directory's 50");
+
+    p1.own(Some(None), None);
+    assert_eq!(p1.applied(), [(None, Source::Pane), unset]);
+    assert!(!p1.queued(), "the threshold that queued it no longer applies");
+
+    p1.own(Some(Some(70)), None);
+    p1.reports(60.0);
+    assert!(!p1.queued(), "60 is under the pane's own 70");
+    p1.reports(75.0);
+    assert!(p1.queued());
+
+    let clear = proto::pane_request::SetCompaction {
+        pane: "p1".to_string(),
+        clear: true,
+        ..Default::default()
+    };
+    expect(
+        &mut p1.control,
+        pane(proto::pane_request::Request::SetCompaction(clear)),
+        proto::Outcome::Done,
+    );
+    assert_eq!(p1.applied(), [(Some(50), Source::Directory), unset], "the rules decide again");
+    assert_eq!(p1.record().own_compaction, None);
+}
+
+/// A pane's own thresholds last as long as the pane does: a daemon that restarted, one that took
+/// the pane over, and a reopening all bring them back.
+#[test]
+fn a_panes_own_thresholds_survive_a_restart_a_handoff_and_a_reopen() {
+    use crate::persistence::{stop, until_restored, until_saved};
+    use proto::ThresholdSource as Source;
+    let mut p1 = Pane::with_an_agent();
+    make(&mut p1.control, create("p2", beside("p1", proto::Side::Down)));
+    p1.own(Some(None), Some(Some(70)));
+    let own = thresholds(Some(None), Some(Some(70)));
+    until_saved(&p1.daemon, "nudge_at");
+
+    stop(&mut p1.daemon, &mut p1.control);
+    p1.daemon.restart();
+    p1.control = p1.daemon.connect();
+    until_restored(&mut p1.control, 2);
+    assert_eq!(p1.record().own_compaction, own, "restarted");
+    assert_eq!(p1.applied(), [(None, Source::Pane), (Some(70), Source::Pane)], "and applied");
+
+    let answer = p1.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    p1.control = p1.daemon.connect();
+    assert_eq!(p1.record().own_compaction, own, "handed over");
+
+    crate::reopen::close(&mut p1.control, "p1");
+    crate::reopen::reopened(&mut p1.control, "p1", "t9");
+    assert_eq!(p1.record().own_compaction, own, "reopened");
+}
+
+/// A compaction somebody asked for is theirs: no change of threshold takes it back.
+#[test]
+fn a_change_of_threshold_leaves_a_compaction_somebody_asked_for() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    p1.compact_at(Some(50.0));
+    p1.reports(60.0);
+    assert_eq!(p1.compact(Some("the plan")), proto::Outcome::Done);
+    p1.own(Some(None), None);
+    assert!(p1.queued());
+}
+
+/// A client that knows only one percent for every agent replaces whatever rules were held.
+#[test]
+fn one_percent_for_every_agent_replaces_the_rules() {
+    use proto::ThresholdSource as Source;
+    let mut p1 = Pane::with_an_agent();
+    p1.rules(proto::CompactionRules {
+        root: thresholds(Some(Some(85)), Some(Some(60))),
+        harnesses: vec![proto::CompactionHarness {
+            name: "claude".to_string(),
+            thresholds: thresholds(Some(None), None),
+        }],
+        ..Default::default()
+    });
+    p1.compact_at(Some(80.0));
+    assert_eq!(p1.applied(), [(Some(80), Source::Root), (None, Source::Unset)]);
+
+    let refused = p1.control.ask(pane(proto::pane_request::Request::SetCompaction(
+        proto::pane_request::SetCompaction {
+            pane: "p1".to_string(),
+            nudge_at: Some(threshold(Some(101))),
+            ..Default::default()
+        },
+    )));
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "101 is no percent of a context");
 }
 
 #[test]

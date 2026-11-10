@@ -7,8 +7,10 @@
 //! listens, how long a daemon just started is given, the handshake that opens every connection,
 //! how the messaging commands are spelled, how a pane is asked for when no window places it, how
 //! a pane's newest rows are read through pages, what state a pane's record shows its agent in,
+//! how compaction thresholds are written in a message,
 //! and how many closed panes a daemon remembers.
 
+pub mod compaction;
 pub mod connection;
 pub mod install;
 pub mod launch;
@@ -68,6 +70,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::ReportPresence(_)) => "session.report_presence",
             Some(session_request::Request::Shown(_)) => "session.shown",
             Some(session_request::Request::SetReopenClosed(_)) => "session.set_reopen_closed",
+            Some(session_request::Request::SetCompactionRules(_)) => "session.set_compaction_rules",
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {
@@ -91,6 +94,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Seen(_)) => "pane.seen",
             Some(pane_request::Request::Compact(_)) => "pane.compact",
             Some(pane_request::Request::Quiet(_)) => "pane.quiet",
+            Some(pane_request::Request::SetCompaction(_)) => "pane.set_compaction",
             Some(pane_request::Request::MakerClosed(_)) => "pane.maker_closed",
             Some(pane_request::Request::Restart(_)) => "pane.restart",
             Some(pane_request::Request::StoreImage(_)) => "pane.store_image",

@@ -179,6 +179,8 @@ message SessionRequest {
     Shown shown = 19;
     // Since 1.10.
     SetReopenClosed set_reopen_closed = 20;
+    // Since 1.14.
+    SetCompactionRules set_compaction_rules = 21;
   }
 
   message Snapshot {}
@@ -300,6 +302,21 @@ message PaneRequest {
     Reopen reopen = 15;
     // Since 1.11. Answered with ImageStored; never writes the pane's input itself.
     StoreImage store_image = 16;
+    // Since 1.14.
+    SetCompaction set_compaction = 17;
+  }
+
+  // Sets one pane's own compaction thresholds, which beat every rule (`SetCompactionRules`)
+  // for as long as the pane lasts: across a restart, a handoff to a daemon that knows them, and
+  // a reopening. ALREADY_SO when nothing changes.
+  message SetCompaction {
+    string pane = 1;
+    // Absent: left as it is.
+    CompactionThreshold compact_at = 2;
+    // Absent: left as it is.
+    CompactionThreshold nudge_at = 3;
+    // Forgets both, so the rules decide again. Sent without either threshold.
+    bool clear = 4;
   }
 
   message StoreImage {
@@ -693,9 +710,53 @@ message SetReopenClosed {
 }
 
 // How full an agent's context gets before the daemon compacts it, as a Compact for its pane
-// would, once each time a report crosses it. Absent: never.
+// would, once each time a report crosses it. Absent: never. It replaces every compaction rule
+// the daemon holds with this one percent for every agent, which is all a client that sends it
+// knows to say; a client that knows `SetCompactionRules` sends that instead.
 message SetCompactAt {
   optional float percent = 1;
+}
+
+// Every compaction rule the daemon applies, replacing the ones it held. For each pane and each
+// threshold the most specific place that sets it decides: the pane itself
+// (`PaneRequest.SetCompaction`), then each directory holding the pane's directory, longest path
+// first, then its agent's harness, then `root`. Past its `compact_at` an agent is compacted as
+// by `SetCompactAt`; past its `nudge_at` it is posted a message from `@muster` telling it to
+// compact itself, once each time a report crosses it. ALREADY_SO when nothing changes. Since
+// 1.14.
+message SetCompactionRules {
+  CompactionRules rules = 1;
+}
+
+message CompactionRules {
+  CompactionThresholds root = 1;
+  repeated CompactionHarness harnesses = 2;
+  repeated CompactionDirectory directories = 3;
+}
+
+// What one place says of both thresholds. A threshold absent is one the place does not set.
+message CompactionThresholds {
+  CompactionThreshold compact_at = 1;
+  CompactionThreshold nudge_at = 2;
+}
+
+// One threshold where a place sets it.
+message CompactionThreshold {
+  // A whole percent from 1 to 100. Absent: off here, whatever a less specific place says.
+  optional uint32 percent = 1;
+}
+
+message CompactionHarness {
+  // The harness as its detection manifest names it, which is `Pane.agent`.
+  string name = 1;
+  CompactionThresholds thresholds = 2;
+}
+
+message CompactionDirectory {
+  // Absolute, or under `~`, which is the home of whoever runs the daemon. It holds a pane whose
+  // directory is it or inside it, compared by whole path components.
+  string path = 1;
+  CompactionThresholds thresholds = 2;
 }
 
 // What messages call the human where they show it (MIP-4, section 10): `who` and the framing of
@@ -1807,6 +1868,45 @@ message Pane {
   // Since 1.12. `label` was taken from the agent's session (`Report.session_name`) rather than
   // given to the pane. False while it has no label.
   bool label_from_session = 28;
+  // Since 1.14. The thresholds set for this pane itself (`PaneRequest.SetCompaction`). Absent:
+  // none.
+  CompactionThresholds own_compaction = 29;
+  // Since 1.14. The thresholds that apply to this pane now, and what set each. Absent from a
+  // daemon that applies one percent to every pane.
+  AppliedCompaction compaction = 30;
+}
+
+// The compaction thresholds applying to one pane (`Pane.compaction`).
+message AppliedCompaction {
+  AppliedThreshold compact_at = 1;
+  AppliedThreshold nudge_at = 2;
+  // Why no nudge is posted though `nudge_at` holds a percent.
+  NudgeWithheld nudge_withheld = 3;
+}
+
+message AppliedThreshold {
+  // Absent: off.
+  optional uint32 percent = 1;
+  ThresholdSource source = 2;
+  // The harness's name or the directory's path, as the rules gave it, for those two sources.
+  optional string from = 3;
+}
+
+enum ThresholdSource {
+  // Nothing sets it.
+  THRESHOLD_SOURCE_UNSET = 0;
+  THRESHOLD_SOURCE_ROOT = 1;
+  THRESHOLD_SOURCE_HARNESS = 2;
+  THRESHOLD_SOURCE_DIRECTORY = 3;
+  THRESHOLD_SOURCE_PANE = 4;
+}
+
+enum NudgeWithheld {
+  NUDGE_WITHHELD_NONE = 0;
+  // The pane is compacted at that percent or a lower one, so the nudge would come too late.
+  NUDGE_WITHHELD_AT_OR_ABOVE_COMPACT_AT = 1;
+  // The nudge tells an agent to compact itself, and its manifest says no way to.
+  NUDGE_WITHHELD_HARNESS_CANNOT_COMPACT = 2;
 }
 
 // One change to an agent's context (`Pane.context_change`).
@@ -1992,13 +2092,16 @@ message Settings {
   optional bool name_sessions = 7;
   // Since 1.3. Absent: the human is shown by the address alone.
   optional string human_name = 8;
-  // Since 1.3. Absent: no agent is compacted unasked.
+  // Since 1.3. Absent: no agent is compacted unasked. Not written since 1.14, which keeps
+  // `compaction_rules`; read from a state an older daemon wrote, as that rule set's root.
   optional float compact_at = 9;
   // Since 1.3. Absent: agents are resumed.
   optional bool resume_agents = 10;
   // Since 1.10. How long a closed pane can be reopened, in minutes. 0 remembers none. Absent:
   // 60. A change applies to panes closed after it.
   optional uint32 reopen_closed_minutes = 11;
+  // Since 1.14. Absent: no agent is compacted or nudged unasked.
+  CompactionRules compaction_rules = 12;
 }
 
 // ---------------------------------------------------------------------------------------------
