@@ -24,7 +24,7 @@ fn replay_conformance() {
         let rows = number(given, "rows")?;
         let mut original = terminal(columns, rows)?;
         original.write(&history(given));
-        original.write(text(given, "feed").as_bytes());
+        original.write(&bytes(given, "feed")?);
 
         let mut replayed = terminal(columns, rows)?;
         replayed.write(&original.replay());
@@ -36,9 +36,9 @@ fn replay_conformance() {
             original.set_default_palette(&palette);
             replayed.set_default_palette(&palette);
         }
-        let after = text(given, "after");
-        original.write(after.as_bytes());
-        replayed.write(after.as_bytes());
+        let after = bytes(given, "after")?;
+        original.write(&after);
+        replayed.write(&after);
         differences.extend(differences_after(&original, &replayed, given));
 
         Ok(fields([("differences", Some(json!(differences)))]))
@@ -63,7 +63,7 @@ fn catch_up_conformance() {
         let rows = number(given, "rows")?;
         let mut source = terminal(columns, rows)?;
         source.write(&history(given));
-        source.write(text(given, "feed").as_bytes());
+        source.write(&bytes(given, "feed")?);
 
         let mut behind = terminal(columns, rows)?;
         behind.write(text(given, "stale").as_bytes());
@@ -76,10 +76,10 @@ fn catch_up_conformance() {
             differences.push(format!("history: had {kept:?}, now {now:?}"));
         }
 
-        let after = text(given, "after");
+        let after = bytes(given, "after")?;
         if !after.is_empty() {
-            source.write(after.as_bytes());
-            behind.write(after.as_bytes());
+            source.write(&after);
+            behind.write(&after);
             differences.extend(caught_up_differences(&source, &behind, rows, "after: "));
         }
 
@@ -119,7 +119,7 @@ fn primary_history(terminal: &Terminal, rows: u16) -> Vec<String> {
 }
 
 fn differences_after(original: &Terminal, replayed: &Terminal, given: &Value) -> Vec<String> {
-    let nothing_after = given.get("after").is_none() && given.get("theme").is_none();
+    let nothing_after = ["after", "afterHex", "theme"].iter().all(|key| given.get(key).is_none());
     if nothing_after { Vec::new() } else { differences(original, replayed, "after: ") }
 }
 
@@ -348,4 +348,22 @@ fn number(given: &Value, key: &str) -> Result<u16, CaseError> {
 
 fn text(given: &Value, key: &str) -> String {
     given.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
+/// `key`'s text, then the bytes of `<key>Hex`. JSON text cannot hold half a UTF-8 character,
+/// so a case that cuts one, as a PTY read can, spells those bytes in hex.
+fn bytes(given: &Value, key: &str) -> Result<Vec<u8>, CaseError> {
+    let mut out = text(given, key).into_bytes();
+    let hex_key = format!("{key}Hex");
+    let hex = text(given, &hex_key);
+    if !hex.len().is_multiple_of(2) {
+        return Err(CaseError::new(format!("given.{hex_key} is whole bytes, two digits each")));
+    }
+    for pair in hex.as_bytes().chunks(2) {
+        let digits = std::str::from_utf8(pair).unwrap_or_default();
+        let byte = u8::from_str_radix(digits, 16)
+            .map_err(|_| CaseError::new(format!("given.{hex_key} is not hexadecimal")))?;
+        out.push(byte);
+    }
+    Ok(out)
 }

@@ -743,6 +743,27 @@ mod tests {
         assert_eq!(screen.title_writes(), 2, "a repeated title is still a write");
     }
 
+    /// What a daemon taking a pane over does with the replay, which is also what an attaching
+    /// surface's terminal does: the program was partway through a color when it was composed.
+    #[test]
+    fn a_pane_rebuilt_from_a_replay_finishes_the_sequence_it_was_inside() {
+        let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };
+        let new_screen =
+            || Screen::new(grid, &settled(0, &proto::Settings::default())).expect("a terminal");
+        let mut source = new_screen();
+        source.feed(b"$ \x1b[38;5;");
+
+        let mut taken_over = new_screen();
+        taken_over.feed(&source.terminal().replay());
+        for screen in [&mut source, &mut taken_over] {
+            screen.feed(b"1mred");
+        }
+
+        let shown = |screen: &Screen| screen.rows(screen.oldest_row(), 3).lines;
+        assert_eq!(shown(&taken_over), shown(&source));
+        assert_eq!(shown(&taken_over)[0], "$ red");
+    }
+
     #[test]
     fn a_page_has_a_line_for_every_row_even_a_blank_one() {
         let grid = Grid { cols: 20, rows: 3, width_px: 0, height_px: 0 };

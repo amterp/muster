@@ -56,9 +56,12 @@ const PEN: ScreenExtras = ScreenExtras {
 };
 
 impl Terminal {
+    /// Ends with the sequence the terminal is inside, if any, so the receiver is inside it too
+    /// and takes the rest of it from the next bytes rather than printing it.
     pub fn replay(&self) -> Vec<u8> {
         let mut out = RESET.to_vec();
         self.compose(&mut out, Kind::Replay);
+        out.extend(self.continuation());
         out
     }
 
@@ -73,6 +76,7 @@ impl Terminal {
     pub fn catch_up(&self) -> Vec<u8> {
         let mut out = CATCH_UP_RESET.to_vec();
         self.compose(&mut out, Kind::CatchUp);
+        out.extend(self.continuation());
         out
     }
 

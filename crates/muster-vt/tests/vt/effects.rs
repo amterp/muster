@@ -233,3 +233,16 @@ fn forgetting_kitty_images_spares_one_still_arriving() {
         .collect();
     assert!(replies.contains("i=7;OK"), "the image arrived whole: {replies:?}");
 }
+
+/// A bell inside an unfinished sequence has already rung. The receiver is put inside the
+/// sequence by the replay's tail, and must not ring it again.
+#[test]
+fn a_replay_inside_a_sequence_does_not_ring_its_bell_twice() {
+    let mut source = Terminal::with_options(grid()).expect("a terminal");
+    source.write(b"\x1b[3\x07");
+    let (mut receiver, seen) = recording(grid());
+    receiver.write(&source.replay());
+    receiver.write(&source.catch_up());
+    let rang = seen.lock().expect("the lock is free").contains(&Seen::Bell);
+    assert!(!rang, "the bell was heard when it rang, not again when the receiver was caught up");
+}

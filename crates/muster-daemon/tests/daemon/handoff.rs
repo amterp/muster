@@ -186,6 +186,39 @@ fn output_written_during_a_handoff_is_neither_lost_nor_doubled() {
     }
 }
 
+/// A pane whose program is partway through an escape sequence when it is handed over finishes it
+/// on the new daemon rather than printing its tail. The sequence is `CSI 38;5;` and the program
+/// ends it only after the handoff, so a terminal rebuilt at ground shows `1mRED`.
+#[test]
+fn a_program_inside_an_escape_sequence_finishes_it_on_the_new_daemon() {
+    let mut daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let mut input = Input::connect(daemon.socket_path());
+    // The word quoted in the command, so the line typed never shows it.
+    type_line(
+        &mut input,
+        "p1",
+        "echo ready=$$.; printf '\\033[38;5;'; read go; printf '1m%s\\033[0m\\n' RE'D'",
+    );
+    until_said(&mut control, "p1", "ready");
+
+    replaced(&mut daemon);
+
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    type_line(&mut input, "p1", "");
+    let lines = until_some("the program to finish its sequence", || {
+        let text = read_text(&mut control, "p1", 0, 0).text;
+        let lines: Vec<String> = text.lines().map(|line| line.trim_end().to_string()).collect();
+        lines.iter().any(|line| line.ends_with("RED") && !line.contains("RE'D'")).then_some(lines)
+    });
+    assert!(
+        lines.iter().any(|line| line == "RED"),
+        "the color was finished on the new daemon, leaving RED alone on its line: {lines:?}"
+    );
+}
+
 /// A bridge is told the pane went to another daemon, and attaching there draws the same screen.
 #[test]
 fn a_bridge_is_detached_as_replaced_and_attaches_again_to_the_same_screen() {

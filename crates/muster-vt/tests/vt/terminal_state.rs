@@ -180,3 +180,30 @@ fn rows_pruned_to_the_scrollback_limit_are_counted() {
     let oldest = terminal.screen_text(0, 0);
     assert_eq!(oldest, format!("line {trimmed}"), "the oldest row held is row {trimmed}");
 }
+
+#[test]
+fn a_terminal_inside_a_sequence_gives_back_where_it_began() {
+    assert_eq!(terminal_after(b"done\r\n").continuation(), b"", "at ground there is nothing");
+    assert_eq!(terminal_after(b"ab\x1b[38;5;").continuation(), b"\x1b[38;5;");
+    assert_eq!(terminal_after(b"\x1b[0m\x1b]2;ti").continuation(), b"\x1b]2;ti");
+    assert_eq!(terminal_after(b"x\xe2\x82").continuation(), b"\xe2\x82", "half a character");
+}
+
+/// Past the limit the beginning of the sequence is gone, and a replay is then what it was
+/// before the sequence was tracked: it ends at ground.
+#[test]
+fn a_sequence_longer_than_the_limit_is_not_kept() {
+    let mut options = TerminalOptions::new(20, 4);
+    options.continuation_bytes = 16;
+    let mut terminal = Terminal::with_options(options).expect("a terminal");
+    terminal.write(b"\x1b]2;");
+    terminal.write(&[b'a'; 32]);
+    assert_eq!(terminal.continuation(), b"");
+    assert!(!terminal.replay().ends_with(b"aaaa"));
+
+    options = TerminalOptions::new(20, 4);
+    options.continuation_bytes = 0;
+    let mut untracked = Terminal::with_options(options).expect("a terminal");
+    untracked.write(b"\x1b[38;5;");
+    assert_eq!(untracked.continuation(), b"", "tracking off keeps nothing");
+}

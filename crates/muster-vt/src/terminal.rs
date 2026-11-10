@@ -54,8 +54,15 @@ pub struct TerminalOptions {
     /// Bytes of kitty graphics kept to answer a program's image queries. Zero turns the
     /// protocol off; None keeps libghostty's default.
     pub kitty_image_bytes: Option<u64>,
+    /// The most bytes kept of a sequence the last write ended inside, so that a replay can
+    /// finish it for the receiver. Zero turns it off, and a sequence longer than this is lost
+    /// to the replay.
+    pub continuation_bytes: usize,
     pub answers: Answers,
 }
+
+/// Room for a chunked kitty graphics transfer, whose chunks are typically 4 KiB.
+const CONTINUATION_BYTES: usize = 64 << 10;
 
 impl TerminalOptions {
     pub fn new(columns: u16, rows: u16) -> TerminalOptions {
@@ -67,6 +74,7 @@ impl TerminalOptions {
             scrollback_bytes: None,
             terminfo_name: None,
             kitty_image_bytes: None,
+            continuation_bytes: CONTINUATION_BYTES,
             answers: Answers::default(),
         }
     }
@@ -156,6 +164,15 @@ impl Terminal {
         if let Some(mut bytes) = options.kitty_image_bytes {
             terminal.set(
                 ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                (&raw mut bytes).cast(),
+            )?;
+        }
+        // Before the first write: a terminal already inside a sequence when this is set cannot
+        // say how it got there.
+        if options.continuation_bytes > 0 {
+            let mut bytes = options.continuation_bytes;
+            terminal.set(
+                ffi::GhosttyTerminalOption_GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES,
                 (&raw mut bytes).cast(),
             )?;
         }
@@ -252,6 +269,42 @@ impl Terminal {
     pub fn drop_kitty_image_loading(&mut self) {
         // SAFETY: the terminal is live and exclusively borrowed.
         unsafe { ffi::ghostty_terminal_kitty_image_drop_loading(self.terminal) };
+    }
+
+    /// The bytes of the sequence, or UTF-8 character, the last write ended inside, from where it
+    /// began: what a terminal at ground must be fed to be inside it too. Empty at ground, and
+    /// also when the sequence is longer than [`TerminalOptions::continuation_bytes`], which
+    /// leaves a receiver at ground as a replay did before this existed.
+    pub fn continuation(&self) -> Vec<u8> {
+        let mut needed = 0usize;
+        // SAFETY: a null buffer of length zero asks for the size, which is written to `needed`.
+        let result = unsafe {
+            ffi::ghostty_terminal_continuation_buf(
+                self.terminal,
+                std::ptr::null_mut(),
+                0,
+                &raw mut needed,
+            )
+        };
+        if result != ffi::GhosttyResult_GHOSTTY_OUT_OF_SPACE || needed == 0 {
+            return Vec::new();
+        }
+        let mut buffer = vec![0u8; needed];
+        let mut written = 0usize;
+        // SAFETY: the buffer holds `needed` bytes, which is the length passed.
+        let result = unsafe {
+            ffi::ghostty_terminal_continuation_buf(
+                self.terminal,
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &raw mut written,
+            )
+        };
+        if result != ffi::GhosttyResult_GHOSTTY_SUCCESS {
+            return Vec::new();
+        }
+        buffer.truncate(written);
+        buffer
     }
 
     fn set(
