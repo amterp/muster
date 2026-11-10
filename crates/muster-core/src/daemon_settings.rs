@@ -8,6 +8,7 @@
 //! Pure, so the one rule here that is a decision rather than a copy - what palette a config
 //! that named only some colours stands for - is answerable to a test.
 
+use crate::compaction::Rules;
 use crate::config::{ClipboardWrite, Config, Cursor, Rgb, Shell};
 
 /// Ghostty's own default background and foreground (`src/config/Config.zig`), which the
@@ -32,8 +33,9 @@ pub struct DaemonSettings {
     pub scroll_multiplier: f64,
     /// Whether the daemon types a pane's name into its agent's session as its name.
     pub name_sessions: bool,
-    /// How full an agent's context gets before the daemon compacts it; none for never.
-    pub compact_at: Option<u8>,
+    /// How full an agent's context gets before the daemon compacts it and before it tells the
+    /// agent to compact itself, for every agent, by harness and by directory.
+    pub compaction: Rules,
     /// Whether a pane whose agent reported its session comes back running that session after a
     /// restart, rather than as a shell.
     pub resume_agents: bool,
@@ -91,7 +93,7 @@ impl DaemonSettings {
             clipboard_write: config.panes.clipboard_write,
             scroll_multiplier: config.feel.scroll_multiplier,
             name_sessions: config.panes.name_sessions,
-            compact_at: config.panes.compact_at,
+            compaction: config.panes.compaction.clone(),
             resume_agents: config.panes.resume_agents,
             reopen_closed_minutes: config.panes.reopen_closed_minutes,
             human_name: config.human_name.clone(),

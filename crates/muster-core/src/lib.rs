@@ -10,6 +10,7 @@ pub mod attention;
 pub mod banners;
 pub mod bridge_link;
 pub mod callsigns;
+pub mod compaction;
 pub mod composition;
 pub mod config;
 pub mod conversation;

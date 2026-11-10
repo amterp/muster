@@ -1050,7 +1050,7 @@
         ]
       },
       "expect": {
-        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, compact_at, resume_agents, reopen_closed_minutes, human_name, font, colors, cursor, shell, notifications."
+        "refused": "the config file has a key called \"divider_color\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: daemon, keymap, text, option_as_alt, resize_step, scroll_multiplier, hide_pointer_while_typing, numbered_chords, pane_padding, scrollback_bytes, clipboard_write, name_sessions, compact_at, compact_nudge_at, harness, directory, resume_agents, reopen_closed_minutes, human_name, font, colors, cursor, shell, notifications."
       }
     },
     {
@@ -1522,19 +1522,201 @@
         ]
       },
       "expect": {
-        "refused": "`compact_at` in the config file is 0, and it has to be a whole percent from 1 to 100: how full an agent's context gets before Muster compacts it. None of the file was applied. Leave it out to compact nothing unasked."
+        "refused": "`compact_at` in the config file is 0, and it has to be a whole percent from 1 to 100, or \"none\": how full an agent's context gets before Muster compacts it. None of the file was applied."
       }
     },
     {
       "name": "compacting is a whole percent",
-      "why": "A string such as \"80%\" is the likely mistake, and reading it would mean guessing what else a string could say.",
+      "why": "A string such as \"80%\" is the likely mistake, and reading it would mean guessing what else a string could say. The one string read is \"none\".",
       "given": {
         "file": [
           "compact_at = \"80%\""
         ]
       },
       "expect": {
-        "refused": "`compact_at` in the config file is a string, and it has to be a whole percent from 1 to 100: how full an agent's context gets before Muster compacts it. None of the file was applied. Leave it out to compact nothing unasked."
+        "refused": "`compact_at` in the config file is \"80%\", and it has to be a whole percent from 1 to 100, or \"none\": how full an agent's context gets before Muster compacts it. None of the file was applied."
+      }
+    },
+    {
+      "name": "an agent can be told to compact itself before Muster does it",
+      "why": "Agents forget to compact themselves even when their own instructions say to, so Muster can tell them at one percent and compact them itself at a higher one. Two root keys, since each has one answer for every agent.",
+      "given": {
+        "file": [
+          "compact_nudge_at = 60",
+          "compact_at = 85"
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "compact_at=85",
+          "compact_nudge_at=60"
+        ]
+      }
+    },
+    {
+      "name": "a harness has thresholds of its own, and \"none\" turns one off",
+      "why": "Harnesses fill and compact differently, so somebody who wants Claude Code nudged may want Codex left alone. A table per harness, by the name its detection manifest gives it, because the subject now has several answers. \"none\" is written rather than inferred from a missing key, since a missing key means the root's answer.",
+      "given": {
+        "file": [
+          "compact_nudge_at = 60",
+          "",
+          "[harness.claude]",
+          "compact_nudge_at = 55",
+          "",
+          "[harness.codex]",
+          "compact_nudge_at = \"none\"",
+          "compact_at = \"none\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "compact_nudge_at=60",
+          "harness.claude.compact_nudge_at=55",
+          "harness.codex.compact_at=none",
+          "harness.codex.compact_nudge_at=none"
+        ]
+      }
+    },
+    {
+      "name": "a directory has thresholds of its own",
+      "why": "A repository whose sessions run long wants an earlier nudge than the rest. Blocks in a list rather than a table keyed by path, as `[[daemon]]` is, since a path holds dots and slashes a TOML key would have to quote. A trailing slash is dropped so that two spellings of one directory are one directory.",
+      "given": {
+        "file": [
+          "[[directory]]",
+          "path = \"~/src/muster/\"",
+          "compact_nudge_at = 50",
+          "",
+          "[[directory]]",
+          "path = \"/srv/work\"",
+          "compact_at = \"none\""
+        ]
+      },
+      "expect": {
+        "daemons": [],
+        "keymap": [],
+        "option_as_alt": "never",
+        "text": [],
+        "panes": [
+          "directory[~/src/muster].compact_nudge_at=50",
+          "directory[/srv/work].compact_at=none"
+        ]
+      }
+    },
+    {
+      "name": "a nudge is a whole percent or none, like the compaction",
+      "why": "The two keys are read by one rule, so that what somebody learned about one holds for the other.",
+      "given": {
+        "file": [
+          "compact_nudge_at = 0.6"
+        ]
+      },
+      "expect": {
+        "refused": "`compact_nudge_at` in the config file is 0.6, and it has to be a whole percent from 1 to 100, or \"none\": how full an agent's context gets before Muster tells it to compact itself. None of the file was applied."
+      }
+    },
+    {
+      "name": "a bad threshold is refused against the harness it was written under",
+      "why": "A file with three places a threshold can be set has three places one can be wrong.",
+      "given": {
+        "file": [
+          "[harness.claude]",
+          "compact_at = 101"
+        ]
+      },
+      "expect": {
+        "refused": "`compact_at` in the config file's [harness.claude] is 101, and it has to be a whole percent from 1 to 100, or \"none\": how full an agent's context gets before Muster compacts it. None of the file was applied."
+      }
+    },
+    {
+      "name": "a harness block holds only the thresholds",
+      "why": "A key nobody reads under a harness is a misspelling, as it is anywhere else in the file.",
+      "given": {
+        "file": [
+          "[harness.claude]",
+          "nudge_at = 55"
+        ]
+      },
+      "expect": {
+        "refused": "the config file's [harness.claude] has a key called \"nudge_at\", which Muster does not read. None of the file was applied, because a key nobody reads is usually a misspelling of one somebody meant. Known keys here: compact_at, compact_nudge_at."
+      }
+    },
+    {
+      "name": "harness settings go under the harness's name",
+      "why": "`[harness]` with the keys directly under it is the likely first attempt, and it names no harness.",
+      "given": {
+        "file": [
+          "[harness]",
+          "compact_at = 80"
+        ]
+      },
+      "expect": {
+        "refused": "`harness` in the config file sets `compact_at` directly, and a harness's settings go in a block under its name - `[harness.claude]`. None of the file was applied. Known keys there: compact_at, compact_nudge_at."
+      }
+    },
+    {
+      "name": "a directory block says which directory",
+      "why": "Without a path the block's settings apply nowhere, and guessing the directory would apply them somewhere nobody chose.",
+      "given": {
+        "file": [
+          "[[directory]]",
+          "compact_at = 80"
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[directory]]` block has no `path`, so there is no directory for its settings to apply in and none of the file was applied. Write the directory, such as `path = \"~/src/muster\"`."
+      }
+    },
+    {
+      "name": "a directory's path starts at the root or at home",
+      "why": "A pane's directory is absolute, so a relative path could only be compared with it by guessing what it is relative to.",
+      "given": {
+        "file": [
+          "[[directory]]",
+          "path = \"src/muster\"",
+          "compact_at = 80"
+        ]
+      },
+      "expect": {
+        "refused": "the first `[[directory]]` block has the `path` \"src/muster\", and it has to start at `/` or at `~`, since a pane's directory is compared with it whole. None of the file was applied."
+      }
+    },
+    {
+      "name": "one directory is one block",
+      "why": "Two blocks for one directory could disagree, and the winner would be whichever came first, which nobody reading the file could tell.",
+      "given": {
+        "file": [
+          "[[directory]]",
+          "path = \"~/src/muster\"",
+          "compact_at = 80",
+          "",
+          "[[directory]]",
+          "path = \"~/src/muster/\"",
+          "compact_nudge_at = 50"
+        ]
+      },
+      "expect": {
+        "refused": "two `[[directory]]` blocks have the `path` \"~/src/muster\", so which one's settings apply there would depend on their order. None of the file was applied. Put that directory's settings in one block."
+      }
+    },
+    {
+      "name": "directories are blocks with double brackets",
+      "why": "A single `[directory]` declares one table, which is the usual way to get this wrong, as it is for `[[daemon]]`.",
+      "given": {
+        "file": [
+          "[directory]",
+          "path = \"~/src/muster\""
+        ]
+      },
+      "expect": {
+        "refused": "the config file's `directory` is not a list of blocks, so none of the file was applied. Each directory is its own `[[directory]]` block, with the double brackets, holding a `path` and its settings."
       }
     },
     {

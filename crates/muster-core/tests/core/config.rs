@@ -7,6 +7,7 @@
 use crate::support::backend::describe_daemon;
 use conformance::Conformance;
 use muster_core::attention::Notifications;
+use muster_core::compaction::{Setting, Thresholds};
 use muster_core::config::{self, GivenUp, TakenBy};
 use muster_core::input::{Action, Bindings, Chord, Modifiers};
 use serde_json::{Value, json};
@@ -148,8 +149,23 @@ fn panes(panes: &config::Panes) -> Vec<String> {
     if !panes.resume_agents {
         set.push("resume_agents=false".to_string());
     }
-    if let Some(percent) = panes.compact_at {
-        set.push(format!("compact_at={percent}"));
+    let mut thresholds = |place: String, scope: &Thresholds| {
+        for (key, setting) in
+            [("compact_at", scope.compact_at), ("compact_nudge_at", scope.nudge_at)]
+        {
+            match setting {
+                Some(Setting::At(percent)) => set.push(format!("{place}{key}={percent}")),
+                Some(Setting::Off) => set.push(format!("{place}{key}=none")),
+                None => {}
+            }
+        }
+    };
+    thresholds(String::new(), &panes.compaction.root);
+    for (name, scope) in &panes.compaction.harnesses {
+        thresholds(format!("harness.{name}."), scope);
+    }
+    for block in &panes.compaction.directories {
+        thresholds(format!("directory[{}].", block.path), &block.scope);
     }
     set
 }

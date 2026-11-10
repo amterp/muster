@@ -29,6 +29,7 @@ use crate::input::{
 };
 
 use crate::attention::Notifications;
+use crate::compaction::{Directory, Rules, Setting, Thresholds};
 use crate::composition::{Daemon, DaemonId, Endpoint};
 
 /// Everything a config file says.
@@ -426,10 +427,12 @@ pub struct Panes {
     /// in its harness renames the pane either way, since that types nothing.
     pub name_sessions: bool,
 
-    /// How full, in percent, an agent's context gets before its daemon compacts it unasked, by
-    /// typing the harness's compact command at its idle, empty prompt (MIP-5, section 10).
-    /// `None`, the default, compacts nothing unasked.
-    pub compact_at: Option<u8>,
+    /// `compact_at` and `compact_nudge_at`, at the root, in `[harness.<name>]` and in
+    /// `[[directory]]`: how full, in percent, an agent's context gets before its daemon compacts
+    /// it unasked, by typing the harness's compact command at its idle, empty prompt (MIP-5,
+    /// section 10), and before its daemon tells it to compact itself. Empty, the default, does
+    /// neither.
+    pub compaction: Rules,
 
     /// Whether a pane whose agent reported its session starts that session again when a daemon
     /// restart or a reboot brings the pane back, with the arguments the agent was running with.
@@ -448,7 +451,7 @@ impl Default for Panes {
             shell: Shell::default(),
             clipboard_write: ClipboardWrite::default(),
             name_sessions: true,
-            compact_at: None,
+            compaction: Rules::default(),
             resume_agents: true,
             reopen_closed_minutes: 60,
         }
@@ -574,7 +577,7 @@ impl std::fmt::Display for Rgb {
 const DAEMON_KEYS: [&str; 5] = ["id", "socket", "host", "ssh_options", "color"];
 
 /// The keys the file itself may carry.
-const ROOT_KEYS: [&str; 21] = [
+const ROOT_KEYS: [&str; 24] = [
     "daemon",
     "keymap",
     "text",
@@ -588,6 +591,9 @@ const ROOT_KEYS: [&str; 21] = [
     "clipboard_write",
     "name_sessions",
     "compact_at",
+    "compact_nudge_at",
+    "harness",
+    "directory",
     "resume_agents",
     "reopen_closed_minutes",
     "human_name",
@@ -597,6 +603,12 @@ const ROOT_KEYS: [&str; 21] = [
     "shell",
     "notifications",
 ];
+
+/// The keys a `[harness.<name>]` block may carry.
+const HARNESS_KEYS: [&str; 2] = ["compact_at", "compact_nudge_at"];
+
+/// The keys a `[[directory]]` block may carry.
+const DIRECTORY_KEYS: [&str; 3] = ["path", "compact_at", "compact_nudge_at"];
 
 /// The keys `[font]` may carry.
 const FONT_KEYS: [&str; 2] = ["family", "size"];
@@ -755,8 +767,8 @@ fn read_notifications(block: Option<toml::Table>) -> Result<Notifications, Strin
     Ok(notifications)
 }
 
-/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, `compact_at`, `resume_agents`,
-/// `reopen_closed_minutes` and `[shell]`.
+/// `scrollback_bytes`, `clipboard_write`, `name_sessions`, the compaction thresholds,
+/// `resume_agents`, `reopen_closed_minutes` and `[shell]`.
 fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     let mut panes = Panes {
         shell: read_shell(block(root, "shell", &SHELL_KEYS)?.as_ref())?,
@@ -797,23 +809,7 @@ fn read_panes(root: &toml::Table) -> Result<Panes, String> {
             })?;
     }
 
-    if let Some(value) = root.get("compact_at") {
-        panes.compact_at = Some(
-            value
-                .as_integer()
-                .and_then(|percent| u8::try_from(percent).ok())
-                .filter(|percent| (1..=100).contains(percent))
-                .ok_or_else(|| {
-                    format!(
-                        "`compact_at` in the config file is {}, and it has to be a whole percent \
-                         from 1 to 100: how full an agent's context gets before Muster compacts \
-                         it. None of the file was applied. Leave it out to compact nothing \
-                         unasked.",
-                        written(value)
-                    )
-                })?,
-        );
-    }
+    panes.compaction = read_compaction(root)?;
 
     if let Some(value) = root.get("clipboard_write") {
         let refused = |what: String| {
@@ -843,6 +839,120 @@ fn read_panes(root: &toml::Table) -> Result<Panes, String> {
     }
 
     Ok(panes)
+}
+
+/// `compact_at` and `compact_nudge_at` wherever the file sets them: at the root, under
+/// `[harness.<name>]` and in each `[[directory]]`.
+fn read_compaction(root: &toml::Table) -> Result<Rules, String> {
+    let mut rules = Rules { root: read_thresholds(root, "the config file")?, ..Rules::default() };
+
+    if let Some(value) = root.get("harness") {
+        let harnesses = value.as_table().ok_or_else(|| {
+            format!(
+                "`harness` in the config file is {}, and it has to be a block for each harness - \
+                 `[harness.claude]` with its settings under it. None of the file was applied. \
+                 Known keys there: {}.",
+                described(value),
+                HARNESS_KEYS.join(", ")
+            )
+        })?;
+        for (name, value) in harnesses {
+            let where_ = format!("the config file's [harness.{name}]");
+            let block = value.as_table().ok_or_else(|| {
+                format!(
+                    "`harness` in the config file sets `{name}` directly, and a harness's \
+                     settings go in a block under its name - `[harness.claude]`. None of the \
+                     file was applied. Known keys there: {}.",
+                    HARNESS_KEYS.join(", ")
+                )
+            })?;
+            known_keys(block.keys(), &HARNESS_KEYS, &where_)?;
+            rules.harnesses.insert(name.clone(), read_thresholds(block, &where_)?);
+        }
+    }
+
+    for (index, block) in directory_blocks(root)?.iter().enumerate() {
+        let where_ = format!("the {} `[[directory]]` block", ordinal(index));
+        known_keys(block.keys(), &DIRECTORY_KEYS, &where_)?;
+        let path = string(block, "path", &where_)?.ok_or_else(|| {
+            format!(
+                "{where_} has no `path`, so there is no directory for its settings to apply in \
+                 and none of the file was applied. Write the directory, such as `path = \
+                 \"~/src/muster\"`."
+            )
+        })?;
+        if !(path.starts_with('/') || path == "~" || path.starts_with("~/")) {
+            return Err(format!(
+                "{where_} has the `path` {path:?}, and it has to start at `/` or at `~`, since a \
+                 pane's directory is compared with it whole. None of the file was applied."
+            ));
+        }
+        let trimmed = path.trim_end_matches('/');
+        let path = if trimmed.is_empty() { "/" } else { trimmed }.to_string();
+        if rules.directories.iter().any(|held| held.path == path) {
+            return Err(format!(
+                "two `[[directory]]` blocks have the `path` {path:?}, so which one's settings \
+                 apply there would depend on their order. None of the file was applied. Put \
+                 that directory's settings in one block."
+            ));
+        }
+        rules.directories.push(Directory { path, scope: read_thresholds(block, &where_)? });
+    }
+    Ok(rules)
+}
+
+/// The `[[directory]]` blocks, or none when the file has none.
+fn directory_blocks(root: &toml::Table) -> Result<Vec<toml::Table>, String> {
+    let Some(value) = root.get("directory") else {
+        return Ok(Vec::new());
+    };
+    let not_blocks = || {
+        "the config file's `directory` is not a list of blocks, so none of the file was applied. \
+         Each directory is its own `[[directory]]` block, with the double brackets, holding a \
+         `path` and its settings."
+            .to_string()
+    };
+    value
+        .as_array()
+        .ok_or_else(not_blocks)?
+        .iter()
+        .map(|entry| entry.as_table().cloned().ok_or_else(not_blocks))
+        .collect()
+}
+
+/// `compact_at` and `compact_nudge_at` as one block sets them.
+fn read_thresholds(block: &toml::Table, where_: &str) -> Result<Thresholds, String> {
+    let read = |key: &str, what: &str| {
+        let Some(value) = block.get(key) else { return Ok(None) };
+        let setting = match value {
+            Value::String(none) if none == "none" => Some(Setting::Off),
+            Value::Integer(percent) => u8::try_from(*percent)
+                .ok()
+                .filter(|percent| (1..=100).contains(percent))
+                .map(Setting::At),
+            _ => None,
+        };
+        let found = match value {
+            Value::String(text) => format!("{text:?}"),
+            other => written(other),
+        };
+        setting.map(Some).ok_or_else(|| {
+            format!(
+                "`{key}` in {where_} is {found}, and it has to be a whole percent from 1 to 100, \
+                 or \"none\": {what}. None of the file was applied."
+            )
+        })
+    };
+    Ok(Thresholds {
+        compact_at: read(
+            "compact_at",
+            "how full an agent's context gets before Muster compacts it",
+        )?,
+        nudge_at: read(
+            "compact_nudge_at",
+            "how full an agent's context gets before Muster tells it to compact itself",
+        )?,
+    })
 }
 
 fn read_shell(block: Option<&toml::Table>) -> Result<Shell, String> {

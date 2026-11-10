@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use muster_core::compaction::{Rules, Setting, Thresholds};
 use muster_core::config::{ClipboardWrite, Cursor, CursorStyle, Shell, ShellMode};
 use muster_core::daemon_settings::DaemonSettings;
 use muster_core::input::NotSent;
@@ -298,7 +299,10 @@ fn settings_reach_the_daemon() {
         cursor: Cursor { style: Some(CursorStyle::Bar), blink: Some(false) },
         clipboard_write: ClipboardWrite::Deny,
         name_sessions: false,
-        compact_at: Some(80),
+        compaction: Rules {
+            root: Thresholds { compact_at: Some(Setting::At(80)), nudge_at: None },
+            ..Rules::default()
+        },
         human_name: Some("Alex".to_string()),
         shell: Shell {
             mode: ShellMode::Login,

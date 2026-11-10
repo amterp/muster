@@ -744,8 +744,10 @@ fn send_settings(
     if previous.is_none_or(|previous| previous.resume_agents != settings.resume_agents) {
         sent.push(control.set_resume_agents(settings.resume_agents));
     }
-    if previous.is_none_or(|previous| previous.compact_at != settings.compact_at) {
-        sent.push(control.set_compact_at(settings.compact_at.map(f32::from)));
+    if previous.is_none_or(|previous| previous.compaction != settings.compaction) {
+        sent.push(
+            control.set_compact_at(settings.compaction.compact_at_everywhere().map(f32::from)),
+        );
     }
     if previous.is_none_or(|previous| previous.human_name != settings.human_name) {
         sent.push(control.set_human_name(human_name(settings)));
