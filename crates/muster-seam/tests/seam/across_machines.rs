@@ -728,6 +728,73 @@ fn a_split_onto_another_machine_joins_the_split_panes_tab() {
     );
 }
 
+/// A tab stays where it was in the window's list when a pane from the other machine is split into
+/// it, as the card that reported it did: a pane from the other machine below one of the tab's own,
+/// and then one beside that. The tab is not first, so a jump to first shows.
+#[test]
+fn a_tab_keeps_its_place_when_a_pane_from_another_machine_joins_it() {
+    a_join_keeps_the_tabs_place(false);
+}
+
+/// The same, with the machine the tab is on running a daemon from before a tab could span
+/// machines, so the new pane joins as a part of its own.
+#[test]
+fn a_tab_keeps_its_place_when_another_machine_joins_it_as_a_part_of_its_own() {
+    a_join_keeps_the_tabs_place(true);
+}
+
+fn a_join_keeps_the_tabs_place(devenv_before_spanning: bool) {
+    let _turn = muster::testing::fresh_session();
+    if devenv_before_spanning {
+        muster::testing::treat_as_before_spanning("devenv");
+    }
+    let TwoMachines { laptop, devenv } =
+        two_machines_after(Devenv::HoldingAPane, |laptop, devenv| {
+            for more in ["1", "2"] {
+                make(
+                    &mut laptop.connect(),
+                    create(&format!("p1laptop0{more}"), in_new_tab(&format!("t1laptop0{more}"))),
+                );
+            }
+            make(&mut devenv.connect(), create("p1devenv01", in_new_tab("t1devenv01")));
+        });
+    until(
+        "both machines' tabs to reach the list",
+        || order().len() == 5,
+        || format!("the list holds {:?}", order()),
+    );
+    let (before, on_devenv) = (order(), "p1devenv01".to_string());
+    let tab = tab_holding(&on_devenv).expect("the list says which tab holds each pane");
+    let at = before.iter().position(|held| held == &tab).expect("listed");
+    assert!(at > 0, "{tab} is first of {before:?}, so a jump to first would not show");
+
+    let first = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: on_devenv.clone(),
+        new_pane_daemon_id: "laptop".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the new laptop pane to join the devenv's tab",
+        || tab_holding(&first) == Some(tab.clone()),
+        || format!("{tab} spans {:?}, and the list holds {:?}", machines_of(&tab), rows()),
+    );
+    assert_eq!(order(), before, "joining a pane from another machine moved the tab");
+
+    let second = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: first.clone(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the second pane to join the same tab",
+        || tab_holding(&second) == Some(tab.clone()),
+        || format!("the list holds {:?}", rows()),
+    );
+    assert_eq!(order(), before, "a second pane beside the first moved the tab");
+    assert_eq!((panes(&laptop).len(), panes(&devenv).len()), (5, 2));
+}
+
 /// A pane put on another machine to the left of the pane split is drawn to its left, as a split
 /// on one machine would be.
 #[test]
@@ -1194,6 +1261,18 @@ fn put_the_keyboard_on(pane: &str) {
 /// Which tab the list says holds this pane.
 fn tab_holding(pane: &str) -> Option<String> {
     rows_by_tab().into_iter().find_map(|(tab, held)| (held == pane).then_some(tab))
+}
+
+/// The tabs the list holds, in the order it lists them.
+fn order() -> Vec<String> {
+    ROSTER
+        .lock()
+        .expect("a panicking reader poisoned the roster")
+        .as_ref()
+        .into_iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .map(|tab| tab.tab_id.clone())
+        .collect()
 }
 
 /// The machines the list says a tab holds panes on, in the order its regions sit.

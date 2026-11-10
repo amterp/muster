@@ -507,6 +507,11 @@ pub(super) fn reopen_what_was_left(window: WindowId) {
             regions += 1;
         }
     }
+    // A reconcile has usually opened the tabs already, in the order each machine lists them, and
+    // opening a region on a tab that is open leaves it where it is. A tab on two machines is
+    // listed after its own machine's tabs by one and before them by the other, so without this
+    // it lands wherever the machine that answered first puts it.
+    session.windows[window].composition.arrange_like(&saved);
     if let Some(showing) = &restorable.showing {
         session.windows[window].composition.show(showing);
     }

@@ -269,7 +269,8 @@ One entry per pane every followed daemon holds, on screen or not.
   almost every tab; two for one somebody has grouped with `muster pane move --tab`. Plural because
   a tab does not belong to a machine - which machine holds a pane is on the pane.
 - `place` - where it sits in the window's tab order, counting from one. What `next_tab` walks. The
-  number ⌘1 to ⌘9 name, once the window holds more than one tab.
+  number ⌘1 to ⌘9 name, once the window holds more than one tab. A relaunch puts each tab back
+  where it was, whichever machine answers first and a tab on two machines included.
 - `label` - what to call it to somebody who did not open it. `given_name` is what somebody typed,
   empty when nobody has.
 - `on_screen` - whether this is the tab the window is showing. Exactly one carries it. Not the

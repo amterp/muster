@@ -14,7 +14,7 @@ use std::path::Path;
 
 use muster::proto::{
     ClosePane, CreateTab, Event, MoveTab, OpenWindow, ProblemsChanged, Quitting, ReadWindow,
-    Request, Response, SetTabFolded, Startup, event, request, response,
+    Request, Response, SetTabFolded, SplitPane, Startup, event, request, response,
 };
 use muster_core::composition::{DaemonId, saved};
 use muster_core::mirror::{PaneId, TabId};
@@ -159,6 +159,100 @@ fn a_daemon_on_its_way_keeps_its_place_in_the_arrangement() {
         || format!("the window lists {:?} and was left with {before:?}", listed_tabs()),
     );
     drop(relay);
+}
+
+/// A tab on two machines keeps its place across a relaunch.
+///
+/// Its place in the arrangement is first, because the devenv answered first and the tab began
+/// there. On the next launch the laptop answers first and lists the tab where it made its part of
+/// it, after the tabs it made earlier. A window that opens its tabs in the order each machine
+/// lists them puts it last, though the arrangement says first - and the tab on two machines is the
+/// only one whose place two machines disagree about.
+#[test]
+fn a_tab_on_two_machines_keeps_its_place_across_a_relaunch() {
+    let turn = muster::testing::fresh_session();
+    let (laptop, devenv) = (Daemon::start_built(), Daemon::start_built());
+    make(&mut laptop.connect(), create("p1laptop01", in_new_tab("t1laptop01")));
+    make(&mut devenv.connect(), create("p1devenv01", in_new_tab("t1devenv01")));
+    make(&mut laptop.connect(), create("p1laptop02", in_new_tab("t1laptop02")));
+    let arrangement = laptop.root().join("window-1.toml");
+    let two_machines = |laptop_socket: &Path, devenv_socket: &Path| {
+        let path = laptop.root().join("two-machines.toml");
+        std::fs::write(
+            &path,
+            format!(
+                "[[daemon]]\nid = \"laptop\"\nsocket = {:?}\n\n[[daemon]]\nid = \"devenv\"\n\
+                 socket = {:?}\n",
+                laptop_socket.to_string_lossy(),
+                devenv_socket.to_string_lossy()
+            ),
+        )
+        .expect("the harness root is writable");
+        path
+    };
+
+    // The laptop answers last, so the devenv's tab is first in the window.
+    let late_laptop = laptop.delaying_answers_where(subscribes, SLOW);
+    start(&two_machines(late_laptop.socket_path(), devenv.socket_path()), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "all three tabs to be listed",
+        || listed_tabs().len() == 3,
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        pane_id: "p1devenv01".to_string(),
+        new_pane_daemon_id: "laptop".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the devenv's tab to hold a pane on the laptop too",
+        || spanning_tabs() == ["t1devenv01"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    let before = listed_tabs();
+    assert_eq!(before.first().map(String::as_str), Some("t1devenv01"), "{before:?}");
+    until(
+        "the arrangement to say so",
+        || saved_tabs(&arrangement) == before,
+        || format!("the arrangement lists {:?}, the window {before:?}", saved_tabs(&arrangement)),
+    );
+    assert_ok(&answer(request::Payload::Quitting(Quitting::default())));
+    drop(late_laptop);
+
+    // Now the devenv answers last, and the laptop lists the tab after its own.
+    turn.relaunch();
+    let late_devenv = devenv.delaying_answers_where(subscribes, SLOW);
+    start(&two_machines(laptop.socket_path(), late_devenv.socket_path()), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's tabs to be listed",
+        || listed_tabs().len() == 3,
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_eq!(listed_tabs(), before, "the tab on two machines was not put back where it was");
+    until(
+        "the devenv to answer and its part of the tab to return",
+        || spanning_tabs() == ["t1devenv01"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_eq!(listed_tabs(), before, "the devenv's answer moved the tab");
+    drop(late_devenv);
+}
+
+/// The tabs the window lists that hold panes on more than one machine.
+fn spanning_tabs() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => window
+            .roster
+            .iter()
+            .flat_map(|roster| roster.tabs.iter())
+            .filter(|tab| tab.daemon_ids.len() > 1)
+            .map(|tab| tab.tab_id.clone())
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 #[test]
