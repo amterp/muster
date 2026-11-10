@@ -1518,10 +1518,6 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
     row
 }
 
-/// A window as a program reads it: one flat list of panes, each carrying where it sits.
-///
-/// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
-/// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
 /// The machines a window is attached to, as `daemons[]`.
 fn machines_json(window: &Window, local: &Local) -> Vec<Value> {
     window
@@ -1546,6 +1542,10 @@ fn machines_json(window: &Window, local: &Local) -> Vec<Value> {
         .collect()
 }
 
+/// A window as a program reads it: one flat list of panes, each carrying where it sits.
+///
+/// Flat because that is what filtering wants - "every blocked pane" is one pass here and a nested
+/// walk on the wire shape - and each pane names its daemon and its tab so nothing is lost by it.
 fn window_json(window: &Window, others: Others, local: &Local) -> Value {
     let keyboard = keyboard_pane(window);
     let states = states(window);

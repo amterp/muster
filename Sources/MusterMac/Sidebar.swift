@@ -1406,10 +1406,12 @@ public final class SidebarView: NSView {
   /// giving every machine a column of its own: a machine you have finished with stays empty,
   /// and one row gets you back (kan a_2HpkpfIfq, a_2I6h18OU6).
   public var onMachinePicked: ((String) -> Void)?
-  /// A group picked from the messages section, by its daemon and name: shows its conversation.
+  /// A group picked from an agent's envelope or the Needs you strip, by its daemon and name:
+  /// shows its conversation.
   public var onGroupPicked: ((String, String) -> Void)?
 
-  /// The human's groups, drawn under the tabs on the next `apply(roster:agents:keyboard:)`.
+  /// The human's groups, drawn on their agents' rows on the next
+  /// `apply(roster:agents:keyboard:)`.
   public var groups: [SidebarModel.MessageGroup] = []
 
   /// The panes of the members of the group whose conversation the window shows, empty while it

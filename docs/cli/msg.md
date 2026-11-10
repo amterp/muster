@@ -535,8 +535,8 @@ Neither replying nor dismissing it reads the group, so a message posted to the h
 until they open the group. While Muster is not in front, the operating system's notification names
 the group and who wrote, or says the words of a lone message from `@muster`, since what Muster
 says is the reason for it, and so it does while Muster is in front with no window to draw its
-banner on. Choosing it, the group's row under the tabs, ⌘⇧A, or the banner's Open shows the
-group's conversation, as `open` does.
+banner on. Choosing it, Open Conversation in a Conversations menu, ⌘⇧A, or the banner's Open
+shows the group's conversation, as `open` does.
 With no window open, the post says `@human (notified when a window opens)`, and the next window
 to open notifies.
 

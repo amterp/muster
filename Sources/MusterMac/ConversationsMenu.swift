@@ -26,7 +26,8 @@ public enum ConversationsMenu {
   /// A conversation with an agent this window has a pane for is titled with that agent's name
   /// when the whole list is drawn, where the group's own name (`@human+otter`) says less. In a
   /// pane's own list every entry is with the same agent, so the group's name is what tells two
-  /// apart. A group on a machine other than the only one holding that name says which.
+  /// apart, and the whole list adds it after the agent's name for the same reason. A group on a
+  /// machine other than the only one holding that name says which.
   public static func entries(
     groups: [SidebarModel.MessageGroup], roster: Roster, pane: PaneKey? = nil
   ) -> [Entry] {
@@ -35,6 +36,11 @@ public enum ConversationsMenu {
       var title = group.group
       if pane == nil, let partner = group.partnerPane.flatMap(roster.pane) {
         title = partner.callsign.isEmpty ? partner.label : partner.callsign
+        let shared = listed.contains {
+          $0.partnerPane == group.partnerPane
+            && ($0.group != group.group || $0.daemon != group.daemon)
+        }
+        if shared { title += " (\(group.group))" }
       }
       if listed.contains(where: { $0.group == group.group && $0.daemon != group.daemon }) {
         title += " on \(group.daemon)"

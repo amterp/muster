@@ -165,8 +165,8 @@ public enum ContextMenuModel {
     helpers.entries
   }
 
-  /// A message group's row. Leaving is what closes a group for the human, and takes it off the
-  /// list; deleting ends it for everyone.
+  /// A message group's menu, from the envelope on its agent's row. Leaving is what closes a
+  /// group for the human; deleting ends it for everyone.
   public static func groupRow() -> [ContextEntry] {
     [.item(.leaveGroup), .separator, .item(.deleteGroup)]
   }
@@ -442,7 +442,7 @@ public enum ContextMenus {
     }
   }
 
-  /// A message group row's menu. `delete` is called rather than the group deleted outright,
+  /// A message group's menu. `delete` is called rather than the group deleted outright,
   /// because a delete takes every member's log with it and the window asks first.
   public static func groupRow(
     daemon: String, group: String, window: String = "",

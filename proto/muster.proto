@@ -2637,8 +2637,8 @@ message Mouse {
 }
 
 // The groups the human is in, on every daemon on this machine, with what waits for them in each:
-// the sidebar's messages section (MIP-4, Decision 1b). About the whole app, whole each time, and
-// sent only when it changed. Choosing one is `ShowConversation`.
+// the agent rows' envelopes and the Conversations menus (MIP-4, Decision 1b). About the whole
+// app, whole each time, and sent only when it changed. Choosing one is `ShowConversation`.
 message GroupsChanged {
   repeated MessageGroup groups = 1;
 }

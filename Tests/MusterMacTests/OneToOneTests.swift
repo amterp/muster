@@ -134,7 +134,8 @@ struct OneToOneTests {
     ]
     #expect(
       ConversationsMenu.entries(groups: groups, roster: here).map(\.title) == [
-        "lynx", "otter (1 unread)", "otter", "review on devenv", "review on local",
+        "lynx", "otter (human+otter) (1 unread)", "otter (human+otter-2)", "review on devenv",
+        "review on local",
       ])
     // Listed in the core's order, each naming the machine that keeps it.
     #expect(
