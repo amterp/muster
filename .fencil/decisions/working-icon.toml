@@ -1,0 +1,34 @@
+id = "working-icon"
+question = "How is the working state's icon drawn?"
+tags = ["ui", "agent-list", "states"]
+paths = ["Sources/MusterMac/StateIcon.swift"]
+
+[[revisions]]
+id = "ir2ebemc"
+date = 2026-11-10
+recorded_by = "other"
+discussion = "sidebar-entries-2026-11"
+level = "owner-decided"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = '''
+A ring with 20% of it left open, turning once every 4 seconds. With macOS set to reduce motion it
+is the same ring held still.'''
+why = '''
+The ring before it was open for about a fifth too, but did not move, and read as a spinner that
+had stalled. A slow turn says the agent is at work without drawing the eye the way a fast spinner
+would. A play triangle, a pulsing dot, an orbiting bead, three dots and a still half-filled ring
+were the alternatives; the owner asked for a spinner with less motion and set the gap and the
+speed himself with two controls on the page.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "When an agent is working, right now, there just seems to be like a 75% filled icon, blue icon, and it looks like it's supposed to be spinning, but it doesn't. I just think that's kind of weird design."
+  note = "Said unprompted about the working icon direction A drew, which started the question."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "lets do this"
+  note = "Sent with a screenshot of the Lectern page muster-sidebar-entries showing candidate C, the turning ring, with its two controls set to a 20% gap and 4 seconds per turn. He was answering which working icon to build, after turning down the still ring and the play triangle and asking for a gap control on C."

@@ -6,6 +6,9 @@ import AppKit
 /// in. Not SF Symbols: those have no filled octagon, their weights do not match one another at
 /// 14 points, and what they look like changes with the OS.
 ///
+/// The working ring turns slowly, so an agent at work reads as one without drawing the eye, and is
+/// held still for somebody who asked macOS to reduce motion.
+///
 /// Filled for the states that want the person (blocked, stuck, done), outline for the calm ones
 /// (working, waiting, idle) and a dashed or slashed ring for the two that say nothing about the
 /// agent (unknown, unreachable). Marks inside a filled shape are cut out of it, so whatever is
@@ -43,6 +46,53 @@ final class StateIcon: CAShapeLayer {
     path = drawn.path
     fillRule = drawn.rule
     resolve()
+    turnIfWorking()
+  }
+
+  /// The share of the working ring left open, and how long one turn of it takes (Fencil
+  /// `working-icon`).
+  static let workingGap = 0.2
+  static let turnSeconds: CFTimeInterval = 4
+  private static let workingRadius = 5.6
+  private static let workingWidth = 2.2
+  private static let turnKey = "turn"
+
+  /// Whether the person asked macOS for less motion. Replaceable so a test can answer either way.
+  nonisolated(unsafe) static var reducesMotion: () -> Bool = {
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+  }
+
+  /// Whether an icon showing `state` turns: the working one, unless the person asked for less
+  /// motion, when it is the same ring held still.
+  static func turns(state: String) -> Bool {
+    state == "working" && !reducesMotion()
+  }
+
+  /// Whether this icon is turning now.
+  var isTurning: Bool { animation(forKey: Self.turnKey) != nil }
+
+  private func turnIfWorking() {
+    let turns = Self.turns(state: state)
+    guard turns else {
+      removeAnimation(forKey: Self.turnKey)
+      return
+    }
+    guard !isTurning else { return }
+    let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+    turn.fromValue = 0
+    // Clockwise, in a layer whose y runs up.
+    turn.toValue = -2 * Double.pi
+    turn.duration = Self.turnSeconds
+    turn.repeatCount = .infinity
+    turn.isRemovedOnCompletion = false
+    add(turn, forKey: Self.turnKey)
+  }
+
+  /// A layer leaving the tree loses its animations, and a row takes its icon out and puts it back
+  /// each time it is shown, so the turn starts again whenever the icon comes back in.
+  override func action(forKey event: String) -> CAAction? {
+    if event == kCAOnOrderIn { turnIfWorking() }
+    return super.action(forKey: event)
   }
 
   func resolve() {
@@ -77,13 +127,17 @@ final class StateIcon: CAShapeLayer {
   ) {
     switch state {
     case "working":
-      // An open ring with a gap, which reads as a turn in progress without moving.
+      // An open ring, which turns while the agent works (`turns(state:)`) and held still reads as
+      // a turn in progress.
+      let ring = 2 * Double.pi * workingRadius
+      // A round end reaches half the line's width into the gap, so the arc stops that much short
+      // of the share of the ring the gap shows.
+      let drawn = ring * (1 - workingGap) - workingWidth
       let arc = CGMutablePath()
-      let sweep = 25 / (2 * Double.pi * 5.6) * 2 * Double.pi
       arc.addArc(
-        center: CGPoint(x: 8, y: 8), radius: 5.6, startAngle: -.pi / 2,
-        endAngle: -.pi / 2 + sweep, clockwise: false)
-      return (outline(of: arc, width: 2.4), .nonZero)
+        center: CGPoint(x: 8, y: 8), radius: workingRadius, startAngle: -.pi / 2,
+        endAngle: -.pi / 2 + drawn / workingRadius, clockwise: false)
+      return (outline(of: arc, width: workingWidth), .nonZero)
     case "blocked":
       let path = CGMutablePath()
       path.addEllipse(in: circle(radius: 7.5))

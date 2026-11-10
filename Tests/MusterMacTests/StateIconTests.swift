@@ -7,7 +7,8 @@ import Testing
 // render the real layers to a bitmap and compare what was drawn, since a path that is wrong looks
 // like an icon that is merely a little odd.
 
-@Suite("state icons and keycaps")
+// Serialized because two cases here answer for Reduce Motion, which is one switch for every icon.
+@Suite("state icons and keycaps", .serialized)
 @MainActor
 struct StateIconTests {
   private let states = [
@@ -76,6 +77,59 @@ struct StateIconTests {
     for state in ["blocked", "stuck", "done"] {
       #expect(alpha(state, atArtwork: 3.2, 8) > 200, "\(state)")
     }
+  }
+
+  @Test("the working ring is open for a fifth of its way round")
+  func theWorkingRingsGap() {
+    // Sampled along the middle of the line, every two degrees, in artwork units.
+    let open = stride(from: 0.0, to: 360, by: 2).filter { degrees in
+      let angle = degrees * .pi / 180
+      return alpha("working", atArtwork: 8 + 5.6 * cos(angle), 8 + 5.6 * sin(angle)) < 64
+    }
+    let share = Double(open.count) / 180
+    #expect(abs(share - StateIcon.workingGap) < 0.04, "the gap is \(share) of the ring")
+    #expect(StateIcon.workingGap == 0.2)
+  }
+
+  @Test("the working icon turns once every four seconds, and no other state's does")
+  func onlyWorkingTurns() {
+    let asked = StateIcon.reducesMotion
+    defer { StateIcon.reducesMotion = asked }
+    StateIcon.reducesMotion = { false }
+    let icon = StateIcon()
+    for state in states where state != "working" {
+      icon.show(state: state, color: .white)
+      #expect(!icon.isTurning, "\(state) turns")
+    }
+    icon.show(state: "working", color: .white)
+    #expect(icon.isTurning)
+    let turn = icon.animation(forKey: "turn") as? CABasicAnimation
+    #expect(turn?.duration == 4)
+    #expect(turn?.repeatCount == .infinity)
+    #expect(StateIcon.turnSeconds == 4)
+
+    // An icon taken out of its row and put back, as a row shown again does, keeps turning.
+    let host = CALayer()
+    host.addSublayer(icon)
+    icon.removeFromSuperlayer()
+    icon.removeAllAnimations()
+    host.addSublayer(icon)
+    _ = icon.action(forKey: kCAOnOrderIn)
+    #expect(icon.isTurning)
+
+    icon.show(state: "idle", color: .white)
+    #expect(!icon.isTurning, "an agent that stopped working kept its turn")
+  }
+
+  @Test("with Reduce Motion on, the working ring is held still")
+  func reduceMotionHoldsTheRingStill() {
+    let asked = StateIcon.reducesMotion
+    defer { StateIcon.reducesMotion = asked }
+    StateIcon.reducesMotion = { true }
+    let icon = StateIcon()
+    icon.show(state: "working", color: .white)
+    #expect(!icon.isTurning)
+    #expect(coverage("working") > 0.1, "the ring is still drawn")
   }
 
   @Test("a state nobody has heard of is drawn as unknown")
