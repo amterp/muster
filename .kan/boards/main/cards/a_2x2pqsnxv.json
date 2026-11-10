@@ -5,17 +5,26 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2x3pmXoPM",
+      "body": "Done in 19f9afd7: muster window --json's asking[] entries carry callsign, label and subtitle (null when empty); docs/cli/window.md now describes asking[].",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794275435252
+    }
+  ],
   "created_at_millis": 1794273054748,
   "creator": "Alexander Terp",
   "description": "Since 8076015d the core's AskingEntry carries each pane's callsign and label, and the Needs you strip titles cards from them, including another window's agents. `muster window --json`'s `asking` entries still list only `pane` and `group`, so an agent reading who is asking has to cross-reference panes, and for another window's pane it must look under other_windows.",
   "id": "a_2x2pqsnxv",
-  "position": "Zz",
+  "position": "YuX",
   "title": "muster window --json's asking entries do not carry the callsign and label the strip shows",
   "type": "enhancement",
-  "updated_at_millis": 1794273589486,
+  "updated_at_millis": 1794275436204,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794273054748},
-    {"field":"column","value":"in-progress","at":1794273589486}
+    {"field":"column","value":"in-progress","at":1794273589486},
+    {"field":"column","value":"done","at":1794275436204}
   ]
 }

@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2x3pmM4o6",
+      "body": "Done in 19f9afd7: AskingEntry carries a blocked pane's subtitle (roster::pane_subtitle), and the strip reads it; waiting/unreachable wording still wins as on a row.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794275435140
+    }
+  ],
   "created_at_millis": 1794273055052,
   "creator": "Alexander Terp",
   "description": "Since 8076015d another window's agents are named in the Needs you strip, but a blocked card's detail line (the pane's subtitle, saying what it is blocked on) still comes from this window's roster, so a blocked agent in another window shows its name and state with no detail line. The core could carry the subtitle in AskingEntry beside the callsign and label.",
   "id": "a_2x2prO0zx",
-  "position": "a0",
+  "position": "YuY",
   "title": "A blocked agent in another window has no subtitle in the Needs you strip",
   "type": "bug",
-  "updated_at_millis": 1794273589287,
+  "updated_at_millis": 1794275435955,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794273055052},
-    {"field":"column","value":"in-progress","at":1794273589287}
+    {"field":"column","value":"in-progress","at":1794273589287},
+    {"field":"column","value":"done","at":1794275435955}
   ]
 }

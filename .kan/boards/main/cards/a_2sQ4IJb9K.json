@@ -5,20 +5,21 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1793589608537,
   "creator": "Alexander Terp",
   "description": "amterp, Chat Notes 2026-10-29: \"confirm on CMD w for agents\". At triage on 2026-11-01 he settled the shape: ⌘W asks before closing a pane that runs an agent, and Return confirms. A pane running a plain shell keeps closing at once. On 2026-11-03 he settled the rest: every way to close a pane from the window asks, not only the chord - the right-click Close Pane on a pane, a tab and an agent row (`Sources/MusterMac/ContextMenus.swift`) and the menu item included - since a misclick ends an agent as surely as a reflexive ⌘W. `muster pane close` does not ask: agents drive it, and nobody is there to answer.\n\n⌘W is `close_pane` (`docs/configuration.md`), and `MusterWindow.closePane` (`Sources/MusterMac/MusterWindow.swift:1401`) sends the close at once, ending the agent with it. The context menus call `Core.closePane` directly (`ContextMenus.swift:493`), so the question belongs where both paths meet rather than on the selector. a_2luwIMCjM makes ⌘Q ask in the same way.\n\nClose Tab follows: `closeTab` and its menu entry (`MusterWindow.swift:1113`, `MenuActions.swift:90`) skip the question on purpose because Close Pane does, \"a sheet in front of one of the two would say the other is safe\". So Close Tab asks too when the tab holds an agent, and both comments are rewritten.\n\nReturn confirming reverses a rule `ConfirmSheet` states on purpose (`Sources/MusterMac/ConfirmSheet.swift`, since cf762585): Return is not bound to the confirming button, because the sheet exists to interrupt a reflexive keystroke. That rule was written for Quit and Close Sessions, which ends every agent on every machine, and it stays there: that question keeps confirming by click only (settled 2026-11-03). This card and the Return card for Delete Group need a per-call choice in `ConfirmSheet`, with its doc comment rewritten to say which questions take Return and why.",
   "id": "a_2sQ4IJb9K",
-  "position": "b1G",
+  "position": "Zy",
   "related": [
     "a_2luwIMCjM",
     "a_2sQ4IleSV"
   ],
   "title": "⌘W asks before closing a pane that runs an agent, and Return confirms",
   "type": "enhancement",
-  "updated_at_millis": 1793709333887,
+  "updated_at_millis": 1794275437015,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793589608537}
+    {"field":"column","value":"backlog-hi","at":1793589608537},
+    {"field":"column","value":"in-progress","at":1794275437015}
   ]
 }
