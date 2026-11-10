@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-message-banner",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794270198417,
+  "creator": "Alexander Terp",
+  "description": "Reported by the owner, 2026-11-09: after he sends a reply from a message's banner, the banner stays up. It should close as soon as the reply is sent.\n\nNot yet checked: what closes a banner today, and whether it waits for the message to read as read. An agent left in the Needs you strip after a reply may share the cause.",
+  "id": "a_2x1dXwyiv",
+  "position": "b1j",
+  "related": [
+    "a_2naAacfIB"
+  ],
+  "title": "A message banner stays up after the reply to it is sent",
+  "type": "bug",
+  "updated_at_millis": 1794270198685,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794270198417}
+  ]
+}

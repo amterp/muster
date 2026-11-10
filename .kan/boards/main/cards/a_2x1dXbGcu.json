@@ -1,0 +1,25 @@
+{
+  "_v": 4,
+  "alias": "replying-to-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794270198208,
+  "creator": "Alexander Terp",
+  "description": "Reported by the owner, 2026-11-09: after he answers an agent's message from Muster's banner, that agent's card stays in the Needs you strip. Answering should take it out, as reading the message would.\n\nNot yet checked: whether a reply sent from the banner marks the message read in the core. The strip is `Attention::asking()` (a_2wKWA2xiE), which counts messages held for the person, so a reply that leaves the message unread would keep the card there. The banner staying up after a reply may share the cause.",
+  "id": "a_2x1dXbGcu",
+  "position": "b1i",
+  "related": [
+    "a_2x1dXwyiv",
+    "a_2wKWA2xiE",
+    "a_2naAacfIB"
+  ],
+  "title": "Replying to a message from its banner leaves the agent in the Needs you strip",
+  "type": "bug",
+  "updated_at_millis": 1794270198551,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794270198208}
+  ]
+}

@@ -5,28 +5,35 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "backlog-lo",
   "comments": [
     {
       "id": "c_2wumkZA9D",
-      "body": "2026-11-09: cannot reproduce on current main. Live runs on Claude Code 2.1.319 (Haiku, hooks installed): an 80 s foreground command, approved with Return in manual mode and run in auto mode, read working from the answer to the end of the turn; the screen redrew about 5 times a second. The recorded '(ctrl+b to run in background)' screen is read working by live_turn_working (970), above every blocked rule, so the hint-matches-a-dialog hypothesis is wrong. The stall notice says 'at a dialog' only when the member's published activity is Blocked (stalls.rs why(), presence.rs:252), so the 18:55 instance was a published blocked state, not wording. Pinned by e94c75d2 (corpus/claude-code-2.1.319/foreground-command.txt, two conformance cases, three detector tests). Candidate mechanism, seen in simulation only: an unread PermissionRequest blocked report stays in force when the screen redraws less often than every 1.5 s, since the 3-seconds-of-output rule never fires. A fix for it (spinner retires the report) was written and withdrawn after two reviewers found it dropped real dialogs' reports. Reopen with a run log if it recurs, especially on a loaded machine.",
+      "body": "2026-11-09: cannot reproduce on current main. Live runs on Claude Code 2.1.319 (Haiku, hooks installed): an 80 s foreground command, approved with Return in manual mode and run in auto mode, read working from the answer to the end of the turn; the screen redrew about 5 times a second. The recorded '(ctrl+b to run in background)' screen is read working by live_turn_working (970), above every blocked rule, so the hint-matches-a-dialog hypothesis is wrong. The stall notice says 'at a dialog' only when the member's published activity is Blocked (stalls.rs why(), presence.rs:252), so the 18:55 instance was a published blocked state, not wording. Pinned by 965c5e68 (corpus/claude-code-2.1.319/foreground-command.txt, two conformance cases, three detector tests). Candidate mechanism, seen in simulation only: an unread PermissionRequest blocked report stays in force when the screen redraws less often than every 1.5 s, since the 3-seconds-of-output rule never fires. A fix for it (spinner retires the report) was written and withdrawn after two reviewers found it dropped real dialogs' reports. Reopen with a run log if it recurs, especially on a loaded machine.",
       "author": "Alexander Terp",
       "created_at_millis": 1794253869196
+    },
+    {
+      "id": "c_2x1ZHUc9U",
+      "body": "2026-11-09 re-triage: moved from next to backlog-lo. It cannot be reproduced on main and has no fix to start on until it recurs with a run log, so it is not ready work.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794270034407
     }
   ],
   "created_at_millis": 1793143760678,
   "creator": "Alexander Terp",
   "description": "From tooling feedback a_2n6f4V5Db, 2026-10-23 and 2026-10-24, on the Mac mini.\n\nMuster told a Lectern integrator that each of two Claude Code helpers was blocked at a dialog while the helper was running a long foreground `Bash` command. The screen showed the command, \"(ctrl+b to run in background)\" and a spinner (\"Shimmying… (7m 27s)\"); no dialog needed an answer. A window read moments later showed working. One notice came nine minutes after the helper's plan dialog had been answered, so it needs checking separately from the stale-notice fix tracked by a_2luQuuoeI.\n\nA third instance, 2026-10-24 about 18:55 in a kan round: the integrator's foreground command spent about eight minutes queued in Quartermaster. Muster told a worker that the integrator had not read its post because it was \"at a dialog, waiting for somebody to answer it.\" The command was still running.\n\nFalse dialog notices send the owner or another agent looking for an answer nobody needs to give. Capture the deciding detection rule and state transitions during a foreground command, and distinguish a real permission dialog from the background-command hint. The hint matching a dialog rule is the reporter's hypothesis; it has not been established.",
   "id": "a_2pOzktc35",
-  "position": "a1",
+  "position": "Zn",
   "related": [
     "a_2luQuuoeI"
   ],
   "title": "A long foreground Claude Code command is reported as blocked at a dialog",
   "type": "bug",
-  "updated_at_millis": 1794253869197,
+  "updated_at_millis": 1794270034542,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793143760678},
-    {"field":"column","value":"next","at":1793901357681}
+    {"field":"column","value":"next","at":1793901357681},
+    {"field":"column","value":"backlog-lo","at":1794270034542}
   ]
 }

@@ -1,0 +1,24 @@
+{
+  "_v": 4,
+  "alias": "a-wait-declared-with",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794269982996,
+  "creator": "Alexander Terp",
+  "description": "a_2q5wUnqa4 (0.22.0) made `report --waiting ... --until-message-from \u003cpane\u003e` end a declared wait on a wake from that pane. Seen 2026-11-08 19:56 to 20:12 on the Mac, ~/src/fencil-1, on the installed release: worker plum (Claude Code) declared `report --waiting \"moth's review of the fixes, docs and skill\" --until-message-from moth`. moth replied, plum ruled on the finding, committed, posted 'slot 1 done' to its integrator at 20:03 and ended its turn, and moth's pane closed. At 20:12 `muster window` still showed 'plum waiting 6m on moth's review ...', and @muster told the integrator plum had been waiting on review for 13 minutes and to check whether it still needed help.\n\nNot yet known: whether moth's reply arrived before plum declared the wait (a reply already read when the wait starts would never end it), whether the reply came as a wake or was read inside a running turn, and which version was installed. The next step is to reproduce both orders in a daemon test.\n\nPossible fixes: end the wait when the named pane closes, and treat a message from that pane already unread or read in the same turn as having answered it.\n\nFrom tooling feedback a_2sIzxTThc.",
+  "id": "a_2x1XwUfGo",
+  "position": "b1h",
+  "related": [
+    "a_2q5wUnqa4",
+    "a_2vDjI20sf"
+  ],
+  "title": "A wait declared with --until-message-from still reads waiting after that pane has answered",
+  "type": "bug",
+  "updated_at_millis": 1794269983141,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794269982996}
+  ]
+}

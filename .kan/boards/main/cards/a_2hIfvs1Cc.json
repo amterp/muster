@@ -12,6 +12,12 @@
       "body": "Related, from building the stall notice's reasons (2026-10-16): when a wake is held behind something only a person can answer - a covered prompt such as Claude Code's feedback-draft box, or a blocked agent - the stall notice names it after two minutes but tells only the group's poster. Raising that notice to the person as well is a narrower first step toward this card's escalation.",
       "author": "Alexander Terp",
       "created_at_millis": 1792207602556
+    },
+    {
+      "id": "c_2x1YTTUnX",
+      "body": "Another instance from tooling feedback a_2gwhjWx6n, 2026-10-24/25 on the Mac: a background subagent's inline for loop over a command substitution raised Claude Code's approval prompt in the orchestrator pane at 23:41. It sat there until the owner came back at about 09:15, 9.5 hours later, with the screen locked. Muster detected it and told only the two worker panes that had posted to the orchestrator ('spruce ... is at a dialog, waiting for somebody to answer it'); both were finished and idle and could do nothing. Cost: a night's orchestration.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794270003390
     }
   ],
   "created_at_millis": 1791946592114,
@@ -24,7 +30,7 @@
   "position": "b0v",
   "title": "A pane blocked at a dialog for hours tells only an agent that cannot answer",
   "type": "feature",
-  "updated_at_millis": 1792207602556,
+  "updated_at_millis": 1794270003390,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791946592114}
   ]

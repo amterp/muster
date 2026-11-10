@@ -45,7 +45,7 @@
     },
     {
       "id": "c_2wvFXq0l8",
-      "body": "2026-11-09, done differently from the proposal, by the owner's decision: 'Why can't we just ignore the heads up and consider it unblocked? When I'm using Claude code and the heads up appears, I can still type and chat'. 3d426f95 removes the suggestion_notice rule, so the notice holds nothing and muster window no longer names it; nothing presses 0 or reads its text. Whether the notice can swallow a Return was never recorded; if it does, the left-ring sweep (1be07c98, 938ec50b, b836ad8a) presses Return again, bounded per post. Showing a notice's warning to the owner is a_2wun0XHQo.",
+      "body": "2026-11-09, done differently from the proposal, by the owner's decision: 'Why can't we just ignore the heads up and consider it unblocked? When I'm using Claude code and the heads up appears, I can still type and chat'. 1013c711 removes the suggestion_notice rule, so the notice holds nothing and muster window no longer names it; nothing presses 0 or reads its text. Whether the notice can swallow a Return was never recorded; if it does, the left-ring sweep (e1d10e24, 3f71de16, 75abaee3) presses Return again, bounded per post. Showing a notice's warning to the owner is a_2wun0XHQo.",
       "author": "Alexander Terp",
       "created_at_millis": 1794254976061
     }
