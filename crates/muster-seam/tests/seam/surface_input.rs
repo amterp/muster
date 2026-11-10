@@ -91,7 +91,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
     }
 }
 
-const COPIES: &str = "printf '\\033]52;c;%s\\007' \"$(printf copied | base64)\"";
+/// Waits for a line before writing: a write is shown live and never replayed, so one made
+/// before the window attached would be lost rather than late.
+const COPIES: &str = "read _; printf '\\033]52;c;%s\\007' \"$(printf copied | base64)\"";
 
 /// A program that sets the clipboard reaches the window with what it set, since the window is
 /// what owns a pasteboard.
@@ -102,6 +104,7 @@ fn a_programs_clipboard_write_reaches_the_window() {
     muster::ffi::muster_set_event_callback(Some(note));
     let daemon = daemon_running(Some(&format!("{COPIES}; exec cat")));
     let pane = open_on(&daemon, "");
+    daemon.type_into(&pane, "");
 
     until(
         "the write to reach the window",
@@ -125,6 +128,7 @@ fn a_denied_clipboard_write_goes_nowhere() {
     muster::ffi::muster_set_event_callback(Some(note));
     let daemon = daemon_running(Some(&format!("{COPIES}; echo WROTE; exec cat")));
     let pane = open_on(&daemon, "clipboard_write = \"deny\"");
+    daemon.type_into(&pane, "");
 
     until("the program to have written", || read(&pane).contains("WROTE"), || read(&pane));
     // The effect travels ahead of the output after it, on the one connection, so by the time
