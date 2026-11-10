@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "helper-pills-a-drawn",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794288486132,
+  "creator": "Alexander Terp",
+  "description": "The agent list's helper pills (4a7152ed) show a plain tooltip on hover, and a click on the pills toggles the helper list. Wanted: a drawn hover card for one pill, and clicking a single pill to go to that helper.",
+  "id": "a_2x9JIEReB",
+  "position": "b2o",
+  "title": "Helper pills: a drawn hover card, and a click that goes to the helper",
+  "type": "enhancement",
+  "updated_at_millis": 1794288486132,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794288486132}
+  ]
+}

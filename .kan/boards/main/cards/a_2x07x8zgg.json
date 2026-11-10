@@ -5,13 +5,19 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "id": "c_2x37Yu25J",
       "body": "2026-11-09 evening, the owner: 'that's one of the things that we're also fixing tonight. When an agent is working, right now, there just seems to be like a 75% filled icon, blue icon, and it looks like it's supposed to be spinning, but it doesn't. I just think that's kind of weird design'. Folded into the sidebar-entry redesign (Lectern page muster-sidebar-entries, built tonight): the page offers the choice between a slowly turning icon (honoring Reduce Motion) and a shape that does not read as a spinner.",
       "author": "Alexander Terp",
       "created_at_millis": 1794273735445
+    },
+    {
+      "id": "c_2x9JHZAHF",
+      "body": "Landed 4456cd82 (gate green at f104fc17).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794288485652
     }
   ],
   "created_at_millis": 1794266600711,
@@ -21,15 +27,16 @@
   "labels": [
     "blocked"
   ],
-  "position": "Zt",
+  "position": "YuQ",
   "related": [
     "a_2wKW90pja"
   ],
   "title": "The working icon reads as a frozen spinner",
   "type": "enhancement",
-  "updated_at_millis": 1794273735675,
+  "updated_at_millis": 1794288485652,
   "history": [
     {"field":"column","value":"uncommitted","at":1794266600711},
-    {"field":"column","value":"backlog-hi","at":1794273735675}
+    {"field":"column","value":"backlog-hi","at":1794273735675},
+    {"field":"column","value":"done","at":1794288485371}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "measure-the-turning",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794288486381,
+  "creator": "Alexander Terp",
+  "description": "The working icon now turns once every 4 s (4456cd82). Nobody measured what fifteen turning icons cost; run ./dev --perf with 15 working panes and compare with the baseline.",
+  "id": "a_2x9JIdOvC",
+  "position": "b2p",
+  "title": "Measure the turning working icon at 15 working panes",
+  "type": "chore",
+  "updated_at_millis": 1794288486381,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794288486381}
+  ]
+}
