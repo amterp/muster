@@ -273,6 +273,44 @@ With `compact_at = 80` in the config file, Muster also compacts an agent once it
 context 80% full, once each time it crosses that line. It is off unless the file says so
 (`docs/configuration.md`). `pane wait --context`, above, is the way to choose the moment yourself.
 
+### Being told to compact, and setting it for one pane
+
+With `compact_nudge_at = 60`, Muster posts the agent a message from `@muster` once its context is
+60% full, once per crossing:
+
+    Your context is 62% full, past the 60% this pane is set to be reminded at. If you have not
+    compacted since this was sent, compact yourself at your next clean break: `muster pane
+    compact <what to keep> --then <prompt to carry on>`. Muster compacts you itself at 85%.
+
+It arrives as any message does, at the agent's next idle, empty prompt or when it next reads, and
+its last sentence is there only when a `compact_at` applies to the pane. The config file sets both
+thresholds for every agent, by harness and by directory (`docs/configuration.md`). A pane's own
+setting beats all of those, and anybody can set it, for their own pane or another:
+
+    muster pane compaction --nudge-at 55                 # this pane
+    muster pane compaction --pane otter --nudge-at 40 --compact-at 70
+    muster pane compaction --pane otter --no-compact     # never compact otter unasked
+    muster pane compaction --pane otter --clear          # back to what the config says
+
+So an agent that knows its task needs an early compaction sets its own line, and one that starts
+helpers sets theirs. Each flag changes one threshold and leaves the other as it was; `--no-nudge`
+and `--no-compact` turn one off for the pane whatever the config says, and `--clear` forgets both
+of the pane's own settings. They last as long as the pane does: through a daemon restart, a newer
+Muster taking the pane over, and Reopen Pane. An older Muster taking the pane over drops them.
+
+With no flag it changes nothing and says what applies to the pane and where each came from:
+
+    $ muster pane compaction --pane otter
+    compact at 85%, from the config file's root
+    nudge at 50%, from the config file's [[directory]] ~/src/muster
+
+`off` stands where a threshold is `"none"` or nothing sets it, and a nudge that will never be sent
+says why: its percent is not below the pane's `compact_at`, or the agent's harness gives Muster no
+way to compact it, which is every harness but Claude Code today. `--json` gives the same two
+objects `muster window --json` carries on each pane, `compact_at` and `compact_nudge_at`. A pane
+on a daemon from before Muster 0.25 has neither: that daemon takes one percent for every agent
+(`docs/configuration.md` says which it is sent), and setting a pane's own is refused there.
+
 ## Restarting an agent
 
     muster pane restart --pane p1w3r0ab2n

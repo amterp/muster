@@ -25,10 +25,10 @@ use muster_core::names::could_be_minted;
 use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HideHelpers, HidePane, LeaveConversation, MoveTab, QuietPane, ReadClosedPanes, ReadDaemons,
-    ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab, ReopenPane, Request,
-    ResizePane, RestartAgent, SendToPane, ShowConversation, ShowHelpers, ShowPane, SplitPane,
-    ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
+    HideHelpers, HidePane, LeaveConversation, MoveTab, PaneCompaction, QuietPane, ReadClosedPanes,
+    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab,
+    ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation, ShowHelpers,
+    ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -621,6 +621,47 @@ enum Doing {
         /// A prompt to type once the compaction has run, so the agent carries on
         #[arg(long, value_name = "PROMPT")]
         then: Option<String>,
+    },
+
+    /// Set how full a pane's agent's context gets before it is told to compact itself and before
+    /// Muster compacts it, or with no flag say what applies to the pane
+    //
+    // A pane's own thresholds beat the config file's, and its daemon keeps them while the pane
+    // lasts. Each flag changes one and leaves the other.
+    Compaction {
+        /// The pane to set them for, or the one this is running in
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+
+        /// Tell the agent to compact itself once its context is this full, in percent
+        #[arg(
+            long,
+            value_name = "PERCENT",
+            value_parser = clap::value_parser!(u32).range(1..=100),
+            conflicts_with_all = ["no_nudge", "clear"]
+        )]
+        nudge_at: Option<u32>,
+
+        /// Never tell this pane's agent to compact itself, whatever the config file says
+        #[arg(long, conflicts_with = "clear")]
+        no_nudge: bool,
+
+        /// Compact the agent once its context is this full, in percent
+        #[arg(
+            long,
+            value_name = "PERCENT",
+            value_parser = clap::value_parser!(u32).range(1..=100),
+            conflicts_with_all = ["no_compact", "clear"]
+        )]
+        compact_at: Option<u32>,
+
+        /// Never compact this pane's agent unasked, whatever the config file says
+        #[arg(long, conflicts_with = "clear")]
+        no_compact: bool,
+
+        /// Forget this pane's own thresholds, so the config file decides again
+        #[arg(long)]
+        clear: bool,
     },
 
     /// Restart a pane's agent in the session it reported, with the flags it ran with
@@ -1306,6 +1347,17 @@ fn pane(
                 pane_id: pane.clone().unwrap_or_default(),
                 take_focus: *focus,
                 ..ShowPane::default()
+            }))
+        }
+        Doing::Compaction { pane, nudge_at, no_nudge, compact_at, no_compact, clear } => {
+            send(request::Payload::PaneCompaction(PaneCompaction {
+                pane_id: pane_ref(pane.as_ref(), environment),
+                nudge_at: *nudge_at,
+                no_nudge: *no_nudge,
+                compact_at: *compact_at,
+                no_compact: *no_compact,
+                clear: *clear,
+                ..PaneCompaction::default()
             }))
         }
         Doing::Quiet { pane, off } => send(request::Payload::QuietPane(QuietPane {

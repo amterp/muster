@@ -247,6 +247,13 @@ One entry per pane every followed daemon holds, on screen or not.
   a compaction (`muster pane compact`, or `compact_at`); `follow_up`, the prompt a compaction was
   asked to carry on with, once it has run. `null` while neither waits. What it waits for follows
   from `state` and `facts.subagents`.
+- `compact_at`, `compact_nudge_at` - the percent of its context at which the pane's agent is
+  compacted unasked, and at which it is told to compact itself (`muster docs agents`):
+  `{"percent", "source", "from"}`. `percent` is `null` when it is off. `source` is what decided
+  it, `pane`, `directory`, `harness`, `root`, or `unset` when nothing sets it, and `from` is the
+  directory's path or the harness's name for those two sources. `compact_nudge_at` also has
+  `withheld` when a percent is set and no nudge will be sent: `at_or_above_compact_at` or
+  `harness_cannot_compact`. Both keys are absent for a pane on a daemon from before Muster 0.25.
 - `since` - when the agent last changed state, in seconds since the epoch to the millisecond, so
   `now - .since` in jq is how long it has been in it. Two reads that say `working` with the same
   `since` are one turn; a different `since` is a finish and a new turn in between. Looking at a

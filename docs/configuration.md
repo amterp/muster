@@ -24,6 +24,7 @@ hide_pointer_while_typing = true  # until the mouse moves; off by default, as in
 clipboard_write = "deny"       # allow (the default) | deny: may a program set the clipboard
 name_sessions = false          # the default true: naming a pane names its agent's session
 compact_at = 80                # compact an agent once its context is this full; omit for never
+compact_nudge_at = 60          # tell an agent to compact itself once its context is this full
 resume_agents = false          # the default true: a restart brings an agent back in its session
 reopen_closed_minutes = 10     # the default 60: how long a closed pane can be reopened; 0 for never
 human_name = "Alex"            # what messages call you beside @human; omit for your login name
@@ -555,8 +556,61 @@ by typing the harness's compact command at its prompt once it is idle and the pr
 is not compacted again on its next report at 86%, only after its context has fallen below the
 line and crossed it again. It acts on the context the harness's adapter reports, so an agent whose
 harness reports none is never compacted by it. Off unless the file says so, because it types into
-somebody's agent unasked. The daemon is the one that types, so it is handed the percent as a
-setting, as `name_sessions` is, and every daemon this window attaches gets it.
+somebody's agent unasked.
+
+`compact_nudge_at` is how full an agent's context gets before Muster tells it to compact itself,
+in a message from `@muster` that says how full the context is and gives the command, `muster pane
+compact <what to keep> --then <prompt to carry on>`. An agent chooses a better moment and a better
+summary than a threshold does, and agents forget to compact even when their own instructions tell
+them to, so the two keys work together: the nudge at a lower percent, `compact_at` above it for
+the agent that ignored the nudge. Once per crossing, like `compact_at`. No nudge is sent while a
+compaction `compact_at` asked for is waiting to be typed, to an agent whose harness gives Muster
+no compact command (today every harness but Claude Code), or when the nudge's percent is not
+below the `compact_at` that applies to the same pane, since it would arrive with the compaction.
+`muster pane compaction` says which of these holds for a pane.
+
+Both keys can be set for one harness and for one directory, and a value is a whole percent from 1
+to 100 or `"none"`, which turns the key off there:
+
+```toml
+compact_nudge_at = 60
+compact_at = 85
+
+[harness.claude]               # by the name Muster detects a harness under: claude, codex, ...
+compact_nudge_at = 55
+
+[harness.codex]
+compact_nudge_at = "none"
+compact_at = "none"
+
+[[directory]]
+path = "~/src/muster"          # absolute, or under ~
+compact_nudge_at = 50
+```
+
+For each pane, and for each key on its own, the most specific place that sets the key decides it:
+
+1. the pane itself, set with `muster pane compaction` (`muster docs agents`);
+2. each `[[directory]]` whose `path` is the pane's directory or holds it, longest path first;
+3. the `[harness.<name>]` table of the pane's agent;
+4. the root key.
+
+A place that leaves a key out passes the question down the list, so the `~/src/muster` block above
+changes the nudge there and leaves `compact_at` to the harness and the root. `"none"` answers it:
+a Codex agent above is neither nudged nor compacted, in any directory that does not say otherwise.
+A directory holds a pane by whole path components, so `~/src/muster` does not hold
+`~/src/muster-4`, and `~` is the home of whoever runs the pane's daemon, which on an SSH machine
+is that machine's. Two blocks with the same `path` are refused.
+
+Tables for harnesses and a list of blocks for directories, because each is a subject with several
+answers; a directory is a block with a `path` rather than a table named for it, as `[[daemon]]`
+is, because a path would have to be quoted to be a TOML key.
+
+The daemon is the one that types and posts, so it is handed these rules as a setting, as
+`name_sessions` is, and every daemon this window attaches gets them. A daemon from before Muster
+0.25 takes only one percent for every agent. It is sent the root `compact_at` when no harness or
+directory says anything about `compact_at`, and nothing otherwise, so it compacts no agent the
+file exempts; it sends no nudges. `muster pane compaction` says so for a pane on such a daemon.
 
 `resume_agents` decides what a pane comes back as after its daemon restarts - an upgrade it could
 not hand over, a crash, a reboot. A pane always comes back, in its tab and its directory; with
@@ -702,7 +756,7 @@ drawn when it is unreachable or holds no panes, carries the same swatch.
 Reload Configuration asks for the same thing when you would rather say so yourself - the
 watcher dispatches that action rather than being a second way in. Colours, fonts, the cursor,
 the keymap, `[text]`, `option_as_alt`, `resize_step`, `scroll_multiplier`, `hide_pointer_while_typing`, `clipboard_write`,
-`[notifications]`, `name_sessions`, `compact_at`, `resume_agents`, `reopen_closed_minutes`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
+`[notifications]`, `name_sessions`, `compact_at`, `compact_nudge_at`, `[harness.<name>]`, `[[directory]]`, `resume_agents`, `reopen_closed_minutes`, `human_name` and a `[[daemon]]` block's `color` all take effect where they are, including in panes that were already open; `pane_padding`
 reaches panes opened afterwards, because that is as far as the renderer takes it. `[shell]` and `scrollback_bytes`
 reach panes opened afterwards too, and for the same shape of reason: the daemon takes both when
 it builds a pane, so a pane you are already typing in keeps what it was made with.

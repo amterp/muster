@@ -34,7 +34,7 @@ behind, a question's answers, offered with `--option`, drawn as buttons under it
 where Tab reaches them and no digit picks one, a group's conversation drawn in place of the panes with what was for you
 standing out, what each member is doing and why it has not read, and a message box that posts as you and is left with
 Esc, a conversation with one agent on that agent's row, every group you are in opened, left or deleted from a
-Conversations menu on an agent's right-click and in the Window menu, compacting an agent's context when asked or once it is full enough, restarting an agent in its session from its
+Conversations menu on an agent's right-click and in the Window menu, compacting an agent's context when asked or once it is full enough, and telling it to compact itself before that, at thresholds set by harness, directory or pane, restarting an agent in its session from its
 notice, its menus or the CLI, upgrading Muster through Homebrew from its own menu or `muster upgrade`, and installing a
 harness's adapter through the harness's own plugin command, with `muster window` saying whose adapter is not reporting.
 

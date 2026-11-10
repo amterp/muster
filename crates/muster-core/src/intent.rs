@@ -338,6 +338,18 @@ pub enum BackendIntent {
         name: Option<String>,
     },
 
+    /// Sets the compaction thresholds a pane has for itself, which beat the config file's for
+    /// as long as the pane lasts. Its daemon keeps them, since its daemon applies them.
+    SetPaneCompaction {
+        pane: PaneId,
+        /// None leaves it as it is.
+        compact_at: Option<crate::compaction::Setting>,
+        /// None leaves it as it is.
+        nudge_at: Option<crate::compaction::Setting>,
+        /// Forgets both first, so the config file decides again.
+        clear: bool,
+    },
+
     /// Compacts the context of the agent in a pane, at its next idle, empty prompt.
     ///
     /// The daemon types it, because the daemon is what can tell when the agent's prompt is empty
@@ -493,6 +505,10 @@ impl BackendIntent {
                 counted(run.as_ref()),
                 named(name.as_deref()),
                 made_by(maker.as_ref())
+            ),
+            BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear } => format!(
+                "SetPaneCompaction {{ pane: {pane}, compact_at: {compact_at:?}, nudge_at: \
+                 {nudge_at:?}, clear: {clear} }}"
             ),
             BackendIntent::CompactPane { pane, focus, then } => format!(
                 "CompactPane {{ pane: {pane}, focus: {}, then: {} }}",

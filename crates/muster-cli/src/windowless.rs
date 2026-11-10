@@ -51,6 +51,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::SendToPane(_)
                     | request::Payload::WatchPanes(_)
                     | request::Payload::CompactPane(_)
+                    | request::Payload::PaneCompaction(_)
                     | request::Payload::RestartAgent(_)
                     | request::Payload::HidePane(_)
                     | request::Payload::ShowPane(_)
@@ -152,6 +153,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::ShowPane(show)) => {
             let pane = named(&show.pane_id, "shown")?;
             respond(show_pane(&socket, pane)?)
+        }
+        Some(request::Payload::PaneCompaction(set)) => {
+            let pane = named(&set.pane_id, "read or changed")?;
+            respond(pane_compaction(&socket, pane, set)?)
         }
         Some(request::Payload::QuietPane(quiet)) => {
             let pane = named(&quiet.pane_id, "made quiet")?;
@@ -748,6 +753,62 @@ fn helpers_hidden(socket: &Path, maker: &str, hidden: bool) -> Result<Response, 
     Ok(ok())
 }
 
+/// Sets the compaction thresholds a pane has for itself, or with nothing to set says which apply
+/// to it, as the window's `pane compaction` does.
+fn pane_compaction(
+    socket: &Path,
+    pane: &str,
+    set: &muster_proto::PaneCompaction,
+) -> Result<Response, Trouble> {
+    let sets = set.clear
+        || set.no_nudge
+        || set.no_compact
+        || set.nudge_at.is_some()
+        || set.compact_at.is_some();
+    if !sets {
+        let Some(held) = snapshot(socket)?.panes.into_iter().find(|held| held.pane == pane) else {
+            return Ok(not_held(socket, pane, "read"));
+        };
+        let thresholds = pane_thresholds(&held).unwrap_or_default();
+        return Ok(Response { payload: Some(response::Payload::PaneThresholds(thresholds)) });
+    }
+    let threshold = |percent: Option<u32>, off: bool| {
+        (percent.is_some() || off).then_some(daemon_proto::CompactionThreshold { percent })
+    };
+    let answer = asked_of_one_since(
+        socket,
+        pane_service(daemon_proto::pane_request::Request::SetCompaction(
+            daemon_proto::pane_request::SetCompaction {
+                pane: pane.to_string(),
+                compact_at: threshold(set.compact_at, set.no_compact),
+                nudge_at: threshold(set.nudge_at, set.no_nudge),
+                clear: set.clear,
+            },
+        )),
+        daemon_proto::version::SCOPED_COMPACTION,
+        "set compaction thresholds for one pane",
+    )?;
+    Ok(match answer.outcome() {
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, "changed"),
+        _ => changed(answer),
+    })
+}
+
+/// The compaction thresholds a daemon says apply to a pane, or none from one that says none.
+fn pane_thresholds(pane: &daemon_proto::Pane) -> Option<muster_proto::PaneThresholds> {
+    let (effective, withheld) = daemon_proto::compaction::read_applied(pane.compaction.as_ref())?;
+    let threshold = |resolved: &muster_core::compaction::Resolved| muster_proto::PaneThreshold {
+        percent: resolved.percent.map(u32::from),
+        source: resolved.source.as_str().to_string(),
+        from: resolved.source.from().unwrap_or_default().to_string(),
+    };
+    Some(muster_proto::PaneThresholds {
+        compact_at: Some(threshold(&effective.compact_at)),
+        compact_nudge_at: Some(threshold(&effective.nudge_at)),
+        nudge_withheld: withheld.map(|why| why.as_str()).unwrap_or_default().to_string(),
+    })
+}
+
 /// Makes a pane quiet or lets it notify again: `quiet`, or the other of what it is now.
 fn quiet_pane(socket: &Path, pane: &str, quiet: Option<bool>) -> Result<Response, Trouble> {
     let quiet = match quiet {
@@ -1050,6 +1111,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
             daemon_proto::PendingCompaction::FollowUp => "follow_up",
         }
         .to_string(),
+        thresholds: pane_thresholds(pane),
     }
 }
 

@@ -65,6 +65,70 @@ fn reopened_answer(reopened: &muster_proto::Reopened, json: bool) -> String {
     .to_string()
 }
 
+/// The compaction thresholds applying to a pane, as `compact_at` and `compact_nudge_at`: each
+/// `{"percent", "source", "from"}`, or null from a daemon that says none. The nudge's also says
+/// why none is sent, when none is.
+fn thresholds_json(thresholds: &muster_proto::PaneThresholds) -> Value {
+    let threshold = |threshold: Option<&muster_proto::PaneThreshold>| {
+        threshold.map_or(Value::Null, |threshold| {
+            json!({
+                "percent": threshold.percent,
+                "source": threshold.source,
+                "from": Some(&threshold.from).filter(|from| !from.is_empty()),
+            })
+        })
+    };
+    let mut nudge = threshold(thresholds.compact_nudge_at.as_ref());
+    if let Value::Object(nudge) = &mut nudge
+        && !thresholds.nudge_withheld.is_empty()
+    {
+        nudge.insert("withheld".to_string(), json!(thresholds.nudge_withheld));
+    }
+    json!({ "compact_at": threshold(thresholds.compact_at.as_ref()), "compact_nudge_at": nudge })
+}
+
+/// What `pane compaction` says of a pane when it sets nothing: a line for each threshold, with
+/// what decided it.
+fn pane_thresholds(thresholds: &muster_proto::PaneThresholds, json: bool) -> String {
+    if json {
+        return thresholds_json(thresholds).to_string();
+    }
+    let (Some(compact_at), Some(nudge_at)) =
+        (thresholds.compact_at.as_ref(), thresholds.compact_nudge_at.as_ref())
+    else {
+        return "this pane's daemon is from before Muster 0.25 and says nothing of thresholds: it \
+                applies the config file's root `compact_at` to every agent, when no harness or \
+                directory sets one, and sends no nudges. Update Muster on its machine to set \
+                them by harness, directory and pane."
+            .to_string();
+    };
+    let line = |verb: &str, threshold: &muster_proto::PaneThreshold| {
+        let at = match threshold.percent {
+            Some(percent) => format!("{verb} at {percent}%"),
+            None => format!("{verb}: off"),
+        };
+        let from = match threshold.source.as_str() {
+            "pane" => "set for this pane".to_string(),
+            "directory" => format!("from the config file's [[directory]] {}", threshold.from),
+            "harness" => format!("from the config file's [harness.{}]", threshold.from),
+            "root" => "from the config file's root".to_string(),
+            _ => "nothing sets it".to_string(),
+        };
+        format!("{at}, {from}")
+    };
+    let withheld = match (thresholds.nudge_withheld.as_str(), compact_at.percent) {
+        ("at_or_above_compact_at", Some(percent)) => format!(
+            "; never sent, because this pane is compacted at {percent}%, which is not above it"
+        ),
+        ("harness_cannot_compact", _) => {
+            "; never sent, because its agent's harness gives Muster no way to compact it"
+                .to_string()
+        }
+        _ => String::new(),
+    };
+    format!("{}\n{}{withheld}", line("compact", compact_at), line("nudge", nudge_at))
+}
+
 /// The closed panes that can be reopened, newest first: a row each, with its callsign first since
 /// that is what `--pane` takes, then its name, what it ran, where, and for how much longer.
 fn closed_panes(closed: &muster_proto::ClosedPanes, now_ms: i64, json: bool) -> String {
@@ -211,6 +275,9 @@ pub fn answer_on(response: &Response, json: bool, local: &Local) -> Result<Strin
         } else {
             opened.window.clone()
         }),
+        Some(response::Payload::PaneThresholds(thresholds)) => {
+            Ok(pane_thresholds(thresholds, json))
+        }
         Some(response::Payload::PaneClosed(closed)) => Ok(if json {
             json!({ "pane": closed.pane_id, "daemon": closed.daemon_id, "closed": true })
                 .to_string()
@@ -300,6 +367,7 @@ fn named(payload: &response::Payload) -> &'static str {
         response::Payload::PaneText(_) => "a pane's text",
         response::Payload::Daemons(_) => "a list of daemons",
         response::Payload::PaneState(_) => "a pane's state",
+        response::Payload::PaneThresholds(_) => "a pane's compaction thresholds",
         response::Payload::PaneClosed(_) => "a closed pane",
         response::Payload::Unanswered(_) => "a request nobody answered",
         response::Payload::BackendHealth(_) => "a daemon's health",
@@ -1427,6 +1495,12 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
     });
     if let (Value::Object(row_fields), Value::Object(said)) = (&mut row, said) {
         row_fields.extend(said);
+        // Absent rather than null from a daemon that says none: null is a threshold that is off.
+        if let Some(thresholds) = agent.and_then(|agent| agent.thresholds.as_ref())
+            && let Value::Object(thresholds) = thresholds_json(thresholds)
+        {
+            row_fields.extend(thresholds);
+        }
         if agent.is_some_and(|agent| agent.state == "unreachable") {
             for stale in [
                 "facts",
@@ -2349,6 +2423,86 @@ mod tests {
         );
         assert!(json["panes"][1]["session"].is_null(), "{json}");
         assert!(json["panes"][1]["resume"].is_null(), "{json}");
+    }
+
+    /// What applies to a pane reads as two lines saying what decided each, and as the two keys a
+    /// pane carries in `muster window --json`, which a pane on a daemon that says none lacks.
+    #[test]
+    fn a_panes_thresholds_say_what_set_them_and_why_a_nudge_is_never_sent() {
+        use super::pane_thresholds;
+        use muster_proto::{
+            PaneStateChanged, PaneThreshold, PaneThresholds, RosterChanged, RosterPane, RosterTab,
+            Window,
+        };
+        use serde_json::json;
+        let threshold = |percent: Option<u32>, source: &str, from: &str| {
+            Some(PaneThreshold { percent, source: source.to_string(), from: from.to_string() })
+        };
+        let thresholds = PaneThresholds {
+            compact_at: threshold(Some(85), "root", ""),
+            compact_nudge_at: threshold(Some(90), "directory", "~/src/muster"),
+            nudge_withheld: "at_or_above_compact_at".to_string(),
+        };
+        assert_eq!(
+            pane_thresholds(&thresholds, false),
+            "compact at 85%, from the config file's root\n\
+             nudge at 90%, from the config file's [[directory]] ~/src/muster; never sent, \
+             because this pane is compacted at 85%, which is not above it"
+        );
+        let off = PaneThresholds {
+            compact_at: threshold(None, "harness", "codex"),
+            compact_nudge_at: threshold(None, "unset", ""),
+            nudge_withheld: String::new(),
+        };
+        assert_eq!(
+            pane_thresholds(&off, false),
+            "compact: off, from the config file's [harness.codex]\nnudge: off, nothing sets it"
+        );
+        assert!(pane_thresholds(&PaneThresholds::default(), false).contains("before Muster 0.25"));
+
+        let window = Window {
+            roster: Some(RosterChanged {
+                tabs: vec![RosterTab {
+                    tab_id: "t1".to_string(),
+                    panes: ["p1", "p2"]
+                        .map(|pane| RosterPane {
+                            pane_id: pane.to_string(),
+                            ..RosterPane::default()
+                        })
+                        .to_vec(),
+                    ..RosterTab::default()
+                }],
+                ..RosterChanged::default()
+            }),
+            panes: vec![
+                PaneStateChanged {
+                    pane_id: "p1".to_string(),
+                    state: "idle".to_string(),
+                    thresholds: Some(thresholds),
+                    ..PaneStateChanged::default()
+                },
+                PaneStateChanged {
+                    pane_id: "p2".to_string(),
+                    state: "idle".to_string(),
+                    ..PaneStateChanged::default()
+                },
+            ],
+            ..Window::default()
+        };
+        let json = window_json(&window, Others::All);
+        let p1 = &json["panes"][0];
+        assert_eq!(p1["compact_at"], json!({ "percent": 85, "source": "root", "from": null }));
+        assert_eq!(
+            p1["compact_nudge_at"],
+            json!({
+                "percent": 90,
+                "source": "directory",
+                "from": "~/src/muster",
+                "withheld": "at_or_above_compact_at",
+            })
+        );
+        let p2 = json["panes"][1].as_object().unwrap();
+        assert!(!p2.contains_key("compact_at") && !p2.contains_key("compact_nudge_at"), "{json}");
     }
 
     /// A compaction queued for an agent says on its row what it waits for, naming the sub-agents

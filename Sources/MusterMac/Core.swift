@@ -1854,6 +1854,7 @@ public enum Core {
     case .showHelpers: return "show_helpers"
     case .hideHelpers: return "hide_helpers"
     case .quietPane: return "quiet_pane"
+    case .paneCompaction: return "pane_compaction"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
     case .endNumberedChord: return "end_numbered_chord"

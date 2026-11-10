@@ -189,8 +189,8 @@ pointing into `/Applications`; from a build of your own, add `~/.muster/bin` to 
 
 ## With no window
 
-Twelve verbs work with no window at all: `muster window` (and `window --watch`), `pane new`, `pane
-rename`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane restart`, `pane hide`, `pane
+Thirteen verbs work with no window at all: `muster window` (and `window --watch`), `pane new`, `pane
+rename`, `pane read`, `pane send`, `pane wait`, `pane compact`, `pane compaction`, `pane restart`, `pane hide`, `pane
 show`, `pane quiet` and `pane close`. What agents are doing and what a pane printed are the
 daemon's to know, a compaction and a restart are the daemon's to type, and where a pane is, what it is called and whether it is
 hidden or quiet are the daemon's to keep, so a window only relays them. A pane shown or made with no window open joins the

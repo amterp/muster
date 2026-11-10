@@ -59,6 +59,25 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
             })
         }),
         compaction: agent.compaction.as_str().to_string(),
+        thresholds: agent.thresholds.as_deref().map(thresholds),
+    }
+}
+
+/// The compaction thresholds applying to a pane, in the seam's words.
+pub(crate) fn thresholds(applied: &muster_core::compaction::Applied) -> proto::PaneThresholds {
+    let threshold = |resolved: &muster_core::compaction::Resolved| proto::PaneThreshold {
+        percent: resolved.percent.map(u32::from),
+        source: resolved.source.as_str().to_string(),
+        from: resolved.source.from().unwrap_or_default().to_string(),
+    };
+    proto::PaneThresholds {
+        compact_at: Some(threshold(&applied.effective.compact_at)),
+        compact_nudge_at: Some(threshold(&applied.effective.nudge_at)),
+        nudge_withheld: applied
+            .nudge_withheld
+            .map(|why| why.as_str())
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 

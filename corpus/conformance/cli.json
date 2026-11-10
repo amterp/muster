@@ -1009,6 +1009,136 @@
       }
     },
     {
+      "name": "an agent sets when it is told to compact, for itself",
+      "why": "An agent that knows its task runs long sets its own line, and names nothing: the pane is the one it runs in. One flag changes one threshold, so the other stays as the config file or an earlier command left it.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--nudge-at",
+          "55"
+        ]
+      },
+      "expect": {
+        "request": {
+          "pane_compaction": {
+            "nudge_at": 55
+          }
+        }
+      }
+    },
+    {
+      "name": "a maker sets a helper's thresholds, and can turn one off",
+      "why": "A maker sets its helpers' lines by callsign. Off is a flag of its own rather than a percent, since no percent means never.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--pane",
+          "otter",
+          "--compact-at",
+          "70",
+          "--no-nudge"
+        ]
+      },
+      "expect": {
+        "request": {
+          "pane_compaction": {
+            "pane_id": "otter",
+            "compact_at": 70,
+            "no_nudge": true
+          }
+        }
+      }
+    },
+    {
+      "name": "clearing a pane's thresholds hands it back to the config file",
+      "why": "A pane's own thresholds beat the file's, so there has to be a way to have none.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--pane",
+          "otter",
+          "--clear"
+        ]
+      },
+      "expect": {
+        "request": {
+          "pane_compaction": {
+            "pane_id": "otter",
+            "clear": true
+          }
+        }
+      }
+    },
+    {
+      "name": "with nothing to set, pane compaction asks what applies",
+      "why": "The same verb reads, so that whoever set a threshold can see what it came to and what set the other. It sends the request with nothing in it, and the answer changes nothing.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--pane",
+          "otter"
+        ]
+      },
+      "expect": {
+        "request": {
+          "pane_compaction": {
+            "pane_id": "otter"
+          }
+        }
+      }
+    },
+    {
+      "name": "a threshold cannot be both a percent and off",
+      "why": "The two flags contradict each other, and picking one would hide a mistake.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--nudge-at",
+          "55",
+          "--no-nudge"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "clearing takes no threshold with it",
+      "why": "Clear then set reads as one command and is two, and what it left would depend on an order nobody wrote down.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--clear",
+          "--compact-at",
+          "70"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "a threshold is a percent a context can be at",
+      "why": "Zero would act on every report and 101 on none, as in the config file.",
+      "given": {
+        "argv": [
+          "pane",
+          "compaction",
+          "--compact-at",
+          "0"
+        ]
+      },
+      "expect": {
+        "usage": "ValueValidation"
+      }
+    },
+    {
       "name": "compacting a pane's agent says what to keep",
       "why": "An orchestrator compacting a worker names it and says what the summary must not lose. The focus arrives in pieces from a shell and is one line by the time it is typed.",
       "given": {

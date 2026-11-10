@@ -2046,6 +2046,7 @@ impl Session {
                 .clone()
                 .map(|id| Box::new(AgentSession { id, resume: pane.resume.clone() })),
             compaction: pane.compaction,
+            thresholds: pane.thresholds.clone().map(Box::new),
         }
     }
 
@@ -2872,6 +2873,7 @@ pub(crate) fn submit_from(
             | BackendIntent::CreateInTree { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
+            | BackendIntent::SetPaneCompaction { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }
             | BackendIntent::SetTabTree { .. }
@@ -5036,6 +5038,8 @@ pub(crate) struct PaneAgent {
     pub session: Option<Box<AgentSession>>,
     /// What its daemon holds to type at the agent's next idle, empty prompt.
     pub compaction: muster_core::mirror::PendingCompaction,
+    /// The compaction thresholds applying to the pane, boxed as the session is.
+    pub thresholds: Option<Box<muster_core::compaction::Applied>>,
 }
 
 /// The session a pane's agent runs, as it reported it, and how its daemon resumes it.

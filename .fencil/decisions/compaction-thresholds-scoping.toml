@@ -1,0 +1,44 @@
+id = "compaction-thresholds-scoping"
+question = "How are an agent's compaction thresholds configured, and how is one pane's set?"
+tags = ["config", "cli", "daemon"]
+paths = ["crates/muster-core/src/compaction.rs", "docs/configuration.md"]
+
+[[revisions]]
+id = "43viwpwo"
+date = 2026-11-10
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = '''
+Two thresholds, each a whole percent of an agent's context or "none": `compact_at`, past which the
+pane's daemon compacts the agent, and `compact_nudge_at`, past which the daemon posts the agent a
+message from `@muster` telling it to compact itself. Both fire, each once per crossing. The config
+file sets them as root keys, under `[harness.<name>]`, and in `[[directory]]` blocks with a `path`.
+`muster pane compaction [--pane <ref>] [--nudge-at <pct> | --no-nudge] [--compact-at <pct> |
+--no-compact] [--clear]` sets a pane's own, which its daemon keeps for as long as the pane lasts,
+and with no flag prints what applies and what set it. For each key on its own the most specific
+place wins: the pane, then each directory holding the pane's directory (longest path first, by whole
+path components), then the harness, then the root. The daemon resolves this, with a resolver in
+muster-core that the config reader shares, and publishes each pane's result on its record
+(`muster window --json`: `compact_at`, `compact_nudge_at`). A nudge is withheld when its percent is
+not below the pane's `compact_at`, and from an agent whose harness has no compact command.'''
+why = '''
+The owner asked for defaults by directory, by harness and globally, for a nudge because agents
+forget to compact themselves, and for an agent to be able to set it for itself or its helpers. He
+agreed that the nudge is a message, that both thresholds fire, and to build it. The key names, the
+table and block shapes, "none", the precedence, the verb and its flags, and resolving in the daemon
+were chosen during the work and no owner has ruled on them. The daemon resolves because it alone
+knows a pane's directory, agent and context together.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "I want to be able to configure some defaults potentially by directory or repository or just like globally or whatever, and also by harness like a kind of nudge from muster to self-compact an agent. Agents just sometimes seem to forget to self-compact even when they're prompted to ... it can be something that can be instructed or set up via muster ad hoc ... if a given agent knows it has to self-compact at a certain time or has helper agents that need to self-compact, it can instruct [Muster] for this session for this given agent"
+  note = "The owner's request that started the work, said to an agent in a session."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "all yes"
+  note = "Answering three proposals put together: the nudge is a message the agent reads rather than text typed at its prompt; `compact_at` stays as the forced compaction and both fire; build it that night."

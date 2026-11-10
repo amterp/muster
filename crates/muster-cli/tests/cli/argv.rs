@@ -284,6 +284,16 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("focus", said(&compact.focus)),
             ])
         }),
+        request::Payload::PaneCompaction(set) => json!({
+            "pane_compaction": fields([
+                ("pane_id", said(&set.pane_id)),
+                ("nudge_at", set.nudge_at.map(|percent| json!(percent))),
+                ("no_nudge", set.no_nudge.then(|| json!(true))),
+                ("compact_at", set.compact_at.map(|percent| json!(percent))),
+                ("no_compact", set.no_compact.then(|| json!(true))),
+                ("clear", set.clear.then(|| json!(true))),
+            ])
+        }),
         request::Payload::RestartAgent(restart) => json!({
             "restart_agent": fields([
                 ("pane_id", said(&restart.pane_id)),

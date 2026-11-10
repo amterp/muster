@@ -354,6 +354,31 @@ fn a_compaction_is_asked_of_the_daemon(here: &Here) {
     let refused = refused_with(&here.muster(&["pane", "compact", "--pane", "p1"]), 1);
     assert!(refused.contains("runs no agent"), "{refused}");
     a_compaction_queued_says_what_it_waits_for(here);
+    a_panes_thresholds_are_set_and_read_at_the_daemon(here);
+}
+
+/// With no window, `pane compaction` sets a pane's own thresholds at the daemon and reads back
+/// what applies, which `muster window --json` carries too.
+fn a_panes_thresholds_are_set_and_read_at_the_daemon(here: &Here) {
+    let unset = ok(&here.muster(&["pane", "compaction", "--pane", "p3"]));
+    assert_eq!(unset, "compact: off, nothing sets it\nnudge: off, nothing sets it");
+
+    ok(&here.muster(&["pane", "compaction", "--pane", "p3", "--nudge-at", "55", "--no-compact"]));
+    let set = ok(&here.muster(&["pane", "compaction", "--pane", "p3"]));
+    assert_eq!(set, "compact: off, set for this pane\nnudge at 55%, set for this pane");
+    let read: Value =
+        serde_json::from_str(&ok(&here.muster(&["--json", "pane", "compaction", "--pane", "p3"])))
+            .unwrap();
+    assert_eq!(read["compact_nudge_at"], json!({ "percent": 55, "source": "pane", "from": null }));
+    let listed: Value = serde_json::from_str(&ok(&here.muster(&["--json", "window"]))).unwrap();
+    let p3 = listed["panes"].as_array().unwrap().iter().find(|pane| pane["pane"] == json!("p3"));
+    assert_eq!(p3.map(|p3| &p3["compact_nudge_at"]), Some(&read["compact_nudge_at"]), "{listed}");
+
+    ok(&here.muster(&["pane", "compaction", "--pane", "p3", "--clear"]));
+    let cleared = ok(&here.muster(&["pane", "compaction", "--pane", "p3"]));
+    assert_eq!(cleared, unset);
+    let refused = refused_with(&here.muster(&["pane", "compaction", "--pane", "p9", "--clear"]), 1);
+    assert!(refused.contains("holds no pane called p9"), "{refused}");
 }
 
 /// A compaction asked of an agent at work says what it waits for, and `muster window` shows it

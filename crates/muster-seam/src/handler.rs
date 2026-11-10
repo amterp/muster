@@ -457,6 +457,7 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
+        request::Payload::PaneCompaction(set) => pane_compaction(window, &set),
         request::Payload::RestartAgent(restart) => restart_agent(window, restart),
         request::Payload::ReopenPane(reopen) => reopen_pane(window, &reopen),
         request::Payload::ReadClosedPanes(_) => read_closed_panes(window),
@@ -802,6 +803,64 @@ fn show_pane(window: WindowId, show: &proto::ShowPane) -> Response {
         session::show_pane(window, &target.daemon, &pane, show.take_focus).map(|()| Response::ok()),
         &target,
     )
+}
+
+/// Sets the compaction thresholds a pane has for itself, or with nothing to set says which
+/// apply to it. Neither is looking at the pane, so the keyboard stays where it is.
+fn pane_compaction(window: WindowId, set: &proto::PaneCompaction) -> Response {
+    use muster_core::compaction::Setting;
+    let sets = set.clear
+        || set.no_nudge
+        || set.no_compact
+        || set.nudge_at.is_some()
+        || set.compact_at.is_some();
+    if !sets {
+        return pane_thresholds(window, set);
+    }
+    let setting = |percent: Option<u32>, off: bool| match (percent, off) {
+        (None, false) => Ok(None),
+        (None, true) => Ok(Some(Setting::Off)),
+        (Some(percent), _) => u8::try_from(percent)
+            .ok()
+            .filter(|percent| (1..=100).contains(percent))
+            .map(|percent| Some(Setting::At(percent)))
+            .ok_or_else(|| {
+                Response::failure(format!(
+                    "{percent} is not a threshold, so nothing was changed. It is a whole \
+                     percent from 1 to 100: how full the agent's context gets."
+                ))
+            }),
+    };
+    let (nudge_at, compact_at) =
+        match (setting(set.nudge_at, set.no_nudge), setting(set.compact_at, set.no_compact)) {
+            (Ok(nudge_at), Ok(compact_at)) => (nudge_at, compact_at),
+            (Err(refusal), _) | (_, Err(refusal)) => return refusal,
+        };
+    act(window, &set.daemon_id, &set.pane_id, Keyboard::StaysPut, |pane| {
+        BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear: set.clear }
+    })
+}
+
+/// The compaction thresholds applying to a pane, as the mirror of its daemon holds them.
+fn pane_thresholds(window: WindowId, set: &proto::PaneCompaction) -> Response {
+    let target = match target(window, &set.daemon_id, &set.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let agent = session::agents()
+        .into_iter()
+        .find(|agent| agent.pane.daemon == target.daemon && agent.pane.pane == pane);
+    let Some(agent) = agent else {
+        return Response::failure(format!(
+            "no daemon this window is following holds a pane called {pane}, so there is \
+             nothing to read. `muster window` lists the panes this one has."
+        ));
+    };
+    let thresholds = agent.thresholds.as_deref().map(convert::thresholds).unwrap_or_default();
+    Response { payload: Some(response::Payload::PaneThresholds(thresholds)) }
 }
 
 /// Makes a pane quiet or lets it ask again. Being made quiet is not being looked at, so the

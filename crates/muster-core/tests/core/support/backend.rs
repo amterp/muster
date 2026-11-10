@@ -205,6 +205,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
             Some("follow_up") => muster_core::mirror::PendingCompaction::FollowUp,
             _ => muster_core::mirror::PendingCompaction::Nothing,
         },
+        thresholds: None,
         maker: optional(given, "maker").map(PaneId::new),
         maker_closed: false,
         state_since_ms: None,

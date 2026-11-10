@@ -511,6 +511,7 @@ fn described(before: &Pane, now: &Pane) -> bool {
         || before.session != now.session
         || before.resume != now.resume
         || before.compaction != now.compaction
+        || before.thresholds != now.thresholds
 }
 
 /// Whether a tab's tree, its zoom or whether it is hidden has moved.

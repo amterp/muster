@@ -441,6 +441,20 @@ impl BackendChannel for DaemonBackend {
                 self.pane_request(pane_request::Request::Compact(compact))?;
                 done
             }
+            BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear } => {
+                let since = muster_daemon_proto::version::SCOPED_COMPACTION;
+                self.speaks_since(since, "set compaction thresholds for one pane")?;
+                let threshold = muster_daemon_proto::compaction::threshold;
+                self.pane_request(pane_request::Request::SetCompaction(
+                    pane_request::SetCompaction {
+                        pane: pane.to_string(),
+                        compact_at: compact_at.map(threshold),
+                        nudge_at: nudge_at.map(threshold),
+                        clear,
+                    },
+                ))?;
+                done
+            }
             BackendIntent::RestartAgent { pane, env } => {
                 self.speaks_since(muster_daemon_proto::version::RESTARTS, "restart an agent")?;
                 let restart = pane_request::Restart {

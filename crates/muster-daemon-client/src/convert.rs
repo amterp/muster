@@ -166,6 +166,12 @@ pub fn pane(record: proto::Pane) -> Pane {
         proto::PendingCompaction::Queued => PendingCompaction::Queued,
         proto::PendingCompaction::FollowUp => PendingCompaction::FollowUp,
     };
+    let thresholds = muster_daemon_proto::compaction::read_applied(record.compaction.as_ref()).map(
+        |(effective, nudge_withheld)| muster_core::compaction::Applied {
+            effective,
+            nudge_withheld,
+        },
+    );
     let facts = record.facts.unwrap_or_default();
     Pane {
         id: PaneId::new(record.pane),
@@ -212,6 +218,7 @@ pub fn pane(record: proto::Pane) -> Pane {
             .resume
             .map(|resume| Resume { command: resume.command, uncarried: resume.uncarried }),
         compaction,
+        thresholds,
         maker: record.maker.filter(|maker| !maker.is_empty()).map(PaneId::new),
         maker_closed: record.maker_closed,
         state_since_ms: record.state_since_ms,

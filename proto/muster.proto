@@ -116,6 +116,7 @@ message Request {
     PrepareImagePaste prepare_image_paste = 107;
     SetTabFolded set_tab_folded = 108;
     SetNeedsYouFolded set_needs_you_folded = 109;
+    PaneCompaction pane_compaction = 110;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -514,6 +515,48 @@ message HideHelpers {
 
   // The pane that made them, as for ShowHelpers.
   string pane_id = 2;
+}
+
+// Sets the compaction thresholds a pane has for itself: how full, in percent, its agent's context
+// gets before its daemon tells it to compact itself, and before its daemon compacts it. They beat
+// the config file's for that pane, and its daemon keeps them for as long as the pane lasts. With
+// nothing to set it changes nothing and is answered with the PaneThresholds applying to the pane.
+message PaneCompaction {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+
+  // A whole percent from 1 to 100. Absent leaves the pane's nudge as it is.
+  optional uint32 nudge_at = 3;
+  // No nudge for this pane, whatever the config file says. Not with `nudge_at`.
+  bool no_nudge = 4;
+  // A whole percent from 1 to 100. Absent leaves the pane's compaction as it is.
+  optional uint32 compact_at = 5;
+  // No compaction unasked for this pane, whatever the config file says. Not with `compact_at`.
+  bool no_compact = 6;
+  // Forgets what the pane has for itself, so the config file decides again. Alone.
+  bool clear = 7;
+}
+
+// The compaction thresholds applying to one pane, as its daemon worked them out from the pane's
+// own, the config file's `[[directory]]` and `[harness.<name>]` blocks, and its root keys. Both
+// absent for a pane whose daemon applies one percent to every pane and says nothing of it.
+message PaneThresholds {
+  PaneThreshold compact_at = 1;
+  PaneThreshold compact_nudge_at = 2;
+  // Why no nudge is sent though `compact_nudge_at` holds a percent: `at_or_above_compact_at`, or
+  // `harness_cannot_compact`. Empty when one is.
+  string nudge_withheld = 3;
+}
+
+message PaneThreshold {
+  // Absent: off.
+  optional uint32 percent = 1;
+  // What decided it: `pane`, `directory`, `harness`, `root`, or `unset` when nothing sets it.
+  string source = 2;
+  // The directory's path or the harness's name, for those two. Empty otherwise.
+  string from = 3;
 }
 
 // Makes a pane quiet - nothing about it is raised for the person, no banner and no ask, while
@@ -1823,6 +1866,7 @@ message Response {
     ClosedPanes closed_panes = 32;
     ImagePasteTarget image_paste_target = 33;
     ImagePastePrepared image_paste_prepared = 34;
+    PaneThresholds pane_thresholds = 35;
   }
 
   // What a find and a viewport read answered, which the renderer now answers for itself.
@@ -3662,6 +3706,9 @@ message PaneStateChanged {
   string compaction = 16;
   // What the daemon's screen rule says covers the prompt, even when the agent is idle.
   optional string prompt_covered_by = 17;
+
+  // The compaction thresholds applying to the pane. Absent from a daemon that says none.
+  PaneThresholds thresholds = 18;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.
