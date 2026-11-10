@@ -151,21 +151,23 @@ impl Compaction {
         self.nudge
     }
 
-    /// The pane is nudged `at` this percent now, none when it is not to be. A context not past
-    /// the new line has not crossed it: a nudge owed for the old one goes, and the agent can be
-    /// nudged when it does cross. One still owed past the new line names the new percent.
+    /// The pane is nudged `at` this percent now, none when it is not to be. A context known to
+    /// be under the new line has not crossed it: a nudge owed for the old one goes, and the agent
+    /// can be nudged when it does cross. One still owed past the new line names the new percent.
+    /// While no context has been reported, as in a pane just taken over, nothing is known to
+    /// have changed, and what a handover carried stands.
     pub(crate) fn nudge_threshold_is(&mut self, at: Option<u8>) {
-        match at.filter(|at| self.used.is_some_and(|used| used >= f32::from(*at))) {
-            Some(at) => {
-                if let Some(nudge) = &mut self.nudge {
-                    nudge.at = at;
-                }
-            }
-            None => {
-                self.nudge = None;
-                self.nudged = false;
-                self.nudge_refused = false;
-            }
+        let past = match (at, self.used) {
+            (Some(at), Some(used)) => used >= f32::from(at),
+            (Some(_), None) => return,
+            (None, _) => false,
+        };
+        if !past {
+            self.nudge = None;
+            self.nudged = false;
+            self.nudge_refused = false;
+        } else if let (Some(nudge), Some(at)) = (&mut self.nudge, at) {
+            nudge.at = at;
         }
     }
 
@@ -319,8 +321,14 @@ mod tests {
         old.nudge_posted();
         let mut new = Compaction::default();
         new.carry_nudged(old.nudged());
+        // As a report is handled: the thresholds are worked out again before the context it
+        // carries is noted, so the first one after a handover is judged with none known.
+        new.nudge_threshold_is(Some(60));
+        new.reported(63.0, None);
         new.nudge_reported(63.0, Some(60), None);
         assert_eq!(new.nudge_due(), None);
+        new.nudge_threshold_is(Some(60));
+        assert!(new.nudged(), "a refresh with the context known and still past it");
     }
 
     #[test]

@@ -37,6 +37,14 @@ include!(concat!(env!("OUT_DIR"), "/muster.rs"));
 /// often, so a run log that counted as a change would disarm a numbered chord in every build
 /// anybody was watching.
 pub fn only_reads(payload: &request::Payload) -> bool {
+    // With nothing to set it asks which thresholds apply, and changes nothing.
+    if let request::Payload::PaneCompaction(set) = payload {
+        return !(set.clear
+            || set.no_nudge
+            || set.no_compact
+            || set.nudge_at.is_some()
+            || set.compact_at.is_some());
+    }
     matches!(
         payload,
         request::Payload::LogRecord(_)
@@ -212,5 +220,21 @@ impl Response {
                 ..Unanswered::default()
             })),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `pane compaction` asks with nothing to set and changes with anything to set, and only
+    /// the first may be answered without disturbing what a person is in the middle of.
+    #[test]
+    fn pane_compaction_only_reads_while_it_sets_nothing() {
+        let asks = |set: PaneCompaction| only_reads(&request::Payload::PaneCompaction(set));
+        assert!(asks(PaneCompaction { pane_id: "otter".to_string(), ..Default::default() }));
+        assert!(!asks(PaneCompaction { nudge_at: Some(55), ..Default::default() }));
+        assert!(!asks(PaneCompaction { no_compact: true, ..Default::default() }));
+        assert!(!asks(PaneCompaction { clear: true, ..Default::default() }));
     }
 }
