@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "id": "c_2v0VFl88d",
@@ -18,11 +18,12 @@
   "creator": "Alexander Terp",
   "description": "Seen on 0.22.0 (2026-11-06), in a full-screen window with two banners up, each a long message from an agent: a few sentences, a numbered list of five items, a closing paragraph. The stack was drawn near the middle of the panes rather than against their top right, and its top was cut off by the window's top edge, so the first banner began mid-sentence and its header (group, author, Open, dismiss) could not be seen or clicked.\n\nConfirmed from the code: nothing bounds the stack's drawn height. `banners::LINES` caps a banner at 8 Markdown source lines (`markdown::leading`), not drawn lines. Agents write a paragraph or a list item as one long source line, and at the stack's 380-point width each one wraps to 4-8 drawn lines, so two such banners can stand taller than the window. `BannerStackView` has no scroll view or maximum height, and `WindowLayout.attach(banners:)` pins the hosting view's top to the panes' top and its bottom `lessThanOrEqualTo` their bottom, both required, against the hosting view's intrinsic height.\n\nInferred, not reproduced: once the intrinsic height exceeds the space, those constraints conflict, and either AppKit breaks one (leaving the view placed arbitrarily, which would explain the horizontal position too) or the hosting view is squeezed and SwiftUI centers the overflowing stack, pushing its top out of view. Not checked on a Mac. The horizontal offset is the part least explained.\n\nRepro: post two messages to `@human`, each eight source lines whose lines are ~300 characters, into a window of ordinary height.\n\nCosts: the newest banner's header and the Open button go off screen, so the message can be answered only through its reply field or the conversation, and the stack covers the middle of a pane.\n\nPossibly: cap the stack at the panes' height and scroll inside it, or count the cap in drawn lines (or characters) rather than source lines, and lower the bottom constraint below the hosting view's compression resistance so the stack never fights the panes' frame.",
   "id": "a_2v0MI8quQ",
-  "position": "b1d",
+  "position": "Zz",
   "title": "The banner stack can stand taller than the window, and is then drawn off its corner with its top cut off",
   "type": "bug",
-  "updated_at_millis": 1793971969574,
+  "updated_at_millis": 1794272794977,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793971625156}
+    {"field":"column","value":"backlog-hi","at":1793971625156},
+    {"field":"column","value":"in-progress","at":1794272794977}
   ]
 }

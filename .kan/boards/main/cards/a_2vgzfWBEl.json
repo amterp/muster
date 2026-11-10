@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1794073236561,
   "creator": "Alexander Terp",
   "description": "`Screen::attach` and `acknowledge` compose a replay at a PTY chunk boundary, and PTY reads end at arbitrary bytes, so the pane's terminal can sit inside a sequence. The replay leaves the surface's parser at ground, and the next chunk starts with the tail of that sequence, which the surface prints as text: `8;5;1m` for a cut CSI, base64 for a cut kitty APC, U+FFFD for a cut UTF-8 character. The daemon's terminal parsed the same bytes correctly, so the two disagree until the program repaints.\n\nRare on attach, since an idle pane is at ground. Likely on catch-up, which happens mid-flood by definition. Handover is worse: `send_pane` sends a replay and the master fd, so the new daemon's own terminal takes the garbage too.\n\nFound by reading on 2026-11-07, not reproduced: screen.rs, replay.rs and handoff/ never consider parser state, and replay.json has no such case. Write the failing case first: a chunk cut inside a CSI, an OSC, an APC and a UTF-8 character, in replay.json and catch_up.json.\n\nFix, at the current pin (the API is already there): set `GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES` when creating the terminal, and append `ghostty_terminal_continuation_buf`'s bytes last in `replay()` and `catch_up()`. Its output is the minimal suffix from the sequence's start, with effects already committed removed, so a BEL inside an unfinished CSI does not ring twice. Upstream documents one ground check per feed. 64 KiB is a reasonable limit, since chunked kitty transfers are typically 4 KiB; past it the tail is lost as today. About 20 lines.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "Zx",
+  "position": "Zy",
   "title": "A replay composed while a program is mid-sequence corrupts the surface",
   "type": "bug",
-  "updated_at_millis": 1794073309634,
+  "updated_at_millis": 1794272795146,
   "history": [
-    {"field":"column","value":"next","at":1794073236561}
+    {"field":"column","value":"next","at":1794073236561},
+    {"field":"column","value":"in-progress","at":1794272795146}
   ]
 }

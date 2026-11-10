@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-wait-on-a-message",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794272795532,
+  "creator": "Alexander Terp",
+  "description": "Since 7def06ab, `report --waiting ... --until-message-from \u003cpane\u003e` ends quietly when that pane closes, but only for a sender on the waiting pane's own daemon. A sender pane on a linked machine (a laptop worker waiting on a devenv reviewer, or the reverse) closing is not seen by the daemon holding the wait, so the wait stands until the 10-minute carry runs out, with the same false 'still waiting' notice to the maker that a_2x1XwUfGo fixed locally. Worth doing if cross-machine reviewers become common.",
+  "id": "a_2x2j6oIHf",
+  "position": "b2f",
+  "related": [
+    "a_2x1XwUfGo"
+  ],
+  "title": "A wait on a message from a pane on a linked machine does not end when that pane closes",
+  "type": "bug",
+  "updated_at_millis": 1794272795843,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794272795532}
+  ]
+}

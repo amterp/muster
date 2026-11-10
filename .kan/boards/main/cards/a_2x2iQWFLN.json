@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "sidebartests-thelistdrawsatitsrealwidth",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794272769331,
+  "creator": "Alexander Terp",
+  "description": "Failed once in the full gate on 2026-11-09 at 57bc5828 (Swift suite, load 7.6): `sidebar.drawnRows.allSatisfy { $0.width == SidebarModel.width }` at Tests/MusterMacTests/SidebarTests.swift:1251. The Rust suite passed in the same run and nothing landed that day touches the sidebar. SidebarTests passed three times in a row on its own straight after.\n\nThe test frames the list, calls layoutSubtreeIfNeeded once and reads row widths, so a table that has not finished laying out its rows when the main thread is starved can report the width it was born with. Possibly: lay out until the table's rows report the frame's width, or read the column's width rather than drawn rows. The failing row widths were not printed; adding them to the expectation would show which it was.",
+  "id": "a_2x2iQWFLN",
+  "position": "b2e",
+  "title": "🎲 SidebarTests theListDrawsAtItsRealWidth saw a row narrower than the list",
+  "type": "bug",
+  "updated_at_millis": 1794272769331,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794272769331}
+  ]
+}

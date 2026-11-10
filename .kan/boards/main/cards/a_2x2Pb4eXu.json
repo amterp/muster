@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "waiting-on-agents-a",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794272045501,
+  "creator": "Alexander Terp",
+  "description": "Failed once in the full gate on 2026-11-09 at c81e2812, at a load average of 67.8: `muster: \u003cpane\u003e was not blocked within 60s` (exit 5, expected 1) at crates/muster-cli/tests/cli/waiting_on_agents.rs:227. Passed on its own right after, in 23 s. Same family as a_2qAeGZOK0 and a_2wTPddV7n: a fixed wall-clock wait that a starved machine outlasts.",
+  "id": "a_2x2Pb4eXu",
+  "position": "b2d",
+  "title": "🎲 waiting_on_agents::a_caller_can_wait_on_an_agent_instead_of_polling saw no blocked within 60 s under load",
+  "type": "bug",
+  "updated_at_millis": 1794272045501,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794272045501}
+  ]
+}

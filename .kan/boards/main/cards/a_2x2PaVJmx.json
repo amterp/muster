@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-ring-somebody",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794272045164,
+  "creator": "Alexander Terp",
+  "description": "Failed once in the full gate on 2026-11-09 at c81e2812, at a load average of 67.8 (two worker sessions were testing at the same time): `Return pressed after typing`, and the ring was heard. It passed three times in a row on its own straight after.\n\nThe test (crates/muster-daemon/tests/daemon/doorbell.rs:545) sleeps `ANSWER - 1s` after the ring shows and then types a letter and takes it back, so it relies on its own thread waking within that one second of margin before the daemon's Return falls due. Under that load the Return most likely fell due first, and pressing it then is the right behavior, so this reads as a test-timing problem rather than Muster pressing Return over a person's typing. Not confirmed: the run log for the gate was not kept.\n\nPossibly: type as soon as the ring shows instead of sleeping toward the deadline, or let the test hold the Return's timer (MUSTER_DAEMON_* knob) so the order is fixed rather than raced.",
+  "id": "a_2x2PaVJmx",
+  "position": "b2c",
+  "title": "🎲 a_ring_somebody_typed_at_is_not_pressed_again pressed Return under load",
+  "type": "bug",
+  "updated_at_millis": 1794272045164,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794272045164}
+  ]
+}

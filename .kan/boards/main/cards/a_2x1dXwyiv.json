@@ -5,19 +5,29 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2x2iq9aFv",
+      "body": "Done in c81e2812: a kept reply takes its banner down in the core the way a dismiss does; the shell's 4 s linger and 'Sent' line are gone. A refused or unknown reply keeps its banner with the words and the reason. A reply nobody live heard no longer keeps its banner (its outcome is in the run log). Fencil decision banner-reply-reads.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794272785133
+    }
+  ],
   "created_at_millis": 1794270198417,
   "creator": "Alexander Terp",
   "description": "Reported by the owner, 2026-11-09: after he sends a reply from a message's banner, the banner stays up. It should close as soon as the reply is sent.\n\nNot yet checked: what closes a banner today, and whether it waits for the message to read as read. An agent left in the Needs you strip after a reply may share the cause.",
   "id": "a_2x1dXwyiv",
-  "position": "b1j",
+  "position": "Yuf",
   "related": [
     "a_2naAacfIB"
   ],
   "title": "A message banner stays up after the reply to it is sent",
   "type": "bug",
-  "updated_at_millis": 1794270198685,
+  "updated_at_millis": 1794272785759,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794270198417}
+    {"field":"column","value":"backlog-hi","at":1794270198417},
+    {"field":"column","value":"in-progress","at":1794270400638},
+    {"field":"column","value":"done","at":1794272785759}
   ]
 }
