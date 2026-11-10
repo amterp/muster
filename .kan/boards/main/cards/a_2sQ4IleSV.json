@@ -5,16 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2x5NG1mPS",
+      "body": "Done in the commit after 361245ea (feat(window): Let Return confirm Delete Group): confirmDelete passes confirmOnReturn: true; Escape cancels; a GUI-tier test pins it.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794279105331
+    }
+  ],
   "created_at_millis": 1793589608811,
   "creator": "Alexander Terp",
   "description": "amterp, at triage on 2026-11-01: pressing Return should confirm the Delete Group question.\n\nRight-clicking a group under the tabs and choosing Delete Group asks first (`confirmDelete` in `Sources/MusterMac/MusterWindow.swift`), and today only a click on the Delete Group button confirms, because `ConfirmSheet` never binds Return to a confirming button. The ⌘W card needs the same change to `ConfirmSheet`, and one per-call choice serves both. Escape keeps cancelling.",
   "id": "a_2sQ4IleSV",
-  "position": "b1GV",
+  "position": "YuR",
   "title": "Return confirms Delete Group",
   "type": "enhancement",
-  "updated_at_millis": 1793589613967,
+  "updated_at_millis": 1794279105544,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1793589608811}
+    {"field":"column","value":"backlog-hi","at":1793589608811},
+    {"field":"column","value":"in-progress","at":1794277615658},
+    {"field":"column","value":"done","at":1794279105544}
   ]
 }

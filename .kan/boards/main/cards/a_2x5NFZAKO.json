@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "detection-an-agent",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794279105129,
+  "creator": "Alexander Terp",
+  "description": "Failed once in the full gate on 2026-11-09 at 361245ea (load 19.8): SendManifests answered AlreadySo where the test expects Done (crates/muster-daemon/tests/daemon/detection.rs:314). The test deletes sprite.toml from the overrides directory and then sends an empty manifest set, but the daemon watches that directory too (the next test says an override saved while the daemon runs applies without the app connecting again). Under load the watcher reloaded first, so the explicit send changed nothing and AlreadySo was right. Passed alone twice. Possibly: accept Done or AlreadySo there, since the assertion that matters is the until_detected that follows, or stop the watcher racing by sending before deleting.",
+  "id": "a_2x5NFZAKO",
+  "position": "b2l",
+  "title": "🎲 detection::an_agent_whose_manifest_is_deleted races the daemon's own override watcher",
+  "type": "bug",
+  "updated_at_millis": 1794279105129,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794279105129}
+  ]
+}
