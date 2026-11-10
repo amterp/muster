@@ -3425,6 +3425,12 @@ message RosterPane {
   // pane by the name somebody gave it and carrying the directory only for a pane nobody named -
   // so a renamed pane's row can still say where it runs.
   string directory = 19;
+
+  // The harness its daemon detected in this pane (`claude`), empty for a pane running no agent.
+  // The same fact `label` builds its `· claude` suffix from, carried on its own so the window can
+  // tell an agent's pane from a shell's without reading it back out of a label: closing a pane
+  // that runs an agent asks first, and closing a shell does not.
+  string agent = 20;
 }
 
 // Everything this window is showing, as one message.

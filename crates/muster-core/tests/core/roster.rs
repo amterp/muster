@@ -55,6 +55,15 @@ fn roster_conformance() {
                     .filter(|panes| !panes.is_empty())
                     .map(|panes| json!(panes)),
             ),
+            // Only for a case about which panes run an agent, for the same reason.
+            (
+                "harnesses",
+                given
+                    .get("harnesses")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    .then(|| json!(harnesses(&roster))),
+            ),
             // Only when some pane's agent can be restarted, for the same reason.
             (
                 "restartable",
@@ -115,6 +124,15 @@ fn roster_conformance() {
 
     assert_eq!(ran, corpus.cases.len());
     assert!(ran > 0);
+}
+
+/// The panes running an agent, with the harness each runs, as the window asks before closing one.
+fn harnesses(roster: &Roster) -> Vec<String> {
+    roster
+        .tabs()
+        .flat_map(|tab| tab.panes.iter())
+        .filter_map(|pane| Some(format!("{} {}", pane.key, pane.agent.as_ref()?)))
+        .collect()
 }
 
 /// The panes a menu would offer to restart, with what each would be restarted with.

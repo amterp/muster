@@ -3212,6 +3212,79 @@
       }
     },
     {
+      "name": "a pane carries the harness detected in it, and a shell carries none",
+      "why": "Closing a pane that runs an agent asks first and closing a shell does not, so the window has to tell the two apart. The roster says it as the harness its daemon detected, the fact the label's harness suffix is already built from, rather than the window inferring it from a state: an agent still starting reads unknown, as a plain shell does, and one with no session to resume has nothing else that sets it apart.",
+      "given": {
+        "worlds": {
+          "laptop": {
+            "tabs": [
+              {
+                "id": "w1:t1",
+                "label": "t1",
+                "root": {
+                  "axis": "columns",
+                  "ratio": 0.5,
+                  "first": "w1:p1",
+                  "second": {
+                    "axis": "rows",
+                    "ratio": 0.5,
+                    "first": "w1:p2",
+                    "second": "w1:p3"
+                  }
+                }
+              }
+            ],
+            "panes": [
+              {
+                "id": "w1:p1",
+                "cwd": "/src/alpha",
+                "agent": "claude"
+              },
+              {
+                "id": "w1:p2",
+                "cwd": "/src/beta",
+                "agent": "gemini"
+              },
+              {
+                "id": "w1:p3",
+                "cwd": "/src/gamma"
+              }
+            ]
+          }
+        },
+        "daemons": [
+          {
+            "id": "local",
+            "world": "laptop"
+          }
+        ],
+        "regions": [
+          {
+            "daemon": "local",
+            "tab": "w1:t1"
+          }
+        ],
+        "harnesses": true
+      },
+      "expect": {
+        "harnesses": [
+          "local/w1:p1 claude",
+          "local/w1:p2 gemini"
+        ],
+        "machines": [
+          "local connected 3 panes"
+        ],
+        "panes": [
+          "local/w1:p1 place=1 tab=w1:t1 label=\"alpha \u00b7 claude\" off-screen",
+          "local/w1:p2 place=2 tab=w1:t1 label=\"beta \u00b7 gemini\" off-screen",
+          "local/w1:p3 place=3 tab=w1:t1 label=\"gamma\" off-screen"
+        ],
+        "tabs": [
+          "w1:t1 on=local place=1 label=\"t1\" given-name=\"t1\" on-screen"
+        ]
+      }
+    },
+    {
       "name": "a hidden tab is listed apart, unnumbered, and quiet panes say so",
       "why": "A hidden pane is one somebody put out of sight with its agent still running. No window shows it and no chord reaches it, so it takes no place in the window's order - numbering it would shift every chord below it - and is listed apart so that what its agent is doing stays in view and it can be brought back. Quiet is said on every row, hidden or not, because a menu offers to take it back.",
       "given": {

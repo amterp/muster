@@ -244,6 +244,11 @@ pub struct RosterPane {
     /// Whether its agent can be compacted, as its daemon says: what a menu offering to compact it
     /// greys itself out on.
     pub compactable: bool,
+    /// The harness its daemon detected in it (`claude`), or `None` for a pane running no agent.
+    ///
+    /// What the window asks on before closing the pane: the same fact the label's harness suffix
+    /// is made from, so a pane that reads `· claude` in the list is one that asks.
+    pub agent: Option<String>,
     /// What its daemon would run to resume its agent's session, words joined by spaces, when it
     /// knows: what a menu offering to restart the agent greys itself out on, and what the window
     /// says before it restarts one.
@@ -566,6 +571,7 @@ impl Roster {
                             directory: pane.cwd.clone(),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
+                            agent: detected_harness(pane),
                             resumes_as: resumes_as(pane),
                             quiet: pane.quiet,
                             maker: pane.maker.clone(),
@@ -738,6 +744,7 @@ fn hidden_tabs<'a>(
                     directory: pane.cwd.clone(),
                     on_screen: false,
                     compactable: pane.compactable,
+                    agent: detected_harness(pane),
                     resumes_as: resumes_as(pane),
                     quiet: pane.quiet,
                     maker: pane.maker.clone(),
@@ -929,10 +936,12 @@ fn pane_directory(pane: &Pane) -> &str {
 }
 
 fn harness_suffix(pane: &Pane) -> String {
-    match &pane.agent {
-        Some(agent) if !agent.is_empty() => format!(" · {agent}"),
-        _ => String::new(),
-    }
+    detected_harness(pane).map_or_else(String::new, |agent| format!(" · {agent}"))
+}
+
+/// The harness detected in a pane, when its daemon has named one.
+fn detected_harness(pane: &Pane) -> Option<String> {
+    pane.agent.as_deref().filter(|agent| !agent.is_empty()).map(str::to_string)
 }
 
 /// The second line of a pane's row: what its agent is working on, when that is worth a line.

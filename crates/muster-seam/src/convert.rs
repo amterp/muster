@@ -219,6 +219,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                     beside_callsign: pane.beside_callsign.clone(),
                     directory: pane.directory.clone(),
                     compactable: pane.compactable,
+                    agent: pane.agent.clone().unwrap_or_default(),
                     resumes_as: pane.resumes_as.clone().unwrap_or_default(),
                     quiet: pane.quiet,
                     maker: pane.maker.as_ref().map(ToString::to_string).unwrap_or_default(),
