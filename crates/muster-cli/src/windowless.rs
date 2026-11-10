@@ -552,10 +552,13 @@ fn restart_agent(
 }
 
 /// Reopens a closed pane this machine's daemon remembers, by its id or callsign, or the one closed
-/// most recently, as a window's reopen does.
+/// most recently, as a window's reopen does: passing over a helper the daemon closed with its
+/// maker while anything else is remembered.
 fn reopen_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
     let pane = if pane.is_empty() {
-        let Some(newest) = snapshot(socket)?.closed.into_iter().next() else {
+        let closed = snapshot(socket)?.closed;
+        let asked_closed = closed.iter().find(|closed| !closed.closed_with_maker);
+        let Some(newest) = asked_closed.or(closed.first()).cloned() else {
             return Ok(failure(
                 "no pane closed on this machine can be reopened, so nothing was: none closed \
                  recently enough, or each was reopened already. `reopen_closed_minutes` in the \

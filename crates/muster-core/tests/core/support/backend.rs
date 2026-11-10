@@ -83,6 +83,7 @@ pub(crate) fn read_closed(given: &Value) -> ClosedPane {
         resumes: given.get("resumes").and_then(Value::as_bool).unwrap_or(false),
         closed_at_ms: number("closedAtMs"),
         until_ms: number("untilMs"),
+        closed_with_maker: given.get("closedWithMaker").and_then(Value::as_bool).unwrap_or(false),
     }
 }
 

@@ -191,6 +191,7 @@ impl Shared {
                     settled,
                     deferred: Vec::new(),
                     orphans: Vec::new(),
+                    reopens: Vec::new(),
                     carried_told: BTreeMap::new(),
                     detecting,
                     app_manifests: Vec::new(),
@@ -347,7 +348,7 @@ impl Drop for Locked<'_> {
     fn drop(&mut self) {
         let Some(mut session) = self.session.take() else { return };
         let deferred = std::mem::take(&mut session.deferred);
-        let orphaned = !session.orphans.is_empty();
+        let orphaned = !session.orphans.is_empty() || !session.reopens.is_empty();
         drop(session);
         for work in deferred {
             work.run();
@@ -400,6 +401,9 @@ pub(crate) struct Session {
     /// Makers that closed with helpers still open here, for the doorbell's thread to tell the
     /// person of ([`Session::take_orphans`]).
     orphans: Vec<Orphaned>,
+    /// The helpers that closed with a maker reopened since, for the doorbell's thread to reopen
+    /// after it ([`Session::take_reopens`]).
+    reopens: Vec<String>,
     /// What the daemon that handed these panes over had told each helper's maker, for the
     /// doorbell's thread to take ([`Session::take_carried_told`]).
     carried_told: BTreeMap<String, Need>,
@@ -628,6 +632,7 @@ pub(crate) struct Resuming<'a> {
     pub(crate) quiet_before_orphaned: Option<bool>,
     /// Whether the agent has had its nudge for the crossing its context is past.
     pub(crate) nudged: bool,
+    pub(crate) kept_after_maker_closed: bool,
 }
 
 pub(crate) struct HandedPane {
@@ -938,6 +943,7 @@ fn saved_pane(pane: &Pane) -> persist::Pane {
         maker_closed: pane.record.maker_closed,
         quiet_before_orphaned: pane.quiet_before_orphaned,
         compaction: pane.record.own_compaction,
+        kept_after_maker_closed: pane.kept_after_maker_closed,
     }
 }
 
@@ -1878,7 +1884,10 @@ impl Session {
         }
     }
 
-    fn prepare_reopen(&mut self, reopen: pane_request::Reopen) -> Result<Starting, Reply> {
+    pub(crate) fn prepare_reopen(
+        &mut self,
+        reopen: pane_request::Reopen,
+    ) -> Result<Starting, Reply> {
         if self.stopping {
             return Err(Reply::refused("the daemon is stopping"));
         }
@@ -2130,6 +2139,8 @@ impl Session {
             && maker
                 .is_some_and(|maker| self.closed.iter().any(|closed| closed.pane.name == maker));
         let mut quiet_before_orphaned = saved.quiet_before_orphaned;
+        // Somebody asked for this helper while its maker is closed, so it is theirs to close.
+        let kept = maker.is_some() && !maker_open;
         if maker_open {
             if saved.maker_closed {
                 record.quiet = saved.quiet_before_orphaned.unwrap_or(saved.quiet);
@@ -2157,6 +2168,7 @@ impl Session {
         self.closed.retain(|closed| closed.pane.name != record.pane);
         let index = self.pane_index(&record.pane).expect("the pane just opened");
         self.panes[index].quiet_before_orphaned = quiet_before_orphaned;
+        self.panes[index].kept_after_maker_closed = kept && record.maker_closed;
         if let Some(resume) = &reopening.resume {
             self.panes[index].session_id = Some(resume.session.clone());
             self.panes[index].resume = Some(resume.clone());
@@ -2166,6 +2178,12 @@ impl Session {
         };
         let (tab, made_tab) = self.place_reopened(&record.pane, &tab, fresh);
         self.adopt_helpers(&record.pane);
+        let with_it = self.closed.iter().filter(|closed| {
+            closed.with_maker
+                && !closed.reopening
+                && closed.pane.maker.as_deref() == Some(record.pane.as_str())
+        });
+        self.reopens.extend(with_it.map(|closed| closed.pane.name.clone()));
         let resumed = reopening.resume.is_some();
         log::info(
             "daemon.pane.reopened",
@@ -2245,6 +2263,7 @@ impl Session {
                 continue;
             }
             helper.record.maker_closed = false;
+            helper.kept_after_maker_closed = false;
             if let Some(quiet) = helper.quiet_before_orphaned.take() {
                 helper.record.quiet = quiet;
             }
@@ -3284,15 +3303,16 @@ impl Session {
         if self.pane_index(pane).is_none() {
             return Reply::not_there(format!("no pane {pane} on this daemon"));
         }
-        self.remember_closing(pane);
+        self.remember_closing(pane, false);
         self.remove(pane, proto::CloseReason::Requested, None);
         Reply::done()
     }
 
     /// Keeps `pane`, about to close because a client asked, for a reopen to bring back
     /// ([`persist::ClosedPane`]), for as long as the setting says. Not while the daemon stops or
-    /// hands over, whose panes are saved or handed over whole.
-    fn remember_closing(&mut self, pane: &str) {
+    /// hands over, whose panes are saved or handed over whole. `with_maker` when the daemon closes
+    /// it for its closed maker, rather than somebody asking.
+    fn remember_closing(&mut self, pane: &str, with_maker: bool) {
         let minutes = self.settings.reopen_closed_minutes.unwrap_or(REOPEN_CLOSED_MINUTES);
         if minutes == 0 || self.stopping || self.replacing != Replacing::No {
             return;
@@ -3314,6 +3334,7 @@ impl Session {
             },
             groups: held.groups(),
             reopening: false,
+            with_maker,
         };
         self.closed.retain(|kept| kept.until_ms > closed_at_ms && kept.pane.name != pane);
         self.closed.push(closed);
@@ -3577,9 +3598,68 @@ impl Session {
         if self.orphan(&closed.maker, called) { Reply::done() } else { Reply::already() }
     }
 
+    /// The helpers to reopen after their maker, reopened since this was last asked.
+    pub(crate) fn take_reopens(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.reopens)
+    }
+
     /// The makers that closed with helpers open here since this was last asked.
     pub(crate) fn take_orphans(&mut self) -> Vec<Orphaned> {
         std::mem::take(&mut self.orphans)
+    }
+
+    /// Keeps each helper in the tab at `index` whose maker has closed: somebody brought it on
+    /// screen, so it is theirs to close, and it no longer closes once idle.
+    fn keep_shown_helpers(&mut self, index: usize) {
+        let shown: HashSet<&str> = self.tabs[index].root.panes().into_iter().collect();
+        for pane in &mut self.panes {
+            if pane.record.maker_closed
+                && !pane.kept_after_maker_closed
+                && shown.contains(pane.record.pane.as_str())
+            {
+                pane.kept_after_maker_closed = true;
+                log::info("daemon.helper.kept", fields! { "pane" => pane.record.pane });
+            }
+        }
+    }
+
+    /// Whether `pane` is a helper whose maker has closed and that nobody has taken over, so it
+    /// closes once idle.
+    pub(crate) fn closes_once_idle(pane: &Pane) -> bool {
+        pane.record.maker.is_some() && pane.record.maker_closed && !pane.kept_after_maker_closed
+    }
+
+    /// Closes `pane`, a helper the maker watch saw idle since its maker closed, as a person's
+    /// close would, so that a reopen brings it back. Checked again here, since the watch looked
+    /// with the session unlocked: not when it has gone to work, been taken over or adopted
+    /// meanwhile. Says whether it closed.
+    pub(crate) fn close_with_maker(&mut self, pane: &str) -> bool {
+        if self.stopping || self.replacing != Replacing::No {
+            return false;
+        }
+        let Some(index) = self.pane_index(pane) else { return false };
+        let helper = &self.panes[index];
+        let record = &helper.record;
+        let at_rest = record.unread_input.is_none()
+            && !is_waiting(record.facts.as_ref())
+            && match record.agent {
+                Some(_) => record.agent_state() == proto::AgentState::Idle,
+                None => true,
+            };
+        if !Self::closes_once_idle(helper) || !at_rest {
+            return false;
+        }
+        log::info(
+            "daemon.helper.closed_with_maker",
+            fields! {
+                "pane" => pane,
+                "maker" => record.maker.as_deref().unwrap_or_default(),
+                "agent" => record.agent.as_deref().unwrap_or_default(),
+            },
+        );
+        self.remember_closing(pane, true);
+        self.remove(pane, proto::CloseReason::Requested, None);
+        true
     }
 
     /// What the daemon that handed these panes over had told each helper's maker, by the helper,
@@ -3752,7 +3832,7 @@ impl Session {
         for pane in
             self.tabs[index].root.panes().into_iter().map(str::to_string).collect::<Vec<_>>()
         {
-            self.remember_closing(&pane);
+            self.remember_closing(&pane, false);
         }
         let tab = self.tabs.remove(index);
         self.emit(Payload::TabClosed(proto::TabClosed { tab: tab.name.clone() }));
@@ -3773,11 +3853,15 @@ impl Session {
         if tab.hidden == set.hidden && label.is_none() {
             return Reply::already();
         }
+        let brought_forward = tab.hidden && !set.hidden;
         tab.hidden = set.hidden;
         if let Some(label) = label {
             tab.label = label;
         }
         let record = tab.record();
+        if brought_forward {
+            self.keep_shown_helpers(index);
+        }
         self.emit(Payload::TabChanged(proto::TabChanged { tab: Some(record) }));
         Reply::done()
     }
@@ -4540,6 +4624,7 @@ impl Session {
             if self.open(record, pane.saved.grid, master, child, program).is_ok() {
                 let index = self.pane_index(&name).expect("the pane just opened");
                 self.panes[index].quiet_before_orphaned = pane.saved.quiet_before_orphaned;
+                self.panes[index].kept_after_maker_closed = pane.saved.kept_after_maker_closed;
                 if let Some(resume) = resume {
                     Self::resumed(&name, &resume);
                     let index = self.pane_index(&name).expect("the pane just opened");
@@ -4802,6 +4887,7 @@ impl Session {
         pane.maker_told = resuming.maker_told;
         pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
         pane.compaction.carry_nudged(resuming.nudged);
+        pane.kept_after_maker_closed = resuming.kept_after_maker_closed;
         let (by, at) = resuming.turn;
         pane.io.resume_turn(by, at);
         if let Some(need) = resuming.maker_told {
@@ -5824,6 +5910,7 @@ mod tests {
                     turn: (None, None),
                     quiet_before_orphaned: None,
                     nudged: false,
+                    kept_after_maker_closed: false,
                 },
             )
             .unwrap();

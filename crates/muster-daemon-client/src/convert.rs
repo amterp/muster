@@ -65,6 +65,7 @@ pub fn closed(record: proto::ClosedPane) -> ClosedPane {
         resumes: record.resumes,
         closed_at_ms: record.closed_at_ms,
         until_ms: record.until_ms,
+        closed_with_maker: record.closed_with_maker,
     }
 }
 

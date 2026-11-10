@@ -1968,18 +1968,55 @@ fn a_helper_blocked_across_a_handoff_tells_its_maker_once() {
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "told again");
 }
 
-/// A maker that closes leaves its helpers running: each stops being quiet, since nobody is left
-/// to hear from it, and the person is told once, by `@muster` (MIP-7, section 6).
+/// A daemon whose helper watch settles in a second, with the fake agent idle in pane `p1` and in
+/// each of `helpers`, quiet helpers each in a hidden tab of its own: `(helper, maker)`.
+fn a_maker_with_idle_helpers(helpers: &[(&str, &str)]) -> Agent {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    for (index, (helper_pane, maker)) in helpers.iter().enumerate() {
+        let tab = format!("t{}", index + 2);
+        let quiet_helper = proto::pane_request::Create {
+            quiet: true,
+            ..helper(helper_pane, maker, among_helpers(&tab, "helpers"))
+        };
+        make(&mut agent.control, quiet_helper);
+        agent.daemon.run_agent(helper_pane);
+    }
+    agent
+}
+
+fn open_panes(control: &mut Control) -> Vec<String> {
+    snapshot(control).panes.into_iter().map(|pane| pane.pane).collect()
+}
+
+/// A helper idle as its maker closes is closed with it once the settle has passed, as a person's
+/// close would close it, so a reopen can bring it back, and the person is told nothing.
 #[test]
-fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
-    let mut agent = Agent::in_a_pane();
+fn an_idle_helper_closes_with_its_maker_and_nobody_is_told() {
+    let mut agent = a_maker_with_idle_helpers(&[("p2", "p1")]);
     let mut logging = following(&agent.daemon);
-    let quiet_helper = proto::pane_request::Create {
-        quiet: true,
-        ..helper("p2", "p1", among_helpers("t2", "p1's helpers"))
-    };
-    make(&mut agent.control, quiet_helper);
-    agent.daemon.run_agent("p2");
+    make(&mut agent.control, create("p9", in_new_tab("t9")));
+
+    expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
+    logging.logged_until(r#""event":"daemon.helper.closed_with_maker""#, Duration::from_secs(20));
+    logging.logged_until(r#""event":"msg.helper.orphans_closed""#, Duration::from_secs(20));
+
+    let snapshot = snapshot(&mut agent.control);
+    let open: Vec<&str> = snapshot.panes.iter().map(|pane| pane.pane.as_str()).collect();
+    assert_eq!(open, ["p9"]);
+    let remembered: Vec<&str> = snapshot.closed.iter().map(|pane| pane.pane.as_str()).collect();
+    assert_eq!(remembered, ["p2", "p1"], "newest first, each for a reopen to bring back");
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new());
+}
+
+/// A helper at work as its maker closes runs on, no longer quiet, and the person is told once
+/// that it closes when idle (MIP-7, section 6, as changed since). It closes once its agent has
+/// been idle for the settle.
+#[test]
+fn a_helper_at_work_outlives_its_maker_until_it_is_idle() {
+    let mut agent = a_maker_with_idle_helpers(&[("p2", "p1")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, create("p9", in_new_tab("t9")));
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
     let mut window = agent.daemon.connect();
     expect(&mut window, attending_request(), proto::Outcome::Done);
 
@@ -1995,16 +2032,83 @@ fn a_closed_makers_helpers_stop_being_quiet_and_the_person_hears_once() {
     };
     assert!(told.said.contains(" closed; its helper ") && told.said.contains("--helpers-of p1"));
     let helper = snapshot(&mut agent.control).panes.into_iter().find(|pane| pane.pane == "p2");
-    assert!(helper.is_some_and(|helper| !helper.quiet && helper.maker.as_deref() == Some("p1")));
-
+    assert!(helper.is_some_and(|helper| !helper.quiet && helper.maker_closed));
     let read = agent.reading(msg_request::Caller::default());
     assert_eq!(read.len(), 1, "{read:?}");
     assert!(
         read[0].starts_with("@muster: ")
-            && read[0].contains(" closed; its helper ")
-            && read[0].contains("is still running, and is no longer quiet"),
+            && read[0].contains("is still running, and closes once it is idle"),
         "{read:?}"
     );
+
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    logging.logged_until(r#""event":"daemon.helper.closed_with_maker""#, Duration::from_secs(20));
+    assert_eq!(open_panes(&mut agent.control), ["p9"]);
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told once");
+}
+
+/// A helper closing with its maker is its own helpers' maker closing, so they follow it.
+#[test]
+fn a_helpers_helper_closes_after_it() {
+    let mut agent = a_maker_with_idle_helpers(&[("p2", "p1"), ("p3", "p2")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, create("p9", in_new_tab("t9")));
+
+    expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
+    logging.logged_times_until(
+        r#""event":"daemon.helper.closed_with_maker""#,
+        2,
+        Duration::from_secs(30),
+    );
+    assert_eq!(open_panes(&mut agent.control), ["p9"]);
+}
+
+/// A helper marked before its daemon restarted closes once it is at rest after it, as one whose
+/// maker closes now does: the mark is in the state file, and nothing else is needed.
+#[test]
+fn a_helper_marked_before_a_restart_closes_once_idle_after_it() {
+    let mut agent = Agent::in_a_pane_with(&[
+        ("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000"),
+        ("MUSTER_DAEMON_AGENT_TO_COME_MS", "1000"),
+    ]);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    make(&mut agent.control, create("p9", in_new_tab("t9")));
+    expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
+    until_saved(&agent.daemon, "maker_closed");
+
+    stop(&mut agent.daemon, &mut agent.control);
+    agent.daemon.restart();
+    agent.control = agent.daemon.connect();
+
+    until_some("the marked helper to close with its maker", || {
+        let snapshot = snapshot(&mut agent.control);
+        let closed = snapshot.closed.iter().find(|closed| closed.pane == "p2")?;
+        closed.closed_with_maker.then_some(())
+    });
+    assert_eq!(open_panes(&mut agent.control), ["p9"]);
+}
+
+/// A helper somebody brought on screen after its maker closed is theirs to close: it stays open
+/// when its agent goes idle.
+#[test]
+fn a_helper_brought_forward_after_its_maker_closed_is_kept() {
+    let mut agent = a_maker_with_idle_helpers(&[("p2", "p1")]);
+    let mut logging = following(&agent.daemon);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    expect(&mut agent.control, close_request("p1"), proto::Outcome::Done);
+
+    let show =
+        proto::tab_request::SetHidden { tab: "t2".to_string(), hidden: false, label: None };
+    let show = tab(proto::tab_request::Request::SetHidden(show));
+    expect(&mut agent.control, show, proto::Outcome::Done);
+    logging.logged_until(r#""event":"daemon.helper.kept""#, Duration::from_secs(20));
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+
+    // Three settles, in which a helper not kept would have closed.
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(open_panes(&mut agent.control), ["p2"]);
 }
 
 /// A maker that closes together with its helpers, as a tab holding them all does, leaves nothing
@@ -2042,7 +2146,7 @@ fn a_daemon_stopping_closes_no_maker() {
 /// nothing. A maker open here has not closed.
 #[test]
 fn a_maker_closed_on_another_machine_frees_its_helpers_here() {
-    let mut agent = Agent::in_a_pane();
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
     let mut logging = following(&agent.daemon);
     let quiet_helper = proto::pane_request::Create {
         quiet: true,
@@ -2069,6 +2173,11 @@ fn a_maker_closed_on_another_machine_frees_its_helpers_here() {
     expect(&mut agent.control, closed("p9far"), proto::Outcome::AlreadySo);
     let refused = expect(&mut agent.control, closed("p1"), proto::Outcome::Refused);
     assert!(refused.answer.reason.contains("has not closed"), "{}", refused.answer.reason);
+
+    // An agent in it that goes idle closes it, as a maker closing here would.
+    agent.daemon.run_agent("p2");
+    logging.logged_until(r#""event":"daemon.helper.closed_with_maker""#, Duration::from_secs(30));
+    assert_eq!(open_panes(&mut agent.control), ["p1"]);
 }
 
 #[test]

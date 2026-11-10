@@ -15,7 +15,7 @@ use muster_msg::{Activity, Participant, Presence, Ringable};
 use super::inbox;
 use crate::compaction::Step;
 use crate::pane::PaneIo;
-use crate::session::Shared;
+use crate::session::{Session, Shared};
 
 /// A pane with an agent in it, as it was when it was read.
 #[derive(Debug, Clone)]
@@ -105,6 +105,8 @@ pub(crate) struct Panes {
     /// The pane each helper was made by, by the helper (MIP-7), while that has not closed: the
     /// maker may be on another machine.
     makers: HashMap<String, String>,
+    /// The helpers whose maker has closed and that nobody has taken over, which close once idle.
+    closing: Vec<String>,
 }
 
 impl Panes {
@@ -178,7 +180,8 @@ impl Panes {
             let young = !loaded || restarting || io.since_agent_started() < agent_to_come;
             let maker = record.maker.clone().filter(|_| !record.maker_closed);
             let former = record.former_labels.clone();
-            (record.pane.clone(), seen, young, given, callsign, title, maker, former)
+            let closing = Session::closes_once_idle(pane);
+            (record.pane.clone(), seen, young, given, callsign, title, maker, former, closing)
         });
         let mut panes = Panes {
             attended: session.attended(),
@@ -187,7 +190,10 @@ impl Panes {
             ..Panes::default()
         };
         drop(session);
-        for (pane, seen, young, given, callsign, title, maker, former) in read {
+        for (pane, seen, young, given, callsign, title, maker, former, closing) in read {
+            if closing {
+                panes.closing.push(pane.clone());
+            }
             if let Some(maker) = maker {
                 panes.makers.insert(pane.clone(), maker);
             }
@@ -228,6 +234,18 @@ impl Panes {
     /// Every helper open here whose maker has not closed, with the pane that made it.
     pub(crate) fn makers(&self) -> impl Iterator<Item = (&String, &String)> {
         self.makers.iter()
+    }
+
+    /// Every helper open here that closes once idle, with whether it is at rest now: its agent
+    /// idle and reading its input, or no agent in it and none still expected.
+    pub(crate) fn closing(&self) -> impl Iterator<Item = (&String, bool)> {
+        self.closing.iter().map(|pane| {
+            let at_rest = match self.agents.get(pane) {
+                Some(seen) => seen.activity == Some(Activity::Idle) && seen.stopped.is_none(),
+                None => self.open.get(pane) == Some(&false),
+            };
+            (pane, at_rest && !self.restoring)
+        })
     }
 
     /// The pane that made `pane`, when it is a helper open here whose maker has not closed.

@@ -15,24 +15,27 @@
 //! that long has often been met, as a plan dialog the maker itself is about to answer is. So
 //! while the maker is busy the need is held, and told when it comes free if it still holds.
 //!
-//! When a maker's pane closes, its helpers go on running and stop being quiet, which the session
-//! does as the pane closes, and the person is told here, once per maker (MIP-7, section 6). On a
-//! machine the person is not homed on, that waits until their machine is linked to this one:
-//! a group made here while no link is up would never be sent there.
+//! When a maker's pane closes, its helpers stop being quiet, which the session does as the pane
+//! closes, and each is closed here once it has been at rest for [`SETTLE`]: its agent idle, or no
+//! agent in it. One at work runs on until then, and the person is told of those, once per maker.
+//! On a machine the person is not homed on, that waits until their machine is linked to this
+//! one: a group made here while no link is up would never be sent there.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use muster_core::diagnostics::log;
+use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
+use muster_core::names::{Mint, Minter};
+use muster_daemon_proto as proto;
 use muster_msg::{Activity, Presence, Reach};
 
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
 use super::{delivering, now_ms, told, waits};
 use crate::pane::TypedBy;
-use crate::session::{Orphaned, Shared};
+use crate::session::{Orphaned, Session, Shared};
 
 /// How long a helper's need must hold before its maker is told of it.
 pub(crate) const SETTLE: Duration = Duration::from_secs(10);
@@ -219,6 +222,14 @@ pub(crate) struct Makers {
     asked_ms: HashMap<String, u64>,
     /// Makers that closed whose notice waits for the person's machine to be linked to this one.
     held: Vec<Orphaned>,
+    /// Makers that closed, and when this watch heard: the person is told of the helpers still
+    /// running once the settle has passed, so of none that closed with their maker.
+    unsettled: Vec<(Orphaned, u64)>,
+    /// Since when each helper whose maker has closed has been at rest, by the helper.
+    at_rest_since_ms: HashMap<String, u64>,
+    /// Whether a helper whose maker has closed holds no agent yet and may still get one: nothing
+    /// wakes the doorbell's thread when that time is up, so it looks again after a settle.
+    agent_awaited: bool,
     /// What each helper's maker has been told it needs, as the session last heard, so that a
     /// daemon taking the panes over does not tell them again.
     told: BTreeMap<String, Need>,
@@ -243,6 +254,9 @@ impl Makers {
             there: HashMap::new(),
             asked_ms: HashMap::new(),
             held: Vec::new(),
+            unsettled: Vec::new(),
+            at_rest_since_ms: HashMap::new(),
+            agent_awaited: false,
             told: BTreeMap::new(),
             carried: BTreeMap::new(),
             newly_held: Vec::new(),
@@ -337,9 +351,50 @@ impl Makers {
         tells
     }
 
-    /// How long until a need held now is due to be told. One waiting for its maker to be free is
-    /// looked at again when the maker changes, which wakes the doorbell's thread anyway.
+    /// Which of `closing`, each helper whose maker has closed with whether it is at rest now,
+    /// have been at rest for the settle, and so close. Pure, as [`Makers::judge`] is.
+    fn settled<'a>(
+        &mut self,
+        closing: impl Iterator<Item = (&'a String, bool)>,
+        now_ms: u64,
+    ) -> Vec<String> {
+        let at_rest: HashSet<&String> =
+            closing.filter(|(_, at_rest)| *at_rest).map(|(pane, _)| pane).collect();
+        self.at_rest_since_ms.retain(|pane, _| at_rest.contains(pane));
+        let mut settled = Vec::new();
+        for pane in at_rest {
+            let since_ms = *self.at_rest_since_ms.entry(pane.clone()).or_insert(now_ms);
+            if now_ms.saturating_sub(since_ms) >= self.settle_ms {
+                settled.push(pane.clone());
+            }
+        }
+        settled.sort();
+        settled
+    }
+
+    /// The makers whose close this watch heard of a settle ago, whose helpers still running the
+    /// person is now told of.
+    fn settled_notices(&mut self, now_ms: u64) -> Vec<Orphaned> {
+        let settle_ms = self.settle_ms;
+        let (due, later) = std::mem::take(&mut self.unsettled)
+            .into_iter()
+            .partition(|(_, heard_ms)| now_ms.saturating_sub(*heard_ms) >= settle_ms);
+        self.unsettled = later;
+        due.into_iter().map(|(orphaned, _)| orphaned).collect()
+    }
+
+    /// How long until a need held now is due to be told, or a helper at rest or a closed maker's
+    /// notice has settled. A need waiting for its maker to be free is looked at again when the
+    /// maker changes, which wakes the doorbell's thread anyway.
     fn due(&self, now_ms: u64) -> Duration {
+        let settling = self
+            .at_rest_since_ms
+            .values()
+            .chain(self.unsettled.iter().map(|(_, heard_ms)| heard_ms))
+            .chain(self.agent_awaited.then_some(&now_ms))
+            .map(|since_ms| {
+                Duration::from_millis(since_ms.saturating_add(self.settle_ms).saturating_sub(now_ms))
+            });
         self.watches
             .values()
             .filter(|watch| !watch.told && !watch.held)
@@ -352,6 +407,7 @@ impl Makers {
                     .saturating_sub(now_ms);
                 Duration::from_millis(left)
             })
+            .chain(settling)
             .min()
             .unwrap_or(NOTHING_DUE)
     }
@@ -439,27 +495,48 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
     let (fresh, helping) = {
         let mut session = shared.lock();
         makers.carried.append(&mut session.take_carried_told());
+        for helper in session.take_reopens() {
+            reopen_with_maker(shared, &mut session, &helper);
+        }
         (session.take_orphans(), session.has_helpers())
     };
-    if fresh.is_empty() && makers.held.is_empty() && !helping {
+    let now = now_ms();
+    makers.unsettled.extend(fresh.into_iter().map(|orphaned| (orphaned, now)));
+    if makers.unsettled.is_empty() && makers.held.is_empty() && !helping {
         makers.watches.clear();
+        makers.at_rest_since_ms.clear();
+        makers.agent_awaited = false;
         keep_told(shared, makers);
         return NOTHING_DUE;
     }
     let panes = Panes::of(shared);
     makers.carried.retain(|pane, _| panes.exists(pane));
-    if !fresh.is_empty() || !makers.held.is_empty() {
+    // Before the notices, so that the person is told of no helper that closes on this look.
+    let mut closed = HashSet::new();
+    makers.agent_awaited =
+        panes.closing().any(|(pane, at_rest)| !at_rest && panes.get(pane).is_none());
+    for pane in makers.settled(panes.closing(), now) {
+        if shared.lock().close_with_maker(&pane) {
+            makers.at_rest_since_ms.remove(&pane);
+            closed.insert(pane);
+        } else {
+            // It went to work or was taken over since it was read: weighed afresh.
+            makers.at_rest_since_ms.insert(pane, now);
+        }
+    }
+    let settled = makers.settled_notices(now);
+    if !settled.is_empty() || !makers.held.is_empty() {
         let in_reach = shared.messages().service.human_in_reach(&panes);
-        for orphaned in fresh.iter().filter(|_| !in_reach) {
+        for orphaned in settled.iter().filter(|_| !in_reach) {
             log::info(
                 "msg.helper.orphans_held",
                 fields! { "maker" => orphaned.maker, "helpers" => names(orphaned).join(",") },
             );
         }
-        makers.held.extend(fresh);
+        makers.held.extend(settled);
         if in_reach {
             for orphaned in std::mem::take(&mut makers.held) {
-                if let Some(open) = still_open(orphaned, &panes) {
+                if let Some(open) = still_open(orphaned, &panes, &closed) {
                     tell_person(shared, &panes, &open);
                 }
             }
@@ -621,14 +698,64 @@ fn helpers(
     helpers
 }
 
+/// Reopens `helper`, which closed with a maker that has just been reopened, as a request to
+/// reopen it would: reserved now, under the caller's lock, and started on a thread of its own,
+/// since a reopen waits for what the pane ran to end.
+fn reopen_with_maker(shared: &Arc<Shared>, session: &mut Session, helper: &str) {
+    let reopen = proto::pane_request::Reopen {
+        pane: helper.to_string(),
+        tab: Minter::new(Mint::Drawn).tab().to_string(),
+    };
+    let starting = match session.prepare_reopen(reopen) {
+        Ok(starting) => starting,
+        Err(reply) => return not_reopened(helper, &reply.reason),
+    };
+    let slot = Arc::new(Mutex::new(Some(starting)));
+    let spawned = std::thread::Builder::new().name("reopen helper".to_string()).spawn({
+        let (shared, slot, helper) = (Arc::clone(shared), Arc::clone(&slot), helper.to_string());
+        move || {
+            let Some(mut starting) = poison::lock(&slot, "reopen").take() else { return };
+            let started = starting.start();
+            let reply = shared.lock().started(starting, started);
+            if reply.outcome != proto::Outcome::Done {
+                not_reopened(&helper, &reply.reason);
+            }
+        }
+    });
+    if let Err(error) = spawned
+        && let Some(starting) = poison::lock(&slot, "reopen").take()
+    {
+        let reply = session.started(starting, Err(error));
+        not_reopened(helper, &reply.reason);
+    }
+}
+
+fn not_reopened(helper: &str, reason: &str) {
+    log::warn(
+        "daemon.helper.not_reopened",
+        fields! {
+            "pane" => helper,
+            "reason" => reason,
+            "impact" => "its maker is back without this helper, which closed with it",
+            "check" => "`muster pane reopen --list`: while the helper is listed, `muster pane \
+                        reopen --pane` with its callsign brings it back",
+        },
+    );
+}
+
 fn names(orphaned: &Orphaned) -> Vec<&str> {
     orphaned.helpers.iter().map(|(_, name)| name.as_str()).collect()
 }
 
-/// `orphaned` with only the helpers still open, or nothing when none is. A helper can close
-/// after its maker in one request, as a tab holding both does, or while the notice is held.
-fn still_open(mut orphaned: Orphaned, panes: &Panes) -> Option<Orphaned> {
-    orphaned.helpers.retain(|(pane, _)| panes.exists(pane));
+/// `orphaned` with only the helpers still open, or nothing when none is. A helper closes with
+/// its maker once it is at rest, which `closed` did since `panes` was read, or after its maker in
+/// one request, as a tab holding both does.
+fn still_open(
+    mut orphaned: Orphaned,
+    panes: &Panes,
+    closed: &HashSet<String>,
+) -> Option<Orphaned> {
+    orphaned.helpers.retain(|(pane, _)| panes.exists(pane) && !closed.contains(pane));
     if orphaned.helpers.is_empty() {
         log::info("msg.helper.orphans_closed", fields! { "maker" => orphaned.maker });
         return None;
@@ -636,19 +763,22 @@ fn still_open(mut orphaned: Orphaned, panes: &Panes) -> Option<Orphaned> {
     Some(orphaned)
 }
 
-/// What the person is told of a maker that closed with its helpers still running.
+/// What the person is told of a maker that closed with helpers still at work, which close once
+/// they are idle unless the person brings them forward.
 ///
 /// The command names the maker by its id, which its helpers still carry: its name went with it.
 fn orphaned_body(orphaned: &Orphaned) -> String {
     let (maker, id) = (&orphaned.called, &orphaned.maker);
     match names(orphaned).as_slice() {
         [only] => format!(
-            "{maker} closed; its helper {only} is still running, and is no longer quiet. `muster \
-             pane show --helpers-of {id}` brings it forward."
+            "{maker} closed; its helper {only} is still running, and closes once it is idle. \
+             `muster pane show --helpers-of {id}` brings it forward, and it then stays open until \
+             you close it."
         ),
         helpers => format!(
-            "{maker} closed; {count} of its helpers are still running, and are no longer quiet: \
-             {names}. `muster pane show --helpers-of {id}` brings them forward.",
+            "{maker} closed; {count} of its helpers are still running, and each closes once it is \
+             idle: {names}. `muster pane show --helpers-of {id}` brings them forward, and they \
+             then stay open until you close them.",
             count = helpers.len(),
             names = helpers.join(", "),
         ),
@@ -671,9 +801,9 @@ fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
                 "maker" => orphaned.maker,
                 "helpers" => names(orphaned).join(","),
                 "reason" => reply.reason,
-                "impact" => "the person was not told that these helpers are still running with \
-                             nobody watching them; they are no longer quiet, so their next block \
-                             or finish notifies as any pane's does",
+                "impact" => "the person was not told that these helpers are still running and \
+                             close once idle; they are no longer quiet, so a block notifies as \
+                             any pane's does",
                 "check" => "the reason: the person homed on another machine, where Muster \
                             cannot tell them from here, or a store that would not write",
             },
@@ -1066,12 +1196,56 @@ mod tests {
         };
         assert_eq!(
             orphaned_body(&orphaned(&["🤖 1", "maple", "cobalt"])),
-            "🤖 integrator closed; 3 of its helpers are still running, and are no longer quiet: \
-             🤖 1, maple, cobalt. `muster pane show --helpers-of p1` brings them forward."
+            "🤖 integrator closed; 3 of its helpers are still running, and each closes once it \
+             is idle: 🤖 1, maple, cobalt. `muster pane show --helpers-of p1` brings them forward, \
+             and they then stay open until you close them."
         );
         assert!(orphaned_body(&orphaned(&["🤖 1"])).starts_with(
-            "🤖 integrator closed; its helper 🤖 1 is still running, and is no longer quiet."
+            "🤖 integrator closed; its helper 🤖 1 is still running, and closes once it is idle."
         ));
+    }
+
+    #[test]
+    fn a_helper_whose_maker_closed_closes_once_at_rest_for_the_settle() {
+        let mut makers = makers();
+        let (maple, cobalt) = ("maple".to_string(), "cobalt".to_string());
+        let seen = |maple_rests, cobalt_rests| vec![(&maple, maple_rests), (&cobalt, cobalt_rests)];
+
+        assert_eq!(makers.settled(seen(true, false).into_iter(), 1_000), Vec::<String>::new());
+        assert_eq!(makers.due(1_000), Duration::from_secs(10));
+        // Cobalt comes to rest later, and its settle is its own.
+        assert_eq!(makers.settled(seen(true, true).into_iter(), 6_000), Vec::<String>::new());
+        assert_eq!(makers.settled(seen(true, true).into_iter(), 11_000), vec!["maple"]);
+        assert_eq!(makers.settled(seen(false, true).into_iter(), 16_000), vec!["cobalt"]);
+    }
+
+    #[test]
+    fn going_back_to_work_starts_the_settle_again() {
+        let mut makers = makers();
+        let maple = "maple".to_string();
+        let seen = |rests| std::iter::once((&maple, rests));
+
+        assert!(makers.settled(seen(true), 0).is_empty());
+        assert!(makers.settled(seen(false), 5_000).is_empty());
+        assert!(makers.settled(seen(true), 9_000).is_empty());
+        assert!(makers.settled(seen(true), 12_000).is_empty());
+        assert_eq!(makers.settled(seen(true), 19_000), vec!["maple"]);
+    }
+
+    #[test]
+    fn a_closed_makers_notice_is_held_for_the_settle() {
+        let mut makers = makers();
+        let orphaned = Orphaned {
+            maker: "p1".to_string(),
+            called: "pine".to_string(),
+            helpers: vec![("p2".to_string(), "maple".to_string())],
+        };
+        makers.unsettled.push((orphaned.clone(), 1_000));
+
+        assert!(makers.settled_notices(10_999).is_empty());
+        assert_eq!(makers.due(10_999), Duration::from_millis(1));
+        assert_eq!(makers.settled_notices(11_000), vec![orphaned]);
+        assert!(makers.settled_notices(30_000).is_empty());
     }
 
     /// A block the daemon that handed the panes over told of is not told again, while it lasts;

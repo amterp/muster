@@ -493,6 +493,8 @@ pub struct ClosedPane {
     /// daemon's clock.
     pub closed_at_ms: u64,
     pub until_ms: u64,
+    /// Its daemon closed it with its maker, so a reopen that names no pane passes over it.
+    pub closed_with_maker: bool,
 }
 
 /// How much of the backend's truth Muster currently has.

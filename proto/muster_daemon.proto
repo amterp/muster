@@ -376,8 +376,9 @@ message PaneRequest {
 
   // A helper's maker, a pane on another daemon, has closed (MIP-7, section 6): a window saw it
   // close, or opened onto helpers whose maker no daemon holds. Each helper of it here stops being
-  // quiet and is marked (`Pane.maker_closed`), and the person is told once, in a message from
-  // `@muster` naming them, as when a maker here closes. ALREADY_SO when every helper of it here
+  // quiet and is marked (`Pane.maker_closed`), and is closed once idle; the person is told once,
+  // in a message from `@muster`, of those still running, as when a maker here closes. ALREADY_SO
+  // when every helper of it here
   // is marked already, or none is here. REFUSED when the maker is a pane open here: it has not
   // closed. Since 1.6.
   message MakerClosed {
@@ -437,7 +438,10 @@ message PaneRequest {
   // was hidden; a helper whose tab is gone goes among its maker's helpers. Its callsign and name
   // come back unless an open pane holds either now: then the callsign is drawn afresh and the
   // name is left off, and `Reopened` says so. Helpers of it here, and its own maker when open
-  // here, are joined again (`Pane.maker_closed` cleared and their quiet put back).
+  // here, are joined again (`Pane.maker_closed` cleared and their quiet put back), and since 1.14
+  // each helper the daemon closed with it (`ClosedPane.closed_with_maker`) is reopened after it,
+  // with no request of its own. A helper reopened while its maker is not open here is no longer
+  // closed once idle.
   //
   // DONE with `Reopened`. NOT_THERE when nothing is remembered by that name; REFUSED when a pane
   // of that id is open or starting, or the pane could not start. Since 1.10.
@@ -1575,6 +1579,10 @@ message ClosedPane {
   uint64 until_ms = 9;
   // The tab it was in as it closed, which may be gone.
   string tab = 10;
+  // Since 1.14. Its daemon closed it because its maker had closed and it was idle
+  // (`Pane.maker_closed`), so reopening its maker on this daemon reopens it too, and a client
+  // reopening "the pane closed last" passes over it for one somebody closed.
+  bool closed_with_maker = 11;
 }
 
 message PaneText {
@@ -1841,8 +1849,10 @@ message Pane {
   // state file. Absent for a pane nobody made as a helper.
   optional string maker = 21;
   // Since 1.6. The pane's maker has closed, here or on another machine (`PaneRequest.MakerClosed`),
-  // so it is no longer quiet on its maker's behalf, nor watched for it. Set once, never cleared,
-  // and written to the state file.
+  // so it is no longer quiet on its maker's behalf, nor watched for it, and its daemon closes it
+  // once it is idle, as a `Close` would, unless somebody brought its tab on screen or reopened
+  // it meanwhile. Cleared when its maker is reopened on this daemon, and written to the state
+  // file.
   bool maker_closed = 22;
   // Since 1.8. The names the pane was given before its present one, oldest first and at most
   // eight, so a name somebody still holds - `$MUSTER_PANE_NAME` keeps the one the pane was

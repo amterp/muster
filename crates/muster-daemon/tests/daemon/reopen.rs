@@ -1,6 +1,8 @@
 //! A pane closed by mistake, brought back: under its id, callsign and name, in its directory and
 //! its place, running its agent's session again (`PaneRequest.Reopen`).
 
+use std::time::Duration;
+
 use crate::persistence::{record, stop, until_restored};
 use crate::resume::reported;
 use crate::support::*;
@@ -318,6 +320,101 @@ fn a_helper_reopened_before_its_maker_asks_for_the_person_until_its_maker_is_bac
     assert!(h1.maker_closed && !h1.quiet, "left as its maker's close leaves a helper: {h1:?}");
 
     reopened(&mut control, "m1", "t4");
+    let h1 = record(&snapshot(&mut control), "h1").clone();
+    assert!(!h1.maker_closed && h1.quiet, "taken back by its maker: {h1:?}");
+}
+
+/// A daemon whose helpers close a second after they come to rest, agent or none.
+fn daemon_closing_helpers_quickly() -> Daemon {
+    daemon_with(&[
+        ("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000"),
+        ("MUSTER_DAEMON_AGENT_TO_COME_MS", "1000"),
+    ])
+}
+
+fn quiet_helper(control: &mut Control, pane: &str, maker: &str, tab: &str) {
+    let placement = among_helpers(tab, &format!("🤖 {maker}'s helpers"));
+    make(control, pane_request::Create { quiet: true, ..helper(pane, maker, placement) });
+}
+
+/// The snapshot once the daemon has closed each of `helpers` with its maker.
+fn until_closed_with_maker(control: &mut Control, helpers: &[&str]) -> proto::Snapshot {
+    until_some(&format!("{helpers:?} to close with their maker"), || {
+        let snapshot = snapshot(control);
+        let closed = |helper: &&str| {
+            snapshot.closed.iter().any(|closed| closed.pane == **helper && closed.closed_with_maker)
+        };
+        helpers.iter().all(closed).then_some(snapshot)
+    })
+}
+
+/// Reopening a maker brings back the helpers its daemon closed with it, and theirs, with no
+/// request for any of them: each its maker's quiet helper again, hidden among its helpers.
+#[test]
+fn a_reopened_maker_brings_back_the_helpers_that_closed_with_it() {
+    let daemon = daemon_closing_helpers_quickly();
+    let mut control = daemon.connect();
+    make(&mut control, create("k1", in_new_tab("t0")));
+    make(&mut control, create("m1", in_new_tab("t1")));
+    quiet_helper(&mut control, "h1", "m1", "t2");
+    let beside_h1 = beside("h1", proto::Side::Right);
+    make(&mut control, pane_request::Create { quiet: true, ..helper("h2", "m1", beside_h1) });
+    quiet_helper(&mut control, "h3", "h1", "t3");
+
+    close(&mut control, "m1");
+    let closed = until_closed_with_maker(&mut control, &["h1", "h2", "h3"]).closed;
+    let maker = closed.iter().find(|closed| closed.pane == "m1").expect("the maker, remembered");
+    assert!(!maker.closed_with_maker, "somebody closed the maker");
+    assert_ne!(closed[0].pane, "m1", "a helper closed last: {closed:?}");
+
+    reopened(&mut control, "m1", "t10");
+    let snapshot = until_some("the helpers to come back with their maker", || {
+        let snapshot = snapshot(&mut control);
+        (snapshot.panes.len() == 5).then_some(snapshot)
+    });
+    for (pane, maker) in [("h1", "m1"), ("h2", "m1"), ("h3", "h1")] {
+        let record = record(&snapshot, pane);
+        assert_eq!(record.maker.as_deref(), Some(maker));
+        assert!(!record.maker_closed && record.quiet, "{pane} is a quiet helper again: {record:?}");
+    }
+    assert!(snapshot.closed.is_empty(), "every one reopened: {:?}", snapshot.closed);
+    let holding = |pane: &str| {
+        let holds = |tab: &&proto::Tab| tab.root.as_ref().is_some_and(|root| shape(root).contains(pane));
+        snapshot.tabs.iter().find(holds).expect("a tab holding it")
+    };
+    assert_eq!(holding("h1").tab, holding("h2").tab, "m1's helpers share a tab again");
+    assert!(holding("h1").hidden && holding("h3").hidden);
+
+    // Back with their maker, they are not closed for being idle.
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(crate::support::snapshot(&mut control).panes.len(), 5);
+}
+
+/// A helper reopened by itself, its maker still closed, was asked for: it does not close again
+/// for being idle, through a restart too, and its maker takes it back when reopened.
+#[test]
+fn a_helper_reopened_without_its_maker_is_kept() {
+    let mut daemon = daemon_closing_helpers_quickly();
+    let mut control = daemon.connect();
+    make(&mut control, create("k1", in_new_tab("t0")));
+    make(&mut control, create("m1", in_new_tab("t1")));
+    quiet_helper(&mut control, "h1", "m1", "t2");
+    close(&mut control, "m1");
+    until_closed_with_maker(&mut control, &["h1"]);
+
+    reopened(&mut control, "h1", "t10");
+    std::thread::sleep(Duration::from_secs(3));
+    let h1 = record(&snapshot(&mut control), "h1").clone();
+    assert!(h1.maker_closed && !h1.quiet, "open, and asking for the person: {h1:?}");
+
+    stop(&mut daemon, &mut control);
+    daemon.restart();
+    let mut control = daemon.connect();
+    until_restored(&mut control, 2);
+    std::thread::sleep(Duration::from_secs(3));
+    assert!(record(&snapshot(&mut control), "h1").maker_closed, "kept through a restart");
+
+    reopened(&mut control, "m1", "t11");
     let h1 = record(&snapshot(&mut control), "h1").clone();
     assert!(!h1.maker_closed && h1.quiet, "taken back by its maker: {h1:?}");
 }

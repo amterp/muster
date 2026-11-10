@@ -4111,14 +4111,20 @@ pub(crate) fn closed_panes(window: WindowId) -> Vec<(DaemonId, ClosedPane)> {
 }
 
 /// The closed pane a reopen naming none brings back in `window`: the newest closed while this
-/// window showed it, or else the newest any machine it shows remembers.
+/// window showed it, or else the newest any machine it shows remembers. A helper its daemon
+/// closed with its maker is passed over while anything else is remembered: it closed after its
+/// maker, and comes back with it.
 pub(crate) fn newest_closed(window: WindowId) -> Option<(DaemonId, ClosedPane)> {
     let mut closed = closed_panes(window);
     let session = poison::lock(&SESSION, "session");
     let closed_here = &session.windows[window].closed_here;
-    let here = closed.iter().position(|(_, pane)| closed_here.contains(&pane.id));
+    let asked_closed = |pane: &ClosedPane| !pane.closed_with_maker;
+    let here = closed
+        .iter()
+        .position(|(_, pane)| asked_closed(pane) && closed_here.contains(&pane.id))
+        .or_else(|| closed.iter().position(|(_, pane)| asked_closed(pane)));
     drop(session);
-    (!closed.is_empty()).then(|| closed.swap_remove(here.unwrap_or(0)))
+    (!closed.is_empty()).then(|| closed.remove(here.unwrap_or(0)))
 }
 
 /// Notes which window showed a pane its daemon has just said it remembers closing. Asked before

@@ -11,7 +11,7 @@
 
 mod fds;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -515,12 +515,22 @@ pub(crate) fn take_over(
     send(&mut link, handoff::Message::Accept(accept))?;
     faults.pause("after-accept", socket);
 
-    let Built { shared, stopping, stop, persister, tabs, resumes, orphaned_quiet, app_manifests } =
+    let Built {
+        shared,
+        stopping,
+        stop,
+        persister,
+        tabs,
+        resumes,
+        orphaned_quiet,
+        kept_helpers,
+        app_manifests,
+    } =
         build(&mut link, socket, data, log)?;
     if !app_manifests.is_empty() {
         shared.adopt_manifests(app_manifests);
     }
-    adopt_panes(&mut link, &shared, offer.panes, &resumes, &orphaned_quiet)?;
+    adopt_panes(&mut link, &shared, offer.panes, &resumes, (&orphaned_quiet, &kept_helpers))?;
     let tabs = shared.lock().adopt_tabs(tabs);
     if let Err(problem) = tabs {
         return refuse(&mut link, problem);
@@ -591,6 +601,9 @@ struct Built {
     resumes: HashMap<String, persist::Resume>,
     /// Whether each helper whose maker has closed was quiet before, by pane, from the same.
     orphaned_quiet: HashMap<String, bool>,
+    /// The helpers the person took over after their makers closed
+    /// (`persist::Pane::kept_after_maker_closed`).
+    kept_helpers: HashSet<String>,
     app_manifests: Vec<proto::Manifest>,
 }
 
@@ -663,6 +676,12 @@ fn build(
             .iter()
             .filter_map(|pane| Some((pane.name.clone(), pane.quiet_before_orphaned?)))
             .collect(),
+        kept_helpers: state
+            .panes
+            .iter()
+            .filter(|pane| pane.kept_after_maker_closed)
+            .map(|pane| pane.name.clone())
+            .collect(),
         resumes: state
             .panes
             .into_iter()
@@ -678,7 +697,7 @@ fn adopt_panes(
     shared: &Shared,
     panes: u32,
     resumes: &HashMap<String, persist::Resume>,
-    orphaned_quiet: &HashMap<String, bool>,
+    (orphaned_quiet, kept_helpers): (&HashMap<String, bool>, &HashSet<String>),
 ) -> Result<(), String> {
     for _ in 0..panes {
         let master = fds::receive(link, 1)
@@ -718,6 +737,7 @@ fn adopt_panes(
         });
         let resume = resumes.get(&record.pane);
         let quiet_before_orphaned = orphaned_quiet.get(&record.pane).copied();
+        let kept_after_maker_closed = kept_helpers.contains(&record.pane);
         let adopted = shared.lock().adopt(
             record,
             grid,
@@ -742,6 +762,7 @@ fn adopt_panes(
                 turn,
                 quiet_before_orphaned,
                 nudged: pane.nudged,
+                kept_after_maker_closed,
             },
         );
         if let Err(problem) = adopted {

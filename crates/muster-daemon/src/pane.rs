@@ -980,6 +980,9 @@ pub(crate) struct Pane {
     pub(crate) maker_told: Option<Need>,
     /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
     pub(crate) quiet_before_orphaned: Option<bool>,
+    /// The person took it over after its maker closed
+    /// (`persist::Pane::kept_after_maker_closed`).
+    pub(crate) kept_after_maker_closed: bool,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -1219,6 +1222,7 @@ impl Pane {
             resume_missed: None,
             maker_told: None,
             quiet_before_orphaned: None,
+            kept_after_maker_closed: false,
         })
     }
 

@@ -104,6 +104,10 @@ pub(crate) struct ClosedPane {
     /// restart meanwhile keeps it, and is not offered to a second reopen.
     #[serde(skip)]
     pub(crate) reopening: bool,
+    /// The daemon closed it because its maker had closed and it was idle
+    /// (`proto::ClosedPane::closed_with_maker`), so it comes back with its maker.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) with_maker: bool,
 }
 
 impl ClosedPane {
@@ -120,6 +124,7 @@ impl ClosedPane {
             closed_at_ms: self.closed_at_ms,
             until_ms: self.until_ms,
             tab: self.tab.name.clone(),
+            closed_with_maker: self.with_maker,
         }
     }
 }
@@ -205,6 +210,11 @@ pub(crate) struct Pane {
     /// absent when the pane leaves it to the rules, and holding no percent when it is off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) compaction: Option<proto::CompactionThresholds>,
+    /// The person took it over after its maker closed, by reopening it alone or bringing it on
+    /// screen, so it does not close once idle as its maker's other helpers do. Cleared when its
+    /// maker is reopened.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) kept_after_maker_closed: bool,
 }
 
 /// The command that starts a pane's agent session again after a restart: the agent's manifest's
@@ -788,6 +798,7 @@ mod tests {
             maker_closed: false,
             quiet_before_orphaned: None,
             compaction: None,
+            kept_after_maker_closed: false,
         }
     }
 
@@ -1026,6 +1037,7 @@ mod tests {
             maker_closed: false,
             quiet_before_orphaned: None,
             compaction: None,
+            kept_after_maker_closed: false,
         };
         let split = |axis, ratio, first: &str, second: &str| Node::Split {
             axis,
