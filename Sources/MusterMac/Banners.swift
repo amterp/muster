@@ -393,9 +393,25 @@ final class BannerAuthors: ObservableObject {
   }
 }
 
+/// How tall the stack may stand: what the panes leave it, as the window's layout measures it.
+///
+/// One per window, since windows differ in height, where the board is shared by all of them.
+/// Unbounded until a layout has measured.
+@MainActor
+final class BannerRoom: ObservableObject {
+  @Published var height: CGFloat = .infinity
+}
+
 /// The stack: the first banner in full, and one line for the rest.
 struct BannerStackView: View {
+  /// How far inside the panes' edge the hosting view sits. The cards stand `edgeInset + gutter` in.
+  static let edgeInset: CGFloat = 2
+  /// Room around the cards inside the scroll view, which clips to its bounds: without it the
+  /// cards' shadows would be cut off.
+  static let gutter: CGFloat = 6
+
   @ObservedObject var board: BannerBoard
+  @ObservedObject var room: BannerRoom
   /// Finds an author by callsign among this window's panes.
   let identify: (String) -> BannerAuthor?
   /// What the agent is called when the conversation a banner is in is one with a single agent.
@@ -412,40 +428,48 @@ struct BannerStackView: View {
   var body: some View {
     let layout = BannerStackModel.layout(
       banners: board.banners, others: board.folded, keeps: board.keeps, expanded: expanded)
-    VStack(alignment: .trailing, spacing: 8) {
-      ForEach(layout.full, id: \.identity) { banner in
-        BannerCard(
-          banner: banner, board: board, author: identify(banner.author),
-          conversation: conversation(banner.daemonID, banner.group),
-          onLeave: onLeave, endComposition: endComposition
-        )
-        .environment(
-          \.openURL,
-          OpenURLAction { url in
-            onLink(url, banner.daemonID, banner.group)
-            return .handled
-          })
+    // Scrolls inside the room the panes leave. Held to it here rather than left to the layout's
+    // constraints: a stack taller than the frame it is given is centered in it, which cut off its
+    // top. Always a scroll view, since swapping one in on overflow would rebuild the cards and
+    // lose a reply being typed.
+    ScrollView(.vertical) {
+      VStack(alignment: .trailing, spacing: 8) {
+        ForEach(layout.full, id: \.identity) { banner in
+          BannerCard(
+            banner: banner, board: board, author: identify(banner.author),
+            conversation: conversation(banner.daemonID, banner.group),
+            onLeave: onLeave, endComposition: endComposition
+          )
+          .environment(
+            \.openURL,
+            OpenURLAction { url in
+              onLink(url, banner.daemonID, banner.group)
+              return .handled
+            })
+        }
+        if let summary = layout.summary {
+          FoldedBannersLine(
+            summary: summary,
+            show: {
+              if !layout.folded.isEmpty {
+                expanded = true
+              } else if let oldest = board.oldest {
+                board.core.open(oldest.daemonID, oldest.group)
+              }
+            })
+        }
       }
-      if let summary = layout.summary {
-        FoldedBannersLine(
-          summary: summary,
-          show: {
-            if !layout.folded.isEmpty {
-              expanded = true
-            } else if let oldest = board.oldest {
-              board.core.open(oldest.daemonID, oldest.group)
-            }
-          })
-      }
+      .frame(width: 380)
+      .padding(Self.gutter)
     }
-    .frame(width: 380)
+    .frame(width: 380 + 2 * Self.gutter)
+    .frame(maxHeight: room.height)
     .inPaneLook()
     // Show is for the burst it was pressed on, not for the window from then on.
     .onChange(of: board.banners.isEmpty) { _, empty in
       if empty { expanded = false }
     }
   }
-
 }
 
 /// The banners past the first as one line. Show draws them in full; with none of them shown, it
@@ -740,10 +764,13 @@ extension Muster_Banner {
 @MainActor
 public final class BannerHost {
   let board: BannerBoard
+  /// How much height the panes leave the stack, which the window's layout keeps current.
+  let room = BannerRoom()
+
   private(set) lazy var hosting: NSHostingView<BannerStackView> = {
     let view = NSHostingView(
       rootView: BannerStackView(
-        board: board, identify: { [weak self] in self?.identify($0) },
+        board: board, room: room, identify: { [weak self] in self?.identify($0) },
         conversation: { [weak self] in self?.conversationName($0, $1) }, authors: authors,
         onLeave: { [weak self] in self?.onLeave?() },
         endComposition: { [weak self] in self?.endComposition() ?? false },

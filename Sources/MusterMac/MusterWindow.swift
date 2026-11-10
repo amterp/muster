@@ -241,7 +241,7 @@ public final class MusterWindow: NSObject {
     tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
     split.attach(sidebar: sidebar, strip: tabView)
     tabView.attach(empty: empty)
-    split.attach(banners: banners.hosting)
+    split.attach(banners: banners.hosting, room: banners.room)
     banners.show(window.isMainWindow)
     banners.onLink = { [weak self] url, daemon, group in
       self?.open(messageLink: url, daemon: daemon, group: group)
@@ -1708,6 +1708,7 @@ final class WindowLayout: NSView {
   private var sidebar: NSView?
   private var strip: NSView?
   private weak var banners: NSView?
+  private weak var room: BannerRoom?
   private let edge = SidebarEdgeView()
 
   /// How wide the core says the list is. Mirrored like `sidebarShown`: a drag asks for a width
@@ -1751,18 +1752,21 @@ final class WindowLayout: NSView {
     needsLayout = true
   }
 
-  /// The banners, over the top right of the panes and sized to what they show, so the panes
-  /// around them keep their clicks. Laid out by constraints against the panes' frame, since
-  /// their height is whatever SwiftUI says the stack needs.
-  func attach(banners: NSView) {
+  /// The banners, over the top right of the panes and sized to what they show, up to the room the
+  /// panes leave, which this keeps current in `room`: the stack scrolls inside it rather than
+  /// standing taller than the window. Laid out by constraints against the panes' frame, since their
+  /// height is whatever SwiftUI says the stack needs.
+  func attach(banners: NSView, room: BannerRoom) {
     guard let strip else { return }
     self.banners = banners
+    self.room = room
     banners.translatesAutoresizingMaskIntoConstraints = false
     addSubview(banners)
+    let inset = BannerStackView.edgeInset
     NSLayoutConstraint.activate([
-      banners.topAnchor.constraint(equalTo: strip.topAnchor, constant: 8),
-      banners.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -8),
-      banners.bottomAnchor.constraint(lessThanOrEqualTo: strip.bottomAnchor, constant: -8),
+      banners.topAnchor.constraint(equalTo: strip.topAnchor, constant: inset),
+      banners.trailingAnchor.constraint(equalTo: strip.trailingAnchor, constant: -inset),
+      banners.bottomAnchor.constraint(lessThanOrEqualTo: strip.bottomAnchor, constant: -inset),
     ])
   }
 
@@ -1793,6 +1797,8 @@ final class WindowLayout: NSView {
     window?.invalidateCursorRects(for: edge)
     strip?.frame = CGRect(x: listWidth, y: 0, width: regionWidth, height: bounds.height)
     strip?.needsLayout = true
+    let room = max(0, bounds.height - 2 * BannerStackView.edgeInset)
+    if self.room?.height != room { self.room?.height = room }
     let visible = listWidth > 0
     if visible != sidebarVisible {
       sidebarVisible = visible
