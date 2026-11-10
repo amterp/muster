@@ -5,17 +5,26 @@
   "area": [
     "shell"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2x33ir4cn",
+      "body": "Done in 4e19a901: AskingEntry carries the pane's callsign and label from the core, and the strip titles a card by them; a click or chord on another window's card focuses and raises that window as before. A rename now resends the asking list (reversing c1c489d1's choice), which also keeps another window's renames right.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794273587859
+    }
+  ],
   "created_at_millis": 1794266264701,
   "creator": "Alexander Terp",
   "description": "Seen in 0.24.0 with two windows open. Window A's Needs you strip showed two cards titled by bare pane ids (`p2jg064x2x  Done 1m`, `p2jg0jmmx9  Done \u003c1m`). Both panes were named agents with callsigns (prairie, leopard), but they lived in window B's tabs.\n\nThe core's asking list (`Session::asking_entries` in crates/muster-seam/src/session.rs) is built from attention across every backend, not per window, so each window's strip gets every window's askers. `NeedsYouModel.cards` (Sources/MusterMac/NeedsYou.swift) takes the title from the window's own roster, and a pane the roster does not hold falls back to `entry.pane`, with no chord keys. The fallback was meant for a pane the shell has not caught up on (fd462515); a pane held by another window hits it on every render.\n\nThe callsign is already known to the core for those panes: `muster window --json` from window A lists them, with callsign and name, under `other_windows`. Either carry the callsign (and label) in AskingEntry so the shell never needs its roster for the title, or decide that a window's strip lists only its own askers and drop the others. The first keeps the strip in agreement with `focus --asking`, which the model's doc comment says it must.",
   "id": "a_2wzzDBGMT",
-  "position": "a0",
+  "position": "Yud",
   "title": "Needs you names another window's agents by pane id",
   "type": "bug",
-  "updated_at_millis": 1794272794822,
+  "updated_at_millis": 1794273588460,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794266264701},
-    {"field":"column","value":"in-progress","at":1794272794822}
+    {"field":"column","value":"in-progress","at":1794272794822},
+    {"field":"column","value":"done","at":1794273588460}
   ]
 }

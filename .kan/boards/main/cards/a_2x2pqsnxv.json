@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "muster-window-json-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "in-progress",
+  "created_at_millis": 1794273054748,
+  "creator": "Alexander Terp",
+  "description": "Since 8076015d the core's AskingEntry carries each pane's callsign and label, and the Needs you strip titles cards from them, including another window's agents. `muster window --json`'s `asking` entries still list only `pane` and `group`, so an agent reading who is asking has to cross-reference panes, and for another window's pane it must look under other_windows.",
+  "id": "a_2x2pqsnxv",
+  "position": "Zz",
+  "title": "muster window --json's asking entries do not carry the callsign and label the strip shows",
+  "type": "enhancement",
+  "updated_at_millis": 1794273589486,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794273054748},
+    {"field":"column","value":"in-progress","at":1794273589486}
+  ]
+}

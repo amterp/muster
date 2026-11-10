@@ -5,19 +5,31 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "uncommitted",
+  "comments": [
+    {
+      "id": "c_2x2zyJvGs",
+      "body": "2026-11-09, read while planning, not built: nothing pushes a linked pane's close across the link. The waiting pane's daemon learns another machine's pane's state only as a Liveness value in a who-style member answer (crates/muster-msg wire.rs:181, across.rs:1866), pulled when somebody asks. Ending the wait needs a design choice: a new message kind that pushes a pane's close to linked daemons, or the waiting daemon polling remote liveness for each declared --until-message-from sender, at a rate and cost to choose.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794273443674
+    }
+  ],
   "created_at_millis": 1794272795532,
   "creator": "Alexander Terp",
   "description": "Since 7def06ab, `report --waiting ... --until-message-from \u003cpane\u003e` ends quietly when that pane closes, but only for a sender on the waiting pane's own daemon. A sender pane on a linked machine (a laptop worker waiting on a devenv reviewer, or the reverse) closing is not seen by the daemon holding the wait, so the wait stands until the 10-minute carry runs out, with the same false 'still waiting' notice to the maker that a_2x1XwUfGo fixed locally. Worth doing if cross-machine reviewers become common.",
   "id": "a_2x2j6oIHf",
-  "position": "b2f",
+  "labels": [
+    "blocked"
+  ],
+  "position": "a9",
   "related": [
     "a_2x1XwUfGo"
   ],
   "title": "A wait on a message from a pane on a linked machine does not end when that pane closes",
   "type": "bug",
-  "updated_at_millis": 1794272795843,
+  "updated_at_millis": 1794273444206,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794272795532}
+    {"field":"column","value":"backlog-lo","at":1794272795532},
+    {"field":"column","value":"uncommitted","at":1794273443989}
   ]
 }

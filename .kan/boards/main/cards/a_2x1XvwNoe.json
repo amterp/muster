@@ -5,19 +5,20 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1794269982658,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-08 00:05 on the Mac mini, in an agent-engine parallel-work round. The integrator, pane lark, ran `muster msg wait --as lark --timeout 3000` in the background so a worker's post would wake it. From then on Muster treated `lark` as a participant separate from the pane:\n\n- @muster sent four 'went idle without posting to you' notices in new groups `lark+yarrow-2`, `lark+vole-2`, `glacier+lark-2` and `lark+rudder-2`, three of them about workers that had posted their plans to lark minutes earlier in the original groups, whose members are the panes.\n- `muster msg post --group lark+yarrow --to yarrow ...` from lark's session then failed with 'lark is not in lark+yarrow; join it'. The session now resolved to the name `lark` rather than the pane, so every later post went to a -2 group, and workers had to post to the -2 groups to reach it.\n\nExpected: `--as \u003cname\u003e`, where the name is a live pane's callsign (here the caller's own), resolves to that pane, or is refused with a message saying why. The idle-without-posting notice should also count posts to the pane under either identity.\n\nRelated: a_2o5StNxnb, where `--as @human` takes over the human's identity in the same way. From tooling feedback a_2vzq0Nd1b.",
   "id": "a_2x1XvwNoe",
-  "position": "b1g",
+  "position": "Zx",
   "related": [
     "a_2o5StNxnb"
   ],
   "title": "`msg wait --as \u003cown callsign\u003e` makes a second participant, and the pane's later posts go to new groups",
   "type": "bug",
-  "updated_at_millis": 1794269982797,
+  "updated_at_millis": 1794273589913,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794269982658}
+    {"field":"column","value":"backlog-hi","at":1794269982658},
+    {"field":"column","value":"in-progress","at":1794273589913}
   ]
 }
