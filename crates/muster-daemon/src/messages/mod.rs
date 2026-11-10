@@ -1433,6 +1433,7 @@ fn posting(
             Err(reply) => return reply,
         }
     };
+    waits::posted(shared, &delivered.posted.author, &delivered.posted.reached);
     let posted = told("msg.posted", Some(post.body.len()), &delivered);
     answered(delivered.posted.author.clone(), Answer::Posted(posted))
 }

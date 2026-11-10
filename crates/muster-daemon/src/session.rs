@@ -2937,6 +2937,14 @@ impl Session {
         }
     }
 
+    /// Forgets that `pane`'s agent was given messages from the panes `others`, because it has
+    /// since posted to them (`Pane::heard_from`).
+    pub(crate) fn forget_heard_from(&mut self, pane: &str, others: &[String]) {
+        if let Some(index) = self.pane_index(pane) {
+            self.panes[index].heard_from.retain(|heard| !others.contains(heard));
+        }
+    }
+
     /// Ends each wait an agent here declared on a message from `sender`, a pane that has just
     /// closed: no message is coming. The agent is not woken for it. It may long since have
     /// reported and gone idle, and a wake would start a turn for nothing. One whose sender died

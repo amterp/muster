@@ -254,7 +254,8 @@ It also ends when that sender's pane closes on the daemon holding the waiting pa
 agent may long since have reported, and a wake would start a turn for nothing. A sender on a linked
 machine closing is not seen. A wait declared on a sender whose message the agent was already given
 since its last turn ended is not held at all, since its answer has come: the daemon notes the
-senders it delivered to each agent (`Pane::heard_from`) and clears them as a turn ends.
+senders it delivered to each agent (`Pane::heard_from`), forgets one when the agent posts to it
+again, and clears them as a turn ends.
 
 A helper's declared wait also has a notice clock: after ten minutes its maker hears what it is
 waiting on and how to inspect it, once per declaration. The wait remains active. This covers

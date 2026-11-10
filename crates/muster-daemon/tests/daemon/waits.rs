@@ -607,6 +607,28 @@ fn an_answer_read_in_an_earlier_turn_does_not_end_a_later_wait() {
 }
 
 #[test]
+fn an_answer_read_before_posting_a_follow_up_does_not_end_a_wait_for_its_answer() {
+    let mut worker = worker_beside(&[("p2", "t2")]);
+    expect(&mut worker.control, review_from("p2"), proto::Outcome::Done);
+    reads(&mut worker);
+    expect(
+        &mut worker.control,
+        message(
+            "p1",
+            proto::msg_request::Request::Post(proto::msg_request::Post {
+                to: vec!["p2".to_string()],
+                body: "fixed, please check again".to_string(),
+                ..Default::default()
+            }),
+        ),
+        proto::Outcome::Done,
+    );
+    assert_eq!(worker.declares_from("p2").outcome(), proto::Outcome::Done);
+    worker.hook_reports(proto::AgentState::Idle);
+    assert!(worker.waiting_on().is_some(), "the first answer ended a wait for the second");
+}
+
+#[test]
 fn another_senders_message_read_first_does_not_end_the_wait() {
     let mut worker = worker_beside(&[("p2", "t2"), ("p3", "t3")]);
     expect(&mut worker.control, review_from("p3"), proto::Outcome::Done);

@@ -116,21 +116,9 @@ impl MessageWait {
     pub(super) fn capture(shared: &Shared, reader: &str, authors: &[String]) -> Self {
         let (pane, authors) = {
             let messages = shared.messages();
-            let pane = messages
-                .service
-                .participant(reader)
-                .and_then(|p| p.pane.clone())
-                .unwrap_or_else(|| reader.to_string());
-            let authors: Vec<String> = authors
-                .iter()
-                .map(|author| {
-                    messages
-                        .service
-                        .participant(author)
-                        .and_then(|p| p.pane.clone())
-                        .unwrap_or_else(|| author.clone())
-                })
-                .collect();
+            let pane = pane_of(&messages, reader);
+            let authors: Vec<String> =
+                authors.iter().map(|author| pane_of(&messages, author)).collect();
             (pane, authors)
         };
         let ends = shared
@@ -152,6 +140,27 @@ impl MessageWait {
         }
         session.heard_from(&self.pane, self.authors);
     }
+}
+
+/// The pane `name` is the agent in, or `name` itself when it is not known as a participant.
+fn pane_of(messages: &super::Messages, name: &str) -> String {
+    messages
+        .service
+        .participant(name)
+        .and_then(|p| p.pane.clone())
+        .unwrap_or_else(|| name.to_string())
+}
+
+/// `author` posted to `reached`: what they answered before is not the answer to what it asked
+/// now, so a wait on them declared next is for something new.
+pub(super) fn posted(shared: &Shared, author: &str, reached: &[(String, muster_msg::Reach)]) {
+    let (pane, recipients) = {
+        let messages = shared.messages();
+        let recipients: Vec<String> =
+            reached.iter().map(|(name, _)| pane_of(&messages, name)).collect();
+        (pane_of(&messages, author), recipients)
+    };
+    shared.lock().forget_heard_from(&pane, &recipients);
 }
 
 pub(super) fn heard(shared: &Shared, name: &str, authors: &[String]) {
