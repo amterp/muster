@@ -518,8 +518,8 @@ them. A pill's height and fill say its helper's state, and hovering one names th
 state, its directory and who made it. A click on the pills lists the helpers under the entry, a
 line each. No chord reaches them, as none reaches a hidden
 pane, and a helper in a tab on screen keeps its row and its number there. The maker's right-click
-menu, and the pills', offer Show Helpers and Hide Helpers. A helper whose maker has closed stays
-under Hidden, since there is no row to list it under.
+menu, and the pills', offer Show Helpers and Hide Helpers. A helper still running after its maker
+closed is listed under Hidden, since there is no row to list it under.
 
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
 stuck, or goes idle without having posted to its maker since it last went to work, and stays so
@@ -552,12 +552,19 @@ them. While the maker's machine is not answering, a quiet helper asks for you as
 quiet, since nobody else can act.
 
 The relation is to the maker's pane, so an agent resumed in the same pane keeps its helpers. When
-the maker's pane closes, its helpers go on running, hidden, and stop being quiet, since nobody is
-left to hear from them, and you are told once, in a message from `@muster` naming each one and how
-to bring them forward: `pane show --helpers-of` with the closed maker's id. They stay their maker's
-helpers. A maker on another machine closing is seen by the window, which tells the helpers'
-daemon; one that closed while no window was open is told of when one opens and finds the maker on
-no machine.
+the maker's pane closes, its helpers close with it: each one once it has spent 10 seconds with its
+agent idle or done, or with no agent in it. A helper that is working, waiting, blocked or stuck
+runs on until it is idle, and stops being quiet meanwhile, since nobody else is left to hear from
+it. You are told once, in a message from `@muster`, of the helpers
+still running 10 seconds after their maker closed, and of none that closed with it. A helper's own
+helpers follow it the same way. Each closes as `pane close` closes a pane, so `pane reopen` brings
+it back in its session.
+
+A helper you take over stays open until you close it. Bringing it forward does that, with `pane
+show --pane`, or `pane show --helpers-of` with the closed maker's id, which the notice names; so
+does reopening it by itself while its maker is closed. A maker on another machine closing is seen
+by the window, which tells the helpers' daemon; one that closed while no window was open is told of
+when one opens and finds the maker on no machine.
 
 A helper is a pane started for its maker's own work. An agent you ask to start a peer, one that
 takes part of the work at its own level and answers to you, starts it with plain `muster pane
@@ -574,7 +581,9 @@ A pane closed by mistake can be brought back for an hour after it closed:
 
 `--pane` takes the callsign or id the pane had when it closed; with no `--pane`, the pane closed
 most recently in this window comes back, or failing that the one closed most recently on any
-machine it shows. It comes back under its id, its callsign and its name, in the directory it was
+machine it shows. A helper that closed with its maker is passed over then, while any other pane
+can be reopened, so the maker comes back rather than a helper that closed just after it. It comes
+back under its id, its callsign and its name, in the directory it was
 in, and where it was in its tab: exactly there when the tab has not changed, else beside a pane it
 was beside, else at the tab's end. A pane whose tab closed with it comes back in a new tab
 with the old tab's name. An agent whose harness reported its session (`muster docs harnesses`) is
@@ -595,8 +604,9 @@ three seconds after they are asked to end.
 Only a pane somebody closed is remembered, from the window, `pane close`, `tab close` or the API,
 and not one whose program ended on its own. Its daemon remembers it for `reopen_closed_minutes` in
 the config file, an hour unless that says otherwise, and through a restart of the daemon; at most
-64 at a time, so a busy hour can push the oldest out sooner. A maker brought back takes back its
-helpers on its own machine, quiet again as they were, whichever of them is reopened first.
+64 at a time, so a busy hour can push the oldest out sooner. A maker brought back brings back the
+helpers on its own machine that closed with it, and theirs, each hidden among its helpers and quiet
+again. It also takes back a helper there that is still running, or that you reopened first.
 
 The window has it as Reopen Closed Pane in the Pane menu, on `cmd+shift+t`, with Recently Closed
 beside it listing each pane that can be reopened. A program reopens a pane with the API's

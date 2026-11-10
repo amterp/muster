@@ -541,13 +541,21 @@ stop`, and `codex --no-daemon` keeps a single session out of it. `muster msg` ru
 app-server is refused the same way, saying the same: taken, a post would be the first session's,
 and a read would hand the first session's messages to whichever session asked.
 
-## A closed maker's helpers are listed under Hidden
+## A reopened maker brings back helpers on its own machine only
 
-A helper is listed under its maker's row, and once the maker's pane has closed there is no row:
-its helpers go back under `hidden` in `muster window`, which still says whose each is (`(helper
-of …)`, and `maker` in `--json`), and under Hidden in the agent list. `muster pane show --helpers-of`
-with the closed maker's id, which the notice you were sent names, still brings them forward
-together.
+A helper closes with its maker wherever each of them is, but only a helper on the maker's own
+machine comes back with it: the maker's daemon reopens the helpers it closed, and no daemon tells
+another that a maker is back. A helper on another machine is reopened by name, with `muster pane
+reopen --pane`, and then stays open until you close it, as a helper whose maker is still closed.
+A helper still running there when the maker comes back is not taken back either, and closes once
+it is idle.
+
+A helper that closes with its maker counts toward the 64 closed panes a daemon remembers, so a
+maker with more helpers than that cannot bring them all back, and may itself be pushed out.
+
+While a helper runs on after its maker closed, it is listed under `hidden` in `muster window`,
+which still says whose it is (`(helper of …)`, and `maker` in `--json`), and under Hidden in the
+agent list, since there is no row to list it under.
 
 ## A helper and its maker on different machines need a window attached to both
 
@@ -560,4 +568,5 @@ maker on a second devenv at all; the window still tells it when that maker close
 A devenv holds the closed-maker notice for you in memory until the laptop is linked, so a devenv
 daemon restarted meanwhile loses it. Its helpers are no longer quiet by then, so their next block
 still reaches you. A machine taken out of the config is followed by no window after the next
-launch, so a helper whose maker was there is taken for one whose maker closed.
+launch, so a helper whose maker was there is taken for one whose maker closed, and closes once it
+is idle; `muster pane reopen` brings it back for the hour.

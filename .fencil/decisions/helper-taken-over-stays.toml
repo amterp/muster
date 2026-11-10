@@ -1,0 +1,16 @@
+id = "helper-taken-over-stays"
+question = "Which helpers of a closed maker stay open when idle?"
+tags = ["helpers", "daemon"]
+paths = ["crates/muster-daemon/src/session.rs"]
+
+[[revisions]]
+id = "bq68oo5r"
+date = 2026-11-10
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "One a person took over: its hidden tab was brought on screen after its maker closed, or it was reopened by itself while its maker was not open. It stays open until closed, and its maker takes it back when reopened on the same machine."
+why = '''
+Without this a helper somebody reopened by name, or brought forward to talk to, would close 10
+seconds after its next idle. The flag is written to the state file and carried through a handover.'''

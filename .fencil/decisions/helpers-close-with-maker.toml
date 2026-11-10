@@ -1,0 +1,30 @@
+id = "helpers-close-with-maker"
+question = "What becomes of a helper when its maker's pane closes?"
+tags = ["helpers", "daemon"]
+paths = ["crates/muster-daemon/src/messages/makers.rs"]
+
+[[revisions]]
+id = "fqjd6em0"
+date = 2026-11-10
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "It closes with its maker once the helper is idle."
+why = '''
+Sixteen hidden, quiet helpers were found done for 16 hours after their three makers had closed,
+each holding an agent and its memory, and the person did not know they existed. Running on with one
+notice left nothing to close them. This replaces MIP-7 section 6, where a closed maker's helpers
+ran on.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "1a yes"
+  note = "Asked what a helper becomes when its maker closes, among three options: close with it once idle, become an ordinary shown pane that can notify, or appear in the window as orphaned with one action to close them all. 1a was closing with its maker once idle. The answer came in a numbered list of several."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "helpers closing with their agent ships tonight as well"
+  note = "Said when listing what goes into that night's release."

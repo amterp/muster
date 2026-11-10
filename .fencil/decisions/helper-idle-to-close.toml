@@ -1,0 +1,17 @@
+id = "helper-idle-to-close"
+question = "When does a helper whose maker has closed count as idle, and so close?"
+tags = ["helpers", "daemon"]
+paths = ["crates/muster-daemon/src/messages/makers.rs", "crates/muster-daemon/src/messages/presence.rs"]
+
+[[revisions]]
+id = "xcm88vjv"
+date = 2026-11-10
+recorded_by = "other"
+level = "none"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "Once it has spent 10 seconds, the helper settle, with its agent idle or done, or with no agent in it and none still expected. Working, waiting, blocked, stuck and a state not yet read keep it running, not quiet. It closes as a person's close does, so Reopen Pane brings it back in its session. Its own helpers follow, since its close is their maker closing. The person is told only of helpers still running after those 10 seconds. A helper already marked when a daemon starts closes the same way."
+why = '''
+The 10 seconds leave time to undo closing a maker by mistake before its helpers go, and keep a
+helper between two turns from closing. The rule reads the mark in the state file and the agent's
+state, so it holds through a restart and a handover; only the 10 seconds start again.'''

@@ -1,0 +1,23 @@
+id = "reopened-maker-brings-helpers"
+question = "Does reopening a closed maker bring back the helpers that closed with it?"
+tags = ["helpers", "daemon"]
+paths = ["crates/muster-daemon/src/session.rs"]
+
+[[revisions]]
+id = "o9jlx67w"
+date = 2026-11-10
+recorded_by = "other"
+level = "shown"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = "Yes. Reopening the maker, from Reopen Closed Pane, cmd+shift+T or `muster pane reopen`, reopens the helpers its daemon closed with it, and theirs, each hidden and quiet among its helpers again. A reopen that names no pane passes over such a helper, so it brings back the maker."
+why = '''
+A helper closes about 10 seconds after its maker, so the pane closed most recently is a helper, and
+a maker brought back alone would have lost the agents working for it. Only helpers on the maker's
+own machine come back: no daemon tells another that a maker is back.'''
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-09
+  quote = "i suppose resurrecting a closed tab with shift cmd t should also bring back hel[pe]rs"
+  note = "Said after agreeing that a helper closes with its maker once idle."
