@@ -241,7 +241,7 @@ pub fn run(
         }
         let answers = held_by_one(&request, surveyed.answers);
         if answers.len() > 1 {
-            let text = render::answers(&answers, json);
+            let text = render::answers(&answers, json, &crate::here(environment));
             let _ = writeln!(out, "{}", text.trim_end());
             return 0;
         }

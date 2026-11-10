@@ -461,7 +461,11 @@ fn window_rows(
 /// socket, so more than one answer is more than one app - two installs, or two homes - and each
 /// answer covers all of that app's windows. Headed by the window that answered, with the socket
 /// beside it in both shapes, since that is what `--socket` takes and what the next command needs.
-pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> String {
+pub fn answers(
+    answers: &[(String, Result<Response, Trouble>)],
+    json: bool,
+    local: &Local,
+) -> String {
     if json {
         let listed: Vec<Value> = answers
             .iter()
@@ -474,9 +478,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
                             // window's answer is the same object here as it is on its own and a
                             // filter written for one reads across all of them:
                             // `.windows[].panes[] | select(.state == "blocked")`.
-                            if let Value::Object(fields) =
-                                window_json(window, Others::All, &Local::default())
-                            {
+                            if let Value::Object(fields) = window_json(window, Others::All, local) {
                                 for (key, value) in fields {
                                     row[key] = value;
                                 }
@@ -514,7 +516,7 @@ pub fn answers(answers: &[(String, Result<Response, Trouble>)], json: bool) -> S
             let body = match answer {
                 Ok(response) => match &response.payload {
                     Some(response::Payload::Window(window)) => {
-                        window_text(window, now_ms(), Others::All, true, &Local::default())
+                        window_text(window, now_ms(), Others::All, true, local)
                     }
                     _ => answer_alone(response, false)
                         .unwrap_or_else(|detail| styled(&detail, QUIET)),
@@ -2201,6 +2203,42 @@ mod tests {
         assert!(json["daemons"][1]["adapter_copies"].is_null(), "{json}");
         let quiet = window_json(&window, Others::All, &Local::default());
         assert!(quiet["daemons"][0]["adapter_copies"].is_null(), "{quiet}");
+    }
+
+    /// With two apps answering, each answer is listed whole, and the stale adapter is still said
+    /// on this machine's block in whichever answer holds it.
+    #[test]
+    fn a_stale_codex_adapter_is_noted_when_two_apps_answer() {
+        use muster_proto::{Machine, Window, response};
+        let app = |name: &str| {
+            Ok(muster_proto::Response {
+                payload: Some(response::Payload::Window(Window {
+                    name: name.to_string(),
+                    daemons: vec![Machine {
+                        daemon_id: "local".to_string(),
+                        socket: "/home/me/.muster/daemon/release.sock".to_string(),
+                        state: "connected".to_string(),
+                        ..Machine::default()
+                    }],
+                    ..Window::default()
+                })),
+            })
+        };
+        let answered =
+            [("/a.sock".to_string(), app("window-1")), ("/b.sock".to_string(), app("window-1"))];
+        let stale = Local {
+            daemon_socket: Some("/home/me/.muster/daemon/release.sock".to_string()),
+            codex_adapter_differs: true,
+        };
+        let text = super::answers(&answered, false, &stale);
+        assert_eq!(text.matches("Codex's copy of Muster's adapter differs").count(), 2, "{text}");
+        let json: serde_json::Value =
+            serde_json::from_str(&super::answers(&answered, true, &stale)).unwrap();
+        assert_eq!(
+            json["windows"][0]["daemons"][0]["adapter_copies"]["codex"], "differs",
+            "{json}"
+        );
+        assert!(!super::answers(&answered, false, &Local::default()).contains("Codex"));
     }
 
     /// A program that stopped reading is a note on its row, naming it and what it left, and an
