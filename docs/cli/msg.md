@@ -513,6 +513,12 @@ needs, since plain `wait` would return at the end of every turn that left a mess
 `--due`, like `join --pull`, also says your hooks fetch your messages, so you are not rung while
 they are running.
 
+A `--due` wait also ends, exit 1, once its agent starts another turn, naming that as the reason.
+The wait a `Stop` hook started at the end of one turn runs on into the next, where the hook that
+reads after each tool call already hands the agent what arrives, and an answer from the old wait
+told it twice. The next `Stop` hook waits again, and a message that arrived in between is returned
+at once. A plain `wait` is not tied to the agent's turns.
+
 **Do not run it in the foreground of an agent's turn**: that is the blocking loop this exists to
 remove. It is for hooks and scripts.
 

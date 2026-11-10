@@ -140,8 +140,11 @@ then take part in messaging.
 - `Stop` runs `muster msg wait --due` in the background (`asyncRewake`) once a turn ends. When a
   message arrives for the session, the wait prints the wake and the hook exits 2, which starts a
   turn with that wake. Its `timeout` of a day is what keeps it waiting: without one, Claude Code
-  ends the hook after its default (`docs/observations/claude-code-2.1.283.md`, section 4). `--due` answers only a wake the session is due, so a session
-  that ends its turn without reading is woken once more and then not again until it reads.
+  ends the hook after its default (`docs/observations/claude-code-2.1.283.md`, section 4). The
+  daemon ends the wait, with exit 1 and so no wake, once the session starts its next turn, since
+  the read hook hands it what arrives while it works. `--due` answers only a wake the session is
+  due, so a session that ends its turn without reading is woken once more and then not again until
+  it reads.
 
 While a session's hooks run - a wait of its own is connected, or it is working and ran a `muster
 msg` command in the last five minutes - the daemon types nothing into its pane. A turn that ends

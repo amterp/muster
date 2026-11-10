@@ -47,6 +47,7 @@ use proto::msg_answer::{self, Answer};
 use proto::msg_request::Request as Asked;
 
 use crate::api::{Api, Cause, Published};
+use crate::pane::TypedBy;
 use crate::session::{HANDING_OVER, Reply, Shared};
 use carry::Destination;
 use doorbell::{By, Now};
@@ -1891,6 +1892,7 @@ fn waiting(
     panes: &Panes,
 ) -> Reply {
     let reader = wait_reader(shared, caller, panes);
+    let turns_before = turns_before(shared, caller, wait);
     let (ticket, ended) = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -1963,10 +1965,8 @@ fn waiting(
                     Some(GaveUp::TimedOut)
                 } else if hung_up() {
                     Some(GaveUp::HungUp)
-                } else if its_pane_closed(shared, caller) {
-                    Some(GaveUp::PaneClosed)
                 } else {
-                    None
+                    pane_moved_on(shared, caller, turns_before)
                 };
                 if let Some(why) = why {
                     return give_up(shared, &reader, ticket, &ended, why);
@@ -1982,6 +1982,7 @@ enum GaveUp {
     TimedOut,
     HungUp,
     PaneClosed,
+    NewTurn,
 }
 
 /// Ends a wait nothing answered, unless a post answered it between the look that ended it and
@@ -2007,6 +2008,7 @@ fn give_up(
         GaveUp::TimedOut => "timed_out",
         GaveUp::HungUp => "hung_up",
         GaveUp::PaneClosed => "pane_closed",
+        GaveUp::NewTurn => "new_turn",
     };
     log::debug("msg.wait.ended", fields! { "ticket" => ticket, "why" => named });
     match why {
@@ -2015,18 +2017,45 @@ fn give_up(
             "pane_closed",
             "the pane this wait was for has closed, so nothing will answer it",
         ),
+        GaveUp::NewTurn => refused_as(
+            "",
+            "new_turn",
+            "the agent started a new turn, which reads what arrives itself; its next Stop hook \
+             waits again",
+        ),
         GaveUp::TimedOut | GaveUp::HungUp => {
             refused_as("", "timed_out", "nothing arrived before the timeout")
         }
     }
 }
 
-/// Whether the caller ran in a pane that is no longer open here. A wait from a closed pane never
-/// hangs up on its own: the hook that runs it outlives the pane's agent, and holds the dead
-/// session until the hook's timeout.
-fn its_pane_closed(shared: &Shared, caller: &Caller) -> bool {
-    let Some(pane) = caller.pane.as_deref().filter(|pane| !pane.is_empty()) else { return false };
-    !shared.lock().has_pane(pane)
+/// The pane the caller ran in, when it names one.
+fn pane_of_caller(caller: &Caller) -> Option<&str> {
+    caller.pane.as_deref().filter(|pane| !pane.is_empty())
+}
+
+/// How many turns the agent in the caller's pane has started, for a `--due` wait, which is how a
+/// Stop hook waits: that wait ends once the agent starts another (`pane_moved_on`). A plain wait
+/// is one somebody chose to run, perhaps for a later turn, and is not tied to the agent's turns.
+fn turns_before(shared: &Shared, caller: &Caller, wait: &proto::msg_request::Wait) -> Option<u64> {
+    let pane = pane_of_caller(caller).filter(|_| wait.due)?;
+    let io = shared.lock().pane_io(pane)?;
+    Some(io.turn_serial())
+}
+
+/// Why a wait nothing answered should end anyway, looking at the pane it was run from. Neither
+/// hangs up on its own: the hook that runs it outlives what made it pointless.
+///
+/// A pane that closed leaves a dead session held open for the hook's whole timeout. And the Stop
+/// hook's wait from one turn runs on into the next, where the PostToolUse hook already hands the
+/// agent what arrives, so a wait that answered it too told the agent twice. A turn the harness
+/// ran itself (a rename, say) is no turn of the agent's, and runs no Stop hook to wait again.
+fn pane_moved_on(shared: &Shared, caller: &Caller, turns_before: Option<u64>) -> Option<GaveUp> {
+    let pane = pane_of_caller(caller)?;
+    let Some(io) = shared.lock().pane_io(pane) else { return Some(GaveUp::PaneClosed) };
+    let began = turns_before.is_some_and(|before| io.turn_serial() > before)
+        && io.turn_typed_by() != Some(TypedBy::Chore);
+    began.then_some(GaveUp::NewTurn)
 }
 
 /// What the prompt of the agent `agent` in a pane holds, read as the doorbell reads it before

@@ -333,6 +333,62 @@ fn a_wait_ends_when_its_pane_closes_and_one_from_no_pane_does_not() {
     assert!(from_no_pane.next_message(std::time::Duration::from_secs(1)).is_none());
 }
 
+/// A pane's agent, running in `p1`, that has been through a turn, joined to `g` with a member `a`.
+fn agent_after_a_turn(daemon: &Daemon, control: &mut Control) -> msg_request::Caller {
+    make(control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    daemon.set_agent_state("p1", proto::AgentState::Idle);
+    let in_pane = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    let joining =
+        Asked::Join(msg_request::Join { name: None, group: Some("g".into()), pull: false });
+    expect(control, msg(&in_pane, joining), proto::Outcome::Done);
+    join(control, &named("a"), "a", "g");
+    in_pane
+}
+
+/// The Stop hook's `wait --due` from one turn runs on into the next, where the PostToolUse hook
+/// already hands the agent what arrives: a wait that answered it too told the agent twice. The
+/// agent's next turn starting ends the wait, and the next Stop hook waits again.
+#[test]
+fn a_due_wait_ends_when_its_agents_next_turn_starts_and_does_not_answer_a_post() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    let in_pane = agent_after_a_turn(&daemon, &mut control);
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut waiting = daemon.connect();
+    let due = msg_request::Wait { due: true, ..Default::default() };
+    waiting.send(msg(&in_pane, Asked::Wait(due)));
+    logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
+
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    let ended = until_answer(&mut waiting);
+    assert_eq!(ended.refusal, "new_turn", "{ended:?}");
+
+    expect(&mut control, post(&named("a"), "mid-turn"), proto::Outcome::Done);
+    assert!(waiting.next_message(std::time::Duration::from_secs(1)).is_none());
+}
+
+/// A plain `wait` is one an agent or a script chose to run, perhaps in the background for a later
+/// turn, so only the Stop hook's `--due` wait gives way to a new turn.
+#[test]
+fn a_plain_wait_outlasts_its_agents_next_turn() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    let in_pane = agent_after_a_turn(&daemon, &mut control);
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut waiting = daemon.connect();
+    waiting.send(msg(&in_pane, Asked::Wait(msg_request::Wait::default())));
+    logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
+
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    assert!(waiting.next_message(std::time::Duration::from_secs(2)).is_none());
+}
+
 /// The answer to the one request sent on `control`.
 fn until_answer(control: &mut Control) -> proto::MsgAnswer {
     match control.next_message(std::time::Duration::from_secs(20)) {
