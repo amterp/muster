@@ -73,8 +73,9 @@ without the visible conversation seeing them. Start a fresh Codex process to iso
 assignment. `docs/observations/codex-0.166.0.md` records the transitions and limits.
 
 In a Muster pane, `SessionStart` also adds one line to the session's context: when Codex ends a
-turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`, and
-for a job it started in the background adds `--until-exits <pid>`. Codex has nothing that starts a
+turn to wait on work it started, it first runs `"$MUSTER_DAEMON" report --waiting "<what>"`, for
+an answer from another pane adds `--until-message-from <its callsign>`, and for a job it started in
+the background adds `--until-exits <pid>`. Codex has nothing that starts a
 turn when such a job ends, so Muster ends the wait when the process exits and wakes Codex with a
 message from `@muster`; a wait declared without it ends after 10 minutes.
 The line also says that waiting for a message or a person is just ending the turn, since an agent
