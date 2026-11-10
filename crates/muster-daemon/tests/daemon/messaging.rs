@@ -301,6 +301,38 @@ fn waiting_as_the_callsign_of_its_own_pane_keeps_the_agent_in_its_group() {
     assert_eq!(names, ["a", "p1"]);
 }
 
+/// A Claude Code session cannot finish exiting while the Stop hook's `msg wait` runs, and that
+/// wait never hangs up on its own, so one whose pane closed would hold the dead session for the
+/// hook's whole timeout. A wait from no pane is not that wait and stays.
+#[test]
+fn a_wait_ends_when_its_pane_closes_and_one_from_no_pane_does_not() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let in_pane = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    let joining =
+        Asked::Join(msg_request::Join { name: None, group: Some("g".into()), pull: false });
+    expect(&mut control, msg(&in_pane, joining), proto::Outcome::Done);
+    join(&mut control, &named("a"), "a", "g");
+
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut from_pane = daemon.connect();
+    from_pane.send(msg(&in_pane, Asked::Wait(msg_request::Wait::default())));
+    let mut from_no_pane = daemon.connect();
+    from_no_pane.send(msg(&named("a"), Asked::Wait(msg_request::Wait::default())));
+    logging.logged_times_until("msg.waiting", 2, std::time::Duration::from_secs(20));
+
+    let closed = std::time::Instant::now();
+    crate::reopen::close(&mut control, "p1");
+    let ended = until_answer(&mut from_pane);
+    assert_eq!(ended.refusal, "pane_closed", "{ended:?}");
+    assert!(closed.elapsed() < std::time::Duration::from_secs(5), "{:?}", closed.elapsed());
+    assert!(from_no_pane.next_message(std::time::Duration::from_secs(1)).is_none());
+}
+
 /// The answer to the one request sent on `control`.
 fn until_answer(control: &mut Control) -> proto::MsgAnswer {
     match control.next_message(std::time::Duration::from_secs(20)) {

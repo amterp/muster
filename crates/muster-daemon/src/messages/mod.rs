@@ -1959,36 +1959,74 @@ fn waiting(
                 );
             }
             Err(RecvTimeoutError::Timeout) => {
-                let timed_out = deadline.is_some_and(|deadline| Instant::now() >= deadline);
-                if timed_out || hung_up() {
-                    let mut messages = shared.messages();
-                    // A post may have answered this wait between the timeout and the lock, and
-                    // counted it as woken: that answer is the one to give.
-                    if let Ok(WaitEnded::Ready(notices)) = ended.try_recv() {
-                        drop(messages);
-                        for notice in &notices {
-                            waits::heard_notice(
-                                shared,
-                                &reader,
-                                &notice.group,
-                                notice.first,
-                                notice.last,
-                            );
-                        }
-                        return answered(
-                            String::new(),
-                            Answer::Notices(msg_answer::Notices { notices }),
-                        );
-                    }
-                    messages.service.cancel_wait(ticket);
-                    messages.waits.remove(&ticket);
-                    let why = if timed_out { "timed_out" } else { "hung_up" };
-                    log::debug("msg.wait.ended", fields! { "ticket" => ticket, "why" => why });
-                    return refused_as("", "timed_out", "nothing arrived before the timeout");
+                let why = if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    Some(GaveUp::TimedOut)
+                } else if hung_up() {
+                    Some(GaveUp::HungUp)
+                } else if its_pane_closed(shared, caller) {
+                    Some(GaveUp::PaneClosed)
+                } else {
+                    None
+                };
+                if let Some(why) = why {
+                    return give_up(shared, &reader, ticket, &ended, why);
                 }
             }
         }
     }
+}
+
+/// Why a wait stopped without being answered.
+#[derive(Clone, Copy)]
+enum GaveUp {
+    TimedOut,
+    HungUp,
+    PaneClosed,
+}
+
+/// Ends a wait nothing answered, unless a post answered it between the look that ended it and
+/// the lock, and counted it as woken: that answer is the one to give.
+fn give_up(
+    shared: &Shared,
+    reader: &str,
+    ticket: u64,
+    ended: &mpsc::Receiver<WaitEnded>,
+    why: GaveUp,
+) -> Reply {
+    let mut messages = shared.messages();
+    if let Ok(WaitEnded::Ready(notices)) = ended.try_recv() {
+        drop(messages);
+        for notice in &notices {
+            waits::heard_notice(shared, reader, &notice.group, notice.first, notice.last);
+        }
+        return answered(String::new(), Answer::Notices(msg_answer::Notices { notices }));
+    }
+    messages.service.cancel_wait(ticket);
+    messages.waits.remove(&ticket);
+    let named = match why {
+        GaveUp::TimedOut => "timed_out",
+        GaveUp::HungUp => "hung_up",
+        GaveUp::PaneClosed => "pane_closed",
+    };
+    log::debug("msg.wait.ended", fields! { "ticket" => ticket, "why" => named });
+    match why {
+        GaveUp::PaneClosed => refused_as(
+            "",
+            "pane_closed",
+            "the pane this wait was for has closed, so nothing will answer it",
+        ),
+        GaveUp::TimedOut | GaveUp::HungUp => {
+            refused_as("", "timed_out", "nothing arrived before the timeout")
+        }
+    }
+}
+
+/// Whether the caller ran in a pane that is no longer open here. A wait from a closed pane never
+/// hangs up on its own: the hook that runs it outlives the pane's agent, and holds the dead
+/// session until the hook's timeout.
+fn its_pane_closed(shared: &Shared, caller: &Caller) -> bool {
+    let Some(pane) = caller.pane.as_deref().filter(|pane| !pane.is_empty()) else { return false };
+    !shared.lock().has_pane(pane)
 }
 
 /// What the prompt of the agent `agent` in a pane holds, read as the doorbell reads it before

@@ -502,8 +502,10 @@ of its own either (`answer_offers_answers`): the next question is a post of its 
 `wait [--group G] [--timeout S]` blocks until you have an unread message that would wake you,
 then prints what a wake would say and exits 0. It returns at once if you already have one. A
 newer `wait` by the same participant ends the older, which exits 1, as does one whose participant
-leaves. With `--timeout` it exits 5 when nothing arrived. A wait survives Muster updating its
-daemon: it asks the new one and goes on waiting.
+leaves. So does one run from a pane that has since closed, within a second: a harness's `Stop` hook
+runs `wait`, and its session cannot finish exiting while the hook runs. With `--timeout` it exits 5
+when nothing arrived. A wait survives Muster updating its daemon: it asks the new one and goes on
+waiting.
 
 With `--due` it returns only for a wake you are due: once for each batch of messages, and once
 more `still unread` if you have not read them, as the doorbell would. That is what a `Stop` hook

@@ -4713,6 +4713,11 @@ impl Session {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }
 
+    /// Whether `pane` is open here, hidden or not.
+    pub(crate) fn has_pane(&self, pane: &str) -> bool {
+        self.pane_index(pane).is_some()
+    }
+
     /// The pane other than `except` whose callsign is `callsign` here: one open, or one starting.
     fn callsign_holder(&self, callsign: &str, except: &str) -> Option<&str> {
         self.panes
