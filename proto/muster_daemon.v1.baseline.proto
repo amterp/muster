@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.13
+// Version: 1.14
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -185,6 +185,8 @@ message SessionRequest {
     Shown shown = 19;
     // Since 1.10.
     SetReopenClosed set_reopen_closed = 20;
+    // Since 1.14.
+    SetCompactionRules set_compaction_rules = 21;
   }
 
   message Snapshot {}
@@ -306,6 +308,21 @@ message PaneRequest {
     Reopen reopen = 15;
     // Since 1.11. Answered with ImageStored; never writes the pane's input itself.
     StoreImage store_image = 16;
+    // Since 1.14.
+    SetCompaction set_compaction = 17;
+  }
+
+  // Sets one pane's own compaction thresholds, which beat every rule (`SetCompactionRules`)
+  // for as long as the pane lasts: across a restart, a handoff to a daemon that knows them, and
+  // a reopening. ALREADY_SO when nothing changes.
+  message SetCompaction {
+    string pane = 1;
+    // Absent: left as it is.
+    CompactionThreshold compact_at = 2;
+    // Absent: left as it is.
+    CompactionThreshold nudge_at = 3;
+    // Forgets both, so the rules decide again. Sent without either threshold.
+    bool clear = 4;
   }
 
   message StoreImage {
@@ -365,8 +382,9 @@ message PaneRequest {
 
   // A helper's maker, a pane on another daemon, has closed (MIP-7, section 6): a window saw it
   // close, or opened onto helpers whose maker no daemon holds. Each helper of it here stops being
-  // quiet and is marked (`Pane.maker_closed`), and the person is told once, in a message from
-  // `@muster` naming them, as when a maker here closes. ALREADY_SO when every helper of it here
+  // quiet and is marked (`Pane.maker_closed`), and is closed once idle; the person is told once,
+  // in a message from `@muster`, of those still running, as when a maker here closes. ALREADY_SO
+  // when every helper of it here
   // is marked already, or none is here. REFUSED when the maker is a pane open here: it has not
   // closed. Since 1.6.
   message MakerClosed {
@@ -426,7 +444,10 @@ message PaneRequest {
   // was hidden; a helper whose tab is gone goes among its maker's helpers. Its callsign and name
   // come back unless an open pane holds either now: then the callsign is drawn afresh and the
   // name is left off, and `Reopened` says so. Helpers of it here, and its own maker when open
-  // here, are joined again (`Pane.maker_closed` cleared and their quiet put back).
+  // here, are joined again (`Pane.maker_closed` cleared and their quiet put back), and since 1.14
+  // each helper the daemon closed with it (`ClosedPane.closed_with_maker`) is reopened after it,
+  // with no request of its own. A helper reopened while its maker is not open here is no longer
+  // closed once idle.
   //
   // DONE with `Reopened`. NOT_THERE when nothing is remembered by that name; REFUSED when a pane
   // of that id is open or starting, or the pane could not start. Since 1.10.
@@ -699,9 +720,53 @@ message SetReopenClosed {
 }
 
 // How full an agent's context gets before the daemon compacts it, as a Compact for its pane
-// would, once each time a report crosses it. Absent: never.
+// would, once each time a report crosses it. Absent: never. It replaces every compaction rule
+// the daemon holds with this one percent for every agent, which is all a client that sends it
+// knows to say; a client that knows `SetCompactionRules` sends that instead.
 message SetCompactAt {
   optional float percent = 1;
+}
+
+// Every compaction rule the daemon applies, replacing the ones it held. For each pane and each
+// threshold the most specific place that sets it decides: the pane itself
+// (`PaneRequest.SetCompaction`), then each directory holding the pane's directory, longest path
+// first, then its agent's harness, then `root`. Past its `compact_at` an agent is compacted as
+// by `SetCompactAt`; past its `nudge_at` it is posted a message from `@muster` telling it to
+// compact itself, once each time a report crosses it. ALREADY_SO when nothing changes. Since
+// 1.14.
+message SetCompactionRules {
+  CompactionRules rules = 1;
+}
+
+message CompactionRules {
+  CompactionThresholds root = 1;
+  repeated CompactionHarness harnesses = 2;
+  repeated CompactionDirectory directories = 3;
+}
+
+// What one place says of both thresholds. A threshold absent is one the place does not set.
+message CompactionThresholds {
+  CompactionThreshold compact_at = 1;
+  CompactionThreshold nudge_at = 2;
+}
+
+// One threshold where a place sets it.
+message CompactionThreshold {
+  // A whole percent from 1 to 100. Absent: off here, whatever a less specific place says.
+  optional uint32 percent = 1;
+}
+
+message CompactionHarness {
+  // The harness as its detection manifest names it, which is `Pane.agent`.
+  string name = 1;
+  CompactionThresholds thresholds = 2;
+}
+
+message CompactionDirectory {
+  // Absolute, or under `~`, which is the home of whoever runs the daemon. It holds a pane whose
+  // directory is it or inside it, compared by whole path components.
+  string path = 1;
+  CompactionThresholds thresholds = 2;
 }
 
 // What messages call the human where they show it (MIP-4, section 10): `who` and the framing of
@@ -1520,6 +1585,10 @@ message ClosedPane {
   uint64 until_ms = 9;
   // The tab it was in as it closed, which may be gone.
   string tab = 10;
+  // Since 1.14. Its daemon closed it because its maker had closed and it was idle
+  // (`Pane.maker_closed`), so reopening its maker on this daemon reopens it too, and a client
+  // reopening "the pane closed last" passes over it for one somebody closed.
+  bool closed_with_maker = 11;
 }
 
 message PaneText {
@@ -1786,8 +1855,10 @@ message Pane {
   // state file. Absent for a pane nobody made as a helper.
   optional string maker = 21;
   // Since 1.6. The pane's maker has closed, here or on another machine (`PaneRequest.MakerClosed`),
-  // so it is no longer quiet on its maker's behalf, nor watched for it. Set once, never cleared,
-  // and written to the state file.
+  // so it is no longer quiet on its maker's behalf, nor watched for it, and its daemon closes it
+  // once it is idle, as a `Close` would, unless somebody brought its tab on screen or reopened
+  // it meanwhile. Cleared when its maker is reopened on this daemon, and written to the state
+  // file.
   bool maker_closed = 22;
   // Since 1.8. The names the pane was given before its present one, oldest first and at most
   // eight, so a name somebody still holds - `$MUSTER_PANE_NAME` keeps the one the pane was
@@ -1813,6 +1884,45 @@ message Pane {
   // Since 1.12. `label` was taken from the agent's session (`Report.session_name`) rather than
   // given to the pane. False while it has no label.
   bool label_from_session = 28;
+  // Since 1.14. The thresholds set for this pane itself (`PaneRequest.SetCompaction`). Absent:
+  // none.
+  CompactionThresholds own_compaction = 29;
+  // Since 1.14. The thresholds that apply to this pane now, and what set each. Absent from a
+  // daemon that applies one percent to every pane.
+  AppliedCompaction compaction = 30;
+}
+
+// The compaction thresholds applying to one pane (`Pane.compaction`).
+message AppliedCompaction {
+  AppliedThreshold compact_at = 1;
+  AppliedThreshold nudge_at = 2;
+  // Why no nudge is posted though `nudge_at` holds a percent.
+  NudgeWithheld nudge_withheld = 3;
+}
+
+message AppliedThreshold {
+  // Absent: off.
+  optional uint32 percent = 1;
+  ThresholdSource source = 2;
+  // The harness's name or the directory's path, as the rules gave it, for those two sources.
+  optional string from = 3;
+}
+
+enum ThresholdSource {
+  // Nothing sets it.
+  THRESHOLD_SOURCE_UNSET = 0;
+  THRESHOLD_SOURCE_ROOT = 1;
+  THRESHOLD_SOURCE_HARNESS = 2;
+  THRESHOLD_SOURCE_DIRECTORY = 3;
+  THRESHOLD_SOURCE_PANE = 4;
+}
+
+enum NudgeWithheld {
+  NUDGE_WITHHELD_NONE = 0;
+  // The pane is compacted at that percent or a lower one, so the nudge would come too late.
+  NUDGE_WITHHELD_AT_OR_ABOVE_COMPACT_AT = 1;
+  // The nudge tells an agent to compact itself, and its manifest says no way to.
+  NUDGE_WITHHELD_HARNESS_CANNOT_COMPACT = 2;
 }
 
 // One change to an agent's context (`Pane.context_change`).
@@ -1998,13 +2108,16 @@ message Settings {
   optional bool name_sessions = 7;
   // Since 1.3. Absent: the human is shown by the address alone.
   optional string human_name = 8;
-  // Since 1.3. Absent: no agent is compacted unasked.
+  // Since 1.3. Absent: no agent is compacted unasked. Not written since 1.14, which keeps
+  // `compaction_rules`; read from a state an older daemon wrote, as that rule set's root.
   optional float compact_at = 9;
   // Since 1.3. Absent: agents are resumed.
   optional bool resume_agents = 10;
   // Since 1.10. How long a closed pane can be reopened, in minutes. 0 remembers none. Absent:
   // 60. A change applies to panes closed after it.
   optional uint32 reopen_closed_minutes = 11;
+  // Since 1.14. Absent: no agent is compacted or nudged unasked.
+  CompactionRules compaction_rules = 12;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2337,6 +2450,11 @@ message Handoff {
     optional uint64 wait_started_ms = 14;
     // Since 1.11. The maker has been told that this declared wait has lasted too long.
     bool wait_noticed = 15;
+    // Since 1.14. The agent has been posted its nudge for the crossing of `nudge_at` its context
+    // is past, so the new daemon posts no second one. Whether it has been compacted for
+    // crossing `compact_at` is not carried, because the compaction queued for it is not: a new
+    // daemon that believed the crossing spent would leave a full agent uncompacted.
+    bool nudged = 16;
   }
 
   enum TypedBy {
