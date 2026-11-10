@@ -896,7 +896,7 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
     ) -> Result<(), Refusal> {
         let Some(existing) = self.groups.get(group) else { return Ok(()) };
-        let addressed = Self::addressed(caller, presence);
+        let addressed = self.addressed(caller, presence);
         let folded = self.made_by_address(&addressed, presence);
         let member = existing.members.contains(name)
             || folded.is_some_and(|pane| existing.members.contains(&pane));
@@ -916,7 +916,7 @@ impl<S: Store> Messaging<S> {
             self.adopt(name, caller);
             return Ok(false);
         }
-        let caller = &Self::addressed(caller, presence);
+        let caller = &self.addressed(caller, presence);
         let took_over = self
             .participants
             .get(name)
@@ -941,7 +941,7 @@ impl<S: Store> Messaging<S> {
         if name == HUMAN {
             self.human_here(presence)?;
         }
-        self.may_become(name, &Self::addressed(caller, presence), presence)
+        self.may_become(name, &self.addressed(caller, presence), presence)
     }
 
     pub fn leave(
@@ -951,7 +951,7 @@ impl<S: Store> Messaging<S> {
         presence: &dyn Presence,
         now_ms: u64,
     ) -> Result<Left, Refusal> {
-        let caller = &Self::addressed(caller, presence);
+        let caller = &self.addressed(caller, presence);
         if self.lookup(caller).as_deref() == Some(HUMAN) {
             self.human_here(presence)?;
         }
@@ -2381,10 +2381,24 @@ impl<S: Store> Messaging<S> {
 
     /// The caller as far as its addresses identify it: a pane counts only while detection has
     /// found an agent in it, since a person's own shell in a pane is the human (MIP-4, section 3).
-    pub(crate) fn addressed(caller: &Caller, presence: &dyn Presence) -> Caller {
+    pub(crate) fn addressed(&self, caller: &Caller, presence: &dyn Presence) -> Caller {
         let mut caller = caller.clone();
         caller.pane = caller.pane.filter(|pane| presence.agent_in(pane));
+        caller.as_name = self.as_name_of(&caller, presence);
         caller
+    }
+
+    /// The name the caller asks to act as, unless that names its own pane by id or callsign and
+    /// no participant is called it: the agent in a pane is already that pane's participant,
+    /// whatever it joined under, so acting as the pane is acting as itself. Made a participant of
+    /// its own, the name would take the pane's addresses off the agent that holds them.
+    pub fn as_name_of(&self, caller: &Caller, presence: &dyn Presence) -> Option<String> {
+        let name = caller.as_name.as_ref()?;
+        let own = caller
+            .pane
+            .as_ref()
+            .is_some_and(|pane| name == pane || presence.pane_named(name).as_ref() == Some(pane));
+        (!own || self.participants.contains_key(name)).then(|| name.clone())
     }
 
     /// Refuses to make the caller `name` while `name` is a live participant in another
@@ -2398,7 +2412,8 @@ impl<S: Store> Messaging<S> {
     /// in the pane, such as an agent nested in it, keeps it.
     ///
     /// A new name is refused too while a pane here other than the caller's goes by it: `--to`
-    /// that name would then mean two agents, and say neither.
+    /// that name would then mean two agents, and say neither. An `--as` naming the caller's own
+    /// pane never gets here: [`Self::as_name_of`] reads it as the caller.
     pub(crate) fn may_become(
         &self,
         name: &str,
@@ -2480,7 +2495,7 @@ impl<S: Store> Messaging<S> {
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
-        let addressed = Self::addressed(caller, presence);
+        let addressed = self.addressed(caller, presence);
         let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
         match self.human_elsewhere(presence) {
             Some(home) if named.as_deref() == Some(HUMAN) => Ok(home.human()),
@@ -2501,7 +2516,7 @@ impl<S: Store> Messaging<S> {
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<(String, bool), Refusal> {
-        let caller = &Self::addressed(caller, presence);
+        let caller = &self.addressed(caller, presence);
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
             if name == HUMAN {

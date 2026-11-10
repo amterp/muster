@@ -1871,10 +1871,9 @@ fn wake<'a>(shared: &Shared, wakes: &'a [Wake]) -> Vec<&'a Wake> {
     failed
 }
 
-fn wait_reader(shared: &Shared, caller: &Caller) -> String {
-    caller
-        .as_name
-        .clone()
+fn wait_reader(shared: &Shared, caller: &Caller, panes: &Panes) -> String {
+    let as_name = shared.messages().service.as_name_of(caller, panes);
+    as_name
         .or_else(|| {
             caller.inbox.as_ref().and_then(|inbox| {
                 shared.messages().service.holding_inbox(inbox).map(|p| p.name.clone())
@@ -1891,7 +1890,7 @@ fn waiting(
     hung_up: &dyn Fn() -> bool,
     panes: &Panes,
 ) -> Reply {
-    let reader = wait_reader(shared, caller);
+    let reader = wait_reader(shared, caller, panes);
     let (ticket, ended) = {
         let mut messages = shared.messages();
         if messages.handing_over {

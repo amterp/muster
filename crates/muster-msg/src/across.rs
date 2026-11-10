@@ -676,7 +676,7 @@ impl<S: Store> Messaging<S> {
         // The human's cursors are kept at its home whatever the group, so a person's shell
         // where that is elsewhere hears so before anything asks where the group is.
         let joining =
-            name.map(str::to_string).or_else(|| self.lookup(&Self::addressed(caller, presence)));
+            name.map(str::to_string).or_else(|| self.lookup(&self.addressed(caller, presence)));
         if joining.as_deref() == Some(HUMAN) {
             self.human_here(presence)?;
         }
@@ -719,7 +719,7 @@ impl<S: Store> Messaging<S> {
         let member = |pane: &String| {
             *pane != name && self.groups.get(key).is_some_and(|group| group.members.contains(pane))
         };
-        let pane = self.made_by_address(&Self::addressed(caller, presence), presence);
+        let pane = self.made_by_address(&self.addressed(caller, presence), presence);
         let owed = || self.participants.get(name)?.folds_owed.get(key).cloned();
         pane.filter(member).or_else(owed)
     }
@@ -894,7 +894,7 @@ impl<S: Store> Messaging<S> {
         group: Option<&str>,
         presence: &dyn Presence,
     ) -> Result<Vec<Away>, Refusal> {
-        let caller = &Self::addressed(caller, presence);
+        let caller = &self.addressed(caller, presence);
         if let Some(home) = self.human_elsewhere(presence)
             && self.lookup(caller).as_deref() == Some(HUMAN)
         {
@@ -1342,7 +1342,7 @@ impl<S: Store> Messaging<S> {
     /// Whether the caller is this machine's person: a shell with no agent identity, or one
     /// acting as the human.
     pub fn is_person(&self, caller: &Caller, presence: &dyn Presence) -> bool {
-        let addressed = Self::addressed(caller, presence);
+        let addressed = self.addressed(caller, presence);
         let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
         named.as_deref() == Some(HUMAN)
     }

@@ -44,6 +44,10 @@ Every verb works out who is asking, in this order:
 `--as @human` acts as the human for that command. The agent keeps its pane and inbox, so later
 commands without `--as` still act as the agent.
 
+`--as` naming your own pane, by its callsign or its id, is you: the same participant as running
+the command without `--as`, under whatever name you joined by. It does not make a second
+participant. Another pane's callsign is refused.
+
 `join --name @human` also leaves the agent's identity and memberships in place. The human's join
 follows the group's membership policy, including for a group on another machine.
 

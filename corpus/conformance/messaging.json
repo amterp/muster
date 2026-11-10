@@ -353,6 +353,58 @@
       ] }
     },
     {
+      "name": "acting as the callsign of its own pane is the pane's own participant",
+      "why": "An agent that runs a verb `--as` what its pane is called means itself. Making a participant by that name instead took the pane's addresses off the agent, so what was posted to the pane afterwards went to groups of the new name and nothing woke the agent in the group it was in.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "s1", "pane": "p1", "do": "join", "group": "g"},
+        {"session": "s1", "pane": "p1", "as": "otter", "do": "wait"},
+        {"session": "i", "do": "join", "name": "integrator", "group": "g"},
+        {"session": "i", "do": "post", "group": "g", "to": ["otter"], "body": "brief"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "p1 joined g (created)",
+        "waiting 1",
+        "integrator joined g",
+        "integrator posted #4 to g; woke p1 [g #4-4 x1 to-you:1 from integrator]",
+        "integrator alive, p1 alive (idle)"
+      ] }
+    },
+    {
+      "name": "acting as the id of its own pane after taking a name is the agent that name",
+      "why": "The pane's id still means the pane's agent once it has joined under a name of its own. It must not be made a second participant, which would take the pane from the one that holds it.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"session": "s1", "pane": "p1", "do": "join", "name": "worker", "group": "g"},
+        {"session": "s1", "pane": "p1", "as": "p1", "do": "read", "group": "g"},
+        {"do": "who", "group": "g"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "worker joined g (created)",
+        "worker read nothing",
+        "worker alive (idle)"
+      ] }
+    },
+    {
+      "name": "acting as another pane's callsign, or from no pane, is still refused",
+      "why": "Only the caller's own pane is itself. A name another pane goes by would make `--to` that name mean two agents, whoever asks.",
+      "given": { "steps": [
+        {"do": "agent", "pane": "p1", "state": "idle", "called": "otter"},
+        {"do": "agent", "pane": "p2", "state": "idle", "called": "heron"},
+        {"session": "s2", "pane": "p2", "as": "otter", "do": "read"},
+        {"as": "otter", "do": "read"}
+      ] },
+      "expect": { "said": [
+        "p1 idle",
+        "p2 idle",
+        "refused name_of_pane otter p1",
+        "refused name_of_pane otter p1"
+      ] }
+    },
+    {
       "name": "a wait returns when a waking message arrives, and a newer wait ends the older",
       "why": "wait is what a hook runs in the background; at most one runs per participant (MIP-4, section 13).",
       "given": { "steps": [

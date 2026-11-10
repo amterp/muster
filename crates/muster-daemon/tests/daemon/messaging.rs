@@ -257,6 +257,50 @@ fn leaving_ends_the_leavers_wait() {
     assert_eq!(until_answer(&mut waiting).refusal, "left");
 }
 
+/// An agent that waits `--as` what its pane is called is the pane's participant, as it is
+/// without `--as`: made a second participant, it lost the pane, and what was posted to it in the
+/// group it was in no longer woke it.
+#[test]
+fn waiting_as_the_callsign_of_its_own_pane_keeps_the_agent_in_its_group() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == "p1")
+        .and_then(|record| record.callsign)
+        .expect("p1 was drawn a callsign");
+    let in_pane = msg_request::Caller { pane: Some("p1".into()), ..Default::default() };
+    let joining =
+        Asked::Join(msg_request::Join { name: None, group: Some("g".into()), pull: false });
+    expect(&mut control, msg(&in_pane, joining), proto::Outcome::Done);
+    join(&mut control, &named("a"), "a", "g");
+
+    let mut logging = daemon.connect();
+    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut waiting = daemon.connect();
+    let as_callsign = msg_request::Caller { as_name: Some(callsign), ..in_pane };
+    waiting.send(msg(&as_callsign, Asked::Wait(msg_request::Wait::default())));
+    logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
+
+    let posted = expect(&mut control, post(&named("a"), "go"), proto::Outcome::Done);
+    let reached: Vec<_> = reached(&posted).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(reached, ["p1"]);
+    let answered = until_answer(&mut waiting);
+    let Some(Answer::Notices(notices)) = &answered.answer else { panic!("{answered:?}") };
+    assert_eq!(notices.notices[0].group, "g");
+
+    let who = msg(&named("a"), Asked::Who(msg_request::Who { group: None }));
+    let who = expect(&mut control, who, proto::Outcome::Done);
+    let Some(Answer::Members(members)) = &msg_answer(&who).answer else { panic!() };
+    let mut names: Vec<_> = members.members.iter().map(|member| member.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["a", "p1"]);
+}
+
 /// The answer to the one request sent on `control`.
 fn until_answer(control: &mut Control) -> proto::MsgAnswer {
     match control.next_message(std::time::Duration::from_secs(20)) {
