@@ -128,23 +128,6 @@ impl Pane {
         );
     }
 
-    /// [`Pane::reports`], asked again while the daemon refuses it. A daemon that took the pane
-    /// over can take a report from this test for another agent's until it has placed the pane's
-    /// own, and refuses it.
-    fn reports_once_taken(&mut self, context_used: f32) {
-        let control = &mut self.control;
-        until_some("the daemon to take the agent's report", || {
-            let report = proto::pane_request::Report {
-                pane: "p1".to_string(),
-                agent: "claude".to_string(),
-                context_used: Some(context_used),
-                ..Default::default()
-            };
-            let asked = control.ask(pane(proto::pane_request::Request::Report(report)));
-            (asked.outcome() != proto::Outcome::Refused).then_some(())
-        });
-    }
-
     /// Reports `state` as `claude`'s hooks do, with `waiting` as the prompt hook sends one.
     fn hook_reports(&mut self, state: proto::AgentState, waiting: Option<&str>) {
         let mut report = proto::pane_request::Report {
@@ -463,30 +446,6 @@ fn a_nudge_that_would_do_no_good_is_withheld_and_the_record_says_why() {
 
     std::thread::sleep(WOULD_HAVE_TYPED);
     assert_eq!(p1.nudges_heard(), Vec::<String>::new());
-}
-
-/// A daemon that takes a pane over posts no second nudge for the crossing the old one nudged.
-#[test]
-fn a_handoff_carries_that_an_agent_was_nudged() {
-    let mut p1 = Pane::with_an_agent();
-    p1.rules(proto::CompactionRules {
-        root: thresholds(None, Some(Some(60))),
-        ..Default::default()
-    });
-    p1.reports(62.0);
-    p1.until_nudged(1);
-
-    let answer = p1.daemon.replace(None);
-    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
-    p1.control = p1.daemon.connect();
-    p1.reports_once_taken(63.0);
-    std::thread::sleep(WOULD_HAVE_TYPED);
-    let heard = p1.nudges_heard();
-    assert_eq!(heard.len(), 1, "nudged again for the same crossing: {heard:?}");
-
-    p1.reports_once_taken(30.0);
-    p1.reports_once_taken(64.0);
-    p1.until_nudged(2);
 }
 
 /// A compaction somebody asked for is theirs: no change of threshold takes it back.

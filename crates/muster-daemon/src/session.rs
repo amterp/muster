@@ -4047,7 +4047,6 @@ impl Session {
         match &self.placed_rules {
             Some((held, placed)) if *held == key => Arc::clone(placed),
             _ => {
-                let physical = |path: PathBuf| std::fs::canonicalize(&path).unwrap_or(path);
                 let placed =
                     Arc::new(compaction_rules(&self.settings).placed(&self.home, physical));
                 self.placed_rules = Some((key, Arc::clone(&placed)));
@@ -4062,6 +4061,8 @@ impl Session {
         let (effective, withheld) = applying(rules, record);
         let applied = Some(thresholds::applied(&effective, withheld));
         pane.compaction.threshold_is(effective.compact_at.percent.map(f32::from));
+        let nudged = record.agent.is_some() && withheld.is_none();
+        pane.compaction.nudge_threshold_is(effective.nudge_at.percent.filter(|_| nudged));
         if record.compaction != applied {
             if let Some(why) = withheld {
                 log::info(
@@ -5167,6 +5168,28 @@ fn applying(
     (effective, withheld)
 }
 
+/// `path` as this machine names it, with its symbolic links followed. A directory that does not
+/// exist yet has the part of its path that does followed, so a rule for `/tmp/scratch` written
+/// before anybody makes `scratch` still holds the pane later started in `/private/tmp/scratch`.
+fn physical(path: PathBuf) -> PathBuf {
+    let mut missing = Vec::new();
+    let mut existing = path.as_path();
+    let found = loop {
+        if let Ok(real) = std::fs::canonicalize(existing) {
+            break Some(real);
+        }
+        let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
+            break None;
+        };
+        missing.push(name.to_owned());
+        existing = parent;
+    };
+    match found {
+        Some(real) => missing.iter().rev().fold(real, |path, name| path.join(name)),
+        None => path,
+    }
+}
+
 /// A percent a client sent as a fraction, as the whole percent the rules hold.
 fn whole_percent(percent: f32) -> Setting {
     #[expect(
@@ -5628,6 +5651,15 @@ mod tests {
         let mut on_process = Turns::default();
         carry_through_musters_turn(&waiting(Some(4242)), &mut on_process, &io);
         assert_eq!(on_process, Turns::default());
+    }
+
+    #[test]
+    fn a_directory_not_made_yet_is_named_through_the_part_of_its_path_that_exists() {
+        let scratch = std::env::temp_dir();
+        let real = std::fs::canonicalize(&scratch).expect("the temporary directory exists");
+        let later = Path::new("muster-not-made-yet").join("inside");
+        assert_eq!(physical(scratch.join(&later)), real.join(&later));
+        assert_eq!(physical(scratch), real);
     }
 
     /// A session with no panes, persisting to `file`, whose events reach the returned stream.

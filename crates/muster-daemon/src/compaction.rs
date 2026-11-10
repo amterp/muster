@@ -101,6 +101,8 @@ impl Compaction {
     pub(crate) fn ask(&mut self, line: String, then: Option<String>) {
         self.wanted = Some(Wanted { line, by: By::Asked, then });
         self.follow_up = None;
+        // The agent is about to be compacted, so a nudge not yet posted would have it do it twice.
+        self.nudge = None;
     }
 
     /// The agent reported its context `used` percent full, against `threshold`. True when this
@@ -147,6 +149,24 @@ impl Compaction {
 
     pub(crate) fn nudge_due(&self) -> Option<Nudge> {
         self.nudge
+    }
+
+    /// The pane is nudged `at` this percent now, none when it is not to be. A context not past
+    /// the new line has not crossed it: a nudge owed for the old one goes, and the agent can be
+    /// nudged when it does cross. One still owed past the new line names the new percent.
+    pub(crate) fn nudge_threshold_is(&mut self, at: Option<u8>) {
+        match at.filter(|at| self.used.is_some_and(|used| used >= f32::from(*at))) {
+            Some(at) => {
+                if let Some(nudge) = &mut self.nudge {
+                    nudge.at = at;
+                }
+            }
+            None => {
+                self.nudge = None;
+                self.nudged = false;
+                self.nudge_refused = false;
+            }
+        }
     }
 
     /// The nudge owed was posted.
@@ -255,6 +275,31 @@ mod tests {
         assert!(compaction.nudge_due().is_some(), "still past it once the compaction was typed");
         compaction.nudge_reported(90.0, None, Some(85));
         assert_eq!(compaction.nudge_due(), None, "the threshold went");
+    }
+
+    #[test]
+    fn a_threshold_raised_past_the_context_can_be_crossed_and_nudged_again() {
+        let mut compaction = Compaction::default();
+        compaction.reported(65.0, None);
+        compaction.nudge_reported(65.0, Some(60), None);
+        compaction.nudge_posted();
+        compaction.nudge_threshold_is(Some(80));
+        compaction.nudge_reported(85.0, Some(80), None);
+        assert!(compaction.nudge_due().is_some(), "65 had not crossed 80");
+
+        compaction.reported(85.0, None);
+        compaction.nudge_threshold_is(Some(70));
+        assert_eq!(compaction.nudge_due().map(|nudge| nudge.at), Some(70), "still past it");
+        compaction.nudge_threshold_is(None);
+        assert_eq!(compaction.nudge_due(), None, "the threshold went before it was posted");
+    }
+
+    #[test]
+    fn a_compaction_asked_for_takes_back_a_nudge_not_yet_posted() {
+        let mut compaction = Compaction::default();
+        compaction.nudge_reported(62.0, Some(60), None);
+        compaction.ask("/compact".to_string(), None);
+        assert_eq!(compaction.nudge_due(), None);
     }
 
     #[test]
