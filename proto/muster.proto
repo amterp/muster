@@ -2996,6 +2996,9 @@ message AskingEntry {
   // daemon from before callsigns.
   string callsign = 7;
   string label = 8;
+  // What a blocked pane says it is blocked on (`RosterPane.subtitle`), for the same reason. Empty on
+  // every other entry, and on a blocked pane with nothing to say.
+  string subtitle = 9;
 }
 
 message AskingListChanged {

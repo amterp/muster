@@ -1525,6 +1525,12 @@ fn window_json(window: &Window, others: Others) -> Value {
             "daemon": entry.daemon_id,
             "pane": (!entry.pane_id.is_empty()).then_some(&entry.pane_id),
             "group": (!entry.group.is_empty()).then_some(&entry.group),
+            // What the strip titles the card with, so a reader need not look the pane up, which for
+            // another window's pane is under `other_windows`; null on a group.
+            "callsign": (!entry.callsign.is_empty()).then_some(&entry.callsign),
+            "label": (!entry.label.is_empty()).then_some(&entry.label),
+            // What a blocked pane says it is blocked on; null for any other entry.
+            "subtitle": (!entry.subtitle.is_empty()).then_some(&entry.subtitle),
             "alert": entry.alert,
             "since_ms": entry.since_ms,
             "preview": entry.preview,
@@ -1843,6 +1849,9 @@ mod tests {
                 AskingEntry {
                     daemon_id: "local".into(),
                     pane_id: "p1".into(),
+                    callsign: "otter".into(),
+                    label: "otter · muster".into(),
+                    subtitle: "Run cargo test?".into(),
                     alert: "blocked".into(),
                     since_ms: 10,
                     ..Default::default()
@@ -1861,6 +1870,12 @@ mod tests {
         let json = window_json(&window, Others::All);
         assert_eq!(json["asking"][0]["pane"], "p1");
         assert_eq!(json["asking"][0]["group"], serde_json::Value::Null);
+        assert_eq!(json["asking"][0]["callsign"], "otter");
+        assert_eq!(json["asking"][0]["label"], "otter · muster");
+        assert_eq!(json["asking"][0]["subtitle"], "Run cargo test?");
+        assert_eq!(json["asking"][1]["callsign"], serde_json::Value::Null);
+        assert_eq!(json["asking"][1]["label"], serde_json::Value::Null);
+        assert_eq!(json["asking"][1]["subtitle"], serde_json::Value::Null);
         assert_eq!(json["asking"][1]["group"], "g");
         assert_eq!(json["asking"][1]["preview"], "hello");
         assert_eq!(json["asking"][1]["since_ms"], 20);

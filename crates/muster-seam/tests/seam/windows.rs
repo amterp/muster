@@ -750,6 +750,7 @@ fn what_going_to_an_agent_asking_would_do_names_the_other_windows_agent() {
         request::Payload::MoveTab(MoveTab { tab_id: first, window: "window-2".to_string() }),
     )));
     focus_window("window-1");
+    daemon.type_into("p1", "title Run the tests?");
     daemon.set_agent_state("p1", AgentState::Blocked);
     until_state("p1", "blocked");
     let keyboard = keyboard_in("window-2");
@@ -784,6 +785,22 @@ fn what_going_to_an_agent_asking_would_do_names_the_other_windows_agent() {
     assert!(
         !entry.callsign.is_empty() && !entry.label.is_empty(),
         "an agent another window holds is listed without its names: {entry:?}"
+    );
+    until(
+        "the first window's list to carry what the blocked agent says it is blocked on",
+        || {
+            let Some(response::Payload::Window(window)) =
+                answer(&in_window("window-1", request::Payload::ReadWindow(ReadWindow::default())))
+                    .payload
+            else {
+                return false;
+            };
+            window
+                .asking
+                .iter()
+                .any(|entry| entry.pane_id == "p1" && entry.subtitle == "Run the tests?")
+        },
+        || "the first window's asking entry for p1 has no subtitle".to_string(),
     );
 }
 

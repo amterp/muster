@@ -278,6 +278,8 @@ public struct AskingEntry: Equatable {
   /// A pane's names as the core gives them, empty on a group or a pane no daemon holds any more.
   public let callsign: String
   public let label: String
+  /// What a blocked pane says it is blocked on, empty on every other entry.
+  public let subtitle: String
 
   init(_ entry: Muster_AskingEntry) {
     daemon = entry.daemonID
@@ -288,6 +290,7 @@ public struct AskingEntry: Equatable {
     preview = entry.preview
     callsign = entry.callsign
     label = entry.label
+    subtitle = entry.subtitle
   }
 }
 

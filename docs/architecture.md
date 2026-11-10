@@ -331,9 +331,10 @@ colors are the ones below; the shapes are what let the legend be read without th
 **Who wants you is a strip above the list, and the core says who.** The Needs you strip has a card for each agent or
 group asking for the person - blocked, stuck, finished and unseen, a program's notification, or messages for them - in
 exactly the order `focus --asking` walks (`Attention::asking`), so the strip, the chord and the banners cannot disagree
-about who is waiting first. The shell never reorders it. A pane's name travels in its entry, since the list spans every
-window and a window's roster holds only its own tabs, so a rename sends the list again; the state comes from the agents
-and the chord from the roster, so a pane another window holds has a name and no chord. An agent in the strip keeps its
+about who is waiting first. The shell never reorders it. A pane's name travels in its entry, and so does what a blocked
+pane says it is blocked on, since the list spans every window and a window's roster holds only its own tabs, so a rename
+or a new title on a blocked pane sends the list again; the state comes from the agents and the chord from the roster, so
+a pane another window holds has a name and no chord. An agent in the strip keeps its
 row below, which is what stops the list from reordering under somebody reading it. It is absent while nothing asks,
 folds to one line of icons, and is held to under half of the agent list so that a long line of askers cannot push the
 agents off screen.

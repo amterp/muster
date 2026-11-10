@@ -63,6 +63,12 @@ attached; each says `(helper of <maker>)`.
 
     muster window --json | jq -r '.panes[] | select(.state == "blocked") | .pane'
 
+`asking[]` is who wants somebody, in the order `muster focus --asking` takes them, and it spans every
+window: a pane held by another window is in it. Each entry has `daemon`, `alert` (`blocked`, `stuck`,
+`message`, `notified` or `done`), `since_ms` and `preview`, and either `pane` or `group`. A pane's entry
+also has its `callsign` and `label`, and a blocked pane's `subtitle`, which is what it says it is blocked
+on, so a reader does not have to find the pane under `other_windows`. Each is null where there is none.
+
 ## With no window
 
 When no window answers, this machine's daemon does (`muster docs overview`, "With no window"):

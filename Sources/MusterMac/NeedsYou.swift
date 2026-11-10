@@ -6,9 +6,10 @@ import Foundation
 /// The core decides who is in the list and in what order (`Attention::asking()`, the same list
 /// `focus --asking` walks), and this never reorders it: a person told "someone needs you" and a
 /// chord that goes to someone must agree on who. A pane entry carries its own names, because the
-/// list spans every window and this window's roster holds only its own tabs; the rest of the words
-/// come from the roster, the agents and the groups, which the list already joins by key for every
-/// row. A renamed pane is drawn under its new name once the core sends the list again.
+/// list spans every window and this window's roster holds only its own tabs, and so does a blocked
+/// pane's subtitle; the rest of the words come from the agents and the groups, which the list
+/// already joins by key for every row, and the chord keys from the roster, since only this window's
+/// panes have any. A renamed pane is drawn under its new name once the core sends the list again.
 public enum NeedsYouModel {
   /// One card: an agent or a group that wants the person.
   public struct Card: Equatable {
@@ -83,7 +84,7 @@ public enum NeedsYouModel {
         word: word,
         // What a blocked agent asked is a card of its own; until it lands, its row's subtitle.
         detail: entry.alert == "blocked"
-          ? pane.map { SidebarModel.subtitle($0.subtitle, agent: agent) } ?? "" : "",
+          ? SidebarModel.subtitle(entry.subtitle, agent: agent) : "",
         keys: pane.map { [$0.tabPress, $0.press].filter(SidebarRowView.pressable) } ?? [],
         isTimed: !held.isEmpty)
     }

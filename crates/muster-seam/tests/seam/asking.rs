@@ -203,6 +203,74 @@ fn a_pane_blocked_before_the_window_opened_is_reached() {
     assert_eq!(keyboard().1, "p2");
 }
 
+/// A blocked pane's entry carries what it says it is blocked on, so a window that holds no roster
+/// for the pane can draw it, and carries it only while the pane is blocked: that is the one card
+/// which shows it, and a title changing under a pane that merely finished would resend the list.
+#[test]
+fn a_blocked_panes_entry_carries_its_subtitle_and_follows_the_title() {
+    let _turn = muster::testing::fresh_session();
+    muster::ffi::muster_set_event_callback(Some(note));
+    LISTS.lock().expect("asking lists").clear();
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p2");
+    daemon.type_into("p2", "title Run the tests?");
+    for payload in [
+        request::Payload::Startup(Startup {
+            config_path: daemon.muster_config().to_string_lossy().into_owned(),
+            ..Startup::default()
+        }),
+        request::Payload::OpenWindow(OpenWindow::default()),
+    ] {
+        assert_ok(&answer(payload));
+    }
+    daemon.set_agent_state("p2", AgentState::Blocked);
+
+    let entry = || {
+        LISTS
+            .lock()
+            .expect("asking lists")
+            .last()
+            .and_then(|list| list.entries.iter().find(|entry| entry.pane_id == "p2").cloned())
+    };
+    let subtitle = || entry().map(|entry| entry.subtitle);
+    until(
+        "the blocked pane's entry to carry its title",
+        || subtitle().as_deref() == Some("Run the tests?"),
+        || format!("the last list holds {:?}", entry()),
+    );
+    let Some(response::Payload::Window(window)) =
+        answer(request::Payload::ReadWindow(ReadWindow::default())).payload
+    else {
+        panic!("window")
+    };
+    let held = window
+        .roster
+        .iter()
+        .flat_map(|roster| roster.tabs.iter())
+        .flat_map(|tab| tab.panes.iter())
+        .find(|pane| pane.pane_id == "p2")
+        .expect("the window's roster holds the pane");
+    assert_eq!(held.subtitle, "Run the tests?", "the roster and the entry disagree");
+
+    daemon.type_into("p2", "title Which directory?");
+    until(
+        "a new title to reach the blocked pane's entry",
+        || subtitle().as_deref() == Some("Which directory?"),
+        || format!("the last list holds {:?}", entry()),
+    );
+
+    daemon.set_agent_state("p2", AgentState::Working);
+    daemon.set_agent_state("p2", AgentState::Idle);
+    until(
+        "the pane that finished to ask as done",
+        || entry().is_some_and(|entry| entry.alert == "done"),
+        || format!("the last list holds {:?}", entry()),
+    );
+    assert_eq!(subtitle().as_deref(), Some(""), "a pane that is not blocked carries no subtitle");
+}
+
 /// What the window paints for a pane.
 fn state_of(pane: &str) -> String {
     let Some(response::Payload::Window(window)) =

@@ -35,16 +35,20 @@ private func roster(_ panes: [Roster.Pane], hidden: [Roster.Pane] = []) -> Roste
 /// The callsigns the core would name these panes by, as the entries carry them.
 private let callsigns = ["w1:p1": "ivory", "w1:p2": "lynx", "w1:p3": "otter", "w1:p8": "walrus"]
 
+/// What the core would carry for a blocked pane's subtitle, as the entries carry it.
+private let subtitles = ["w1:p1": "Which dirs?"]
+
 @MainActor
 private func entry(
   _ alert: String, pane: String = "", group: String = "", since: Double? = nil,
-  preview: String = "", callsign: String? = nil, label: String = ""
+  preview: String = "", callsign: String? = nil, label: String = "", subtitle: String? = nil
 ) -> AskingEntry {
   var raw = Muster_AskingEntry()
   raw.daemonID = "local"
   raw.paneID = pane
   raw.callsign = callsign ?? callsigns[pane] ?? ""
   raw.label = label
+  raw.subtitle = subtitle ?? (alert == "blocked" ? subtitles[pane] ?? "" : "")
   raw.group = group
   raw.alert = alert
   raw.sinceMs = since.map { Int64((epoch.timeIntervalSince1970 - $0) * 1000) } ?? 0
@@ -156,6 +160,33 @@ struct NeedsYouTests {
     let unlabeled = entry("done", pane: "w9:p8", since: 60, label: "src")
     let made = cards([named, unlabeled], roster: roster([]))
     #expect(made.map(\.title) == ["prairie", "src"], "the callsign, else the label")
+  }
+
+  @Test("a blocked pane another window holds shows the subtitle its entry carries")
+  func anotherWindowsBlockedPaneHasItsDetail() {
+    let blocked = entry(
+      "blocked", pane: "w9:p9", since: 60, callsign: "prairie", subtitle: "Run the tests?")
+    let done = entry("done", pane: "w9:p8", since: 60, callsign: "heron", subtitle: "left over")
+    let made = cards([blocked, done], roster: roster([]))
+    #expect(made.map(\.detail) == ["Run the tests?", ""], "only a blocked card draws it")
+  }
+
+  @Test("a blocked agent that is waiting on its own build says so, as its row does")
+  func theRowsWordsWinOverTheSubtitle() {
+    var waiting = PaneAgent(state: "waiting")
+    waiting.waiting = "cargo build"
+    var gone = PaneAgent(state: "unreachable")
+    gone.lastState = "blocked"
+    let agents = [
+      PaneKey(daemon: "local", pane: "w9:p9"): waiting,
+      PaneKey(daemon: "local", pane: "w9:p8"): gone,
+    ]
+    let made = cards(
+      [
+        entry("blocked", pane: "w9:p9", callsign: "prairie", subtitle: "Run the tests?"),
+        entry("blocked", pane: "w9:p8", callsign: "heron", subtitle: "Run the tests?"),
+      ], roster: roster([]), agents: agents)
+    #expect(made.map(\.detail) == ["waiting on cargo build", "unreachable · was blocked"])
   }
 
   @Test("a renamed pane is drawn under the name its next list carries")

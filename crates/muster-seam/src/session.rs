@@ -2066,14 +2066,23 @@ impl Session {
     }
 
     /// What the roster calls `pane`, for an entry in the asking list: its callsign, if it has one,
-    /// and its label. Both empty when no followed daemon holds the pane.
-    fn callsign_and_label(&self, pane: &PaneKey) -> (String, String) {
+    /// its label, and what it says it is doing. All empty when no followed daemon holds the pane.
+    ///
+    /// The subtitle is read only for a pane that is blocked: that is the one card that draws it, and
+    /// a title that changed under a pane that is merely done would send the list again for nothing.
+    fn names_of(&self, pane: &PaneKey, alert: Alert) -> (String, String, String) {
         let Some(backend) = self.backends.get(&pane.daemon) else { return Default::default() };
         let mirror = poison::lock(&backend.mirror, "mirror");
         mirror.pane(&pane.pane).map_or_else(Default::default, |held| {
+            let label = muster_core::roster::pane_label(held);
+            let subtitle = (alert == Alert::Blocked)
+                .then(|| muster_core::roster::pane_subtitle(held, &label))
+                .flatten()
+                .unwrap_or_default();
             (
                 held.callsign.clone().filter(|word| !word.is_empty()).unwrap_or_default(),
-                muster_core::roster::pane_label(held),
+                label,
+                subtitle,
             )
         })
     }
@@ -2086,12 +2095,13 @@ impl Session {
                 let raised_at = self.attention.raised_at(&asker).unwrap_or_default();
                 match asker {
                     Asker::Pane(pane) => {
-                        let (callsign, label) = self.callsign_and_label(&pane);
+                        let (callsign, label, subtitle) = self.names_of(&pane, alert);
                         crate::proto::AskingEntry {
                             daemon_id: pane.daemon.to_string(),
                             pane_id: pane.pane.to_string(),
                             callsign,
                             label,
+                            subtitle,
                             alert: alert.as_str().to_string(),
                             since_ms: if alert == Alert::Notified {
                                 raised_at

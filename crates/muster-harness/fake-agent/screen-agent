@@ -15,6 +15,7 @@
 # notify <text>, which asks the terminal to notify somebody the way Claude Code does in Ghostty
 # (OSC 777), or say <text>, which prints the text above its prompt without repainting, as an
 # inline agent prints its output: over the line its echo left, with the prompt drawn again below.
+# `title <text>` sets the terminal's title to the text, as a harness publishes what it is doing.
 # `rest` goes idle, and `/rename <name>` of a name with `work` in it, or `/compact` with `work` in
 # its focus, goes to work, each without repainting, as an agent ends a turn and as a slash command
 # such as `/compact` starts one. `menu` paints a menu opened from the prompt, which leaves the state as it was, and
@@ -192,6 +193,10 @@ while :; do
     case "$line" in
         say\ *)
             printf '\033[1A\r\033[K%s\n\033[KPROBE-PROMPT> ' "${line#say }"
+            continue ;;
+        title\ *)
+            # The terminal title a harness publishes for what it is doing, set the way it sets one.
+            printf '\033[1A\r\033[K\033]0;%s\007PROBE-PROMPT> ' "${line#title }"
             continue ;;
         rest | /rename\ *work* | /compact\ *work*)
             # The prompt drawn again over the line its echo left, empty.
