@@ -36,7 +36,7 @@ private func rendererWakeup(_ userdata: UnsafeMutableRawPointer?) {
 /// is whether to hide the pointer, which libghostty asks for while somebody types.
 /// Everything else arrives with the feature that consumes it.
 private func rendererAction(
-  _ app: ghostty_app_t?, _ target: ghostty_target_s, _ action: ghostty_action_s
+  _ app: ghostty_app_t, _ target: ghostty_target_s, _ action: ghostty_action_s
 ) -> Bool {
   switch action.tag {
   case GHOSTTY_ACTION_START_SEARCH, GHOSTTY_ACTION_END_SEARCH:
@@ -52,11 +52,8 @@ private func rendererAction(
   case GHOSTTY_ACTION_OPEN_URL:
     // Copied here, on libghostty's thread: the bytes are only libghostty's until this returns.
     let open = action.action.open_url
-    let url =
-      open.url.map {
-        String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(open.len)), as: UTF8.self)
-      }
-      ?? ""
+    let url = String(
+      decoding: UnsafeRawBufferPointer(start: open.url, count: Int(open.len)), as: UTF8.self)
     let kind: OpenedLink.Kind = open.kind == GHOSTTY_ACTION_OPEN_URL_KIND_OSC8 ? .hyperlink : .text
     guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface else {
       return false
@@ -73,10 +70,8 @@ private func rendererAction(
   case GHOSTTY_ACTION_MOUSE_OVER_LINK:
     // Copied here, as for OPEN_URL. Empty is the pointer leaving a link.
     let over = action.action.mouse_over_link
-    let url =
-      over.url.map {
-        String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(over.len)), as: UTF8.self)
-      } ?? ""
+    let url = String(
+      decoding: UnsafeRawBufferPointer(start: over.url, count: Int(over.len)), as: UTF8.self)
     guard let token = token(of: target) else { return false }
     Task { @MainActor in Surface.reportHover(url.isEmpty ? nil : url, token: token) }
     return true
@@ -111,19 +106,25 @@ private func report(_ search: SearchReport, to target: ghostty_target_s) {
   Task { @MainActor in Surface.report(search, token: token) }
 }
 
+/// Every clipboard read is refused: Muster's config denies them, and a pane's clipboard goes
+/// through the daemon rather than through a surface. Refused by name, because the result's
+/// zero, which a `false` used to be, now means a read was started, and libghostty would hold
+/// the request open waiting for an answer that never comes. A program turning on paste events
+/// (mode 5522) asks this for the clipboard's types, and is refused the same way.
 private func rendererReadClipboard(
   _ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e,
-  _ state: UnsafeMutableRawPointer?
-) -> Bool { false }
+  _ state: UnsafeMutableRawPointer, _ mimes: UnsafePointer<UnsafePointer<CChar>>,
+  _ mimeCount: Int, _ list: Bool
+) -> ghostty_clipboard_read_result_e { GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
 
 private func rendererConfirmReadClipboard(
-  _ userdata: UnsafeMutableRawPointer?, _ string: UnsafePointer<CChar>?,
-  _ state: UnsafeMutableRawPointer?, _ request: ghostty_clipboard_request_e
+  _ userdata: UnsafeMutableRawPointer?, _ confirm: UnsafePointer<ghostty_clipboard_confirm_s>,
+  _ state: UnsafeMutableRawPointer, _ request: ghostty_clipboard_request_e
 ) {}
 
 private func rendererWriteClipboard(
   _ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e,
-  _ content: UnsafePointer<ghostty_clipboard_content_s>?, _ len: Int, _ confirm: Bool
+  _ content: UnsafePointer<ghostty_clipboard_content_s>, _ len: Int, _ confirm: Bool
 ) {}
 
 /// The surface's command has exited, which for Muster means the pane's bridge is gone.
@@ -142,26 +143,76 @@ private func rendererCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ proces
 }
 
 /// A surface freed with `ghostty_surface_free_detached` has stopped its threads and released
-/// its memory. Arrives on the thread that did that, which is not the main thread.
+/// its memory. libghostty finishes a free on the main queue, because tearing down a renderer
+/// stops a display link, which is only safe there; a free that ever arrived elsewhere is moved
+/// there rather than trusted.
 ///
-/// `userdata` is the count the free was entered in, retained for the trip.
+/// `userdata` is the `SurfaceFrees` the free was entered in, retained for the trip.
 private func rendererSurfaceFreed(_ userdata: UnsafeMutableRawPointer?) {
   guard let userdata else { return }
-  Unmanaged<FreesInFlight>.fromOpaque(userdata).takeRetainedValue().ended()
+  let frees = Unmanaged<SurfaceFrees>.fromOpaque(userdata).takeRetainedValue()
+  guard Thread.isMainThread else {
+    DispatchQueue.main.async { MainActor.assumeIsolated { frees.ended(onMainThread: false) } }
+    return
+  }
+  MainActor.assumeIsolated { frees.ended(onMainThread: true) }
 }
 
-/// Surfaces freed and still stopping their threads.
+/// Surfaces freed and still finishing, and what happens to the app once they have.
 ///
-/// Counted under a lock rather than on the main actor, because each ends on the thread that
-/// freed it, and the one reader that must not miss an end is a deinit that cannot suspend.
-final class FreesInFlight: Sendable {
-  private let count = OSAllocatedUnfairLock(initialState: 0)
+/// A freed surface's threads stop on a thread of their own and push to the app's mailbox until
+/// they do, so the app has to outlive them and keep being ticked. When the renderer goes while
+/// frees are in flight, it hands the app over here instead of waiting for them: its deinit may
+/// itself be running in a main-queue job, and the completions it would wait for are main-queue
+/// jobs queued behind it. Every in-flight free retains this object, so it lives exactly as long
+/// as it is needed.
+@MainActor
+final class SurfaceFrees {
+  /// How many freed surfaces have not finished.
+  private(set) var inFlight = 0
+  /// Whether every free so far finished on the main thread, as libghostty promises.
+  private(set) var endedOnMainThread = true
 
-  var value: Int { count.withLock { $0 } }
+  private var handedOver: (tick: @MainActor () -> Void, release: @MainActor () -> Void)?
+  private var ticker: DispatchSourceTimer?
 
-  func began() { count.withLock { $0 += 1 } }
+  func began() { inFlight += 1 }
 
-  func ended() { count.withLock { $0 -= 1 } }
+  func ended(onMainThread: Bool) {
+    inFlight -= 1
+    endedOnMainThread = endedOnMainThread && onMainThread
+    if inFlight == 0 { releaseHandedOver() }
+  }
+
+  /// Takes over the app from a renderer that is going away: `release` now if no free is in
+  /// flight, and otherwise `tick` until the last one ends and `release` then. Never waits.
+  func release(
+    ticking tick: @escaping @MainActor () -> Void, then release: @escaping @MainActor () -> Void
+  ) {
+    guard inFlight > 0 else {
+      release()
+      return
+    }
+    handedOver = (tick, release)
+    // The wakeups libghostty sends reach `Renderer.current`, which is no longer this app, so it
+    // is ticked on a timer instead: often enough that a thread blocked on a full mailbox is let
+    // go promptly, and only while a free is in flight.
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now(), repeating: .milliseconds(5))
+    timer.setEventHandler { [self] in
+      MainActor.assumeIsolated { handedOver?.tick() }
+    }
+    timer.resume()
+    ticker = timer
+  }
+
+  private func releaseHandedOver() {
+    guard let handedOver else { return }
+    self.handedOver = nil
+    ticker?.cancel()
+    ticker = nil
+    handedOver.release()
+  }
 }
 
 /// One libghostty runtime. Owns the app handle every surface hangs off.
@@ -181,7 +232,7 @@ public final class Renderer {
   private let configPath: String
 
   /// Surfaces freed and still stopping their threads, which the app must outlive.
-  private let frees = FreesInFlight()
+  private let frees = SurfaceFrees()
 
   /// What libghostty made of the configuration Muster handed it, if anything.
   ///
@@ -247,20 +298,20 @@ public final class Renderer {
   // and freeing them off the main actor is exactly the kind of teardown crash that only
   // shows up on quit.
   //
-  // Not while a freed surface is still stopping its threads: that runs on a thread of its own
-  // and reaches the app until it ends, so the app is ticked until every one has. Past the bound
-  // the app is left rather than freed under one, which is a leak in a process that is going
-  // away rather than a crash in it. Unreachable today, because `current` holds the one
-  // renderer for the life of the process, so this is here for whatever frees one first.
+  // Not while a freed surface is still finishing: it reaches the app until it has, so the app
+  // goes to `frees`, which keeps ticking it and frees it after the last one. Waiting here
+  // instead cannot work, since the frees finish on the main queue and this may be running in a
+  // job on it. Unreachable today, because `current` holds the one renderer for the life of the
+  // process, so this is here for whatever frees one first.
   isolated deinit {
-    let deadline = ContinuousClock.now + .seconds(5)
-    while frees.value > 0, ContinuousClock.now < deadline {
-      ghostty_app_tick(app)
-      usleep(1_000)
-    }
-    guard frees.value == 0 else { return }
-    ghostty_app_free(app)
-    ghostty_config_free(config)
+    let app = app
+    let config = config
+    frees.release(
+      ticking: { ghostty_app_tick(app) },
+      then: {
+        ghostty_app_free(app)
+        ghostty_config_free(config)
+      })
   }
 
   /// The one runtime this process has. libghostty's wakeup callback carries userdata,
@@ -273,8 +324,8 @@ public final class Renderer {
   /// Nothing here is fatal to it: an unknown key and an unparseable value each append one of
   /// these and leave the rest of the file applied.
   private static func complaints(about config: ghostty_config_t) -> [String] {
-    (0..<ghostty_config_diagnostics_count(config)).compactMap { at in
-      ghostty_config_get_diagnostic(config, at).message.map { String(cString: $0) }
+    (0..<ghostty_config_diagnostics_count(config)).map { at in
+      String(cString: ghostty_config_get_diagnostic(config, at).message)
     }
   }
 
@@ -282,8 +333,11 @@ public final class Renderer {
     ghostty_app_tick(app)
   }
 
-  /// How many freed surfaces are still stopping their threads.
-  public var freesInFlight: Int { frees.value }
+  /// How many freed surfaces have not finished.
+  public var freesInFlight: Int { frees.inFlight }
+
+  /// Whether every surface freed so far finished on the main thread.
+  public var freesEndedOnMainThread: Bool { frees.endedOnMainThread }
 
   public func setFocus(_ focused: Bool) {
     ghostty_app_set_focus(app, focused)
@@ -367,8 +421,8 @@ public final class Surface {
   let surface: ghostty_surface_t
   private let token: UInt
 
-  /// Where this surface's free is counted until its threads have stopped.
-  private let frees: FreesInFlight
+  /// Where this surface's free is counted until it has finished.
+  private let frees: SurfaceFrees
 
   /// Called when the command this surface is running exits.
   ///
@@ -408,7 +462,7 @@ public final class Surface {
   /// The space between the text and the surface's top and left edges, in points.
   public let padding: Double
 
-  init(_ surface: ghostty_surface_t, token: UInt, padding: Double, frees: FreesInFlight) {
+  init(_ surface: ghostty_surface_t, token: UInt, padding: Double, frees: SurfaceFrees) {
     self.surface = surface
     self.token = token
     self.padding = padding
@@ -419,8 +473,9 @@ public final class Surface {
   /// Freed without waiting for its threads, which is not a nicety: they can be waiting for this
   /// thread. They hand it messages through a mailbox of 64 that only a tick drains, and block
   /// when it is full, so a main thread that fell behind and then joined them waited on itself
-  /// for good - one window, for three hours (docs/observations/libghostty-9f9b8d1d.md,
-  /// section 15). They stop on a thread of their own while this one goes back to ticking.
+  /// for good - one window, for three hours (docs/observations/libghostty-0fa3d577.md,
+  /// section 15). They stop on a thread of their own while this one goes back to ticking, and
+  /// the rest of the free comes back to this thread once they have.
   isolated deinit {
     Surface.living.removeValue(forKey: token)
     frees.began()

@@ -125,7 +125,7 @@ extension SurfaceGUITests {
   /// A surface's threads hand the main thread messages through one queue of 64 that only the
   /// main thread drains, and wait there when it is full. Freeing a surface joins those threads,
   /// so a main thread that let the queue fill and then freed one waited on itself for good -
-  /// which is what a window under memory pressure did (docs/observations/libghostty-9f9b8d1d.md,
+  /// which is what a window under memory pressure did (docs/observations/libghostty-0fa3d577.md,
   /// section 15).
   ///
   /// The queue is filled the way seven agents filled it: titles, from a program that sets one
@@ -158,7 +158,10 @@ extension SurfaceGUITests {
     surface = nil
     returned.withLock { $0 = true }
 
-    try await answered("the freed surface's threads to stop") { renderer.freesInFlight == 0 }
+    try await answered("the freed surface to finish") { renderer.freesInFlight == 0 }
+    // The rest of the free destroys the renderer, which stops its display link: upstream allows
+    // that only on the main thread, and off it the app can freeze when a display sleeps or wakes.
+    #expect(renderer.freesEndedOnMainThread, "a surface finished freeing off the main thread")
   }
 }
 

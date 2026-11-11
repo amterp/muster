@@ -250,7 +250,7 @@ import Testing
     #expect(ghostty_config_diagnostics_count(config) >= 1)
     if ghostty_config_diagnostics_count(config) >= 1 {
       let first = ghostty_config_get_diagnostic(config, 0)
-      print("BAD VALUE: \(first.message.map { String(cString: $0) } ?? "(none)")")
+      print("BAD VALUE: \(String(cString: first.message))")
     }
   }
 
@@ -270,7 +270,7 @@ import Testing
     #expect(ghostty_config_diagnostics_count(config) >= 1)
     if ghostty_config_diagnostics_count(config) >= 1 {
       let first = ghostty_config_get_diagnostic(config, 0)
-      print("DIAGNOSTIC: \(first.message.map { String(cString: $0) } ?? "(none)")")
+      print("DIAGNOSTIC: \(String(cString: first.message))")
     }
     // Everything else still applied, which is what makes a diagnostic worth logging rather than
     // treating as fatal.
