@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "hand-checks-of-vt-1",
+  "alias_explicit": false,
+  "area": [
+    "renderer",
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794376901262,
+  "creator": "Alexander Terp",
+  "description": "For amterp, from a_2vgzMmJ4x, which landed without them: drag a window between displays; sleep and wake with agents running, and close panes during it; hide and show a tab with output arriving (hidden surfaces now release GPU memory); a dead key on a real keyboard; kitty images on a real surface. Also untested by any tier: a remote Mac install of the libghostty-vt.1.dylib archive.",
+  "id": "a_2xkPNHmkc",
+  "position": "b1x",
+  "title": "Hand checks of vt-1.0.0 in the real app that no tier covers",
+  "type": "chore",
+  "updated_at_millis": 1794376901262,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794376901262}
+  ]
+}
