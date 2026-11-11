@@ -32,7 +32,9 @@ jobs:
     # the shell is built with. A floating label moves the toolchain under us with no commit
     # to blame it on.
     runs-on: macos-26
-    timeout-minutes: 45
+    # Room for a run that builds libghostty: a re-pin's first run spent 18 minutes there and
+    # 41 in the gate, and a run that times out saves no cache, so every rerun is as slow.
+    timeout-minutes: 75
 
     steps:
       - uses: actions/checkout@v4

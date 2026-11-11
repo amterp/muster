@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "windows-what-going",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794390877676,
+  "creator": "Alexander Terp",
+  "description": "Seen once 2026-11-11 in CI's gate on 60819765 (run 42988310015, first attempt); passed on the rerun, 8 of 8 alone locally and in three local gates that night. At crates/muster-seam/tests/seam/windows.rs:760 ReadAsking named pane \"\" where it should name p1, straight after until_state saw p1 painted blocked. Unconfirmed guess: the test calls focus_window(\"window-1\") and blocks the agent in window-2 with no wait between, so if window-2 still counts as the one being looked at when the agent blocks, attention never raises it.",
+  "id": "a_2xqGxtiow",
+  "position": "b33",
+  "title": "windows::what_going_to_an_agent_asking_would_do_names_the_other_windows_agent answered that nothing was asking, once in CI",
+  "type": "bug",
+  "updated_at_millis": 1794390877676,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794390877676}
+  ]
+}
