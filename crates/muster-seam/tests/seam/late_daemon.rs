@@ -292,6 +292,48 @@ fn a_machine_taken_out_of_the_config_leaves_every_tab() {
     assert!(foreign_leaves(&devenv, "t1laptop01") > 0, "the devenv's own copy was left alone");
 }
 
+/// A machine renamed in the config, at the endpoint it had, is the same machine: its panes stay in
+/// the tab it shares with the laptop.
+#[test]
+fn a_machine_renamed_in_the_config_keeps_its_place_in_every_tab() {
+    let turn = muster::testing::fresh_session();
+    let (laptop, devenv) = (Daemon::start_built(), Daemon::start_built());
+    make(&mut laptop.connect(), create("p1laptop01", in_new_tab("t1laptop01")));
+    let arrangement = laptop.root().join("window-1.toml");
+    start(&laptop.muster_config_naming("laptop", &[("devenv", &devenv)]), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's tab to be listed",
+        || listed_tabs() == ["t1laptop01"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        pane_id: "p1laptop01".to_string(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the tab to hold a pane on the devenv, and the arrangement to name the devenv",
+        || {
+            spanning_tabs() == ["t1laptop01"]
+                && saved_daemons(&arrangement).contains(&"devenv".to_string())
+        },
+        || format!("the arrangement names {:?}", saved_daemons(&arrangement)),
+    );
+    assert_ok(&answer(request::Payload::Quitting(Quitting::default())));
+
+    turn.relaunch();
+    start(&laptop.muster_config_naming("laptop", &[("box", &devenv)]), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the tab to hold the renamed machine's pane again",
+        || spanning_tabs() == ["t1laptop01"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert!(foreign_leaves(&laptop, "t1laptop01") > 0, "the laptop's copy lost the pane");
+}
+
 /// The machines a saved arrangement lists as followed.
 fn saved_daemons(arrangement: &Path) -> Vec<String> {
     let text = std::fs::read_to_string(arrangement).unwrap_or_default();

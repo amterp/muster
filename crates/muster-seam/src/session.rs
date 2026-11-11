@@ -1055,8 +1055,11 @@ pub(crate) struct Window {
 
     /// The machines this window followed when it was last open that its config no longer names:
     /// taken out of the config, so their panes leave every tab this window holds (MIP-8,
-    /// section 7). Each counts in every merge as a machine that has said it holds nothing.
-    departed: BTreeSet<DaemonId>,
+    /// section 7). Each that is not followed again counts in every merge as a machine that has
+    /// said it holds nothing ([`Window::count_departed`]), and is saved with the arrangement so
+    /// that a tab none of whose machines answered this launch is written without it on a later
+    /// one.
+    departed: BTreeMap<DaemonId, Daemon>,
 
     /// The panes this window took out of a tab with Remove from Tab, by tab, until their machine
     /// answers and they are moved into a tab of their own. Kept for the life of the process only:
@@ -1217,6 +1220,20 @@ impl Window {
     }
 }
 
+impl Window {
+    /// Counts each machine taken out of the config, and not followed again since, as having
+    /// said it holds nothing, unless the merge already has its word.
+    fn count_departed(
+        &self,
+        settled: &mut BTreeMap<DaemonId, bool>,
+        followed: &BTreeMap<DaemonId, Backend>,
+    ) {
+        for machine in self.departed.keys().filter(|machine| !followed.contains_key(*machine)) {
+            settled.entry(machine.clone()).or_insert(true);
+        }
+    }
+}
+
 impl Default for Window {
     /// The window of a session nobody has started, named as the holders record names a window
     /// that remembers nothing, so the two agree before startup says otherwise.
@@ -1229,7 +1246,7 @@ impl Default for Window {
             hiding: false,
             left: None,
             awaiting: BTreeSet::new(),
-            departed: BTreeSet::new(),
+            departed: BTreeMap::new(),
             removed: BTreeSet::new(),
             presentation: Presentation::default(),
             armed: None,
@@ -1648,8 +1665,10 @@ impl Session {
         {
             let mirrors = self.mirrors();
             let Some(arriving) = mirrors.get(daemon) else { return };
-            if arriving.health() != Health::Connected || arriving.restoring() || arriving.stopping()
-            {
+            // Not waiting for a restore to finish: a daemon restores each tab with its panes at
+            // once, and the reconcile that sees a restored tab would otherwise take it into its
+            // tab before this could ask.
+            if arriving.health() != Health::Connected || arriving.stopping() {
                 return;
             }
             for (id, window) in self.windows.iter().filter(|(_, window)| !window.is_closed()) {
@@ -1749,10 +1768,15 @@ impl Session {
         !taken.is_empty()
     }
 
-    /// The configured daemons still on their way, which have no mirror yet: a tab spanning one of
-    /// them draws its panes unreachable in their places until it answers.
+    /// The configured daemons with no mirror: still on their way, or given up on. A tab spanning
+    /// one of them draws its panes unreachable in their places, where Remove from Tab can reach
+    /// them.
     fn attaching(&self) -> BTreeSet<DaemonId> {
-        let mut attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
+        let mut attaching: BTreeSet<DaemonId> = poison::lock(&APPLIED_DAEMONS, "applied-daemons")
+            .iter()
+            .map(|daemon| daemon.id.clone())
+            .collect();
+        attaching.extend(poison::lock(&ATTACHES, "attaches").under_way.iter().cloned());
         attaching.retain(|daemon| !self.backends.contains_key(daemon));
         attaching
     }
@@ -5693,6 +5717,11 @@ fn save(session: &mut Session, window: WindowId) {
     if let Some(left) = &window.left {
         arrangement = arrangement.keeping(left, &window.awaiting);
     }
+    for daemon in window.departed.values() {
+        if arrangement.daemons.iter().all(|kept| kept.id != daemon.id) {
+            arrangement.daemons.push(daemon.clone());
+        }
+    }
     let text = saved::to_toml(&arrangement);
     if &text == written {
         return;
@@ -6794,7 +6823,7 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
                 .filter(|tab| spanning::spans(tab, mirror))
             {
                 let (parts, mut settled) = spanning::parts_of(tab, mirror, writable, |_| false);
-                settled.extend(held.departed.iter().map(|machine| (machine.clone(), true)));
+                held.count_departed(&mut settled, &session.backends);
                 let Some(merged) = spanning::merge(&parts, &settled) else { continue };
                 writes.extend(
                     merged
@@ -7007,7 +7036,7 @@ fn worked_out(
         |machine| session.holds_spanning_trees(machine),
         |machine| attaching.contains(machine),
     );
-    settled.extend(session.windows[window].departed.iter().map(|machine| (machine.clone(), true)));
+    session.windows[window].count_departed(&mut settled, &session.backends);
     if stale {
         for part in &mut parts {
             part.generation = part.generation.saturating_sub(1);

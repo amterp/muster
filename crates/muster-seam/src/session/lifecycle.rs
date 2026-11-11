@@ -7,9 +7,9 @@
 //! arrangement it was reopened from.
 
 use super::{
-    ATTACHES, BTreeSet, BackendIntent, Daemon, DaemonId, Event, GroupKey, Health, Implicitly,
-    Keyboard, Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId,
-    address, announce_presentation, arrangement_path, attaching::APPLIED_DAEMONS,
+    ATTACHES, BTreeMap, BTreeSet, BackendIntent, Daemon, DaemonId, Event, GroupKey, Health,
+    Implicitly, Keyboard, Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window,
+    WindowId, address, announce_presentation, arrangement_path, attaching::APPLIED_DAEMONS,
     catch_up_tab_trees, daemon_holding, daemon_holding_tab, event, ffi, fields, focus, focus_tab,
     follow_implicitly_if_nothing_else, has_spoken, local_daemon_to_fill_from, log, mint_tab,
     move_tab, poison, publish, reconcile_sidebar_with_problems, save, saved_arrangement,
@@ -33,23 +33,21 @@ fn forget_machines_taken_out_of_the_config(window: WindowId) {
         else {
             return;
         };
-        let configured: BTreeSet<DaemonId> = poison::lock(&APPLIED_DAEMONS, "applied-daemons")
-            .iter()
-            .map(|daemon| daemon.id.clone())
-            .collect();
+        let configured = poison::lock(&APPLIED_DAEMONS, "applied-daemons").clone();
         if configured.is_empty() {
             return;
         }
-        let attaching = session.attaching();
-        let departed: BTreeSet<DaemonId> = saved
+        // A machine renamed in the config, at the endpoint it had, is the same machine.
+        let departed: BTreeMap<DaemonId, Daemon> = saved
             .daemons
-            .iter()
-            .map(|daemon| daemon.id.clone())
+            .into_iter()
             .filter(|daemon| {
-                !configured.contains(daemon)
-                    && !session.backends.contains_key(daemon)
-                    && !attaching.contains(daemon)
+                configured
+                    .iter()
+                    .all(|named| named.id != daemon.id && named.endpoint != daemon.endpoint)
+                    && !session.backends.contains_key(&daemon.id)
             })
+            .map(|daemon| (daemon.id.clone(), daemon))
             .collect();
         if departed.is_empty() {
             return;
@@ -58,7 +56,7 @@ fn forget_machines_taken_out_of_the_config(window: WindowId) {
             "window.machines.departed",
             fields! {
                 "window" => session.windows[window].name.to_string(),
-                "machines" => departed.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "),
+                "machines" => departed.keys().map(ToString::to_string).collect::<Vec<_>>().join(", "),
             },
         );
         session.windows[window].departed = departed;
