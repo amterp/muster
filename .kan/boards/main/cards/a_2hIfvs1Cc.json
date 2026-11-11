@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "comments": [
     {
       "id": "c_2j4C0VLFA",
@@ -24,6 +24,12 @@
       "body": "2026-11-11: first step on main (45470119, e705febd): when a message has waited 30 minutes on a pane only a person can free (at a dialog, or its prompt covered), @muster tells the person once in their group with that pane. Helpers and messages the person posted are left out. No setting. Follow-ups being built: a helper's dialog its maker left for 30 minutes, and a pane blocked for hours with nothing unread. Not done: a watcher pane named in config, a per-pane runs-unattended opt-in.",
       "author": "Alexander Terp",
       "created_at_millis": 1794380375870
+    },
+    {
+      "id": "c_2xmxoyCU4",
+      "body": "2026-11-11: second rule on main (e78974d2, 0b4d99ad): a helper still at a dialog 30 minutes after it blocked is told to the person once, whether its maker was told or was busy the whole time. Follow-ups raised as cards: a pane blocked for hours with nothing unread, and carrying a block's start and told state through a handoff. Not built: a watcher pane named in config, a per-pane runs-unattended opt-in.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794382991888
     }
   ],
   "created_at_millis": 1791946592114,
@@ -33,12 +39,13 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "Zn",
+  "position": "Ytz",
   "title": "A pane blocked at a dialog for hours tells only an agent that cannot answer",
   "type": "feature",
-  "updated_at_millis": 1794380375870,
+  "updated_at_millis": 1794382992056,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791946592114},
-    {"field":"column","value":"in-progress","at":1794378941042}
+    {"field":"column","value":"in-progress","at":1794378941042},
+    {"field":"column","value":"done","at":1794382992056}
   ]
 }
