@@ -9,8 +9,9 @@ public enum ContextChoice: Equatable, Sendable {
   case paste
   case copyPaneID
   case copyTabID
-  /// Split the pane right, starting the new pane on this machine.
-  case splitOnto(machine: String)
+  /// Split the pane on `side` (`right`, `down`, `left` or `up`), starting the new pane on
+  /// this machine.
+  case splitOnto(machine: String, side: String)
   /// Make a tab on this machine.
   case newTabOn(machine: String)
   /// `muster msg leave --group G`, as the human.
@@ -62,8 +63,8 @@ public enum ContextMenuModel {
 
   /// A pane's menu, modeled on the one Ghostty's own surface opens.
   ///
-  /// The machine submenu is left out while one machine is attached. It would list only the
-  /// machine the pane is already on, and most windows never attach a second.
+  /// The machine submenus, one per side, are left out while one machine is attached. They would
+  /// list only the machine the pane is already on, and most windows never attach a second.
   public static func pane(
     machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false,
     canRestart: Bool = false, quiet: Bool = false
@@ -78,8 +79,11 @@ public enum ContextMenuModel {
       .item(.action("split_up")),
     ]
     if machines.count > 1 {
-      entries.append(
-        .submenu(title: "Split on Machine", machines.map { .item(.splitOnto(machine: $0)) }))
+      for (title, side) in splitsOnto {
+        entries.append(
+          .submenu(
+            title: title, machines.map { .item(.splitOnto(machine: $0, side: side)) }))
+      }
     }
     entries += [
       .separator,
@@ -97,6 +101,13 @@ public enum ContextMenuModel {
     ]
     return entries
   }
+
+  /// The submenus splitting onto another machine, each with the side it splits on, in the order
+  /// the same-machine splits above them are listed.
+  static let splitsOnto: [(title: String, side: String)] = [
+    ("Split Right on", "right"), ("Split Down on", "down"), ("Split Left on", "left"),
+    ("Split Up on", "up"),
+  ]
 
   public static func tab(machines: [String]) -> [ContextEntry] {
     var entries: [ContextEntry] = [.item(.action("new_tab"))]
@@ -259,7 +270,7 @@ final class ContextMenu: NSMenu {
     case .paste: "Paste"
     case .copyPaneID: "Copy Pane ID"
     case .copyTabID: "Copy Tab ID"
-    case .splitOnto(let machine), .newTabOn(let machine): machine
+    case .splitOnto(let machine, _), .newTabOn(let machine): machine
     case .leaveGroup: "Leave Group"
     case .deleteGroup: "Delete Group…"
     case .showPane: "Show Pane"
@@ -335,9 +346,9 @@ public enum ContextMenus {
       switch choice {
       case .copy: surface?.copy(nil)
       case .paste: surface?.paste(nil)
-      case .splitOnto(let machine):
+      case .splitOnto(let machine, let side):
         Core.split(
-          side: "right", daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine
+          side: side, daemonID: pane.daemon, paneID: pane.pane, newPaneDaemonID: machine
         ) { why in
           if let why { refused(PaneRefusal.split, why) }
         }

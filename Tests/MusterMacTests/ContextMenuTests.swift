@@ -32,16 +32,20 @@ struct ContextMenuTests {
   }
 
   /// One machine has nothing to choose between, and most windows never attach a second.
-  @Test("the machine submenu appears once a second machine is attached, listing every one")
-  func theMachineSubmenu() {
+  @Test("a submenu per side appears once a second machine is attached, each listing every one")
+  func theMachineSubmenus() {
     _ = recorder()
     let one = ContextMenus.pane(
       laptopPane, surface: nil, machines: ["laptop"], rename: { _ in })
     let two = ContextMenus.pane(
       laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
+    let sides = ["Split Right on", "Split Down on", "Split Left on", "Split Up on"]
 
-    #expect(!titles(one).contains("Split on Machine"))
-    #expect(titles(item("Split on Machine", in: two)?.submenu) == ["laptop", "devenv"])
+    #expect(titles(one).allSatisfy { !sides.contains($0) })
+    #expect(titles(two).filter { sides.contains($0) } == sides)
+    for side in sides {
+      #expect(titles(item(side, in: two)?.submenu) == ["laptop", "devenv"])
+    }
   }
 
   /// Every item acts on what was right-clicked and every chord on the pane with the keyboard,
@@ -54,10 +58,9 @@ struct ContextMenuTests {
     let row = ContextMenus.agentRow(laptopPane, onScreen: true, rename: { _ in })
     let tab = ContextMenus.tab("t1", firstPane: laptopPane, machines: [], rename: { _ in })
 
-    for item in [menu, row, tab].flatMap(\.items)
-      + (item("Split on Machine", in: menu)?.submenu?
-        .items ?? [])
-    {
+    let onMachines = ["Split Right on", "Split Down on", "Split Left on", "Split Up on"]
+      .flatMap { item($0, in: menu)?.submenu?.items ?? [] }
+    for item in [menu, row, tab].flatMap(\.items) + onMachines {
       #expect(item.keyEquivalent == "", "\(item.title) shows a chord")
     }
   }
@@ -135,14 +138,14 @@ struct ContextMenuTests {
   }
 
   /// The card's own item: a pane made where you want it, on whichever machine, without the CLI.
-  @Test("picking a machine splits the pane onto that machine")
+  @Test("picking a machine under a side splits the pane onto that machine, on that side")
   func aSplitOntoAnotherMachine() async {
     let recorder = recorder()
     let menu = ContextMenus.pane(
       laptopPane, surface: nil, machines: ["laptop", "devenv"], rename: { _ in })
     let mark = recorder.requests.count
 
-    choose("devenv", in: item("Split on Machine", in: menu)?.submenu)
+    choose("devenv", in: item("Split Down on", in: menu)?.submenu)
     await until("the split onto devenv") {
       recorder.sent(since: mark) { if case .splitPane = $0.payload { true } else { false } }.count
         == 1
@@ -155,7 +158,7 @@ struct ContextMenuTests {
     #expect(sent.first?.splitPane.paneID == "p1w3r07bsd")
     #expect(sent.first?.splitPane.daemonID == "laptop")
     #expect(sent.first?.splitPane.newPaneDaemonID == "devenv")
-    #expect(sent.first?.splitPane.side == "right")
+    #expect(sent.first?.splitPane.side == "down")
   }
 
   @Test("zoom, move and close each name the pane that was right-clicked")
