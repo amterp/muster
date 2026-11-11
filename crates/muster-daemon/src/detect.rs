@@ -456,13 +456,16 @@ impl Detection {
         let tick = self.detector.tick(now, &mut observed, &System, &manifests);
         io.set_agent_group(self.detector.agent_group());
         self.due = now + tick.next;
-        if let Some(blocked_for) = tick.key_ignored {
+        if let Some(ignored) = tick.key_ignored {
+            let blocked_for = ignored
+                .blocked_for
+                .map_or_else(|| "unknown".to_string(), |blocked| blocked.as_millis().to_string());
             log::warn(
                 "daemon.pane.key_ignored",
                 fields! {
                     "serial" => io.serial,
                     "agent" => self.detector.agent().map_or_else(String::new, |agent| agent.id().to_string()),
-                    "blocked_for_ms" => blocked_for.as_millis(),
+                    "blocked_for_ms" => blocked_for,
                     "impact" => "a Return or Esc typed at the pane's dialog left it unchanged, so \
                                  the dialog is still waiting; whoever sent the key may believe \
                                  it was answered",

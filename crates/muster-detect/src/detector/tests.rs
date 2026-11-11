@@ -1741,7 +1741,7 @@ fn a_dialog_whose_screen_never_changes_reads_blocked_again_after_a_while() {
 
 impl Run {
     /// Ticks for `span` and returns every key the detector said a dialog ignored.
-    fn keys_ignored_within(&mut self, span: Duration) -> Vec<Duration> {
+    fn keys_ignored_within(&mut self, span: Duration) -> Vec<KeyIgnored> {
         let start = self.now;
         let mut ignored = Vec::new();
         while self.now - start < span {
@@ -1764,7 +1764,19 @@ fn a_key_a_dialog_never_took_is_reported_once() {
     run.answer();
     let ignored = run.keys_ignored_within(ANSWERED_CAP * 3);
     assert_eq!(ignored.len(), 1, "{ignored:?}");
-    assert!(ignored[0] >= Duration::from_secs(2), "{ignored:?}");
+    assert!(ignored[0].blocked_for.is_some_and(|blocked| blocked >= Duration::from_secs(2)));
+}
+
+/// A pane handed over already blocked never became blocked under this detector, so how long it
+/// had been is not known, rather than nothing.
+#[test]
+fn a_key_ignored_after_a_handoff_does_not_claim_a_duration() {
+    let mut run = Run::at_a_dialog();
+    run.detector = Detector::resumed(SHELL, run.detector.carried(run.now), run.now, 0);
+    run.run_for(Duration::from_secs(2), None);
+    run.answer();
+    let ignored = run.keys_ignored_within(ANSWERED_CAP * 3);
+    assert_eq!(ignored, [KeyIgnored { blocked_for: None }]);
 }
 
 #[test]

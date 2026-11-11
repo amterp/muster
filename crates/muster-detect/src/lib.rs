@@ -21,7 +21,7 @@ mod resume;
 use std::fmt;
 use std::sync::Arc;
 
-pub use detector::{Carried, CarriedReport, Detector, Drift, Pane, Publication, Tick};
+pub use detector::{Carried, CarriedReport, Detector, Drift, KeyIgnored, Pane, Publication, Tick};
 pub use identify::{
     Probe, agent_arguments, agent_process, agent_program, identify_in_job, identify_process, probe,
     server_of,

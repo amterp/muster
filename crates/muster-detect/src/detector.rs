@@ -94,9 +94,16 @@ pub struct Tick {
     pub publication: Option<Publication>,
     pub next: Duration,
     /// A Return or Esc typed at a dialog left the screen unchanged for [`ANSWERED_CAP`]: the
-    /// harness never took it. Says how long the pane had been published blocked when the key
-    /// came.
-    pub key_ignored: Option<Duration>,
+    /// harness never took it.
+    pub key_ignored: Option<KeyIgnored>,
+}
+
+/// A key a dialog never took ([`Tick::key_ignored`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyIgnored {
+    /// How long the pane had been published blocked when the key came. None when this detector
+    /// did not see it become blocked: a pane handed over already blocked.
+    pub blocked_for: Option<Duration>,
 }
 
 /// A pane's agent and its state, published because one of them changed.
@@ -364,8 +371,7 @@ impl Detector {
     pub fn answered(&mut self, now: Instant) {
         if self.last_emitted.as_ref().is_some_and(|emitted| emitted.state == State::Blocked) {
             let screen = self.last_detection_text.clone();
-            let blocked_for =
-                self.blocked_at.map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
+            let blocked_for = self.blocked_at.map(|at| now.saturating_duration_since(at));
             self.answered = Some(Answered { at: now, screen, changed: None, blocked_for });
         }
     }
@@ -416,7 +422,7 @@ impl Detector {
         if let Some(answered) = self.answered.take_if(|answered| now >= answered.at + ANSWERED_CAP)
             && answered.changed.is_none()
         {
-            key_ignored = Some(answered.blocked_for);
+            key_ignored = Some(KeyIgnored { blocked_for: answered.blocked_for });
         }
         if std::mem::take(&mut self.owed) && concluded.is_none() {
             self.conclude(self.presence.current.clone(), self.published.state);
@@ -817,8 +823,8 @@ struct Answered {
     screen: String,
     /// The last screen read since, once one has differed from `screen`.
     changed: Option<String>,
-    /// How long the pane had been published blocked when the key came.
-    blocked_for: Duration,
+    /// How long the pane had been published blocked when the key came, when known.
+    blocked_for: Option<Duration>,
 }
 
 impl Answered {
