@@ -345,13 +345,15 @@ impl Stalls {
             self.episodes.remove(key);
             return false;
         }
-        if episode.pending.as_ref().is_some_and(|pending| pending.why == Why::Stalled) {
-            let reason = if member.activity == Some(Activity::Working) {
-                "went_to_work"
-            } else {
-                "agent_starting"
-            };
-            drop_pending(key, episode, reason, acts);
+        // Here the member is at work or its agent is starting again: a stall notice says it is
+        // neither, and the notice of long work says it worked on without a break.
+        let at_work = member.activity == Some(Activity::Working);
+        match episode.pending.as_ref().map(|pending| pending.why) {
+            Some(Why::Stalled) if at_work => drop_pending(key, episode, "went_to_work", acts),
+            Some(Why::Stalled | Why::Worked { .. }) if !at_work => {
+                drop_pending(key, episode, "agent_starting", acts);
+            }
+            _ => {}
         }
         // Gone to work from a stall said while it was free: that much has moved.
         if episode.stage != Stage::Watching {
@@ -1175,6 +1177,32 @@ mod tests {
         assert_eq!(kinds(&acts), ["stalled", "tell"]);
         let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
         assert!(body.contains("it was rung"), "{body}");
+    }
+
+    /// A held notice of long work is dropped when the member's agent starts again, which is a
+    /// break: told after it, "without a break" would be false.
+    #[test]
+    fn a_held_notice_of_long_work_is_dropped_when_the_agent_starts_again() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        let working = Member { activity: Some(Activity::Working), ..rung_with_busy(&["director"]) };
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        stalls.judge(std::slice::from_ref(&working), &called, 1000);
+        assert_eq!(
+            kinds(&stalls.judge(std::slice::from_ref(&working), &called, worked)),
+            ["stalled"]
+        );
+
+        let starting =
+            Member { activity: None, doorbell: Ringable::AgentToCome, ..rung_with_busy(&[]) };
+        let acts = stalls.judge(&[starting], &called, worked + 1);
+        assert!(
+            acts.iter().any(|act| matches!(act, Act::Dropped { reason: "agent_starting", .. })),
+            "{acts:?}"
+        );
+        let free = Member { activity: Some(Activity::Working), ..rung_with_busy(&[]) };
+        let acts = stalls.judge(&[free], &called, worked + 2);
+        assert!(!kinds(&acts).contains(&"tell"), "told after the break: {acts:?}");
     }
 
     /// Of two posters, the one free now is told now and the busy one once it is free.
