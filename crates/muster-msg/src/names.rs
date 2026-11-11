@@ -18,7 +18,7 @@ fn allowed(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
 }
 
-pub(crate) fn check_participant(name: &str) -> Result<(), Refusal> {
+pub fn check_participant(name: &str) -> Result<(), Refusal> {
     if name == HUMAN || (!name.is_empty() && name.len() <= LONGEST && name.chars().all(allowed)) {
         Ok(())
     } else {

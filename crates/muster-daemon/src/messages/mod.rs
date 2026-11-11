@@ -476,7 +476,7 @@ impl Carrying {
     pub(crate) fn machine(&self) -> &str {
         match &self.destination {
             Destination::HumanHome(home) => &home.machine,
-            Destination::GroupHome(machine) => machine,
+            Destination::GroupHome { machine, .. } => machine,
         }
     }
 
@@ -484,17 +484,21 @@ impl Carrying {
     /// not is answered with the refusal made here, which says nothing of what that machine holds.
     pub(crate) fn run_reaching(self, shared: &Shared, hung_up: &dyn Fn() -> bool) -> (Reply, bool) {
         let Self { destination, asked, fallback, panes } = self;
-        let machine = match &destination {
-            Destination::HumanHome(home) => &home.machine,
-            Destination::GroupHome(machine) => machine,
+        let (machine, agent) = match &destination {
+            Destination::HumanHome(home) => (&home.machine, None),
+            Destination::GroupHome { machine, agent } => (machine, agent.as_deref()),
         };
-        if let Some(refusal) = carry::unkept_at(shared, machine, &asked) {
+        if let Some(refusal) = carry::unkept_at(shared, machine, &asked, agent) {
             return (refusal, false);
         }
         let carried = match destination {
-            Destination::HumanHome(home) => peer::carry(shared, &home.machine, asked, hung_up),
-            Destination::GroupHome(machine) => peer::carry(shared, &machine, asked, hung_up)
-                .map(|carried| peer::named_here(shared, &machine, carried)),
+            Destination::HumanHome(home) => {
+                peer::carry(shared, &home.machine, asked, None, hung_up)
+            }
+            Destination::GroupHome { machine, agent } => {
+                peer::carry(shared, &machine, asked, agent, hung_up)
+                    .map(|carried| peer::named_here(shared, &machine, carried))
+            }
         };
         let reached = carried.is_some();
         let reply = naming_the_human(shared, carried.unwrap_or(fallback));
@@ -648,18 +652,35 @@ fn naming_the_human(shared: &Shared, mut reply: Reply) -> Reply {
     reply
 }
 
-/// A request the person made on `peer`'s machine, carried here to be done as the human.
+/// A request made on `peer`'s machine, carried here: by the person, done as the human, or by
+/// `agent` there, done as it as this machine names it. An agent's is only a delete, pause or
+/// resume of a group kept here, which its policy decides.
 pub(crate) fn carried(
     shared: &Arc<Shared>,
     peer: &muster_msg::Peer,
     asked: Asked,
+    agent: Option<&str>,
     hung_up: &dyn Fn() -> bool,
 ) -> Reply {
     let asked = carry::inward(peer, asked);
-    log::info("msg.carried", fields! { "machine" => peer.name, "verb" => carry::verb(&asked) });
+    let verb = carry::verb(&asked);
+    log::info(
+        "msg.carried",
+        fields! { "machine" => peer.name, "verb" => verb, "agent" => agent.unwrap_or_default() },
+    );
     let panes = Panes::of(shared);
-    let human = Caller { at_ms: now_ms(), ..Caller::default() };
-    let reply = respond(shared, &human, asked, hung_up, &panes, None);
+    let mut caller = Caller { at_ms: now_ms(), ..Caller::default() };
+    if let Some(agent) = agent {
+        if carry::carried_to_its_home(&asked).is_none() {
+            let words = format!("{verb} is not done here for an agent on another machine");
+            return refused_as("", "not_carried", &words);
+        }
+        if let Err(refusal) = muster_msg::check_participant(agent) {
+            return refused("", &refusal);
+        }
+        caller.elsewhere = Some(peer.inward(agent));
+    }
+    let reply = respond(shared, &caller, asked, hung_up, &panes, None);
     naming_the_panes(shared, reply, &panes)
 }
 
@@ -2204,10 +2225,17 @@ pub(super) fn words(refusal: &Refusal) -> String {
              there; `{}` says whether before you try again",
             messaging::command(LOG, &format!("--group {group}"))
         ),
-        Refusal::KeptElsewhere { group, machine } => format!(
-            "{group} is kept on {machine}, so its members, policy and pause are changed there, \
-             with `muster msg` on {machine}; this machine only holds a copy"
-        ),
+        Refusal::KeptElsewhere { group, machine } => {
+            let there = muster_msg::split_machine(group).map_or(group.as_str(), |(base, _)| base);
+            format!(
+                "{group} is kept on {machine}, and this machine only holds a copy. Its delete, \
+                 pause and resume are done there while a link to {machine} is up; its members and \
+                 policy change only there, in a pane on {machine}: `{}`, `{}` or `{}`",
+                messaging::command(GROUP, &format!("set {there} --policy <file>")),
+                messaging::command(GROUP, &format!("add {there} <name>")),
+                messaging::command(GROUP, &format!("remove {there} <name>")),
+            )
+        }
         Refusal::HumanElsewhere { machine, calls_us } => format!(
             "this shell is the person at the Muster window on {machine}, whose messages are \
              kept there, and this machine has no link to {machine} now to do this there for \
@@ -2388,6 +2416,8 @@ fn caller_of(caller: proto::msg_request::Caller) -> Caller {
         pane: caller.pane,
         directory: caller.directory,
         at_ms: now_ms(),
+        // Only a request carried from another machine is done for a participant there.
+        elsewhere: None,
     }
 }
 

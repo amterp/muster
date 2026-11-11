@@ -11,7 +11,12 @@ use crate::Version;
 /// Bump `minor` with any change to the schema once a release has shipped the daemon, and `major`
 /// when a message stops meaning what it meant. `proto/muster_daemon.proto`'s header says how the
 /// baseline follows, and the `compatible` test holds the two together.
-pub const PROTOCOL: Version = Version { major: 1, minor: 14 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 15 };
+
+/// The first minor whose daemon does a delete, pause or resume carried from another machine as the
+/// agent there that asked, named by the carried request's caller. An older one ignores the caller
+/// and does every carried request as the human, so an agent's is not carried to it.
+pub const AGENTS_CARRIED: u32 = 15;
 
 /// The first minor whose daemon takes compaction rules by harness and directory, a threshold
 /// that nudges, and thresholds set for one pane. An older one takes a single percent for every

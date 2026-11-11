@@ -1342,9 +1342,23 @@ impl<S: Store> Messaging<S> {
     /// Whether the caller is this machine's person: a shell with no agent identity, or one
     /// acting as the human.
     pub fn is_person(&self, caller: &Caller, presence: &dyn Presence) -> bool {
+        if caller.elsewhere.is_some() {
+            return false;
+        }
         let addressed = self.addressed(caller, presence);
         let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
         named.as_deref() == Some(HUMAN)
+    }
+
+    /// The name a caller that is not the person goes by here, for a delete, pause or resume it
+    /// asked of a group kept elsewhere to be carried there as it: the home knows it as this
+    /// name at this machine. None for the person, who is carried as the human, and for a
+    /// caller this machine cannot name.
+    pub fn carried_as(&mut self, caller: &Caller, presence: &dyn Presence) -> Option<String> {
+        if self.is_person(caller, presence) {
+            return None;
+        }
+        self.acting(caller, presence).ok().filter(|name| split_machine(name).is_none())
     }
 
     /// The machine `group` is kept on, when that is another one.

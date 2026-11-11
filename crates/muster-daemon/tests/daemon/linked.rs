@@ -980,8 +980,8 @@ fn the_persons_requests_on_the_dialed_machine_are_carried_to_the_near_one() {
 /// The human on the app's machine pauses, resumes and deletes a group kept on the dialed one,
 /// as from the sidebar: the near daemon refuses each as kept elsewhere and carries it there,
 /// where it is done as the human, and the answer comes back in the near machine's names. A
-/// deleted group is no longer listed for the human. An agent on the near machine is still
-/// refused, and so is the human once the link is cut.
+/// deleted group is no longer listed for the human, and the human is refused once the link is
+/// cut.
 #[test]
 fn the_humans_changes_to_a_group_kept_on_the_dialed_machine_are_carried_there() {
     let (near, far) = (daemon(), daemon());
@@ -1006,9 +1006,6 @@ fn the_humans_changes_to_a_group_kept_on_the_dialed_machine_are_carried_there() 
     assert_eq!(resumed.group, "review@far");
 
     let delete = |group: &str| Asked::GroupDelete(msg_request::GroupDelete { group: group.into() });
-    let refused = near_control.ask(msg(&named("builder"), delete("desk@far")));
-    assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
-
     let deleted =
         expect(&mut near_control, msg(&person, delete("review@far")), proto::Outcome::Done);
     let Some(Answer::Deleted(deleted)) = &msg_answer(&deleted).answer else {
@@ -1034,6 +1031,74 @@ fn the_humans_changes_to_a_group_kept_on_the_dialed_machine_are_carried_there() 
     cut(holding, &mut near_log, &mut far_log, 1);
     let refused = near_control.ask(msg(&person, delete("desk@far")));
     assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
+}
+
+/// An agent on the near machine pauses, resumes and deletes a group kept on the far one: each is
+/// carried there and done as the agent as the far machine names it, under the group's policy
+/// there, which can refuse it. A change to the group's members or policy is still refused, naming
+/// the command to run on the far machine.
+#[test]
+fn an_agents_changes_to_a_group_kept_on_the_dialed_machine_are_carried_and_done_as_it() {
+    let (near, far) = (daemon(), daemon());
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut far_control, &named("critic"), "critic", "desk");
+    join(&mut far_control, &named("critic"), "critic", "closed");
+    assert_eq!(join(&mut near_control, &named("builder"), "builder", "desk"), "desk@far");
+    assert_eq!(join(&mut near_control, &named("builder"), "builder", "closed"), "closed@far");
+    let mut far_log = following(&far);
+
+    let asked = Asked::Pause(msg_request::Pause { group: "desk@far".to_string() });
+    let paused = expect(&mut near_control, msg(&named("builder"), asked), proto::Outcome::Done);
+    let Some(Answer::Changed(changed)) = &msg_answer(&paused).answer else { panic!("{paused:?}") };
+    assert_eq!(changed.group, "desk@far", "in the near machine's names");
+    far_log.logged_until(r#""agent":"builder""#, LINKING);
+    let asked = Asked::Resume(msg_request::Resume { group: "desk@far".to_string() });
+    let resumed = expect(&mut near_control, msg(&named("builder"), asked), proto::Outcome::Done);
+    let Some(Answer::Resumed(resumed)) = &msg_answer(&resumed).answer else {
+        panic!("{resumed:?}")
+    };
+    assert_eq!(resumed.group, "desk@far");
+
+    let set = |group: &str, membership: &[&str]| {
+        let policy = msg_request::Policy {
+            ring: std::collections::HashMap::new(),
+            allow: std::collections::HashMap::new(),
+            membership: membership.iter().map(ToString::to_string).collect(),
+            paused: false,
+            urgent: None,
+        };
+        Asked::GroupSet(msg_request::GroupSet { group: group.to_string(), policy: Some(policy) })
+    };
+    let refused = near_control.ask(msg(&named("builder"), set("desk@far", &["*"])));
+    assert_eq!(msg_answer(&refused).refusal, "kept_elsewhere", "{}", refused.answer.reason);
+    let reason = &refused.answer.reason;
+    assert!(reason.contains("in a pane on far: `muster msg group set desk --policy"), "{reason}");
+
+    let delete = |group: &str| Asked::GroupDelete(msg_request::GroupDelete { group: group.into() });
+    expect(
+        &mut far_control,
+        msg(&named("critic"), set("closed", &["critic"])),
+        proto::Outcome::Done,
+    );
+    let refused = near_control.ask(msg(&named("builder"), delete("closed@far")));
+    assert_eq!(msg_answer(&refused).refusal, "not_permitted", "{}", refused.answer.reason);
+
+    let deleted =
+        expect(&mut near_control, msg(&named("builder"), delete("desk@far")), proto::Outcome::Done);
+    let Some(Answer::Deleted(deleted)) = &msg_answer(&deleted).answer else {
+        panic!("{deleted:?}")
+    };
+    assert_eq!(deleted.group, "desk@far");
+    let groups = expect(
+        &mut far_control,
+        msg(&named("critic"), Asked::Groups(msg_request::Groups {})),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Groups(groups)) = &msg_answer(&groups).answer else { panic!("{groups:?}") };
+    let kept: Vec<&str> = groups.groups.iter().map(|group| group.name.as_str()).collect();
+    assert_eq!(kept, ["closed"], "deleted where it was kept");
 }
 
 fn in_pane(pane: &str) -> msg_request::Caller {

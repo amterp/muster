@@ -23,8 +23,8 @@ pub use across::{
 };
 pub use entry::{Answering, Change, Entry, OperationId, What};
 pub use names::{
-    HUMAN, LONGEST_GROUP, MUSTER, asked_of, default_name, is_human, is_machine, is_muster,
-    pair_group, split_machine,
+    HUMAN, LONGEST_GROUP, MUSTER, asked_of, check_participant, default_name, is_human, is_machine,
+    is_muster, pair_group, split_machine,
 };
 pub use operations::{OPERATION_RETENTION_MS, Repeat};
 pub use policy::Policy;

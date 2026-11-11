@@ -910,7 +910,8 @@ fn carried(shared: &Arc<Shared>, link: &Arc<Link>, id: u64, request: proto::MsgR
         link.closed.load(Ordering::Acquire)
             || poison::lock(&link.cancelled, "daemon.peer.cancelled").contains(&id)
     };
-    let reply = super::carried(shared, &link.peer, asked, &hung_up);
+    let agent = request.caller.and_then(|caller| caller.as_name);
+    let reply = super::carried(shared, &link.peer, asked, agent.as_deref(), &hung_up);
     poison::lock(&link.cancelled, "daemon.peer.cancelled").remove(&id);
     Replied::Carried(super::carry::reply_to(reply))
 }
@@ -921,12 +922,18 @@ pub(crate) fn carry(
     shared: &Shared,
     machine: &str,
     asked: proto::msg_request::Request,
+    agent: Option<String>,
     hung_up: &dyn Fn() -> bool,
 ) -> Option<Reply> {
     let link = shared.peers.to(machine)?;
     let verb = super::carry::verb(&asked);
     let patience = (!matches!(asked, proto::msg_request::Request::Wait(_))).then_some(CARRYING);
-    let request = proto::MsgRequest { caller: None, request: Some(asked) };
+    // No caller is the person, done there as the human.
+    let caller = agent.map(|name| proto::msg_request::Caller {
+        as_name: Some(name),
+        ..proto::msg_request::Caller::default()
+    });
+    let request = proto::MsgRequest { caller, request: Some(asked) };
     log::info("msg.carrying", fields! { "machine" => machine, "verb" => verb });
     let refused = |code: &str, words: &str| super::refused_as("", code, words);
     Some(match link.call_until(Called::Carried(request), patience, hung_up) {

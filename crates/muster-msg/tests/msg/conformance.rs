@@ -122,6 +122,7 @@ fn caller(step: &Value) -> Caller {
         pane: text("pane"),
         directory: text("directory"),
         at_ms: 0,
+        elsewhere: None,
     }
 }
 

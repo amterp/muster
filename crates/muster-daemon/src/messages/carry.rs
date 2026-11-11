@@ -5,7 +5,8 @@
 //!
 //! The other way too: the person on the human's own machine deleting, pausing or resuming a
 //! group kept on a linked machine has it carried to the group's home, which does it as the
-//! human, and its answer is turned into this machine's names.
+//! human, and its answer is turned into this machine's names. An agent's delete, pause or resume
+//! of such a group is carried the same way, and done there as that agent, as the home names it.
 
 use muster_daemon_proto as proto;
 use muster_msg::{HumanHome, Messaging, Peer};
@@ -21,15 +22,15 @@ use crate::session::{Reply, Shared};
 pub(super) enum Destination {
     /// The human's home, which answers in its own names.
     HumanHome(HumanHome),
-    /// The machine keeping the group the human here asked to change, whose answer is turned
-    /// into this machine's names.
-    GroupHome(String),
+    /// The machine keeping the group the human here, or `agent` here, asked to change, whose
+    /// answer is turned into this machine's names. `agent` is its name here.
+    GroupHome { machine: String, agent: Option<String> },
 }
 
 /// Where `asked`, just answered with `reply`, is to be carried: the human's home, when `reply`
 /// refuses the person for acting as the human there, for changing a group kept there, or for
-/// naming a group this machine has none of, which the home may keep; or, for the human here,
-/// the home of a group kept elsewhere that they asked to delete, pause or resume.
+/// naming a group this machine has none of, which the home may keep; or, for the human or an
+/// agent here, the home of a group kept elsewhere that they asked to delete, pause or resume.
 pub(super) fn destination(
     shared: &Shared,
     caller: &muster_msg::Caller,
@@ -41,13 +42,19 @@ pub(super) fn destination(
         Some(proto::answer::Detail::Msg(answer)) => answer.refusal.as_str(),
         _ => return None,
     };
-    let messages = shared.messages();
+    let mut messages = shared.messages();
     let Some(home) = messages.service.person_elsewhere(caller, panes) else {
         let group = carried_to_its_home(asked)?;
-        if code != "kept_elsewhere" || !messages.service.is_person(caller, panes) {
+        if code != "kept_elsewhere" {
             return None;
         }
-        return messages.service.home_of(group).map(Destination::GroupHome);
+        let machine = messages.service.home_of(group)?;
+        let agent = if messages.service.is_person(caller, panes) {
+            None
+        } else {
+            Some(messages.service.carried_as(caller, panes)?)
+        };
+        return Some(Destination::GroupHome { machine, agent });
     };
     match code {
         "human_elsewhere" | "no_such_group" => Some(Destination::HumanHome(home)),
@@ -62,10 +69,32 @@ pub(super) fn destination(
 /// A refusal for carrying `asked` to `machine`, whose daemon would drop part of it without a word
 /// or refuse it without saying why: a program's post loses its operation id there, so a retry
 /// would post twice, and an answer in words is refused as not offering the empty answer.
-pub(super) fn unkept_at(shared: &Shared, machine: &str, asked: &Asked) -> Option<Reply> {
+pub(super) fn unkept_at(
+    shared: &Shared,
+    machine: &str,
+    asked: &Asked,
+    agent: Option<&str>,
+) -> Option<Reply> {
     let speaks = shared.peers.to(machine)?.speaks;
-    let (code, words) = unkept(asked, speaks, machine)?;
+    let (code, words) = unkept(asked, speaks, machine)
+        .or_else(|| agent.and_then(|agent| uncarried_agent(agent, speaks, machine)))?;
     Some(super::refused_as("", code, &words))
+}
+
+/// Why `agent`'s request is not carried to `machine`, when its daemon would do it as the human.
+fn uncarried_agent(
+    agent: &str,
+    speaks: proto::Version,
+    machine: &str,
+) -> Option<(&'static str, String)> {
+    (speaks.minor < proto::version::AGENTS_CARRIED).then(|| {
+        let words = format!(
+            "this group is kept on {machine}, whose muster-daemon speaks protocol {speaks}, which \
+             would do this as the person rather than as {agent}. Nothing was sent; update Muster \
+             there, or run it in a pane on {machine}"
+        );
+        ("kept_elsewhere", words)
+    })
 }
 
 fn unkept(asked: &Asked, speaks: proto::Version, machine: &str) -> Option<(&'static str, String)> {
@@ -106,14 +135,13 @@ pub(super) fn may_carry(
     asked: &Asked,
     panes: &Panes,
 ) -> bool {
-    service.person_elsewhere(caller, panes).is_some()
-        || (carried_to_its_home(asked).is_some() && service.is_person(caller, panes))
+    service.person_elsewhere(caller, panes).is_some() || carried_to_its_home(asked).is_some()
 }
 
 /// The group a request the human here may have carried to the group's home changes. Only the
 /// verbs that name nothing but the group: the names in a policy or a member list are turned
 /// for the other direction, where this machine is not the human's home.
-fn carried_to_its_home(asked: &Asked) -> Option<&str> {
+pub(super) fn carried_to_its_home(asked: &Asked) -> Option<&str> {
     match asked {
         Asked::GroupDelete(delete) => Some(&delete.group),
         Asked::Pause(pause) => Some(&pause.group),

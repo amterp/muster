@@ -43,6 +43,10 @@ pub struct Caller {
     /// When the host took the request, in milliseconds since the Unix epoch: how the service
     /// knows a participant's hooks have run lately.
     pub at_ms: u64,
+    /// A participant on another machine, named as this machine writes it (`builder@lap`), that a
+    /// request carried here is done for: it deletes, pauses or resumes a group kept here, held
+    /// to the group's policy, and does nothing that would make it a participant here.
+    pub elsewhere: Option<String>,
 }
 
 /// How long after a participant's hooks last ran they still count as running: a turn's tool
@@ -2535,6 +2539,9 @@ impl<S: Store> Messaging<S> {
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<String, Refusal> {
+        if let Some(name) = &caller.elsewhere {
+            return Ok(name.clone());
+        }
         let addressed = self.addressed(caller, presence);
         let named = addressed.as_name.clone().or_else(|| self.lookup(&addressed));
         match self.human_elsewhere(presence) {
@@ -2556,6 +2563,9 @@ impl<S: Store> Messaging<S> {
         caller: &Caller,
         presence: &dyn Presence,
     ) -> Result<(String, bool), Refusal> {
+        if let Some(name) = &caller.elsewhere {
+            return Err(Refusal::NotAParticipant { name: Some(name.clone()) });
+        }
         let caller = &self.addressed(caller, presence);
         if let Some(name) = &caller.as_name {
             check_participant(name)?;
