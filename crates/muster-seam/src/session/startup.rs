@@ -62,8 +62,7 @@ pub(crate) fn set_remote_daemons(path: &str) {
 
 /// Every daemon this app can put on another machine, and the files that go with them.
 ///
-/// A remote Mac runs this Mac's own daemon, so it is sent that, with the libghostty-vt this
-/// process loaded, which is the one the daemon was built against.
+/// A remote Mac runs this Mac's own daemon, so it is sent that.
 pub(super) fn carried() -> remote_install::Carried {
     let mac = daemon_binary().map(PathBuf::from);
     let data = poison::lock(&DAEMON_DATA, "daemon-data").clone().map(PathBuf::from).or_else(|| {
@@ -79,10 +78,6 @@ pub(super) fn carried() -> remote_install::Carried {
         extras: mac_cli.as_deref().map(muster_core::harnesses::extras_beside),
         mac: mac.filter(|_| mac_here),
         mac_cli: mac_cli.filter(|_| mac_here),
-        mac_library: muster_vt::library_path().map(|path| remote_install::Library {
-            path,
-            file_name: muster_vt::LIBRARY_FILE_NAME.to_string(),
-        }),
         data,
     }
 }

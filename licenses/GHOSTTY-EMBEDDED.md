@@ -10,8 +10,9 @@ this file is what that turns out to mean.
 Measured against the build of `deps/ghostty.pin` = `0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec`, by asking the linked
 binary for symbols only one library defines. Re-run it when the pin moves.
 
-`Contents/Frameworks/` holds libghostty-vt, the other build of the same source:
-the terminal state machine, which the daemon and the core link too. It carries none
+libghostty-vt is the other build of the same source: the terminal state machine,
+linked statically into `Contents/Frameworks/libmuster.dylib` and every daemon the
+bundle carries, rather than shipped as a file of its own. It carries none
 of the libraries in the table below, and it does carry these, which upstream lists
 as compiled into it (`deps/libghostty-vt-third-party.json` at the pin):
 

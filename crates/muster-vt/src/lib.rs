@@ -19,7 +19,7 @@ mod replay;
 mod state;
 mod terminal;
 
-pub use build_info::{LIBRARY_FILE_NAME, engine_version, library_path};
+pub use build_info::engine_version;
 pub use effects::{Answers, ClipboardContent, ClipboardLocation, ColorScheme, Effect, Progress};
 pub use formatter::{
     Extras, Format, FormatOptions, Rows, ScreenExtras, ScreenFormatOptions, Selection,

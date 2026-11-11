@@ -466,20 +466,9 @@ mod tests {
         }
     }
 
-    /// What `Here` installs from: `daemon` as this Mac's own, with a library and a data
-    /// directory beside it.
-    fn carrying(daemon: PathBuf, library: PathBuf, data: PathBuf) -> Carried {
-        Carried {
-            linux: None,
-            mac: Some(daemon),
-            mac_cli: None,
-            mac_library: Some(crate::install::Library {
-                path: library,
-                file_name: muster_vt::LIBRARY_FILE_NAME.to_string(),
-            }),
-            data: Some(data),
-            extras: None,
-        }
+    /// What `Here` installs from: `daemon` as this Mac's own, with a data directory beside it.
+    fn carrying(daemon: PathBuf, data: PathBuf) -> Carried {
+        Carried { linux: None, mac: Some(daemon), mac_cli: None, data: Some(data), extras: None }
     }
 
     fn installed_in(root: &Path) -> Installed {
@@ -512,7 +501,7 @@ mod tests {
         let binary = root.join("carried");
         executable(&binary, "#!/bin/sh\necho 'no data directory beside me' >&2\nexit 1\n");
         std::fs::create_dir_all(root.join("data")).unwrap();
-        let carried = carrying(binary.clone(), binary, root.join("data"));
+        let carried = carrying(binary, root.join("data"));
         let installed = installed_in(&root);
         let started = Instant::now();
         let error =
@@ -593,18 +582,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A Mac with no daemon gets this one, with the libghostty-vt it links and its data, is
-    /// started from where it was put, and is left alone once it has this build. The far side
-    /// is this machine through `sh`, which is a Mac like any other the app attaches.
+    /// A Mac with no daemon gets this one and its data, is started from where it was put, and
+    /// is left alone once it has this build. The daemon links libghostty-vt statically, so the
+    /// install holds no library beside it and the daemon starts anyway. The far side is this
+    /// machine through `sh`, which is a Mac like any other the app attaches.
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn a_machine_with_nothing_on_it_is_installed_to_and_then_adopted() {
         let root = scratch("install");
-        let carried = carrying(
-            muster_harness::built_daemon(),
-            muster_vt::library_path().expect("a Mac build loads libghostty-vt from a file"),
-            PathBuf::from(muster_harness::DAEMON_DATA),
-        );
+        let carried =
+            carrying(muster_harness::built_daemon(), PathBuf::from(muster_harness::DAEMON_DATA));
         let installed = installed_in(&root);
         let given =
             environment(&[("HOME", &root.display().to_string()), ("PATH", "/usr/bin:/bin")]);
@@ -612,10 +599,15 @@ mod tests {
         let (reached, started) =
             ensure_running(&Here, &installed, &carried, &installed.socket, &given).unwrap();
         assert_eq!(reached, Reached::Started);
-        for placed in ["muster-daemon", muster_vt::LIBRARY_FILE_NAME, "muster-daemon-data/terminfo"]
-        {
+        for placed in ["muster-daemon", "muster-daemon-data/terminfo"] {
             assert!(installed.directory.join(placed).exists(), "{placed} was not installed");
         }
+        let dylibs: Vec<_> = std::fs::read_dir(&installed.directory)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "dylib"))
+            .collect();
+        assert!(dylibs.is_empty(), "the install carries a library: {dylibs:?}");
         let wrapper = installed.directory.join("muster-daemon-data/bin/ghostty");
         let mode = std::os::unix::fs::PermissionsExt::mode(
             &std::fs::metadata(&wrapper)
@@ -659,11 +651,7 @@ mod tests {
         executable(&cli, "#!/bin/sh\necho cli\n");
         let carried = Carried {
             mac_cli: Some(cli),
-            ..carrying(
-                muster_harness::built_daemon(),
-                muster_vt::library_path().expect("a Mac build loads libghostty-vt from a file"),
-                PathBuf::from(muster_harness::DAEMON_DATA),
-            )
+            ..carrying(muster_harness::built_daemon(), PathBuf::from(muster_harness::DAEMON_DATA))
         };
         let installed = installed_in(&root);
         let given =

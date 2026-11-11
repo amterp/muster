@@ -40,8 +40,8 @@ each with its license and reproduces the text, and ships in the bundle as
 Contents/Resources/GHOSTTY-EMBEDDED.md. Which ten is measured rather than read
 off a manifest - a static archive contributes only the members the linker pulls,
 and on macOS that is a narrower set than the package list suggests.
-libghostty-vt, the terminal state machine the daemon, the core and the bundle's
-Contents/Frameworks/ carry, links none of them, but does compile in Highway,
+libghostty-vt, the terminal state machine linked statically into the daemon and
+the core, links none of them, but does compile in Highway,
 simdutf, uucode, Wuffs and translate-c, as upstream's own manifest of it says;
 GHOSTTY-EMBEDDED.md lists those too and reproduces their licenses. They reach every
 machine a daemon is installed on, Linux included.

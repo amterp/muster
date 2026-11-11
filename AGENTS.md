@@ -206,7 +206,7 @@ during a build and committed nowhere, so a suite that skipped it ran the shell a
 and went green while the schema said something else.
 
 `./dev --bundle` assembles `.build/muster.app` around a release build - a thing you can double-click, keep in the
-Dock, or hand to somebody, with muster-daemon and its data, both dylibs, the icon and the licenses inside it.
+Dock, or hand to somebody, with muster-daemon and its data, libmuster, the icon and the licenses inside it.
 Release, where the gate builds debug: until 0.9.0 every bundle shipped the unoptimized shell, core and bridge, which
 nobody had chosen. Out of the gate because nothing in the gate needs one, and it is also the only way to meet the
 descriptor ceiling launchd imposes on a GUI-launched process. The signature is ad-hoc, which is what macOS needs to
@@ -380,8 +380,8 @@ rather than to a Muster that will quit (`docs/observations/macos-26.4.1.md`). An
 included, is spawned.
 
 **A machine you attach over SSH gets this build's daemon.** The bundle carries a stripped release build for Linux on
-x86_64 and on aarch64 under `Contents/Resources/daemons/`, and a remote Mac gets the app's own daemon with the
-libghostty-vt it links. Muster asks the machine what it is with `uname -sm`, and sends the matching one with the data
+x86_64 and on aarch64 under `Contents/Resources/daemons/`, and a remote Mac gets the app's own daemon; every one
+links libghostty-vt statically. Muster asks the machine what it is with `uname -sm`, and sends the matching one with the data
 directory as one archive over the ssh connection, into `~/.muster/daemon/<version>/`, with the `muster` CLI built
 for the same machine, linked at `~/.muster/bin/muster` so `muster msg` works there. Nothing is downloaded, so there
 is no pin to keep and a machine with no internet access can be installed to. The install leaves a SHA-256 of that

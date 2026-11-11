@@ -49,19 +49,32 @@ callback returns `ghostty_clipboard_read_result_e`, whose zero is
 libghostty a read had started, and the request would stay open. Muster returns
 `GHOSTTY_CLIPBOARD_READ_UNSUPPORTED` by name.
 
-## 8. The library's install name now carries its version
+## 8. Muster links libghostty-vt statically, and the two archives still collide
 
-The dylib's install name is `@rpath/libghostty-vt.1.dylib` (`otool -D`), where it was
-`@rpath/libghostty-vt.dylib`. The daemon, libmuster and the bridge record that name when
-they link, so a copy of the library made anywhere has to carry it. The bundle copies it in
-under the name `./dev` reads off the dylib, and the archive installed on a remote Mac
-names it with `muster_vt::LIBRARY_FILE_NAME`, which a test checks against the loaded
-library. Debug builds are unaffected: `zig-out/lib` holds the versioned file and both
-links.
+The dylib's install name is now `@rpath/libghostty-vt.1.dylib` (`otool -D`), where it was
+`@rpath/libghostty-vt.dylib`. That stopped mattering once Muster linked
+`zig-out/lib/libghostty-vt.a` into everything that uses it, on macOS as on Linux. Nothing
+Muster ships loads the dylib, so the bundle carries none and a remote Mac's install is the
+daemon, the CLI and the data directory, the same files as a Linux machine's.
 
-The dylib exports 219 `_ghostty_*` functions, Muster's ten included. The 35 duplicate
-symbols that stop both static archives linking into one binary were not re-checked;
-Muster still links GhosttyKit statically and libghostty-vt as the dylib.
+The two archives cannot share an image. `nm -gUm`, with weak definitions dropped, finds 815
+strong external symbols defined both in GhosttyKit's `libghostty-internal.a` and in
+`libghostty-vt.a`:
+- 409 are compiler-rt's;
+- most of the rest are Wuffs, simdutf and Highway;
+- six are libghostty's own C functions: `ghostty_simd_*` and `ghostty_hwy_detect_targets`.
+
+The old pin's 35 came from a link attempt, not from `nm`, so the two numbers are not
+comparable. The link itself was not retried here.
+
+Muster never puts both in one image. GhosttyKit links into the app, and libghostty-vt into
+`libmuster.dylib`, a cdylib whose only exports are `include/muster.h`'s three functions
+(`nm -gU`: `_muster_dispatch`, `_muster_free`, `_muster_set_event_callback`). libmuster and
+the daemon each depend on nothing but libSystem and libiconv.
+
+The cost is a copy per binary. In a release build, `muster-daemon` grows from 10.1 MB to
+11.6 MB and libmuster by 26 KB, since the linker keeps only what the core calls. The
+1.9 MB dylib leaves the bundle.
 
 ## 11. What the archives bring in
 

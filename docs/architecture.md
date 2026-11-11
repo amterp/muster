@@ -133,7 +133,7 @@ attached starts panes the way a window last asked (MIP-3, section 2).
 whatever somebody had installed, and a window's two halves could run different versions with nothing saying so. On
 attach Muster asks that machine what it is with `uname -sm`, and sends it the daemon this app carries for it over the
 master it already holds open, to `~/.muster/daemon/<version>/`: a static Linux build for x86_64 or aarch64 from
-`Contents/Resources/daemons/`, or for a remote Mac the app's own daemon with the libghostty-vt it links. The daemon
+`Contents/Resources/daemons/`, or for a remote Mac the app's own daemon, which links libghostty-vt statically too. The daemon
 and its data directory travel as one archive, and a SHA-256 of that archive stays beside them, so a machine holding
 any other build - two development builds share a version - gets this one instead. Then the same sequence as here
 follows: adopt a daemon already answering, and otherwise start this one, in a session of its own.

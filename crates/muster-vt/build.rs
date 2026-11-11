@@ -34,15 +34,29 @@ fn main() {
     // and a change to one of those alone - a re-pin, a patch in deps/ghostty-patches/ - left
     // the bindings stale. Cargo scans a directory for any file that changed.
     println!("cargo:rerun-if-changed={}", include.join("ghostty").display());
-    println!("cargo:rustc-link-search=native={}", lib.display());
-    let kind = link_kind(&target);
-    if kind == "static" {
-        println!("cargo:rerun-if-changed={}", lib.join("libghostty-vt.a").display());
-    }
-    println!("cargo:rustc-link-lib={kind}=ghostty-vt");
-    // Where a binary looks for the dylib at *runtime* is set in .cargo/config.toml, not
-    // here: a link argument emitted by a build script reaches only its own crate, and every
-    // downstream binary would link fine and fail at startup.
+    // Statically, everywhere. A daemon copied to another machine is then one file, and nothing
+    // in the bundle loads a libghostty-vt from beside itself. The app's process holds two copies
+    // of libghostty - GhosttyKit's, linked into the app, and this one inside libmuster - and that
+    // is safe only because libmuster is a cdylib of its own that exports nothing but
+    // `include/muster.h`'s symbols (MIP-1): the two archives define hundreds of the same strong
+    // symbols, and cannot be linked into one image
+    // (docs/observations/libghostty-0fa3d577.md, section 8).
+    //
+    // From a directory holding only the archive, because zig's prefix holds the dylib beside it:
+    // rustc bundles the archive into this crate for every crate that depends on it, but links
+    // this crate's own test executable with `-lghostty-vt`, and the macOS linker takes a dylib
+    // over an archive when it finds both. A rebuilt archive is noticed only because cargo is
+    // told to watch it: a patch that changes only Zig code leaves every header alone.
+    let archive = lib.join("libghostty-vt.a");
+    println!("cargo:rerun-if-changed={}", archive.display());
+    let archive_only =
+        PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join("libghostty-vt");
+    std::fs::create_dir_all(&archive_only).expect("OUT_DIR should be writable");
+    let link = archive_only.join("libghostty-vt.a");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&archive, &link).expect("OUT_DIR should be writable");
+    println!("cargo:rustc-link-search=native={}", archive_only.display());
+    println!("cargo:rustc-link-lib=static=ghostty-vt");
 
     let mut bindings = bindgen::Builder::default()
         .header(header.to_string_lossy())
@@ -116,45 +130,6 @@ fn zig_lib_dir(repo: &std::path::Path) -> PathBuf {
         .and_then(|rest| rest.strip_suffix("\","))
         .unwrap_or_else(|| panic!("`zig env` names no .lib_dir; it printed:\n{env}"));
     PathBuf::from(dir)
-}
-
-/// How libghostty-vt is linked: as the dylib unless this cargo invocation says `static`, and
-/// always statically for a Linux target, which exists only for the daemon.
-///
-/// The daemon links it statically, so a daemon copied to another machine is one file. The
-/// app's side links the dylib the bundle ships, so libmuster and the bridge share one copy.
-/// A cargo feature cannot say "static for the daemon only", because features unify across
-/// every package one invocation builds; an environment variable is scoped to the invocation,
-/// and the daemon's own build sets it.
-///
-/// Setting it for a build that also produces `muster-seam` is not an error, and nothing
-/// guards against it: the seam is a cdylib that exports only `include/muster.h`'s symbols
-/// (MIP-1), so a static libghostty-vt stays private inside it and does not meet GhosttyKit's.
-/// The collision in docs/observations/libghostty-9f9b8d1d.md section 8 comes from linking the
-/// two archives into one image, which that boundary rules out. It would only cost the app a
-/// second copy of the library.
-///
-/// rustc finds the archive itself and bundles it into this crate, so the dylib beside it in
-/// the same directory is not a candidate - and nor is a rebuilt archive noticed unless cargo
-/// is told to watch it, which it is: a patch that changes only Zig code rebuilds the archive
-/// and leaves every header alone.
-fn link_kind(target: &str) -> &'static str {
-    println!("cargo:rerun-if-env-changed=MUSTER_VT_LINK");
-    let linux = linux_target(target).is_some();
-    match std::env::var("MUSTER_VT_LINK").as_deref() {
-        Ok("dylib") if linux => panic!(
-            "MUSTER_VT_LINK=dylib asks for a shared libghostty-vt on {target}, which is only \
-             ever built for the daemon, and a daemon copied to a Linux machine has to be one \
-             file (MIP-3, section 12). Unset it for this target."
-        ),
-        _ if linux => "static",
-        Ok("static") => "static",
-        Ok("dylib") | Err(_) => "dylib",
-        Ok(other) => panic!(
-            "MUSTER_VT_LINK={other} is not a way to link libghostty-vt. It is `static` for \
-             the daemon's own build and unset (or `dylib`) for everything else."
-        ),
-    }
 }
 
 /// Every mode `modes.h` names, as a Rust table.

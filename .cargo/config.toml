@@ -1,24 +1,3 @@
-# Where a built binary looks for libghostty-vt.
-#
-# It has to be here rather than in muster-vt's build script: `cargo:rustc-link-arg` reaches
-# only the crate whose script emitted it, so every downstream binary - the bridge, the perf
-# harness, their test executables - would link fine and then fail at startup with a dyld
-# error naming a path nobody recognizes.
-#
-# Relative to the loading binary, so a checkout works without installing anything. The two
-# depths are `target/<profile>/` for a binary and `target/<profile>/deps/` for a test
-# executable. Package.swift carries the same pair for the same reason.
-#
-# The header padding is for `./dev --bundle`, which adds a bundle's rpath to a binary after it
-# is linked: without room left in the Mach-O header, install_name_tool refuses, and it did for
-# muster-daemon.
-[target.'cfg(target_os = "macos")']
-rustflags = [
-    "-C", "link-arg=-Wl,-rpath,@loader_path/../../deps/ghostty/zig-out/lib",
-    "-C", "link-arg=-Wl,-rpath,@loader_path/../../../deps/ghostty/zig-out/lib",
-    "-C", "link-arg=-Wl,-headerpad_max_install_names",
-]
-
 # The Linux daemons, cross-compiled from the Mac (MIP-3, section 12). rust-lld links them against
 # the musl that rustup ships with each target, so no Linux toolchain is involved; zig compiles and
 # archives the one C dependency cargo builds from source, mimalloc, rather than leaving the archive
