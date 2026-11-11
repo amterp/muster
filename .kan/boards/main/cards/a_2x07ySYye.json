@@ -5,19 +5,20 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "in-progress",
   "created_at_millis": 1794266601529,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 on 0.24.0, from a pane on the laptop, while clearing out @human groups whose agents had gone; six of them were kept on the devenv. `muster msg group delete @human+almond@devenv` refused: \"@human+almond@devenv is kept on devenv, so its members, policy and pause are changed there, with `muster msg` on devenv; this machine only holds a copy\". On the devenv, `muster` is on PATH only inside a pane, so running it there from outside meant finding the newest `~/.muster/daemon/\u003cversion\u003e/muster` by hand among older version directories and running `msg group delete --no-window @human+almond` with it.\n\nThe window lists these groups as the person's own, and a post already reaches the other machine by `--to \u003cname\u003e@devenv`, so the refusal is what stops someone at the window's machine from tidying their own list. a_2cU50cXtT added closing a group from the sidebar, routed to the daemon that keeps it; the CLI still refuses (`Refusal::KeptElsewhere` in crates/muster-daemon/src/messages/mod.rs).\n\nPossibly: forward `group delete`, and the other verbs that refusal covers, to the machine that keeps the group, as a post is forwarded. Failing that, name the exact command to run on that machine in the refusal.",
   "id": "a_2x07ySYye",
-  "position": "b2Y",
+  "position": "Zq",
   "related": [
     "a_2cU50cXtT"
   ],
   "title": "A group kept on another machine cannot be deleted from the window's machine",
   "type": "enhancement",
-  "updated_at_millis": 1794266607196,
+  "updated_at_millis": 1794375782442,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794266601529}
+    {"field":"column","value":"backlog-lo","at":1794266601529},
+    {"field":"column","value":"in-progress","at":1794375782442}
   ]
 }

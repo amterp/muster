@@ -5,21 +5,30 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2xjwFYLjU",
+      "body": "2026-11-10: fixed on main (87c0a147, cf8e5c31). A ring typed at work and left unsent has Return pressed again while the agent works, at doubling intervals from 5 s to 2 min, 20 presses at most, each only while the prompt holds the ring alone. The 30-minute notice and muster msg who say when it still sits unsent. Which give-up path the sightings hit is unknown: their logs are on the laptop. Not yet seen in the real app.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794375781643
+    }
+  ],
   "created_at_millis": 1794364285446,
   "creator": "Alexander Terp",
   "description": "From the tooling feedback hub (a_2x0oGSR9A), Muster 0.24.0, three sightings on 2026-11-09, each a Claude Code agent on the Mac in a long turn of tool calls, sent an `--urgent` post from a devenv pane.\n\nThe notice text was typed into the agent's prompt box but never submitted, so the running turn never took it. 30 minutes later @muster told the sender \"it has read as working for 30 minutes without a break, so it is rung only once it stops; an urgent post reaches it at work\", which was false: it had not reached it. `muster pane send --pane \u003cit\u003e --key Enter --confirm` submitted the waiting text, and the agent read the post at its next tool call. The urgent help says the post is \"typed into its prompt for the turn it is running\"; the Return never landed, or Claude Code dropped it mid-turn.\n\nWanted: after typing an urgent notice, check the prompt box emptied and press Return again if not; and when it is still sitting there, the 30-minute notice should say so instead of claiming it reached the agent.",
   "id": "a_2xf7BCQW3",
-  "position": "Zv",
+  "position": "YuH",
   "related": [
     "a_2j4C0fQOT"
   ],
   "title": "An urgent post typed into a working Claude Code prompt can sit there unsubmitted",
   "type": "bug",
-  "updated_at_millis": 1794370430447,
+  "updated_at_millis": 1794375781933,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794364285446},
     {"field":"column","value":"next","at":1794364939074},
-    {"field":"column","value":"in-progress","at":1794370430447}
+    {"field":"column","value":"in-progress","at":1794370430447},
+    {"field":"column","value":"done","at":1794375781933}
   ]
 }
