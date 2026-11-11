@@ -37,7 +37,9 @@ use muster_core::intent::{
 };
 use muster_core::making;
 use muster_core::message_groups::{self, MessageGroup};
-use muster_core::mirror::backend::{AgentFacts, ClosedPane, PaneId, Progress, TabId};
+use muster_core::mirror::backend::{
+    AgentFacts, ClosedPane, LayoutNode, PaneId, Progress, SplitAxis, TabId,
+};
 use muster_core::mirror::{Change, Health, Mirror, Restart, Restored};
 use muster_core::names::Minter;
 use muster_core::pane_address::{self, Address, Candidate};
@@ -911,6 +913,10 @@ pub(crate) struct Session {
     /// that moved on or went away refuses one (`crate::testing`).
     refusing_tree_writes: BTreeSet<DaemonId>,
 
+    /// Parts of tabs found taken out of their tab while their machine was unreachable, to be moved
+    /// into a tab of their own once the session's lock is let go ([`Session::part_ways`]).
+    departing: Vec<Departure>,
+
     /// Nested rather than keyed by a pair, so that finding the pane a keystroke is for costs
     /// two lookups and no allocation - a pair key would have to be built, and building one
     /// means cloning both ids on a path that runs per keystroke.
@@ -1616,8 +1622,76 @@ impl Session {
     /// Brings composition, and what this process holds open, in line with one daemon.
     fn reconcile(&mut self, daemon: &DaemonId) {
         self.settle_holding(daemon);
+        self.part_ways(daemon);
         self.prune(daemon);
         self.open_channels(daemon);
+    }
+
+    /// Keeps out of each window's tabs the parts `daemon` holds of them that were taken out while
+    /// it could not be reached - by Remove from Tab, or by its leaving the config - and queues
+    /// each to be moved into a tab of its own (`spanning::departed`, owner's decision
+    /// spanning-tab-departed-machine). Before the composition is reconciled, which would
+    /// otherwise take each part back into its tab and put its panes beside their old neighbours.
+    fn part_ways(&mut self, daemon: &DaemonId) {
+        if !self.holds_spanning_trees(daemon) {
+            return;
+        }
+        let mut found: Vec<Departure> = Vec::new();
+        {
+            let mirrors = self.mirrors();
+            let Some(arriving) = mirrors.get(daemon) else { return };
+            if arriving.health() != Health::Connected || arriving.restoring() || arriving.stopping()
+            {
+                return;
+            }
+            for (id, window) in self.windows.iter().filter(|(_, window)| !window.is_closed()) {
+                let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
+                for tab in window.composition.tabs() {
+                    if tab.daemons().any(|part| part == daemon)
+                        || window.composition.kept_apart(daemon, &tab.id)
+                    {
+                        continue;
+                    }
+                    let Some(layout) = arriving.tab(&tab.id).filter(|layout| !layout.hidden) else {
+                        continue;
+                    };
+                    let Some(own) = layout.copy.own() else { continue };
+                    let part = spanning::Part {
+                        daemon: daemon.clone(),
+                        copy: layout.copy.clone(),
+                        zoomed: layout.copy_zoomed.clone(),
+                        generation: layout.layout_generation,
+                        holds: arriving.panes_in_tab(&tab.id).map(|pane| pane.id.clone()).collect(),
+                        weight: 1.0,
+                        writable: true,
+                    };
+                    let (others, _) = spanning::parts_of(tab, mirror, |_| true, |_| false);
+                    if spanning::departed(&part, &others) {
+                        found.push(Departure {
+                            window: id,
+                            daemon: daemon.clone(),
+                            tab: tab.id.clone(),
+                            label: layout.label.clone(),
+                            own,
+                        });
+                    }
+                }
+            }
+        }
+        for departure in found {
+            let window = &mut self.windows[departure.window];
+            if window.composition.keep_apart(&departure.daemon, &departure.tab) {
+                log::info(
+                    "tab.part.departed",
+                    fields! {
+                        "window" => window.name.to_string(),
+                        "daemon" => departure.daemon.to_string(),
+                        "tab" => departure.tab.to_string(),
+                    },
+                );
+                self.departing.push(departure);
+            }
+        }
     }
 
     /// Takes the tabs on this machine that nobody holds, if they are one of this process's
@@ -5977,11 +6051,15 @@ impl Published {
 /// shell, the shell reacts by dispatching, and a dispatch that arrived while this held the
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
-    let opened = {
+    let (opened, departing) = {
         let mut session = poison::lock(&SESSION, "session");
         session.reconcile(daemon);
-        session.windows.values().any(Window::is_open)
+        let departing = std::mem::take(&mut session.departing);
+        (session.windows.values().any(Window::is_open), departing)
     };
+    for departure in departing {
+        departure.move_into_a_tab_of_its_own();
+    }
     // A standing rule rather than a launch-time one, because the states that produce a
     // daemon with nothing on screen keep arriving: a tab Muster asked for a moment ago
     // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
@@ -6000,6 +6078,81 @@ fn reconcile(daemon: &DaemonId) {
     if opened {
         settle_what_every_window_shows();
     }
+}
+
+/// A machine's part of a tab that was taken out of the tab while the machine was unreachable,
+/// and goes into a tab of its own on that machine now that it answers.
+#[derive(Debug)]
+struct Departure {
+    window: WindowId,
+    daemon: DaemonId,
+    tab: TabId,
+    label: Option<String>,
+    /// The part's own panes, arranged as its copy has them.
+    own: LayoutNode,
+}
+
+impl Departure {
+    /// Moves the part's panes into a new tab, its first pane making the tab and each split of
+    /// its own tree made again by moving the first pane of its second side beside the first pane
+    /// of its first, at the copy's ratio. One request per pane, so a refusal part way leaves
+    /// some panes in each tab, every one still running; it is logged, and nothing is retried.
+    fn move_into_a_tab_of_its_own(self) {
+        let into = mint_tab();
+        let panes = self.own.panes();
+        let Some(first) = panes.first() else { return };
+        let mut asked = vec![BackendIntent::MovePane {
+            pane: (*first).clone(),
+            to: MoveDestination::NewTab { tab: into.clone(), name: self.label.clone(), hidden: false },
+        }];
+        rebuilt(&self.own, &into, &mut Vec::new(), &mut asked);
+        for intent in &asked {
+            if let Err(refusal) = submit(self.window, &self.daemon, intent, Keyboard::StaysPut) {
+                log::warn(
+                    "tab.part.departed.unmoved",
+                    fields! {
+                        "daemon" => self.daemon.to_string(),
+                        "tab" => self.tab.to_string(),
+                        "into" => into.to_string(),
+                        "detail" => refusal.to_string(),
+                        "impact" => "some of this machine's panes from the tab are still in its \
+                                     part of it, which this window keeps out of the tab, so \
+                                     they are on no tab this window shows; every pane is \
+                                     still running",
+                        "check" => "`muster window` for where the machine's panes are, and \
+                                    `muster pane move --tab` to put the rest beside them",
+                    },
+                );
+                return;
+            }
+        }
+    }
+}
+
+/// The moves and divider settings that make `node`, whose first pane is in `tab` already, again
+/// in `tab`: each split's second side's first pane moved beside its first side's first pane,
+/// then each side made in its half.
+fn rebuilt(node: &LayoutNode, tab: &TabId, path: &mut Vec<Branch>, asked: &mut Vec<BackendIntent>) {
+    let LayoutNode::Split { axis, ratio, first, second } = node else { return };
+    let (Some(near), Some(moved)) = (first.panes().first().copied(), second.panes().first().copied())
+    else {
+        return;
+    };
+    let side = match axis {
+        SplitAxis::Columns => Side::Right,
+        SplitAxis::Rows => Side::Down,
+    };
+    asked.push(BackendIntent::MovePane {
+        pane: moved.clone(),
+        to: MoveDestination::Beside { tab: tab.clone(), pane: near.clone(), side },
+    });
+    asked.push(BackendIntent::SetSplitRatio { tab: tab.clone(), path: path.clone(), ratio: *ratio });
+    path.push(Branch::First);
+    rebuilt(first, tab, path, asked);
+    path.pop();
+    path.push(Branch::Second);
+    rebuilt(second, tab, path, asked);
+    path.pop();
 }
 
 /// Turns what one daemon said into a log line and, where the window renders it, an event.

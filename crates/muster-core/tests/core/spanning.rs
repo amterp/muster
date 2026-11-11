@@ -26,6 +26,9 @@ fn spanning_conformance() {
             .flatten()
             .map(|(daemon, settled)| (DaemonId::new(daemon), settled.as_bool().unwrap_or_default()))
             .collect();
+        if let Some(arriving) = given.get("arriving") {
+            return Ok(fields([("departed", Some(json!(spanning::departed(&part(arriving), &parts))))]));
+        }
         if let Some(path) = given.get("divider").and_then(Value::as_str) {
             let divider = spanning::side_by_side_divider(&parts, &read_turns(path));
             return Ok(fields([(

@@ -211,6 +211,26 @@ fn side_by_side(parts: &[Part]) -> Option<(SpanNode, Option<PaneId>)> {
     Some((tree, parts.iter().find_map(|part| part.zoomed.clone())))
 }
 
+/// Whether `arriving`, a machine's part of a tab that the window is about to take into it, was
+/// taken out of the tab while that machine could not be reached: the newest copy among the
+/// tab's other parts was written after `arriving`'s and names none of the panes it holds. Only
+/// a window drops all of a machine's panes from a tree while the machine still holds them -
+/// Remove from Tab, or the machine taken out of the config - so that part goes into a tab of
+/// its own rather than back into this one (MIP-8, section 7).
+///
+/// A machine that made a pane on its own while apart still has its other panes named, and a
+/// tab whose copies no window has written yet is never newer than it, so neither reads as
+/// removed. Only for a part that can hold a spanning tree: an older machine's copy is never
+/// written, so it is always behind.
+pub fn departed(arriving: &Part, others: &[Part]) -> bool {
+    if arriving.holds.is_empty() || !arriving.writable {
+        return false;
+    }
+    let Some(newest) = others.iter().max_by_key(|part| part.generation) else { return false };
+    newest.generation > arriving.generation
+        && panes_of(&newest.copy).into_iter().all(|pane| !arriving.holds.contains(pane))
+}
+
 /// The panes of a merged `tree` a window draws: those a part holds, and those whose machine the
 /// window follows or is attaching but which no part holds, which it draws as unreachable in
 /// their places (MIP-8, section 7). A pane whose machine the window does not follow at all is

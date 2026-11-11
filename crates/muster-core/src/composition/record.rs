@@ -265,6 +265,10 @@ pub struct Composition {
     held: BTreeSet<TabId>,
     /// Where a held tab's region is to open, by the tab it goes after, until it opens.
     placed_after: BTreeMap<TabId, TabId>,
+    /// Machines' parts of held tabs that are not to be taken into them: parts taken out of their
+    /// tab while their machine was unreachable, on their way into a tab of their own
+    /// (`crate::spanning::departed`). Each is forgotten once its machine no longer holds it.
+    kept_apart: BTreeSet<(DaemonId, TabId)>,
     /// Never reused, so that a region id names one region for the life of a composition.
     /// Reusing them would let a stale intent - a keystroke sent as a region closed - land
     /// in whatever took its place.
@@ -305,6 +309,16 @@ impl Composition {
         self.settle_showing(was_at);
     }
 
+    /// Keeps `daemon`'s part of `tab` out of the tab from now on, for as long as the daemon holds
+    /// it. Says whether it was not kept out already.
+    pub fn keep_apart(&mut self, daemon: &DaemonId, tab: &TabId) -> bool {
+        self.kept_apart.insert((daemon.clone(), tab.clone()))
+    }
+
+    pub fn kept_apart(&self, daemon: &DaemonId, tab: &TabId) -> bool {
+        self.kept_apart.contains(&(daemon.clone(), tab.clone()))
+    }
+
     pub fn daemon(&self, id: &DaemonId) -> Option<&Daemon> {
         self.daemons.get(id)
     }
@@ -331,7 +345,8 @@ impl Composition {
     /// and a window that switched tabs every time a daemon published something is a window
     /// that types into the wrong pane.
     pub fn open_region(&mut self, daemon: &DaemonId, tab: TabId) -> Option<RegionId> {
-        if !self.daemons.contains_key(daemon) {
+        if !self.daemons.contains_key(daemon) || self.kept_apart.contains(&(daemon.clone(), tab.clone()))
+        {
             return None;
         }
         if let Some(held) = self.region_of(daemon, &tab) {
@@ -724,6 +739,7 @@ impl Composition {
             return;
         }
         let was_at = self.showing_at();
+        self.kept_apart.retain(|(machine, tab)| machine != daemon || mirror.tab(tab).is_some());
         let held: Vec<TabId> = mirror
             .tabs()
             .filter(|tab| !tab.hidden && self.held.contains(&tab.id))

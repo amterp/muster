@@ -1883,6 +1883,61 @@ fn an_unreachable_pane_removed_from_its_tab_leaves_every_copy_that_answers() {
     );
 }
 
+/// A machine whose pane was removed from a tab while it was down still runs that pane, and when it
+/// answers again its part of the tab comes back as a tab of its own rather than back into the
+/// tab, as a tab closed while a machine was unreachable does (owner's decision
+/// spanning-tab-departed-machine).
+#[test]
+fn a_part_removed_while_its_machine_was_down_comes_back_as_a_tab_of_its_own() {
+    let _turn = muster::testing::fresh_session();
+    let laptop = Daemon::start_built();
+    let mut devenv = Daemon::start_built();
+    let mut control = laptop.connect();
+    make(&mut control, create(SPAN_A, in_new_tab(SPANNING_TAB)));
+    expect(&mut control, seeded(&format!("[{SPAN_A}|~{SPAN_X}@devenv 0.50]"), 1), daemon_proto::Outcome::Done);
+    let mut control = devenv.connect();
+    make(&mut control, create(SPAN_X, in_new_tab(SPANNING_TAB)));
+    expect(&mut control, seeded(&format!("[~{SPAN_A}@laptop|{SPAN_X} 0.50]"), 1), daemon_proto::Outcome::Done);
+    let state = devenv.root().join("daemon.state.json");
+    until(
+        "the devenv to write its copy of the tab down",
+        || std::fs::read_to_string(&state).is_ok_and(|saved| saved.contains(SPAN_A)),
+        || std::fs::read_to_string(&state).unwrap_or_default(),
+    );
+    devenv.kill();
+    let config = laptop.muster_config_naming("laptop", &[("devenv", &devenv)]);
+    watch();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the devenv's pane to be drawn unreachable",
+        || drawn(SPANNING_TAB).is_some_and(|tree| tree.contains('?')),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+    assert_ok(&answer(request::Payload::RemoveFromTab(RemoveFromTab {
+        daemon_id: "devenv".to_string(),
+        pane_id: SPAN_X.to_string(),
+    })));
+    until(
+        "the laptop's copy to lose the devenv's pane",
+        || spanning_copy(&laptop) == Some(("A".to_string(), 2)),
+        || format!("the laptop holds {:?}", spanning_copy(&laptop)),
+    );
+
+    devenv.restart();
+    until(
+        "the devenv's pane to be in a tab of its own",
+        || tab_holding(SPAN_X).is_some_and(|tab| tab != SPANNING_TAB),
+        || format!("the window lists {:?}", rows_by_tab()),
+    );
+    assert_eq!(drawn(SPANNING_TAB), Some(format!("{SPAN_A}@laptop")));
+    assert_eq!(spanning_copy(&laptop), Some(("A".to_string(), 2)));
+    assert!(spanning_copy(&devenv).is_none(), "the devenv's part of the tab closed");
+}
+
 /// The devenv was unreachable while the laptop's copy was rearranged, so its copy is older. The
 /// window merges the two as it attaches and catches the devenv up with the laptop's tree, at the
 /// laptop's generation (MIP-8, section 2).

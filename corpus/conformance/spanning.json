@@ -728,6 +728,50 @@
           "laptop 3<-2 columns(a, b@0.5)"
         ]
       }
+    },
+    {
+      "name": "a part whose panes were taken out of the tab while its machine was down goes into a tab of its own",
+      "why": "The laptop's copy was written after the devenv's and names none of the panes the devenv holds there: a window removed them, by Remove from Tab or because the devenv left the config. The devenv still runs x, so its part comes back as a tab of its own rather than into this one (owner's decision spanning-tab-departed-machine).",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "a", "generation": 2, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+      },
+      "expect": { "departed": true }
+    },
+    {
+      "name": "a part whose machine made a pane on its own while apart rejoins the tab",
+      "why": "The devenv made y beside x while the window could not see it, which changes no generation, so the laptop's newer copy does not name y. It still names x, so the devenv's part was not taken out, and the merge puts y beside x.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.30]", "generation": 2, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "[~a@laptop|[x/y 0.50] 0.50]", "generation": 1, "holds": ["x", "y"] }
+      },
+      "expect": { "departed": false }
+    },
+    {
+      "name": "a part no newer copy has moved past rejoins the tab",
+      "why": "Copies at one generation are reconciled by the merge, whatever panes they name: nothing says a window removed the devenv's panes, so its part is taken into the tab.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "a", "generation": 1, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 1, "holds": ["x"] }
+      },
+      "expect": { "departed": false }
+    },
+    {
+      "name": "a part on a machine too old to hold a spanning tree rejoins the tab",
+      "why": "An older daemon's copy is never written, so it is always behind the newer parts' copies, which name its panes only once a window has placed them. Reading that as a removal would send every such machine's part to a tab of its own.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "a", "generation": 2, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "x", "generation": 0, "holds": ["x"], "writable": false }
+      },
+      "expect": { "departed": false }
     }
   ]
 }
