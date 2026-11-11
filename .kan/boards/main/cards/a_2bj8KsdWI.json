@@ -2,7 +2,7 @@
   "_v": 4,
   "alias": "resume-spellings-for",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "id": "c_2djt6ZInv",
@@ -33,19 +33,26 @@
       "body": "2026-11-10: unblocked. The OpenAI account's limit that blocked the Codex recordings reset on 2026-11-02. Check `qm usage` for Codex headroom before recording.",
       "author": "Alexander Terp",
       "created_at_millis": 1794369623178
+    },
+    {
+      "id": "c_2xmDwNETc",
+      "body": "2026-11-11: done on main (84213b9e, ffbc092d). Codex resumes as codex resume {args} {session} with its flags, and a Codex that Muster already resumed no longer loses them on the next restart. OpenCode resumes as opencode {args} --session {session}. Both recorded; a real daemon restart of either pane has not been run against this build.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794381228233
     }
   ],
   "created_at_millis": 1791123069063,
   "creator": "Alexander Terp",
   "description": "Since 2026-10-04 a Claude Code pane resumes after a daemon restart with its flags ([session] resume, detection engine 12). Codex (codex resume is a subcommand; where flags go is unrecorded) and OpenCode have no resume spelling, so their panes come back as shells. Record each resuming with flags, then add the manifest tables.",
   "id": "a_2bj8KsdWI",
-  "position": "a6",
+  "position": "Yu3",
   "title": "Resume spellings for Codex and OpenCode",
   "type": "feature",
-  "updated_at_millis": 1794369623179,
+  "updated_at_millis": 1794381228400,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791123069063},
     {"field":"column","value":"next","at":1791131314464},
-    {"field":"column","value":"backlog-hi","at":1792200746941}
+    {"field":"column","value":"backlog-hi","at":1792200746941},
+    {"field":"column","value":"done","at":1794381228400}
   ]
 }

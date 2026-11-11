@@ -2,7 +2,7 @@
   "_v": 4,
   "alias": "codex-and-opencode",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "backlog-hi",
   "comments": [
     {
       "id": "c_2djt6lHMN",
@@ -27,20 +27,27 @@
       "body": "2026-11-10: unblocked. The OpenAI account's limit that blocked the Codex recordings reset on 2026-11-02. Check `qm usage` for Codex headroom before recording.",
       "author": "Alexander Terp",
       "created_at_millis": 1794369622970
+    },
+    {
+      "id": "c_2xmDwBi6d",
+      "body": "2026-11-11: Codex done on main (84213b9e): muster pane compact types /compact (Codex 0.167.0 sends extra words to the model, so a focus is refused), and its PostCompact hook reads the token count Codex writes after a compaction, so the context reading is fresh. OpenCode 1.19.5 recorded and not added: its command list takes the first Return, and only a second runs /compact, while Muster types one line with one Return (docs/observations/opencode-1.19.5.md). Open for the owner: whether the manifest format gains a way to say a command needs a second Return.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794381228114
     }
   ],
   "created_at_millis": 1791120807068,
   "creator": "Alexander Terp",
   "description": "Both harnesses have a /compact. Codex 0.154 needs an OpenAI login (not run, the account is near its monthly limit); OpenCode needs 1.18+ (not installed). Record each working as typed at an idle prompt, whether it takes a focus, then add [session] compact to codex.toml and opencode.toml (engine 11). Claude Code's is recorded in corpus/claude-code-2.1.289/compact.txt.",
   "id": "a_2biBUV9RK",
-  "position": "Zm",
+  "position": "Zq",
   "title": "Codex and OpenCode compaction: record /compact as typed and add it to their manifests",
   "type": "feature",
-  "updated_at_millis": 1794378941191,
+  "updated_at_millis": 1794381228568,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791120807068},
     {"field":"column","value":"next","at":1791131314388},
     {"field":"column","value":"backlog-hi","at":1792200747130},
-    {"field":"column","value":"in-progress","at":1794378941191}
+    {"field":"column","value":"in-progress","at":1794378941191},
+    {"field":"column","value":"backlog-hi","at":1794381228568}
   ]
 }
