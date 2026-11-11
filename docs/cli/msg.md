@@ -377,7 +377,12 @@ post reaches it at work. When a ring for it still sits unsent in its prompt, tha
 with the command that sends it.
 
 That message wakes whoever it is for as any message does, so a director that ended its turn to
-wait hears why no answer is coming. `@muster` is never a member and cannot be addressed, and what
+wait hears why no answer is coming. One that is at work, at a dialog or stuck, and whose hooks do
+not fetch messages mid-turn, would read it only once it is free, so it is told then, and only if
+the member still has not read the message and is still doing what the notice says. A member that
+reads it, goes to work or leaves meanwhile has moved, and nothing is posted: the run log says so
+(`msg.group.untold_settled`). A poster on another machine is told the same way, as its machine
+says it is doing. `@muster` is never a member and cannot be addressed, and what
 it posts never counts as a stall itself. In a group kept on another machine, the daemon that sees
 the member asks the group's machine to post it there, naming the member as that machine does
 (`otter@devenv`); when that machine cannot be asked, or its daemon is older than this one, the

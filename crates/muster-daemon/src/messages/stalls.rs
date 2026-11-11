@@ -17,7 +17,7 @@
 //! members are all idle with everything read is also what a finished group looks like, and an
 //! expectation of a reply is not something Muster can observe.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,6 +26,7 @@ use muster_core::diagnostics::log;
 use muster_core::fields;
 use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Via};
 
+use super::busy::ASK_BUSY_AGAIN;
 use super::doorbell::Held;
 use super::makers::{self, Makers};
 use super::presence::Panes;
@@ -93,6 +94,10 @@ pub(crate) struct Member {
     /// The machine keeping its group, as the link to it knows it, when that is another machine:
     /// what whoever waits is told is posted there, in its names.
     pub(crate) home: Option<Peer>,
+    /// Of whoever waits on it, those that would not hear a post now: an agent at work, at a
+    /// dialog or stuck whose hooks do not fetch mid-turn, or one elsewhere its machine says is.
+    /// What they are told waits until they are free, and is dropped if it has stopped being true.
+    pub(crate) busy: BTreeSet<String>,
 }
 
 /// What a look decided.
@@ -106,6 +111,8 @@ pub(crate) enum Act {
     Tell { group: String, to: Vec<String>, body: String },
     /// A member that held its group up has moved: read, gone to work, or left.
     Moving { name: String, group: String, held_ms: u64 },
+    /// What whoever waits was to be told once free stopped being true first, so nobody is.
+    Dropped { name: String, group: String, first: u64, to: Vec<String>, reason: &'static str },
 }
 
 /// What a stall is answered with.
@@ -146,12 +153,39 @@ struct Episode {
     told: bool,
     /// A stall of it is in the log with no move recorded since, which its end is recorded for.
     recorded: bool,
+    /// What whoever waits and is busy is to be told once free, while it still holds.
+    pending: Option<Pending>,
 }
 
 impl Episode {
     fn new(first: u64, since_ms: u64) -> Episode {
-        Episode { first, since_ms, stage: Stage::Watching, told: false, recorded: false }
+        Episode {
+            first,
+            since_ms,
+            stage: Stage::Watching,
+            told: false,
+            recorded: false,
+            pending: None,
+        }
     }
+}
+
+/// A notice held for those it is for that are busy.
+#[derive(Debug)]
+struct Pending {
+    why: Why,
+    to: BTreeSet<String>,
+    /// Whether anybody else was told it already, which keeps the episode told if this is dropped.
+    told_some: bool,
+}
+
+/// What a notice says of the member, which is what must still hold when it is told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Why {
+    /// It is not working and has not read the message.
+    Stalled,
+    /// It has read as working without a break since `since_ms`.
+    Worked { since_ms: u64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,6 +271,13 @@ impl Stalls {
             let since_ms = member.holding.first_at_ms.max(free_since);
             let episode = episode(&mut self.episodes, &key, member, since_ms, now_ms, &mut acts);
             episode.since_ms = episode.since_ms.max(since_ms);
+            match episode.pending.as_ref().map(|pending| pending.why) {
+                Some(Why::Stalled) => release(episode, member, called, now_ms, &mut acts),
+                Some(Why::Worked { .. }) => {
+                    drop_pending(&key, episode, "stopped_working", &mut acts);
+                }
+                None => {}
+            }
             let held_ms = now_ms.saturating_sub(episode.since_ms);
             if held_ms < self.after_ms {
                 continue;
@@ -260,7 +301,7 @@ impl Stalls {
                             episode.stage = Stage::WokenAgain { at_ms: now_ms };
                         }
                         Unlock::Tell => {
-                            acts.push(tell(member, called, now_ms, &why(member, called)));
+                            tell_or_hold(episode, member, called, now_ms, Why::Stalled, &mut acts);
                             episode.stage = Stage::Told;
                             episode.told = true;
                         }
@@ -270,7 +311,7 @@ impl Stalls {
                 // Woken again and still held up: what is left is to tell whoever waits.
                 Stage::WokenAgain { at_ms } if now_ms.saturating_sub(at_ms) >= self.after_ms => {
                     if !waiting_on(member).is_empty() && !episode.told {
-                        acts.push(tell(member, called, now_ms, &why(member, called)));
+                        tell_or_hold(episode, member, called, now_ms, Why::Stalled, &mut acts);
                         episode.told = true;
                     }
                     episode.stage = Stage::Told;
@@ -281,10 +322,8 @@ impl Stalls {
         let moved: Vec<(String, String)> =
             self.episodes.keys().filter(|key| !holding.contains(key)).cloned().collect();
         for key in moved {
-            if let Some(episode) = self.episodes.remove(&key)
-                && episode.recorded
-            {
-                acts.push(moving(&key, &episode, now_ms));
+            if let Some(mut episode) = self.episodes.remove(&key) {
+                ended(&key, &mut episode, now_ms, "read_or_left", &mut acts);
             }
         }
         acts
@@ -302,11 +341,17 @@ impl Stalls {
     ) -> bool {
         let Some(episode) = self.episodes.get_mut(key) else { return false };
         if episode.first != member.holding.first {
-            if episode.recorded {
-                acts.push(moving(key, episode, now_ms));
-            }
+            ended(key, episode, now_ms, "read", acts);
             self.episodes.remove(key);
             return false;
+        }
+        if episode.pending.as_ref().is_some_and(|pending| pending.why == Why::Stalled) {
+            let reason = if member.activity == Some(Activity::Working) {
+                "went_to_work"
+            } else {
+                "agent_starting"
+            };
+            drop_pending(key, episode, reason, acts);
         }
         // Gone to work from a stall said while it was free: that much has moved.
         if episode.stage != Stage::Watching {
@@ -341,23 +386,25 @@ impl Stalls {
             acts.push(Act::Stalled { member: Box::new(member.clone()), held_ms, unlock });
             episode.recorded = true;
             if unlock == Unlock::Tell {
-                let worked = said_as_time(now_ms.saturating_sub(worked_since));
-                let why = if member.unsent {
-                    format!(
-                        "it has read as working for {worked} without a break, and {}",
-                        unsent(member, called)
-                    )
-                } else {
-                    format!(
-                        "it has read as working for {worked} without a break, so it is rung only \
-                         once it stops; an urgent post reaches it at work"
-                    )
-                };
-                acts.push(tell(member, called, now_ms, &why));
+                let why = Why::Worked { since_ms: worked_since };
+                tell_or_hold(episode, member, called, now_ms, why, acts);
             }
             episode.told = true;
+        } else if episode.pending.as_ref().is_some_and(|pending| pending.why != Why::Stalled) {
+            release(episode, member, called, now_ms, acts);
         }
         true
+    }
+
+    /// Whoever a notice is held for, with the group it would be told in.
+    fn held_for(&self) -> Vec<(String, String)> {
+        self.episodes
+            .iter()
+            .filter_map(|((_, group), episode)| Some((group, episode.pending.as_ref()?)))
+            .flat_map(|(group, pending)| {
+                pending.to.iter().map(|name| (name.clone(), group.clone()))
+            })
+            .collect()
     }
 
     /// How long until the next look is due.
@@ -379,12 +426,111 @@ fn episode<'a>(
     let first = member.holding.first;
     let episode = episodes.entry(key.clone()).or_insert_with(|| Episode::new(first, since_ms));
     if episode.first != first {
-        if episode.recorded {
-            acts.push(moving(key, episode, now_ms));
-        }
+        ended(key, episode, now_ms, "read", acts);
         *episode = Episode::new(first, since_ms);
     }
     episode
+}
+
+/// Records the end of `episode`, the member having moved for `reason`: its move, when its stall
+/// is in the log, and the notice it held for whoever was busy, which is no longer true.
+fn ended(
+    key: &(String, String),
+    episode: &mut Episode,
+    now_ms: u64,
+    reason: &'static str,
+    acts: &mut Vec<Act>,
+) {
+    if episode.recorded {
+        acts.push(moving(key, episode, now_ms));
+    }
+    drop_pending(key, episode, reason, acts);
+}
+
+/// Drops the notice `episode` holds for whoever is busy, which stopped holding for `reason`. With
+/// nobody told of it, the episode counts as untold again: what comes of it next is told afresh.
+fn drop_pending(
+    key: &(String, String),
+    episode: &mut Episode,
+    reason: &'static str,
+    acts: &mut Vec<Act>,
+) {
+    let Some(pending) = episode.pending.take() else { return };
+    if !pending.told_some {
+        episode.told = false;
+    }
+    acts.push(Act::Dropped {
+        name: key.0.clone(),
+        group: key.1.clone(),
+        first: episode.first,
+        to: pending.to.into_iter().collect(),
+        reason,
+    });
+}
+
+/// Tells whoever waits on `member` and is free now what `why` says, and holds it in `episode`
+/// for the rest until they are free.
+fn tell_or_hold(
+    episode: &mut Episode,
+    member: &Member,
+    called: &BTreeMap<String, String>,
+    now_ms: u64,
+    why: Why,
+    acts: &mut Vec<Act>,
+) {
+    let (busy, free): (Vec<String>, Vec<String>) =
+        waiting_on(member).into_iter().partition(|name| member.busy.contains(name));
+    let busy: BTreeSet<String> = busy.into_iter().collect();
+    let told_some = !free.is_empty();
+    if told_some {
+        acts.push(tell(member, called, now_ms, &said(member, called, why, now_ms), free));
+    }
+    episode.pending = (!busy.is_empty()).then_some(Pending { why, to: busy, told_some });
+}
+
+/// Tells those `episode` holds a notice for that are free now, while what it says still holds,
+/// in words true now. Any that no longer wait on the member are let go untold.
+fn release(
+    episode: &mut Episode,
+    member: &Member,
+    called: &BTreeMap<String, String>,
+    now_ms: u64,
+    acts: &mut Vec<Act>,
+) {
+    let Some(pending) = &mut episode.pending else { return };
+    let waiting = waiting_on(member);
+    pending.to.retain(|name| waiting.contains(name));
+    let free: Vec<String> =
+        pending.to.iter().filter(|name| !member.busy.contains(*name)).cloned().collect();
+    if !free.is_empty() {
+        acts.push(tell(member, called, now_ms, &said(member, called, pending.why, now_ms), free));
+        pending.to.retain(|name| member.busy.contains(name));
+        pending.told_some = true;
+    }
+    if pending.to.is_empty() {
+        episode.pending = None;
+    }
+}
+
+/// Why `member` has not read what waits on it, as a notice for `why` says it now.
+fn said(member: &Member, called: &BTreeMap<String, String>, why: Why, now_ms: u64) -> String {
+    match why {
+        Why::Stalled => self::why(member, called),
+        Why::Worked { since_ms } => {
+            let worked = said_as_time(now_ms.saturating_sub(since_ms));
+            if member.unsent {
+                format!(
+                    "it has read as working for {worked} without a break, and {}",
+                    unsent(member, called)
+                )
+            } else {
+                format!(
+                    "it has read as working for {worked} without a break, so it is rung only \
+                     once it stops; an urgent post reaches it at work"
+                )
+            }
+        }
+    }
 }
 
 /// How a stall is answered: its member woken once more when its last wake never landed and it
@@ -416,7 +562,13 @@ fn waiting_on(member: &Member) -> Vec<String> {
 }
 
 /// What whoever waits on `member` is told, `why` being why it has not read.
-fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: &str) -> Act {
+fn tell(
+    member: &Member,
+    called: &BTreeMap<String, String>,
+    now_ms: u64,
+    why: &str,
+    to: Vec<String>,
+) -> Act {
     let held = &member.holding;
     let waited = said_as_time(now_ms.saturating_sub(held.first_at_ms));
     // Posted where the group is kept, so in that machine's names.
@@ -433,7 +585,7 @@ fn tell(member: &Member, called: &BTreeMap<String, String>, now_ms: u64, why: &s
         first = held.first,
         authors = held.authors.iter().map(|author| shown(author)).collect::<Vec<_>>().join(", "),
     );
-    Act::Tell { group: held.group.clone(), to: waiting_on(member), body }
+    Act::Tell { group: held.group.clone(), to, body }
 }
 
 /// `ms` as a person says it: seconds under two minutes, whole minutes from there.
@@ -570,14 +722,30 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
     }
     stalls.due = now + stalls.every;
     let panes = Panes::of(shared);
+    let mut elsewhere: HashSet<String> = HashSet::new();
     let (members, others, called) = {
         let mut messages = shared.messages();
         if messages.handing_over {
             return stalls.every;
         }
         let mut members = members(&messages, &panes);
+        let now = now_ms();
         for member in &mut members {
             member.maker = makers::tells(&messages.service, &panes, makers, &member.holding.pane);
+            for name in waiting_on(member) {
+                match hears(&messages.service, &panes, &name, now) {
+                    Hears::Now => {}
+                    Hears::Later => {
+                        member.busy.insert(name);
+                    }
+                    Hears::AsItsMachineSays => {
+                        if makers.busy.busy(&name) {
+                            member.busy.insert(name.clone());
+                        }
+                        elsewhere.insert(name);
+                    }
+                }
+            }
         }
         let others = described(&messages.service, &panes, &members);
         let called = called(&mut messages, &panes, &members);
@@ -595,7 +763,46 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
     for act in acts {
         act_on(shared, &panes, act, &others);
     }
+    let held = stalls.held_for();
+    for (name, group) in held.iter().filter(|(name, _)| elsewhere.contains(name)) {
+        makers.busy.ask(shared, name, Some(group.clone()));
+    }
+    // Nothing wakes this watch when whoever a notice is held for comes free, here or elsewhere.
+    if !held.is_empty() {
+        stalls.due = stalls.due.min(Instant::now() + ASK_BUSY_AGAIN);
+    }
     stalls.left(Instant::now())
+}
+
+/// Whether a post to `name` would be heard now.
+enum Hears {
+    Now,
+    /// An agent here at work, at a dialog or stuck, whose hooks do not fetch mid-turn: a wake for
+    /// it waits until it is free.
+    Later,
+    /// A participant on another machine, whose machine is asked.
+    AsItsMachineSays,
+}
+
+/// Whether `name`, who waits on a member, would hear a post now. The human, and a participant
+/// with no pane here, such as one reading through an inbox, always do.
+fn hears(
+    service: &muster_msg::Messaging<super::store::Files>,
+    panes: &Panes,
+    name: &str,
+    now_ms: u64,
+) -> Hears {
+    let Some(participant) = service.participant(name) else {
+        return if muster_msg::split_machine(name).is_some() {
+            Hears::AsItsMachineSays
+        } else {
+            Hears::Now
+        };
+    };
+    let busy = participant.pane.as_ref().and_then(|pane| panes.get(pane)).is_some_and(|seen| {
+        matches!(seen.activity, Some(Activity::Working | Activity::Blocked | Activity::Stuck))
+    });
+    if busy && !service.hooked(name, now_ms, panes) { Hears::Later } else { Hears::Now }
 }
 
 /// Every member a message waits on, as this daemon sees it now.
@@ -627,6 +834,7 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
                 zoomed_on: panes.zoomed_on(&holding.pane).map(str::to_string),
                 maker: Vec::new(),
                 home: None,
+                busy: BTreeSet::new(),
                 holding,
             }
         })
@@ -772,6 +980,18 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                 Err(reply) => untold(&group, &to, &reply.reason),
             }
         }
+        Act::Dropped { name, group, first, to, reason } => {
+            log::info(
+                "msg.group.untold_settled",
+                fields! {
+                    "group" => group,
+                    "member" => name,
+                    "first" => first,
+                    "to" => to.join(","),
+                    "reason" => reason,
+                },
+            );
+        }
         Act::Moving { name, group, held_ms } => {
             log::info(
                 "msg.group.moving",
@@ -849,6 +1069,7 @@ mod tests {
             stopped: None,
             maker: Vec::new(),
             home: None,
+            busy: BTreeSet::new(),
         }
     }
 
@@ -859,8 +1080,121 @@ mod tests {
                 Act::WakeAgain { .. } => "wake_again",
                 Act::Tell { .. } => "tell",
                 Act::Moving { .. } => "moving",
+                Act::Dropped { .. } => "dropped",
             })
             .collect()
+    }
+
+    /// `worker` once rung, so that a stall of it is told rather than woken again, and with
+    /// `busy` among whoever waits on it.
+    fn rung_with_busy(busy: &[&str]) -> Member {
+        Member {
+            holding: Holding { woken: true, ..worker().holding },
+            busy: busy.iter().map(ToString::to_string).collect(),
+            ..worker()
+        }
+    }
+
+    fn told_to(act: &Act) -> Vec<String> {
+        let Act::Tell { to, .. } = act else { panic!("not a tell: {act:?}") };
+        to.clone()
+    }
+
+    /// A stall whose poster is at work is told once the poster is free, if the stall still
+    /// holds then, and in words true then: a post to it at work would be read only then anyway.
+    #[test]
+    fn a_stall_told_to_a_busy_poster_waits_until_it_is_free() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        let busy = rung_with_busy(&["director"]);
+        assert!(stalls.judge(std::slice::from_ref(&busy), &called, 1000).is_empty());
+        let acts = stalls.judge(std::slice::from_ref(&busy), &called, 1000 + AFTER);
+        assert_eq!(kinds(&acts), ["stalled"], "told while busy");
+        assert!(stalls.judge(&[busy], &called, 1000 + 3 * AFTER).is_empty());
+
+        let free = rung_with_busy(&[]);
+        let acts = stalls.judge(std::slice::from_ref(&free), &called, 1000 + 5 * AFTER);
+        assert_eq!(kinds(&acts), ["tell"]);
+        assert_eq!(told_to(&acts[0]), ["director"]);
+        let Act::Tell { body, .. } = &acts[0] else { unreachable!() };
+        assert!(body.contains("10 minutes after it was posted"), "{body}");
+        assert!(stalls.judge(&[free], &called, 1000 + 6 * AFTER).is_empty(), "told twice");
+    }
+
+    /// A notice held for a busy poster is dropped once what it says has stopped being true: the
+    /// member read the message, or went to work on it.
+    #[test]
+    fn a_held_stall_notice_is_dropped_once_the_member_reads_or_goes_to_work() {
+        let called = BTreeMap::new();
+        let busy = rung_with_busy(&["director"]);
+
+        let mut watch = stalls();
+        watch.judge(std::slice::from_ref(&busy), &called, 1000);
+        watch.judge(std::slice::from_ref(&busy), &called, 1000 + AFTER);
+        let acts = watch.judge(&[], &called, 1000 + AFTER + 1);
+        assert_eq!(kinds(&acts), ["moving", "dropped"]);
+        let Act::Dropped { to, reason, first, .. } = &acts[1] else { unreachable!() };
+        assert_eq!(
+            (to.as_slice(), *reason, *first),
+            (&["director".to_string()][..], "read_or_left", 4)
+        );
+
+        let mut watch = stalls();
+        watch.judge(std::slice::from_ref(&busy), &called, 1000);
+        watch.judge(std::slice::from_ref(&busy), &called, 1000 + AFTER);
+        let working = Member { activity: Some(Activity::Working), ..rung_with_busy(&[]) };
+        let acts = watch.judge(&[working], &called, 1000 + AFTER + 1);
+        assert!(kinds(&acts).contains(&"dropped"), "{acts:?}");
+        assert!(!kinds(&acts).contains(&"tell"), "{acts:?}");
+        let dropped = acts.iter().find_map(|act| match act {
+            Act::Dropped { reason, .. } => Some(reason),
+            _ => None,
+        });
+        assert_eq!(dropped, Some(&"went_to_work"));
+    }
+
+    /// The notice that a member has worked half an hour without a break, held for a busy
+    /// poster, is dropped once the member stops working; the stall that follows is a new thing
+    /// to say, and is told.
+    #[test]
+    fn a_held_notice_of_long_work_is_dropped_when_the_work_stops_and_a_later_stall_told() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        let working = Member { activity: Some(Activity::Working), ..rung_with_busy(&["director"]) };
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        stalls.judge(std::slice::from_ref(&working), &called, 1000);
+        assert_eq!(
+            kinds(&stalls.judge(std::slice::from_ref(&working), &called, worked)),
+            ["stalled"]
+        );
+
+        let idle = rung_with_busy(&[]);
+        let acts = stalls.judge(std::slice::from_ref(&idle), &called, worked + 1);
+        assert_eq!(kinds(&acts), ["dropped"]);
+        let acts = stalls.judge(&[idle], &called, worked + 1 + AFTER);
+        assert_eq!(kinds(&acts), ["stalled", "tell"]);
+        let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
+        assert!(body.contains("it was rung"), "{body}");
+    }
+
+    /// Of two posters, the one free now is told now and the busy one once it is free.
+    #[test]
+    fn a_free_poster_is_told_at_once_and_a_busy_one_later() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        let both = |busy: &[&str]| {
+            let member = rung_with_busy(busy);
+            let authors = vec!["director".to_string(), "critic".to_string()];
+            Member { holding: Holding { authors, ..member.holding.clone() }, ..member }
+        };
+        stalls.judge(&[both(&["critic"])], &called, 1000);
+        let acts = stalls.judge(&[both(&["critic"])], &called, 1000 + AFTER);
+        assert_eq!(kinds(&acts), ["stalled", "tell"]);
+        assert_eq!(told_to(&acts[1]), ["director"]);
+        let acts = stalls.judge(&[both(&[])], &called, 1000 + AFTER + 1);
+        assert_eq!(kinds(&acts), ["tell"]);
+        assert_eq!(told_to(&acts[0]), ["critic"]);
+        assert!(stalls.judge(&[both(&[])], &called, 1000 + 2 * AFTER).is_empty());
     }
 
     /// A member whose wake never landed is woken once more when it has held its group up long

@@ -1665,6 +1665,49 @@ fn a_group_held_up_on_an_agent_that_stopped_reading_is_told_why_once() {
     assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told twice");
 }
 
+/// A stall whose poster is at work is not told while it works, since it would read the notice
+/// only once its turn ends; and once the member has read the message, nothing is told at all.
+#[test]
+fn a_stall_that_ends_while_its_poster_works_is_never_told() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "12000")]);
+    make(&mut agent.control, create("p2", beside("p1", proto::Side::Right)));
+    agent.daemon.run_agent("p2");
+    let mut logging = following(&agent.daemon);
+    agent.type_in("deaf 40", true);
+    std::thread::sleep(Duration::from_secs(2));
+    let poster = msg_request::Caller { pane: Some("p2".to_string()), ..Default::default() };
+    let brief = Asked::Post(msg_request::Post {
+        body: "a brief".to_string(),
+        to: vec!["p1".to_string()],
+        ..Default::default()
+    });
+    let brief =
+        Service::Msg(proto::MsgRequest { caller: Some(poster.clone()), request: Some(brief) });
+    expect(&mut agent.control, brief, proto::Outcome::Done);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+
+    let stalled = r#""event":"msg.group.stalled""#;
+    let logged = logging.logged_until(stalled, Duration::from_secs(40));
+    assert!(
+        logged
+            .iter()
+            .any(|line| line.line.contains(stalled) && line.line.contains(r#""unlock":"tell""#)),
+        "{logged:?}"
+    );
+    let told = r#""event":"msg.group.told""#;
+    let logged = logging.logged_until(told, Duration::from_secs(6));
+    assert!(!logged.iter().any(|line| line.line.contains(told)), "told at work");
+
+    assert_eq!(agent.read_in_its_pane().len(), 1, "the brief");
+    let settled = r#""event":"msg.group.untold_settled""#;
+    let logged = logging.logged_until(settled, Duration::from_secs(20));
+    let line = logged.iter().find(|line| line.line.contains(settled));
+    assert!(line.is_some_and(|line| line.line.contains(r#""to":"p2""#)), "{logged:?}");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(6));
+    assert_eq!(agent.reading(poster), Vec::<String>::new(), "told of a stall that had ended");
+}
+
 /// A wake held by what its pane shows is explained by that, and not by a guess: a menu over the
 /// agent's prompt, in a pane its tab's zoom hides behind another.
 #[test]
