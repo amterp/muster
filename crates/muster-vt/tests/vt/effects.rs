@@ -211,6 +211,15 @@ fn images_named_by_a_path_are_refused_and_inline_ones_accepted() {
     assert_eq!(query("d", "AAAA"), "\x1b_Gi=31;OK\x1b\\");
 }
 
+/// A program's full reset (RIS) used to clear the kitty limits and allowed mediums along with
+/// everything else (#13951), so `ESC c` undid the refusal above and a program could make the
+/// daemon read a file by its path. The refusal outlives a reset.
+#[test]
+fn a_full_reset_keeps_images_named_by_a_path_refused() {
+    let replies = replies(grid(), b"\x1bc\x1b_Ga=q,i=31,s=1,v=1,f=24,t=f;L3RtcC94LnBuZw==\x1b\\");
+    assert_eq!(replies, "\x1b_Gi=31;EINVAL: unsupported medium\x1b\\");
+}
+
 /// A replay can land between two chunks of an image the program is still sending. Forgetting
 /// the images then would drop the chunks already here and fail the rest, so an image that is
 /// still arriving is kept, and the program hears it arrived.
