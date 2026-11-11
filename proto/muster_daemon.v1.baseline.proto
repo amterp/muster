@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.14
+// Version: 1.15
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
