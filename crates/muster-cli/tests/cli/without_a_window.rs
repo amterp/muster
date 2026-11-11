@@ -188,6 +188,15 @@ fn with_no_window_the_daemon_lists_reads_types_into_and_waits_on_its_panes() {
     a_line_the_agent_took_and_repainted_is_unanswered(&here);
     a_wait_on_an_agent_that_stops_reading_is_refused(&here);
     hiding_and_quiet_are_asked_of_the_daemon(&here);
+    ok(&here.muster(&[
+        "pane",
+        "send",
+        "--pane",
+        "p1",
+        "--enter",
+        "--confirm",
+        "echo after-hiding",
+    ]));
     an_agent_is_restarted_by_the_daemon(&here);
     panes_are_made_renamed_and_closed_by_the_daemon(&here);
     a_closed_pane_is_reopened_by_the_daemon(&here);
