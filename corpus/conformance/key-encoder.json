@@ -2,7 +2,7 @@
   "concept": "keyEncoder.encode",
   "source": "ported",
   "citation": "libghostty-vt is the encoder; ghostty src/input/function_keys.zig:199 for the shift+enter entry.",
-  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe cases under modifyOtherKeys 2, which Claude Code turns on, record what the pinned libghostty-vt sends today so that moving the pin shows what changes as a reviewed diff; several record no bytes at all, because this pin sends nothing for those keys.\n\nThe broad survey of common keys is not cases: it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream, so it lives as `survey` below and renders to `corpus/snapshots/keys-*.txt`. A port reproduces the same rendering from the same list.",
+  "why": "The encoder is libghostty-vt's, so these do not test escape-sequence generation - upstream does that, and a second implementation written to agree with it would be the bug. What they pin is everything around it that is ours: that the modifier bits still line up with the ABI they are cast to, that a mode profile actually reaches the encoder, that a composing keystroke stays out of the pane, and what the conservative default costs in bytes.\n\nThe cases under modifyOtherKeys 2, which Claude Code turns on, record what the pinned libghostty-vt sends, so that moving the pin shows what changes as a reviewed diff. At 9f9b8d1d six of them sent nothing at all; vt-1.0.0 gives each the xterm encoding its own case names.\n\nThe broad survey of common keys is not cases: it is one matrix with one reason rather than nineteen behaviors, and its oracle is upstream, so it lives as `survey` below and renders to `corpus/snapshots/keys-*.txt`. A port reproduces the same rendering from the same list.",
   "survey": {
     "why": "What Muster puts on a pane's input for the keys people press constantly. One matrix with one reason rather than nineteen behaviours, and its oracle is libghostty upstream, so it stays a rendered snapshot instead of becoming cases above with nineteen manufactured justifications.\n\nThe keystrokes are here rather than in a driver because they are the only part of it that is ours to state. A second implementation renders this list to the same file, and a snapshot that has to be re-recorded to make a rewrite pass was never an oracle - which is exactly what nineteen hand-copied entries would have cost, since a wrong entry changes the file it is checked against.",
     "snapshots": [
@@ -481,7 +481,7 @@
     },
     {
       "name": "F13 under modifyOtherKeys 2",
-      "why": "The first of the keys past F12, which change under modifyOtherKeys 2 (#14145).",
+      "why": "The first of the keys past F12, which change under modifyOtherKeys 2 (#14145). It used to send nothing; it sends CSI 25 ~, xterm's F13.",
       "given": {
         "profile": {
           "modifyOtherKeys": true
@@ -489,12 +489,12 @@
         "key": "F13"
       },
       "expect": {
-        "bytes_hex": ""
+        "bytes_hex": "1b5b32357e"
       }
     },
     {
       "name": "shift+F20 under modifyOtherKeys 2",
-      "why": "A modified key past F12 (#14145).",
+      "why": "A modified key past F12 (#14145): CSI 34;2 ~, xterm's F20 with shift's modifier parameter. It used to send nothing.",
       "given": {
         "profile": {
           "modifyOtherKeys": true
@@ -505,12 +505,12 @@
         ]
       },
       "expect": {
-        "bytes_hex": ""
+        "bytes_hex": "1b5b33343b327e"
       }
     },
     {
       "name": "F25 under modifyOtherKeys 2",
-      "why": "The last of the keys past F12 (#14145).",
+      "why": "The last of the keys past F12 (#14145). It used to send nothing; it sends CSI 46 ~, continuing xterm's numbering from F21 at 42.",
       "given": {
         "profile": {
           "modifyOtherKeys": true
@@ -518,7 +518,7 @@
         "key": "f25"
       },
       "expect": {
-        "bytes_hex": ""
+        "bytes_hex": "1b5b34367e"
       }
     },
     {
@@ -596,7 +596,7 @@
     },
     {
       "name": "help under modifyOtherKeys 2",
-      "why": "The Help key (#14146).",
+      "why": "The Help key (#14146). It used to send nothing; it sends CSI 28 ~, the VT220's Help.",
       "given": {
         "profile": {
           "modifyOtherKeys": true
@@ -604,12 +604,12 @@
         "key": "Help"
       },
       "expect": {
-        "bytes_hex": ""
+        "bytes_hex": "1b5b32387e"
       }
     },
     {
       "name": "alt+escape under modifyOtherKeys 2",
-      "why": "Alt+Escape is what a harness sees when someone presses escape with meta held, and the card names it as changed (#14508).",
+      "why": "Alt+Escape is what a harness sees when someone presses escape with meta held (#14508). Under modifyOtherKeys 2 it is CSI 27;3;27 ~, xterm's form for a modified key with no other encoding, rather than ESC ESC, which a reader cannot tell from two escapes.",
       "given": {
         "profile": {
           "modifyOtherKeys": true
@@ -620,12 +620,12 @@
         ]
       },
       "expect": {
-        "bytes_hex": "1b1b"
+        "bytes_hex": "1b5b32373b333b32377e"
       }
     },
     {
       "name": "alt+escape without the escape prefix under modifyOtherKeys 2",
-      "why": "The same keystroke for a terminal where alt does not send the escape prefix (#14508).",
+      "why": "The same keystroke for a terminal where alt does not send the escape prefix (#14508): modifyOtherKeys decides it, so the prefix setting no longer matters.",
       "given": {
         "profile": {
           "modifyOtherKeys": true,
@@ -637,7 +637,7 @@
         ]
       },
       "expect": {
-        "bytes_hex": "1b1b"
+        "bytes_hex": "1b5b32373b333b32377e"
       }
     },
     {
