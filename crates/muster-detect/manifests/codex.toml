@@ -1,7 +1,7 @@
 id = "codex"
-version = "2026.11.05.1"
+version = "2026.11.10.1"
 min_engine_version = 18
-updated_at = "2026-11-05T00:00:00Z"
+updated_at = "2026-11-10T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
 # binary carries as strings. On Linux each command the model runs goes through
@@ -110,6 +110,38 @@ priority = 950
 region = "bottom_non_empty_lines(20)"
 visible_blocker = true
 contains = ["Sign in with ChatGPT", "Provide your own API key"]
+
+# Pickers a person opens from the composer draw selection_dialog's footer too, and wait on nobody
+# but whoever opened them (corpus/codex-0.167.0/pickers.txt).
+[[rules]]
+id = "model_picker"
+state = "unknown"
+priority = 960
+region = "bottom_non_empty_lines(20)"
+skip_state_update = true
+shows = "its /model picker"
+contains = ["Select Model and Effort", "esc back"]
+
+[[rules]]
+id = "permissions_picker"
+state = "unknown"
+priority = 960
+region = "bottom_non_empty_lines(20)"
+skip_state_update = true
+shows = "its /permissions picker"
+contains = ["Update Model Permissions", "esc back"]
+
+# Every list Codex asks a question with ends on a footer of two key hints, Return's and Esc's:
+# `enter select · esc back` under /new's question of where the new conversation runs, `enter
+# continue · esc quit` under the folder trust dialog. Each marks its chosen option with the
+# composer's caret, which live_prompt would read as a draft, so the footer is what tells them apart.
+[[rules]]
+id = "selection_dialog"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(3)"
+visible_blocker = true
+line_regex = ['^\s*enter [a-z]+ · esc [a-z]+\s*$']
 
 [[rules]]
 id = "live_strong_blocker"

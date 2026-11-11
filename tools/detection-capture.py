@@ -40,7 +40,8 @@ reaches the network or any account: `codex-startup` the folder trust dialog and 
 which <out> being a fresh git repository and a hook in its config bring up, `codex-signin` the
 sign-in screen a home with no provider and no login shows, and `codex-update` the update dialog,
 which a version Codex is told was released brings up. Only Esc is pressed there: Return would
-run the update.
+run the update. `codex-pickers` records, the same way, the lists Codex opens from its composer:
+/new's question of where the new conversation runs, and the /model and /permissions pickers.
 
 It spends a few short requests against whatever account the harness is logged in to, and runs it
 in <out>, which it trusts when asked. Nothing is sent to the network by this script itself.
@@ -576,6 +577,42 @@ def codex_signin(capture: Capture) -> None:
     capture.mark("sign-in screen", "blocked", "A Codex with no login and no other provider asks how to sign in before anything else.")
 
 
+def codex_pickers_environment(out: Path) -> dict[str, str]:
+    subprocess.run(["git", "init", "-q", str(out)], check=True)
+    trusted = f'[projects."{out}"]\ntrust_level = "trusted"\n'
+    return codex_home(out, UNREACHABLE_PROVIDER + trusted)
+
+
+def codex_picker(capture: Capture, command: str, until: bytes, name: str, expect: str, note: str, skip: bool = False) -> None:
+    capture.send(command)
+    capture.pump(1)
+    capture.send("\r")
+    capture.pump(10, until)
+    capture.pump(2)
+    capture.mark(name, expect, note, skip=skip)
+    capture.send("\x1b")
+    capture.pump(3)
+
+
+def codex_pickers(capture: Capture) -> None:
+    capture.pump(20, b"Ask Codex")
+    capture.pump(2)
+    codex_picker(capture, "/new", b"worktree", "/new asking where the new conversation runs", "blocked", "/new in a git repository asks whether the new conversation keeps this worktree: the command waits on the answer.")
+    capture.mark("idle after leaving the /new question", "idle", "The question left with Esc: Codex at its composer.")
+    codex_picker(capture, "/model", b"Effort", "the model picker", "unknown", "/model opened from the composer, under the same footer as /new's question: a picker somebody opened, so the state stays what it was.", skip=True)
+    codex_picker(capture, "/permissions", b"Permissions", "the permissions picker", "unknown", "/permissions opened from the composer: a picker somebody opened, so the state stays what it was.", skip=True)
+
+
+CODEX_PICKERS = Harness(
+    argv=lambda out: ["codex", "--no-daemon"],
+    strip=("CODEX_", "MUSTER_"),
+    start=codex_pickers,
+    phases={},
+    environment=codex_pickers_environment,
+    credentials=False,
+    agent="codex",
+)
+
 CODEX_STARTUP = Harness(
     argv=lambda out: ["codex", "--no-daemon"],
     strip=("CODEX_", "MUSTER_"),
@@ -763,6 +800,7 @@ HARNESSES = {
     "codex-startup": CODEX_STARTUP,
     "codex-signin": CODEX_SIGNIN,
     "codex-update": CODEX_UPDATE,
+    "codex-pickers": CODEX_PICKERS,
     "opencode": OPENCODE,
 }
 

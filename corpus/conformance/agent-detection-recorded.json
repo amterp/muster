@@ -2,7 +2,7 @@
   "concept": "detection.recordedScreens",
   "source": "recorded",
   "regenerate": "python3 tools/detection-capture.py [--harness H] [--size COLUMNSxROWS] [--only PHASES] <dir> && cargo run -q -p muster-detect --example render_capture -- <dir> (prints the cases; scrub before committing)",
-  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. Claude Code 2.1.299's were recorded with one short turn on Haiku; the last ends on a Bash command longer than the pane, whose row, cut off with an ellipsis, read as the spinner until the spinner's timerless pattern was narrowed to words. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code 2.1.299's screens before a first session were recorded with its config in the capture directory and no credentials: the API key it was asked about is not one, with a base URL nothing listens at, so they reached no account. Claude Code 2.1.302's feedback-draft box is the exception: it was read back from a live pane with `muster pane read` rather than recorded, so its case's screen is that read's text, typed as drawn, and the read may have cut off the rows under the prompt (corpus/claude-code-2.1.302/feedback-draft.txt). Claude Code 2.1.302's background-shell screens were read back from a live pane the same way, by the session itself from a background shell (corpus/claude-code-2.1.302/background-shells.txt). Claude Code 2.1.301's tip box was read back from a live pane the same way, from a session of another project, so everything that named it is replaced and only the frame is as drawn (corpus/claude-code-2.1.301/tip-box.txt).",
+  "why": "herdr's own tests hold screens its authors typed; these are screens a real agent painted, at a named version, read the way the daemon will read them: the raw bytes Claude Code wrote to a 100x30 pseudo-terminal (or the size a case names), rendered by muster-vt, with the title from the terminal and progress from the OSC 9 scanner. Each case's expected state is what the agent was doing when the screen was taken - known from the script driving it - never this engine's verdict; a menu opened from the prompt is instead a screen to wait out, which leaves the state as it was, so a case failing after a manifest re-sync or a new agent version is the regression it exists to catch. Codex 0.154.0's screens were recorded the same way, read-only and asking before commands, with the same scrubbing. Codex 0.160.0's screens before a session starts were recorded with its home in the capture directory and a model provider nothing listens at, so they reached no account; the update dialog's newer version is one Codex was told of, not a release. Codex 0.167.0's lists opened from its composer were recorded the same way, which /new's question of where the new conversation runs needs no turn to show. Claude Code 2.1.299's were recorded with one short turn on Haiku; the last ends on a Bash command longer than the pane, whose row, cut off with an ellipsis, read as the spinner until the spinner's timerless pattern was narrowed to words. The first recording caught one: Claude Code 2.1.283 animates its title with half-circles, which herdr v0.8.0's bundled claude manifest read as idle. The capture directory's path (it held the recording machine's user name) is scrubbed to /tmp/capture, in the 2.1.288 plan cases too, where the recording machine's own statusline drew it, and in the menus the MCP servers' names, a home directory, an imported memory file's path and a hook's command are made generic; no rule reads them. Claude Code 2.1.299's screens before a first session were recorded with its config in the capture directory and no credentials: the API key it was asked about is not one, with a base URL nothing listens at, so they reached no account. Claude Code 2.1.302's feedback-draft box is the exception: it was read back from a live pane with `muster pane read` rather than recorded, so its case's screen is that read's text, typed as drawn, and the read may have cut off the rows under the prompt (corpus/claude-code-2.1.302/feedback-draft.txt). Claude Code 2.1.302's background-shell screens were read back from a live pane the same way, by the session itself from a background shell (corpus/claude-code-2.1.302/background-shells.txt). Claude Code 2.1.301's tip box was read back from a live pane the same way, from a session of another project, so everything that named it is replaced and only the frame is as drawn (corpus/claude-code-2.1.301/tip-box.txt).",
   "cases": [
     {
       "expect": {
@@ -860,6 +860,64 @@
       "expect": {
         "state": "idle"
       }
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.0)\n     /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Where should the new conversation run?\n\n\n› 1. Use current Git worktree  Keep using the current working directory\n  2. Create new Git worktree   Create a separate checkout of this repository in another directory\n\n  enter select · esc back\n",
+        "title": "capture",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Where should the new conversation run?\n\n\n› 1. Use current Git worktree  Keep using the current working directory\n  2. Create new Git worktree\n\n  enter          esc"
+      },
+      "name": "codex 0.167.0: /new asking where the new conversation runs",
+      "why": "/new in a git repository asks whether the new conversation keeps this worktree: the command waits on the answer."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.0)\n     /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  dummy default · /tmp/capture\n  ← for agents · ? for shortcuts\n",
+        "title": "capture",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  dummy default · /tmp/capture\n  ← for agents · ? for shortcuts"
+      },
+      "name": "codex 0.167.0: idle after leaving the /new question",
+      "why": "The question left with Esc: Codex at its composer."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.0)\n     /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Select Model and Effort\n\n\n› 1. GPT-6.1-Sol    Latest workhorse model for coding and everyday work.\n  2. GPT-6-Astra    Frontier intelligence for the most demanding work.\n  3. GPT-6-Sol      Previous generation workhorse model.\n  4. GPT-6-Luna     Fast and affordable model for easier tasks.\n  5. GPT-5.6-Sol    Older generation workhorse model.\n  6. GPT-6.1 Terra  GPT-6.1 Terra Codex model.\n  7. GPT-5.6-Terra  Older balanced model for straightforward work.\n  8. GPT-5.6-Luna   Older fast and efficient model.\n↓\n  enter select · esc back\n",
+        "title": "capture",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Select Model and Effort\n\n\n› 1. GPT-6.1-Sol    Latest workhorse model for coding and everyday work.\n  2. GPT-6-Astra\n  3. GPT-6-Sol\n  4. GPT-6-Luna\n  5. GPT-5.6-Sol\n  6. GPT-6.1 Terra\n  7. GPT-5.6-Terra\n  8. GPT-5.6-Luna\n↓\n  enter          esc"
+      },
+      "name": "codex 0.167.0: the model picker",
+      "why": "/model opened from the composer, under the same footer as /new's question: a picker somebody opened, so the state stays what it was."
+    },
+    {
+      "expect": {
+        "skipStateUpdate": true,
+        "state": "unknown"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.0)\n     /tmp/capture\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Update Model Permissions\n\n\n› 1. Ask for approval (current)  Read and edit workspace files and run commands, with approval\n                                 required for internet access or edits outside the workspace\n  2. Approve for me              Only ask for actions detected as potentially unsafe\n  3. Full Access                 Use with caution: Codex can edit files outside this workspace and\n                                 access the internet without approval\n  4. Read Only                   Read workspace files, with approval required for edits or internet\n                                 access\n\n  enter select · esc back\n",
+        "title": "capture",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  Update Model Permissions\n\n\n› 1. Ask for approval (current)  Read and edit workspace files and run commands, with approval\n                                 required for internet access or edits outside the workspace\n  2. Approve for me\n  3. Full Access\n\n  4. Read Only\n\n\n  enter          esc"
+      },
+      "name": "codex 0.167.0: the permissions picker",
+      "why": "/permissions opened from the composer: a picker somebody opened, so the state stays what it was."
     },
     {
       "name": "claude 2.1.318: the parent prompt while a background agent runs",

@@ -1,0 +1,68 @@
+What Codex 0.167.0 shows for the lists it opens from its composer.
+
+Recorded 2026-11-10 on macOS 26.4.1 / arm64, codex-cli 0.167.0, in a 100x30 pseudo-terminal, by
+`tools/detection-capture.py --harness codex-pickers`, with CODEX_HOME in the capture folder, a
+model provider nothing listens at, the folder a fresh git repository trusted in its config, and
+`codex --no-daemon`. The screens, rendered, are the "codex 0.167.0" cases in
+corpus/conformance/agent-detection-recorded.json; runs of blank rows are cut to one here.
+/tmp/capture is the capture folder.
+
+
+`/new` and Return at the composer, before any turn:
+
+      >_ OpenAI Codex (v0.167.0)
+         /tmp/capture
+
+      Where should the new conversation run?
+
+    › 1. Use current Git worktree  Keep using the current working directory
+      2. Create new Git worktree   Create a separate checkout of this repository in another directory
+
+      enter select · esc back
+
+Esc, then:
+
+      >_ OpenAI Codex (v0.167.0)
+         /tmp/capture
+
+    › Ask Codex to do anything
+
+      dummy default · /tmp/capture
+      ← for agents · ? for shortcuts
+
+`/model` and Return:
+
+      >_ OpenAI Codex (v0.167.0)
+         /tmp/capture
+
+      Select Model and Effort
+
+    › 1. GPT-6.1-Sol    Latest workhorse model for coding and everyday work.
+      2. GPT-6-Astra    Frontier intelligence for the most demanding work.
+      3. GPT-6-Sol      Previous generation workhorse model.
+      4. GPT-6-Luna     Fast and affordable model for easier tasks.
+      5. GPT-5.6-Sol    Older generation workhorse model.
+      6. GPT-6.1 Terra  GPT-6.1 Terra Codex model.
+      7. GPT-5.6-Terra  Older balanced model for straightforward work.
+      8. GPT-5.6-Luna   Older fast and efficient model.
+    ↓
+      enter select · esc back
+
+Esc, then `/permissions` and Return:
+
+      >_ OpenAI Codex (v0.167.0)
+         /tmp/capture
+
+      Update Model Permissions
+
+    › 1. Ask for approval (current)  Read and edit workspace files and run commands, with approval
+                                     required for internet access or edits outside the workspace
+      2. Approve for me              Only ask for actions detected as potentially unsafe
+      3. Full Access                 Use with caution: Codex can edit files outside this workspace and
+                                     access the internet without approval
+      4. Read Only                   Read workspace files, with approval required for edits or internet
+                                     access
+
+      enter select · esc back
+
+Esc left each picker for the composer.
