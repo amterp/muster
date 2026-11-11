@@ -268,9 +268,10 @@ change.
   of the config does the same for every one of its panes in every tab the window holds, at the
   next launch, since a machine taken out of the config stays attached until then; the window
   knows it from its saved arrangement, which lists the machines it followed. If the machine ever
-  answers again, its part of a tab comes back as a tab of its own: the window recognises a part
-  whose copy is older than the tab's newest one and whose panes that copy no longer names, keeps
-  it out of the tab, and moves its panes into a new tab on that machine (question B).
+  answers again, what was removed comes back as a tab of its own on that machine (question B).
+  The window recognises a part whose copy is older than the tab's newest one when every pane that
+  copy names is another machine's, which survives a relaunch; a pane removed from a machine that
+  still has others in the tab is recognised only by the window that removed it, while it runs.
 - **A tab is closed while one of its machines is unreachable.** MIP-3 section 2 already answers
   this, and the answer stands: that machine's part comes back as a tab of its own when it
   answers, because its processes are still running. Its copy of the tree still names the other

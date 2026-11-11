@@ -315,6 +315,11 @@ impl Composition {
         self.kept_apart.insert((daemon.clone(), tab.clone()))
     }
 
+    /// Lets `daemon`'s part of `tab` into the tab again.
+    pub fn let_in(&mut self, daemon: &DaemonId, tab: &TabId) {
+        self.kept_apart.remove(&(daemon.clone(), tab.clone()));
+    }
+
     pub fn kept_apart(&self, daemon: &DaemonId, tab: &TabId) -> bool {
         self.kept_apart.contains(&(daemon.clone(), tab.clone()))
     }

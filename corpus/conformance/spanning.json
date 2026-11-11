@@ -772,6 +772,17 @@
         "arriving": { "daemon": "devenv", "copy": "x", "generation": 0, "holds": ["x"], "writable": false }
       },
       "expect": { "departed": false }
+    },
+    {
+      "name": "a part whose machine replaced its panes while apart rejoins the tab",
+      "why": "The laptop's newer copy still names x, which no part the window holds runs: it may be the devenv's, and it is. The devenv closed x and made y while apart, which changes no generation, so nothing says a window removed its part; the merge drops x on the devenv's word and puts y beside its sibling.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.30]", "generation": 2, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "[~a@laptop|y 0.50]", "generation": 1, "holds": ["y"] }
+      },
+      "expect": { "departed": false }
     }
   ]
 }

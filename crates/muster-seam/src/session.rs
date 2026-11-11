@@ -1058,6 +1058,13 @@ pub(crate) struct Window {
     /// section 7). Each counts in every merge as a machine that has said it holds nothing.
     departed: BTreeSet<DaemonId>,
 
+    /// The panes this window took out of a tab with Remove from Tab, by tab, until their machine
+    /// answers and they are moved into a tab of their own. Kept for the life of the process only:
+    /// a machine whose every pane in the tab was removed is recognised from the copies alone
+    /// (`spanning::departed`), but one with some panes left in it needs this to tell a removed
+    /// pane from one it made while apart.
+    removed: BTreeSet<(TabId, PaneId)>,
+
     /// The window's own chrome, which spans the daemons for the same reason attention does.
     presentation: Presentation,
 
@@ -1223,6 +1230,7 @@ impl Default for Window {
             left: None,
             awaiting: BTreeSet::new(),
             departed: BTreeSet::new(),
+            removed: BTreeSet::new(),
             presentation: Presentation::default(),
             armed: None,
             focus_history: FocusHistory::new(),
@@ -1666,14 +1674,26 @@ impl Session {
                         writable: true,
                     };
                     let (others, _) = spanning::parts_of(tab, mirror, |_| true, |_| false);
+                    let departure = |own: LayoutNode, rest_rejoins: bool| Departure {
+                        window: id,
+                        daemon: daemon.clone(),
+                        tab: tab.id.clone(),
+                        label: layout.label.clone(),
+                        own,
+                        rest_rejoins,
+                    };
                     if spanning::departed(&part, &others) {
-                        found.push(Departure {
-                            window: id,
-                            daemon: daemon.clone(),
-                            tab: tab.id.clone(),
-                            label: layout.label.clone(),
-                            own,
-                        });
+                        found.push(departure(own, false));
+                        continue;
+                    }
+                    let removed: BTreeSet<PaneId> = part
+                        .holds
+                        .iter()
+                        .filter(|pane| window.removed.contains(&(tab.id.clone(), (*pane).clone())))
+                        .cloned()
+                        .collect();
+                    if let Some(own) = only(&own, &removed) {
+                        found.push(departure(own, true));
                     }
                 }
             }
@@ -6088,8 +6108,11 @@ struct Departure {
     daemon: DaemonId,
     tab: TabId,
     label: Option<String>,
-    /// The part's own panes, arranged as its copy has them.
+    /// The panes to move, arranged as the part's copy has them.
     own: LayoutNode,
+    /// Whether the part's other panes go back into the tab once these have left it: only some of
+    /// its panes were removed.
+    rest_rejoins: bool,
 }
 
 impl Departure {
@@ -6110,24 +6133,57 @@ impl Departure {
             },
         }];
         rebuilt(&self.own, &into, &mut Vec::new(), &mut asked);
-        for intent in &asked {
-            if let Err(refusal) = submit(self.window, &self.daemon, intent, Keyboard::StaysPut) {
-                log::warn(
-                    "tab.part.departed.unmoved",
-                    fields! {
-                        "daemon" => self.daemon.to_string(),
-                        "tab" => self.tab.to_string(),
-                        "into" => into.to_string(),
-                        "detail" => refusal.to_string(),
-                        "impact" => "some of this machine's panes from the tab are still in its \
-                                     part of it, which this window keeps out of the tab, so \
-                                     they are on no tab this window shows; every pane is \
-                                     still running",
-                        "check" => "`muster window` for where the machine's panes are, and \
-                                    `muster pane move --tab` to put the rest beside them",
-                    },
-                );
-                return;
+        let moved = asked.iter().all(|intent| {
+            submit(self.window, &self.daemon, intent, Keyboard::StaysPut)
+                .map_err(|refusal| self.unmoved(&into, &refusal))
+                .is_ok()
+        });
+        let mut session = poison::lock(&SESSION, "session");
+        let window = &mut session.windows[self.window];
+        if moved {
+            for pane in self.own.panes() {
+                window.removed.remove(&(self.tab.clone(), pane.clone()));
+            }
+        }
+        if self.rest_rejoins {
+            window.composition.let_in(&self.daemon, &self.tab);
+            drop(session);
+            reconcile(&self.daemon);
+        }
+    }
+
+    fn unmoved(&self, into: &TabId, refusal: &Refusal) {
+        log::warn(
+            "tab.part.departed.unmoved",
+            fields! {
+                "daemon" => self.daemon.to_string(),
+                "tab" => self.tab.to_string(),
+                "into" => into.to_string(),
+                "detail" => refusal.to_string(),
+                "impact" => "some panes taken out of the tab while their machine was \
+                             unreachable did not reach a tab of their own: they are left out of \
+                             every tab this window shows, or back in the tab they were taken out \
+                             of; every pane is still running",
+                "check" => "`muster window` for where the machine's panes are, and `muster pane \
+                            move --tab` to put them where they belong",
+            },
+        );
+    }
+}
+
+/// `node` with only the panes in `keep`, each split left with one side giving way to it.
+fn only(node: &LayoutNode, keep: &BTreeSet<PaneId>) -> Option<LayoutNode> {
+    match node {
+        LayoutNode::Pane(pane) => keep.contains(pane).then(|| node.clone()),
+        LayoutNode::Split { axis, ratio, first, second } => {
+            match (only(first, keep), only(second, keep)) {
+                (Some(first), Some(second)) => Some(LayoutNode::Split {
+                    axis: *axis,
+                    ratio: *ratio,
+                    first: Box::new(first),
+                    second: Box::new(second),
+                }),
+                (one, None) | (None, one) => one,
             }
         }
     }
@@ -6827,6 +6883,7 @@ pub(crate) fn remove_from_tab(window: WindowId, pane: &PaneId) -> Result<(), Str
     };
     match rearrange(window, &tab, &spanning::Change::Remove { pane: pane.clone() }) {
         Some(Ok(_)) => {
+            poison::lock(&SESSION, "session").windows[window].removed.insert((tab, pane.clone()));
             publish("intent");
             Ok(())
         }
