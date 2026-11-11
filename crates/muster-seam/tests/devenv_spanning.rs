@@ -89,23 +89,10 @@ fn a_tab_interleaving_the_devenv_comes_back_whole_when_its_daemon_restarts() {
     });
     let copy = format!("[{a}|[~{x}@devenv/{b} 0.50] 0.50]");
     let devenv_copy = format!("[~{a}@local|[{x}/~{b}@local 0.50] 0.50]");
-    until_within(
-        "both daemons to keep the whole tree as their copy of the tab",
-        LAUNCH_PATIENCE,
-        || {
-            copy_of(&mut laptop.connect(), &tab).is_some_and(|(tree, _)| tree == copy)
-                && copy_of(&mut Control::connect(&forwarded), &tab)
-                    .is_some_and(|(tree, _)| tree == devenv_copy)
-        },
-        || {
-            format!(
-                "the laptop holds {:?} and the devenv {:?}",
-                copy_of(&mut laptop.connect(), &tab),
-                copy_of(&mut Control::connect(&forwarded), &tab)
-            )
-        },
-    );
+    until_both_keep(&laptop, &forwarded, &tab, (&copy, &devenv_copy));
     let (_, laptop_generation) = copy_of(&mut laptop.connect(), &tab).expect("waited for it");
+    let (_, devenv_generation) =
+        copy_of(&mut Control::connect(&forwarded), &tab).expect("waited for it");
 
     // The devenv's daemon goes, with the window still open, and the window starts it again.
     stop(&forwarded, Duration::from_secs(10)).expect("the devenv's daemon stops when asked");
@@ -135,14 +122,15 @@ fn a_tab_interleaving_the_devenv_comes_back_whole_when_its_daemon_restarts() {
         },
     );
 
-    // Neither copy lost the other machine's panes on the way, and the laptop's needed nothing
-    // written: the restarted devenv brought its own copy back from its state.
+    // Neither copy lost the other machine's panes on the way, and neither was written: the
+    // restarted devenv brought its own copy back from its state.
     let (laptop_tree, generation) = copy_of(&mut laptop.connect(), &tab).expect("the laptop's");
     assert_eq!(laptop_tree, copy, "the laptop's copy keeps X between A and B");
     assert_eq!(generation, laptop_generation, "and nothing was written to it");
-    let (devenv_tree, _) =
+    let (devenv_tree, generation) =
         copy_of(&mut Control::connect(&forwarded), &tab).expect("the restarted devenv's");
     assert_eq!(devenv_tree, devenv_copy, "the restarted devenv's copy keeps A and B around X");
+    assert_eq!(generation, devenv_generation, "read back from its state, with nothing written");
 
     // And X is a pane again rather than a place for one: its new shell answers.
     send(&x, "echo back=$((40+2)).");
@@ -156,6 +144,27 @@ fn a_tab_interleaving_the_devenv_comes_back_whole_when_its_daemon_restarts() {
     let _ = stop(&forwarded, Duration::from_secs(10));
     drop(turn);
     drop(muster::testing::fresh_session());
+}
+
+/// Waits for the laptop's daemon and the devenv's to hold `copies` as their copies of `tab`.
+fn until_both_keep(laptop: &Daemon, forwarded: &Path, tab: &str, copies: (&str, &str)) {
+    let (copy, devenv_copy) = copies;
+    until_within(
+        "both daemons to keep the whole tree as their copy of the tab",
+        LAUNCH_PATIENCE,
+        || {
+            copy_of(&mut laptop.connect(), tab).is_some_and(|(tree, _)| tree == copy)
+                && copy_of(&mut Control::connect(forwarded), tab)
+                    .is_some_and(|(tree, _)| tree == devenv_copy)
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                copy_of(&mut laptop.connect(), tab),
+                copy_of(&mut Control::connect(forwarded), tab)
+            )
+        },
+    );
 }
 
 /// Splits `pane`, putting the new pane on `side` of it and on `machine`.
