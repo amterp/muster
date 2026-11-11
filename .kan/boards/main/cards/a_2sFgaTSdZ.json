@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "comments": [
     {
       "id": "c_2xggbkI74",
@@ -24,14 +24,15 @@
   "creator": "Alexander Terp",
   "description": "Found 2026-11-01 by Foreman's smoke test (Foreman server v1 stage 5, against the 0.20.0 build). A 'muster-daemon report --agent claude ...' that arrives before the daemon's detection has named the pane's agent leaves the pane's harness empty, in API snapshots and events alike, and it stays empty after detection runs. Confirmed with a raw API subscriber. Separately, a pane running a silent process under the name 'claude' (a sleep) was sometimes never detected as an agent, about 1 run in 5; a process that prints was detected every time. Foreman lists only panes with a harness, so such a pane drops out of its Agents list. Foreman's smoke test works around it by reporting only after the agent shows.",
   "id": "a_2sFgaTSdZ",
-  "position": "Zr",
+  "position": "Zz",
   "title": "A report sent before detection names a pane's agent leaves its harness empty for good",
   "type": "bug",
-  "updated_at_millis": 1794378016062,
+  "updated_at_millis": 1794385015945,
   "history": [
     {"field":"column","value":"uncommitted","at":1793564864425},
     {"field":"column","value":"backlog-hi","at":1794368030680},
     {"field":"column","value":"in-progress","at":1794374423283},
-    {"field":"column","value":"backlog-hi","at":1794378016062}
+    {"field":"column","value":"backlog-hi","at":1794378016062},
+    {"field":"column","value":"next","at":1794385015945}
   ]
 }
