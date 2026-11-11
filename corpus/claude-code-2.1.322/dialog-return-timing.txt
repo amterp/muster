@@ -1,0 +1,26 @@
+How soon after Claude Code's plan dialog draws it takes a Return.
+
+Recorded 2026-11-10 on macOS 26.4.1 / arm64, Claude Code 2.1.322 running Haiku 4.5 with
+`--permission-mode plan`, in a 100x30 pseudo-terminal driven by a scratch script built on
+tools/detection-capture.py's Capture, with no Muster in between. Each trial asked for a one-line
+plan with tools/detection-capture.py's PLAN prompt, waited for the dialog ("Would you like to
+proceed?") to arrive and then for 50 ms with no output, so the dialog was fully drawn and still,
+waited the delay below, and wrote a lone `\r`. Taken means the plan was approved; ignored means
+the pane drew nothing at all for the next 3 s, the dialog unchanged with option 1 selected. Each
+ignored Return was followed 3 s later by another `\r`, which was taken every time, and every
+approved trial wrote its file.
+
+    delay after the dialog fell still   Return
+    0 ms                                ignored (3 of 3)
+    30 ms (53 ms as written)            ignored
+    60 ms                               ignored (2 of 2)
+    100 ms (104, 116 ms as written)     taken (2 of 2)
+    150 ms (171 ms as written)          taken
+    250 ms (290 ms as written)          taken
+
+An earlier run timed from the first bytes of "proceed" instead, while the options were still
+being drawn: a Return at 0 ms and at 59 ms was ignored, and at 173, 321, 636, 1014 and 2006 ms
+taken.
+
+So the dialog takes keys from somewhere between 60 and 100 ms after it has finished drawing, and
+draws nothing for a key it ignores.

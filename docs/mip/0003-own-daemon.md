@@ -811,6 +811,14 @@ enough for `pane wait --until blocked` to answer, and for a key sent then to be 
 still waiting when the pane is handed to a newer daemon goes on waiting there, since its hook does
 not run again.
 
+A pane that comes to read blocked, by the rules or by a report, is published as blocked only once
+it has read blocked for 300 ms. A dialog can be drawn before it takes keys: Claude Code 2.1.322's
+plan dialog ignored a Return written up to 60 ms after it had finished drawing and took one from
+100 ms on, drawing nothing for the key it ignored
+(`corpus/claude-code-2.1.322/dialog-return-timing.txt`). Published on the first tick that read
+it, the dialog answered a `pane wait --until blocked` that could send its Return inside that
+window. A dialog gone within the 300 ms is never published as blocked.
+
 A Return or Esc typed into a pane that reads blocked may have answered its dialog, and the screen
 cannot say so until the harness redraws and detection reads it again: up to a tick and a redraw
 later for the rules, and two seconds later for a blocked report they had confirmed. A `pane wait

@@ -39,6 +39,12 @@ const STARTUP_GRACE: Duration = Duration::from_secs(3);
 /// never took leaves the dialog where it was, and the pane reads blocked again after this.
 const ANSWERED_CAP: Duration = Duration::from_secs(5);
 
+/// How long a pane reads blocked before it is published as blocked. Claude Code 2.1.322's plan
+/// dialog ignores a Return written up to about 60 ms after it has finished drawing, and takes one
+/// from 100 ms on (corpus/claude-code-2.1.322/dialog-return-timing.txt), so a key sent the moment
+/// a pane was published blocked could be lost.
+const DIALOG_SETTLE: Duration = Duration::from_millis(300);
+
 const AGENT_MISS_CONFIRMATION_ATTEMPTS: u8 = 6;
 const PROCESS_RECHECK_IDENTIFIED: Duration = Duration::from_secs(5);
 const PROCESS_RECHECK_MISSING_FOREGROUND_GROUP: Duration = Duration::from_secs(30);
@@ -167,6 +173,9 @@ pub struct Detector {
     /// A Return or Esc typed at a dialog the pane read as blocked, until its screen shows what
     /// came of it.
     answered: Option<Answered>,
+    /// Since when the pane has read blocked without being published as blocked
+    /// ([`DIALOG_SETTLE`]).
+    unsettled_since: Option<Instant>,
     /// A reset forgot what was known, so the next tick publishes what it finds, even when it
     /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
     /// manifest would go on showing the old agent's last state.
@@ -214,6 +223,7 @@ impl Detector {
             last_concluded: None,
             reporting: Reporting::default(),
             answered: None,
+            unsettled_since: None,
             owed: false,
         }
     }
@@ -242,6 +252,7 @@ impl Detector {
         self.waiting_since = None;
         self.waited_out = false;
         self.answered = None;
+        self.unsettled_since = None;
         self.owed = true;
     }
 
@@ -400,13 +411,20 @@ impl Detector {
         if self.presence.current.is_some() {
             self.reporting.output(pane.content_seq(), pane.input_at(), now);
         }
-        let publication = self.effective(now).and_then(|effective| self.emit(effective));
+        let publication = self
+            .effective(now)
+            .and_then(|effective| self.settled(effective, now))
+            .and_then(|effective| self.emit(effective));
         let next = if self.pending_idle.active() {
             PENDING_IDLE_RECHECK
         } else if self.presence.current.is_none() {
             TICK_UNIDENTIFIED
         } else {
             TICK_IDENTIFIED
+        };
+        let next = match self.unsettled_since {
+            Some(since) => next.min((since + DIALOG_SETTLE).saturating_duration_since(now)),
+            None => next,
         };
         Tick { publication, next }
     }
@@ -733,6 +751,24 @@ impl Detector {
             return None;
         }
         self.last_concluded = Some(publication.clone());
+        Some(publication)
+    }
+
+    /// Holds back a publication that would newly read blocked until the pane has read blocked
+    /// for [`DIALOG_SETTLE`], whether the screen rules or the agent's own report said so: a
+    /// dialog can be drawn before it takes keys.
+    fn settled(&mut self, publication: Publication, now: Instant) -> Option<Publication> {
+        let newly_blocked = publication.state == State::Blocked
+            && self.last_emitted.as_ref().is_none_or(|emitted| emitted.state != State::Blocked);
+        if !newly_blocked {
+            self.unsettled_since = None;
+            return Some(publication);
+        }
+        let since = *self.unsettled_since.get_or_insert(now);
+        if now.saturating_duration_since(since) < DIALOG_SETTLE {
+            return None;
+        }
+        self.unsettled_since = None;
         Some(publication)
     }
 

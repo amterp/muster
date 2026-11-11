@@ -542,6 +542,16 @@ impl Run {
         tick.publication
     }
 
+    /// Ticks through a newly blocked pane's [`DIALOG_SETTLE`], asserting that the first tick
+    /// publishes nothing, and returns what is published once it has passed.
+    fn tick_past_settling(&mut self) -> Option<Publication> {
+        assert_eq!(self.tick(), None, "a newly blocked pane is published only once it settles");
+        let start = self.now;
+        let settled = self.until_published(DIALOG_SETTLE).map(|(_, publication)| publication);
+        assert!(self.now - start <= DIALOG_SETTLE);
+        settled
+    }
+
     /// Ticks until something is published, or the time runs out.
     fn until_published(&mut self, within: Duration) -> Option<(Duration, Publication)> {
         let start = self.now;
@@ -673,7 +683,7 @@ fn a_codex_that_has_not_drawn_stays_unknown_until_its_screen_is_recognized() {
     assert_eq!(run.run_for(Duration::from_mins(9), None), []);
 
     run.paint("Trust this folder?\n› 1. Trust and continue");
-    assert_eq!(run.tick(), Some(published(codex.clone(), State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(published(codex.clone(), State::Blocked)));
     run.paint("› ");
     assert_eq!(run.tick(), Some(published(codex, State::Idle)));
     run.paint("a later screen no rule recognizes");
@@ -746,7 +756,7 @@ fn a_visible_idle_or_a_blocker_is_published_at_once() {
     run.paint("ready>");
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
     run.paint("allow?");
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(published(Some(claude()), State::Blocked)));
 }
 
 #[test]
@@ -827,20 +837,37 @@ fn a_new_agent_does_not_inherit_the_last_title_or_progress() {
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Working)));
 }
 
+/// A dialog gone within [`DIALOG_SETTLE`] of first reading blocked is never published: whatever
+/// waited for blocked would have sent its key to a screen that no longer holds the dialog.
+#[test]
+fn a_dialog_gone_before_it_settles_is_never_published() {
+    let mut run = Run::new();
+    run.tick();
+    run.start_agent();
+    run.paint("ready>");
+    run.until_published(Duration::from_secs(1)).unwrap();
+
+    run.paint("allow?");
+    assert_eq!(run.tick(), None);
+    run.paint("ready> again");
+    let after = run.run_for(Duration::from_secs(2), None);
+    assert!(after.iter().all(|publication| publication.state != State::Blocked), "{after:?}");
+}
+
 #[test]
 fn reset_forgets_the_agent_and_finds_it_again() {
     let mut run = Run::new();
     run.tick();
     run.start_agent();
     run.paint("allow?");
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(published(Some(claude()), State::Blocked)));
 
     run.detector.reset();
     assert_eq!(run.detector.agent(), None);
     run.next = Duration::ZERO;
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Unknown)));
     run.settle();
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(published(Some(claude()), State::Blocked)));
 }
 
 #[test]
@@ -1011,7 +1038,7 @@ fn an_agents_own_report_outranks_the_rules() {
     run.report(State::Working);
     assert_eq!(run.tick(), Some(reported(State::Working)));
     run.report(State::Blocked);
-    assert_eq!(run.run_for(reporting::STILL, None), [reported(State::Blocked)]);
+    assert_eq!(run.run_for(reporting::STILL + DIALOG_SETTLE, None), [reported(State::Blocked)]);
     run.report(State::Idle);
     assert_eq!(run.tick(), Some(reported(State::Idle)));
 }
@@ -1169,7 +1196,7 @@ fn a_blocked_report_gives_way_once_the_prompt_it_described_is_gone() {
     run.until_published(Duration::from_secs(2));
     run.report(State::Blocked);
     run.paint("allow?");
-    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(reported(State::Blocked)));
 
     run.paint("ready>");
     let after = run.run_for(Duration::from_secs(5), None);
@@ -1206,7 +1233,7 @@ fn a_blocked_report_gives_way_after_a_handoff_as_it_would_have_before() {
     run.until_published(Duration::from_secs(2));
     run.report(State::Blocked);
     run.paint("allow?");
-    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(reported(State::Blocked)));
     run.paint("ready>");
     run.run_for(Duration::from_secs(1), None);
 
@@ -1259,7 +1286,7 @@ fn a_blocked_report_the_rules_agree_with_holds_while_the_screen_moves() {
     run.until_published(Duration::from_secs(2));
     run.report(State::Blocked);
     run.paint("allow?");
-    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(reported(State::Blocked)));
 
     let waiting = run.run_for(Duration::from_mins(4), Some("allow? busy"));
     assert_eq!(waiting, [], "the report stopped counting");
@@ -1378,7 +1405,7 @@ fn a_resumed_report_counts_without_a_recorded_conclusion() {
     // What the next tick lays the report over, before the rules conclude anything.
     let effective = run.detector.effective(run.now).expect("a report with nothing concluded");
     assert_eq!(effective, reported(State::Blocked));
-    assert_eq!(run.tick(), Some(reported(State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(reported(State::Blocked)));
 }
 
 #[test]
@@ -1696,7 +1723,7 @@ fn a_dialog_read_on_a_changed_screen_counts_once_it_sits_still() {
     run.answer();
     run.paint("allow? the next question");
     assert_eq!(run.tick(), None);
-    assert_eq!(run.tick(), Some(published(Some(claude()), State::Blocked)));
+    assert_eq!(run.tick_past_settling(), Some(published(Some(claude()), State::Blocked)));
 }
 
 /// A key that changed nothing - a Return the harness never took - reads blocked again once the
