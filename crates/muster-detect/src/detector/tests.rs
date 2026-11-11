@@ -655,6 +655,22 @@ fn a_new_agent_is_unknown_at_once_and_its_screen_waits_out_the_grace() {
     assert!(after > STARTUP_GRACE, "working was published {after:?} in, inside the grace");
 }
 
+/// The first probe of a pane can land after its command took the foreground but before it
+/// exec'd: the job is still the shell's fork. The exec changes neither the group nor the screen,
+/// so an agent that prints nothing at first is found only by probing that job again.
+#[test]
+fn an_agent_still_starting_when_first_probed_is_found_once_it_execs() {
+    let mut run = Run::new();
+    run.pane.group = Some(AGENT_GROUP);
+    run.processes.agent = "zsh";
+    let first = run.tick();
+    assert!(first.as_ref().is_none_or(|publication| publication.agent.is_none()), "{first:?}");
+
+    run.processes.agent = "claude";
+    let found = run.until_published(Duration::from_secs(3));
+    assert_eq!(found.map(|(_, publication)| publication.agent), Some(Some(claude())));
+}
+
 /// Claude Code's folder-trust dialog is on screen within a second of starting. Something waiting
 /// for the agent to be idle or blocked must get blocked, never an idle from before the screen
 /// counted.

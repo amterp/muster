@@ -646,7 +646,13 @@ impl Detector {
             self.agent_group = found.group;
             self.acquisition_started_at = None;
             self.last_content_change_at = None;
-        } else if self.presence.current.is_none() && had_process_probe && group_changed {
+        } else if self.presence.current.is_none()
+            && group_changed
+            && (had_process_probe || !found.shell_in_foreground)
+        {
+            // Even on a pane's first probe, a job other than the shell may be one still exec'ing
+            // into its agent, which then changes neither the group nor, if it prints nothing,
+            // the screen.
             self.acquisition_started_at = Some(now);
         }
         if !changed {

@@ -1081,3 +1081,46 @@ fn a_return_lost_at_a_dialog_reads_blocked_again() {
     let blocked_after = published[1].1 - key;
     assert!(blocked_after >= Duration::from_secs(4), "blocked again {blocked_after:?} after");
 }
+
+/// An agent that prints nothing, reported on the moment its pane is made - a statusline's model,
+/// as Foreman's smoke test sends, and an idle state, as a hook does - is found all the same, and
+/// its record names it. A state report ticks detection at once, which can probe the pane while
+/// its command is still exec'ing. Several panes, since Foreman saw about one run in five lose.
+#[test]
+fn a_silent_agent_reported_before_it_is_found_is_found() {
+    let home = Home::new("silent", &[], &[]);
+    let agent = home.agent("claude");
+    std::fs::write(&agent, "#!/bin/sh\nwhile :; do sleep 1; done\n").unwrap();
+    std::fs::set_permissions(&agent, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let panes: Vec<String> = (1..=8).map(|n| format!("p{n}")).collect();
+    for name in &panes {
+        let create = proto::pane_request::Create {
+            command: Some(agent.display().to_string()),
+            ..create(name, in_new_tab(&format!("t-{name}")))
+        };
+        make(&mut control, create);
+        let mut report = proto::pane_request::Report {
+            pane: name.clone(),
+            agent: "claude".to_string(),
+            ..Default::default()
+        };
+        report.set_state(proto::AgentState::Idle);
+        control.ask(pane(proto::pane_request::Request::Report(report)));
+        let model = proto::pane_request::Report {
+            pane: name.clone(),
+            model: Some("a-model".to_string()),
+            ..Default::default()
+        };
+        control.ask(pane(proto::pane_request::Request::Report(model)));
+    }
+    for name in &panes {
+        let control = std::cell::RefCell::new(&mut control);
+        until(
+            &format!("{name} to run claude"),
+            || record(&mut control.borrow_mut(), name).agent.as_deref() == Some("claude"),
+            || format!("{name} is {:?}", record(&mut control.borrow_mut(), name).agent),
+        );
+    }
+}
