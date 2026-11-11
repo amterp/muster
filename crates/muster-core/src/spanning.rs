@@ -509,22 +509,16 @@ pub fn rearrange(
 ) -> Result<Merged, String> {
     let merged = merge(parts, settled).ok_or("the tab has no part on any machine")?;
     let written = parts.iter().map(|part| part.generation).max().unwrap_or_default();
-    let change = match change {
-        Change::Ratio { path, ratio } => {
-            let drawable = drawable(&merged.tree, parts, settled);
-            let path = whole_path(&merged.tree, path, &|pane: &PaneId| drawable.contains(pane))
-                .ok_or_else(|| format!("the tab's tree has no split at {path:?}"))?;
-            Change::Ratio { path, ratio: *ratio }
-        }
-        Change::Remove { pane } if held(parts, pane) => {
-            return Err(format!(
-                "{pane} is running on a machine that answers, so it is closed rather than \
-                 removed from its tab: only a pane whose machine is unreachable is removed"
-            ));
-        }
-        other => other.clone(),
-    };
-    let (tree, zoomed) = changed(&merged.tree, merged.zoomed.as_ref(), &change)?;
+    if let Change::Remove { pane } = change
+        && held(parts, pane)
+    {
+        return Err(format!(
+            "{pane} is running on a machine that answers, so it is closed rather than removed \
+             from its tab: only a pane whose machine is unreachable is removed"
+        ));
+    }
+    let drawable = drawable(&merged.tree, parts, settled);
+    let (tree, zoomed) = changed(&merged.tree, merged.zoomed.as_ref(), change, &drawable)?;
     if tree == merged.tree && zoomed == merged.zoomed {
         return Ok(merged);
     }
@@ -540,7 +534,7 @@ pub fn rearrange(
             based_on: part.generation,
         })
         .collect();
-    if let Change::Place { pane, daemon, .. } = &change
+    if let Change::Place { pane, daemon, .. } = change
         && !merged.tree.leaves().iter().any(|(leaf, _)| *leaf == pane)
     {
         match parts.iter().find(|part| part.daemon == *daemon) {
@@ -568,40 +562,51 @@ pub fn rearrange(
     Ok(Merged { tree, zoomed, writes })
 }
 
+/// `tree` with `change` made to it. A change naming a divider names one the window drew, in the
+/// tree of the `drawable` panes, and moves that split in the whole tree: a split with nothing
+/// drawn on one side is not on screen, so no chord or drag means it.
 fn changed(
     tree: &SpanNode,
     zoomed: Option<&PaneId>,
     change: &Change,
+    drawable: &BTreeSet<PaneId>,
 ) -> Result<(SpanNode, Option<PaneId>), String> {
-    let named = |pane: &PaneId| {
-        if tree.leaves().iter().any(|(leaf, _)| *leaf == pane) {
-            Ok(())
-        } else {
-            Err(format!("the tab's tree holds no pane {pane}"))
-        }
+    let draws = |pane: &PaneId| drawable.contains(pane);
+    let on_screen = |pane: &PaneId| {
+        named_in(tree, pane)?;
+        let drawing = drawn(tree, &draws).filter(|_| draws(pane)).ok_or_else(|| {
+            format!("{pane} is not drawn in this window, so it has no divider here to move")
+        })?;
+        Ok::<SpanNode, String>(drawing)
     };
+    let whole = |path: &[Branch]| {
+        whole_path(tree, path, &draws)
+            .ok_or_else(|| format!("the tab's tree has no split at {path:?}"))
+    };
+    let named = |pane: &PaneId| named_in(tree, pane);
     let zoomed = zoomed.cloned();
     match change {
         Change::Ratio { path, ratio } => {
-            let Some(SpanNode::Split { .. }) = tree.at(path) else {
+            let path = whole(path)?;
+            let Some(SpanNode::Split { .. }) = tree.at(&path) else {
                 return Err(format!("the tab's tree has no split at {path:?}"));
             };
-            Ok((tree.with_ratio(path, *ratio)?, zoomed))
+            Ok((tree.with_ratio(&path, *ratio)?, zoomed))
         }
         Change::Resize { pane, side, fraction } => {
-            named(pane)?;
-            let turns = tree.turns_to(pane).unwrap_or_default();
+            let drawing = on_screen(pane)?;
+            let turns = drawing.turns_to(pane).unwrap_or_default();
             let Some(depth) = resize::divider(&turns, *side) else {
                 return Err(format!(
                     "no split on that axis holds {pane}, so there is no divider to move"
                 ));
             };
             let path: Vec<Branch> = turns[..depth].iter().map(|turn| turn.branch).collect();
-            let Some(SpanNode::Split { ratio, .. }) = tree.at(&path) else {
+            let Some(SpanNode::Split { ratio, .. }) = drawing.at(&path) else {
                 unreachable!("the depth was chosen because a split is there")
             };
             match resize::stepped(*ratio, *side, *fraction) {
-                Some(moved) => Ok((tree.with_ratio(&path, moved)?, zoomed)),
+                Some(moved) => Ok((tree.with_ratio(&whole(&path)?, moved)?, zoomed)),
                 None => Ok((tree.clone(), zoomed)),
             }
         }
@@ -648,16 +653,28 @@ fn changed(
             Ok((rest, zoomed.filter(|zoomed| zoomed != pane)))
         }
         Change::Even { pane, evenly } => {
-            named(pane)?;
-            let dividers = equalize::dividers(&tree.layout(), pane, *evenly).ok_or_else(|| {
-                format!("the pane {pane} sits in no {} that could be evened out", evenly.as_str())
-            })?;
+            let drawing = on_screen(pane)?;
+            let dividers =
+                equalize::dividers(&drawing.layout(), pane, *evenly).ok_or_else(|| {
+                    format!(
+                        "the pane {pane} sits in no {} that could be evened out",
+                        evenly.as_str()
+                    )
+                })?;
             let mut evened = tree.clone();
             for divider in dividers {
-                evened = evened.with_ratio(&divider.path, divider.ratio)?;
+                evened = evened.with_ratio(&whole(&divider.path)?, divider.ratio)?;
             }
             Ok((evened, zoomed))
         }
+    }
+}
+
+fn named_in(tree: &SpanNode, pane: &PaneId) -> Result<(), String> {
+    if tree.leaves().iter().any(|(leaf, _)| *leaf == pane) {
+        Ok(())
+    } else {
+        Err(format!("the tab's tree holds no pane {pane}"))
     }
 }
 

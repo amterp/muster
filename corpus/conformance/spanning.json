@@ -410,6 +410,115 @@
       }
     },
     {
+      "name": "a resize moves the divider the window draws, not one beside a pane it leaves out",
+      "why": "This window does not follow other, so it draws a beside b with one divider between them. Growing b to the left by the whole tree's rule would move the split between z and b, which is not on screen, report success and move nothing the person sees; the window's own tree has only the split between a and b, so that one moves.",
+      "given": {
+        "parts": [
+          {
+            "daemon": "laptop",
+            "copy": "[a|[~z@other|b 0.50] 0.50]",
+            "generation": 1,
+            "holds": [
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "settled": {
+          "laptop": true
+        },
+        "change": "resize b left 0.25"
+      },
+      "expect": {
+        "tree": "columns(a@laptop, columns(z@other, b@laptop@0.5)@0.25)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(a, columns(~z@other, b@0.5)@0.25)"
+        ]
+      }
+    },
+    {
+      "name": "evening out evens the panes the window draws",
+      "why": "The window draws two panes, a and b, so evening the tab gives each half of it. Counting z, which it does not draw, would leave a a third and b a sixth on screen.",
+      "given": {
+        "parts": [
+          {
+            "daemon": "laptop",
+            "copy": "[a|[~z@other|b 0.50] 0.30]",
+            "generation": 1,
+            "holds": [
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "settled": {
+          "laptop": true
+        },
+        "change": "even a tab"
+      },
+      "expect": {
+        "tree": "columns(a@laptop, columns(z@other, b@laptop@0.5)@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(a, columns(~z@other, b@0.5)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a resize counts a pane drawn unreachable in its place",
+      "why": "The devenv is followed and has not answered, so x is drawn as a placeholder between a and b, with a divider on either side of it. Growing b to the left moves the divider between x and b, the one beside b on screen.",
+      "given": {
+        "parts": [
+          {
+            "daemon": "laptop",
+            "copy": "[a|[~x@devenv|b 0.50] 0.50]",
+            "generation": 1,
+            "holds": [
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "settled": {
+          "laptop": true,
+          "devenv": false
+        },
+        "change": "resize b left 0.25"
+      },
+      "expect": {
+        "tree": "columns(a@laptop, columns(x@devenv, b@laptop@0.25)@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 2<-1 columns(a, columns(~x@devenv, b@0.25)@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane the window does not draw has no divider to move",
+      "why": "z is on a machine this window does not follow, so it is not on screen and no chord in this window can be about it.",
+      "given": {
+        "parts": [
+          {
+            "daemon": "laptop",
+            "copy": "[a|[~z@other|b 0.50] 0.50]",
+            "generation": 1,
+            "holds": [
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "settled": {
+          "laptop": true
+        },
+        "change": "resize z left"
+      },
+      "expect": {
+        "refused": "z is not drawn in this window, so it has no divider here to move"
+      }
+    },
+    {
       "name": "a window draws only the panes it can reach",
       "why": "A window attached only to the devenv holds no part on the laptop, so it has no frames to draw where the laptop's panes go. It draws the devenv's panes in the tab's place and leaves the laptop's out, since a window that does not follow the laptop has nothing to say about it, while every tree it writes keeps the laptop's leaves (MIP-8, section 7). The split that held the laptop's pane on one side gives way to its other side.",
       "given": {
