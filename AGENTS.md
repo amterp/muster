@@ -350,10 +350,15 @@ bindings are generated with, comes from the Xcode command line tools.
 
 **The libghostty that gets built is the pin plus Muster's patches.** `deps/ghostty-patches/` holds changes Muster
 carries on libghostty for good, not until upstream takes them: `./dev` applies them in name order on top of the pinned
-commit, and they reach GhosttyKit as well as libghostty-vt because both build from that one checkout. Each patch only
-adds C API and changes no existing behavior, and stays small, so that a re-pin means rebasing it rather than rewriting
-it. `deps/.built` records the build recipe, the pin and a hash of every patch, so a recipe change or patch edit rebuilds
-exactly as a re-pin does. CI's cache key includes the recipe and hashes the pin and patches. A patch that no longer
+commit, and they reach GhosttyKit as well as libghostty-vt because both build from that one checkout. Each patch adds
+C API, changes no existing behavior, and stays small, so that a re-pin means rebasing it rather than rewriting it; the
+VT additions live in a file of their own, `src/terminal/c/muster.zig`, which upstream never touches. One exception:
+0002 splits `Surface.deinit` in two, which changes nothing it does but can conflict on a re-pin. A re-pin also needs a
+read of upstream's doc comments, not only its headers: 0002's last rebase would have compiled, passed every tier and
+broken a threading rule stated only in `DisplayLink.zig` (`docs/observations/libghostty-0fa3d577.md`, section 15).
+`deps/.built` records the build recipe, the pin, the Zig pin and a hash of every patch, so a recipe change, compiler
+change or patch edit rebuilds exactly as a re-pin does. CI's cache key includes the recipe and hashes the pin, the Zig
+pin and the patches. A patch that no longer
 applies stops the build and names itself. Resolve a rebase in `deps/ghostty` and write it back into the patch before
 running `./dev` again: every build resets that checkout to the pin, and a resolution left there is discarded.
 
