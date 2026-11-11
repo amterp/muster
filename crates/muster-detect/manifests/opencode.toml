@@ -2,10 +2,31 @@
 # agent by, since Muster identifies an agent only by the names its manifest gives; and
 # `prompt_box`, reading OpenCode's prompt for the doorbell.
 id = "opencode"
-version = "2026.10.04.2"
-min_engine_version = 9
-updated_at = "2026-10-04T00:00:00Z"
+version = "2026.11.11.1"
+min_engine_version = 15
+updated_at = "2026-11-11T00:00:00Z"
 aliases = ["open-code", "opencode2", "herdr:opencode"]
+
+[session]
+# No compact: `/compact` and its Return in one write leave the command in the box, its Return taken
+# by the list of commands, and words after it go to the model as a message
+# (docs/observations/opencode-1.19.5.md, section 1).
+# What a pane runs after a daemon restart, or a restart of the agent, to start its session again:
+# `--session` takes the id, and the session runs with the options given beside it
+# (docs/observations/opencode-1.19.5.md, section 2). From `opencode --help` at 1.19.5: what picks
+# or forks another session or sends a first prompt is dropped, and every option that takes a
+# value is listed. A path to start in is the one word OpenCode takes on its own, and is dropped
+# as a prompt would be; the pane starts in its own directory.
+resume = ["opencode", "{args}", "--session", "{session}"]
+resume_drops = [
+  "-c", "--continue", "-s", "--session", "--fork", "--prompt", "-h", "--help", "-v", "--version",
+]
+resume_values = [
+  "-m", "--model", "-s", "--session", "--prompt", "--agent", "--port", "--hostname",
+  "--log-level", "--mdns-domain", "--cors", "--replay-limit",
+]
+# The model and the agent it ran as.
+resume_keeps = ["-m", "--model", "--agent"]
 
 [[rules]]
 id = "permission_required"

@@ -631,8 +631,8 @@ It is on because an agent's work is the point of the pane. Turn it off with `fal
 comes back as a shell, as every pane did before: a resumed agent runs unattended with the flags it
 had, a permission mode that skips prompts among them. A resumed agent is an agent like any other,
 so messages that arrived for it while its daemon was down may ring it as soon as it is back.
-Claude Code and Codex say how to resume them (`muster docs harnesses`), and each needs its
-adapter, which reports the session. The daemon does the restarting, so it is handed the
+Claude Code, Codex and OpenCode say how to resume them (`muster docs harnesses`), and each needs
+its adapter, which reports the session. The daemon does the restarting, so it is handed the
 answer as a setting, as `name_sessions` is.
 
 `reopen_closed_minutes` is how long a pane somebody closed can be brought back, by

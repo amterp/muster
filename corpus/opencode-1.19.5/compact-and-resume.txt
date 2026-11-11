@@ -1,0 +1,51 @@
+What OpenCode 1.19.5 does with `/compact` written as Muster types a line, with and without words
+after it, and what `opencode --session` runs with when given other flags than the session
+started with.
+
+Recorded 2026-11-11 on macOS 26.4.1 / arm64, opencode 1.19.5 installed by npm into a scratch
+folder, running `opencode/big-pickle` with no credential in the environment and its data, config,
+state and cache folders in the capture folder, in a 100x30 pseudo-terminal driven by scratch
+scripts built on tools/detection-capture.py's Capture, with no Muster in between. Each line was
+written as Muster's writer types one: a bracketed paste and its Return in the same write. What
+was sent and when was read from OpenCode's own database (the `part` table) beside the screen,
+since the free model sometimes sat queued for minutes. Screens are cut to the lines that matter;
+the capture folder's path is left out.
+
+Started as `opencode -m opencode/big-pickle`.
+
+"Reply with the single word pong." and its Return: answered `pong` in 5.8 s.
+
+`/compact` and its Return, in one write, at the empty box. 3 s later the box still held the
+command, under the list of commands matching it, and the database held no new part:
+
+      ┃ /compact      Compact session                                                                ┃
+      ┃ /review       review changes [commit|branch|pr], defaults to uncommitted                     ┃
+      ┃
+      ┃  /compact
+
+A second Return, alone, ran it: a `compaction` part, `{"type":"compaction","auto":false}`, then
+an assistant message in mode `compaction` holding a summary, and on screen:
+
+      ────────────────────────────────────────── Compaction ──────────────────────────────────────────
+         ▣  Compaction · Big Pickle
+
+then the summary ("## Objective ... Replied with the single word "pong" as requested.") above an
+empty box, and the context count in the footer down from 22.6K (11%) to 566 (0%).
+
+`/compact keep the word zebra` and its Return, in one write: no list kept the Return. The line
+went to the model as a message, a `text` part holding the whole line, drawn in the transcript
+with a Build turn under it; no `compaction` part. The service then answered "The inference
+service is overloaded. Please try again later." and retried, and the turn never finished in the
+ten minutes the script waited.
+
+A first run of the same steps is not counted: its turn was still queued when `/compact` was
+written, so which Return started its one compaction cannot be told. It too drew the list over the
+box with `/compact` in it 1.5 s after the write.
+
+Resumed, after the first run ended, with another agent:
+
+    opencode -m opencode/big-pickle --agent plan --session ses_e36bcd4e1ffeZZHoz7s1QTzUuA
+
+It drew the session's compaction summary above an empty box whose foot read `Plan · Big Pickle`,
+where the first run's had read `Build · Big Pickle`: the same session, running as the agent the
+resume named.

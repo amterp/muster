@@ -29,7 +29,7 @@ window`).
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | yes | no | no |
 | Says when its context was cleared or compacted | yes | yes | no | no |
-| Resumed after a restart | yes | yes | no | no |
+| Resumed after a restart | yes | yes | yes | no |
 | Clipboard image pasted into a remote composer | yes | yes | no | no |
 
 Every other harness: agy, amp, cline, copilot, cursor, devin, droid, gemini, grok, hermes, kilo,
@@ -114,10 +114,10 @@ kimi, kiro, maki, pi, qodercli.
 - **Resumed after a restart**: a pane whose agent reported its session comes back after a daemon
   restart or a reboot running that session again, with the flags the agent was started with,
   less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude
-  Code's manifest spells it `claude --resume <id>` and Codex's `codex resume <flags> <id>`, and
-  each adapter reports the session. Codex runs a resumed session with the flags it is given
-  rather than the ones it started with, so carrying them is what brings back its model and
-  sandbox. OpenCode spells none yet, so its panes come back as shells. A manifest says it in
+  Code's manifest spells it `claude --resume <id>`, Codex's `codex resume <flags> <id>` and
+  OpenCode's `opencode <flags> --session <id>`, and each adapter reports the session. Codex and
+  OpenCode run a resumed session with the flags they are given rather than the ones it started
+  with, so carrying them is what brings back its model, sandbox or agent. A manifest says it in
   `[session]`: `resume`, the command with `{args}` where the
   flags go and `{session}` for the id, `resume_drops`, the flags never carried, and
   `resume_values`, the flags that take a value, which is the only way a word after a flag is told
