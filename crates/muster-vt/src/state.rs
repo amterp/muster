@@ -237,18 +237,18 @@ impl Terminal {
     /// The cursor's shape on `screen`. DECSCUSR sets only the active screen's, so the primary
     /// keeps its own while a program holds the alternate one.
     pub fn cursor_shape_of(&self, screen: Screen) -> CursorShape {
-        let mut style = ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK;
+        let mut style = ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BLOCK;
         // SAFETY: the terminal is live for this borrow, and the output is the type muster.h
         // documents.
         unsafe {
             ffi::ghostty_terminal_screen_cursor_style(self.handle(), screen.raw(), &raw mut style);
         }
         match style {
-            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BAR => CursorShape::Bar,
-            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE => {
+            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BAR => CursorShape::Bar,
+            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_UNDERLINE => {
                 CursorShape::Underline
             }
-            ffi::GhosttyTerminalCursorStyle_GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK_HOLLOW => {
+            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW => {
                 CursorShape::HollowBlock
             }
             _ => CursorShape::Block,

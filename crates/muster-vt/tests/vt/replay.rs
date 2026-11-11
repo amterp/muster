@@ -10,7 +10,7 @@
 
 use conformance::{CaseError, Conformance, fields};
 use muster_vt::{
-    Cell, Format, Mode, Palette, Rgb, Row, Screen, ScreenExtras, ScreenFormatOptions, Style,
+    Cell, Format, Mode, Palette, Rgb, Row, Rows, Screen, ScreenExtras, ScreenFormatOptions, Style,
     Terminal,
 };
 use serde_json::{Value, json};
@@ -67,11 +67,11 @@ fn catch_up_conformance() {
 
         let mut behind = terminal(columns, rows)?;
         behind.write(text(given, "stale").as_bytes());
-        let kept = primary_history(&behind, rows);
+        let kept = primary_history(&behind);
         behind.write(&source.catch_up());
 
         let mut differences = caught_up_differences(&source, &behind, rows, "");
-        let now = primary_history(&behind, rows);
+        let now = primary_history(&behind);
         if now != kept {
             differences.push(format!("history: had {kept:?}, now {now:?}"));
         }
@@ -101,21 +101,35 @@ fn caught_up_differences(a: &Terminal, b: &Terminal, rows: u16, prefix: &str) ->
     found
 }
 
-/// The primary screen's history as text, whichever screen is active.
-fn primary_history(terminal: &Terminal, rows: u16) -> Vec<String> {
-    let options = ScreenFormatOptions {
-        format: Format::Plain,
-        unwrap: false,
-        trim: true,
-        content: true,
-        trailing_blank_rows: true,
-        history: true,
-        extras: ScreenExtras::default(),
+/// The primary screen's history as text, whichever screen is active: exactly the rows above
+/// the active area, however many of the active area's own rows are blank.
+fn primary_history(terminal: &Terminal) -> Vec<String> {
+    let read = |rows| {
+        let options = ScreenFormatOptions {
+            format: Format::Plain,
+            unwrap: false,
+            trim: true,
+            rows,
+            extras: ScreenExtras::default(),
+        };
+        String::from_utf8_lossy(&terminal.format_screen(Screen::Primary, options)).into_owned()
     };
-    let text =
-        String::from_utf8_lossy(&terminal.format_screen(Screen::Primary, options)).into_owned();
-    let lines: Vec<String> = text.split('\n').map(str::to_string).collect();
-    lines[..lines.len().saturating_sub(usize::from(rows))].to_vec()
+    let history = read(Rows::History);
+    // The history read is this oracle's whole judgment, so it is held to the rows it splits:
+    // history and the active area read apart are the whole screen read at once.
+    let active = read(Rows::Active);
+    let whole = read(Rows::All);
+    let joined = match (history.is_empty(), active.is_empty()) {
+        (true, _) => active.clone(),
+        (false, true) => history.clone(),
+        (false, false) => format!("{history}\n{active}"),
+    };
+    assert_eq!(
+        joined.trim_end_matches('\n'),
+        whole.trim_end_matches('\n'),
+        "history and the active area do not add up to the screen"
+    );
+    if history.is_empty() { Vec::new() } else { history.split('\n').map(str::to_string).collect() }
 }
 
 fn differences_after(original: &Terminal, replayed: &Terminal, given: &Value) -> Vec<String> {

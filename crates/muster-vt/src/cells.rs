@@ -61,14 +61,8 @@ impl Terminal {
             tag,
             value: ffi::GhosttyPointValue { coordinate: ffi::GhosttyPointCoordinate { x, y } },
         };
-        let mut grid_ref = ffi::GhosttyGridRef {
-            size: size_of::<ffi::GhosttyGridRef>(),
-            node: std::ptr::null_mut(),
-            x: 0,
-            y: 0,
-        };
-        // SAFETY: the point is fully initialized and the ref is a local we own. libghostty
-        // reads `size` to tell which version of the struct it was handed.
+        let mut grid_ref = ffi::GhosttyGridRef { node: std::ptr::null_mut(), x: 0, y: 0 };
+        // SAFETY: the point is fully initialized and the ref is a local we own.
         let found =
             unsafe { ffi::ghostty_terminal_grid_ref(self.handle(), point, &raw mut grid_ref) };
         (found == ffi::GhosttyResult_GHOSTTY_SUCCESS).then_some(grid_ref)
@@ -127,31 +121,44 @@ fn row_wraps(grid_ref: &ffi::GhosttyGridRef) -> bool {
     wraps
 }
 
+// GhosttyStyleFlags' bits, written out because style.h spells them as casts, which bindgen
+// leaves out. The header's layout: one attribute per bit from 0 to 7, the underline style in
+// the three bits from 8.
+const STYLE_FLAG_BOLD: u16 = 1 << 0;
+const STYLE_FLAG_ITALIC: u16 = 1 << 1;
+const STYLE_FLAG_FAINT: u16 = 1 << 2;
+const STYLE_FLAG_BLINK: u16 = 1 << 3;
+const STYLE_FLAG_INVERSE: u16 = 1 << 4;
+const STYLE_FLAG_INVISIBLE: u16 = 1 << 5;
+const STYLE_FLAG_STRIKETHROUGH: u16 = 1 << 6;
+const STYLE_FLAG_OVERLINE: u16 = 1 << 7;
+const STYLE_UNDERLINE_SHIFT: u16 = 8;
+const STYLE_UNDERLINE_MASK: u16 = 0x7 << STYLE_UNDERLINE_SHIFT;
+
 /// The cell's style, with an erase's background folded in.
 ///
 /// An erase under a background color leaves cells that hold only that color, as a content
 /// tag rather than a style, and a reader that looked only at the style would call them blank.
 fn style(grid_ref: &ffi::GhosttyGridRef, cell: ffi::GhosttyCell) -> Style {
-    // SAFETY: zeroed is a valid bit pattern for this plain C struct; `size` is set below
-    // before libghostty reads it.
+    // SAFETY: zeroed is the default style, all zero bytes as style.h documents.
     let mut raw: ffi::GhosttyStyle = unsafe { std::mem::zeroed() };
-    raw.size = size_of::<ffi::GhosttyStyle>();
     // SAFETY: the ref was filled in by libghostty and the out parameter is ours.
     unsafe { ffi::ghostty_grid_ref_style(grid_ref, &raw mut raw) };
 
+    let flag = |bit: u16| raw.flags & bit != 0;
     let mut style = Style {
         foreground: color(raw.fg_color),
         background: color(raw.bg_color),
         underline_color: color(raw.underline_color),
-        bold: raw.bold,
-        italic: raw.italic,
-        faint: raw.faint,
-        blink: raw.blink,
-        inverse: raw.inverse,
-        invisible: raw.invisible,
-        strikethrough: raw.strikethrough,
-        overline: raw.overline,
-        underline: raw.underline,
+        bold: flag(STYLE_FLAG_BOLD),
+        italic: flag(STYLE_FLAG_ITALIC),
+        faint: flag(STYLE_FLAG_FAINT),
+        blink: flag(STYLE_FLAG_BLINK),
+        inverse: flag(STYLE_FLAG_INVERSE),
+        invisible: flag(STYLE_FLAG_INVISIBLE),
+        strikethrough: flag(STYLE_FLAG_STRIKETHROUGH),
+        overline: flag(STYLE_FLAG_OVERLINE),
+        underline: i32::from((raw.flags & STYLE_UNDERLINE_MASK) >> STYLE_UNDERLINE_SHIFT),
     };
 
     let tag = cell_data(
@@ -174,7 +181,7 @@ fn style(grid_ref: &ffi::GhosttyGridRef, cell: ffi::GhosttyCell) -> Style {
 }
 
 fn color(raw: ffi::GhosttyStyleColor) -> Option<Color> {
-    match raw.tag {
+    match ffi::GhosttyStyleColorTag::from(raw.tag) {
         ffi::GhosttyStyleColorTag_GHOSTTY_STYLE_COLOR_PALETTE => {
             // SAFETY: the tag says the palette member of the union is the live one.
             let index = unsafe { raw.value.palette };

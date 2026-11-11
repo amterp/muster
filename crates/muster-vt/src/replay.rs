@@ -12,7 +12,7 @@
 //! one it came from, before and after both receive the same further bytes.
 
 use crate::formatter::{
-    Extras, Format, FormatOptions, ScreenExtras, ScreenFormatOptions, Selection,
+    Extras, Format, FormatOptions, Rows, ScreenExtras, ScreenFormatOptions, Selection,
 };
 use crate::grid::Width;
 use crate::modes::Mode;
@@ -123,14 +123,11 @@ impl Terminal {
         } else {
             self.cursor_shape_statement(out, Screen::Primary, None);
         }
-        let movers = self.format_state(FormatOptions {
-            extras: Extras {
-                tabstops: true,
-                scrolling_region: true,
-                keyboard: true,
-                ..Extras::default()
-            },
-            ..FormatOptions::vt()
+        let movers = self.format_state(Extras {
+            tabstops: true,
+            scrolling_region: true,
+            keyboard: true,
+            ..Extras::default()
         });
         let region = Region::parse(&movers);
         out.extend(movers);
@@ -144,10 +141,7 @@ impl Terminal {
         self.cursor_position(out, origin.then_some(region));
 
         // Last, because re-drawing a pending wrap prints with the cell's own style.
-        out.extend(self.format_state(FormatOptions {
-            extras: Extras { screen: PEN, ..Extras::default() },
-            ..FormatOptions::vt()
-        }));
+        out.extend(self.format_state(Extras { screen: PEN, ..Extras::default() }));
     }
 
     /// `screen`'s cursor shape, written while that screen is the receiver's active one, since
@@ -297,9 +291,7 @@ fn content(extras: ScreenExtras, history: bool) -> ScreenFormatOptions {
         format: Format::Vt,
         unwrap: true,
         trim: false,
-        content: true,
-        trailing_blank_rows: true,
-        history,
+        rows: if history { Rows::All } else { Rows::Active },
         extras,
     }
 }

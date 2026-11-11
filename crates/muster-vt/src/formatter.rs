@@ -18,11 +18,13 @@ pub enum Format {
 
 /// Terminal state to emit around the content, in VT output only.
 ///
-/// Every field is off by default. The formatter's own order is fixed - palette, modes and
-/// tabstops before the content, the rest after - which is why the replay asks for pieces
-/// rather than for everything at once (`replay.rs`).
+/// Every field is off by default, and every formatter is told so explicitly: libghostty's own
+/// default adds the palette, and a replay that restated the palette would pin the receiver to
+/// this terminal's colors rather than its own theme. The formatter's own order is fixed -
+/// palette, modes and tabstops before the content, the rest after - which is why the replay
+/// asks for pieces rather than for everything at once (`replay.rs`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // one flag per piece of state, mirroring the C struct
+#[allow(clippy::struct_excessive_bools)] // one flag per piece of state, mirroring the C bits
 pub struct Extras {
     pub palette: bool,
     pub modes: bool,
@@ -37,7 +39,7 @@ pub struct Extras {
 /// State that belongs to one screen rather than to the terminal: each screen has its own
 /// cursor, pen and kitty keyboard flags.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // one flag per piece of state, mirroring the C struct
+#[allow(clippy::struct_excessive_bools)] // one flag per piece of state, mirroring the C bits
 pub struct ScreenExtras {
     pub cursor: bool,
     pub style: bool,
@@ -47,17 +49,36 @@ pub struct ScreenExtras {
     pub charsets: bool,
 }
 
+impl Extras {
+    /// As `GHOSTTY_FORMATTER_EXTRA_*` bits.
+    pub(crate) fn bits(self) -> ffi::GhosttyFormatterExtras {
+        [
+            (self.palette, ffi::GHOSTTY_FORMATTER_EXTRA_PALETTE),
+            (self.modes, ffi::GHOSTTY_FORMATTER_EXTRA_MODES),
+            (self.scrolling_region, ffi::GHOSTTY_FORMATTER_EXTRA_SCROLLING_REGION),
+            (self.tabstops, ffi::GHOSTTY_FORMATTER_EXTRA_TABSTOPS),
+            (self.pwd, ffi::GHOSTTY_FORMATTER_EXTRA_PWD),
+            (self.keyboard, ffi::GHOSTTY_FORMATTER_EXTRA_KEYBOARD),
+        ]
+        .into_iter()
+        .filter(|(on, _)| *on)
+        .fold(self.screen.bits(), |bits, (_, bit)| bits | bit)
+    }
+}
+
 impl ScreenExtras {
-    fn raw(self) -> ffi::GhosttyFormatterScreenExtra {
-        ffi::GhosttyFormatterScreenExtra {
-            size: size_of::<ffi::GhosttyFormatterScreenExtra>(),
-            cursor: self.cursor,
-            style: self.style,
-            hyperlink: self.hyperlink,
-            protection: self.protection,
-            kitty_keyboard: self.kitty_keyboard,
-            charsets: self.charsets,
-        }
+    fn bits(self) -> ffi::GhosttyFormatterExtras {
+        [
+            (self.cursor, ffi::GHOSTTY_FORMATTER_EXTRA_CURSOR),
+            (self.style, ffi::GHOSTTY_FORMATTER_EXTRA_STYLE),
+            (self.hyperlink, ffi::GHOSTTY_FORMATTER_EXTRA_HYPERLINK),
+            (self.protection, ffi::GHOSTTY_FORMATTER_EXTRA_PROTECTION),
+            (self.kitty_keyboard, ffi::GHOSTTY_FORMATTER_EXTRA_KITTY_KEYBOARD),
+            (self.charsets, ffi::GHOSTTY_FORMATTER_EXTRA_CHARSETS),
+        ]
+        .into_iter()
+        .filter(|(on, _)| *on)
+        .fold(0, |bits, (_, bit)| bits | bit)
     }
 }
 
@@ -84,7 +105,8 @@ pub struct FormatOptions {
     /// Join soft-wrapped rows into one line, so a reader sees a program's lines rather than
     /// the terminal's width - and a replay re-wraps them at the receiving width.
     pub unwrap: bool,
-    /// Drop trailing whitespace from each non-blank row.
+    /// Drop trailing whitespace from each non-blank row. In VT output, leaving it off also
+    /// keeps the blank rows below the last row with text, so the output spans the screen.
     pub trim: bool,
     pub extras: Extras,
     /// Only this span of the active area rather than the whole screen and its history.
@@ -111,60 +133,41 @@ impl FormatOptions {
             selection: None,
         }
     }
+}
 
-    fn raw(self) -> ffi::GhosttyFormatterTerminalOptions {
-        let e = self.extras;
-        ffi::GhosttyFormatterTerminalOptions {
-            size: size_of::<ffi::GhosttyFormatterTerminalOptions>(),
-            emit: self.format.raw(),
-            unwrap: self.unwrap,
-            trim: self.trim,
-            extra: ffi::GhosttyFormatterTerminalExtra {
-                size: size_of::<ffi::GhosttyFormatterTerminalExtra>(),
-                palette: e.palette,
-                modes: e.modes,
-                scrolling_region: e.scrolling_region,
-                tabstops: e.tabstops,
-                pwd: e.pwd,
-                keyboard: e.keyboard,
-                screen: e.screen.raw(),
-            },
-            selection: std::ptr::null(),
-        }
+/// Which rows of a screen to format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rows {
+    /// History and the active area.
+    All,
+    /// The active area only, which is how a surface that fell behind is caught up without
+    /// resending what it already holds.
+    Active,
+    /// History only, ending at the row above the active area.
+    History,
+}
+
+impl Rows {
+    fn raw(self) -> std::ffi::c_int {
+        let raw = match self {
+            Rows::All => ffi::GHOSTTY_MUSTER_ROWS_ALL,
+            Rows::Active => ffi::GHOSTTY_MUSTER_ROWS_ACTIVE,
+            Rows::History => ffi::GHOSTTY_MUSTER_ROWS_HISTORY,
+        };
+        std::ffi::c_int::try_from(raw).expect("the GHOSTTY_MUSTER_ROWS_* values are small")
     }
 }
 
 /// How to format one screen, whether or not it is the active one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // mirrors the C options
 pub struct ScreenFormatOptions {
     pub format: Format,
     pub unwrap: bool,
+    /// As `FormatOptions::trim`: off in VT output keeps the blank rows at the bottom, so a
+    /// replay of the screen lines up with the original.
     pub trim: bool,
-    /// Emit the screen's rows. Without them, only the extras.
-    pub content: bool,
-    /// Emit the blank rows below the last row with text as well, so the output spans every
-    /// row of the screen and a replay of it lines up with the original.
-    pub trailing_blank_rows: bool,
-    /// Include the screen's history. Without it, only the active area's rows, which is how
-    /// a surface that fell behind is caught up without resending what it already holds.
-    pub history: bool,
+    pub rows: Rows,
     pub extras: ScreenExtras,
-}
-
-impl ScreenFormatOptions {
-    fn raw(self) -> ffi::GhosttyFormatterScreenOptions {
-        ffi::GhosttyFormatterScreenOptions {
-            size: size_of::<ffi::GhosttyFormatterScreenOptions>(),
-            emit: self.format.raw(),
-            unwrap: self.unwrap,
-            trim: self.trim,
-            content: self.content,
-            trailing_blank_rows: self.trailing_blank_rows,
-            history: self.history,
-            extra: self.extras.raw(),
-        }
-    }
 }
 
 impl Format {
@@ -184,38 +187,56 @@ impl Terminal {
 
     /// As `format`, with the selection's rows counted in `tag`'s coordinates.
     fn format_in(&self, tag: ffi::GhosttyPointTag, options: FormatOptions) -> Vec<u8> {
-        let mut raw = options.raw();
-        let selection;
-        if let Some(span) = options.selection {
-            let (Some(start), Some(end)) = (
-                self.grid_ref(tag, span.start.0, span.start.1),
-                self.grid_ref(tag, span.end.0, span.end.1),
-            ) else {
-                return Vec::new();
-            };
-            selection = ffi::GhosttySelection {
-                size: size_of::<ffi::GhosttySelection>(),
-                start,
-                end,
-                rectangle: false,
-            };
-            raw.selection = &raw const selection;
-        }
+        let selection = match options.selection {
+            Some(span) => {
+                let (Some(start), Some(end)) = (
+                    self.grid_ref(tag, span.start.0, span.start.1),
+                    self.grid_ref(tag, span.end.0, span.end.1),
+                ) else {
+                    return Vec::new();
+                };
+                Some(ffi::GhosttySelection { start, end, rectangle: false })
+            }
+            None => None,
+        };
 
         let mut formatter: ffi::GhosttyFormatter = std::ptr::null_mut();
-        // SAFETY: the options are fully initialized with their `size` fields set; the
-        // selection, if any, outlives the call that copies it; and the formatter borrows the
-        // terminal only until `run` frees it, inside this borrow - so the grid refs, which
-        // are valid until the terminal next changes, are too.
+        // SAFETY: the formatter borrows the terminal only until it is freed below, inside this
+        // borrow.
         let created = unsafe {
-            ffi::ghostty_formatter_terminal_new(
+            ffi::ghostty_formatter_terminal_new(std::ptr::null(), &raw mut formatter, self.handle())
+        };
+        if created != ffi::GhosttyResult_GHOSTTY_SUCCESS || formatter.is_null() {
+            return Vec::new();
+        }
+        let formatter = Formatter(formatter);
+
+        let emit = options.format.raw();
+        let extras = options.extras.bits();
+        let set = formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_EMIT, &emit)
+            && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_UNWRAP, &options.unwrap)
+            && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_TRIM, &options.trim)
+            && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_EXTRAS, &extras)
+            && selection.as_ref().is_none_or(|selection| {
+                formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_SELECTION, selection)
+            });
+        if !set {
+            return Vec::new();
+        }
+
+        let mut pointer: *mut u8 = std::ptr::null_mut();
+        let mut length = 0usize;
+        // SAFETY: the formatter is live; the selection it copied is valid until the terminal
+        // next changes, which cannot happen inside this borrow; the out parameters are ours.
+        let result = unsafe {
+            ffi::ghostty_formatter_format_alloc(
+                formatter.0,
                 std::ptr::null(),
-                &raw mut formatter,
-                self.handle(),
-                raw,
+                &raw mut pointer,
+                &raw mut length,
             )
         };
-        run(created, formatter)
+        take(result, pointer, length)
     }
 
     /// Rows `first` through `last` of the active area as plain text, one line per row, in
@@ -251,22 +272,26 @@ impl Terminal {
         String::from_utf8_lossy(&text).into_owned()
     }
 
-    /// The extras `options` asks for, with no screen content at all: the terminal's state
-    /// on its own, for a replay that formats each screen separately.
+    /// The `extras` with no screen content at all, as VT: the terminal's state on its own,
+    /// for a replay that formats each screen separately. The cursor, when asked for, is placed
+    /// for origin mode and the right margin as the receiver will have them once the modes and
+    /// the scrolling region are restated.
     ///
     /// Through a patch Muster carries on libghostty (`deps/ghostty-patches/`).
-    pub fn format_state(&self, options: FormatOptions) -> Vec<u8> {
-        let mut formatter: ffi::GhosttyFormatter = std::ptr::null_mut();
-        // SAFETY: as in `format`; the selection is null, which this constructor requires.
-        let created = unsafe {
-            ffi::ghostty_formatter_terminal_state_new(
-                std::ptr::null(),
-                &raw mut formatter,
+    pub fn format_state(&self, extras: Extras) -> Vec<u8> {
+        let mut pointer: *mut u8 = std::ptr::null_mut();
+        let mut length = 0usize;
+        // SAFETY: the terminal is live for this borrow; the out parameters are ours.
+        let result = unsafe {
+            ffi::ghostty_terminal_format_state(
                 self.handle(),
-                options.raw(),
+                extras.bits(),
+                std::ptr::null(),
+                &raw mut pointer,
+                &raw mut length,
             )
         };
-        run(created, formatter)
+        take(result, pointer, length)
     }
 
     /// One screen, active or not - the primary screen's history while a program holds the
@@ -274,49 +299,57 @@ impl Terminal {
     ///
     /// Through a patch Muster carries on libghostty (`deps/ghostty-patches/`).
     pub fn format_screen(&self, screen: Screen, options: ScreenFormatOptions) -> Vec<u8> {
-        let mut formatter: ffi::GhosttyFormatter = std::ptr::null_mut();
-        // SAFETY: as in `format`.
-        let created = unsafe {
-            ffi::ghostty_formatter_screen_new(
-                std::ptr::null(),
-                &raw mut formatter,
+        let mut pointer: *mut u8 = std::ptr::null_mut();
+        let mut length = 0usize;
+        // SAFETY: the terminal is live for this borrow; the out parameters are ours.
+        let result = unsafe {
+            ffi::ghostty_terminal_format_screen(
                 self.handle(),
                 screen.raw(),
-                options.raw(),
+                options.rows.raw(),
+                options.format.raw(),
+                options.unwrap,
+                options.trim,
+                options.extras.bits(),
+                std::ptr::null(),
+                &raw mut pointer,
+                &raw mut length,
             )
         };
-        run(created, formatter)
+        take(result, pointer, length)
     }
 }
 
-/// Formats once and frees the formatter. A formatter that could not be created, or that
+/// A formatter, freed when it goes out of scope.
+struct Formatter(ffi::GhosttyFormatter);
+
+impl Formatter {
+    /// Sets one option, whose value has the type the header lists for it.
+    fn set<T>(&self, option: ffi::GhosttyFormatterOption, value: &T) -> bool {
+        // SAFETY: the formatter is live, and copies the value before returning.
+        let result = unsafe {
+            ffi::ghostty_formatter_set(self.0, option, std::ptr::from_ref(value).cast())
+        };
+        result == ffi::GhosttyResult_GHOSTTY_SUCCESS
+    }
+}
+
+impl Drop for Formatter {
+    fn drop(&mut self) {
+        // SAFETY: created by ghostty_formatter_terminal_new and freed exactly once, here.
+        unsafe { ffi::ghostty_formatter_free(self.0) };
+    }
+}
+
+/// The bytes libghostty allocated for us, copied out and freed. A failed format, or one that
 /// could not allocate its output, yields nothing.
-fn run(created: ffi::GhosttyResult, formatter: ffi::GhosttyFormatter) -> Vec<u8> {
-    if created != ffi::GhosttyResult_GHOSTTY_SUCCESS || formatter.is_null() {
+fn take(result: ffi::GhosttyResult, pointer: *mut u8, length: usize) -> Vec<u8> {
+    if result != ffi::GhosttyResult_GHOSTTY_SUCCESS || pointer.is_null() {
         return Vec::new();
     }
-
-    let mut pointer: *mut u8 = std::ptr::null_mut();
-    let mut length = 0usize;
-    // SAFETY: the formatter was just created; the out parameters are ours.
-    let result = unsafe {
-        ffi::ghostty_formatter_format_alloc(
-            formatter,
-            std::ptr::null(),
-            &raw mut pointer,
-            &raw mut length,
-        )
-    };
-    let bytes = if result == ffi::GhosttyResult_GHOSTTY_SUCCESS && !pointer.is_null() {
-        // SAFETY: libghostty allocated `length` bytes at `pointer` for us.
-        let bytes = unsafe { std::slice::from_raw_parts(pointer, length) }.to_vec();
-        // SAFETY: freed once, with the default allocator it was allocated with.
-        unsafe { ffi::ghostty_free(std::ptr::null(), pointer, length) };
-        bytes
-    } else {
-        Vec::new()
-    };
-    // SAFETY: created by the caller and freed exactly once, here.
-    unsafe { ffi::ghostty_formatter_free(formatter) };
+    // SAFETY: libghostty allocated `length` bytes at `pointer` for us.
+    let bytes = unsafe { std::slice::from_raw_parts(pointer, length) }.to_vec();
+    // SAFETY: freed once, with the default allocator it was allocated with.
+    unsafe { ffi::ghostty_free(std::ptr::null(), pointer, length) };
     bytes
 }

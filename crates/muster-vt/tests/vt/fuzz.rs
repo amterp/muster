@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 
 use muster_vt::{Format, FormatOptions, Mode, Screen, ScreenFormatOptions, Terminal};
-use muster_vt::{ScreenExtras, TerminalOptions};
+use muster_vt::{Rows, ScreenExtras, TerminalOptions};
 
 const SEED: u64 = 0x6d75_7374_6572;
 const ITERATIONS: u64 = 15_000;
@@ -302,9 +302,7 @@ fn interleave(rng: &mut Rng, terminal: &mut Terminal) {
                     format: Format::Vt,
                     unwrap: rng.chance(2),
                     trim: rng.chance(2),
-                    content: true,
-                    trailing_blank_rows: rng.chance(2),
-                    history: rng.chance(2),
+                    rows: [Rows::All, Rows::Active, Rows::History][rng.below(3)],
                     extras: ScreenExtras::default(),
                 },
             );

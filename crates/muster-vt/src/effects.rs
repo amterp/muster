@@ -275,11 +275,9 @@ unsafe extern "C" fn clipboard_write(
     _terminal: ffi::GhosttyTerminal,
     userdata: *mut c_void,
     write: *const ffi::GhosttyClipboardWrite,
-) -> ffi::GhosttyClipboardWriteResult {
+) {
     // SAFETY: libghostty passes a live request for the duration of the call.
-    let Some(write) = (unsafe { write.as_ref() }) else {
-        return ffi::GhosttyClipboardWriteResult_GHOSTTY_CLIPBOARD_WRITE_RESULT_INVALID_DATA;
-    };
+    let Some(write) = (unsafe { write.as_ref() }) else { return };
     let location = match write.location {
         ffi::GhosttyClipboardLocation_GHOSTTY_CLIPBOARD_LOCATION_SELECTION => {
             ClipboardLocation::Selection
@@ -304,9 +302,19 @@ unsafe extern "C" fn clipboard_write(
         .collect();
     // SAFETY: userdata is ours.
     unsafe { effects(userdata) }.emit(Effect::ClipboardWrite { location, contents });
-    // OSC 52 has no acknowledgement, so whether the app applies it is its policy, not an
-    // answer the program can receive.
-    ffi::GhosttyClipboardWriteResult_GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS
+    // Answered as done: whether the app applies it is its policy, decided after this returns,
+    // and libghostty takes a write left unanswered as denied, which OSC 5522 would report to
+    // the program. OSC 52 has no acknowledgement and discards the reply.
+    let reply = ffi::GhosttyClipboardWriteReply {
+        size: size_of::<ffi::GhosttyClipboardWriteReply>(),
+        result: ffi::GhosttyClipboardWriteResult_GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS,
+        remember: false,
+    };
+    if let Some(answer) = write.reply {
+        // SAFETY: the request is live for this call, which is when libghostty requires the
+        // answer, and the reply is borrowed only for the call.
+        unsafe { answer(write, &raw const reply) };
+    }
 }
 
 unsafe extern "C" fn notification(

@@ -151,8 +151,8 @@ impl KeyEncoder {
         // SAFETY: both handles are live; libghostty only reads the terminal. It resets
         // option-as-alt, which is why the call after it puts it back.
         unsafe {
-            ffi::ghostty_key_encoder_setopt_from_terminal(self.encoder, terminal.handle());
-            ffi::ghostty_key_encoder_setopt(
+            ffi::ghostty_key_encoder_set_from_terminal(self.encoder, terminal.handle());
+            ffi::ghostty_key_encoder_set(
                 self.encoder,
                 ffi::GhosttyKeyEncoderOption_GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT,
                 (&raw mut option_as_alt).cast(),
@@ -165,7 +165,7 @@ impl KeyEncoder {
         let mut option_as_alt = ghostty_option_as_alt(option_as_alt);
         // SAFETY: the option reads one GhosttyOptionAsAlt, which libghostty copies.
         unsafe {
-            ffi::ghostty_key_encoder_setopt(
+            ffi::ghostty_key_encoder_set(
                 self.encoder,
                 ffi::GhosttyKeyEncoderOption_GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT,
                 (&raw mut option_as_alt).cast(),
@@ -187,7 +187,7 @@ impl KeyEncoder {
         // reads four bytes from one, and the encoder then sees whatever followed it.
         unsafe {
             let set = |option, value: *mut c_void| {
-                ffi::ghostty_key_encoder_setopt(self.encoder, option, value);
+                ffi::ghostty_key_encoder_set(self.encoder, option, value);
             };
             set(
                 ffi::GhosttyKeyEncoderOption_GHOSTTY_KEY_ENCODER_OPT_KITTY_FLAGS,
@@ -257,7 +257,10 @@ impl KeyEncoder {
             ffi::ghostty_key_event_set_consumed_mods(self.event, key.consumed_modifiers);
             ffi::ghostty_key_event_set_composing(self.event, false);
             ffi::ghostty_key_event_set_unshifted_codepoint(self.event, key.unshifted_codepoint);
-            ffi::ghostty_key_event_set_utf8(self.event, text.as_ptr().cast(), text.len());
+            ffi::ghostty_key_event_set_utf8(
+                self.event,
+                ffi::GhosttyString { ptr: text.as_ptr(), len: text.len() },
+            );
         }
 
         let mut buffer = vec![0u8; FIRST_TRY_BYTES];

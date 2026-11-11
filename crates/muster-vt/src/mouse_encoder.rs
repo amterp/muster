@@ -83,7 +83,7 @@ impl MouseEncoder {
     /// held buttons are left as they were.
     pub fn configure_from(&mut self, terminal: &Terminal) {
         // SAFETY: both handles are live; libghostty only reads the terminal.
-        unsafe { ffi::ghostty_mouse_encoder_setopt_from_terminal(self.encoder, terminal.handle()) };
+        unsafe { ffi::ghostty_mouse_encoder_set_from_terminal(self.encoder, terminal.handle()) };
     }
 
     pub fn set_geometry(&mut self, geometry: MouseGeometry) {
@@ -101,7 +101,7 @@ impl MouseEncoder {
         };
         // SAFETY: SIZE reads one GhosttyMouseEncoderSize, which libghostty copies.
         unsafe {
-            ffi::ghostty_mouse_encoder_setopt(
+            ffi::ghostty_mouse_encoder_set(
                 self.encoder,
                 ffi::GhosttyMouseEncoderOption_GHOSTTY_MOUSE_ENCODER_OPT_SIZE,
                 (&raw const size).cast(),
@@ -113,7 +113,7 @@ impl MouseEncoder {
     pub fn set_button_held(&mut self, held: bool) {
         // SAFETY: ANY_BUTTON_PRESSED reads one bool.
         unsafe {
-            ffi::ghostty_mouse_encoder_setopt(
+            ffi::ghostty_mouse_encoder_set(
                 self.encoder,
                 ffi::GhosttyMouseEncoderOption_GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED,
                 (&raw const held).cast(),
@@ -127,10 +127,11 @@ impl MouseEncoder {
         // SAFETY: every setter takes the event handle this value owns, and copies its value.
         unsafe {
             ffi::ghostty_mouse_event_set_action(self.event, action(event.action));
-            match event.button {
+            // Setting a valid button on a live event cannot fail, so the result says nothing.
+            let _ = match event.button {
                 Some(button) => ffi::ghostty_mouse_event_set_button(self.event, raw_button(button)),
                 None => ffi::ghostty_mouse_event_clear_button(self.event),
-            }
+            };
             ffi::ghostty_mouse_event_set_mods(self.event, event.modifiers.0);
             ffi::ghostty_mouse_event_set_position(
                 self.event,
