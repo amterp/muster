@@ -170,7 +170,7 @@
       "given": {
         "columns": 10,
         "rows": 5,
-        "feed": "123456789\u4f60\u597d",
+        "feed": "123456789你好",
         "after": "x"
       },
       "expect": {
@@ -236,12 +236,26 @@
       }
     },
     {
+      "name": "the cursor pending a wrap over a blank last column",
+      "why": "A program that ends a full row with a space leaves the cursor waiting to wrap over a cell with nothing in it. The replay used to restore a wait by re-printing that cell, which formats to nothing when it is blank, so the wait was lost and the next character overwrote the last column instead of starting the next row.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 5,
+        "feed": "abcdefghijklmnopqrs ",
+        "after": "X"
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
       "name": "the cursor pending a wrap after a wide character at the last column",
       "why": "A wide character ending in the last column leaves the cursor on its second half, waiting to wrap. Re-printing the character from that half cannot fit it, so the receiver wraps early and prints it on the next row, and the next character lands after it instead of starting a new row. CJK and emoji ending exactly at the edge are ordinary agent output.",
       "given": {
         "columns": 10,
         "rows": 5,
-        "feed": "12345678\u4f60",
+        "feed": "12345678你",
         "after": "X"
       },
       "expect": {
@@ -254,7 +268,7 @@
       "given": {
         "columns": 10,
         "rows": 3,
-        "feed": "\r\n\r\n12345678\ud83d\udc4d",
+        "feed": "\r\n\r\n12345678👍",
         "after": "X"
       },
       "expect": {
@@ -439,6 +453,20 @@
         "columns": 20,
         "rows": 5,
         "feed": "\u001b[?1h\u001b="
+      },
+      "expect": {
+        "differences": []
+      }
+    },
+    {
+      "name": "paste events turned on",
+      "why": "Mode 5522, kitty's paste events, is new in libghostty-vt 1.0 and so new in the list of modes a replay states: a program that asked for paste events keeps getting them on a surface that attached later.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 0,
+        "feed": "\u001b[?5522h$ ",
+        "after": "typed"
       },
       "expect": {
         "differences": []

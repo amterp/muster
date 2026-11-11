@@ -270,6 +270,21 @@
       "expect": {
         "differences": []
       }
+    },
+    {
+      "name": "blank rows below the receiver's last line",
+      "why": "The receiver's history is judged by reading exactly the rows above its active area. A receiver whose active area ends in blank rows is where a read that counted rows from the bottom of everything would take history rows for screen rows or the reverse.",
+      "given": {
+        "columns": 20,
+        "rows": 5,
+        "history": 10,
+        "feed": "$ ls\r\nnotes.txt\r\n$ ",
+        "stale": "old 0\r\nold 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\n$ clear\r\n\r\n\r\n",
+        "after": "typed"
+      },
+      "expect": {
+        "differences": []
+      }
     }
   ]
 }

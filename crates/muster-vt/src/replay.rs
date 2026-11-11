@@ -11,10 +11,7 @@
 //! The judge is `tests/vt/replay.rs`: a terminal fed a replay must be indistinguishable from the
 //! one it came from, before and after both receive the same further bytes.
 
-use crate::formatter::{
-    Extras, Format, FormatOptions, Rows, ScreenExtras, ScreenFormatOptions, Selection,
-};
-use crate::grid::Width;
+use crate::formatter::{Extras, Format, Rows, ScreenExtras, ScreenFormatOptions};
 use crate::modes::Mode;
 use crate::state::{CursorShape, Rgb, Screen};
 use crate::terminal::Terminal;
@@ -123,25 +120,28 @@ impl Terminal {
         } else {
             self.cursor_shape_statement(out, Screen::Primary, None);
         }
-        let movers = self.format_state(Extras {
+        out.extend(self.format_state(Extras {
             tabstops: true,
             scrolling_region: true,
             keyboard: true,
             ..Extras::default()
-        });
-        let region = Region::parse(&movers);
-        out.extend(movers);
-        let origin = self.mode(Mode::ORIGIN);
-        if origin {
+        }));
+        if self.mode(Mode::ORIGIN) {
             out.extend(sequence(Mode::ORIGIN, true));
         }
 
         self.colors(out);
         self.identity(out, kind);
-        self.cursor_position(out, origin.then_some(region));
 
-        // Last, because re-drawing a pending wrap prints with the cell's own style.
-        out.extend(self.format_state(Extras { screen: PEN, ..Extras::default() }));
+        // Last, and the cursor first within it: a cursor waiting to wrap at the right margin
+        // cannot be put there by any position sequence, which clears the wait, so the
+        // formatter re-prints the cell under it, and the pen it then states is what the
+        // program left rather than that cell's. The position is counted from the scrolling
+        // region when origin mode is on, as the receiver now has it.
+        out.extend(self.format_state(Extras {
+            screen: ScreenExtras { cursor: true, ..PEN },
+            ..Extras::default()
+        }));
     }
 
     /// `screen`'s cursor shape, written while that screen is the receiver's active one, since
@@ -248,39 +248,6 @@ impl Terminal {
             out.extend(format!("\x1b]7;{pwd}\x1b\\").into_bytes());
         }
     }
-
-    /// The cursor, where the program left it, in the coordinates the receiver will read the
-    /// position in.
-    ///
-    /// A cursor waiting to wrap at the last column cannot be put there by any position
-    /// sequence, which always clears the wait. Printing the cell that is already there does
-    /// put it there, and leaves the cell as it was.
-    fn cursor_position(&self, out: &mut Vec<u8>, origin: Option<Region>) {
-        let cursor = self.cursor();
-        let waiting = self.pending_wrap();
-        // A wide character ending in the last column leaves the cursor on its second half.
-        // Re-printed from there it would not fit, and would wrap for real; from its first
-        // half it lands where it was and leaves the same wait.
-        let column =
-            if waiting && self.active_width(cursor.column, cursor.row) == Some(Width::SpacerTail) {
-                cursor.column.saturating_sub(1)
-            } else {
-                cursor.column
-            };
-
-        let (top, left) = origin.map_or((0, 0), |region| (region.top, region.left));
-        let row = cursor.row.saturating_sub(top) + 1;
-        let relative_column = column.saturating_sub(left) + 1;
-        out.extend(format!("\x1b[{row};{relative_column}H").into_bytes());
-
-        if waiting {
-            let cell = Selection {
-                start: (column, u32::from(cursor.row)),
-                end: (column, u32::from(cursor.row)),
-            };
-            out.extend(self.format(FormatOptions { selection: Some(cell), ..FormatOptions::vt() }));
-        }
-    }
 }
 
 /// Screen content that lines up with the original: soft wraps kept as wraps, so the receiver
@@ -322,40 +289,4 @@ fn sequence(mode: Mode, enabled: bool) -> Vec<u8> {
 
 fn spec(color: Rgb) -> String {
     format!("rgb:{:02x}/{:02x}/{:02x}", color.r, color.g, color.b)
-}
-
-/// The scrolling region's top-left corner, zero-based, which origin mode measures positions
-/// from.
-///
-/// Read back out of the formatter's own DECSTBM and DECSLRM rather than from a terminal
-/// query, because libghostty has no query for it, and a patch adding one would sit in
-/// `c/terminal.zig` - 53 upstream commits in the three months to 2026-09-26, against 4 for
-/// the file the carried patch touches - where a re-pin is far likelier to conflict. The
-/// formatter writes both only when they differ from the whole screen (the terminal
-/// formatter's scrolling-region extra in `formatter.zig`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct Region {
-    top: u16,
-    left: u16,
-}
-
-impl Region {
-    fn parse(movers: &[u8]) -> Region {
-        let text = String::from_utf8_lossy(movers);
-        // The first parameter of the `CSI <n> ; <n> <final>` sequence, one-based.
-        let first = |final_byte: char| -> Option<u16> {
-            text.split("\x1b[").find_map(|sequence| {
-                let parameters_end = sequence.find(|c: char| !c.is_ascii_digit() && c != ';')?;
-                if !sequence[parameters_end..].starts_with(final_byte) {
-                    return None;
-                }
-                let (start, _) = sequence[..parameters_end].split_once(';')?;
-                start.parse::<u16>().ok()
-            })
-        };
-        Region {
-            top: first('r').map_or(0, |one_based| one_based.saturating_sub(1)),
-            left: first('s').map_or(0, |one_based| one_based.saturating_sub(1)),
-        }
-    }
 }
