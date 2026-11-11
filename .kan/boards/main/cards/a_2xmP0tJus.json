@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "dev-codex-s-hookless",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794381653932,
+  "creator": "Alexander Terp",
+  "description": "Found 2026-11-11. codex_reads_working_then_idle_through_its_hooks_and_through_its_screen fails on a machine with Muster's Codex plugin installed: ~/.codex/config.toml enables muster-codex@muster, the tier runs Codex with the real HOME for its login, so the pane meant to have no hooks reports its state (state_reported true). Untested fix: start that pane with the plugin disabled, for example -c 'plugins.\"muster-codex@muster\".enabled=false'. Also minor: tools/detection-capture.py's CODEX harness names gpt-5.6-luna, which the owner's practices bar.",
+  "id": "a_2xmP0tJus",
+  "position": "b1y",
+  "title": "./dev --codex's hookless pane loads Muster's Codex plugin from the real HOME",
+  "type": "bug",
+  "updated_at_millis": 1794381653932,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794381653932}
+  ]
+}
