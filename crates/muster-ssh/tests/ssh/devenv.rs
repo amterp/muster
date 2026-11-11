@@ -210,6 +210,16 @@ fn parent_of(pid: &str) -> String {
     String::from_utf8_lossy(&read.stdout).trim().to_string()
 }
 
+/// Whether a master answers at this tunnel's control path.
+fn master_answers(tunnel: &Tunnel) -> bool {
+    Command::new("ssh")
+        .args(["-O", "check", "-S", tunnel.control_path(), tunnel.host()])
+        .output()
+        .expect("ssh runs")
+        .status
+        .success()
+}
+
 /// The pid of the master behind this tunnel, out of ssh's own answer.
 ///
 /// `ssh -O check` prints `Master running (pid=NNN)` on standard error, which is the only place
@@ -267,23 +277,23 @@ fn a_master_that_stopped_answering_is_replaced_by_exactly_one() {
     for round in 1..=2 {
         std::fs::remove_file(tunnel.control_path()).expect("the control path should be removable");
 
+        // Asked of the control path rather than by running a command: with no master there a
+        // command connects by itself, so it succeeds at once and says nothing about a reopen.
         let deadline = Instant::now() + Duration::from_secs(30);
-        while Instant::now() < deadline {
-            if tunnel.remote().run(&["true"]).is_ok() {
-                break;
-            }
+        while Instant::now() < deadline && !master_answers(&tunnel) {
             std::thread::sleep(Duration::from_millis(100));
         }
         assert!(
-            tunnel.remote().run(&["true"]).is_ok(),
-            "round {round}: the tunnel to {} did not carry a command again within 30s of its \
-             control path going missing.\n  Impact: every pane on that machine stays dark \
-             until the app is relaunched.\n  The supervisor asks `ssh -O check -S {}` rather \
-             than asking whether its child is alive, so check the run log for `tunnel.down` \
-             and `tunnel.reopened`.",
-            tunnel.host(),
+            master_answers(&tunnel),
+            "round {round}: no master answered at {} again within 30s of its control path \
+             going missing.\n  Impact: every pane on that machine stays dark until the app is \
+             relaunched.\n  The supervisor asks `ssh -O check -S {}` rather than asking \
+             whether its child is alive, so check the run log for `tunnel.down` and \
+             `tunnel.reopened`.",
+            tunnel.control_path(),
             tunnel.control_path(),
         );
+        assert!(tunnel.remote().run(&["true"]).is_ok(), "round {round}: and it carries a command");
         assert_eq!(
             masters_on(tunnel.control_path()),
             1,
