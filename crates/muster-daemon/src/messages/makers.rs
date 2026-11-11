@@ -135,6 +135,15 @@ impl Need {
     }
 }
 
+/// Whether a maker on another machine is at work, as its machine last said, when it was asked,
+/// and whether it is being asked now.
+#[derive(Debug, Clone, Copy, Default)]
+struct BusyThere {
+    busy: bool,
+    asked_ms: u64,
+    asking: bool,
+}
+
 /// What a look decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Tell {
@@ -246,9 +255,9 @@ pub(crate) struct Makers {
     carried: BTreeMap<String, Need>,
     /// Each need held since the last look, for it to log: the helper, its maker, and the need.
     newly_held: Vec<(String, String, Need)>,
-    /// Whether each maker on another machine was at work when its machine was last asked, and
-    /// when that was, by the maker.
-    busy_there: HashMap<String, (bool, u64)>,
+    /// What each maker on another machine's machine last said of it, by the maker: written by
+    /// the threads that ask ([`ask_busy_elsewhere`]), read by each look.
+    busy_there: Arc<Mutex<HashMap<String, BusyThere>>>,
     /// Whether a need waits for a maker on another machine to come free, which nothing announces.
     held_elsewhere: bool,
 }
@@ -273,7 +282,7 @@ impl Makers {
             told: BTreeMap::new(),
             carried: BTreeMap::new(),
             newly_held: Vec::new(),
-            busy_there: HashMap::new(),
+            busy_there: Arc::default(),
             held_elsewhere: false,
         }
     }
@@ -665,36 +674,59 @@ fn find_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
 }
 
 /// Asks the machine of each maker on another machine whose helper needs something not yet told
-/// whether the maker is at work, at most every [`ASK_BUSY_AGAIN`]: a need is told once its maker
-/// can hear it, as one whose maker is here is, so a dialog answered meanwhile is never told. With
-/// no lock held, since each ask is a call over a link.
-fn ask_busy_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
+/// whether the maker is at work, at most every [`ASK_BUSY_AGAIN`] and one ask per maker at a
+/// time: a need is told once its maker can hear it, as one whose maker is here is, so a dialog
+/// answered meanwhile is never told. Each ask is a call over a link, which can wait seconds, so it
+/// runs on a thread of its own and nudges the doorbell's thread with the answer; the look that
+/// takes the answer judges the helper as it is then.
+fn ask_busy_elsewhere(shared: &Arc<Shared>, panes: &Panes, makers: &Makers) {
     let now = now_ms();
     let again_ms = u64::try_from(ASK_BUSY_AGAIN.as_millis()).unwrap_or(u64::MAX);
     let mut asking: Vec<(String, String, String)> = Vec::new();
-    for (helper, maker) in panes.makers() {
-        let untold =
-            makers.watches.get(helper).is_some_and(|watch| watch.need.is_some() && !watch.told);
-        let asked =
-            makers.busy_there.get(maker).is_some_and(|(_, at)| now.saturating_sub(*at) < again_ms);
-        let asking_already = asking.iter().any(|(already, _, _)| already == maker);
-        if panes.exists(maker) || !untold || asked || asking_already {
-            continue;
-        }
-        if let Some(to) = makers.there.get(maker) {
+    {
+        let mut busy_there = poison::lock(&makers.busy_there, "msg.helper.busy_there");
+        for (helper, maker) in panes.makers() {
+            let untold =
+                makers.watches.get(helper).is_some_and(|watch| watch.need.is_some() && !watch.told);
+            let Some(to) = makers.there.get(maker) else { continue };
+            let said = busy_there.get(maker).copied().unwrap_or_default();
+            let fresh = said.asked_ms > 0 && now.saturating_sub(said.asked_ms) < again_ms;
+            if panes.exists(maker) || !untold || fresh || said.asking {
+                continue;
+            }
+            busy_there.insert(maker.clone(), BusyThere { asking: true, ..said });
             asking.push((maker.clone(), to.clone(), helper.clone()));
         }
     }
     for (maker, to, helper) in asking {
-        let busy = busy_there(shared, panes, &to, &helper);
-        makers.busy_there.insert(maker, (busy, now));
+        let (asker, busy_there) = (Arc::clone(shared), Arc::clone(&makers.busy_there));
+        let started = std::thread::Builder::new().name("maker-busy".to_string()).spawn({
+            let maker = maker.clone();
+            move || {
+                let busy = maker_busy_there(&asker, &Panes::of(&asker), &to, &helper);
+                let said = BusyThere { busy, asked_ms: now_ms(), asking: false };
+                poison::lock(&busy_there, "msg.helper.busy_there").insert(maker, said);
+                asker.doorbell.nudge();
+            }
+        });
+        if started.is_err() {
+            let mut busy_there = poison::lock(&makers.busy_there, "msg.helper.busy_there");
+            busy_there.insert(maker, BusyThere { busy: false, asked_ms: now, asking: false });
+        }
     }
+}
+
+/// Whether a maker on another machine would not hear a post now, as far as its machine has said:
+/// one never asked yet is taken as busy until it answers, so a need is not told on a guess.
+fn busy_elsewhere(makers: &Makers, maker: &str) -> bool {
+    let busy_there = poison::lock(&makers.busy_there, "msg.helper.busy_there");
+    busy_there.get(maker).is_none_or(|said| said.busy || said.asked_ms == 0)
 }
 
 /// Whether `to`, a maker on another machine, is at work, at a dialog or stuck, as its machine
 /// says of it in the group Muster would tell it about `helper` in. With no group yet there is
 /// nothing to ask by, and it is taken as free.
-fn busy_there(shared: &Shared, panes: &Panes, to: &str, helper: &str) -> bool {
+fn maker_busy_there(shared: &Shared, panes: &Panes, to: &str, helper: &str) -> bool {
     let asked = {
         let messages = shared.messages();
         let service = &messages.service;
@@ -755,11 +787,8 @@ fn helpers(
         let hooked =
             service.in_pane(maker).into_iter().any(|name| service.hooked(name, now_ms, panes));
         let maker_here = panes.exists(maker);
-        let maker_busy = if maker_here {
-            maker_at_work && !hooked
-        } else {
-            makers.busy_there.get(maker).is_some_and(|(busy, _)| *busy)
-        };
+        let maker_busy =
+            if maker_here { maker_at_work && !hooked } else { busy_elsewhere(makers, maker) };
         helpers.push(Helper {
             maker_busy,
             maker_here,
