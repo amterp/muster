@@ -14,7 +14,7 @@
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use crate::claude_code_inbox::{log_of, until_turns};
+use crate::claude_code_inbox::{log_of, pair_group, until_turns};
 use crate::claude_code_live::{quoted, until_settled};
 use crate::codex_live::{as_integrator, built_muster, type_line, with_muster_on_path};
 use crate::support::*;
@@ -193,15 +193,19 @@ fn a_message_posted_to_an_idle_opencode_pane_is_rung_read_and_answered() {
         "Answer this message by running exactly: muster msg post --to integrator 'got {nonce}'. \
          Do nothing else."
     );
-    let posted = integrator(&["msg", "post", "--to", "worker", &body]);
+    let posted = integrator(&["msg", "post", "--as", "integrator", "--to", "worker", &body]);
     assert!(posted.status.success(), "{}", String::from_utf8_lossy(&posted.stderr));
 
-    let group = "integrator+worker";
+    let group = pair_group(&daemon, "integrator", "worker");
     let answered = until_turns(TURN, "the worker answering", || {
-        log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
+        log_of(&mut control, &group).iter().any(|line| line == &format!("worker: got {nonce}"))
     });
     if !answered {
         eprintln!("opencode: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     }
-    assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+    assert!(
+        answered,
+        "the worker never answered; the log holds {:?}",
+        log_of(&mut control, &group)
+    );
 }

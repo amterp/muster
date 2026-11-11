@@ -410,6 +410,20 @@ pub(super) fn entries_of(control: &mut Control, group: &str) -> Vec<proto::msg_a
     entries.groups.into_iter().flat_map(|group| group.entries).collect()
 }
 
+/// The group a post between the participant `name` and the agent in `pane` makes: named for the
+/// participant and the pane's callsign, in order, since a pane takes part by its callsign.
+pub(super) fn pair_group(daemon: &Daemon, name: &str, pane: &str) -> String {
+    let callsign = snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .find(|found| found.pane == pane)
+        .and_then(|found| found.callsign)
+        .unwrap_or_else(|| panic!("pane {pane} has no callsign"));
+    let mut names = [name.to_string(), callsign];
+    names.sort();
+    names.join("+")
+}
+
 /// What a group's log holds, as `author: body` per message.
 pub(super) fn log_of(control: &mut Control, group: &str) -> Vec<String> {
     use proto::msg_answer::entry::What;

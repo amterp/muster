@@ -13,7 +13,7 @@ use std::os::unix::net::UnixListener;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use crate::claude_code_inbox::{log_of, until_turns};
+use crate::claude_code_inbox::{log_of, pair_group, until_turns};
 use crate::claude_code_live::{how_to_run, quoted, until_ready};
 use crate::support::*;
 use muster_harness::Input;
@@ -118,14 +118,18 @@ fn a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered() {
     eprintln!("claude-code: the post said: {said}");
 
     answer_trust_unrung(&mut control, &mut logging, &mut input, "worker");
-    let group = "integrator+worker";
+    let group = pair_group(&daemon, "integrator", "worker");
     let answered = until_turns(Duration::from_mins(5), "the worker answering", || {
-        log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
+        log_of(&mut control, &group).iter().any(|line| line == &format!("worker: got {nonce}"))
     });
     if !answered {
         eprintln!("claude-code: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     }
-    assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+    assert!(
+        answered,
+        "the worker never answered; the log holds {:?}",
+        log_of(&mut control, &group)
+    );
 
     // The daemon also connects to see whether the inbox is there, sending nothing; the wake is
     // the connection with a line on it.

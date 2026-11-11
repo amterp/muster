@@ -14,7 +14,7 @@
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::claude_code_inbox::{log_of, until_turns};
+use crate::claude_code_inbox::{log_of, pair_group, until_turns};
 use crate::claude_code_live::{quoted, until_settled};
 use crate::support::*;
 use muster_harness::Input;
@@ -396,7 +396,7 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
         "Answer this message by running exactly: muster msg post --to integrator 'got {nonce}'. \
          Do nothing else."
     );
-    let posted = integrator(&["msg", "post", "--to", "worker", &body]);
+    let posted = integrator(&["msg", "post", "--as", "integrator", "--to", "worker", &body]);
     let said = String::from_utf8_lossy(&posted.stdout);
     assert!(
         posted.status.success(),
@@ -405,14 +405,18 @@ fn a_message_posted_to_an_idle_codex_pane_is_rung_read_and_answered() {
     );
     eprintln!("codex: the post said: {said}");
 
-    let group = "integrator+worker";
+    let group = message_group(&daemon);
     let answered = until_turns(TURN, "the worker answering", || {
-        log_of(&mut control, group).iter().any(|line| line == &format!("worker: got {nonce}"))
+        log_of(&mut control, &group).iter().any(|line| line == &format!("worker: got {nonce}"))
     });
     if !answered {
         eprintln!("codex: worker shows:\n{}", read_text(&mut control, "worker", 0, 0).text);
     }
-    assert!(answered, "the worker never answered; the log holds {:?}", log_of(&mut control, group));
+    assert!(
+        answered,
+        "the worker never answered; the log holds {:?}",
+        log_of(&mut control, &group)
+    );
 }
 
 /// An urgent post reaches Codex at work: the ring is typed into its composer without its Return,
@@ -567,16 +571,7 @@ fn message_worker() -> (Daemon, Control, Input, String) {
 }
 
 fn message_group(daemon: &Daemon) -> String {
-    let callsign = snapshot(&mut daemon.connect())
-        .panes
-        .into_iter()
-        .find(|pane| pane.pane == "worker")
-        .unwrap()
-        .callsign
-        .unwrap();
-    let mut names = ["integrator".to_string(), callsign];
-    names.sort();
-    names.join("+")
+    pair_group(daemon, "integrator", "worker")
 }
 
 fn prompt_sessions(daemon: &Daemon) -> Vec<String> {
