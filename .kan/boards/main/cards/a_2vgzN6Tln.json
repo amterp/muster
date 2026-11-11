@@ -6,21 +6,22 @@
     "backend",
     "renderer"
   ],
-  "column": "backlog-hi",
+  "column": "next",
   "created_at_millis": 1794073225141,
   "creator": "Alexander Terp",
   "description": "Patch 0001 can shrink from 1516 lines to an estimated 400-500, and its hunks in formatter.zig are what make it hard to rebase. A 3-way apply on vt-1.0.0 conflicts in five files, so rewrite it rather than rebase it.\n\nUpstream now provides, so delete: `vt_hyperlinks` (#14711), `unstyled_blanks` and `styled_blank_rows` (#14725), `trailing_blank_rows` as `trim = false` (#14766), explicit-id OSC 8.\n\nStill missing upstream, so keep: formatting a non-active screen, content-free terminal state, `screen_cursor_style` for a non-active screen, `mouse_tracking`, `mouse_shift_capture`, `clear_screen`, the kitty image loading getters and `kitty_image_drop_loading`.\n\nPut everything in src/terminal/c/muster.zig, which upstream never touches: `ghostty_terminal_format_screen(terminal, screen, flags, emit, extras, ...)`, about 45 lines, and `ghostty_terminal_format_state(...)`, about 20 lines, plus the existing getters. Rename `GhosttyTerminalCursorStyle` to `GhosttyCursorStyle` there.\n\nCheck: upstream's `hasBackgroundAny` is narrower than the patch's `paintedAny`. Erasing goes through `blankCell`, so no difference is expected; corpus/replay.json settles it. While here, the carried state function can set `cursor_origin` and `wrap_column`, which fixes a_2vgzhRYHu and deletes `Region::parse`.",
   "id": "a_2vgzN6Tln",
   "parent": "a_2vgzMmJ4x",
-  "position": "Zw",
+  "position": "Zv",
   "related": [
     "a_2vgzhRYHu"
   ],
   "title": "Rewrite patch 0001 into muster.zig at vt-1.0.0, keeping only what upstream lacks",
   "type": "chore",
-  "updated_at_millis": 1794073308866,
+  "updated_at_millis": 1794364939535,
   "history": [
     {"field":"column","value":"next","at":1794073225141},
-    {"field":"column","value":"backlog-hi","at":1794073236119}
+    {"field":"column","value":"backlog-hi","at":1794073236119},
+    {"field":"column","value":"next","at":1794364939535}
   ]
 }
