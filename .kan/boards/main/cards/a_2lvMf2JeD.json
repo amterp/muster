@@ -49,6 +49,12 @@
       "body": "2026-11-10: MIP-8 questions A, B and C decided by the owner, recorded in Fencil rather than the MIP: spanning-tab-unreachable-machine (placeholders), spanning-tab-departed-machine (both Remove from Tab and the config), split-onto-machine-menu (a submenu per side, against the MIP's recommendation). Stage 5 and the menu are unblocked; blocked label off, moved to next.",
       "author": "Alexander Terp",
       "created_at_millis": 1794369863934
+    },
+    {
+      "id": "c_2xlUz1bx6",
+      "body": "2026-11-11: MIP-8 stage 5 and the menu on main (d2aa5bb9..c360b0e2): placeholders for an unreachable machine's panes, Remove from Tab, a machine taken out of the config leaves every tab at the next launch, a removed part returns as a tab of its own, and the four Split \u003cside\u003e on submenus. The saved arrangement gains a [[removed]] table; --json layout leaves gain unreachable. Gate green; not seen in the real app, and the --ssh case is being written. Follow-ups under way: muster pane remove, the --ssh tier case.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794379500077
     }
   ],
   "created_at_millis": 1792629852682,
@@ -58,7 +64,7 @@
   "position": "Zw",
   "title": "Arrange panes from different machines in any split, as if they were on one",
   "type": "feature",
-  "updated_at_millis": 1794370430290,
+  "updated_at_millis": 1794379500078,
   "history": [
     {"field":"column","value":"backlog-hi","at":1792629852682},
     {"field":"column","value":"in-progress","at":1792632594244},
