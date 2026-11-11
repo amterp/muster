@@ -174,7 +174,8 @@ fn its_panes_are_driven_over_there_with_no_window(
         ))
         .unwrap();
     assert!(
-        said.contains("no window answered; the muster-daemon at") && said.contains(callsign),
+        said.contains("no window answered; the muster-daemon at")
+            && said.lines().any(|row| row.split_whitespace().next() == Some(callsign)),
         "`muster window` over there lists the daemon's panes, saying the daemon answered: {said}"
     );
     assert!(said.contains("sent=0"), "a confirmed send over there reached its pane: {said}");

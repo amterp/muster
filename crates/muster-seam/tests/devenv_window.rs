@@ -246,7 +246,8 @@ fn the_daemon_answers_only_for_a_window_that_does_not(
         ),
     );
     assert!(
-        said.contains("no window answered; the muster-daemon at") && said.contains(callsign),
+        said.contains("no window answered; the muster-daemon at")
+            && said.lines().any(|row| row.split_whitespace().next() == Some(callsign)),
         "with its window gone, a devenv pane's `muster window` is answered by its daemon: {said}"
     );
     assert!(said.contains("said=42."), "and `pane read` reads the pane from there: {said}");
