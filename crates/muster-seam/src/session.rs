@@ -6163,17 +6163,19 @@ impl Departure {
             },
         }];
         rebuilt(&self.own, &into, &mut Vec::new(), &mut asked);
-        let moved = asked.iter().all(|intent| {
-            submit(self.window, &self.daemon, intent, Keyboard::StaysPut)
-                .map_err(|refusal| self.unmoved(&into, &refusal))
-                .is_ok()
-        });
+        // Stops at the first refusal; the panes moved by then stay in the new tab.
+        for intent in &asked {
+            if let Err(refusal) = submit(self.window, &self.daemon, intent, Keyboard::StaysPut) {
+                self.unmoved(&into, &refusal);
+                break;
+            }
+        }
         let mut session = poison::lock(&SESSION, "session");
         let window = &mut session.windows[self.window];
-        if moved {
-            for pane in self.own.panes() {
-                window.removed.remove(&(self.tab.clone(), pane.clone()));
-            }
+        // Forgotten even when a move was refused, so the panes rejoin the tab rather than the next
+        // reconcile asking again, which would ask again for as long as the refusal lasts.
+        for pane in self.own.panes() {
+            window.removed.remove(&(self.tab.clone(), pane.clone()));
         }
         if self.rest_rejoins {
             window.composition.let_in(&self.daemon, &self.tab);
