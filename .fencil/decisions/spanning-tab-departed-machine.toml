@@ -1,0 +1,20 @@
+id = "spanning-tab-departed-machine"
+question = "How do a machine's panes leave a spanning tab once that machine is gone for good?"
+tags = ["ui", "spanning-tabs", "remote", "config"]
+paths = ["docs/mip/0008-panes-across-machines.md"]
+
+[[revisions]]
+id = "9n8kxgc0"
+date = 2026-11-11
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "Both ways: a placeholder offers \"Remove from Tab\", and taking the machine out of the config removes its panes from every tab the window holds. If the machine ever answers again, its part of a tab comes back as a tab of its own, as a tab closed while a machine was unreachable does (MIP-3, section 2)."
+why = "Config alone leaves a placeholder somebody can see and cannot remove without editing a file. The placeholder's item alone leaves a removed machine's placeholders in every tab until each is removed by hand. The cost: somebody taking a machine out of the config for an afternoon may not expect its panes to leave every tab. This is MIP-8's question B and assumes placeholders for unreachable machines (spanning-tab-unreachable-machine)."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "Both ways (Recommended)"
+  note = "Picked from three options for MIP-8 question B, how a gone-for-good machine's panes leave a tab: both a placeholder's Remove from Tab and removing the machine from the config (recommended), the config only, or the placeholder only."

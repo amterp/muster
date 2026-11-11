@@ -1,0 +1,20 @@
+id = "spanning-tab-unreachable-machine"
+question = "What does a window opened while a machine is down draw where that machine's panes belong in a spanning tab?"
+tags = ["ui", "spanning-tabs", "remote"]
+paths = ["docs/mip/0008-panes-across-machines.md"]
+
+[[revisions]]
+id = "4elkx2hf"
+date = 2026-11-11
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "A placeholder in each missing pane's place, naming the pane and saying its machine is unreachable. When the machine answers, each placeholder becomes its pane and nothing else in the tab moves."
+why = "It is the same picture as a machine that drops mid-session, and nothing moves under somebody typing in a reachable pane when the machine comes back. The alternative, closing up the space and moving the reachable panes back when the machine returns, saves screen room for panes that cannot be used yet but rearranges the tab under the person. This is MIP-8's question A; it decides part of stage 5."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "Placeholder (Recommended)"
+  note = "Picked from two options for MIP-8 question A, what a window opened with a machine down draws in that machine's panes' places: a placeholder per pane (recommended) or closing up the space until the machine answers."

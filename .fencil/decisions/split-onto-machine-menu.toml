@@ -1,0 +1,20 @@
+id = "split-onto-machine-menu"
+question = "What does a pane's right-click menu offer for splitting onto another machine?"
+tags = ["ui", "menus", "spanning-tabs", "remote"]
+paths = ["docs/mip/0008-panes-across-machines.md", "crates/muster-seam/src/handler.rs"]
+
+[[revisions]]
+id = "b2kqj5v2"
+date = 2026-11-11
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "A submenu per side: \"Split Right on\", \"Split Down on\", \"Split Left on\" and \"Split Up on\", each listing the machines. This replaces today's single \"Split on Machine\" submenu, which splits right only."
+why = "The owner chose this over the recommendation, a single \"Split on Machine\" submenu leading to the machine and then the side. That one kept one entry point at the cost of a third menu level for every split onto another machine; a submenu per side puts four submenus in the menu but reaches every split in two levels. Keeping right only, with dragging for the other sides, was rejected because a person looking in the menu for a side will not think to drag. This is MIP-8's question C."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "A submenu per side"
+  note = "Picked from three options for MIP-8 question C, the pane menu's way to split onto another machine: Split on Machine, then machine, then side (recommended); a submenu per side, each listing the machines; or keep splitting right only."

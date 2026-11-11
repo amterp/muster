@@ -1,0 +1,21 @@
+id = "message-urgency-default"
+question = "What urgency does a message post have by default, and who sets it?"
+needs_owner = true
+tags = ["messaging", "cli", "policy"]
+paths = ["crates/muster-msg"]
+
+[[revisions]]
+id = "hjrj8loi"
+date = 2026-11-11
+recorded_by = "other"
+level = "shown"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = "A post reaches its recipient as soon as it can by default, as `--urgent` does today. `--urgent` is replaced by an opt-in flag for a post that can wait until the recipient is idle. A group's policy can set its own default, so a group where many members talk to everyone can make its posts wait for idle, and a post can override the group's default either way."
+why = "A sender who messages an agent deliberately almost always wants it read now, and today has to remember a flag to get that. A group that is noisy by design, such as a council, is the case for posts that wait, and its maker knows that when making it. Depends on hook delivery mid-turn (message-delivery-path): before that, an immediate post is typed into a busy prompt, so making it the default would send every post down the path that needs a two-step write."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "I actually think urgent being opt-in was kind of a mistake. ... I think urgent should actually be the default behavior, and instead, we should actually replace it with some sort of like low-urgency equivalent flag that messages can be opted into. Additionally, maybe if there's a muster group that is defined, perhaps the creator of that group can kind of determine a policy for the urgency of messages ... Let me know if you disagree"
+  note = "Volunteered after the agent proposed that the plugin hook deliver only urgent posts mid-turn, since a normal post today waits for the recipient to be idle."

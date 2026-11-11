@@ -1,0 +1,20 @@
+id = "pane-command-job-control"
+question = "Does a pane's requested command keep running through the job-control shell wrapper, given the macOS SIGTTOU race it exposes?"
+tags = ["daemon", "pty", "macos", "testing"]
+paths = ["crates/muster-daemon/src/spawn.rs"]
+
+[[revisions]]
+id = "42kkbzpv"
+date = 2026-11-11
+recorded_by = "other"
+level = "owner-decided"
+proposed_by = "other"
+reversibility = "two-way"
+answer = "Yes. Keep running the requested command through `sh -l -i -c` with job control on, and do not turn job control off (`set +m`) to dodge the race. Revisit if a real agent pane is seen stopped at launch."
+why = "On macOS 26.4.1 a job-control shell's concurrent parent and child setpgid calls leave the child outside the terminal's foreground group about 1 run in 1000, so its first tcsetattr stops it with SIGTTOU (reproduced in plain C, kan a_2nSLy8B6Y). It flakes about 3% of typing tests under load and has not been seen in a real agent pane. Turning job control off for the requested command would fix it but changes Ctrl-Z, background jobs and pipelines during that command, and needs detection, restart and signal coverage: too much change for a race seen only in tests."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "Leave the wrapper, keep open"
+  note = "Picked from two options for the SIGTTOU race behind the typing-test flake: leave the job-control wrapper and keep the card open (the agent's lean), or run the requested command with job control off (set +m)."

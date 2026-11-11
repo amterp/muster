@@ -1,0 +1,34 @@
+{
+  "_v": 4,
+  "alias": "deliver-a-post-as",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "blocked_by": [
+    "a_2j17531rW"
+  ],
+  "column": "backlog-hi",
+  "comments": [
+    {
+      "id": "c_2xhSJmAsF",
+      "body": "2026-11-10: recorded in Fencil as message-urgency-default, waiting for the owner's ruling (needs_owner). Do not build until it takes effect.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794369864503
+    }
+  ],
+  "created_at_millis": 1794369404909,
+  "creator": "Alexander Terp",
+  "description": "A post should reach an agent as soon as it can by default. Make today's `--urgent` behavior the default, replace the flag with an opt-in for posts that can wait until the agent is idle, and let a group's policy set its own default.\n\nThe owner's call, 2026-11-10: \"the default you probably want is that the agent being messaged gets notified as soon as possible.\" Making urgent opt-in was a mistake. A sender who messages one agent deliberately almost always wants it read now, and has to remember a flag to get that.\n\n## What changes\n\n- **The default post reaches an agent at work**, as `--urgent` does today: at its next tool call through the messaging hook (a_2j17531rW), and otherwise as an urgent ring is delivered today.\n- **`--urgent` goes, and a flag for low urgency takes its place.** A post marked this way waits until the recipient is idle, as a normal post does today. Name to be chosen, such as `--when-idle`. Muster is pre-1.0, so no alias for `--urgent` is kept.\n- **A group's policy sets its default.** A group where many members talk to everyone, such as a council, should not interrupt each member at every post. Its maker sets low urgency as the group's default, and a post can still override it either way. The policy's existing `urgent` key, which says who may post urgently, becomes who may override the group's default. Default for a group with no setting: immediate.\n- The wake line's `1 urgent` and the conversation view's urgent mark (MIP-9) mark what interrupted, or flip to marking what waited. Decide which while building.\n\n## Order\n\nBuild this after a_2j17531rW. Until the hook delivers mid-turn, an immediate post is typed into a busy prompt, the path that needs a two-step write to keep its Return off a permission dialog. Making that the default before the hook exists sends every post down it.\n\n## To decide while building\n\n- Does an unaddressed post in a group with no setting interrupt every member, or only an addressed one? Interrupting everyone for a broadcast is the case the group default exists for, but a group with no policy gets no protection.\n- How the council skill (`extras/skill`, and the owner's council skill) sets its groups' default.\n- Posts to `@human` notify at once already and are not affected.\n\nDocs to update: `muster docs msg`, MIP-4's History, and the `--help` text that says \"keep it for what should change what the agent is doing now.\"",
+  "id": "a_2xhGMOtbP",
+  "labels": [
+    "blocked"
+  ],
+  "position": "b1k",
+  "title": "Deliver a post as soon as possible by default, with low urgency an opt-in",
+  "type": "feature",
+  "updated_at_millis": 1794369864597,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794369404909}
+  ]
+}

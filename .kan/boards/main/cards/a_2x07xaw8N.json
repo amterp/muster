@@ -18,16 +18,13 @@
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 on 0.24.0, with agents on two machines. The Needs you strip appears, grows and shrinks as agents block, finish and get looked at, and every row under it (tabs, agents, Messages) moves up and down with it. The owner: \"it currently pushes the rest of the side bar around and is very dynamic, entries come and go. better that it's below the more stable agents, potentially messages too\".\n\nFencil decision needs-you-strip put the strip at the top. Its why is that keeping each agent's row in the list makes the strip the only part that moves, so rows and their chords stay where the eye expects them. At the top, the strip's movement still shifts where every row below it sits on screen.\n\nPossibly: move the strip below the agent list, or below Messages, so the part that changes comes last. This revises needs-you-strip.",
   "id": "a_2x07xaw8N",
-  "labels": [
-    "blocked"
-  ],
   "position": "YuP",
   "related": [
     "a_2wKWA2xiE"
   ],
   "title": "The Needs you strip at the top moves every row below it",
   "type": "enhancement",
-  "updated_at_millis": 1794288485764,
+  "updated_at_millis": 1794369623273,
   "history": [
     {"field":"column","value":"uncommitted","at":1794266600995},
     {"field":"column","value":"done","at":1794288485539}

@@ -1,0 +1,26 @@
+id = "message-delivery-path"
+question = "How are messages delivered to an agent in a pane, between a harness hook and the doorbell typed into its prompt?"
+tags = ["messaging", "harnesses", "claude-code", "codex"]
+paths = ["extras/claude-code/messaging-hooks.json", "extras/codex/messaging-hooks.json", "extras/claude-code/hooks/hooks.json"]
+
+[[revisions]]
+id = "kxpbnz5f"
+date = 2026-11-11
+recorded_by = "other"
+level = "owner-nodded"
+proposed_by = "owner"
+reversibility = "two-way"
+answer = "Every harness plugin that can ships a PostToolUse hook running `muster msg read --if-unread --from-hook`, for every session, so an agent at work gets its messages at its next tool call with nothing typed into its pane. A hook that finds nothing prints nothing and adds nothing to the context. There is no Stop hook: an idle agent is reached by the doorbell. A sender only posts, and the daemon decides which path reaches the recipient."
+why = "Typing into a prompt is the weakest delivery path: a draft, a dialog, or a hidden or short pane holds the wake, and a ring typed at work needs a two-step write to keep its Return off a permission dialog. The hook avoids all of that for an agent at work, at the cost of one CLI start and one daemon round trip per tool call (CLI start measured at about 4 ms; the round trip is unmeasured, and ./dev --perf checks it before shipping). The Stop hook (wait --due with asyncRewake) was dropped: it left a background process per session for up to a day and missed turns ending in Esc or an API error. Idle agents therefore keep every doorbell failure, which kan a_2izzXwq3v addresses. Built as kan a_2j17531rW."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "Im less confident about the Stop thing? ... so theoretically we could just always install the hook ... if agent A wants to msg agent B, it will just do the msg, and then muster will take care of how to get that message to B, whether that's thru this if-unread mechaanism (which will likely be the delivery mechanism if B is actively running) or I suppose messaging into the box like we do today, if the agent is idle"
+  note = "Replying to the agent's proposal to ship both messaging hooks (PostToolUse and Stop) in the plugin, inert outside a group."
+
+  [[revisions.evidence]]
+  by = "owner"
+  date = 2026-11-10
+  quote = "Yep, this all sounds good."
+  note = "Agreeing to the agent's restatement: a plugin-shipped PostToolUse hook, no Stop hook, the doorbell for idle agents, and the hook delivering only urgent posts mid-turn until the urgency default changes."
