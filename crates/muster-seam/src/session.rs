@@ -1062,8 +1062,8 @@ pub(crate) struct Window {
     departed: BTreeMap<DaemonId, Daemon>,
 
     /// The panes this window took out of a tab with Remove from Tab, by tab, until their machine
-    /// answers and they are moved into a tab of their own. Kept for the life of the process only:
-    /// a machine whose every pane in the tab was removed is recognised from the copies alone
+    /// answers and they are moved into a tab of their own; saved with the arrangement. A machine
+    /// whose every pane in the tab was removed is recognised from the copies alone too
     /// (`spanning::departed`), but one with some panes left in it needs this to tell a removed
     /// pane from one it made while apart.
     removed: BTreeSet<(TabId, PaneId)>,
@@ -5717,6 +5717,7 @@ fn save(session: &mut Session, window: WindowId) {
     if let Some(left) = &window.left {
         arrangement = arrangement.keeping(left, &window.awaiting);
     }
+    arrangement.removed = window.removed.iter().cloned().collect();
     for daemon in window.departed.values() {
         if arrangement.daemons.iter().all(|kept| kept.id != daemon.id) {
             arrangement.daemons.push(daemon.clone());

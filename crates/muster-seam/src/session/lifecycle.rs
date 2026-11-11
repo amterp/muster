@@ -496,6 +496,7 @@ pub(super) fn reopen_what_was_left(window: WindowId) {
     else {
         return;
     };
+    session.windows[window].removed = saved.removed.iter().cloned().collect();
 
     // Only the tabs that are still this window's. One another window has taken since is that
     // window's now, and one nobody holds - every tab, the first launch after holding was written

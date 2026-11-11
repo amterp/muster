@@ -128,6 +128,19 @@ pub fn parts_of<'a>(
     (parts, said)
 }
 
+/// Every other machine's pane a copy keeps, with the name it gives that machine.
+fn foreign_leaves(copy: &CopyNode) -> Vec<(&PaneId, &str)> {
+    match copy {
+        CopyNode::Own(_) => Vec::new(),
+        CopyNode::Foreign { pane, daemon } => vec![(pane, daemon.as_str())],
+        CopyNode::Split { first, second, .. } => {
+            let mut leaves = foreign_leaves(first);
+            leaves.extend(foreign_leaves(second));
+            leaves
+        }
+    }
+}
+
 fn foreign_machines(copy: &CopyNode) -> Vec<DaemonId> {
     match copy {
         CopyNode::Own(_) => Vec::new(),
@@ -213,23 +226,28 @@ fn side_by_side(parts: &[Part]) -> Option<(SpanNode, Option<PaneId>)> {
 
 /// Whether `arriving`, a machine's part of a tab that the window is about to take into it, was
 /// taken out of the tab while that machine could not be reached: the newest copy among the
-/// tab's other parts was written after `arriving`'s, and every pane it names is one of theirs.
-/// Only a window drops every pane of a machine from a tree - Remove from Tab, or the machine
-/// taken out of the config - so that part goes into a tab of its own rather than back into this
-/// one (MIP-8, section 7).
+/// tab's other parts was written after `arriving`'s and names no pane of this machine's, held
+/// now or not. Only a window drops every pane of a machine from a tree - Remove from Tab, or the
+/// machine taken out of the config - so that part goes into a tab of its own rather than back
+/// into this one (MIP-8, section 7).
 ///
-/// A newer copy still naming a pane no other part holds may be naming one of this machine's,
-/// even one it has since closed and replaced with another while apart, so that is not read as a
-/// removal; nor is a tab whose copies no window has written yet, which is never newer. Only for
-/// a part that can hold a spanning tree: an older machine's copy is never written, so it is
-/// always behind.
+/// A pane no other part holds counts as this machine's when the copy names it as this machine's:
+/// one it has since closed and replaced with another while apart still keeps it in the tab. A
+/// pane named as a third machine's, which may be unreachable, says nothing about this one. A tab
+/// whose copies no window has written yet is never newer. Only for a part that can hold a
+/// spanning tree: an older machine's copy is never written, so it is always behind.
 pub fn departed(arriving: &Part, others: &[Part]) -> bool {
     if arriving.holds.is_empty() || !arriving.writable {
         return false;
     }
     let Some(newest) = others.iter().max_by_key(|part| part.generation) else { return false };
+    let names_this_machine = |pane: &PaneId, named: &str| {
+        arriving.holds.contains(pane) || (named == arriving.daemon.as_str() && !held(others, pane))
+    };
     newest.generation > arriving.generation
-        && panes_of(&newest.copy).into_iter().all(|pane| held(others, pane))
+        && foreign_leaves(&newest.copy)
+            .into_iter()
+            .all(|(pane, named)| !names_this_machine(pane, named))
 }
 
 /// The panes of a merged `tree` a window draws: those a part holds, and those whose machine the

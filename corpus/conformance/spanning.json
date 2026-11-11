@@ -783,6 +783,17 @@
         "arriving": { "daemon": "devenv", "copy": "[~a@laptop|y 0.50]", "generation": 1, "holds": ["y"] }
       },
       "expect": { "departed": false }
+    },
+    {
+      "name": "a part whose every pane was removed goes into a tab of its own while a third machine is still down",
+      "why": "The laptop's newer copy keeps z, a pane on a third machine that has not answered, so no part the window holds runs it. It names z as that machine's, which says nothing about the devenv, and it names none of the devenv's panes, so the devenv's part was taken out of the tab.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~z@other 0.50]", "generation": 2, "holds": ["a"] }
+        ],
+        "arriving": { "daemon": "devenv", "copy": "[[~a@laptop|~z@other 0.50]|x 0.50]", "generation": 1, "holds": ["x"] }
+      },
+      "expect": { "departed": true }
     }
   ]
 }

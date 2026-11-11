@@ -460,6 +460,7 @@ fn saved_from(given: &Value, key: &str) -> Result<Saved, CaseError> {
         presentation: Presentation::default(),
         font_sizes: FontSizes::default(),
         drafts: Vec::new(),
+        removed: Vec::new(),
     })
 }
 

@@ -88,6 +88,12 @@ pub struct Saved {
     /// an upgrade lose nothing the person wrote (MIP-9, section 3). Kept here rather than on the
     /// daemon, which every window shares: each window's message box is its own.
     pub drafts: Vec<SavedDraft>,
+
+    /// The panes this window took out of a tab with Remove from Tab while their machine was
+    /// unreachable, by tab, until that machine answers and they are moved into a tab of their own
+    /// (MIP-8, section 7). Kept here because a machine with other panes left in the tab cannot be
+    /// told a removed pane from one it made while apart from the copies alone.
+    pub removed: Vec<(TabId, PaneId)>,
 }
 
 /// A message box's draft for one group, whole.
@@ -120,6 +126,7 @@ impl Saved {
             presentation,
             font_sizes: font_sizes.clone(),
             drafts: Vec::new(),
+            removed: Vec::new(),
             daemons: composition.daemons().cloned().collect(),
             showing: composition.showing().cloned(),
             tabs: composition
@@ -346,6 +353,19 @@ pub fn to_toml(saved: &Saved) -> String {
     if !drafts.is_empty() {
         root.insert("draft".to_string(), toml::Value::Array(drafts));
     }
+    let removed: Vec<toml::Value> = saved
+        .removed
+        .iter()
+        .map(|(tab, pane)| {
+            let mut table = toml::Table::new();
+            table.insert("tab".to_string(), toml::Value::String(tab.to_string()));
+            table.insert("pane".to_string(), toml::Value::String(pane.to_string()));
+            toml::Value::Table(table)
+        })
+        .collect();
+    if !removed.is_empty() {
+        root.insert("removed".to_string(), toml::Value::Array(removed));
+    }
 
     // Written even when it matches the default, unlike the keys above that are absent when
     // they have nothing to say. This is a file somebody opens to find out what a window is
@@ -535,7 +555,24 @@ pub fn from_toml(text: &str) -> Result<Saved, String> {
         .map(|entries| entries.iter().filter_map(read_draft).collect())
         .unwrap_or_default();
 
-    Ok(Saved { daemons, tabs, showing, presentation, font_sizes, drafts })
+    let removed = root
+        .get("removed")
+        .and_then(toml::Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(toml::Value::as_table)
+                .filter_map(|table| {
+                    Some((
+                        TabId::new(self::text(table, "tab")?),
+                        PaneId::new(self::text(table, "pane")?),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(Saved { daemons, tabs, showing, presentation, font_sizes, drafts, removed })
 }
 
 /// What a file a Muster on herdr wrote still says: the window's frame and its list, and the
@@ -589,6 +626,7 @@ fn from_herdr(root: &toml::Table, version: i64) -> Saved {
         presentation: read_presentation(root.get("window").and_then(toml::Value::as_table)),
         font_sizes: FontSizes::default(),
         drafts: Vec::new(),
+        removed: Vec::new(),
     }
 }
 
