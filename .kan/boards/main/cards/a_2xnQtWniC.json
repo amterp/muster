@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "messaging-a-plain",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794384109524,
+  "creator": "Alexander Terp",
+  "description": "Seen once 2026-11-11 in a full gate at load 21 (a --ssh tier ran beside it); passed 3 of 3 alone. The test timed out after 20s waiting for p1's agent to be Idle: 'it was None Unknown', and the screen ended '[1]+  Stopped(SIGTTIN)  .../home/.muster/bin/claude' with a shell prompt under it. So the fake agent was in the background of the pane's shell when it read its terminal, which is a race in how the test starts or resumes the agent, not only slowness. Log: gate-13 of that night's session; the panic is at crates/muster-harness/src/until.rs:113.",
+  "id": "a_2xnQtWniC",
+  "position": "b32",
+  "title": "messaging::a_plain_wait_outlasts_its_agents_next_turn fails under load with its agent stopped by SIGTTIN",
+  "type": "bug",
+  "updated_at_millis": 1794384109524,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794384109524}
+  ]
+}
