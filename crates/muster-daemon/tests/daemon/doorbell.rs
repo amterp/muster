@@ -966,9 +966,13 @@ fn an_urgent_ring_whose_returns_were_swallowed_is_sent_later_in_the_same_turn() 
             .any(|line| line.line.contains(sent) && line.line.contains(r#""at_work":"true""#)),
         "{logged:?}"
     );
+    let unsent = |agent: &mut Agent| agent.unread().iter().any(|why| why.contains("not been sent"));
+    assert!(unsent(&mut agent), "{:?}", agent.unread());
     let rung = agent.until_rung(1);
     assert!(rung[0].contains("1 urgent"), "{rung:?}");
     agent.daemon.until_agent("p1", proto::AgentState::Working);
+    // Looked at again after the press that sent it, and forgotten: not said to sit unsent.
+    until_some("the sent ring to be forgotten", || (!unsent(&mut agent)).then_some(()));
 }
 
 /// A ring typed at work whose message its agent reads by itself before the ring's Return - its

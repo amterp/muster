@@ -192,6 +192,12 @@ pub(crate) struct Left {
     /// counted apart from the presses once it is idle.
     at_work: bool,
     presses_at_work: u8,
+    /// When its prompt was last looked at while its agent works without a Return pressed: a press
+    /// is looked after [`ANSWER`] later, to forget a ring that was taken, while the next press
+    /// waits for [`at_work_spacing`].
+    looked: Option<Instant>,
+    /// Whether it has been said that the Returns pressed for it while its agent works ran out.
+    unsent_said: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +221,8 @@ impl Left {
             rearmed_by: None,
             at_work: false,
             presses_at_work: 0,
+            looked: None,
+            unsent_said: false,
         }
     }
 
@@ -231,6 +239,8 @@ impl Left {
             rearmed_by: None,
             at_work: rung.at_work,
             presses_at_work: 0,
+            looked: None,
+            unsent_said: false,
         }
     }
 
@@ -245,6 +255,21 @@ impl Left {
         self.at_work && self.presses_at_work < AT_WORK_PRESSES
     }
 
+    /// A Return for it, typed as what it is.
+    fn press(&self) -> Input {
+        match self.of {
+            LeftOf::Ring { .. } => Input::Ring { text: String::new(), enter: true },
+            LeftOf::Line => Input::Chore { text: String::new(), enter: true },
+        }
+    }
+
+    /// Whether its prompt is still looked at while its agent works: after the last press too, so
+    /// a ring that press sent is forgotten rather than read as unsent for the rest of the turn.
+    /// Not once its Returns ran out at idle as well.
+    fn looks_at_work(&self) -> bool {
+        self.at_work && self.presses_at_work <= AT_WORK_PRESSES
+    }
+
     /// A ring whose messages have been read since, or whose group was paused: to be taken back.
     fn read(&self, messages: &Messages) -> bool {
         match &self.of {
@@ -255,7 +280,7 @@ impl Left {
 
     /// Whether the doorbell still has something to do with it: take it back, or press its Return.
     fn wants_look(&self, messages: &Messages) -> bool {
-        self.read(messages) || self.presses <= PRESSES || self.presses_at_work()
+        self.read(messages) || self.presses <= PRESSES || self.looks_at_work()
     }
 }
 
@@ -812,16 +837,17 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
         // into the turn, whose prompt is read as its first Return's was, just before each press;
         // and as a ring is rung, once nobody has typed into the pane for a while and its screen
         // has settled.
-        let at_work = seen.activity == Some(Activity::Working) && left.presses_at_work();
+        let at_work = seen.activity == Some(Activity::Working) && left.looks_at_work();
         if !at_work && waits_for(seen.activity, false).is_some() {
             kept = true;
             continue;
         }
-        let spacing = if at_work { at_work_spacing(left.presses_at_work) } else { ANSWER };
-        if let Some(due) = left.pressed.map(|at| at + spacing).filter(|due| *due > now) {
+        let looked = if at_work { left.pressed.max(left.looked) } else { left.pressed };
+        if let Some(due) = looked.map(|at| at + ANSWER).filter(|due| *due > now) {
             sooner(next, due);
             continue;
         }
+        let press_due = left.pressed.map(|at| at + at_work_spacing(left.presses_at_work));
         match may_ring(seen, now, at_work, moving_since(moving, &pane, seen, now)) {
             Now::Ring => {}
             Now::At(at) => {
@@ -835,18 +861,24 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
         }
         match prompt::look(&seen.io, &seen.agent, &shared.detecting, at_work) {
             AtPrompt::Holds(held) if prompt::is_only(&held, &left.text) => {
+                let spaced = press_due.filter(|due| *due > now);
+                if at_work && (!left.presses_at_work() || spaced.is_some()) {
+                    let typed = left.typed;
+                    settled.push((
+                        pane.clone(),
+                        typed,
+                        Some(looked_at_work(&pane, left, spaced, next)),
+                    ));
+                    continue;
+                }
                 if !at_work && left.presses >= PRESSES {
                     left_unsent(&pane, &left);
                     left.presses = PRESSES + 1;
-                    left.presses_at_work = AT_WORK_PRESSES;
+                    left.presses_at_work = AT_WORK_PRESSES + 1;
                     settled.push((pane, left.typed, Some(left)));
                     continue;
                 }
-                let press = match left.of {
-                    LeftOf::Ring { .. } => Input::Ring { text: String::new(), enter: true },
-                    LeftOf::Line => Input::Chore { text: String::new(), enter: true },
-                };
-                if !seen.io.queue(press) {
+                if !seen.io.queue(left.press()) {
                     settled.push((pane, left.typed, None));
                     continue;
                 }
@@ -857,9 +889,6 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
                 }
                 left.pressed = Some(Instant::now());
                 left_sent(&pane, &left, at_work);
-                if at_work && !left.presses_at_work() {
-                    left_unsent_at_work(&pane, &left);
-                }
                 sooner(next, Instant::now() + ANSWER);
                 settled.push((pane, left.typed, Some(left)));
             }
@@ -869,9 +898,17 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
             AtPrompt::Not(..) => kept = true,
         }
     }
+    keep_settled(shared, settled);
+    if kept {
+        sooner(next, Instant::now() + LOOK_AGAIN);
+    }
+}
+
+/// Puts back each line left in a prompt as a look settled it, by its pane and when it was typed,
+/// or forgets it; unless a later line has been left there meanwhile.
+fn keep_settled(shared: &Shared, settled: Vec<(String, Instant, Option<Left>)>) {
     let mut messages = shared.messages();
     for (pane, typed, keep) in settled {
-        // Unless a later line has been left there meanwhile.
         if messages.left.get(&pane).is_some_and(|left| left.typed == typed) {
             match keep {
                 Some(left) => messages.left.insert(pane, left),
@@ -879,9 +916,27 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
             };
         }
     }
-    if kept {
-        sooner(next, Instant::now() + LOOK_AGAIN);
+}
+
+/// A ring left in the prompt of an agent at work, found still there and not due a press: its next
+/// press waits for its spacing, `spaced`, or there is none, which is said once. Looked at again
+/// after [`ANSWER`] either way, so it is forgotten soon after whatever sends it.
+fn looked_at_work(
+    pane: &str,
+    mut left: Left,
+    spaced: Option<Instant>,
+    next: &mut Option<Instant>,
+) -> Left {
+    if !left.presses_at_work() && !left.unsent_said {
+        left_unsent_at_work(pane, &left);
+        left.unsent_said = true;
     }
+    left.looked = Some(Instant::now());
+    if let Some(due) = spaced {
+        sooner(next, due);
+    }
+    sooner(next, Instant::now() + ANSWER);
+    left
 }
 
 /// Gives a line left in a prompt, whose Returns ran out, its Returns again when a wake newer than
