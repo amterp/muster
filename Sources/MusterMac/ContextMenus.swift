@@ -24,6 +24,8 @@ public enum ContextChoice: Equatable, Sendable {
   /// `muster pane show --helpers-of --focus` and `pane hide --helpers-of`, for a maker's row.
   case showHelpers
   case hideHelpers
+  /// Take a pane whose machine is not answering out of its tab, without closing it.
+  case removeFromTab
 }
 
 /// One line of a right-click menu.
@@ -125,6 +127,12 @@ public enum ContextMenuModel {
       .item(.action("close_tab")),
     ]
     return entries
+  }
+
+  /// A placeholder's menu: the one thing a pane whose machine is not answering can have done to
+  /// it, since closing it needs its machine.
+  public static func placeholder() -> [ContextEntry] {
+    [.item(.removeFromTab)]
   }
 
   /// No splitting or zooming, which act on a pane somebody is looking at, and the row is very
@@ -276,6 +284,7 @@ final class ContextMenu: NSMenu {
     case .showPane: "Show Pane"
     case .showHelpers: "Show Helpers"
     case .hideHelpers: "Hide Helpers"
+    case .removeFromTab: "Remove from Tab"
     }
   }
 }
@@ -311,6 +320,7 @@ public enum PaneRefusal {
   public static let move = "The pane was not moved"
   public static let moveToNewTab = "The pane was not moved to a new tab"
   public static let compact = "The agent was not compacted"
+  public static let removeFromTab = "The pane was not removed from its tab"
 }
 
 /// What a refused tab request did not do, as the heading over the core's reason.
@@ -357,6 +367,21 @@ public enum ContextMenus {
         perform(
           choice, on: pane, pasteboard: pasteboard, rename: rename, close: close,
           refused: refused)
+      }
+    }
+  }
+
+  /// A placeholder's menu, for a pane whose machine is not answering.
+  public static func placeholder(
+    _ placeholder: PaneTree.Placeholder, window: String = "",
+    refused: @escaping Refused = { _, _ in }
+  ) -> NSMenu {
+    ContextMenu.build(
+      ContextMenuModel.placeholder(), subject: subject(placeholder.key), window: window
+    ) { choice in
+      guard case .removeFromTab = choice else { return }
+      if let why = Core.removeFromTab(daemonID: placeholder.daemon, paneID: placeholder.paneID) {
+        refused(PaneRefusal.removeFromTab, why)
       }
     }
   }

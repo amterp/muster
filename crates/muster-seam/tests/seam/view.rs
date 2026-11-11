@@ -17,6 +17,7 @@ pub(crate) fn leaf_panes(tree: &ViewTree) -> Vec<(&str, &ViewPane)> {
                     into.push((&leaf.daemon_id, pane));
                 }
             }
+            Some(view_tree::Node::Unreachable(_)) => {}
             Some(view_tree::Node::Split(split)) => {
                 for child in split.first.iter().chain(split.second.iter()) {
                     walk(child, into);
@@ -78,6 +79,7 @@ pub(crate) fn shape(tree: &ViewTree) -> String {
             let pane = leaf.pane.as_ref().map_or("?", |pane| pane.pane_id.as_str());
             format!("{pane}@{}", leaf.daemon_id)
         }
+        Some(view_tree::Node::Unreachable(leaf)) => format!("?{}@{}", leaf.pane_id, leaf.daemon_id),
         Some(view_tree::Node::Split(split)) => {
             let child =
                 |child: &Option<Box<ViewTree>>| child.as_deref().map_or_else(String::new, shape);

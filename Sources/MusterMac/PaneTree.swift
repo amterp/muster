@@ -167,7 +167,23 @@ public enum SplitAxis: String, Equatable {
 /// A tab's arrangement, over every machine it spans.
 public indirect enum PaneTree: Equatable {
   case pane(Leaf)
+  /// A pane whose machine is not answering, which no surface draws: the window opened while its
+  /// machine was down. It keeps its place, and becomes `.pane` there when the machine answers.
+  case unreachable(Placeholder)
   case split(axis: SplitAxis, ratio: CGFloat, first: PaneTree, second: PaneTree)
+
+  public struct Placeholder: Equatable {
+    /// The machine the pane runs on, as the tab's tree names it.
+    public let daemon: String
+    public let paneID: String
+
+    public init(daemon: String, paneID: String) {
+      self.daemon = daemon
+      self.paneID = paneID
+    }
+
+    public var key: PaneKey { PaneKey(daemon: daemon, pane: paneID) }
+  }
 
   public struct Leaf: Equatable {
     /// The machine running this pane, as `WindowContents.machines` names it.
@@ -214,11 +230,21 @@ public indirect enum PaneTree: Equatable {
     public var key: PaneKey { PaneKey(daemon: daemon, pane: paneID) }
   }
 
-  /// Every pane in the tree, in reading order.
+  /// Every pane in the tree that a surface draws, in reading order.
   public var leaves: [Leaf] {
     switch self {
     case .pane(let leaf): return [leaf]
+    case .unreachable: return []
     case .split(_, _, let first, let second): return first.leaves + second.leaves
+    }
+  }
+
+  /// Every pane in the tree drawn unreachable, in reading order.
+  public var placeholders: [Placeholder] {
+    switch self {
+    case .pane: return []
+    case .unreachable(let placeholder): return [placeholder]
+    case .split(_, _, let first, let second): return first.placeholders + second.placeholders
     }
   }
 }
@@ -248,8 +274,10 @@ public struct PaneFrames: Equatable {
     public let area: CGRect
   }
 
-  public let panes: [Placement]
-  public let dividers: [Divider]
+  public internal(set) var panes: [Placement]
+  public internal(set) var dividers: [Divider]
+  /// Where each pane drawn unreachable goes, in reading order.
+  public internal(set) var placeholders: [Placement] = []
 }
 
 extension PaneTree {
@@ -269,25 +297,23 @@ extension PaneTree {
 
   /// Where everything goes, for this tree in this rectangle.
   public func frames(in bounds: CGRect) -> PaneFrames {
-    var panes: [PaneFrames.Placement] = []
-    var dividers: [PaneFrames.Divider] = []
-    place(in: bounds, path: [], panes: &panes, dividers: &dividers)
-    return PaneFrames(panes: panes, dividers: dividers)
+    var frames = PaneFrames(panes: [], dividers: [])
+    place(in: bounds, path: [], into: &frames)
+    return frames
   }
 
-  private func place(
-    in rect: CGRect, path: [Bool],
-    panes: inout [PaneFrames.Placement], dividers: inout [PaneFrames.Divider]
-  ) {
+  private func place(in rect: CGRect, path: [Bool], into frames: inout PaneFrames) {
     switch self {
     case .pane(let leaf):
-      panes.append(PaneFrames.Placement(paneID: leaf.paneID, frame: rect))
+      frames.panes.append(PaneFrames.Placement(paneID: leaf.paneID, frame: rect))
+    case .unreachable(let placeholder):
+      frames.placeholders.append(PaneFrames.Placement(paneID: placeholder.paneID, frame: rect))
     case .split(let axis, let ratio, let first, let second):
       let (firstRect, dividerRect, secondRect) = PaneTree.divide(rect, axis: axis, ratio: ratio)
-      dividers.append(
+      frames.dividers.append(
         PaneFrames.Divider(path: path, axis: axis, frame: dividerRect, area: rect))
-      first.place(in: firstRect, path: path + [false], panes: &panes, dividers: &dividers)
-      second.place(in: secondRect, path: path + [true], panes: &panes, dividers: &dividers)
+      first.place(in: firstRect, path: path + [false], into: &frames)
+      second.place(in: secondRect, path: path + [true], into: &frames)
     }
   }
 
@@ -395,6 +421,8 @@ extension PaneTree {
           linkSocketPath: pane.linkSocketPath.isEmpty ? nil : pane.linkSocketPath,
           fontSizeOffset: pane.fontSizeOffset,
           bridgeRestarts: pane.bridgeRestarts))
+    case .unreachable(let placeholder):
+      self = .unreachable(Placeholder(daemon: placeholder.daemonID, paneID: placeholder.paneID))
     case .split(let split):
       self = .split(
         axis: SplitAxis(rawValue: split.axis) ?? .columns,

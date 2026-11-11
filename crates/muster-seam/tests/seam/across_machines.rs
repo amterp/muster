@@ -18,7 +18,8 @@ use std::sync::Mutex;
 
 use muster::proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
-    PaneText, ReadPane, ReadWindow, RenamePane, RenameTab, Request, ResizePane, Response,
+    PaneText, ReadPane, ReadWindow, RemoveFromTab, RenamePane, RenameTab, Request, ResizePane,
+    Response,
     RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ZoomPane, event, request,
     response,
 };
@@ -1662,7 +1663,8 @@ fn machine_share() -> Option<f32> {
     match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => match window.view?.tree?.node? {
             muster::proto::view_tree::Node::Split(split) => Some(split.ratio),
-            muster::proto::view_tree::Node::Pane(_) => None,
+            muster::proto::view_tree::Node::Pane(_)
+            | muster::proto::view_tree::Node::Unreachable(_) => None,
         },
         other => panic!("expected a window, got {other:?}"),
     }
@@ -1808,6 +1810,77 @@ fn spanning_copy(daemon: &Daemon) -> Option<(String, u64)> {
         .replace(SPAN_B, "B")
         .replace(SPAN_X, "X");
     Some((tree, tab.layout_generation))
+}
+
+/// A window opened while the devenv is down: the laptop's copy of the spanning tab, holding `A`
+/// beside the devenv's `X`, and a config naming a devenv whose daemon is gone.
+fn a_window_opened_with_the_devenv_down() -> Daemon {
+    let laptop = Daemon::start_built();
+    let mut devenv = Daemon::start_built();
+    let mut control = laptop.connect();
+    make(&mut control, create(SPAN_A, in_new_tab(SPANNING_TAB)));
+    let copy = format!("[{SPAN_A}|~{SPAN_X}@devenv 0.50]");
+    expect(&mut control, seeded(&copy, 1), daemon_proto::Outcome::Done);
+    let config = laptop.muster_config_naming("laptop", &[("devenv", &devenv)]);
+    devenv.kill();
+    watch();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    laptop
+}
+
+/// The laptop's copy says where the devenv's pane goes, and the window, still trying to reach the
+/// devenv, draws it unreachable in that place rather than closing the space up, so nothing moves
+/// when the devenv answers (owner's decision spanning-tab-unreachable-machine).
+#[test]
+fn a_window_opened_with_a_machine_down_keeps_its_panes_places() {
+    let _turn = muster::testing::fresh_session();
+    let _laptop = a_window_opened_with_the_devenv_down();
+    let expected = format!("columns({SPAN_A}@laptop, ?{SPAN_X}@devenv)");
+    until(
+        "the tab to be drawn with the devenv's pane unreachable in its place",
+        || drawn(SPANNING_TAB).as_deref() == Some(expected.as_str()),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+}
+
+/// Remove from Tab takes the devenv's pane out of the tab without the devenv acting: the laptop's
+/// copy is written without it, a generation on, and the window draws the laptop's pane alone
+/// (owner's decision spanning-tab-departed-machine).
+#[test]
+fn an_unreachable_pane_removed_from_its_tab_leaves_every_copy_that_answers() {
+    let _turn = muster::testing::fresh_session();
+    let laptop = a_window_opened_with_the_devenv_down();
+    until(
+        "the devenv's pane to be drawn unreachable",
+        || drawn(SPANNING_TAB).is_some_and(|tree| tree.contains('?')),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+    assert_ok(&answer(request::Payload::RemoveFromTab(RemoveFromTab {
+        daemon_id: "devenv".to_string(),
+        pane_id: SPAN_X.to_string(),
+    })));
+    until(
+        "the laptop's copy to lose the devenv's pane",
+        || spanning_copy(&laptop) == Some(("A".to_string(), 2)),
+        || format!("the laptop holds {:?}", spanning_copy(&laptop)),
+    );
+    until(
+        "the window to draw the laptop's pane alone",
+        || drawn(SPANNING_TAB).as_deref() == Some(format!("{SPAN_A}@laptop").as_str()),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+    assert!(
+        refusal(request::Payload::RemoveFromTab(RemoveFromTab {
+            daemon_id: "laptop".to_string(),
+            pane_id: SPAN_A.to_string(),
+        }))
+        .contains("keeps a place for"),
+        "a pane its machine runs is closed, not removed"
+    );
 }
 
 /// The devenv was unreachable while the laptop's copy was rearranged, so its copy is older. The
@@ -2093,7 +2166,9 @@ fn drawn_root() -> Option<muster::proto::ViewTreeSplit> {
     let layout = window.layouts.into_iter().find(|layout| layout.tab_id == SPANNING_TAB)?;
     match layout.tree?.node? {
         muster::proto::view_tree::Node::Split(split) => Some(*split),
-        muster::proto::view_tree::Node::Pane(_) => None,
+        muster::proto::view_tree::Node::Pane(_) | muster::proto::view_tree::Node::Unreachable(_) => {
+            None
+        }
     }
 }
 

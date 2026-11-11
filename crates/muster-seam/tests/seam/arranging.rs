@@ -294,6 +294,7 @@ fn shape() -> String {
             Some(view_tree::Node::Pane(leaf)) => {
                 leaf.pane.as_ref().map(|pane| pane.pane_id.clone()).unwrap_or_default()
             }
+            Some(view_tree::Node::Unreachable(leaf)) => format!("?{}", leaf.pane_id),
             Some(view_tree::Node::Split(split)) => format!(
                 "{}({},{})",
                 split.axis,

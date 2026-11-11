@@ -1649,6 +1649,14 @@ impl Session {
         !taken.is_empty()
     }
 
+    /// The configured daemons still on their way, which have no mirror yet: a tab spanning one of
+    /// them draws its panes unreachable in their places until it answers.
+    fn attaching(&self) -> BTreeSet<DaemonId> {
+        let mut attaching = poison::lock(&ATTACHES, "attaches").under_way.clone();
+        attaching.retain(|daemon| !self.backends.contains_key(daemon));
+        attaching
+    }
+
     /// Every daemon this process follows, and every configured one still on its way: the machines
     /// the record says its windows follow. A daemon being reached over ssh is one this window
     /// will show, and leaving it out would let the record give its tabs away.
@@ -2288,9 +2296,11 @@ impl Session {
         window: WindowId,
         mirrors: &BTreeMap<&DaemonId, MutexGuard<'_, Mirror>>,
     ) -> View {
+        let attaching = self.attaching();
         View::of(
             &self.windows[window].composition,
             |daemon| mirrors.get(daemon).map(|held| &**held),
+            |daemon| attaching.contains(daemon),
             |daemon| self.daemon_socket(daemon),
             |daemon| self.remote(daemon),
             |daemon, pane| self.view_pane(window, daemon, pane),
@@ -2302,6 +2312,7 @@ impl Session {
     /// ([`View::arranged`]).
     fn arranged(&self, window: WindowId) -> Vec<View> {
         let mirrors = self.mirrors();
+        let attaching = self.attaching();
         let composition = &self.windows[window].composition;
         composition
             .tabs()
@@ -2310,6 +2321,7 @@ impl Session {
                     composition,
                     &tab.id,
                     |daemon| mirrors.get(daemon).map(|held| &**held),
+                    |daemon| attaching.contains(daemon),
                     |daemon| self.daemon_socket(daemon),
                     |daemon| self.remote(daemon),
                     |daemon, pane| self.view_pane(window, daemon, pane),
@@ -2472,6 +2484,7 @@ impl Session {
     fn arranged_closed(&self, window: &HeldWindow, me: WindowId) -> Vec<View> {
         let mirrors = self.mirrors();
         let composition = self.held_composition(window, &self.windows[me], &mirrors);
+        let attaching = self.attaching();
         composition
             .tabs()
             .filter_map(|tab| {
@@ -2479,6 +2492,7 @@ impl Session {
                     &composition,
                     &tab.id,
                     |daemon| mirrors.get(daemon).map(|held| &**held),
+                    |daemon| attaching.contains(daemon),
                     |daemon| self.daemon_socket(daemon),
                     |daemon| self.remote(daemon),
                     |_, pane| ViewPane {
@@ -3444,7 +3458,7 @@ pub(crate) fn set_split_ratio(
             .tab(tab)
             .filter(|held| spanning::spans(held, mirror))
             .map(|held| {
-                let (parts, _) = spanning::parts_of(held, mirror, |_| false);
+                let (parts, _) = spanning::parts_of(held, mirror, |_| false, |_| false);
                 spanning::side_by_side_divider(&parts, &path)
             })
     };
@@ -6555,7 +6569,7 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
                 .filter(|tab| tab.daemons().any(|part| part == daemon))
                 .filter(|tab| spanning::spans(tab, mirror))
             {
-                let (parts, settled) = spanning::parts_of(tab, mirror, writable);
+                let (parts, settled) = spanning::parts_of(tab, mirror, writable, |_| false);
                 let Some(merged) = spanning::merge(&parts, &settled) else { continue };
                 writes.extend(
                     merged
@@ -6612,6 +6626,46 @@ impl TabTreeCatchUp {
                 },
             );
         }
+    }
+}
+
+/// Takes `pane` out of the tab of this window's that keeps a place for it, without closing it: a
+/// pane on a machine that is not answering, which only that machine could close (MIP-8,
+/// section 7). Every part that answers is written without it, and its machine keeps the pane.
+pub(crate) fn remove_from_tab(window: WindowId, pane: &PaneId) -> Result<(), String> {
+    let tab = {
+        let session = poison::lock(&SESSION, "session");
+        let mirrors = session.mirrors();
+        session.windows[window]
+            .composition
+            .tabs()
+            .find(|tab| {
+                tab.daemons().any(|daemon| {
+                    mirrors
+                        .get(daemon)
+                        .and_then(|held| held.tab(&tab.id))
+                        .is_some_and(|layout| layout.copy.keeps_foreign(pane))
+                })
+            })
+            .map(|tab| tab.id.clone())
+    };
+    let Some(tab) = tab else {
+        return Err(format!(
+            "no tab this window holds keeps a place for {pane} on another machine, so nothing \
+             was removed. Either a window has already removed it, or its machine answered and \
+             it is a pane to close rather than remove - `muster window --layout` shows the tab."
+        ));
+    };
+    match rearrange(window, &tab, &spanning::Change::Remove { pane: pane.clone() }) {
+        Some(Ok(_)) => {
+            publish("intent");
+            Ok(())
+        }
+        Some(Err(refusal)) => Err(refusal.to_string()),
+        None => Err(format!(
+            "{tab} is arranged by its machines one at a time, so {pane} has no place in it to \
+             remove"
+        )),
     }
 }
 
@@ -6720,8 +6774,13 @@ fn worked_out(
     if !spanning::written(held, mirror, |machine| session.holds_spanning_trees(machine)) {
         return None;
     }
-    let (mut parts, settled) =
-        spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
+    let attaching = session.attaching();
+    let (mut parts, settled) = spanning::parts_of(
+        held,
+        mirror,
+        |machine| session.holds_spanning_trees(machine),
+        |machine| attaching.contains(machine),
+    );
     if stale {
         for part in &mut parts {
             part.generation = part.generation.saturating_sub(1);
@@ -6838,8 +6897,12 @@ pub(crate) fn arrive(
         })?;
         let mirrors = session.mirrors();
         let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
-        let (parts, settled) =
-            spanning::parts_of(held, mirror, |machine| session.holds_spanning_trees(machine));
+        let (parts, settled) = spanning::parts_of(
+            held,
+            mirror,
+            |machine| session.holds_spanning_trees(machine),
+            |_| false,
+        );
         let change =
             spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot };
         let hidden = mirrors.values().any(|held| held.tab(tab).is_some_and(|part| part.hidden));

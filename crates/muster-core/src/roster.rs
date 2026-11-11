@@ -822,7 +822,7 @@ fn tab_panes<'a>(
     if !spanning::spans(tab, mirror) {
         return by_region().collect();
     }
-    let (parts, settled) = spanning::parts_of(tab, mirror, |_| false);
+    let (parts, settled) = spanning::parts_of(tab, mirror, |_| false, |_| false);
     let Some(merged) = spanning::merge(&parts, &settled) else { return by_region().collect() };
     let mut panes: Vec<(DaemonId, &'a Pane)> = merged
         .tree

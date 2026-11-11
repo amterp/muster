@@ -90,7 +90,7 @@ fn composition_conformance() {
                         .showing()
                         .and_then(|tab| composition.tab(tab))
                         .and_then(|tab| {
-                            let (parts, settled) = spanning::parts_of(tab, mirror, |_| true);
+                            let (parts, settled) = spanning::parts_of(tab, mirror, |_| true, |_| false);
                             spanning::merge(&parts, &settled)
                         })
                         .map_or(Value::Null, |merged| json!(merged.tree.to_string()))
@@ -389,8 +389,8 @@ fn built(
         bridge_restarts: 0,
     };
     match tab {
-        Some(tab) => View::arranged(composition, tab, mirror, socket, remote, pane),
-        None => Some(View::of(composition, mirror, socket, remote, pane)),
+        Some(tab) => View::arranged(composition, tab, mirror, |_| false, socket, remote, pane),
+        None => Some(View::of(composition, mirror, |_| false, socket, remote, pane)),
     }
 }
 
@@ -430,7 +430,7 @@ fn spans(tree: &ViewTree) -> bool {
     let mut walk = vec![tree];
     while let Some(node) = walk.pop() {
         match node {
-            ViewTree::Pane { daemon, .. } => {
+            ViewTree::Pane { daemon, .. } | ViewTree::Unreachable { daemon, .. } => {
                 machines.insert(daemon.clone());
             }
             ViewTree::Split { first, second, .. } => walk.extend([&**first, &**second]),
@@ -458,6 +458,7 @@ fn tree_line(tree: &ViewTree, spans: bool) -> String {
             }
             line
         }
+        ViewTree::Unreachable { daemon, pane } => format!("?{pane}@{daemon}"),
         ViewTree::Split { axis, ratio, first, second } => {
             let axis = match axis {
                 SplitAxis::Columns => "columns",

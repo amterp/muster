@@ -411,7 +411,7 @@
     },
     {
       "name": "a window draws only the panes it can reach",
-      "why": "A window attached only to the devenv holds no part on the laptop, so it has no frames to draw where the laptop's panes go. It draws the devenv's panes in the tab's place and leaves the laptop's out, as a window opened with a machine down leaves that machine's region out today, while every tree it writes keeps the laptop's leaves (MIP-8, sections 7 and 9). The split that held the laptop's pane on one side gives way to its other side.",
+      "why": "A window attached only to the devenv holds no part on the laptop, so it has no frames to draw where the laptop's panes go. It draws the devenv's panes in the tab's place and leaves the laptop's out, since a window that does not follow the laptop has nothing to say about it, while every tree it writes keeps the laptop's leaves (MIP-8, section 7). The split that held the laptop's pane on one side gives way to its other side.",
       "given": {
         "parts": [
           { "daemon": "devenv", "copy": "[~a@laptop|[x/y 0.50] 0.50]", "generation": 3, "holds": ["x", "y"] }
@@ -641,6 +641,74 @@
           "laptop 2<-1 columns(b, rows(a, ~x@devenv@0.5)@0.5)"
         ]
       }
+    },
+    {
+      "name": "a window opened while a machine is down draws that machine's panes as unreachable, in their places",
+      "why": "The laptop's copy holds the whole tree, so the window knows where the devenv's panes go but has no frames for them. It follows the devenv, which has not answered, so each of its panes is drawn unreachable in its place rather than left out, and when the devenv answers each becomes its pane and nothing else moves. The merge and the writes are as they would be anyway: nothing is written for a machine that has not said anything (owner's decision spanning-tab-unreachable-machine).",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|[~x@devenv/~y@devenv 0.50] 0.50]", "generation": 2, "holds": ["a"] }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "drawn": true
+      },
+      "expect": {
+        "drawn": "columns(a@laptop, rows(?x@devenv, ?y@devenv@0.5)@0.5)",
+        "tree": "columns(a@laptop, rows(x@devenv, y@devenv@0.5)@0.5)",
+        "zoomed": null,
+        "writes": []
+      }
+    },
+    {
+      "name": "a divider beside an unreachable pane is named by the tree the window drew, unreachable panes included",
+      "why": "The window draws the devenv's pane unreachable in its place, so the root of what it drew is the split between a and x; z is on a machine this window does not follow and is not drawn, so the split above it takes no turn. The divider moves in the whole tree and only the laptop, which answers, is written.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[[a/~z@other 0.50]|~x@devenv 0.50]", "generation": 2, "holds": ["a"] }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "change": "ratio - 0.3",
+        "drawn": true
+      },
+      "expect": {
+        "drawn": "columns(a@laptop, ?x@devenv@0.3)",
+        "tree": "columns(rows(a@laptop, z@other@0.5), x@devenv@0.3)",
+        "zoomed": null,
+        "writes": [
+          "laptop 3<-2 columns(rows(a, ~z@other@0.5), ~x@devenv@0.3)"
+        ]
+      }
+    },
+    {
+      "name": "a pane on an unreachable machine is removed from its tab, and the parts that answer are written",
+      "why": "Remove from Tab on a placeholder: the pane leaves the tree without its machine acting, so its machine keeps the pane, and the laptop is written without it. Its zoom goes with it (owner's decision spanning-tab-departed-machine).",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|[~x@devenv/~y@devenv 0.50] 0.50]", "zoomed": "x", "generation": 2, "holds": ["a"] }
+        ],
+        "settled": { "laptop": true, "devenv": false },
+        "change": "remove x"
+      },
+      "expect": {
+        "tree": "columns(a@laptop, y@devenv@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 3<-2 columns(a, ~y@devenv@0.5)"
+        ]
+      }
+    },
+    {
+      "name": "a pane whose machine answers is closed rather than removed from its tab",
+      "why": "Removing is for a pane only an unreachable machine could close. A pane on a machine that answers would come straight back, as a pane its machine holds that the tree lacks, so it is refused and nothing is written.",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|~x@devenv 0.50]", "generation": 2, "holds": ["a"] },
+          { "daemon": "devenv", "copy": "[~a@laptop|x 0.50]", "generation": 2, "holds": ["x"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "change": "remove x"
+      },
+      "expect": { "refused": "x is running on a machine that answers, so it is closed rather than removed from its tab: only a pane whose machine is unreachable is removed" }
     }
   ]
 }

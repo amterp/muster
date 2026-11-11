@@ -8,8 +8,8 @@ use conformance::{Conformance, fields};
 use muster_core::composition::DaemonId;
 use muster_core::equalize::Evenly;
 use muster_core::intent::{Branch, Side};
-use muster_core::mirror::backend::PaneId;
-use muster_core::spanning::{self, Change, Divider, Merged, Part, Spot, Write};
+use muster_core::mirror::backend::{PaneId, SplitAxis};
+use muster_core::spanning::{self, Change, Divider, Merged, Part, SpanNode, Spot, Write};
 use serde_json::{Value, json};
 
 #[test]
@@ -47,12 +47,14 @@ fn spanning_conformance() {
             Ok(merged) => merged,
             Err(refused) => return Ok(fields([("refused", Some(json!(refused)))])),
         };
-        let held = |pane: &PaneId| parts.iter().any(|part| part.holds.contains(pane));
         let drawn = given.get("drawn").and_then(Value::as_bool).unwrap_or_default().then(|| {
             merged
                 .as_ref()
-                .and_then(|merged| spanning::drawn(&merged.tree, &held))
-                .map_or(Value::Null, |drawn| json!(drawn.to_string()))
+                .and_then(|merged| {
+                    let drawable = spanning::drawable(&merged.tree, &parts, &settled);
+                    spanning::drawn(&merged.tree, &|pane| drawable.contains(pane))
+                })
+                .map_or(Value::Null, |drawn| json!(drawn_line(&drawn, &parts)))
         });
         Ok(fields([
             ("drawn", drawn),
@@ -86,6 +88,22 @@ fn spanning_conformance() {
     assert!(ran > 0);
 }
 
+/// A tree as a window draws it, spelled as [`SpanNode`] is, with a pane no part runs - drawn
+/// unreachable in its place - marked `?`.
+fn drawn_line(tree: &SpanNode, parts: &[Part]) -> String {
+    match tree {
+        SpanNode::Pane { pane, daemon } if spanning::held(parts, pane) => format!("{pane}@{daemon}"),
+        SpanNode::Pane { pane, daemon } => format!("?{pane}@{daemon}"),
+        SpanNode::Split { axis, ratio, first, second } => {
+            let axis = match axis {
+                SplitAxis::Columns => "columns",
+                SplitAxis::Rows => "rows",
+            };
+            format!("{axis}({}, {}@{ratio})", drawn_line(first, parts), drawn_line(second, parts))
+        }
+    }
+}
+
 fn part(given: &Value) -> Part {
     Part {
         daemon: DaemonId::new(text(given, "daemon")),
@@ -116,7 +134,7 @@ fn described(write: &Write) -> String {
 
 /// A change as the cases spell one: `ratio <turns> <ratio>`, with the turns `first,second` from the
 /// root and `-` for the root itself; `resize <pane> <side> [fraction]`; `swap <pane> <with>`;
-/// `zoom <pane>`; `even <pane> <tab|row|column>`; `place <pane>@<daemon> beside <pane> <side>
+/// `zoom <pane>`; `remove <pane>`; `even <pane> <tab|row|column>`; `place <pane>@<daemon> beside <pane> <side>
 /// [ratio]` and `place <pane>@<daemon> column`.
 fn read_change(text: &str) -> Change {
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -130,6 +148,7 @@ fn read_change(text: &str) -> Change {
         },
         ["swap", pane, with] => Change::Swap { pane: PaneId::new(*pane), with: PaneId::new(*with) },
         ["zoom", pane] => Change::Zoom { pane: PaneId::new(*pane) },
+        ["remove", pane] => Change::Remove { pane: PaneId::new(*pane) },
         ["even", pane, evenly] => Change::Even {
             pane: PaneId::new(*pane),
             evenly: Evenly::parse(evenly).expect("a scope"),

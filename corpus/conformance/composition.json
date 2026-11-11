@@ -6355,7 +6355,7 @@
     },
     {
       "name": "a pane on a machine the window has not reconciled yet keeps its place in the tree",
-      "why": "The devenv came back, and its mirror already holds its part of the tab, but the window has not reconciled what it heard: the tab has no region onto the devenv yet. A mirror moves on before the window reconciles, since a window hears a daemon on one thread and reconciles on another. Until it does, the devenv's part and the panes it holds are not among the tab's parts, so nothing says the devenv holds x, and taking the devenv's silence as its word would drop x from the tree and from the laptop's copy (MIP-8, section 2). The window draws only the panes it can reach meanwhile, so x is in the merged tree its writes hold and not in the tree it draws.",
+      "why": "The devenv came back, and its mirror already holds its part of the tab, but the window has not reconciled what it heard: the tab has no region onto the devenv yet. A mirror moves on before the window reconciles, since a window hears a daemon on one thread and reconciles on another. Until it does, the devenv's part and the panes it holds are not among the tab's parts, so nothing says the devenv holds x, and taking the devenv's silence as its word would drop x from the tree and from the laptop's copy (MIP-8, section 2). Meanwhile the window draws x unreachable in its place, as it draws any pane of a machine it follows that no part it holds runs, so when the devenv's part is taken in x becomes its pane and nothing else in the tab moves.",
       "given": {
         "tree": true,
         "merged": true,
@@ -6444,9 +6444,9 @@
         ],
         "showingTab": "t1",
         "merged": "columns(a@laptop, x@devenv@0.5)",
-        "tree": "a@laptop",
+        "tree": "columns(a@laptop, ?x@devenv@0.5)",
         "view": [
-          "tab=t1 a"
+          "tab=t1 columns(a@laptop, ?x@devenv@0.5)"
         ]
       }
     }

@@ -343,6 +343,17 @@ impl CopyNode {
         }
     }
 
+    /// Whether this copy keeps `pane` as another machine's.
+    pub fn keeps_foreign(&self, pane: &PaneId) -> bool {
+        match self {
+            CopyNode::Own(_) => false,
+            CopyNode::Foreign { pane: kept, .. } => kept == pane,
+            CopyNode::Split { first, second, .. } => {
+                first.keeps_foreign(pane) || second.keeps_foreign(pane)
+            }
+        }
+    }
+
     pub fn has_foreign(&self) -> bool {
         match self {
             CopyNode::Own(_) => false,

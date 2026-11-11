@@ -161,6 +161,27 @@ struct ContextMenuTests {
     #expect(sent.first?.splitPane.side == "down")
   }
 
+  /// A pane whose machine is not answering cannot be closed, so the one thing on offer is taking
+  /// it out of its tab, which names the pane and its machine.
+  @Test("a placeholder's menu removes its pane from its tab")
+  func aPlaceholderRemovesItsPane() async {
+    let recorder = recorder()
+    let menu = ContextMenus.placeholder(.init(daemon: "devenv", paneID: "p1devenv00"))
+    let mark = recorder.requests.count
+
+    #expect(titles(menu) == ["Remove from Tab"])
+    choose("Remove from Tab", in: menu)
+    await until("the removal") {
+      recorder.sent(since: mark) { if case .removeFromTab = $0.payload { true } else { false } }
+        .count == 1
+    }
+    let sent = recorder.sent(since: mark) {
+      if case .removeFromTab = $0.payload { true } else { false }
+    }
+    #expect(sent.first?.removeFromTab.daemonID == "devenv")
+    #expect(sent.first?.removeFromTab.paneID == "p1devenv00")
+  }
+
   @Test("zoom, move and close each name the pane that was right-clicked")
   func theRestNameTheirPane() {
     let recorder = recorder()

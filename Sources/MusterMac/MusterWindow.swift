@@ -241,6 +241,7 @@ public final class MusterWindow: NSObject {
     tabView = TabView(frame: NSRect(x: 0, y: 0, width: 960, height: 600), surfaces: surfaces)
     split.attach(sidebar: sidebar, strip: tabView)
     tabView.attach(empty: empty)
+    tabView.refused = { [weak self] in self?.tell($0, $1) }
     split.attach(banners: banners.hosting, room: banners.room)
     banners.show(window.isMainWindow)
     banners.onLink = { [weak self] url, daemon, group in

@@ -305,6 +305,32 @@ struct WindowContentsTests {
     #expect(contents.panes == [PaneKey(daemon: "devenv", pane: "w1:p2")])
   }
 
+  /// The window opened while the devenv was down: its pane keeps its place, drawn as a
+  /// placeholder, and has no surface, so nothing is started for it.
+  @Test("a pane whose machine is unreachable keeps its place, and no surface is made for it")
+  func anUnreachablePaneKeepsItsPlace() {
+    var changed = Muster_ViewChanged()
+    changed.tree = treeSplit(
+      "columns", 0.5, treeLeaf(viewPane("p1")),
+      .with {
+        $0.unreachable = .with { leaf in
+          leaf.daemonID = "devenv"
+          leaf.paneID = "x"
+        }
+      })
+
+    let contents = WindowContents(changed)
+    let tree = contents.tree
+    let frames = tree?.frames(in: CGRect(x: 0, y: 0, width: 1000, height: 600))
+
+    #expect(contents.panes == [PaneKey(daemon: "local", pane: "p1")])
+    #expect(tree?.placeholders == [PaneTree.Placeholder(daemon: "devenv", paneID: "x")])
+    #expect(frames?.panes.map(\.paneID) == ["p1"])
+    #expect(frames?.placeholders.map(\.paneID) == ["x"])
+    #expect((frames?.placeholders.first?.frame.minX ?? 0) > 500)
+    #expect(frames?.dividers.count == 1)
+  }
+
   @Test("a zoom on a pane the tree does not hold draws the whole tree")
   func aZoomOnNoLeafFillsNothing() {
     var changed = Muster_ViewChanged()

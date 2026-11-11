@@ -288,6 +288,9 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
         request::Payload::Wheel(wheel) => wheel_over(&wheel),
         request::Payload::Mouse(mouse) => mouse_over(&mouse),
         request::Payload::SplitPane(split) => split_pane(window, &split),
+        request::Payload::RemoveFromTab(remove) => {
+            answer(session::remove_from_tab(window, &PaneId::new(&remove.pane_id)))
+        }
         request::Payload::ReattachPane(reattach) => {
             reattach_pane(window, &reattach.daemon_id, &reattach.pane_id)
         }

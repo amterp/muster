@@ -217,6 +217,7 @@ fn view_cost() -> Cost {
             let view = View::of(
                 &composition,
                 |named| (named == &daemon).then_some(&mirror),
+                |_| false,
                 |_| Some("/tmp/muster-daemon.sock".to_string()),
                 |_| false,
                 |_, pane| ViewPane {

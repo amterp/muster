@@ -77,7 +77,7 @@ fn record_panes(view: &ViewChanged) {
                     walk(child, into);
                 }
             }
-            None => {}
+            Some(view_tree::Node::Unreachable(_)) | None => {}
         }
     }
 

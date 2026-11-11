@@ -150,6 +150,12 @@ fn tree(tree: &ViewTree) -> proto::ViewTree {
             daemon_id: daemon.to_string(),
             pane: Some(self::pane(pane)),
         }),
+        ViewTree::Unreachable { daemon, pane } => {
+            proto::view_tree::Node::Unreachable(proto::ViewTreeUnreachable {
+                daemon_id: daemon.to_string(),
+                pane_id: pane.to_string(),
+            })
+        }
         ViewTree::Split { axis, ratio, first, second } => {
             proto::view_tree::Node::Split(Box::new(proto::ViewTreeSplit {
                 axis: self::axis(*axis),

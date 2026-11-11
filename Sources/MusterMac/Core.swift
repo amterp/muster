@@ -732,6 +732,17 @@ public enum Core {
   /// there is no other way for one to point at a tab. No machine goes with it: a Muster tab may
   /// hold panes on two, and the core renames every half of one.
   @discardableResult
+  /// Takes a pane on a machine that is not answering out of its tab, without closing it: what a
+  /// placeholder's Remove from Tab sends. Nil when the core did it, or why it did not.
+  public static func removeFromTab(daemonID: String, paneID: String) -> String? {
+    var remove = Muster_RemoveFromTab()
+    remove.daemonID = daemonID
+    remove.paneID = paneID
+    var request = Muster_Request()
+    request.removeFromTab = remove
+    return refusal(send(request))
+  }
+
   public static func renameTab(name: String, tabID: String = "") -> String? {
     var rename = Muster_RenameTab()
     rename.tabID = tabID
@@ -1855,6 +1866,7 @@ public enum Core {
     case .hideHelpers: return "hide_helpers"
     case .quietPane: return "quiet_pane"
     case .paneCompaction: return "pane_compaction"
+    case .removeFromTab: return "remove_from_tab"
     case .renameTab: return "rename_tab"
     case .closeTab: return "close_tab"
     case .endNumberedChord: return "end_numbered_chord"

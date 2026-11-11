@@ -83,10 +83,15 @@ pub fn spans<'a>(tab: &MusterTab, mirror: impl Fn(&DaemonId) -> Option<&'a Mirro
 /// said either: a mirror moves on before the window reconciles what it heard, and its part of
 /// the tab, with the panes it holds there, is not among the parts until then. `writable` says which machines
 /// speak a protocol that holds a spanning tree.
+///
+/// A machine the window is still attaching, which has no mirror yet, has not said either, and
+/// `attaching` names it: the window expects it, so its panes are drawn as unreachable
+/// ([`drawable`]) rather than left out as those of a machine the window does not follow.
 pub fn parts_of<'a>(
     tab: &MusterTab,
     mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
     writable: impl Fn(&DaemonId) -> bool,
+    attaching: impl Fn(&DaemonId) -> bool,
 ) -> (Vec<Part>, BTreeMap<DaemonId, bool>) {
     let settled =
         |held: &Mirror| held.health() == Health::Connected && !held.restoring() && !held.stopping();
@@ -97,10 +102,17 @@ pub fn parts_of<'a>(
         said.insert(region.daemon.clone(), settled(held));
         let Some(layout) = held.tab(&tab.id) else { continue };
         for foreign in foreign_machines(&layout.copy) {
-            if let Some(other) = mirror(&foreign)
-                && !tab.daemons().any(|part| *part == foreign)
-            {
-                said.insert(foreign, settled(other) && other.tab(&tab.id).is_none());
+            if tab.daemons().any(|part| *part == foreign) {
+                continue;
+            }
+            match mirror(&foreign) {
+                Some(other) => {
+                    said.insert(foreign, settled(other) && other.tab(&tab.id).is_none());
+                }
+                None if attaching(&foreign) => {
+                    said.insert(foreign, false);
+                }
+                None => {}
             }
         }
         parts.push(Part {
@@ -199,10 +211,27 @@ fn side_by_side(parts: &[Part]) -> Option<(SpanNode, Option<PaneId>)> {
     Some((tree, parts.iter().find_map(|part| part.zoomed.clone())))
 }
 
-/// The tree a window draws of `tree`: without the panes `held` says no part of the tab it holds
-/// runs, each split left with one child giving way to that child. A window reaching only some of a
-/// tab's machines, or opened while one was down, draws the panes it can reach (MIP-8, section 7).
-/// `None` when it holds none of them.
+/// The panes of a merged `tree` a window draws: those a part holds, and those whose machine the
+/// window follows or is attaching but which no part holds, which it draws as unreachable in
+/// their places (MIP-8, section 7). A pane whose machine the window does not follow at all is
+/// left out, as a window attached to only some of a tab's machines leaves it.
+pub fn drawable(tree: &SpanNode, parts: &[Part], settled: &BTreeMap<DaemonId, bool>) -> BTreeSet<PaneId> {
+    tree.leaves()
+        .into_iter()
+        .filter(|(pane, daemon)| held(parts, pane) || settled.contains_key(*daemon))
+        .map(|(pane, _)| pane.clone())
+        .collect()
+}
+
+/// Whether some part of the tab runs `pane`: a pane the window can draw a surface for, rather
+/// than one it can only say is unreachable.
+pub fn held(parts: &[Part], pane: &PaneId) -> bool {
+    parts.iter().any(|part| part.holds.contains(pane))
+}
+
+/// `tree` without the panes `held` says no, each split left with one child giving way to that
+/// child: the tree a window draws when `held` answers [`drawable`]. `None` when it says no to
+/// every pane.
 pub fn drawn(tree: &SpanNode, held: &impl Fn(&PaneId) -> bool) -> Option<SpanNode> {
     match tree {
         SpanNode::Pane { pane, .. } => held(pane).then(|| tree.clone()),
@@ -394,6 +423,10 @@ pub enum Change {
     /// otherwise arriving, made there or moved in from another tab. An arriving pane's machine has
     /// to act, so it is written to whether or not it holds a part of the tab yet.
     Place { pane: PaneId, daemon: DaemonId, at: Spot },
+    /// `pane` taken out of the tab without closing it: a pane on a machine that is not answering,
+    /// which only that machine could close. Its machine keeps the pane, and its part of the tab
+    /// comes back as a tab of its own when it answers (MIP-8, section 7).
+    Remove { pane: PaneId },
 }
 
 /// Where in a tab's tree a pane is put.
@@ -451,10 +484,16 @@ pub fn rearrange(
     let written = parts.iter().map(|part| part.generation).max().unwrap_or_default();
     let change = match change {
         Change::Ratio { path, ratio } => {
-            let held = |pane: &PaneId| parts.iter().any(|part| part.holds.contains(pane));
-            let path = whole_path(&merged.tree, path, &held)
+            let drawable = drawable(&merged.tree, parts, settled);
+            let path = whole_path(&merged.tree, path, &|pane: &PaneId| drawable.contains(pane))
                 .ok_or_else(|| format!("the tab's tree has no split at {path:?}"))?;
             Change::Ratio { path, ratio: *ratio }
+        }
+        Change::Remove { pane } if held(parts, pane) => {
+            return Err(format!(
+                "{pane} is running on a machine that answers, so it is closed rather than \
+                 removed from its tab: only a pane whose machine is unreachable is removed"
+            ));
         }
         other => other.clone(),
     };
@@ -573,6 +612,12 @@ fn changed(
                 Spot::Column => with_column(rest, leaf),
             };
             Ok((placed, zoomed))
+        }
+        Change::Remove { pane } => {
+            named(pane)?;
+            let rest = drawn(tree, &|leaf: &PaneId| leaf != pane)
+                .ok_or_else(|| format!("{pane} is the tab's only pane, so its tab is closed instead"))?;
+            Ok((rest, zoomed.filter(|zoomed| zoomed != pane)))
         }
         Change::Even { pane, evenly } => {
             named(pane)?;

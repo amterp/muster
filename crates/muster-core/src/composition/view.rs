@@ -84,20 +84,33 @@ pub struct ViewMachine {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewTree {
     Pane { daemon: DaemonId, pane: ViewPane },
+    /// A pane whose machine this window follows or is attaching, and which no part of the tab it
+    /// can reach runs: a window opened while that machine was down, or one still restoring. It
+    /// keeps its place, drawn as unreachable, and becomes its pane when its machine answers, so
+    /// nothing else in the tab moves (MIP-8, section 7). No surface, so no keyboard and no place
+    /// among [`View::places`].
+    Unreachable { daemon: DaemonId, pane: PaneId },
     Split { axis: SplitAxis, ratio: f32, first: Box<ViewTree>, second: Box<ViewTree> },
 }
 
 impl ViewTree {
-    fn of(tree: &SpanNode, pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane) -> ViewTree {
+    fn of(
+        tree: &SpanNode,
+        held: &impl Fn(&PaneId) -> bool,
+        pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
+    ) -> ViewTree {
         match tree {
-            SpanNode::Pane { pane: id, daemon } => {
+            SpanNode::Pane { pane: id, daemon } if held(id) => {
                 ViewTree::Pane { daemon: daemon.clone(), pane: pane(daemon, id) }
+            }
+            SpanNode::Pane { pane: id, daemon } => {
+                ViewTree::Unreachable { daemon: daemon.clone(), pane: id.clone() }
             }
             SpanNode::Split { axis, ratio, first, second } => ViewTree::Split {
                 axis: *axis,
                 ratio: *ratio,
-                first: Box::new(ViewTree::of(first, pane)),
-                second: Box::new(ViewTree::of(second, pane)),
+                first: Box::new(ViewTree::of(first, held, pane)),
+                second: Box::new(ViewTree::of(second, held, pane)),
             },
         }
     }
@@ -124,11 +137,13 @@ impl ViewTree {
     }
 }
 
-/// `columns(p1@laptop, x@devenv@0.5)`, as `crate::spanning::SpanNode` is written.
+/// `columns(p1@laptop, x@devenv@0.5)`, as `crate::spanning::SpanNode` is written, with an
+/// unreachable pane as `?x@devenv`.
 impl std::fmt::Display for ViewTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ViewTree::Pane { daemon, pane } => write!(f, "{}@{daemon}", pane.id),
+            ViewTree::Unreachable { daemon, pane } => write!(f, "?{pane}@{daemon}"),
             ViewTree::Split { axis, ratio, first, second } => {
                 let axis = match axis {
                     SplitAxis::Columns => "columns",
@@ -188,15 +203,21 @@ impl View {
     /// It answers with the id it was handed. Not enforced here, because putting it back would
     /// cost a clone per pane on a path with a budget against it (`perf/baseline.json`,
     /// `view.build`) to guard a mistake that has to be made on purpose.
+    ///
+    /// `attaching` names the machines the window is still attaching, which have no mirror yet:
+    /// their panes in a tab spanning machines are drawn unreachable in their places.
     pub fn of<'a>(
         composition: &Composition,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+        attaching: impl Fn(&DaemonId) -> bool,
         daemon_socket: impl Fn(&DaemonId) -> Option<String>,
         remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> View {
         match composition.showing().and_then(|tab| composition.tab(tab)) {
-            Some(tab) => View::built(tab, Zoom::Resolved, mirror, daemon_socket, remote, pane),
+            Some(tab) => {
+                View::built(tab, Zoom::Resolved, mirror, attaching, daemon_socket, remote, pane)
+            }
             None => View {
                 tab: None,
                 tree: None,
@@ -224,18 +245,21 @@ impl View {
         composition: &Composition,
         tab: &TabId,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+        attaching: impl Fn(&DaemonId) -> bool,
         daemon_socket: impl Fn(&DaemonId) -> Option<String>,
         remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
     ) -> Option<View> {
         let tab = composition.tab(tab)?;
-        Some(View::built(tab, Zoom::Kept, mirror, daemon_socket, remote, pane))
+        Some(View::built(tab, Zoom::Kept, mirror, attaching, daemon_socket, remote, pane))
     }
 
+    #[expect(clippy::too_many_arguments, reason = "each is one question only the caller can answer")]
     fn built<'a>(
         held: &MusterTab,
         zoom: Zoom,
         mirror: impl Fn(&DaemonId) -> Option<&'a Mirror>,
+        attaching: impl Fn(&DaemonId) -> bool,
         daemon_socket: impl Fn(&DaemonId) -> Option<String>,
         remote: impl Fn(&DaemonId) -> bool,
         pane: impl Fn(&DaemonId, &PaneId) -> ViewPane,
@@ -249,7 +273,7 @@ impl View {
             .focused_region()
             .and_then(|region| Some(PaneKey::new(&region.daemon, region.pane.as_ref()?)));
         let (tree, zoomed) = if spanning::spans(held, &mirror) {
-            spanning_tree(held, &mirror, keyboard.as_ref(), &pane)
+            spanning_tree(held, &mirror, &attaching, keyboard.as_ref(), &pane)
         } else {
             let one = held.regions().next();
             let layout = one.and_then(|region| Some((region, arranged(region)?)));
@@ -423,25 +447,30 @@ impl View {
     }
 }
 
-/// A tab spanning machines as a window draws it: the merge of its copies, without the panes no
-/// part this window holds runs, and the pane filling it when it is zoomed.
+/// A tab spanning machines as a window draws it: the merge of its copies, with each pane no part
+/// this window holds runs drawn unreachable in its place when the window follows or is attaching
+/// its machine and left out when it does not ([`spanning::drawable`]), and the pane filling it
+/// when it is zoomed.
 fn spanning_tree<'a>(
     held: &MusterTab,
     mirror: &impl Fn(&DaemonId) -> Option<&'a Mirror>,
+    attaching: &impl Fn(&DaemonId) -> bool,
     keyboard: Option<&PaneKey>,
     pane: &impl Fn(&DaemonId, &PaneId) -> ViewPane,
 ) -> (Option<ViewTree>, Option<PaneKey>) {
-    let (parts, settled) = spanning::parts_of(held, mirror, |_| false);
+    let (parts, settled) = spanning::parts_of(held, mirror, |_| false, attaching);
     let Some(merged) = spanning::merge(&parts, &settled) else { return (None, None) };
-    let ran = |pane: &PaneId| parts.iter().any(|part| part.holds.contains(pane));
-    let drawn = spanning::drawn(&merged.tree, &ran);
+    let ran = |pane: &PaneId| spanning::held(&parts, pane);
+    let drawable = spanning::drawable(&merged.tree, &parts, &settled);
+    let drawn = spanning::drawn(&merged.tree, &|pane| drawable.contains(pane));
     let in_tree = |key: &PaneKey| {
-        drawn.as_ref().is_some_and(|drawn| {
-            drawn
-                .leaves()
-                .into_iter()
-                .any(|(pane, daemon)| *pane == key.pane && *daemon == key.daemon)
-        })
+        ran(&key.pane)
+            && drawn.as_ref().is_some_and(|drawn| {
+                drawn
+                    .leaves()
+                    .into_iter()
+                    .any(|(pane, daemon)| *pane == key.pane && *daemon == key.daemon)
+            })
     };
     // A tab no window has written yet has a zoom per part, and fills with the keyboard's pane only
     // while the part the keyboard is in is zoomed, as it was drawn before it had one tree.
@@ -460,7 +489,7 @@ fn spanning_tree<'a>(
         })
     };
     let zoomed = zoomed.filter(in_tree);
-    (drawn.map(|drawn| ViewTree::of(&drawn, pane)), zoomed)
+    (drawn.map(|drawn| ViewTree::of(&drawn, &ran, pane)), zoomed)
 }
 
 /// Whether a zoomed tab is placed as the one pane filling it, or kept as its whole tree.
@@ -548,6 +577,7 @@ pub fn places_in(root: &ViewTree, rect: Rect) -> Vec<(PaneKey, Rect)> {
 fn place(node: &ViewTree, rect: Rect, found: &mut Vec<(PaneKey, Rect)>) {
     match node {
         ViewTree::Pane { daemon, pane } => found.push((PaneKey::new(daemon, &pane.id), rect)),
+        ViewTree::Unreachable { .. } => {}
         ViewTree::Split { axis, ratio, first, second } => {
             // A ratio is a backend's number and is not this core's to trust. An unusable one
             // splits evenly rather than collapsing a pane to nothing, on the same terms as

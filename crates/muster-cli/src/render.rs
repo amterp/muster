@@ -802,9 +802,20 @@ impl<'a> Drawing<'a> {
         };
         let shares: BTreeMap<&str, &muster_proto::PanePlace> =
             layout.places.iter().map(|place| (place.pane_id.as_str(), place)).collect();
+        let mut unreachable = BTreeMap::new();
+        if let Some(root) = layout.tree.as_ref() {
+            unreachable_leaves(root, &mut unreachable);
+        }
         let boxes: Vec<Lines> = order
             .iter()
             .map(|pane| {
+                if let Some(daemon) = unreachable.get(pane) {
+                    return vec![
+                        vec![((*pane).to_string(), NAME)],
+                        vec![("unreachable".to_string(), agent_style("unreachable"))],
+                        vec![(format!("on {daemon}"), QUIET)],
+                    ];
+                }
                 let row = tab.panes.iter().find(|row| row.pane_id == *pane);
                 let agent = states.get(pane).copied();
                 let size = match (self.grids.get(pane), shares.get(pane)) {
@@ -858,11 +869,31 @@ fn pane_box(
     lines
 }
 
+/// The panes `node` keeps in their places while their machines cannot be reached, with each
+/// one's machine.
+fn unreachable_leaves<'a>(node: &'a muster_proto::ViewTree, found: &mut BTreeMap<&'a str, &'a str>) {
+    match node.node.as_ref() {
+        Some(muster_proto::view_tree::Node::Unreachable(leaf)) => {
+            found.insert(leaf.pane_id.as_str(), leaf.daemon_id.as_str());
+        }
+        Some(muster_proto::view_tree::Node::Split(split)) => {
+            for child in [split.first.as_deref(), split.second.as_deref()].into_iter().flatten() {
+                unreachable_leaves(child, found);
+            }
+        }
+        Some(muster_proto::view_tree::Node::Pane(_)) | None => {}
+    }
+}
+
 /// A tab's tree as the diagram draws it, naming its panes in `order` as they are met.
 fn tree<'a>(node: &'a muster_proto::ViewTree, order: &mut Vec<&'a str>) -> Option<diagram::Node> {
     match node.node.as_ref()? {
         muster_proto::view_tree::Node::Pane(leaf) => {
             order.push(leaf.pane.as_ref()?.pane_id.as_str());
+            Some(diagram::Node::Pane(order.len() - 1))
+        }
+        muster_proto::view_tree::Node::Unreachable(leaf) => {
+            order.push(leaf.pane_id.as_str());
             Some(diagram::Node::Pane(order.len() - 1))
         }
         muster_proto::view_tree::Node::Split(split) => Some(diagram::Node::Split {
@@ -1764,6 +1795,12 @@ fn layout_json(node: &muster_proto::ViewTree) -> Value {
             "pane": leaf.pane.as_ref().map(|pane| pane.pane_id.as_str()).unwrap_or_default(),
             // The machine running it. A tab can hold panes on several, in any arrangement.
             "daemon": leaf.daemon_id,
+        }),
+        // A pane whose machine the window cannot reach yet, kept in its place.
+        Some(muster_proto::view_tree::Node::Unreachable(leaf)) => json!({
+            "pane": leaf.pane_id,
+            "daemon": leaf.daemon_id,
+            "unreachable": true,
         }),
         Some(muster_proto::view_tree::Node::Split(split)) => json!({
             // `columns` puts its children side by side and `rows` stacks them, so a row of

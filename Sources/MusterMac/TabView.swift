@@ -20,7 +20,12 @@ public final class TabView: NSView {
   private let surfaces: PaneSurfaces
   private var showing: [PaneKey] = []
   private var dividers: [DividerView] = []
+  /// One per pane drawn unreachable, by pane, so a placeholder that stays is not rebuilt.
+  private var placeholders: [PaneKey: PlaceholderView] = [:]
   private var tree: PaneTree?
+
+  /// What a placeholder's refused Remove from Tab shows the person.
+  public var refused: ContextMenus.Refused = { _, _ in }
   private var tab: String?
 
   /// Whether a group's conversation is drawn in place of the tab. Its panes stay where they
@@ -95,11 +100,13 @@ public final class TabView: NSView {
       if !sameTab {
         self.tree = nil
         showing = []
+        takePlaceholders([])
         needsLayout = true
       }
       return
     }
     self.tree = tree
+    takePlaceholders(covered ? [] : tree.placeholders)
     let fresh = takePanes(tree.leaves, machines: contents.machines)
     // Laid out before the surfaces are made, so each one is handed a view that already has
     // the size it will keep.
@@ -135,6 +142,30 @@ public final class TabView: NSView {
       if taken.isNew { fresh.append(leaf) }
     }
     return fresh
+  }
+
+  /// Keeps a placeholder for each pane drawn unreachable, and lets go of the rest: one whose
+  /// machine answered is a pane now, with a surface where it stood.
+  private func takePlaceholders(_ wanted: [PaneTree.Placeholder]) {
+    let keys = Set(wanted.map(\.key))
+    for (key, view) in placeholders where !keys.contains(key) {
+      view.removeFromSuperview()
+      placeholders[key] = nil
+    }
+    var added = false
+    for placeholder in wanted {
+      if let view = placeholders[placeholder.key] {
+        view.show(placeholder)
+      } else {
+        let view = PlaceholderView(placeholder)
+        view.refused = { [weak self] heading, reason in self?.refused(heading, reason) }
+        addSubview(view, positioned: .below, relativeTo: nil)
+        placeholders[placeholder.key] = view
+        added = true
+      }
+    }
+    // Behind the placeholders as it is behind the panes, so a placeholder drawn over it hides it.
+    if added, let empty { addSubview(empty, positioned: .below, relativeTo: nil) }
   }
 
   /// Points the keyboard at a pane, and says so on screen.
@@ -177,6 +208,9 @@ public final class TabView: NSView {
       guard let chrome = chrome(for: key) else { continue }
       chrome.frame = placement.frame
       chrome.needsLayout = true
+    }
+    for (placement, key) in zip(frames.placeholders, tree.placeholders.map(\.key)) {
+      placeholders[key]?.frame = placement.frame
     }
     for (divider, placement) in zip(dividers, frames.dividers) {
       // Rebound every pass rather than once at pooling, because what a divider is named by is a

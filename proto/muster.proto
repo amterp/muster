@@ -117,6 +117,7 @@ message Request {
     SetTabFolded set_tab_folded = 108;
     SetNeedsYouFolded set_needs_you_folded = 109;
     PaneCompaction pane_compaction = 110;
+    RemoveFromTab remove_from_tab = 111;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -842,6 +843,17 @@ message ToggleSidebar {}
 // would mean reading it back first - a round trip to answer a question the daemon is about to
 // answer anyway.
 message ZoomPane {
+  string daemon_id = 1;
+  string pane_id = 2;
+}
+
+// Takes a pane out of its tab without closing it: a pane on a machine that is not answering,
+// which only that machine could close, drawn unreachable in its place (ViewTreeUnreachable). Its
+// machine keeps running it. Refused for a pane whose machine answers, which is closed instead,
+// and for a pane in a tab held by one machine (docs/mip/0008-panes-across-machines.md,
+// section 7).
+message RemoveFromTab {
+  // The machine the pane runs on, as the tab's tree names it.
   string daemon_id = 1;
   string pane_id = 2;
 }
@@ -3542,7 +3554,18 @@ message ViewTree {
   oneof node {
     ViewTreePane pane = 1;
     ViewTreeSplit split = 2;
+    ViewTreeUnreachable unreachable = 3;
   }
+}
+
+// A pane whose machine this window follows or is still attaching, and which no machine it can
+// reach runs: the window opened while that machine was down. Drawn in the pane's place as
+// unreachable, with no surface and no bridge, until its machine answers and it becomes a pane
+// in the same place (docs/mip/0008-panes-across-machines.md, section 7).
+message ViewTreeUnreachable {
+  // The machine the pane runs on, as the tab's copies name it.
+  string daemon_id = 1;
+  string pane_id = 2;
 }
 
 message ViewTreePane {
