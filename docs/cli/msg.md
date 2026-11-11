@@ -422,6 +422,14 @@ between the two, so a window attached to both. A helper
 blocked or stuck on its maker's message holds their group up too, and the stall notice above leaves
 the maker out, since this one told it; anybody else waiting on the helper is still told.
 
+A helper still at a dialog half an hour after it blocked has a maker that has not answered it,
+whether the maker was told and did nothing or was too busy to be told: often a maker that is
+itself waiting, or asleep in a wait, overnight. Only somebody at the helper's pane can answer it
+then, so you are told too, once for each time it blocks, from `@muster` in your group with the
+helper, with the command that brings its pane forward. A helper whose dialog is answered first is
+never mentioned, nor one that has stopped reading, which its maker can restart. This is the only
+rule that tells you of a helper's block, so one block is one notice.
+
 When a maker's pane closes with helpers still open, the person is told once, by `@muster`, in the
 group they share with the maker, made for it when there is none:
 

@@ -44,6 +44,11 @@ pub(crate) const SETTLE: Duration = Duration::from_secs(10);
 /// A debug build's [`SETTLE`] in milliseconds, when set, so a test need not wait for it.
 const SETTLE_SAID: &str = "MUSTER_DAEMON_HELPER_SETTLE_MS";
 
+/// How many times [`SETTLE`] a helper may sit at a dialog before the person is told, whatever
+/// its maker did: 30 minutes, the span the stall watch waits before telling the person of a
+/// member only a person can free (`super::stalls`).
+const ESCALATE_AFTER_SETTLES: u64 = 180;
+
 /// How long the doorbell's thread may sleep for all this watch cares, with no need waiting to
 /// be told: every change in an agent wakes it anyway.
 const NOTHING_DUE: Duration = Duration::from_mins(1);
@@ -164,6 +169,9 @@ struct Watch {
     /// The stretch of work, by when it began, that its maker was told it went idle unreported
     /// after: a chore turn between leaves the same stretch, which is not told of twice.
     told_unreported_for: Option<u64>,
+    /// When the need began that the person has been told of, which its maker had not met: a need
+    /// begun later is another, which they hear of afresh.
+    escalated_for: Option<u64>,
     /// Whether its need is due and waits for its maker to be free.
     held: bool,
     waiting_since_ms: Option<u64>,
@@ -248,6 +256,12 @@ pub(crate) struct Makers {
     pub(crate) busy: Busy,
     /// Whether a need waits for a maker on another machine to come free, which nothing announces.
     held_elsewhere: bool,
+    escalate_ms: u64,
+    /// Whether what is posted to the person here reaches them now, as of this look.
+    human_in_reach: bool,
+    /// Each helper whose dialog its maker has left for the person, since the last look, with what
+    /// the person is told.
+    escalations: Vec<(String, String)>,
 }
 
 impl Makers {
@@ -272,6 +286,11 @@ impl Makers {
             newly_held: Vec::new(),
             busy: Busy::default(),
             held_elsewhere: false,
+            escalate_ms: u64::try_from(settle.as_millis())
+                .unwrap_or(u64::MAX)
+                .saturating_mul(ESCALATE_AFTER_SETTLES),
+            human_in_reach: true,
+            escalations: Vec::new(),
         }
     }
 
@@ -332,6 +351,16 @@ impl Makers {
             let waiting_since = helper.waiting.as_ref().map(|waiting| waiting.since_ms);
             let Some((need, since_ms)) = watch.need else { continue };
             let held_ms = now_ms.saturating_sub(since_ms);
+            // Whether its maker was told or is still busy: only somebody at the pane can answer a
+            // dialog, and half an hour on means the maker has not.
+            if need == Need::Blocked
+                && held_ms >= self.escalate_ms
+                && watch.escalated_for != Some(since_ms)
+                && self.human_in_reach
+            {
+                watch.escalated_for = Some(since_ms);
+                self.escalations.push((helper.pane.clone(), escalation(helper, called, held_ms)));
+            }
             let limit = if need == Need::Waiting { self.waiting_ms } else { self.settle_ms };
             if watch.told || held_ms < limit || watch.retry_at_ms.is_some_and(|at| now_ms < at) {
                 continue;
@@ -399,7 +428,8 @@ impl Makers {
 
     /// How long until a need held now is due to be told, or a helper at rest or a closed maker's
     /// notice has settled. A need waiting for its maker to be free is looked at again when the
-    /// maker changes, which wakes the doorbell's thread anyway.
+    /// maker changes, which wakes the doorbell's thread anyway; and no look is more than a minute
+    /// away, nor later than a dialog is due to be told to the person.
     fn due(&self, now_ms: u64) -> Duration {
         let settling = self
             .at_rest_since_ms
@@ -424,10 +454,31 @@ impl Makers {
                 Duration::from_millis(left)
             })
             .chain(settling)
+            // Not while the person is out of reach: a dialog overdue for them then would make every
+            // look due at once, and the minute's cap looks again soon enough.
+            .chain(self.watches.values().filter(|_| self.human_in_reach).filter_map(|watch| {
+                let (need, since_ms) = watch.need?;
+                let due_ms = since_ms.saturating_add(self.escalate_ms).saturating_sub(now_ms);
+                let due = need == Need::Blocked && watch.escalated_for != Some(since_ms);
+                due.then(|| Duration::from_millis(due_ms))
+            }))
             .chain(self.held_elsewhere.then_some(ASK_BUSY_AGAIN))
             .min()
-            .unwrap_or(NOTHING_DUE)
+            .map_or(NOTHING_DUE, |due| due.min(NOTHING_DUE))
     }
+}
+
+/// What the person is told of `helper`, at a dialog for `held_ms` that its maker has not answered.
+fn escalation(helper: &Helper, called: &BTreeMap<String, String>, held_ms: u64) -> String {
+    let pane = called.get(&helper.pane).unwrap_or(&helper.pane);
+    format!(
+        "{named}, a helper of {maker}, has been at a dialog for {held}, and its maker has not \
+         answered it. Only somebody at its pane can answer it now, so Muster tells you, once; \
+         `muster pane show --pane {pane}` brings it forward.",
+        named = shown(called, &helper.pane),
+        maker = shown(called, &helper.maker),
+        held = said_as_time(held_ms),
+    )
 }
 
 /// What `helper` needs now, `worked_since_ms` being when its last stretch of work began.
@@ -566,6 +617,7 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         if messages.handing_over {
             return NOTHING_DUE;
         }
+        makers.human_in_reach = messages.service.human_in_reach(&panes);
         let helpers = helpers(&messages.service, &panes, makers, now_ms());
         (helpers, messages.service.called(&panes))
     };
@@ -585,6 +637,7 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
             fields! { "helper" => helper, "maker" => maker, "need" => need.as_str() },
         );
     }
+    tell_escalations(shared, &panes, makers);
     for tell in tells {
         if tell_maker(shared, &panes, &tell) {
             if let Some(since) = tell.wait_started_ms {
@@ -904,6 +957,33 @@ fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
     }
 }
 
+/// Tells the person of each helper whose dialog its maker left, as the last judge found them.
+fn tell_escalations(shared: &Arc<Shared>, panes: &Panes, makers: &mut Makers) {
+    for (helper, body) in makers.escalations.drain(..) {
+        let untold = {
+            let helper = helper.clone();
+            move |why: &str| escalation_untold(&helper, why)
+        };
+        let called = panes.name_of(&helper);
+        let told = "msg.helper.escalated";
+        notices::tell_the_person(shared, panes, &helper, called.as_deref(), &body, told, untold);
+    }
+}
+
+/// Logs that the person was not told of a helper's dialog its maker left, and why not.
+fn escalation_untold(helper: &str, reason: &str) {
+    log::warn(
+        "msg.helper.unescalated",
+        fields! {
+            "helper" => helper,
+            "reason" => reason,
+            "impact" => "a helper has sat at a dialog for half an hour that its maker has not \
+                         answered, and the person was not told; nothing answers it",
+            "check" => "the reason; the helper's pane, and whether its maker is itself waiting",
+        },
+    );
+}
+
 fn helper_untold(helper: &str, maker: &str, need: Need, reason: &str) {
     log::warn(
         "msg.helper.untold",
@@ -1016,6 +1096,69 @@ mod tests {
 
     fn called() -> BTreeMap<String, String> {
         BTreeMap::from([("p2".to_string(), "maple".to_string())])
+    }
+
+    /// Half an hour of `SETTLE_MS` settles, when a helper's dialog is left for the person.
+    const ESCALATE_MS: u64 = SETTLE_MS * ESCALATE_AFTER_SETTLES;
+
+    /// Judges `helper` at `0` and every settle from `blocked_at` to `until`, and says what the
+    /// person was told on the way.
+    fn escalated(makers: &mut Makers, helper: &Helper, blocked_at: u64, until: u64) -> Vec<String> {
+        let called = called();
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        let mut said = Vec::new();
+        for at in (blocked_at..=until).step_by(usize::try_from(SETTLE_MS).unwrap()) {
+            makers.judge(std::slice::from_ref(helper), &called, at);
+            said.extend(makers.escalations.drain(..).map(|(_, body)| body));
+        }
+        said
+    }
+
+    /// A helper at a dialog its maker has left for half an hour is told to the person, once,
+    /// whether the maker was told and did nothing or was too busy to be told.
+    #[test]
+    fn a_dialog_its_maker_left_for_half_an_hour_is_told_to_the_person_once() {
+        let blocked = maple(Activity::Blocked);
+        let said = escalated(&mut makers(), &blocked, 1_000, 1_000 + ESCALATE_MS + 5 * SETTLE_MS);
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(
+            said[0].starts_with("maple (p2), a helper of p1, has been at a dialog for 30 minutes"),
+            "{}",
+            said[0]
+        );
+        assert!(said[0].contains("`muster pane show --pane maple`"), "{}", said[0]);
+
+        let busy = Helper { maker_busy: true, ..maple(Activity::Blocked) };
+        let said = escalated(&mut makers(), &busy, 1_000, 1_000 + ESCALATE_MS);
+        assert_eq!(said.len(), 1, "a maker too busy to be told");
+    }
+
+    /// A dialog answered in time, or a helper that stopped reading, which its maker can restart,
+    /// is not the person's to hear of; nor is anything while the person is out of reach, until
+    /// they are back.
+    #[test]
+    fn a_dialog_answered_in_time_or_a_stuck_helper_is_not_told_to_the_person() {
+        let mut watch = makers();
+        let called = called();
+        escalated(&mut watch, &maple(Activity::Blocked), 1_000, ESCALATE_MS);
+        watch.judge(&[maple(Activity::Working)], &called, ESCALATE_MS + 1);
+        assert!(
+            escalated(&mut watch, &maple(Activity::Working), ESCALATE_MS + 2, 2 * ESCALATE_MS)
+                .is_empty()
+        );
+
+        let stuck = escalated(&mut makers(), &maple(Activity::Stuck), 1_000, 2 * ESCALATE_MS);
+        assert!(stuck.is_empty(), "{stuck:?}");
+
+        let mut watch = makers();
+        watch.human_in_reach = false;
+        let away = escalated(&mut watch, &maple(Activity::Blocked), 1_000, 1_000 + ESCALATE_MS);
+        assert!(away.is_empty(), "out of reach");
+        let overdue = watch.due(1_000 + ESCALATE_MS + 1);
+        assert!(overdue > Duration::ZERO, "looked at again at once, over and over: {overdue:?}");
+        watch.human_in_reach = true;
+        watch.judge(&[maple(Activity::Blocked)], &called, 1_000 + ESCALATE_MS + SETTLE_MS);
+        assert_eq!(watch.escalations.len(), 1, "once back in reach");
     }
 
     fn needs(tells: &[Tell]) -> Vec<Need> {

@@ -2048,6 +2048,35 @@ fn a_helper_blocked_on_its_makers_task_tells_the_maker_once() {
     assert!(read[0].contains(" (p2) is blocked at a dialog: "), "{read:?}");
 }
 
+/// A helper at a dialog its maker leaves unanswered is told to the person once half an hour has
+/// passed, which is 180 settles: the maker heard at the settle, and did nothing.
+#[test]
+fn a_helpers_dialog_its_maker_leaves_is_told_to_the_person() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "100")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+    logging.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    assert_eq!(agent.read_in_its_pane().len(), 1, "the maker hears first");
+
+    let escalated = r#""event":"msg.helper.escalated""#;
+    let logged = logging.logged_until(escalated, Duration::from_secs(40));
+    assert!(logged.iter().any(|line| line.line.contains(escalated)), "never told the person");
+    let read = agent.reading(msg_request::Caller::default());
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].contains("@muster: ")
+            && read[0].contains(" (p2), a helper of ")
+            && read[0].contains("its maker has not answered it")
+            && read[0].contains("`muster pane show --pane "),
+        "{read:?}"
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told twice");
+}
+
 /// A helper still blocked as a newer daemon takes its pane over has told its maker already, and
 /// the new daemon does not tell it again.
 #[test]
