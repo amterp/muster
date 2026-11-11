@@ -29,6 +29,11 @@ pub fn engine_version() -> Option<String> {
     Some(String::from_utf8_lossy(bytes).into_owned())
 }
 
+/// The file name a binary linked against libghostty-vt asks the loader for: the dylib's install
+/// name, which carries the library's major version. A copy of the library sent anywhere has to
+/// be given this name, or what it was sent for cannot load it.
+pub const LIBRARY_FILE_NAME: &str = "libghostty-vt.1.dylib";
+
 /// The libghostty-vt this process loaded, when it loaded one from a file of its own.
 ///
 /// On a Mac the library is a dylib beside whatever links it, and a daemon copied to another Mac
@@ -68,5 +73,21 @@ mod tests {
         let name = path.file_name().unwrap().to_string_lossy();
         assert!(name.starts_with("libghostty-vt") && name.ends_with(".dylib"), "{name}");
         assert!(path.is_file(), "{} is not there", path.display());
+    }
+
+    /// The library this build loaded is the one `LIBRARY_FILE_NAME` names: a re-pin that moves
+    /// libghostty-vt's major version fails here rather than in a remote Mac's loader.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_library_file_name_is_the_install_name() {
+        let path = super::library_path().expect("a Mac build loads libghostty-vt from a file");
+        let output = std::process::Command::new("otool")
+            .arg("-D")
+            .arg(&path)
+            .output()
+            .expect("otool, from the Xcode command line tools, reads a dylib's install name");
+        let printed = String::from_utf8_lossy(&output.stdout);
+        let install_name = printed.lines().last().unwrap_or_default().trim();
+        assert_eq!(install_name, format!("@rpath/{}", super::LIBRARY_FILE_NAME));
     }
 }

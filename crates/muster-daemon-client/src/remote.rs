@@ -473,7 +473,10 @@ mod tests {
             linux: None,
             mac: Some(daemon),
             mac_cli: None,
-            mac_library: Some(library),
+            mac_library: Some(crate::install::Library {
+                path: library,
+                file_name: muster_vt::LIBRARY_FILE_NAME.to_string(),
+            }),
             data: Some(data),
             extras: None,
         }
@@ -609,7 +612,7 @@ mod tests {
         let (reached, started) =
             ensure_running(&Here, &installed, &carried, &installed.socket, &given).unwrap();
         assert_eq!(reached, Reached::Started);
-        for placed in ["muster-daemon", "libghostty-vt.dylib", "muster-daemon-data/terminfo"] {
+        for placed in ["muster-daemon", muster_vt::LIBRARY_FILE_NAME, "muster-daemon-data/terminfo"] {
             assert!(installed.directory.join(placed).exists(), "{placed} was not installed");
         }
         let wrapper = installed.directory.join("muster-daemon-data/bin/ghostty");

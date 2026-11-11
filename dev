@@ -783,7 +783,9 @@ fn build_bundle():
     $`cp {swift_bin}/muster-bridge {contents}/MacOS/muster-bridge`
     $`cp {swift_bin}/muster-cli {contents}/MacOS/muster-cli`
     $`cp target/release/libmuster.dylib {contents}/Frameworks/libmuster.dylib`
-    $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/libghostty-vt.dylib`
+    // Under the name every binary that links it asks dyld for, which carries the library's
+    // major version: under any other name the daemon and libmuster cannot load it.
+    $`cp {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib {contents}/Frameworks/{vt_dylib_name()}`
     // Resources rather than Library, because a Linux ELF is not code to codesign: it is sealed
     // as a resource like the icon, and is only ever run on another machine.
     $`rsync -a --copy-links {swift_bin}/daemons/ {contents}/Resources/daemons/`
@@ -902,7 +904,7 @@ fn check_bundle_is_whole(contents):
         "{contents}/Resources/extras/.claude-plugin/marketplace.json",
         "{contents}/Resources/extras/.agents/plugins/marketplace.json",
         "{contents}/Frameworks/libmuster.dylib",
-        "{contents}/Frameworks/libghostty-vt.dylib",
+        "{contents}/Frameworks/{vt_dylib_name()}",
         "{contents}/Info.plist",
         "{contents}/Library/{DAEMON_BUNDLE}/Contents/Info.plist",
     ]
@@ -1098,7 +1100,7 @@ fn sign_bundle(swift_bin, contents):
     // executable lacks the hardened runtime - and --timestamp because a signature without one
     // stops verifying the day the certificate expires rather than outliving it.
     inner = [
-        "{contents}/Frameworks/libghostty-vt.dylib",
+        "{contents}/Frameworks/{vt_dylib_name()}",
         "{contents}/Frameworks/libmuster.dylib",
         "{contents}/MacOS/muster-bridge",
         "{contents}/MacOS/muster-cli",
@@ -1123,9 +1125,16 @@ fn sign_bundle(swift_bin, contents):
     // here is one that produces a bundle that launches on this machine and nowhere else.
     $`codesign --verify --deep --strict --verbose=2 {BUNDLE}`
 
+// The file name binaries linked against libghostty-vt ask dyld for, read off the dylib's install
+// name rather than spelled here: it carries the library's major version, so a re-pin can move it,
+// and a bundle holding the old name fails only at launch.
+fn vt_dylib_name():
+    install_name = quiet $`otool -D {GHOSTTY_DIR}/zig-out/lib/libghostty-vt.dylib`.stdout.trim()
+    return install_name.split("\n")[-1].trim().split("/")[-1]
+
 fn sign_ad_hoc(swift_bin):
     contents = "{BUNDLE}/Contents"
-    $`codesign -f -s - {contents}/Frameworks/libghostty-vt.dylib`
+    $`codesign -f -s - {contents}/Frameworks/{vt_dylib_name()}`
     $`codesign -f -s - {contents}/Frameworks/libmuster.dylib`
     $`codesign -f -s - {contents}/MacOS/muster-bridge`
     $`codesign -f -s - {contents}/MacOS/muster-cli`

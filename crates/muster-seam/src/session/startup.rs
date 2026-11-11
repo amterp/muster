@@ -79,7 +79,10 @@ pub(super) fn carried() -> remote_install::Carried {
         extras: mac_cli.as_deref().map(muster_core::harnesses::extras_beside),
         mac: mac.filter(|_| mac_here),
         mac_cli: mac_cli.filter(|_| mac_here),
-        mac_library: muster_vt::library_path(),
+        mac_library: muster_vt::library_path().map(|path| remote_install::Library {
+            path,
+            file_name: muster_vt::LIBRARY_FILE_NAME.to_string(),
+        }),
         data,
     }
 }
