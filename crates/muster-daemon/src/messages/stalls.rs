@@ -343,7 +343,10 @@ impl Stalls {
             if unlock == Unlock::Tell {
                 let worked = said_as_time(now_ms.saturating_sub(worked_since));
                 let why = if member.unsent {
-                    format!("it has read as working for {worked} without a break, and {}", unsent(member, called))
+                    format!(
+                        "it has read as working for {worked} without a break, and {}",
+                        unsent(member, called)
+                    )
                 } else {
                     format!(
                         "it has read as working for {worked} without a break, so it is rung only \
@@ -756,7 +759,7 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
         Act::Tell { group, to, body } => {
             let home = shared.messages().service.home_of(&group);
             if home.is_some() {
-                tell_at_home(shared, group, to, body);
+                tell_at_home(shared, group, to, &body);
                 return;
             }
             let delivered = delivering(shared, panes, |service| {
@@ -779,8 +782,8 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
 }
 
 /// Has the machine that keeps `group` post what whoever waits is told ([`notices`]).
-fn tell_at_home(shared: &Arc<Shared>, group: String, to: Vec<String>, body: String) {
-    let away = match shared.messages().service.route_muster(&group, &to, &body) {
+fn tell_at_home(shared: &Arc<Shared>, group: String, to: Vec<String>, body: &str) {
+    let away = match shared.messages().service.route_muster(&group, &to, body) {
         Ok(Some(away)) => away,
         Ok(None) => {
             untold(&group, &to, "the group is kept here now; the next stall is told here");
@@ -1245,7 +1248,10 @@ mod tests {
         assert!(!body.contains("reaches it at work"), "{body}");
 
         let why = unread_why(&unsent[0], &called);
-        assert!(why.starts_with("it is at work, and Muster's notice of the post is typed"), "{why}");
+        assert!(
+            why.starts_with("it is at work, and Muster's notice of the post is typed"),
+            "{why}"
+        );
     }
 
     /// A look that finds the member not at work starts its run of work over.

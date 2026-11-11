@@ -961,7 +961,9 @@ fn an_urgent_ring_whose_returns_were_swallowed_is_sent_later_in_the_same_turn() 
     let sent = r#""event":"msg.ring.left_sent""#;
     let logged = logging.logged_until(sent, ANSWER * 4);
     assert!(
-        logged.iter().any(|line| line.line.contains(sent) && line.line.contains(r#""at_work":"true""#)),
+        logged
+            .iter()
+            .any(|line| line.line.contains(sent) && line.line.contains(r#""at_work":"true""#)),
         "{logged:?}"
     );
     let rung = agent.until_rung(1);
