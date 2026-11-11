@@ -108,6 +108,8 @@ pub fn names(payload: &request::Payload) -> Option<Names<'_>> {
         // The window holding the maker, whose helpers come forward beside it.
         Payload::ShowHelpers(show) => pane(&show.pane_id),
         Payload::HideHelpers(hide) => pane(&hide.pane_id),
+        // No machine that answers holds it: the window whose tab keeps a place for it.
+        Payload::RemoveFromTab(remove) => pane(&remove.pane_id),
         Payload::QuietPane(quiet) => pane(&quiet.pane_id),
         Payload::SendToPane(send) => pane(&send.pane_id),
         Payload::ReattachPane(reattach) => pane(&reattach.pane_id),
@@ -147,6 +149,7 @@ pub fn typed_panes(payload: &mut request::Payload) -> Vec<&mut String> {
         Payload::ReadPane(read) => vec![&mut read.pane_id],
         Payload::ReattachPane(reattach) => vec![&mut reattach.pane_id],
         Payload::EqualizePanes(even) => vec![&mut even.pane_id],
+        Payload::RemoveFromTab(remove) => vec![&mut remove.pane_id],
         _ => Vec::new(),
     }
 }

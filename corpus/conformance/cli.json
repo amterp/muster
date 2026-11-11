@@ -3068,6 +3068,44 @@
       }
     },
     {
+      "name": "removing a pane from its tab names it by the id its place shows",
+      "why": "A pane whose machine is unreachable is drawn by its id, since its callsign is kept by that machine, and the id is sent as typed for the window to find the tab keeping its place.",
+      "given": {
+        "argv": [
+          "pane",
+          "remove",
+          "--pane",
+          "p1w3r0x0ab"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "remove_from_tab": {
+            "pane_id": "p1w3r0x0ab"
+          }
+        }
+      }
+    },
+    {
+      "name": "removing a pane from its tab never means the pane this runs in",
+      "why": "The pane this command runs in is on a machine that answers, so it is never one to remove: with no --pane, nothing is sent.",
+      "given": {
+        "argv": [
+          "pane",
+          "remove"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "usage": "MissingRequiredArgument"
+      }
+    },
+    {
       "name": "hiding names the pane, or the one this runs in",
       "why": "An agent hides its own pane as readily as another's, so with no --pane it is the pane this command runs in, as every pane verb reads it.",
       "given": {

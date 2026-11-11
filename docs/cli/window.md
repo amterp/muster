@@ -357,7 +357,9 @@ keyboard is on. A zoomed tab says `zoomed on` the pane filling it and draws that
 filling the tab, since that is what is on screen and the size its program sees; the panes behind
 the zoom, other machines' panes among them, are named on a line under it, `behind the zoom:
 p1w3r0ab2n`. A pane on a machine the window has not reached since it opened is drawn in its place
-by its id, saying `unreachable` and which machine it is on. The drawing is as wide as the terminal, and boxes too small for their text
+by its id, saying `unreachable` and which machine it is on; `muster pane remove --pane <id>` takes
+it out of its tab, as its right-click menu's Remove from Tab does, leaving it running on its
+machine, and it comes back in a tab of its own if that machine answers again. The drawing is as wide as the terminal, and boxes too small for their text
 are cut rather than dropped, so every pane is named even where a ratio cannot be drawn exactly.
 
 A pane's size is the one its program last saw, as its daemon holds it: what it is drawn at, or

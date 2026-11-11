@@ -2709,6 +2709,14 @@ impl Session {
         found
     }
 
+    /// The tab whose copy on some machine keeps a place for `pane` as another machine's: a pane
+    /// no machine that answers holds, which only a tab's tree still names.
+    fn keeping_a_place_for(&self, pane: &PaneId) -> Option<TabId> {
+        self.mirrors().values().find_map(|mirror| {
+            mirror.tabs().find(|tab| tab.copy.keeps_foreign(pane)).map(|tab| tab.id.clone())
+        })
+    }
+
     /// Puts a window's keyboard on a pane, bringing the pane's tab on screen when it is not.
     fn point_keyboard_at(
         &mut self,
@@ -2827,7 +2835,10 @@ pub(crate) fn resolve(request: &Request) -> Result<Resolved, String> {
         }
         Some(named)
     };
-    let tab_of = |pane: &str| session.locate(&PaneId::new(pane)).map(|(_, tab)| tab);
+    let tab_of = |pane: &str| {
+        let pane = PaneId::new(pane);
+        session.locate(&pane).map(|(_, tab)| tab).or_else(|| session.keeping_a_place_for(&pane))
+    };
     let from = named
         .or_else(|| {
             let tab = (!request.from_pane.is_empty()).then(|| tab_of(&request.from_pane))??;

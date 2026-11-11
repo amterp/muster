@@ -1463,8 +1463,9 @@ directory, not the processes - an agent whose harness reported its session comes
 again as soon as both daemons have spoken. **One of a tab's machines is unreachable:** the tab opens showing the panes
 it can reach rather than refusing to open, which is the rule the mirror already follows for a stale daemon applied to a
 tab, with a placeholder in the place of each pane it cannot, so nothing moves when that machine answers. A placeholder
-offers Remove from Tab, and a machine taken out of the config leaves every tab at the next launch; a part removed
-either way comes back as a tab of its own if its machine answers again (MIP-8, section 7).
+offers Remove from Tab, which `muster pane remove` also does, and a machine taken out of the config leaves every tab
+at the next launch; a part removed either way comes back as a tab of its own if its machine answers again (MIP-8,
+section 7).
 
 **The first row used to have an exception, and what closed it is the daemon being a helper application.** macOS
 charges a protected request - a folder, the camera, AppleScript, the local network - to the *responsible* process.

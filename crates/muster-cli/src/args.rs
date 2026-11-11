@@ -26,9 +26,9 @@ use muster_proto::{
     AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
     FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
     HideHelpers, HidePane, LeaveConversation, MoveTab, PaneCompaction, QuietPane, ReadClosedPanes,
-    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RenamePane, RenameTab,
-    ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation, ShowHelpers,
-    ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
+    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RemoveFromTab, RenamePane,
+    RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation,
+    ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -849,6 +849,20 @@ enum Doing {
         pane: Option<String>,
     },
 
+    /// Take a pane whose machine is unreachable out of its tab, leaving it running there
+    ///
+    /// For a machine gone for good, or one you do not want back in this tab: if the machine
+    /// answers again, the pane comes back in a tab of its own. A pane whose machine answers is
+    /// closed instead, with `muster pane close`.
+    //
+    // Required, and $MUSTER_PANE is not read: the pane this runs in is on a machine that
+    // answers, so it is never one to remove.
+    Remove {
+        /// The pane, by the id `muster window --layout` draws in its unreachable place
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        pane: String,
+    },
+
     /// Bring back a pane closed in the last hour, under its name and callsign, where it was,
     /// running its agent's session again
     //
@@ -1441,6 +1455,10 @@ fn pane(
         Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
+        })),
+        Doing::Remove { pane } => send(request::Payload::RemoveFromTab(RemoveFromTab {
+            pane_id: pane.clone(),
+            ..RemoveFromTab::default()
         })),
         // clap holds the three destinations in one required group, so exactly one is set here.
         Doing::Move { pane, onto, tab, new_tab, name, left, right, up, down } => {

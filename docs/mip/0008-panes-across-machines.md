@@ -264,7 +264,8 @@ change.
   to the other parts. With no window open, the other parts keep a foreign leaf for a pane that has
   gone; the next window to merge drops it.
 - **A machine leaves the config, or is gone for good.** A placeholder's right-click menu offers
-  Remove from Tab, which writes every part that answers without that pane. Taking the machine out
+  Remove from Tab, which writes every part that answers without that pane, and `muster pane
+  remove` does the same from the CLI. Taking the machine out
   of the config does the same for every one of its panes in every tab the window holds, at the
   next launch, since a machine taken out of the config stays attached until then; the window
   knows it from its saved arrangement, which lists the machines it followed. If the machine ever

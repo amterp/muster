@@ -321,6 +321,9 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
         request::Payload::ZoomPane(zoom) => json!({
             "zoom_pane": fields([("pane_id", said(&zoom.pane_id))])
         }),
+        request::Payload::RemoveFromTab(remove) => json!({
+            "remove_from_tab": fields([("pane_id", said(&remove.pane_id))])
+        }),
         request::Payload::HidePane(hide) => json!({
             "hide_pane": fields([("pane_id", said(&hide.pane_id))])
         }),
