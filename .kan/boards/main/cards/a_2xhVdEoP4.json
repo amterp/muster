@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "migrate-mip-9-group",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1794369991941,
+  "creator": "Alexander Terp",
+  "description": "docs/mip/0009-group-conversation.md, 459 lines, Implemented 2026-10-24: the conversation view and message banner drawn by Muster. Has a Decisions for amterp section. Several later UI decisions in Fencil (banner-reply-reads and others) may already cover parts; revise or link rather than duplicate.\n\nHow to migrate, the same for every MIP (parent a_2xhSx0Jzq):\n\n- One Fencil decision per question the MIP settles: each numbered part of its Decision, each \"Decisions for amterp\" question, and each addendum or History entry that changed an answer. Leave out implementation details nobody weighed (`fencil` skill, record-consequential-only). Run `fencil search` first; a question already in Fencil gets a revision, not a duplicate.\n- Put the rejected alternatives from Alternatives Considered in the decision's why, and cite the MIP by its repo path as `source`.\n- Set each level by `fencil rules`. The MIP's status says little: several Draft MIPs are built. An owner quote in the MIP, its kan card or a commit message supports an owner level; \"amterp left the choice to an agent\" supports `none`. When unsure, the lower level. Add `review = \"\u003creason\u003e\"` where an owner should check the reading.\n- Give each decision the `paths` of the code it governs, so `fencil search --path` finds it.\n- An Open Question with no answer becomes an open decision (no answer), so `fencil ask` lists it.\n- Add a History line to the MIP naming the decisions it became. Do not delete or rewrite the MIP.\n\nDone when `fencil check` passes and `fencil search` finds each decision by the terms a later change to that code would use.",
+  "id": "a_2xhVdEoP4",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2xhSx0Jzq",
+  "position": "b1u",
+  "title": "Migrate MIP-9 (group conversation and banner) into Fencil",
+  "type": "docs",
+  "updated_at_millis": 1794369991941,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794369991941}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_v": 4,
+  "alias": "migrate-mip-3-muster",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1794369990578,
+  "creator": "Alexander Terp",
+  "description": "docs/mip/0003-own-daemon.md, 1463 lines, status Draft though built: muster-daemon replacing herdr. The largest MIP; its Decision runs 1100 lines across durability, the state file, handoff, the protocol and detection. Expect many decisions; split the card if it will not fit one session.\n\nHow to migrate, the same for every MIP (parent a_2xhSx0Jzq):\n\n- One Fencil decision per question the MIP settles: each numbered part of its Decision, each \"Decisions for amterp\" question, and each addendum or History entry that changed an answer. Leave out implementation details nobody weighed (`fencil` skill, record-consequential-only). Run `fencil search` first; a question already in Fencil gets a revision, not a duplicate.\n- Put the rejected alternatives from Alternatives Considered in the decision's why, and cite the MIP by its repo path as `source`.\n- Set each level by `fencil rules`. The MIP's status says little: several Draft MIPs are built. An owner quote in the MIP, its kan card or a commit message supports an owner level; \"amterp left the choice to an agent\" supports `none`. When unsure, the lower level. Add `review = \"\u003creason\u003e\"` where an owner should check the reading.\n- Give each decision the `paths` of the code it governs, so `fencil search --path` finds it.\n- An Open Question with no answer becomes an open decision (no answer), so `fencil ask` lists it.\n- Add a History line to the MIP naming the decisions it became. Do not delete or rewrite the MIP.\n\nDone when `fencil check` passes and `fencil search` finds each decision by the terms a later change to that code would use.",
+  "id": "a_2xhVb1Wfj",
+  "labels": [
+    "ai-lo"
+  ],
+  "parent": "a_2xhSx0Jzq",
+  "position": "b1o",
+  "title": "Migrate MIP-3 (Muster's own daemon) into Fencil",
+  "type": "docs",
+  "updated_at_millis": 1794369990578,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794369990578}
+  ]
+}
