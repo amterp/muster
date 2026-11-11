@@ -51,7 +51,8 @@ fn main() {
     // stddef.h and stdint.h there, which a Mac does not have. Zig carries them, and they are
     // the headers the library itself was compiled against.
     if let Some(zig_target) = linux_target(&target) {
-        let libc = zig_lib_dir().join("libc/include");
+        println!("cargo:rerun-if-changed={}", repo.join("deps/zig.pin").display());
+        let libc = zig_lib_dir(&repo).join("libc/include");
         for dir in [zig_target, "generic-musl", "any-linux-any"] {
             bindings = bindings.clang_arg(format!("-isystem{}", libc.join(dir).display()));
         }
@@ -92,11 +93,21 @@ fn linux_target(target: &str) -> Option<&'static str> {
     }
 }
 
-/// The directory zig keeps its libc headers under, as `zig env` reports it.
-fn zig_lib_dir() -> PathBuf {
-    let output = std::process::Command::new("zig").arg("env").output().expect(
-        "zig is needed to build for a Linux target, as it is for libghostty itself, and none \
-         is on PATH. Try: brew install zig@0.16",
+/// The directory the pinned zig keeps its libc headers under, as `zig env` reports it.
+fn zig_lib_dir(repo: &std::path::Path) -> PathBuf {
+    let zig = repo.join("tools/zig");
+    let output = std::process::Command::new(&zig).arg("env").output().unwrap_or_else(|error| {
+        panic!(
+            "could not run {}, which runs the zig deps/zig.pin names and is needed to build for \
+             a Linux target, as it is for libghostty itself: {error}",
+            zig.display()
+        )
+    });
+    assert!(
+        output.status.success(),
+        "{} env failed, so the Linux headers bindgen needs cannot be found:\n{}",
+        zig.display(),
+        String::from_utf8_lossy(&output.stderr)
     );
     let env = String::from_utf8_lossy(&output.stdout);
     let dir = env

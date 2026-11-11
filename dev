@@ -31,7 +31,10 @@ args:
     latency bool   # Time input-to-glyph through muster-daemon. Not in the gate.
     doctor bool    # Say what this repo's own tooling has left running on this machine.
 
-ZIG_VERSION = "0.16.0"
+// Every Zig call goes through this, which runs the build deps/zig.pin names and fetches it
+// once per machine, so a checkout carries its own compiler and a pin move breaks no other.
+ZIG = "tools/zig"
+ZIG_PIN = "deps/zig.pin"
 GHOSTTY_REPO = "https://github.com/ghostty-org/ghostty"
 GHOSTTY_DIR = "deps/ghostty"
 XCFRAMEWORK = "deps/ghostty/macos/GhosttyKit.xcframework"
@@ -1429,9 +1432,11 @@ fn patch_note():
     count = len(ghostty_patches())
     return count == 0 ? "" : " with {count} patch{count == 1 ? '' : 'es'}"
 
-// Pin and patch hashes alone cannot distinguish a build that also produced Ghostty.app.
+// Pin and patch hashes alone cannot distinguish a build that also produced Ghostty.app, nor
+// one made by another compiler, which is why the Zig pin is in it too.
 fn deps_stamp(pin):
-    lines = [pin, "recipe library-only-v1"]
+    zig_pin = quiet $`git hash-object {ZIG_PIN}`.stdout.trim()
+    lines = [pin, "recipe library-only-v2", "{ZIG_PIN} {zig_pin}"]
     for patch in ghostty_patches():
         hash = quiet $`git hash-object {patch}`.stdout.trim()
         lines += ["{patch} {hash}"]
@@ -1477,38 +1482,19 @@ fn build_deps():
         check_ghostty_apps_absent()
         return
 
-    // Asked for only once there is something to build with it. Every other tier takes deps on
-    // the way past now, so checking first would make zig a requirement for running the suite
-    // on a tree that has libghostty sitting right there.
-    // Caught, because a missing zig and a wrong zig are the same question to whoever is
-    // about to be stopped by it, and only one of them used to get an answer. Uncaught, an
-    // absent binary raised Rad's own "command exited with code 127" against the raw command
-    // line - which is the first-run friction the README already calls out for a missing rad.
-    stdout, stderr, code = $`zig version` catch:
-        print_err(red("zig {ZIG_VERSION} is required to build libghostty, and none is installed."))
-        print_err("Try: brew install zig@0.16")
-        exit(1)
-    installed = stdout.trim()
-    if installed != ZIG_VERSION:
-        print_err(red("zig {ZIG_VERSION} is required; found {installed}."))
-        print_err("libghostty pins its own minimum, and a mismatch surfaces as a wall of")
-        print_err("compiler errors inside ghostty rather than as a version complaint.")
-        // The versioned formula rather than the bare one: `zig` tracks upstream stable and
-        // will drift off this pin, so the fix that reads right today stops working silently.
-        print_err("Try: brew install zig@0.16")
-        exit(1)
-
     print(dim("building libghostty at {pin[:12]}{patch_note()} - several minutes on a cold cache"))
     check_out(pin)
 
     // Two builds, because -Demit-lib-vt turns the xcframework off: the surface API that
     // the shell renders through, then the VT that the core encodes keys with and the
     // tests read grids from. The VT stays ReleaseFast for the daemon too: ReleaseSafe parsed
-    // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13).
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=native -Demit-terminfo=true`
-    $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true`
+    // every byte about 35% slower (docs/mip/0003-own-daemon.md, section 13). Stripped by
+    // name, because libghostty stopped stripping anything but ReleaseSmall by default.
+    zig = get_path(ZIG).full_path
+    $`cd {GHOSTTY_DIR} && {zig} build -Doptimize=ReleaseFast -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=native -Demit-terminfo=true`
+    $`cd {GHOSTTY_DIR} && {zig} build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dstrip=true`
     for zig_target in LINUX_DAEMONS.values():
-        $`cd {GHOSTTY_DIR} && zig build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
+        $`cd {GHOSTTY_DIR} && {zig} build -Doptimize=ReleaseFast -Demit-lib-vt=true -Dstrip=true -Dtarget={zig_target} --prefix zig-out/{zig_target}`
     check_ghostty_apps_absent()
     write_file(BUILT_STAMP, deps_stamp(pin))
 

@@ -340,10 +340,13 @@ since the process holding somebody's live agent looks exactly like the nineteen 
 Two toolchains, one door: the gate builds, tests and lints the Rust core and the Swift shell together, and a suite
 that discovers zero tests fails in either language rather than reporting green.
 
-Requires a Swift 6.2 toolchain, [Rad](https://github.com/amterp/rad), and Zig 0.16 on your PATH; a missing `rad`
-shows up as `env: rad: No such file or directory`. Rust installs itself - `rust-toolchain.toml` pins the version and
-rustup fetches it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built.
-libclang, which the libghostty-vt bindings are generated with, comes from the Xcode command line tools.
+Requires a Swift 6.2 toolchain and [Rad](https://github.com/amterp/rad) on your PATH; a missing `rad` shows up as
+`env: rad: No such file or directory`. Rust installs itself - `rust-toolchain.toml` pins the version and rustup fetches
+it on the first `cargo` call, the same way `deps/ghostty.pin` decides which libghostty gets built. So does Zig:
+`deps/zig.pin` names one build and its checksums, and `tools/zig`, which every Zig call in the repo goes through, fetches
+it once into `~/.cache/muster-zig/<version>/`. A `zig` on your PATH is never used, so moving the pin changes one
+checkout and leaves every other worktree on the machine building with its own. libclang, which the libghostty-vt
+bindings are generated with, comes from the Xcode command line tools.
 
 **The libghostty that gets built is the pin plus Muster's patches.** `deps/ghostty-patches/` holds changes Muster
 carries on libghostty for good, not until upstream takes them: `./dev` applies them in name order on top of the pinned

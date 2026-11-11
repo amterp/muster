@@ -1,0 +1,73 @@
+#!/bin/sh
+# Runs the Zig deps/zig.pin names, fetching it first if this machine has none.
+#
+# Every Zig call in the repo goes through here rather than through whatever `zig` is on PATH:
+# libghostty accepts only one major.minor, so a machine-wide upgrade breaks every checkout still
+# on the old pin, and Homebrew keeps no versioned formula to hold one back. The toolchain lands
+# in ${XDG_CACHE_HOME:-~/.cache}/muster-zig/<version>/, shared by every checkout on that pin.
+set -eu
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+pin="$repo/deps/zig.pin"
+
+read_pin() {
+    python3 -c 'import json, sys; pin = json.load(open(sys.argv[1])); print(pin["version"] if sys.argv[2] == "version" else pin["checksums"].get(sys.argv[2], ""))' "$pin" "$1"
+}
+
+case "$(uname -sm)" in
+    "Darwin arm64") host=aarch64-macos ;;
+    "Darwin x86_64") host=x86_64-macos ;;
+    *) host="" ;;
+esac
+
+version=$(read_pin version)
+want=""
+[ -n "$host" ] && want=$(read_pin "$host")
+if [ -z "$want" ]; then
+    echo "tools/zig: no Zig in $pin for this machine ($(uname -sm))." >&2
+    echo "Impact: libghostty and the Linux daemons cannot be built here, so nothing that" >&2
+    echo "compiles can run. Only macOS builds Muster today; to try another host, add its" >&2
+    echo "checksum from https://ziglang.org/download/index.json under \"checksums\"." >&2
+    exit 1
+fi
+
+home="${XDG_CACHE_HOME:-$HOME/.cache}/muster-zig/$version"
+zig="$home/zig"
+
+if [ ! -x "$zig" ]; then
+    mkdir -p "$(dirname "$home")"
+    staged=$(mktemp -d "$home.XXXXXX")
+    trap 'rm -rf "$staged"' EXIT
+    archive="zig-$host-$version.tar.xz"
+    echo "tools/zig: fetching Zig $version for $host (once per machine)" >&2
+    if ! curl -fsSL -o "$staged/$archive" "https://ziglang.org/download/$version/$archive"; then
+        echo "tools/zig: could not download $archive from ziglang.org." >&2
+        echo "Impact: nothing that builds libghostty can run until it is here." >&2
+        echo "Check the network, or download it by hand and extract it to $home." >&2
+        exit 1
+    fi
+    got=$(shasum -a 256 "$staged/$archive" | cut -d' ' -f1)
+    if [ "$got" != "$want" ]; then
+        echo "tools/zig: $archive has sha256 $got; deps/zig.pin expects $want." >&2
+        echo "Impact: it is not used. A truncated download is the usual cause; run again." >&2
+        echo "If it repeats, the archive upstream changed and the pin needs a look." >&2
+        exit 1
+    fi
+    tar -xJf "$staged/$archive" -C "$staged"
+    # Renamed into place whole, so a second run starting meanwhile never sees half a toolchain.
+    # os.rename refuses a target that exists and is not empty, where mv would move the
+    # directory inside it; losing that race leaves an identical copy in place, which is fine.
+    python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' \
+        "$staged/zig-$host-$version" "$home" 2>/dev/null || true
+    if [ ! -x "$zig" ]; then
+        echo "tools/zig: $home holds no zig after extracting $archive." >&2
+        echo "Impact: nothing that builds libghostty can run. A directory left there by" >&2
+        echo "something else is the likely cause; move it aside with tm and run again." >&2
+        exit 1
+    fi
+    # exec below replaces this shell, so the EXIT trap would never run.
+    rm -rf "$staged"
+    trap - EXIT
+fi
+
+exec "$zig" "$@"

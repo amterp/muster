@@ -1,0 +1,8 @@
+{
+  "_comment": "The Zig that builds libghostty and the Linux daemons' C. tools/zig fetches exactly this build into ~/.cache/muster-zig/<version>/ and every Zig call in the repo goes through it, so a checkout carries its own compiler the way rust-toolchain.toml carries Rust: moving this pin rebuilds one checkout and breaks no other. libghostty requires a matching major and minor (its build.zig.zon's minimum_zig_version). Checksums are ziglang.org's, from https://ziglang.org/download/index.json.",
+  "version": "0.17.1",
+  "checksums": {
+    "aarch64-macos": "75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d",
+    "x86_64-macos": "9af07b20319fbd0c92ee46ad23e81d6a782b1aaea2cfb8dcbff35f1d2c7ddbb7"
+  }
+}

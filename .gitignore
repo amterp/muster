@@ -13,6 +13,7 @@ deps/*
 !deps/ghostty.pin
 !deps/ghostty-patches/
 !deps/rad.pin
+!deps/zig.pin
 
 # Python bytecode (tools/)
 __pycache__/

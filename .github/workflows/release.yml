@@ -129,10 +129,6 @@ jobs:
           mv "$RUNNER_TEMP/rad" "$HOME/.local/bin/rad"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-
       # Shared with the gate's keys deliberately: a tag usually points at a
       # commit the gate has just built, so these are warm and the release costs
       # minutes rather than the better part of an hour.
@@ -146,7 +142,7 @@ jobs:
           # `linux-musl` stands for what ./dev -d builds beyond the pin - here, the Linux daemons'
           # archives. Change it when that list changes: a hit restores a zig-out without the new
           # artifact, ./dev rebuilds it on every run, and a key that hit is never saved again.
-          key: ghostty-${{ runner.os }}-${{ runner.arch }}-linux-musl-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch') }}
+          key: ghostty-${{ runner.os }}-${{ runner.arch }}-library-only-v2-linux-musl-${{ hashFiles('deps/ghostty.pin', 'deps/ghostty-patches/*.patch', 'deps/zig.pin') }}
 
       - name: Cache the Rust build
         uses: actions/cache@v4
