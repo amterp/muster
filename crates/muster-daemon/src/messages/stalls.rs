@@ -464,7 +464,7 @@ fn needs_a_person(member: &Member) -> bool {
     let covered = matches!(member.held, Some(Held::Unseen(Unseen::Covered(_), _)));
     (member.activity == Some(Activity::Blocked) || covered)
         && member.maker.is_empty()
-        && !member.holding.authors.iter().any(|author| author == muster_msg::HUMAN)
+        && !member.holding.authors.iter().any(|author| muster_msg::is_human(author))
 }
 
 /// What the human is told of a stall only a person can free.
@@ -1377,9 +1377,12 @@ mod tests {
         assert!(escalated_over_half_an_hour(&rung).is_empty(), "rung and idle");
         let helper = Member { maker: vec!["director".to_string()], ..blocked() };
         assert!(escalated_over_half_an_hour(&helper).is_empty(), "a helper");
-        let authors = vec!["@human".to_string()];
-        let from_human = Member { holding: Holding { authors, ..worker().holding }, ..blocked() };
-        assert!(escalated_over_half_an_hour(&from_human).is_empty(), "posted by the human");
+        for human in ["@human", "@human@laptop"] {
+            let authors = vec![human.to_string()];
+            let from_human =
+                Member { holding: Holding { authors, ..worker().holding }, ..blocked() };
+            assert!(escalated_over_half_an_hour(&from_human).is_empty(), "posted by {human}");
+        }
 
         let mut stalls = stalls();
         let called = BTreeMap::new();
