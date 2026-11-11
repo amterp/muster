@@ -98,6 +98,7 @@ impl Spelling {
     /// The command resuming `session`, carrying what of `arguments` can be carried.
     pub(crate) fn resume(&self, session: &str, arguments: &[String]) -> Resume {
         let takes_arguments = self.command.iter().any(|word| word == ARGUMENTS_PLACEHOLDER);
+        let arguments = self.past_an_earlier_resume(arguments);
         let (carried, uncarried) = match self.carried(arguments) {
             _ if !takes_arguments => {
                 let why = "its resume takes none of the arguments it was started with";
@@ -115,6 +116,23 @@ impl Spelling {
             }
         }
         Resume { command, uncarried, ignored: None }
+    }
+
+    /// The arguments of an agent that was itself started by this spelling, less the words the
+    /// command puts between its program and `{args}`: a Codex resumed once runs as `codex resume
+    /// <flags> <old id>`, and read as a fresh start its `resume` would look like a prompt with
+    /// flags after it, so nothing but `keeps` would go along the next time. The old id is then
+    /// last, where a prompt is, and is dropped as one.
+    fn past_an_earlier_resume<'a>(&self, arguments: &'a [String]) -> &'a [String] {
+        let Some(placeholder) = self.command.iter().position(|word| word == ARGUMENTS_PLACEHOLDER)
+        else {
+            return arguments;
+        };
+        let words = &self.command[1..placeholder];
+        if words.is_empty() || words.iter().any(|word| word == SESSION_PLACEHOLDER) {
+            return arguments;
+        }
+        arguments.strip_prefix(words).unwrap_or(arguments)
     }
 
     /// The flags in `keeps` and their values, read out of arguments that cannot be read whole:
@@ -291,6 +309,49 @@ mod tests {
         assert_eq!(resumed.command.join(" "), "codex resume s-1");
         assert!(resumed.uncarried.is_some_and(|why| why.contains("none of the arguments")));
         assert_eq!(codex.resume("s-1", &[]).uncarried, None, "nothing to carry, nothing said");
+    }
+
+    fn codex() -> Spelling {
+        let words = |words: &[&str]| words.iter().map(ToString::to_string).collect();
+        Spelling {
+            command: words(&["codex", "resume", "{args}", "{session}"]),
+            drops: words(&["--last", "-i", "--image"]),
+            values: words(&["-m", "--model", "-s", "--sandbox", "-c", "-i", "--image"]),
+            keeps: words(&["-m", "--model", "-s", "--sandbox", "-c"]),
+        }
+    }
+
+    fn codex_resumed(arguments: &[&str]) -> Resume {
+        let arguments: Vec<String> = arguments.iter().map(ToString::to_string).collect();
+        codex().resume("s-2", &arguments)
+    }
+
+    /// A harness whose resume is a subcommand takes the flags after it, and a first prompt
+    /// still goes.
+    #[test]
+    fn a_resume_subcommand_takes_the_flags_after_it() {
+        let resumed = codex_resumed(&["-m", "terra", "-s", "read-only", "fix the build"]);
+        assert_eq!(resumed.command.join(" "), "codex resume -m terra -s read-only s-2");
+        assert_eq!(resumed.uncarried, None);
+    }
+
+    /// An agent this spelling already resumed comes back again with the same flags: its
+    /// subcommand and its old session's id are not read as a prompt.
+    #[test]
+    fn an_agent_resumed_before_is_resumed_again_with_its_flags() {
+        let resumed = codex_resumed(&["resume", "-m", "terra", "-c", "x=1", "s-1"]);
+        assert_eq!(resumed.command.join(" "), "codex resume -m terra -c x=1 s-2");
+        assert_eq!(resumed.uncarried, None);
+        let by_hand = codex_resumed(&["resume", "--last", "-s", "read-only"]);
+        assert_eq!(by_hand.command.join(" "), "codex resume -s read-only s-2");
+    }
+
+    /// The same word anywhere but first is not an earlier resume.
+    #[test]
+    fn a_subcommand_word_later_on_is_not_an_earlier_resume() {
+        let resumed = codex_resumed(&["-m", "terra", "resume", "-s", "read-only"]);
+        assert_eq!(resumed.command.join(" "), "codex resume -m terra -s read-only s-2");
+        assert!(resumed.uncarried.is_some_and(|why| why.contains("`resume`")));
     }
 
     /// A flag that takes a value and has none before the next flag keeps going without one.

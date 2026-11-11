@@ -1,7 +1,7 @@
 id = "codex"
-version = "2026.11.10.1"
+version = "2026.11.11.1"
 min_engine_version = 18
-updated_at = "2026-11-10T00:00:00Z"
+updated_at = "2026-11-11T00:00:00Z"
 
 # Codex runs its own binary under these names for work that is not a session, which its 0.154.0
 # binary carries as strings. On Linux each command the model runs goes through
@@ -24,13 +24,32 @@ then restart Codex, so that each session runs its own commands and hooks; or sta
 [session]
 image_paste = true
 rename = "/rename {name}"
+# Typed at an empty composer with a Return, it compacts at once; words after it are not a focus
+# but a message to the model (docs/observations/codex-0.167.0.md, section 3).
+compact = "/compact"
 # /new leaves the old conversation loaded and its id reported until the first new prompt.
 # A queued wake can reach that old conversation or survive a read and replay on resume.
 # Typing reaches the visible composer instead (docs/observations/codex-0.166.0.md).
-# What a pane runs after a daemon restart, or a restart of the agent, to start its session again,
-# as two Codex 0.162.1 sessions on a devenv were brought back by hand on 2026-10-16. Without the
-# flags it ran with: where `codex resume` takes them has not been recorded.
-resume = ["codex", "resume", "{session}"]
+# What a pane runs after a daemon restart, or a restart of the agent, to start its session again.
+# `codex resume` takes the options `codex` does, before the id, and runs with them rather than
+# with the ones the session was started with (docs/observations/codex-0.167.0.md, section 4).
+# From `codex resume --help` at 0.167.0: what picks another session, attaches images to a first
+# prompt or makes a worktree is dropped, and every option that takes a value is listed.
+resume = ["codex", "resume", "{args}", "{session}"]
+resume_drops = [
+  "--last", "--all", "--include-non-interactive", "-i", "--image", "--worktree", "-h", "--help",
+  "-V", "--version",
+]
+resume_values = [
+  "-c", "--config", "--enable", "--disable", "--remote", "--remote-auth-token-env", "-i",
+  "--image", "-m", "--model", "--local-provider", "-p", "--profile", "-s", "--sandbox", "-C",
+  "--cd", "--add-dir", "-a", "--ask-for-approval",
+]
+# The model, its settings and what the session may do without asking.
+resume_keeps = [
+  "-m", "--model", "-c", "--config", "-p", "--profile", "-s", "--sandbox", "-a",
+  "--ask-for-approval",
+]
 
 [[rules]]
 id = "osc_title_blocked"

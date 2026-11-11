@@ -630,10 +630,10 @@ session cannot be resumed, the pane drops back to its shell.
 It is on because an agent's work is the point of the pane. Turn it off with `false` and such a pane
 comes back as a shell, as every pane did before: a resumed agent runs unattended with the flags it
 had, a permission mode that skips prompts among them. A resumed agent is an agent like any other,
-so messages that arrived for it while its daemon was down may ring it as soon as it is back. Only
-Claude Code says how to resume it so far (`muster docs harnesses`), and it needs the adapter's
-hooks, which report the session. The daemon does the restarting, so it is handed the answer as a
-setting, as `name_sessions` is.
+so messages that arrived for it while its daemon was down may ring it as soon as it is back.
+Claude Code and Codex say how to resume them (`muster docs harnesses`), and each needs its
+adapter, which reports the session. The daemon does the restarting, so it is handed the
+answer as a setting, as `name_sessions` is.
 
 `reopen_closed_minutes` is how long a pane somebody closed can be brought back, by
 `reopen_pane`, `muster pane reopen` or the API (`muster docs agents`). Its daemon remembers the pane

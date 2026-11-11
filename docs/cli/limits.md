@@ -218,9 +218,10 @@ the change. To make it last, start the agent through a wrapper that sets it and 
 resume in `MUSTER_RESUME` (`docs/configuration.md`), or set it where the daemon starts.
 
 Anything typed into the pane while a restart is under way is thrown away, and so is what waited
-unread for the agent when it began. A Codex comes back without its flags, `--sandbox` and `-c`
-settings among them, since where `codex resume` takes them has not been recorded; its row's
-`resume` in `muster window --json` says so before you restart it.
+unread for the agent when it began. An agent comes back with the flags it was started with, less
+what would start a session of its own. When a word in them could be a prompt, only the flags its
+manifest keeps go along, its model among them, and its row's `resume` in `muster window --json`
+says so before you restart it.
 
 ## A message wakes an agent in a pane only at an empty prompt Muster can read
 

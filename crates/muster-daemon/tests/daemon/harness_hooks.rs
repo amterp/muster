@@ -291,6 +291,59 @@ fn codexs_hooks_report_its_context_from_its_transcripts_last_token_count() {
     }
 }
 
+/// A Codex 0.167.0 rollout around a `/compact`: the count before it, the compaction, and the
+/// count Codex writes for what the compaction left, 30,291 tokens of 475,000.
+const ROLLOUT_COMPACTED: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../corpus/codex-0.167.0/rollout-compacted.jsonl");
+
+/// No turn ends after a `/compact`, so `PostCompact` reports the context the compaction left,
+/// from the count after it rather than the one before, which the window would otherwise go on
+/// showing until the next turn.
+#[test]
+fn codexs_post_compact_hook_reports_the_context_the_compaction_left() {
+    let scratch = Scratch::new("codex-compacted");
+    let arguments = scratch.0.join("arguments");
+    let daemon = scratch.0.join("daemon");
+    std::fs::write(
+        &daemon,
+        format!(
+            "#!/bin/sh\nprintf '[%s]' \"$@\" > '{0}.part' && mv '{0}.part' '{0}'\n",
+            arguments.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&daemon, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let transcript = scratch.0.join("rollout.jsonl");
+    std::fs::copy(ROLLOUT_COMPACTED, &transcript).unwrap();
+    let input =
+        serde_json::json!({ "transcript_path": transcript, "hook_event_name": "PostCompact" });
+    let context = commands(&CODEX, "PostCompact")
+        .into_iter()
+        .find(|command| command.contains("token_count"))
+        .expect("a PostCompact hook reads the context");
+    for shell in shells() {
+        let _ = std::fs::remove_file(&arguments);
+        let mut hook = Command::new(shell)
+            .args(["-c", &context])
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("MUSTER_DAEMON", &daemon)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        hook.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+        assert!(hook.wait().unwrap().success(), "a hook never fails a session");
+        muster_harness::until_within(
+            "the context report, which runs in the background",
+            Duration::from_secs(20),
+            || arguments.exists(),
+            || format!("{shell}: nothing reported"),
+        );
+        let said = std::fs::read_to_string(&arguments).unwrap();
+        assert!(said.starts_with("[report][--context-used][3.95"), "{shell}: {said}");
+    }
+}
+
 /// Resuming Codex needs the session id its hooks are handed. `SessionStart` passes its input to
 /// the daemon to read that id, needing no jq and saying nothing to the model.
 #[test]

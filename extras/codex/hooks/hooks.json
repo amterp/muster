@@ -90,6 +90,14 @@
             "command": "[ -n \"$MUSTER_DAEMON\" ] || exit 0; case \"$(cat)\" in *'\"agent_id\"'*) exit 0 ;; esac; \"$MUSTER_DAEMON\" report --agent codex --context-compacted >/dev/null 2>&1 || true"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$MUSTER_DAEMON\" ] && command -v jq >/dev/null 2>&1 || exit 0; input=$(cat); case \"$input\" in *'\"agent_id\"'*) exit 0 ;; esac; transcript=$(printf '%s' \"$input\" | jq -r '.transcript_path // empty' 2>/dev/null); [ -f \"$transcript\" ] || exit 0; { tries=0; while :; do line=$(awk '/\"type\":\"compacted\"/ { compacted = NR; first = 0 } /\"type\":\"token_count\"/ { counted = NR; if (compacted && !first) { first = NR; line = $0 } } END { if (first && first == counted) print line }' \"$transcript\"); [ -n \"$line\" ] || [ $tries -ge 20 ] && break; tries=$((tries + 1)); sleep 0.25; done; used=$(printf '%s' \"$line\" | jq -r '.payload.info // empty | select(.model_context_window > 12000) | (.last_token_usage.total_tokens - 12000) * 100 / (.model_context_window - 12000) | if . < 0 then 0 elif . > 100 then 100 else . end' 2>/dev/null); [ -n \"$used\" ] && \"$MUSTER_DAEMON\" report --context-used \"$used\"; } </dev/null >/dev/null 2>&1 & exit 0"
+          }
+        ]
       }
     ],
     "Stop": [

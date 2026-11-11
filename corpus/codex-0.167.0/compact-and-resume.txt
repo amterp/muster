@@ -1,0 +1,69 @@
+What Codex 0.167.0 does with `/compact` typed as Muster types a line, with and without words
+after it, and what `codex resume` runs with when given other flags than the session started with.
+
+Recorded 2026-11-11 on macOS 26.4.1 / arm64, codex-cli 0.167.0 from the Homebrew cask, logged in
+to a ChatGPT account, in a 100x30 pseudo-terminal driven by a scratch script built on
+tools/detection-capture.py's Capture, with no Muster in between. The folder was a fresh git
+repository, trusted for the run with `-c projects=...`, written /tmp/capture here. Each line was
+written as Muster's writer types one: a bracketed paste and its Return in the same write. The
+screens are cut to the lines that changed; the full ones, rendered, are the "codex 0.167.0
+compact" cases in corpus/conformance/agent-detection-recorded.json. rollout-compacted.jsonl is
+the session's rollout around the first compaction, its replacement history and rate limits cut.
+
+Started as:
+
+    codex -c check_for_update_on_startup=false -c notify=[] -c projects=... --no-daemon \
+      -m gpt-6.1-terra -c model_reasoning_effort="low" -s read-only -a on-request
+
+"Reply with the single word pong." and Return; it answered `pong`, and the rollout's
+token_count gave last_token_usage.total_tokens 28,613 of a model_context_window of 475,000.
+
+`/compact` and its Return, in one write, at the empty composer. 1.5 s later, the composer empty
+and the title spinning:
+
+    • Compacting context (1s • esc to interrupt)
+      └ Making room to continue.
+
+Nine seconds on, idle:
+
+    • Context compacted · 9s
+      Worked for 9s • 00:16
+
+The rollout, in order: `compacted`, its `replacement_history` the conversation as the model now
+sees it, then `turn_context`, `thread_settings_applied`, and a `token_count` with
+last_token_usage.total_tokens 30,291 (input and output zero), 4 ms after the compaction; then
+task_complete. No turn ran, so no Stop hook (docs/observations/codex-0.166.0.md, section 3: a
+`/compact` runs PreCompact and PostCompact only).
+
+`/compact keep the word pong` and its Return, in one write. It went to the model as a message:
+
+    › /compact keep the word pong
+
+    • pong
+      Worked for 10s • 00:16
+
+The rollout holds it as a user message and an answer, with no `compacted` record: the words
+made it a message, not a compaction with a focus.
+
+/status, then Esc, then the process ended:
+
+      Model:               GPT-6.1 Terra (reasoning low, summaries auto)
+      Permissions:         Read Only (Ask for approval)
+      Session:             01a1c93f-8db8-7972-8c1b-f2615faad5b3
+      Context window:      96% left (28.5K used / 475K)
+
+Resumed with other flags, and without the reasoning effort:
+
+    codex resume -c check_for_update_on_startup=false -c notify=[] -c projects=... --no-daemon \
+      -m gpt-6.1-terra -s workspace-write -a never 01a1c93f-8db8-7972-8c1b-f2615faad5b3
+
+It drew the earlier conversation, `Context compacted` and both `pong`s included, at the composer.
+/status:
+
+      Model:               GPT-6.1 Terra (reasoning xhigh, summaries auto)
+      Permissions:         Custom (workspace with network access, never)
+      Session:             01a1c93f-8db8-7972-8c1b-f2615faad5b3
+      Context window:      96% left (28.5K used / 475K)
+
+The same session, running with the flags the resume was given. The effort was not given, and it
+came back at the config file's xhigh rather than the low the session started with.

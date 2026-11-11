@@ -5,3 +5,4 @@ mod harnesses;
 mod identification;
 mod prompt;
 mod screen_text;
+mod sessions;

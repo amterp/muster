@@ -27,7 +27,7 @@ window`).
 | Woken by its own command, typing nothing | no | no | no | no |
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
-| Compacted when asked | yes | no | no | no |
+| Compacted when asked | yes | yes | no | no |
 | Says when its context was cleared or compacted | yes | yes | no | no |
 | Resumed after a restart | yes | yes | no | no |
 | Clipboard image pasted into a remote composer | yes | yes | no | no |
@@ -104,18 +104,21 @@ kimi, kiro, maki, pi, qodercli.
   Codex names every session itself after its first request, where a rename goes too, so Muster
   cannot tell a name you gave from one Codex chose, and takes neither.
 - **Compacted when asked**: `muster pane compact`, or `compact_at` in the config file, types the
-  harness's compact command, `/compact <focus>` for Claude Code, at the agent's prompt once it is
-  idle and the prompt is empty, as a ring is typed. Needs no adapter, though `compact_at` acts on
-  the context its adapter reports. Codex and OpenCode have a `/compact` of their own that Muster
-  has not yet been recorded typing, so it does not type it.
+  harness's compact command at the agent's prompt once it is idle and the prompt is empty, as a
+  ring is typed: `/compact <focus>` for Claude Code, and `/compact` for Codex, which takes no
+  focus and sends words after it to the model as a message, so Muster refuses a focus for it.
+  Needs no adapter, though `compact_at` acts on the context its adapter reports. Codex's adapter
+  reports the context a compaction left as it finishes, since no turn ends after one. OpenCode's
+  `/compact` runs only on a second Return, the first taking it from the list of commands, so
+  Muster does not type it.
 - **Resumed after a restart**: a pane whose agent reported its session comes back after a daemon
   restart or a reboot running that session again, with the flags the agent was started with,
   less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude
-  Code's manifest spells it, `claude --resume <id>`, and its adapter's hooks report the session.
-  Codex's spells `codex resume <id>` and carries none of its flags, since where `codex resume`
-  takes them has not been recorded, so a Codex comes back without its `--sandbox` or `-c`
-  settings and its record's `uncarried` says so. OpenCode spells none yet, so its panes come back
-  as shells. A manifest says it in `[session]`: `resume`, the command with `{args}` where the
+  Code's manifest spells it `claude --resume <id>` and Codex's `codex resume <flags> <id>`, and
+  each adapter reports the session. Codex runs a resumed session with the flags it is given
+  rather than the ones it started with, so carrying them is what brings back its model and
+  sandbox. OpenCode spells none yet, so its panes come back as shells. A manifest says it in
+  `[session]`: `resume`, the command with `{args}` where the
   flags go and `{session}` for the id, `resume_drops`, the flags never carried, and
   `resume_values`, the flags that take a value, which is the only way a word after a flag is told
   from a first prompt (detection engine 12); from engine 15 a `resume` may leave `{args}` out and

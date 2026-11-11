@@ -58,6 +58,8 @@ not when it opens.
 which the API gives a client on the pane (`muster docs api`). `/new` reads as `startup`, as a process
 starting does, and counts when the agent held another session. A clear is dated at the prompt after
 it, the first Codex runs a hook for (`docs/observations/codex-0.166.0.md`, section 3).
+`PostCompact` also reports the context the compaction left, from the count Codex writes after it,
+since no turn ends to report it (`docs/observations/codex-0.167.0.md`, section 3).
 
 `SessionStart` also reports the session's id, which lets Muster resume it after a restart. It
 needs nothing installed, since `muster-daemon report` reads the id out of the hook's input itself.
