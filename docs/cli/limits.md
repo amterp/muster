@@ -165,7 +165,10 @@ the rows read, and an agent printing after it scrolls old copies away as fast as
 so for text that was already there a changed pane still showing it counts as arrived - which, as
 for keys, says the pane changed rather than that the text changed it. A send of keys or Return alone has no text to find, and is confirmed
 once the pane changes at all - which says the pane changed, not that the key changed it, since an
-agent at work changes its pane on its own. A send is taken before the pane can have drawn it, so
+agent at work changes its pane on its own, and a dialog changes it while it is still drawing.
+Claude Code's plan dialog has been measured ignoring a Return for up to about 100 ms after it
+draws, so a key sent as it appears can pass and be ignored; `pane wait --until blocked` answers only once a dialog has read blocked for 300 ms,
+which is past that. A send is taken before the pane can have drawn it, so
 the read is retried for up to a second rather than taken once: a pane that has already drawn the
 text answers immediately, and only a genuine miss waits the second out. What it proves is
 **arrival, not submission**: a pane draws the text whether it has been submitted or is sitting in

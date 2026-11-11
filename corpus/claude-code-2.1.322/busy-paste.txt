@@ -1,0 +1,29 @@
+What Claude Code does with text pasted into its prompt while it works, then a space and Return.
+
+Recorded 2026-11-10 on macOS 26.4.1 / arm64, Claude Code 2.1.322 running Haiku 4.5 with
+`--dangerously-skip-permissions`, in a 100x30 pseudo-terminal driven by a scratch script built on
+tools/detection-capture.py's Capture, with no Muster in between, in a scratch folder written
+<folder>. The text was 470 characters opening with a marker, ZEBRA1794375309, and then "please
+also note this follow-up:" and a pangram ten times. It was written as one bracketed paste, as
+Muster's writer types text for a program in bracketed paste mode, and then " \r" as one write, as
+`muster pane send " " --enter` does.
+
+Seconds since the script began typing the request, by its clock; the session log's own times
+(UTC) beside the events it recorded.
+
+    0      "Run the shell command sleep 20 with the Bash tool, then reply with the single
+           word done." and Return; the turn starts and runs `sleep 20`
+    7.1    the paste: the text drawn in the prompt box, wrapped, under the running turn's
+           spinner
+    8.6    " " and Return. The log: a `queued_command` attachment holding the text at
+           05:36:00.993Z, `queue-operation enqueue` at 05:36:01.123Z
+    12.7   the text drawn in the transcript under the running Bash call, "ctrl+enter to
+           send now" beneath it; the prompt box empty, saying "Press up to edit queued
+           messages"
+           The log: `queue-operation remove` at 05:36:15.566Z, beside the Bash call's result
+    31.0   the turn ended (the log's answer at 05:36:18.477Z): "done", and a sentence
+           acknowledging the follow-up by its marker. The text stays in the transcript
+           above it
+
+Nothing was lost and nothing was hidden: the text showed in the prompt, then in the transcript,
+and the turn took it.
