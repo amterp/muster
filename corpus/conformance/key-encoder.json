@@ -123,6 +123,26 @@
   },
   "cases": [
     {
+      "name": "opt+backspace outside kitty mode is ESC DEL",
+      "why": "The same event, Option+Backspace with DEL sent as no text, in a terminal no program changed, which is what a shell's backward-kill-word binding reads. It is the bytes this keystroke gave before DEL stopped being sent as text.",
+      "given": {
+        "profile": "xtermModes",
+        "key": "Backspace",
+        "modifiers": [
+          "alt"
+        ],
+        "text": "",
+        "unshiftedCodepoint": "",
+        "consumedModifiers": [
+          "alt"
+        ],
+        "textWithoutOption": ""
+      },
+      "expect": {
+        "bytes_hex": "1b7f"
+      }
+    },
+    {
       "name": "opt+backspace in kitty mode is alt+backspace",
       "why": "The event the shell builds for Option+Backspace: macOS counts Option as spent, and the key's character is DEL, which goes as no text because the encoder maps a control character from the key itself. Upstream's encoder test (kitty: alt+backspace emits CSI u) expects these bytes for the same event.",
       "given": {
