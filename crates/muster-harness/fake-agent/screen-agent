@@ -27,7 +27,8 @@
 #
 # `heedless` discards every Return typed from then on (`stty igncr`), as a harness that swallows
 # one does: what is typed sits in its prompt, Backspace still erases it, and only a line ended with
-# a newline (LF) is read, which puts Returns back.
+# a newline (LF) is read, which puts Returns back. `heedless <seconds>` discards them for that long
+# only, then takes them again with nothing typed and its state as it was.
 #
 # `unechoed` turns the terminal's echo off from then on, as the start argument below does, so
 # nothing typed into it shows unless the agent paints it, and `echoed` turns it back on.
@@ -243,6 +244,10 @@ while :; do
             sleep "${line#deaf }"
             stty "$modes" ;;
         stubborn) trap '' TERM ;;
+        heedless\ *)
+            stty igncr
+            heedless=yes
+            (sleep "${line#heedless }"; stty -igncr </dev/tty) & ;;
         heedless)
             stty igncr
             heedless=yes ;;

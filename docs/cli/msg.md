@@ -276,7 +276,12 @@ says to read now:
 An urgent post wakes even an agent already woken for the group and not yet read, so each one
 rings: once per batch is the rule for what can wait until a turn ends. A ring rung at work counts
 as taken once the prompt box is empty again, which is how Claude Code shows a queued line. One
-not seen taken - somebody typed into the pane, or its screen could not be read - still counts the
+whose Returns are not taken - the box still holds the ring and nothing else after a few presses -
+has Return pressed again while the agent works, ever further apart, up to two minutes, for about
+half an hour: the box is read just before each press, as before the first. If it is still there
+after 30 minutes, the notice that the agent has been working all that time says so instead of
+saying the post reached it, and names the `muster pane send --key Enter` that sends it. One not
+seen taken - somebody typed into the pane, or its screen could not be read - still counts the
 agent as woken, so it is rung `still unread` as it goes idle. Whether
 the model stops to read is its call: Claude Code's reminder asks it to, Sonnet does, and Haiku
 4.5 has been seen finishing its task first.
@@ -368,7 +373,8 @@ another tab keeps the size it last had on screen, and nothing resizes it until i
 An agent that is working is not held up, however long its turn. But once a message has waited 30
 minutes on one that has read as working at every look, whoever posted it is told that too, once,
 since an agent whose screen is misread as working would otherwise never be rung, and an urgent
-post reaches it at work.
+post reaches it at work. When a ring for it still sits unsent in its prompt, that is what it says,
+with the command that sends it.
 
 That message wakes whoever it is for as any message does, so a director that ended its turn to
 wait hears why no answer is coming. `@muster` is never a member and cannot be addressed, and what

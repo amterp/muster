@@ -77,6 +77,9 @@ pub(crate) struct Member {
     pub(crate) waking: bool,
     /// Of those, a ring typed into its prompt that it has not yet taken.
     pub(crate) rung: bool,
+    /// A ring for it the doorbell gave up on sits in its prompt, unsent as far as the doorbell
+    /// last saw: typed, and its Returns not taken.
+    pub(crate) unsent: bool,
     /// What held the doorbell's last look to ring its pane, if anything did.
     pub(crate) held: Option<Held>,
     /// Its pane's size, columns by rows.
@@ -343,10 +346,14 @@ impl Stalls {
             episode.recorded = true;
             if unlock == Unlock::Tell {
                 let worked = said_as_time(now_ms.saturating_sub(worked_since));
-                let why = format!(
-                    "it has read as working for {worked} without a break, so it is rung only once \
-                     it stops; an urgent post reaches it at work"
-                );
+                let why = if member.unsent {
+                    format!("it has read as working for {worked} without a break, and {}", unsent(member, called))
+                } else {
+                    format!(
+                        "it has read as working for {worked} without a break, so it is rung only \
+                         once it stops; an urgent post reaches it at work"
+                    )
+                };
                 acts.push(tell(member, called, now_ms, &why));
             }
             episode.told = true;
@@ -500,6 +507,9 @@ fn why(member: &Member, called: &BTreeMap<String, String>) -> String {
 pub(crate) fn unread_why(member: &Member, called: &BTreeMap<String, String>) -> String {
     let rings = member.stopped.is_none() && member.doorbell == Ringable::Rings;
     match member.activity {
+        Some(Activity::Working) if rings && member.unsent => {
+            format!("it is at work, and {}", unsent(member, called))
+        }
         Some(Activity::Working) if rings && member.waking => {
             "it is at work, so it is rung once it is idle; an urgent post reaches it at work"
                 .to_string()
@@ -512,6 +522,17 @@ pub(crate) fn unread_why(member: &Member, called: &BTreeMap<String, String>) -> 
         }
         _ => why(member, called),
     }
+}
+
+/// That the wake for a member at work sits unsent in its prompt, as a clause, with the command
+/// that sends it: Muster cannot see what swallowed its Returns, and whoever is told can press one.
+fn unsent(member: &Member, called: &BTreeMap<String, String>) -> String {
+    let pane = called.get(&member.holding.pane).unwrap_or(&member.holding.pane);
+    format!(
+        "Muster's notice of the post is typed into its prompt but has not been sent: the Returns \
+         pressed for it were not taken. `muster pane send --pane {pane} --key Enter --confirm` \
+         sends it"
+    )
 }
 
 /// What holds a wake for a member, by what the doorbell last found in its pane.
@@ -592,6 +613,10 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
                 stopped: seen.and_then(|seen| seen.stopped.clone()),
                 waking: messages.wakes_for(&holding.name, &holding.group),
                 rung: messages.rung.iter().any(|rung| rung.is_for(&holding.name, &holding.group)),
+                unsent: messages
+                    .left
+                    .get(&holding.pane)
+                    .is_some_and(|left| left.is_ring_for(&holding.name, &holding.group)),
                 held: messages.held.get(&holding.pane).cloned(),
                 size: seen.map(|seen| {
                     let grid = seen.io.grid();
@@ -853,6 +878,7 @@ mod tests {
             doorbell: Ringable::Rings,
             waking: false,
             rung: false,
+            unsent: false,
             held: None,
             size: Some((89, 9)),
             drawn_ms_ago: None,
@@ -1238,6 +1264,28 @@ mod tests {
             stalls.judge(&[woken], &BTreeMap::new(), worked + 10 * AFTER).is_empty(),
             "told again once free"
         );
+    }
+
+    /// A member at work with the doorbell's notice of the post still sitting unsent in its prompt
+    /// is told of as that, with the command that sends it, rather than as reached: the urgent
+    /// post that would reach it at work is the one that did not.
+    #[test]
+    fn a_member_at_work_whose_notice_sits_unsent_is_told_of_with_how_to_send_it() {
+        let mut stalls = stalls();
+        let unsent = [Member { activity: Some(Activity::Working), unsent: true, ..worker() }];
+        let called: BTreeMap<String, String> = [("p2".to_string(), "bison".to_string())].into();
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        stalls.judge(&unsent, &called, 1000);
+        let acts = stalls.judge(&unsent, &called, worked);
+        assert_eq!(kinds(&acts), ["stalled", "tell"]);
+        let Act::Tell { body, .. } = &acts[1] else { unreachable!() };
+        assert!(body.contains("for 30 minutes without a break, and Muster's notice"), "{body}");
+        assert!(body.contains("typed into its prompt but has not been sent"), "{body}");
+        assert!(body.contains("`muster pane send --pane bison --key Enter --confirm`"), "{body}");
+        assert!(!body.contains("reaches it at work"), "{body}");
+
+        let why = unread_why(&unsent[0], &called);
+        assert!(why.starts_with("it is at work, and Muster's notice of the post is typed"), "{why}");
     }
 
     /// A look that finds the member not at work starts its run of work over.

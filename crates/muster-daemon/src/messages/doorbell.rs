@@ -31,7 +31,9 @@
 //! take it, is left: once its agent is idle, Return is pressed for it while the prompt holds
 //! exactly its text, up to the same few presses in all, and those again each time a later wake
 //! finds it there, so a prompt the doorbell filled never reads as somebody's draft for good. A
-//! session's name the doorbell's thread typed and gave up is left the same way. A ring
+//! ring typed at work and left is meant for the turn it went into, so its Return is pressed
+//! while that turn runs too, ever further apart, its prompt read before each press as before its
+//! first. A session's name the doorbell's thread typed and gave up is left the same way. A ring
 //! whose message its agent reads while its text may still be in the prompt is erased instead:
 //! sent, it would wake the agent for nothing, and left, it would be sent with whatever is typed
 //! next. That is a ring typed at work before its Return, one returned to an agent that never took
@@ -120,6 +122,23 @@ pub(crate) const PRESSES: u8 = 6;
 /// again, before its Return: long enough for the screen to show what was typed.
 pub(crate) const SETTLE: Duration = Duration::from_secs(1);
 
+/// How many times Return is pressed for a ring left in the prompt of an agent at work, while it
+/// works. Spaced by [`at_work_spacing`], they cover a turn of about half an hour: a ring typed at
+/// work is meant for the turn it was typed into, and one left after its first Returns would
+/// otherwise wait for the whole turn to end.
+const AT_WORK_PRESSES: u8 = 20;
+
+/// The longest wait between two of those Returns.
+const AT_WORK_SPACING_AT_MOST: Duration = Duration::from_mins(2);
+
+/// How long after its `pressed`th Return at work a left ring is pressed again: [`ANSWER`],
+/// doubling each time up to [`AT_WORK_SPACING_AT_MOST`]. Whatever swallowed the first Returns is
+/// given longer to pass each time, and each Return is one more chance of answering a dialog drawn
+/// in the instant after the prompt was read.
+fn at_work_spacing(pressed: u8) -> Duration {
+    ANSWER.saturating_mul(1_u32 << pressed.min(8)).min(AT_WORK_SPACING_AT_MOST)
+}
+
 /// A ring its agent has not yet taken.
 #[derive(Debug)]
 pub(crate) struct Rung {
@@ -168,6 +187,11 @@ pub(crate) struct Left {
     /// The wake that last gave it its Returns again, by group and newest message: the same wake
     /// looked at again while it waits gives none, so they stay bounded per post.
     rearmed_by: Option<(String, u64)>,
+    /// Typed into the prompt of an agent at work, which takes it into the running turn: so its
+    /// Return is pressed again while that agent works too, [`AT_WORK_PRESSES`] times at most,
+    /// counted apart from the presses once it is idle.
+    at_work: bool,
+    presses_at_work: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +213,8 @@ impl Left {
             presses,
             pressed: None,
             rearmed_by: None,
+            at_work: false,
+            presses_at_work: 0,
         }
     }
 
@@ -199,9 +225,24 @@ impl Left {
             typed: rung.typed,
             of: LeftOf::Ring { name: wake.name.clone(), group: wake.notice.group.clone() },
             presses: rung.presses,
-            pressed: None,
+            // At work, where its last Return was just pressed or its prompt just looked at; idle,
+            // where Return is due at the first look.
+            pressed: rung.at_work.then(Instant::now),
             rearmed_by: None,
+            at_work: rung.at_work,
+            presses_at_work: 0,
         }
+    }
+
+    /// Whether this is a ring left for `name` about `group`.
+    pub(crate) fn is_ring_for(&self, name: &str, group: &str) -> bool {
+        matches!(&self.of, LeftOf::Ring { name: left_name, group: left_group }
+            if left_name == name && left_group == group)
+    }
+
+    /// Whether its Return may still be pressed while its agent works.
+    fn presses_at_work(&self) -> bool {
+        self.at_work && self.presses_at_work < AT_WORK_PRESSES
     }
 
     /// A ring whose messages have been read since, or whose group was paused: to be taken back.
@@ -214,7 +255,7 @@ impl Left {
 
     /// Whether the doorbell still has something to do with it: take it back, or press its Return.
     fn wants_look(&self, messages: &Messages) -> bool {
-        self.read(messages) || self.presses <= PRESSES
+        self.read(messages) || self.presses <= PRESSES || self.presses_at_work()
     }
 }
 
@@ -729,7 +770,8 @@ fn unanswered_commands(shared: &Shared) -> Option<Instant> {
 /// A ring whose messages its agent has read since, or whose group was paused, is taken back: sent,
 /// it would wake the agent for nothing, and left, the next Return anybody presses sends it. Any
 /// other is sent: once its agent is idle and the pane quiet, as a ring is rung, Return is pressed
-/// for it again, a few times at most, without typing it again. Either is done only at a prompt
+/// for it again, a few times at most, without typing it again; and one typed at work, while its
+/// agent works as well, at [`at_work_spacing`]. Either is done only at a prompt
 /// holding that line and nothing else, with nobody having typed into the pane since it was typed,
 /// so neither can erase or send anything else. One whose prompt is empty was sent or cleared, and
 /// one that can be neither sent nor taken back any more - something typed after it, its agent
@@ -766,17 +808,21 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
             }
             continue;
         }
-        // Not at work, where a Return can answer a dialog drawn a moment ago; and as a ring is
-        // rung, once nobody has typed into the pane for a while and its screen has settled.
-        if waits_for(seen.activity, false).is_some() {
+        // Not at work, where a Return can answer a dialog drawn a moment ago - unless it was typed
+        // into the turn, whose prompt is read as its first Return's was, just before each press;
+        // and as a ring is rung, once nobody has typed into the pane for a while and its screen
+        // has settled.
+        let at_work = seen.activity == Some(Activity::Working) && left.presses_at_work();
+        if !at_work && waits_for(seen.activity, false).is_some() {
             kept = true;
             continue;
         }
-        if let Some(due) = left.pressed.map(|at| at + ANSWER).filter(|due| *due > now) {
+        let spacing = if at_work { at_work_spacing(left.presses_at_work) } else { ANSWER };
+        if let Some(due) = left.pressed.map(|at| at + spacing).filter(|due| *due > now) {
             sooner(next, due);
             continue;
         }
-        match may_ring(seen, now, false, moving_since(moving, &pane, seen, now)) {
+        match may_ring(seen, now, at_work, moving_since(moving, &pane, seen, now)) {
             Now::Ring => {}
             Now::At(at) => {
                 sooner(next, at);
@@ -787,11 +833,12 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
                 continue;
             }
         }
-        match prompt::look(&seen.io, &seen.agent, &shared.detecting, false) {
+        match prompt::look(&seen.io, &seen.agent, &shared.detecting, at_work) {
             AtPrompt::Holds(held) if prompt::is_only(&held, &left.text) => {
-                if left.presses >= PRESSES {
+                if !at_work && left.presses >= PRESSES {
                     left_unsent(&pane, &left);
                     left.presses = PRESSES + 1;
+                    left.presses_at_work = AT_WORK_PRESSES;
                     settled.push((pane, left.typed, Some(left)));
                     continue;
                 }
@@ -803,9 +850,16 @@ fn settle_left(shared: &Shared, panes: &Panes, moving: &mut Moving, next: &mut O
                     settled.push((pane, left.typed, None));
                     continue;
                 }
-                left.presses += 1;
+                if at_work {
+                    left.presses_at_work += 1;
+                } else {
+                    left.presses += 1;
+                }
                 left.pressed = Some(Instant::now());
-                left_sent(&pane, &left);
+                left_sent(&pane, &left, at_work);
+                if at_work && !left.presses_at_work() {
+                    left_unsent_at_work(&pane, &left);
+                }
                 sooner(next, Instant::now() + ANSWER);
                 settled.push((pane, left.typed, Some(left)));
             }
@@ -870,11 +924,17 @@ fn took_back(shared: &Shared, seen: &Seen, left: &Left) -> bool {
     }
 }
 
-fn left_sent(pane: &str, left: &Left) {
+fn left_sent(pane: &str, left: &Left, at_work: bool) {
     match &left.of {
         LeftOf::Ring { name, group } => log::info(
             "msg.ring.left_sent",
-            fields! { "name" => name, "group" => group, "pane" => pane, "presses" => left.presses },
+            fields! {
+                "name" => name,
+                "group" => group,
+                "pane" => pane,
+                "presses" => if at_work { left.presses_at_work } else { left.presses },
+                "at_work" => at_work,
+            },
         ),
         LeftOf::Line => {
             log::info("msg.line.left_sent", fields! { "pane" => pane, "presses" => left.presses });
@@ -903,6 +963,26 @@ fn left_unsent(pane: &str, left: &Left) {
             "check" => "what the pane shows: whether its harness takes a Return at its prompt at \
                         all, or something drawn over the prompt swallows it; a Return pressed in \
                         the pane sends the line",
+        },
+    );
+}
+
+/// The last of the Returns pressed for a ring left in the prompt of an agent at work, while it
+/// works, has been pressed.
+fn left_unsent_at_work(pane: &str, left: &Left) {
+    let LeftOf::Ring { name, group } = &left.of else { return };
+    log::warn(
+        "msg.ring.left_unsent_at_work",
+        fields! {
+            "name" => name,
+            "group" => group,
+            "pane" => pane,
+            "presses" => left.presses_at_work,
+            "impact" => "the turn it was typed into does not take it unless somebody presses \
+                         Return in the pane; Return is pressed for it again once its agent is \
+                         idle, and a stall notice says it sits unsent",
+            "check" => "what the pane shows: whether its harness takes a Return at its prompt \
+                        while it works, or something drawn over the prompt swallows it",
         },
     );
 }
@@ -1545,6 +1625,19 @@ mod tests {
         assert_eq!(waits_for(Some(Activity::Blocked), true), Some(Now::Unblocked));
         assert_eq!(waits_for(None, true), Some(Now::AtIdle));
         assert_eq!(waits_for(Some(Activity::Working), true), None);
+    }
+
+    /// A ring left in the prompt of an agent at work is pressed again at doubling intervals, up
+    /// to two minutes apart, and its presses cover a turn of about half an hour.
+    #[test]
+    fn a_ring_left_at_work_is_pressed_again_further_apart_each_time() {
+        let spacings: Vec<u64> = (0..5).map(|n| at_work_spacing(n).as_secs()).collect();
+        assert_eq!(spacings, [5, 10, 20, 40, 80]);
+        assert_eq!(at_work_spacing(6), AT_WORK_SPACING_AT_MOST);
+        assert_eq!(at_work_spacing(u8::MAX), AT_WORK_SPACING_AT_MOST);
+        let covered: Duration = (0..AT_WORK_PRESSES).map(at_work_spacing).sum();
+        assert!(covered >= Duration::from_mins(30), "{covered:?}");
+        assert!(covered <= Duration::from_mins(45), "{covered:?}");
     }
 
     #[test]

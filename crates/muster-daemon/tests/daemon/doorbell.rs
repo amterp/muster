@@ -937,6 +937,38 @@ fn an_urgent_ring_a_long_dialog_covered_is_sent_once_the_dialog_closes() {
     assert!(rung[0].contains("1 urgent"), "{rung:?}");
 }
 
+/// An urgent ring at work whose Returns the agent swallows for longer than the doorbell's first
+/// presses last is pressed again later in the same turn, once Returns are taken again: it was
+/// typed for the turn it went into, and left for the turn's end it would sit there for all of it.
+#[test]
+fn an_urgent_ring_whose_returns_were_swallowed_is_sent_later_in_the_same_turn() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.type_in("heedless 45", true);
+    until_some("the agent to start discarding Returns", || {
+        agent.heard().iter().any(|line| line == "heedless 45").then_some(())
+    });
+    std::thread::sleep(QUIET);
+    let mut logging = following(&agent.daemon);
+
+    agent.post_urgently("p1", "now");
+    agent.until_shows(&format!("PROBE-PROMPT> [muster] {0}", agent.pair("p1")));
+    // Its first Return and six more, five seconds apart, all swallowed.
+    let left = r#""event":"msg.ring.left""#;
+    logging.logged_until(left, ANSWER * 9);
+    assert_eq!(agent.rung(), Vec::<String>::new(), "a Return reached an agent discarding them");
+
+    let sent = r#""event":"msg.ring.left_sent""#;
+    let logged = logging.logged_until(sent, ANSWER * 4);
+    assert!(
+        logged.iter().any(|line| line.line.contains(sent) && line.line.contains(r#""at_work":"true""#)),
+        "{logged:?}"
+    );
+    let rung = agent.until_rung(1);
+    assert!(rung[0].contains("1 urgent"), "{rung:?}");
+    agent.daemon.until_agent("p1", proto::AgentState::Working);
+}
+
 /// A ring typed at work whose message its agent reads by itself before the ring's Return - its
 /// prompt hidden meanwhile, here by a dialog - is taken back once the prompt shows again: sent,
 /// it would wake the agent for nothing, and left, whatever is typed next would be sent with it.
