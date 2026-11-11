@@ -1112,6 +1112,45 @@ fn a_helpers_notice_goes_in_the_group_it_shares_with_its_maker_on_the_linked_mac
     expect(&mut near_control, post(&in_pane("p1"), None, &["p2"], "on it"), proto::Outcome::Done);
 }
 
+/// A helper on the far machine that blocks while its maker on the near one is at work waits for
+/// the maker to come free before its maker is told, as it does with a maker on its own machine:
+/// a dialog answered meanwhile is never told, and one still open is told once the maker is idle.
+#[test]
+fn a_helper_waits_for_its_busy_maker_on_the_linked_machine_and_tells_only_what_still_holds() {
+    let near = Daemon::start_detecting();
+    let far = Daemon::start_detecting_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut near_control, create("p1", in_new_tab("t1")));
+    near.run_agent("p1");
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let _holding = link(&near, &far, &mut near_log, 1);
+    make(&mut far_control, helper("p2", "p1", among_helpers("t1", "p1's helpers")));
+    far.run_agent("p2");
+    expect(&mut near_control, post(&in_pane("p1"), None, &["p2"], "a brief"), proto::Outcome::Done);
+    read(&mut far_control, &in_pane("p2"));
+    read(&mut near_control, &in_pane("p1"));
+
+    near.set_agent_state("p1", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Blocked);
+    far_log.logged_until(r#""event":"msg.helper.held""#, Duration::from_secs(20));
+    far.set_agent_state("p2", proto::AgentState::Working);
+    near.set_agent_state("p1", proto::AgentState::Idle);
+    std::thread::sleep(Duration::from_secs(8));
+    let (told, _) = read(&mut near_control, &in_pane("p1"));
+    assert_eq!(told, Vec::<String>::new(), "a dialog answered while the maker worked was told");
+
+    near.set_agent_state("p1", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Blocked);
+    let held = r#""event":"msg.helper.held""#;
+    far_log.logged_times_until(held, 2, Duration::from_secs(20));
+    near.set_agent_state("p1", proto::AgentState::Idle);
+    far_log.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let (told, _) = read(&mut near_control, &in_pane("p1"));
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains(" is blocked at a dialog: "), "{told:?}");
+}
+
 #[test]
 fn a_declared_wait_can_end_on_a_sender_from_the_linked_machine() {
     let near = Daemon::start_detecting();

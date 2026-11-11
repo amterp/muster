@@ -1328,6 +1328,14 @@ impl<S: Store> Messaging<S> {
         }
     }
 
+    /// The group the two already share that [`Self::tell_as_muster`] would tell `to` about
+    /// `about` in, wherever it is kept; nothing when it would make one. `about` is a pane or a
+    /// participant, as there.
+    pub fn group_told_in(&self, to: &str, about: &str) -> Option<String> {
+        let about = self.by_pane(about).unwrap_or_else(|| about.to_string());
+        self.shared_by_two(to, &about)
+    }
+
     /// The group `one` and `other` share that Muster tells either in about the other: the one of
     /// exactly the two, else the only one both are in, wherever it is kept.
     fn shared_by_two(&self, one: &str, other: &str) -> Option<String> {

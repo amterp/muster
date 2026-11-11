@@ -29,11 +29,11 @@ use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
 use muster_core::names::{Mint, Minter};
 use muster_daemon_proto as proto;
-use muster_msg::{Activity, Presence, Reach};
+use muster_msg::{Activity, Presence, Reach, Settled};
 
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
-use super::{delivering, notices, now_ms, told, waits, words};
+use super::{delivering, notices, now_ms, peer, told, waits, words};
 use crate::pane::TypedBy;
 use crate::session::{Orphaned, Session, Shared};
 
@@ -49,6 +49,10 @@ const NOTHING_DUE: Duration = Duration::from_mins(1);
 
 /// How long a maker no linked machine had is left before they are asked again.
 const ASK_AGAIN: Duration = Duration::from_mins(1);
+
+/// How often the machine of a maker elsewhere is asked whether the maker is at work, while a
+/// helper's need waits to be told: nothing there wakes this daemon when the maker comes free.
+const ASK_BUSY_AGAIN: Duration = Duration::from_secs(5);
 
 fn waiting_limit() -> Duration {
     if cfg!(debug_assertions)
@@ -102,8 +106,12 @@ pub(crate) struct Helper {
     /// When it last posted to its maker, looked up only while it is idle.
     pub(crate) last_post_ms: Option<u64>,
     /// Whether its maker would not be woken by a post now: an agent here at work, at a dialog or
-    /// stuck, whose hooks do not fetch messages mid-turn.
+    /// stuck, whose hooks do not fetch messages mid-turn; or one on another machine its machine
+    /// last said was any of those, hooks or not, since the link does not say.
     pub(crate) maker_busy: bool,
+    /// Whether its maker's pane is on this machine, which wakes this watch when the maker comes
+    /// free; one elsewhere is asked again every [`ASK_BUSY_AGAIN`].
+    pub(crate) maker_here: bool,
 }
 
 /// What a helper needs that its maker is told of.
@@ -238,6 +246,11 @@ pub(crate) struct Makers {
     carried: BTreeMap<String, Need>,
     /// Each need held since the last look, for it to log: the helper, its maker, and the need.
     newly_held: Vec<(String, String, Need)>,
+    /// Whether each maker on another machine was at work when its machine was last asked, and
+    /// when that was, by the maker.
+    busy_there: HashMap<String, (bool, u64)>,
+    /// Whether a need waits for a maker on another machine to come free, which nothing announces.
+    held_elsewhere: bool,
 }
 
 impl Makers {
@@ -260,6 +273,8 @@ impl Makers {
             told: BTreeMap::new(),
             carried: BTreeMap::new(),
             newly_held: Vec::new(),
+            busy_there: HashMap::new(),
+            held_elsewhere: false,
         }
     }
 
@@ -278,6 +293,7 @@ impl Makers {
         now_ms: u64,
     ) -> Vec<Tell> {
         self.watches.retain(|pane, _| helpers.iter().any(|helper| helper.pane == *pane));
+        self.held_elsewhere = false;
         let mut tells = Vec::new();
         for helper in helpers {
             let watch = self.watches.entry(helper.pane.clone()).or_insert_with(|| {
@@ -328,6 +344,7 @@ impl Makers {
                     watch.held = true;
                     self.newly_held.push((helper.pane.clone(), helper.maker.clone(), need));
                 }
+                self.held_elsewhere |= !helper.maker_here;
                 continue;
             }
             watch.told = true;
@@ -410,6 +427,7 @@ impl Makers {
                 Duration::from_millis(left)
             })
             .chain(settling)
+            .chain(self.held_elsewhere.then_some(ASK_BUSY_AGAIN))
             .min()
             .unwrap_or(NOTHING_DUE)
     }
@@ -545,6 +563,7 @@ pub(crate) fn look(shared: &Arc<Shared>, makers: &mut Makers) -> Duration {
         }
     }
     find_elsewhere(shared, &panes, makers);
+    ask_busy_elsewhere(shared, &panes, makers);
     let (helpers, called) = {
         let mut messages = shared.messages();
         if messages.handing_over {
@@ -645,6 +664,58 @@ fn find_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
     }
 }
 
+/// Asks the machine of each maker on another machine whose helper needs something not yet told
+/// whether the maker is at work, at most every [`ASK_BUSY_AGAIN`]: a need is told once its maker
+/// can hear it, as one whose maker is here is, so a dialog answered meanwhile is never told. With
+/// no lock held, since each ask is a call over a link.
+fn ask_busy_elsewhere(shared: &Shared, panes: &Panes, makers: &mut Makers) {
+    let now = now_ms();
+    let again_ms = u64::try_from(ASK_BUSY_AGAIN.as_millis()).unwrap_or(u64::MAX);
+    let mut asking: Vec<(String, String, String)> = Vec::new();
+    for (helper, maker) in panes.makers() {
+        let untold =
+            makers.watches.get(helper).is_some_and(|watch| watch.need.is_some() && !watch.told);
+        let asked =
+            makers.busy_there.get(maker).is_some_and(|(_, at)| now.saturating_sub(*at) < again_ms);
+        let asking_already = asking.iter().any(|(already, _, _)| already == maker);
+        if panes.exists(maker) || !untold || asked || asking_already {
+            continue;
+        }
+        if let Some(to) = makers.there.get(maker) {
+            asking.push((maker.clone(), to.clone(), helper.clone()));
+        }
+    }
+    for (maker, to, helper) in asking {
+        let busy = busy_there(shared, panes, &to, &helper);
+        makers.busy_there.insert(maker, (busy, now));
+    }
+}
+
+/// Whether `to`, a maker on another machine, is at work, at a dialog or stuck, as its machine
+/// says of it in the group Muster would tell it about `helper` in. With no group yet there is
+/// nothing to ask by, and it is taken as free.
+fn busy_there(shared: &Shared, panes: &Panes, to: &str, helper: &str) -> bool {
+    let asked = {
+        let messages = shared.messages();
+        let service = &messages.service;
+        service.group_told_in(to, helper).and_then(|group| {
+            let members = service.who(Some(&group), panes).ok()?;
+            Some((members, service.route_who(Some(&group)).ok()?))
+        })
+    };
+    let Some((mut members, away)) = asked else { return false };
+    for away in away {
+        let (settle, holding) = peer::call_away(shared, &away);
+        super::ring(shared, holding);
+        if let Ok(Settled::Members(heard)) = settle.result {
+            muster_msg::heard(&mut members, &away.machine, &heard);
+        }
+    }
+    let activity =
+        members.iter().find(|member| member.name == to).and_then(|member| member.activity);
+    matches!(activity, Some(Activity::Working | Activity::Blocked | Activity::Stuck))
+}
+
 /// Every helper here with an agent in it whose maker is a pane here, or one a linked machine
 /// said it has.
 fn helpers(
@@ -683,8 +754,15 @@ fn helpers(
         // Asked of whoever is in the maker's pane, which may have joined under a name of its own.
         let hooked =
             service.in_pane(maker).into_iter().any(|name| service.hooked(name, now_ms, panes));
+        let maker_here = panes.exists(maker);
+        let maker_busy = if maker_here {
+            maker_at_work && !hooked
+        } else {
+            makers.busy_there.get(maker).is_some_and(|(busy, _)| *busy)
+        };
         helpers.push(Helper {
-            maker_busy: maker_at_work && !hooked,
+            maker_busy,
+            maker_here,
             pane: pane.clone(),
             maker: maker.clone(),
             last_post_ms: if idle { service.last_post(pane, &to) } else { None },
@@ -843,8 +921,13 @@ fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
         "msg.helper.needs",
         fields! { "helper" => tell.helper, "maker" => tell.maker, "need" => tell.need.as_str() },
     );
-    let routed =
-        shared.messages().service.route_tell_as_muster(&tell.to, &tell.helper, None, &tell.body, panes);
+    let routed = shared.messages().service.route_tell_as_muster(
+        &tell.to,
+        &tell.helper,
+        None,
+        &tell.body,
+        panes,
+    );
     match routed {
         Ok(Some(away)) => {
             let (helper, maker, need) = (tell.helper.clone(), tell.maker.clone(), tell.need);
@@ -981,6 +1064,7 @@ mod tests {
             stopped: None,
             last_post_ms: None,
             maker_busy: false,
+            maker_here: true,
         }
     }
 
@@ -1050,6 +1134,23 @@ mod tests {
         assert!(makers.judge(&[busy(Activity::Blocked)], &called, 20_000).is_empty());
         assert!(makers.judge(&[busy(Activity::Working)], &called, 21_000).is_empty());
         assert!(makers.judge(&[maple(Activity::Working)], &called, 90_000).is_empty());
+    }
+
+    /// A need held for a maker on another machine has its machine asked again every few seconds,
+    /// since nothing there wakes this watch when the maker comes free; one held for a maker here
+    /// does not.
+    #[test]
+    fn a_need_held_for_a_busy_maker_elsewhere_is_looked_at_again_soon() {
+        let mut makers = makers();
+        let called = called();
+        let away = |activity| Helper { maker_busy: true, maker_here: false, ..maple(activity) };
+        makers.judge(&[away(Activity::Working)], &called, 0);
+        makers.judge(&[away(Activity::Blocked)], &called, 1_000);
+        assert!(makers.judge(&[away(Activity::Blocked)], &called, 30_000).is_empty());
+        assert_eq!(makers.due(30_000), ASK_BUSY_AGAIN);
+
+        assert!(makers.judge(&[away(Activity::Working)], &called, 31_000).is_empty());
+        assert_eq!(makers.due(31_000), NOTHING_DUE, "nothing waits on the maker any more");
     }
 
     /// A helper first seen at a dialog, its going to work missed by a loaded thread, began its

@@ -399,8 +399,12 @@ group the maker is in, and then went idle is not reported, and neither is one wa
 work. A maker on another machine is told there, as a post `--to` its pane reaches it: the helper's
 daemon asks the maker's which agent is in that pane, and the notice goes in the group the two
 already share by the same rule, which the machine keeping it posts, so a post `--to` either still
-finds their one group. Only a pair with no group yet gets one kept on the helper's machine. That
-needs the link between the two, so a window attached to both. A helper
+finds their one group. Only a pair with no group yet gets one kept on the helper's machine. A
+maker there at work is waited for as one here is: the helper's daemon asks the maker's machine
+every few seconds while the need waits, and tells it once it is free if the helper still needs it,
+so a dialog answered meanwhile is never told. The link does not say whether the maker's hooks
+fetch messages mid-turn, so a maker elsewhere is waited for either way. All of this needs the link
+between the two, so a window attached to both. A helper
 blocked or stuck on its maker's message holds their group up too, and the stall notice above leaves
 the maker out, since this one told it; anybody else waiting on the helper is still told.
 
