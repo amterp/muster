@@ -2946,14 +2946,19 @@ impl Session {
     /// The nudges owed to agents here, for the doorbell's thread to post
     /// (`messages/compact_nudges.rs`).
     pub(crate) fn nudges_due(&self) -> Vec<crate::messages::NudgeDue> {
+        let manifests = self.detecting.manifests();
         self.panes
             .iter()
             .filter_map(|pane| {
                 let nudge = pane.compaction.nudge_due()?;
                 let source = pane.record.compaction.as_ref()?.nudge_at.as_ref()?.source();
+                let agent = pane.record.agent.clone().unwrap_or_default();
                 Some(crate::messages::NudgeDue {
                     pane: pane.record.pane.clone(),
-                    agent: pane.record.agent.clone().unwrap_or_default(),
+                    takes_focus: manifests.as_deref().is_some_and(|manifests| {
+                        manifests.compaction_takes_focus(&muster_detect::Agent::new(&agent))
+                    }),
+                    agent,
                     used: nudge.used,
                     nudge_at: nudge.at,
                     source: match source {

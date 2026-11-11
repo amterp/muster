@@ -560,12 +560,13 @@ somebody's agent unasked.
 
 `compact_nudge_at` is how full an agent's context gets before Muster tells it to compact itself,
 in a message from `@muster` that says how full the context is and gives the command, `muster pane
-compact <what to keep> --then <prompt to carry on>`. An agent chooses a better moment and a better
+compact <what to keep> --then <prompt to carry on>`, without `<what to keep>` for a harness whose
+compaction takes none, as Codex's does. An agent chooses a better moment and a better
 summary than a threshold does, and agents forget to compact even when their own instructions tell
 them to, so the two keys work together: the nudge at a lower percent, `compact_at` above it for
 the agent that ignored the nudge. Once per crossing, like `compact_at`. No nudge is sent while a
 compaction `compact_at` asked for is waiting to be typed, to an agent whose harness gives Muster
-no compact command (today every harness but Claude Code), or when the nudge's percent is not
+no compact command (today OpenCode), or when the nudge's percent is not
 below the `compact_at` that applies to the same pane, since it would arrive with the compaction.
 `muster pane compaction` says which of these holds for a pane.
 

@@ -328,6 +328,12 @@ impl Manifests {
         self.entry(agent)?.manifest.session_compact(focus)
     }
 
+    /// Whether the agent's compaction can be told what to keep. No for an agent with no manifest
+    /// or none that compacts.
+    pub fn compaction_takes_focus(&self, agent: &Agent) -> bool {
+        matches!(self.session_compact(agent, Some("focus")), Some(Ok(_)))
+    }
+
     /// Whether a job the agent started in the background starts its next turn when it ends, by
     /// its manifest. No for an agent with none.
     pub fn wakes_when_jobs_end(&self, agent: &Agent) -> bool {

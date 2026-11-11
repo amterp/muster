@@ -282,9 +282,10 @@ With `compact_nudge_at = 60`, Muster posts the agent a message from `@muster` on
     compacted since this was sent, compact yourself at your next clean break: `muster pane
     compact <what to keep> --then <prompt to carry on>`. Muster compacts you itself at 85%.
 
-It arrives as any message does, at the agent's next idle, empty prompt or when it next reads, and
-its last sentence is there only when a `compact_at` applies to the pane. The config file sets both
-thresholds for every agent, by harness and by directory (`docs/configuration.md`). A pane's own
+A Codex agent is given `muster pane compact --then <prompt to carry on>`, since its compaction
+takes nothing to keep. It arrives as any message does, at the agent's next idle, empty prompt or
+when it next reads, and its last sentence is there only when a `compact_at` applies to the pane.
+The config file sets both thresholds for every agent, by harness and by directory (`docs/configuration.md`). A pane's own
 setting beats all of those, and anybody can set it, for their own pane or another:
 
     muster pane compaction --nudge-at 55                 # this pane
@@ -306,7 +307,7 @@ With no flag it changes nothing and says what applies to the pane and where each
 
 `off` stands where a threshold is `"none"` or nothing sets it, and a nudge that will never be sent
 says why: its percent is not below the pane's `compact_at`, or the agent's harness gives Muster no
-way to compact it, which is every harness but Claude Code today. `--json` gives the same two
+way to compact it, which is OpenCode today. `--json` gives the same two
 objects `muster window --json` carries on each pane, `compact_at` and `compact_nudge_at`. A pane
 on a daemon from before Muster 0.25 has neither: that daemon takes one percent for every agent
 (`docs/configuration.md` says which it is sent), and setting a pane's own is refused there.

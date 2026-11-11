@@ -24,6 +24,8 @@ use crate::session::Shared;
 pub(crate) struct Due {
     pub(crate) pane: String,
     pub(crate) agent: String,
+    /// Whether the agent's compaction can be told what to keep.
+    pub(crate) takes_focus: bool,
     /// How full the agent last said its context was, in percent.
     pub(crate) used: f32,
     pub(crate) nudge_at: u8,
@@ -86,10 +88,12 @@ fn body(nudge: &Due) -> String {
         .compact_at
         .map(|compact_at| format!(" Muster compacts you itself at {compact_at}%."))
         .unwrap_or_default();
+    // A compaction that takes no focus refuses one, so the command must not offer it.
+    let keep = if nudge.takes_focus { "<what to keep> " } else { "" };
     format!(
         "Your context is {:.0}% full, past the {}% this pane is set to be reminded at. If you \
          have not compacted since this was sent, compact yourself at your next clean break: \
-         `muster pane compact <what to keep> --then <prompt to carry on>`.{backstop}",
+         `muster pane compact {keep}--then <prompt to carry on>`.{backstop}",
         nudge.used, nudge.nudge_at
     )
 }
@@ -102,6 +106,7 @@ mod tests {
         Due {
             pane: "p1".to_string(),
             agent: "claude".to_string(),
+            takes_focus: true,
             used: 61.6,
             nudge_at: 60,
             source: "root",
@@ -116,6 +121,16 @@ mod tests {
             "Your context is 62% full, past the 60% this pane is set to be reminded at. If you \
              have not compacted since this was sent, compact yourself at your next clean break: \
              `muster pane compact <what to keep> --then <prompt to carry on>`."
+        );
+    }
+
+    #[test]
+    fn an_agent_whose_compaction_takes_no_focus_is_given_the_command_without_one() {
+        let nudge = Due { takes_focus: false, ..due(None) };
+        assert!(
+            body(&nudge).ends_with("`muster pane compact --then <prompt to carry on>`."),
+            "{}",
+            body(&nudge)
         );
     }
 

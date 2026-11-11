@@ -21,6 +21,8 @@ fn codex_compacts_with_a_bare_slash_command_and_opencode_is_not_compacted() {
     assert_eq!(manifests.session_compact(&codex, None), Some(Ok("/compact".to_string())));
     let focused = manifests.session_compact(&codex, Some("keep the word pong"));
     assert!(focused.is_some_and(|line| line.is_err()), "codex refuses a focus");
+    assert!(!manifests.compaction_takes_focus(&codex));
+    assert!(manifests.compaction_takes_focus(&Agent::new("claude")));
     assert_eq!(manifests.session_compact(&Agent::new("opencode"), None), None);
 }
 
