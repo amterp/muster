@@ -5,26 +5,33 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "backlog-hi",
   "comments": [
     {
       "id": "c_2xggbkI74",
       "body": "2026-11-10 board review: moved to backlog-hi. A pane whose harness stays empty breaks the agent state the API reports, and Foreman is working around it.",
       "author": "Alexander Terp",
       "created_at_millis": 1794368030529
+    },
+    {
+      "id": "c_2xksMDXvH",
+      "body": "2026-11-11: a03fb0a3 fixes a gap found by reading the code: a first probe landing after the command took the foreground but before it exec'd opened no acquisition window, so a silent agent was never probed again, and a report brings that first probe forward. The reported sequence did not reproduce on this build, with or without the fix: eight silent claude panes each reported as they were made (3 runs), and Foreman's own smoke steps, 16 of 16. Foreman saw it on 0.20.0, which was not rebuilt. To close: drop the report-after-the-agent-shows workaround in Foreman's smoke test and run it against a build with a03fb0a3.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794378015298
     }
   ],
   "created_at_millis": 1793564864425,
   "creator": "Alexander Terp",
   "description": "Found 2026-11-01 by Foreman's smoke test (Foreman server v1 stage 5, against the 0.20.0 build). A 'muster-daemon report --agent claude ...' that arrives before the daemon's detection has named the pane's agent leaves the pane's harness empty, in API snapshots and events alike, and it stays empty after detection runs. Confirmed with a raw API subscriber. Separately, a pane running a silent process under the name 'claude' (a sleep) was sometimes never detected as an agent, about 1 run in 5; a process that prints was detected every time. Foreman lists only panes with a harness, so such a pane drops out of its Agents list. Foreman's smoke test works around it by reporting only after the agent shows.",
   "id": "a_2sFgaTSdZ",
-  "position": "Zs",
+  "position": "Zr",
   "title": "A report sent before detection names a pane's agent leaves its harness empty for good",
   "type": "bug",
-  "updated_at_millis": 1794374423283,
+  "updated_at_millis": 1794378016062,
   "history": [
     {"field":"column","value":"uncommitted","at":1793564864425},
     {"field":"column","value":"backlog-hi","at":1794368030680},
-    {"field":"column","value":"in-progress","at":1794374423283}
+    {"field":"column","value":"in-progress","at":1794374423283},
+    {"field":"column","value":"backlog-hi","at":1794378016062}
   ]
 }

@@ -5,7 +5,7 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "created_at_millis": 1794073236960,
   "creator": "Alexander Terp",
   "description": "Sources/MusterMac/KeyTranslation.swift:63 treats a key's characters as control only when `scalar.value \u003c 0x20`, and SurfaceKeys.swift has `first \u003e= 0x20` at :114 and `\u003c 0x20` at :132. Neither covers DEL (0x7F). Upstream's Swift had the same check and fixed it in f4309055f (#13871), whose test expects alt+backspace to encode `\\x1b[127;3u` in kitty mode with no text attached. Given text, the encoder counts Option as spent.\n\nInferred from that fix, not tested in a pane. This is Muster's port, so the pin move will not fix it. Add the case to the key tests and extend both checks.",
@@ -13,11 +13,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "Zvzl",
+  "position": "Zo",
   "title": "Option+Backspace may send a kitty-mode program the wrong keys: 0x7F is treated as text",
   "type": "bug",
-  "updated_at_millis": 1794073308534,
+  "updated_at_millis": 1794378016231,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794073236960}
+    {"field":"column","value":"backlog-hi","at":1794073236960},
+    {"field":"column","value":"in-progress","at":1794378016231}
   ]
 }

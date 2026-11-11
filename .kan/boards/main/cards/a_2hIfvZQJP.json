@@ -5,13 +5,19 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "comments": [
     {
       "id": "c_2jUiCK9Wn",
       "body": "Added by Quartermaster's orchestrator (an agent), another instance on 2026-10-17, muster 0.16.1-dev: approving a plan dialog in a Claude Code helper (p2cdm3f1d6, quiet hidden helper, ct -m 2), `muster pane send --pane p2cdm3f1d6 \"\" --enter --confirm` exited 0 right after the dialog appeared, but the dialog was still open about 20 s later and @muster reported the pane blocked at it. The same command sent again then took. So --confirm reported success for a Return the dialog never received; here the pane was idle at a dialog, not busy.",
       "author": "Alexander Terp",
       "created_at_millis": 1792270805245
+    },
+    {
+      "id": "c_2xksMQO9V",
+      "body": "2026-11-11: both sightings accounted for, docs only (19f6782a). The 2026-10-17 Return at a plan dialog is the ~100 ms window measured for a_2dnADLXIN; pane wait --until blocked no longer answers inside it, and docs/cli/limits.md says a key sent as a dialog appears can pass --confirm and be ignored. The 2026-10-11 busy-pane loss does not happen on Claude Code 2.1.322 (corpus/claude-code-2.1.322/busy-paste.txt): the text is queued and handed to the running turn. If it recurs, look for queue-operation and queued_command records in the session JSONL.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794378015427
     }
   ],
   "created_at_millis": 1791946591972,
@@ -21,11 +27,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b0u",
+  "position": "Yu7",
   "title": "pane send --confirm passed, but the text never reached a busy Claude pane",
   "type": "bug",
-  "updated_at_millis": 1792270805245,
+  "updated_at_millis": 1794378015734,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946591972}
+    {"field":"column","value":"backlog-hi","at":1791946591972},
+    {"field":"column","value":"done","at":1794378015734}
   ]
 }
