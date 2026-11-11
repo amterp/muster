@@ -282,7 +282,12 @@ fn a_machine_taken_out_of_the_config_leaves_every_tab() {
     until(
         "the laptop's copy to be written without the devenv's pane",
         || foreign_leaves(&laptop, "t1laptop01") == 0,
-        || format!("the laptop's copy keeps {} foreign leaves", foreign_leaves(&laptop, "t1laptop01")),
+        || {
+            format!(
+                "the laptop's copy keeps {} foreign leaves",
+                foreign_leaves(&laptop, "t1laptop01")
+            )
+        },
     );
     assert!(foreign_leaves(&devenv, "t1laptop01") > 0, "the devenv's own copy was left alone");
 }

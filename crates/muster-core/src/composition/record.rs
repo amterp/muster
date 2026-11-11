@@ -345,7 +345,8 @@ impl Composition {
     /// and a window that switched tabs every time a daemon published something is a window
     /// that types into the wrong pane.
     pub fn open_region(&mut self, daemon: &DaemonId, tab: TabId) -> Option<RegionId> {
-        if !self.daemons.contains_key(daemon) || self.kept_apart.contains(&(daemon.clone(), tab.clone()))
+        if !self.daemons.contains_key(daemon)
+            || self.kept_apart.contains(&(daemon.clone(), tab.clone()))
         {
             return None;
         }

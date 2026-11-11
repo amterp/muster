@@ -19,9 +19,8 @@ use std::sync::Mutex;
 use muster::proto::{
     AdjustFontSize, ArrangePane, ClosePane, CreateTab, EqualizePanes, Event, FocusPane, OpenWindow,
     PaneText, ReadPane, ReadWindow, RemoveFromTab, RenamePane, RenameTab, Request, ResizePane,
-    Response,
-    RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ZoomPane, event, request,
-    response,
+    Response, RosterChanged, SendToPane, SetSplitRatio, SplitPane, Startup, ZoomPane, event,
+    request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_harness::requests::{
@@ -1894,10 +1893,18 @@ fn a_part_removed_while_its_machine_was_down_comes_back_as_a_tab_of_its_own() {
     let mut devenv = Daemon::start_built();
     let mut control = laptop.connect();
     make(&mut control, create(SPAN_A, in_new_tab(SPANNING_TAB)));
-    expect(&mut control, seeded(&format!("[{SPAN_A}|~{SPAN_X}@devenv 0.50]"), 1), daemon_proto::Outcome::Done);
+    expect(
+        &mut control,
+        seeded(&format!("[{SPAN_A}|~{SPAN_X}@devenv 0.50]"), 1),
+        daemon_proto::Outcome::Done,
+    );
     let mut control = devenv.connect();
     make(&mut control, create(SPAN_X, in_new_tab(SPANNING_TAB)));
-    expect(&mut control, seeded(&format!("[~{SPAN_A}@laptop|{SPAN_X} 0.50]"), 1), daemon_proto::Outcome::Done);
+    expect(
+        &mut control,
+        seeded(&format!("[~{SPAN_A}@laptop|{SPAN_X} 0.50]"), 1),
+        daemon_proto::Outcome::Done,
+    );
     let state = devenv.root().join("daemon.state.json");
     until(
         "the devenv to write its copy of the tab down",
@@ -2221,9 +2228,8 @@ fn drawn_root() -> Option<muster::proto::ViewTreeSplit> {
     let layout = window.layouts.into_iter().find(|layout| layout.tab_id == SPANNING_TAB)?;
     match layout.tree?.node? {
         muster::proto::view_tree::Node::Split(split) => Some(*split),
-        muster::proto::view_tree::Node::Pane(_) | muster::proto::view_tree::Node::Unreachable(_) => {
-            None
-        }
+        muster::proto::view_tree::Node::Pane(_)
+        | muster::proto::view_tree::Node::Unreachable(_) => None,
     }
 }
 

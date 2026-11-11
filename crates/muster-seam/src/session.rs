@@ -6103,7 +6103,11 @@ impl Departure {
         let Some(first) = panes.first() else { return };
         let mut asked = vec![BackendIntent::MovePane {
             pane: (*first).clone(),
-            to: MoveDestination::NewTab { tab: into.clone(), name: self.label.clone(), hidden: false },
+            to: MoveDestination::NewTab {
+                tab: into.clone(),
+                name: self.label.clone(),
+                hidden: false,
+            },
         }];
         rebuilt(&self.own, &into, &mut Vec::new(), &mut asked);
         for intent in &asked {
@@ -6134,7 +6138,8 @@ impl Departure {
 /// then each side made in its half.
 fn rebuilt(node: &LayoutNode, tab: &TabId, path: &mut Vec<Branch>, asked: &mut Vec<BackendIntent>) {
     let LayoutNode::Split { axis, ratio, first, second } = node else { return };
-    let (Some(near), Some(moved)) = (first.panes().first().copied(), second.panes().first().copied())
+    let (Some(near), Some(moved)) =
+        (first.panes().first().copied(), second.panes().first().copied())
     else {
         return;
     };
@@ -6146,7 +6151,11 @@ fn rebuilt(node: &LayoutNode, tab: &TabId, path: &mut Vec<Branch>, asked: &mut V
         pane: moved.clone(),
         to: MoveDestination::Beside { tab: tab.clone(), pane: near.clone(), side },
     });
-    asked.push(BackendIntent::SetSplitRatio { tab: tab.clone(), path: path.clone(), ratio: *ratio });
+    asked.push(BackendIntent::SetSplitRatio {
+        tab: tab.clone(),
+        path: path.clone(),
+        ratio: *ratio,
+    });
     path.push(Branch::First);
     rebuilt(first, tab, path, asked);
     path.pop();
@@ -6941,9 +6950,7 @@ fn worked_out(
         |machine| session.holds_spanning_trees(machine),
         |machine| attaching.contains(machine),
     );
-    settled.extend(
-        session.windows[window].departed.iter().map(|machine| (machine.clone(), true)),
-    );
+    settled.extend(session.windows[window].departed.iter().map(|machine| (machine.clone(), true)));
     if stale {
         for part in &mut parts {
             part.generation = part.generation.saturating_sub(1);

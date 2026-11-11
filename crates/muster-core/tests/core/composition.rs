@@ -90,7 +90,8 @@ fn composition_conformance() {
                         .showing()
                         .and_then(|tab| composition.tab(tab))
                         .and_then(|tab| {
-                            let (parts, settled) = spanning::parts_of(tab, mirror, |_| true, |_| false);
+                            let (parts, settled) =
+                                spanning::parts_of(tab, mirror, |_| true, |_| false);
                             spanning::merge(&parts, &settled)
                         })
                         .map_or(Value::Null, |merged| json!(merged.tree.to_string()))

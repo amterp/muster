@@ -17,13 +17,12 @@ pub(crate) fn leaf_panes(tree: &ViewTree) -> Vec<(&str, &ViewPane)> {
                     into.push((&leaf.daemon_id, pane));
                 }
             }
-            Some(view_tree::Node::Unreachable(_)) => {}
             Some(view_tree::Node::Split(split)) => {
                 for child in split.first.iter().chain(split.second.iter()) {
                     walk(child, into);
                 }
             }
-            None => {}
+            Some(view_tree::Node::Unreachable(_)) | None => {}
         }
     }
     let mut found = Vec::new();

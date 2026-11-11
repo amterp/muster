@@ -871,7 +871,10 @@ fn pane_box(
 
 /// The panes `node` keeps in their places while their machines cannot be reached, with each
 /// one's machine.
-fn unreachable_leaves<'a>(node: &'a muster_proto::ViewTree, found: &mut BTreeMap<&'a str, &'a str>) {
+fn unreachable_leaves<'a>(
+    node: &'a muster_proto::ViewTree,
+    found: &mut BTreeMap<&'a str, &'a str>,
+) {
     match node.node.as_ref() {
         Some(muster_proto::view_tree::Node::Unreachable(leaf)) => {
             found.insert(leaf.pane_id.as_str(), leaf.daemon_id.as_str());

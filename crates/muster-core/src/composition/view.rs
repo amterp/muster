@@ -83,14 +83,25 @@ pub struct ViewMachine {
 /// machine running it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewTree {
-    Pane { daemon: DaemonId, pane: ViewPane },
+    Pane {
+        daemon: DaemonId,
+        pane: ViewPane,
+    },
     /// A pane whose machine this window follows or is attaching, and which no part of the tab it
     /// can reach runs: a window opened while that machine was down, or one still restoring. It
     /// keeps its place, drawn as unreachable, and becomes its pane when its machine answers, so
     /// nothing else in the tab moves (MIP-8, section 7). No surface, so no keyboard and no place
     /// among [`View::places`].
-    Unreachable { daemon: DaemonId, pane: PaneId },
-    Split { axis: SplitAxis, ratio: f32, first: Box<ViewTree>, second: Box<ViewTree> },
+    Unreachable {
+        daemon: DaemonId,
+        pane: PaneId,
+    },
+    Split {
+        axis: SplitAxis,
+        ratio: f32,
+        first: Box<ViewTree>,
+        second: Box<ViewTree>,
+    },
 }
 
 impl ViewTree {
@@ -254,7 +265,6 @@ impl View {
         Some(View::built(tab, Zoom::Kept, mirror, attaching, daemon_socket, remote, pane))
     }
 
-    #[expect(clippy::too_many_arguments, reason = "each is one question only the caller can answer")]
     fn built<'a>(
         held: &MusterTab,
         zoom: Zoom,

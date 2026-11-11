@@ -235,7 +235,11 @@ pub fn departed(arriving: &Part, others: &[Part]) -> bool {
 /// window follows or is attaching but which no part holds, which it draws as unreachable in
 /// their places (MIP-8, section 7). A pane whose machine the window does not follow at all is
 /// left out, as a window attached to only some of a tab's machines leaves it.
-pub fn drawable(tree: &SpanNode, parts: &[Part], settled: &BTreeMap<DaemonId, bool>) -> BTreeSet<PaneId> {
+pub fn drawable(
+    tree: &SpanNode,
+    parts: &[Part],
+    settled: &BTreeMap<DaemonId, bool>,
+) -> BTreeSet<PaneId> {
     tree.leaves()
         .into_iter()
         .filter(|(pane, daemon)| held(parts, pane) || settled.contains_key(*daemon))
@@ -635,8 +639,9 @@ fn changed(
         }
         Change::Remove { pane } => {
             named(pane)?;
-            let rest = drawn(tree, &|leaf: &PaneId| leaf != pane)
-                .ok_or_else(|| format!("{pane} is the tab's only pane, so its tab is closed instead"))?;
+            let rest = drawn(tree, &|leaf: &PaneId| leaf != pane).ok_or_else(|| {
+                format!("{pane} is the tab's only pane, so its tab is closed instead")
+            })?;
             Ok((rest, zoomed.filter(|zoomed| zoomed != pane)))
         }
         Change::Even { pane, evenly } => {

@@ -9,12 +9,12 @@
 use super::{
     ATTACHES, BTreeSet, BackendIntent, Daemon, DaemonId, Event, GroupKey, Health, Implicitly,
     Keyboard, Lifecycle, PaneId, Refusal, SESSION, Sent, ShutWindow, TabId, Window, WindowId,
-    address, announce_presentation, arrangement_path, daemon_holding, daemon_holding_tab, event,
-    ffi, fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
-    local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
-    reconcile_sidebar_with_problems, save, saved_arrangement, saved_arrangement_at,
-    attaching::APPLIED_DAEMONS, catch_up_tab_trees,
-    saved_presentation, settle_what_the_window_shows, submit, tell_window_each_health,
+    address, announce_presentation, arrangement_path, attaching::APPLIED_DAEMONS,
+    catch_up_tab_trees, daemon_holding, daemon_holding_tab, event, ffi, fields, focus, focus_tab,
+    follow_implicitly_if_nothing_else, has_spoken, local_daemon_to_fill_from, log, mint_tab,
+    move_tab, poison, publish, reconcile_sidebar_with_problems, save, saved_arrangement,
+    saved_arrangement_at, saved_presentation, settle_what_the_window_shows, submit,
+    tell_window_each_health,
 };
 
 /// Takes the panes of every machine this window followed when it was last open, and its config no
