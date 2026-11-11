@@ -356,9 +356,6 @@ extension SurfaceGUITests {
   @Test("reports a web link with remote terminal state", arguments: [false, true], [false, true])
   func aRemoteWebLinkIsReported(hyperlink: Bool, mouseReporting: Bool) async throws {
     let renderer = try sharedRenderer()
-    // Tests sometimes missed an OSC8 link while another surface was still freeing. The cause
-    // is unknown, so keep fixture teardown separate from the link behavior being checked.
-    try await answered("the previous surface to finish freeing") { renderer.freesInFlight == 0 }
     let view = SurfaceView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
     let link =
       hyperlink
