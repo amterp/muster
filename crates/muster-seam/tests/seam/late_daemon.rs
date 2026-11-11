@@ -242,6 +242,70 @@ fn a_tab_on_two_machines_keeps_its_place_across_a_relaunch() {
 }
 
 /// The tabs the window lists that hold panes on more than one machine.
+/// A machine taken out of the config, and Muster relaunched, leaves every tab the window holds:
+/// the laptop's copy of the tab they shared is written without the devenv's pane, and the devenv,
+/// which nothing reaches any more, keeps its own (owner's decision
+/// spanning-tab-departed-machine).
+#[test]
+fn a_machine_taken_out_of_the_config_leaves_every_tab() {
+    let turn = muster::testing::fresh_session();
+    let (laptop, devenv) = (Daemon::start_built(), Daemon::start_built());
+    make(&mut laptop.connect(), create("p1laptop01", in_new_tab("t1laptop01")));
+    let arrangement = laptop.root().join("window-1.toml");
+    start(&laptop.muster_config_naming("laptop", &[("devenv", &devenv)]), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's tab to be listed",
+        || listed_tabs() == ["t1laptop01"],
+        || format!("the window lists {:?}", listed_tabs()),
+    );
+    assert_ok(&answer(request::Payload::SplitPane(SplitPane {
+        pane_id: "p1laptop01".to_string(),
+        new_pane_daemon_id: "devenv".to_string(),
+        side: "right".to_string(),
+        ..SplitPane::default()
+    })));
+    until(
+        "the tab to hold a pane on the devenv, and the arrangement to name the devenv",
+        || {
+            spanning_tabs() == ["t1laptop01"]
+                && saved_daemons(&arrangement).contains(&"devenv".to_string())
+        },
+        || format!("the arrangement names {:?}", saved_daemons(&arrangement)),
+    );
+    assert!(foreign_leaves(&laptop, "t1laptop01") > 0, "the laptop's copy names the devenv's pane");
+    assert_ok(&answer(request::Payload::Quitting(Quitting::default())));
+
+    turn.relaunch();
+    start(&laptop.muster_config_naming("laptop", &[]), &arrangement);
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    until(
+        "the laptop's copy to be written without the devenv's pane",
+        || foreign_leaves(&laptop, "t1laptop01") == 0,
+        || format!("the laptop's copy keeps {} foreign leaves", foreign_leaves(&laptop, "t1laptop01")),
+    );
+    assert!(foreign_leaves(&devenv, "t1laptop01") > 0, "the devenv's own copy was left alone");
+}
+
+/// The machines a saved arrangement lists as followed.
+fn saved_daemons(arrangement: &Path) -> Vec<String> {
+    let text = std::fs::read_to_string(arrangement).unwrap_or_default();
+    saved::from_toml(&text)
+        .map(|saved| saved.daemons.iter().map(|daemon| daemon.id.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// How many other machines' panes `daemon`'s copy of `tab` keeps.
+fn foreign_leaves(daemon: &Daemon, tab: &str) -> usize {
+    let snapshot = muster_harness::requests::snapshot(&mut daemon.connect());
+    snapshot
+        .tabs
+        .iter()
+        .find(|held| held.tab == tab)
+        .and_then(|held| held.root.as_ref())
+        .map_or(0, |root| muster_harness::requests::shape(root).matches('~').count())
+}
+
 fn spanning_tabs() -> Vec<String> {
     match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
         Some(response::Payload::Window(window)) => window

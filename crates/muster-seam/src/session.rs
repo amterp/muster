@@ -1047,6 +1047,11 @@ pub(crate) struct Window {
     /// back when they arrive (`restore_late`) and written back meanwhile (`save`).
     awaiting: BTreeSet<DaemonId>,
 
+    /// The machines this window followed when it was last open that its config no longer names:
+    /// taken out of the config, so their panes leave every tab this window holds (MIP-8,
+    /// section 7). Each counts in every merge as a machine that has said it holds nothing.
+    departed: BTreeSet<DaemonId>,
+
     /// The window's own chrome, which spans the daemons for the same reason attention does.
     presentation: Presentation,
 
@@ -1211,6 +1216,7 @@ impl Default for Window {
             hiding: false,
             left: None,
             awaiting: BTreeSet::new(),
+            departed: BTreeSet::new(),
             presentation: Presentation::default(),
             armed: None,
             focus_history: FocusHistory::new(),
@@ -6569,7 +6575,8 @@ fn catch_up_tab_trees(daemon: &DaemonId) {
                 .filter(|tab| tab.daemons().any(|part| part == daemon))
                 .filter(|tab| spanning::spans(tab, mirror))
             {
-                let (parts, settled) = spanning::parts_of(tab, mirror, writable, |_| false);
+                let (parts, mut settled) = spanning::parts_of(tab, mirror, writable, |_| false);
+                settled.extend(held.departed.iter().map(|machine| (machine.clone(), true)));
                 let Some(merged) = spanning::merge(&parts, &settled) else { continue };
                 writes.extend(
                     merged
@@ -6775,11 +6782,14 @@ fn worked_out(
         return None;
     }
     let attaching = session.attaching();
-    let (mut parts, settled) = spanning::parts_of(
+    let (mut parts, mut settled) = spanning::parts_of(
         held,
         mirror,
         |machine| session.holds_spanning_trees(machine),
         |machine| attaching.contains(machine),
+    );
+    settled.extend(
+        session.windows[window].departed.iter().map(|machine| (machine.clone(), true)),
     );
     if stale {
         for part in &mut parts {

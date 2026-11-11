@@ -13,8 +13,61 @@ use super::{
     ffi, fields, focus, focus_tab, follow_implicitly_if_nothing_else, has_spoken,
     local_daemon_to_fill_from, log, mint_tab, move_tab, poison, publish,
     reconcile_sidebar_with_problems, save, saved_arrangement, saved_arrangement_at,
+    attaching::APPLIED_DAEMONS, catch_up_tab_trees,
     saved_presentation, settle_what_the_window_shows, submit, tell_window_each_health,
 };
+
+/// Takes the panes of every machine this window followed when it was last open, and its config no
+/// longer names, out of the tabs it holds, writing each tab's machines that answer without them
+/// (owner's decision spanning-tab-departed-machine). Read off the window's saved arrangement,
+/// which lists the machines it followed, so a machine this window never followed - one another
+/// laptop's window shares a tab with - keeps its place in every tree written here.
+///
+/// Nothing when the config names no machine, which is also what a config that could not be read
+/// leaves: a window that took that for every machine leaving would empty its tabs of all of them.
+fn forget_machines_taken_out_of_the_config(window: WindowId) {
+    let followed: Vec<DaemonId> = {
+        let mut session = poison::lock(&SESSION, "session");
+        let Some(saved) =
+            arrangement_path(&session.windows[window]).and_then(|path| saved_arrangement_at(&path))
+        else {
+            return;
+        };
+        let configured: BTreeSet<DaemonId> = poison::lock(&APPLIED_DAEMONS, "applied-daemons")
+            .iter()
+            .map(|daemon| daemon.id.clone())
+            .collect();
+        if configured.is_empty() {
+            return;
+        }
+        let attaching = session.attaching();
+        let departed: BTreeSet<DaemonId> = saved
+            .daemons
+            .iter()
+            .map(|daemon| daemon.id.clone())
+            .filter(|daemon| {
+                !configured.contains(daemon)
+                    && !session.backends.contains_key(daemon)
+                    && !attaching.contains(daemon)
+            })
+            .collect();
+        if departed.is_empty() {
+            return;
+        }
+        log::info(
+            "window.machines.departed",
+            fields! {
+                "window" => session.windows[window].name.to_string(),
+                "machines" => departed.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "),
+            },
+        );
+        session.windows[window].departed = departed;
+        session.backends.keys().cloned().collect()
+    };
+    for daemon in &followed {
+        catch_up_tab_trees(daemon);
+    }
+}
 
 /// Opens this window onto whatever the daemons hold.
 ///
@@ -35,6 +88,7 @@ pub(crate) fn open(window: WindowId) -> Result<(), String> {
     restore_drafts(window);
     say_this_window_is_open(window);
     reopen_what_was_left(window);
+    forget_machines_taken_out_of_the_config(window);
     // After the file has been read and before anything writes over it. Everything above reads
     // the arrangement; everything from here on is entitled to replace it - which is why this
     // sits above the last two steps rather than below them, and it has to. Asking for a tab

@@ -709,6 +709,25 @@
         "change": "remove x"
       },
       "expect": { "refused": "x is running on a machine that answers, so it is closed rather than removed from its tab: only a pane whose machine is unreachable is removed" }
+    },
+    {
+      "name": "a machine taken out of the config leaves every tab, and the parts that answer are written",
+      "why": "A machine this window followed when it last ran and its config no longer names holds nothing as far as the window is concerned, so it counts as having said so, and its panes leave the tree; the laptop is written without them. Its own copy is untouched, since nothing reaches it (owner's decision spanning-tab-departed-machine).",
+      "given": {
+        "parts": [
+          { "daemon": "laptop", "copy": "[a|[~x@devenv/b 0.50] 0.50]", "generation": 2, "holds": ["a", "b"] }
+        ],
+        "settled": { "laptop": true, "devenv": true },
+        "drawn": true
+      },
+      "expect": {
+        "drawn": "columns(a@laptop, b@laptop@0.5)",
+        "tree": "columns(a@laptop, b@laptop@0.5)",
+        "zoomed": null,
+        "writes": [
+          "laptop 3<-2 columns(a, b@0.5)"
+        ]
+      }
     }
   ]
 }
