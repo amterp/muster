@@ -613,6 +613,12 @@ fn fail_perf(stdout, stderr, code):
     print_err("  ./dev --perf --record")
     exit(1)
 
+// The one ignored test the remote tier passes over. It is ignored on macOS because macOS hides
+// the environment of /bin/sh, which its fake agent runs under, so it cannot pass there; the tier
+// runs every ignored test to reach the remote ones, and reached this one too. ./dev --linux and
+// CI's linux job run it.
+MACOS_ONLY_IGNORED = "resume::an_agent_started_through_a_wrapper_comes_back_through_it"
+
 // The remote tier: a real ssh master to a real machine that starts out with nothing on it.
 //
 // Out of the gate because it needs docker and a container, which is the same line the
@@ -651,7 +657,7 @@ fn run_ssh_tier():
     //
     // muster-contract is left out because its ignored tests are the contract tier's: they
     // launch the app, and need a GUI session rather than a container.
-    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored --list`
+    stdout = $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored --list --skip {MACOS_ONLY_IGNORED}`
     names = stdout.split("\n").filter(fn(line) line.ends_with(": test"))
     if len(names) == 0:
         print_err(red("The remote tier discovered no tests."))
@@ -662,7 +668,10 @@ fn run_ssh_tier():
         exit(1)
     print(dim("{len(names)} remote test(s) discovered"))
 
-    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract -- --ignored`
+    // --no-fail-fast, because cargo otherwise stops at the first test binary with a failure, and
+    // the seam's remote tests come after the daemon's: one failure there hid every one of them
+    // from this tier from 2026-10-28, when MACOS_ONLY_IGNORED landed, until it was skipped.
+    $`MUSTER_DEVENV_HOST=dev@localhost MUSTER_DEVENV_SSH_OPTIONS={options} cargo test --workspace --exclude muster-contract --no-fail-fast -- --ignored --skip {MACOS_ONLY_IGNORED}`
 
     // Said here because this is where it matters and nothing else says it. The container is
     // left up deliberately - a devenv is a thing you keep - but it goes on costing the machine
