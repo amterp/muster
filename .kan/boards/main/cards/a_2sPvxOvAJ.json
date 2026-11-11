@@ -5,20 +5,29 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2xlGQ77LA",
+      "body": "2026-11-11: fixed on main (cfadf504, 2995246f, 886ff887). A stall notice is held while the poster it is for is busy, told once that poster is free if the stall still holds, and dropped with msg.group.untold_settled in the log otherwise. A poster elsewhere counts as busy when its machine says so or has not answered in 10 s.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794378940273
+    }
+  ],
   "created_at_millis": 1793589288070,
   "creator": "Alexander Terp",
   "description": "From tooling feedback, 2026-11-01. The `@muster` notice \"bison has not read #4 ... 2 minutes after it was posted: a wake for it is held because its prompt is not on its screen\" was true when the daemon wrote it, but it reached bison's maker, newt, about 15 minutes after the post. By then `muster window` already showed bison working on \"Read newt's message\", so the notice sent newt to check on a helper that no longer needed anything.\n\nWanted: before a stall notice is delivered, the daemon checks that the stall still holds, and drops the notice or says it has settled if not. Open: whether the notice stays in the group's log either way, as a record that the wake was held. The notices are written in `crates/muster-daemon/src/messages/stalls.rs`.",
   "id": "a_2sPvxOvAJ",
-  "position": "Zr",
+  "position": "Yu5",
   "related": [
     "a_2sPvwRzxU"
   ],
   "title": "A stall notice reaches the maker after the stall has ended",
   "type": "bug",
-  "updated_at_millis": 1794375782275,
+  "updated_at_millis": 1794378940516,
   "history": [
     {"field":"column","value":"backlog-lo","at":1793589288070},
-    {"field":"column","value":"in-progress","at":1794375782275}
+    {"field":"column","value":"in-progress","at":1794375782275},
+    {"field":"column","value":"done","at":1794378940516}
   ]
 }

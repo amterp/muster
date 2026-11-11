@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "in-progress",
   "comments": [
     {
       "id": "c_2j4C0VLFA",
@@ -27,11 +27,12 @@
   "labels": [
     "ai-lo"
   ],
-  "position": "b0v",
+  "position": "Zn",
   "title": "A pane blocked at a dialog for hours tells only an agent that cannot answer",
   "type": "feature",
-  "updated_at_millis": 1794270003390,
+  "updated_at_millis": 1794378941042,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946592114}
+    {"field":"column","value":"backlog-hi","at":1791946592114},
+    {"field":"column","value":"in-progress","at":1794378941042}
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "carry-group-set",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794378940887,
+  "creator": "Alexander Terp",
+  "description": "Raised 2026-11-11 from a_2x07ySYye, which carries delete, pause and resume. These three stay refused for a group kept on another machine, for agents and the person: the policy and member names inside the request would need turning into the home's names, and add needs the home to look names up.",
+  "id": "a_2xlGR0sQS",
+  "position": "b30",
+  "title": "Carry group set, group add and group remove to a group's home",
+  "type": "enhancement",
+  "updated_at_millis": 1794378940887,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794378940887}
+  ]
+}
