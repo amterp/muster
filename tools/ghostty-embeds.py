@@ -31,7 +31,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGES = ROOT / "deps" / "ghostty" / "zig-pkg"
-MANIFEST = ROOT / "deps" / "ghostty" / "build.zig.zon.json"
+MANIFEST = ROOT / "deps" / "ghostty" / "deps" / "packages.json"
+# What upstream says libghostty-vt itself is built from, with a `use` of "linked" for the code
+# compiled into it. libghostty-vt has no GUI dependencies to probe for, so its list is read
+# from here rather than measured.
+VT_MANIFEST = ROOT / "deps" / "ghostty" / "deps" / "libghostty-vt-third-party.json"
 PIN = ROOT / "deps" / "ghostty.pin"
 OUTPUT = ROOT / "licenses" / "GHOSTTY-EMBEDDED.md"
 
@@ -64,6 +68,25 @@ def package_dirs() -> dict[str, Path]:
     return {
         (v.get("name") or key): PACKAGES / key for key, v in manifest.items()
     }
+
+
+def vt_linked() -> list[dict]:
+    manifest = json.loads(VT_MANIFEST.read_text())
+    return [entry for entry in manifest["third_party"] if entry.get("use") == "linked"]
+
+
+def vt_source_dir(entry: dict) -> Path:
+    if entry.get("kind") == "vendored":
+        return ROOT / "deps" / "ghostty" / entry["path"]
+    return PACKAGES / entry["hash"]
+
+
+def license_files(directory: Path) -> list[Path]:
+    names = ("LICENSE", "LICENCE", "COPYING", "UNICODE-LICENSE")
+    return sorted(
+        path for path in directory.iterdir()
+        if path.is_file() and path.name.upper().startswith(names)
+    ) if directory.is_dir() else []
 
 
 def symbols(binary: Path) -> str:
@@ -131,8 +154,16 @@ def main() -> int:
     w(f"Measured against the build of `deps/ghostty.pin` = `{pin}`, by asking the linked")
     w("binary for symbols only one library defines. Re-run it when the pin moves.")
     w("")
-    w("`Contents/Frameworks/libghostty-vt.dylib` is the other build of the same source")
-    w("and carries none of these - it is the terminal state machine and nothing else.")
+    w("`Contents/Frameworks/` holds libghostty-vt, the other build of the same source:")
+    w("the terminal state machine, which the daemon and the core link too. It carries none")
+    w("of the libraries in the table below, and it does carry these, which upstream lists")
+    w("as compiled into it (`deps/libghostty-vt-third-party.json` at the pin):")
+    w("")
+    w("| Library | Version | License |")
+    w("| --- | --- | --- |")
+    vt = vt_linked()
+    for entry in vt:
+        w(f"| {entry['name']} | {entry['version']} | {entry['license']} |")
     w("")
     w("| Library | License | Symbols in the linked binary |")
     w("| --- | --- | --- |")
@@ -170,6 +201,24 @@ def main() -> int:
                     f"in {base.relative_to(ROOT)} for where it moved to and update PROBES."
                 )
             w(f"### {name} - {relative} ({spdx})")
+            w("")
+            w("```")
+            w(path.read_text(encoding="utf-8", errors="replace").strip())
+            w("```")
+            w("")
+
+    for entry in vt:
+        base = vt_source_dir(entry)
+        files = license_files(base)
+        if not files:
+            sys.exit(
+                f"No license file for {entry['name']} in {base}.\n"
+                "Impact: libghostty-vt ships compiled into the daemon and the app, and its\n"
+                "terms would be missing beside it. Try: ./dev -d, then look in that\n"
+                "directory for where the license text lives."
+            )
+        for path in files:
+            w(f"### {entry['name']} - {path.name} ({entry['license']})")
             w("")
             w("```")
             w(path.read_text(encoding="utf-8", errors="replace").strip())
