@@ -24,13 +24,13 @@ use std::time::{Duration, Instant};
 
 use muster_core::diagnostics::log;
 use muster_core::fields;
-use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Settled, Via};
+use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Via};
 
 use super::doorbell::Held;
 use super::makers::{self, Makers};
 use super::presence::Panes;
 use super::prompt::{Judged, Unseen};
-use super::{Delivered, Messages, activities_of, delivering, now_ms, peer, ring, told, words};
+use super::{Messages, delivering, notices, now_ms, ring, told, words};
 use crate::session::Shared;
 
 /// How long a message may wait on a member that is not working before Muster calls its group
@@ -45,10 +45,6 @@ pub(crate) const STALL_AFTER: Duration = Duration::from_mins(2);
 /// for good - a finished Claude Code turn whose last rows looked like its spinner held an
 /// integrator's messages for seven hours - while a turn that long is rare enough to say so.
 pub(crate) const WORKED_AFTER: u64 = 15;
-
-/// The protocol minor from which a group's home posts Muster's notice for a member on another
-/// machine ([`muster_msg::Call::Muster`]).
-const MUSTER_SINCE: u32 = 8;
 
 /// A debug build's [`STALL_AFTER`] in milliseconds, when set, so a test need not wait for it.
 const STALL_AFTER_SAID: &str = "MUSTER_DAEMON_STALL_MS";
@@ -759,8 +755,8 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
         }
         Act::Tell { group, to, body } => {
             let home = shared.messages().service.home_of(&group);
-            if let Some(machine) = home {
-                tell_at_home(shared, machine, group, to, body);
+            if home.is_some() {
+                tell_at_home(shared, group, to, body);
                 return;
             }
             let delivered = delivering(shared, panes, |service| {
@@ -782,29 +778,8 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
     }
 }
 
-/// Has `machine`, which keeps `group`, post what whoever waits is told, on a thread of its own:
-/// the call may wait seconds on the link, and the doorbell's thread rings everybody else's
-/// panes meanwhile.
-fn tell_at_home(
-    shared: &Arc<Shared>,
-    machine: String,
-    group: String,
-    to: Vec<String>,
-    body: String,
-) {
-    let Some(link) = shared.peers.to(&machine) else {
-        untold(&group, &to, &format!("no link to {machine}, where {group} is kept, is up"));
-        return;
-    };
-    if link.speaks.minor < MUSTER_SINCE {
-        let speaks = format!("{}.{}", link.speaks.major, link.speaks.minor);
-        let why = format!(
-            "{machine}'s muster-daemon speaks protocol {speaks}, before a group's home posted \
-             Muster's notice for a member elsewhere (1.{MUSTER_SINCE})"
-        );
-        untold(&group, &to, &why);
-        return;
-    }
+/// Has the machine that keeps `group` post what whoever waits is told ([`notices`]).
+fn tell_at_home(shared: &Arc<Shared>, group: String, to: Vec<String>, body: String) {
     let away = match shared.messages().service.route_muster(&group, &to, &body) {
         Ok(Some(away)) => away,
         Ok(None) => {
@@ -816,24 +791,9 @@ fn tell_at_home(
             return;
         }
     };
-    let unstarted = format!("no thread could be started to ask {machine}");
-    let (group_said, to_said) = (group.clone(), to.clone());
-    let shared = Arc::clone(shared);
-    let started = std::thread::Builder::new().name("stall-tell".to_string()).spawn(move || {
-        let (settle, holding) = peer::call_away(&shared, &away);
-        let rang = ring(&shared, holding);
-        match settle.result {
-            Ok(Settled::Posted(posted)) => {
-                let activities = activities_of(&shared, &posted, &Panes::of(&shared));
-                told("msg.group.told", Some(body.len()), &Delivered { posted, rang, activities });
-            }
-            Ok(other) => untold(&group, &to, &format!("{machine} answered {other:?}")),
-            Err(refusal) => untold(&group, &to, &words(&refusal)),
-        }
+    notices::post_at_home(shared, away, "msg.group.told", body.len(), move |why| {
+        untold(&group, &to, why);
     });
-    if let Err(error) = started {
-        untold(&group_said, &to_said, &format!("{unstarted}: {error}"));
-    }
 }
 
 /// Logs that whoever waits on a member was not told why it has not answered, and why not.

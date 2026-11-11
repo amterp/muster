@@ -1076,6 +1076,42 @@ fn a_helper_tells_its_maker_on_the_linked_machine() {
     assert!(after[0].ends_with(": my report"), "{after:?}");
 }
 
+/// A helper on the far machine whose maker on the near one has already posted to it tells the
+/// maker in the group the two share, kept on the near machine, rather than in a second one kept
+/// on the far: the maker's next post to it then needs no `--group`.
+#[test]
+fn a_helpers_notice_goes_in_the_group_it_shares_with_its_maker_on_the_linked_machine() {
+    let near = Daemon::start_detecting();
+    let far = Daemon::start_detecting_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "1000")]);
+    let (mut near_control, mut far_control) = (near.connect(), far.connect());
+    make(&mut near_control, create("p1", in_new_tab("t1")));
+    near.run_agent("p1");
+    let (mut near_log, mut far_log) = (following(&near), following(&far));
+    let _holding = link(&near, &far, &mut near_log, 1);
+    make(&mut far_control, helper("p2", "p1", among_helpers("t1", "p1's helpers")));
+    far.run_agent("p2");
+
+    let brief = expect(
+        &mut near_control,
+        post(&in_pane("p1"), None, &["p2"], "a brief"),
+        proto::Outcome::Done,
+    );
+    let Some(Answer::Posted(posted)) = &msg_answer(&brief).answer else { panic!("{brief:?}") };
+    let pair = posted.group.clone();
+    assert!(!pair.contains('@'), "kept on the near machine: {pair}");
+    read(&mut far_control, &in_pane("p2"));
+
+    far.set_agent_state("p2", proto::AgentState::Working);
+    far.set_agent_state("p2", proto::AgentState::Blocked);
+    far_log.logged_until(r#""event":"msg.helper.told""#, Duration::from_secs(20));
+    let (told, _) = read(&mut near_control, &in_pane("p1"));
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].starts_with(&format!("{pair} @muster: ")), "{told:?}");
+    assert!(told[0].contains(" is blocked at a dialog: "), "{told:?}");
+
+    expect(&mut near_control, post(&in_pane("p1"), None, &["p2"], "on it"), proto::Outcome::Done);
+}
+
 #[test]
 fn a_declared_wait_can_end_on_a_sender_from_the_linked_machine() {
     let near = Daemon::start_detecting();

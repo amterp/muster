@@ -2534,6 +2534,49 @@ fn a_maker_on_another_machine_is_told_of_its_helper_there() {
     assert!(wire.devenv.last_post("p2dev", &maker).is_some(), "its report is found");
 }
 
+/// A helper's machine tells its maker in the group the two already share, kept on the maker's
+/// machine, by having that machine post it there: a group kept on the helper's machine for the
+/// same two would be a second one for the pair, and every later post between them would have to
+/// say which with `--group`.
+#[test]
+fn a_maker_on_another_machine_is_told_in_the_group_the_two_already_share() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1lap");
+    wire.pane(Side::Devenv, "p2dev");
+    let brief = wire.post(Side::Laptop, &in_pane("p1lap"), None, &["p2dev"], "a brief").unwrap();
+    assert_eq!(brief.group, "p1lap+p2dev");
+    wire.read(Side::Devenv, &in_pane("p2dev"), None);
+
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let away = devenv
+        .route_tell_as_muster("p1lap@lap", "p2dev", None, "p2dev is blocked", sessions)
+        .unwrap()
+        .expect("the pair's group is kept on the laptop");
+    assert_eq!(away.machine, "lap");
+    let Settled::Posted(posted) = wire.send(Side::Devenv, &away.call).unwrap() else {
+        panic!("Muster's notice settles as posted")
+    };
+    assert_eq!(posted.group, "p1lap+p2dev@lap");
+    assert_eq!(members_on(&wire, Side::Devenv, "p1lap+p2dev@lap").len(), 2);
+    assert_eq!(wire.devenv.groups().len(), 1, "a second group for the pair");
+
+    let told = wire.read(Side::Laptop, &in_pane("p1lap"), None);
+    assert_eq!(told, ["p1lap+p2dev @muster: p2dev is blocked"]);
+    let answer = wire.post(Side::Laptop, &in_pane("p1lap"), None, &["p2dev"], "on it").unwrap();
+    assert_eq!(answer.group, "p1lap+p2dev", "the pair's one group, found without --group");
+}
+
+/// With no group the two share, nothing is routed away: the notice makes one here, as before.
+#[test]
+fn a_maker_sharing_no_group_with_its_helper_is_told_in_one_made_here() {
+    let mut wire = Wire::new();
+    wire.pane(Side::Laptop, "p1lap");
+    wire.pane(Side::Devenv, "p2dev");
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    let away = devenv.route_tell_as_muster("p1lap@lap", "p2dev", None, "blocked", sessions);
+    assert_eq!(away.unwrap(), None);
+}
+
 /// A far machine tells the person what Muster has to say as it tells any member on another
 /// machine: the person's home, the laptop, wakes the human (MIP-7, section 6).
 #[test]

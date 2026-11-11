@@ -1227,12 +1227,14 @@ impl<S: Store> Messaging<S> {
     /// post to it would make it; `about` may be a pane closed since, which never took part, and
     /// is then shown as `called`. `to` may also be somebody on another machine, as this machine
     /// writes them (`claude@lap`, what a `whom` call answers), and the human homed elsewhere is
-    /// the one there: the group is kept here either way, and its home tells that machine.
+    /// the one there.
     ///
     /// It goes in the group of exactly the two when they have one, else the one group both are
     /// in, and else the group a post from one to the other would make: so a notice stays out of
     /// a council the two share beside a group of their own, and the reply addressed back lands
-    /// where the notice did whenever the two share one group only.
+    /// where the notice did whenever the two share one group only. A group they share that is
+    /// kept on another machine counts too, and is refused here: [`Self::route_tell_as_muster`]
+    /// says where to post it instead. A group made for the notice is kept here.
     pub fn tell_as_muster(
         &mut self,
         to: &str,
@@ -1305,19 +1307,49 @@ impl<S: Store> Messaging<S> {
         name.to_string()
     }
 
-    /// The group Muster tells `one` about `other` in ([`Self::tell_as_muster`]), made when
-    /// there is none to take.
-    fn group_of_two(&mut self, one: &str, other: &str, now_ms: u64) -> Result<String, Refusal> {
+    /// Where [`Self::tell_as_muster`] would post, when that is a group the two share that is kept
+    /// on another machine: Muster's notice for its home to post there, as [`Self::route_muster`]
+    /// carries a stall's. Nothing when the notice is posted here. Telling a member of a pair
+    /// about the other in a group kept here instead would make a second group for the two,
+    /// which every later post between them would have to choose between with `--group`.
+    pub fn route_tell_as_muster(
+        &mut self,
+        to: &str,
+        about: &str,
+        called: Option<&str>,
+        body: &str,
+        presence: &dyn Presence,
+    ) -> Result<Option<Away>, Refusal> {
+        let to = self.party(to, None, presence);
+        let about = self.party(about, called, presence);
+        match self.shared_by_two(&to, &about) {
+            Some(group) => self.route_muster(&group, &[to], body),
+            None => Ok(None),
+        }
+    }
+
+    /// The group `one` and `other` share that Muster tells either in about the other: the one of
+    /// exactly the two, else the only one both are in, wherever it is kept.
+    fn shared_by_two(&self, one: &str, other: &str) -> Option<String> {
         let shared: Vec<String> = self
             .memberships(one)
             .into_iter()
-            .filter(|group| self.groups[group].members.contains(other) && self.here(group).is_ok())
+            .filter(|group| self.groups[group].members.contains(other))
             .collect();
         if let Some(pair) = shared.iter().find(|group| self.groups[*group].members.len() == 2) {
-            return Ok(pair.clone());
+            return Some(pair.clone());
         }
-        if let [only] = shared.as_slice() {
-            return Ok(only.clone());
+        match shared.as_slice() {
+            [only] => Some(only.clone()),
+            _ => None,
+        }
+    }
+
+    /// The group Muster tells `one` about `other` in ([`Self::tell_as_muster`]), made when
+    /// there is none to take.
+    fn group_of_two(&mut self, one: &str, other: &str, now_ms: u64) -> Result<String, Refusal> {
+        if let Some(group) = self.shared_by_two(one, other) {
+            return Ok(group);
         }
         let group = self.pair_name(&[one, other])?;
         self.ensure_group(&group, MUSTER, now_ms)?;

@@ -33,7 +33,7 @@ use muster_msg::{Activity, Presence, Reach};
 
 use super::presence::Panes;
 use super::stalls::{AT_A_DIALOG, said_as_time, shown, stopped_reading};
-use super::{delivering, now_ms, told, waits};
+use super::{delivering, notices, now_ms, told, waits, words};
 use crate::pane::TypedBy;
 use crate::session::{Orphaned, Session, Shared};
 
@@ -786,6 +786,26 @@ fn orphaned_body(orphaned: &Orphaned) -> String {
 
 fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
     let body = orphaned_body(orphaned);
+    let called = Some(orphaned.called.as_str());
+    let routed = shared.messages().service.route_tell_as_muster(
+        muster_msg::HUMAN,
+        &orphaned.maker,
+        called,
+        &body,
+        panes,
+    );
+    match routed {
+        Ok(Some(away)) => {
+            let orphaned = orphaned.clone();
+            let told = "msg.helper.orphans_told";
+            notices::post_at_home(shared, away, told, body.len(), move |why| {
+                orphans_untold(&orphaned, why);
+            });
+            return;
+        }
+        Ok(None) => {}
+        Err(refusal) => return orphans_untold(orphaned, &words(&refusal)),
+    }
     let delivered = delivering(shared, panes, |service| {
         let called = Some(orphaned.called.as_str());
         service.tell_as_muster(muster_msg::HUMAN, &orphaned.maker, called, &body, panes, now_ms())
@@ -794,28 +814,52 @@ fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
         Ok(delivered) => {
             told("msg.helper.orphans_told", Some(body.len()), &delivered);
         }
-        Err(reply) => log::warn(
-            "msg.helper.orphans_untold",
-            fields! {
-                "maker" => orphaned.maker,
-                "helpers" => names(orphaned).join(","),
-                "reason" => reply.reason,
-                "impact" => "the person was not told that these helpers are still running and \
-                             close once idle; they are no longer quiet, so a block notifies as \
-                             any pane's does",
-                "check" => "the reason: the person homed on another machine, where Muster \
-                            cannot tell them from here, or a store that would not write",
-            },
-        ),
+        Err(reply) => orphans_untold(orphaned, &reply.reason),
     }
 }
 
-/// Tells a helper's maker what the helper needs, and says whether it reached them.
+fn orphans_untold(orphaned: &Orphaned, reason: &str) {
+    log::warn(
+        "msg.helper.orphans_untold",
+        fields! {
+            "maker" => orphaned.maker,
+            "helpers" => names(orphaned).join(","),
+            "reason" => reason,
+            "impact" => "the person was not told that these helpers are still running and \
+                         close once idle; they are no longer quiet, so a block notifies as \
+                         any pane's does",
+            "check" => "the reason: the person homed on another machine, where Muster \
+                        cannot tell them from here, or a store that would not write",
+        },
+    );
+}
+
+/// Tells a helper's maker what the helper needs, and says whether it reached them: in the group
+/// the two share where it is kept, which may be the maker's machine, or else in one kept here. A
+/// notice the group's home is asked to post counts as reached once it is asked, and a refusal
+/// from there is logged and not tried again.
 fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
     log::info(
         "msg.helper.needs",
         fields! { "helper" => tell.helper, "maker" => tell.maker, "need" => tell.need.as_str() },
     );
+    let routed =
+        shared.messages().service.route_tell_as_muster(&tell.to, &tell.helper, None, &tell.body, panes);
+    match routed {
+        Ok(Some(away)) => {
+            let (helper, maker, need) = (tell.helper.clone(), tell.maker.clone(), tell.need);
+            let told = "msg.helper.told";
+            notices::post_at_home(shared, away, told, tell.body.len(), move |why| {
+                helper_untold(&helper, &maker, need, why);
+            });
+            return true;
+        }
+        Ok(None) => {}
+        Err(refusal) => {
+            helper_untold(&tell.helper, &tell.maker, tell.need, &words(&refusal));
+            return false;
+        }
+    }
     let delivered = delivering(shared, panes, |service| {
         service.tell_as_muster(&tell.to, &tell.helper, None, &tell.body, panes, now_ms())
     });
@@ -825,23 +869,27 @@ fn tell_maker(shared: &Arc<Shared>, panes: &Panes, tell: &Tell) -> bool {
             !delivered.posted.reached.iter().any(|(_, reach)| *reach == Reach::Unreachable)
         }
         Err(reply) => {
-            log::warn(
-                "msg.helper.untold",
-                fields! {
-                    "helper" => tell.helper,
-                    "maker" => tell.maker,
-                    "need" => tell.need.as_str(),
-                    "reason" => reply.reason,
-                    "impact" => "the helper is quiet, so nobody hears that it needs somebody: its \
-                                 maker was not told, and the person is not told while it is quiet",
-                    "check" => "the reason: a maker on another machine whose link dropped, or a \
-                                store that would not write; `muster pane quiet --pane <helper> \
-                                --off` makes it ask the person instead",
-                },
-            );
+            helper_untold(&tell.helper, &tell.maker, tell.need, &reply.reason);
             false
         }
     }
+}
+
+fn helper_untold(helper: &str, maker: &str, need: Need, reason: &str) {
+    log::warn(
+        "msg.helper.untold",
+        fields! {
+            "helper" => helper,
+            "maker" => maker,
+            "need" => need.as_str(),
+            "reason" => reason,
+            "impact" => "the helper is quiet, so nobody hears that it needs somebody: its \
+                         maker was not told, and the person is not told while it is quiet",
+            "check" => "the reason: a maker on another machine whose link dropped, or a \
+                        store that would not write; `muster pane quiet --pane <helper> \
+                        --off` makes it ask the person instead",
+        },
+    );
 }
 
 #[cfg(test)]

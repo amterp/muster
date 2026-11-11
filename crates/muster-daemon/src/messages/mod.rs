@@ -12,6 +12,7 @@ mod compacts;
 mod doorbell;
 mod inbox;
 mod makers;
+mod notices;
 pub(crate) mod peer;
 mod presence;
 mod prompt;
