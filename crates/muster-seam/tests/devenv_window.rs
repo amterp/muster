@@ -66,20 +66,7 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
     let log = home.join("muster.jsonl");
     open_a_window(&home, &socket, &log, &host, &options);
 
-    // Asked until it lands, because the first ask can arrive while the window is still
-    // installing and starting the devenv's daemon.
-    let first = until_some("the devenv's daemon to make a tab", || {
-        let asked = request::Payload::CreateTab(CreateTab {
-            daemon_id: "devenv".to_string(),
-            take_focus: true,
-            ..CreateTab::default()
-        });
-        if let Some(response::Payload::Made(made)) = dialed(&socket, asked).payload {
-            return Some(made.pane_id);
-        }
-        std::thread::sleep(Duration::from_millis(500));
-        None
-    });
+    let (first, callsign) = a_tab_on_the_devenv(&socket);
     let _stopped = Finally(Box::new(|| {
         let _ = stop(&local, Duration::from_secs(10));
     }));
@@ -108,7 +95,11 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
     );
 
     the_daemon_answers_only_for_a_window_that_does_not(
-        &socket, &host, &options, &installed, &first,
+        &socket,
+        &host,
+        &options,
+        &installed,
+        (&first, &callsign),
     );
 
     // The connection drops and comes back, and the same pane can still reach the window. What it
@@ -160,6 +151,24 @@ fn a_devenv_pane_drives_the_window_it_is_drawn_in() {
     assert!(left.trim().is_empty(), "the window's socket outlived it on the devenv: {left}");
 }
 
+/// A tab on the devenv's daemon, made through the window: its pane's id and callsign.
+fn a_tab_on_the_devenv(socket: &Path) -> (String, String) {
+    // Asked until it lands, because the first ask can arrive while the window is still
+    // installing and starting the devenv's daemon.
+    until_some("the devenv's daemon to make a tab", || {
+        let asked = request::Payload::CreateTab(CreateTab {
+            daemon_id: "devenv".to_string(),
+            take_focus: true,
+            ..CreateTab::default()
+        });
+        if let Some(response::Payload::Made(made)) = dialed(socket, asked).payload {
+            return Some((made.pane_id, made.callsign));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        None
+    })
+}
+
 /// Quits, asking for the session to end too, and expects the window's ssh master to be gone.
 fn quitting_ends_the_master(control: &Path, host: &str) {
     // Quitting ends the window's master, and its forwards with it: nothing is left running
@@ -181,13 +190,14 @@ fn quitting_ends_the_master(control: &Path, host: &str) {
 /// A devenv pane's `muster window` is answered by the window while the window answers there. A
 /// pane whose `$MUSTER_SOCKET` names a window of this Muster that has quit - Muster relaunched -
 /// is answered by the window open now, which forwards beside it; and one naming a window no
-/// window of this Muster is beside is answered by the devenv's own daemon.
+/// window of this Muster is beside is answered by the devenv's own daemon, whose listing names
+/// the pane by its `callsign`.
 fn the_daemon_answers_only_for_a_window_that_does_not(
     socket: &Path,
     host: &str,
     options: &[String],
     installed: &Installed,
-    first: &str,
+    (first, callsign): (&str, &str),
 ) {
     // With the window answering there, it answers rather than the devenv's daemon: its
     // listing is a window's, not headed by the daemon that answered in a window's place.
@@ -236,7 +246,7 @@ fn the_daemon_answers_only_for_a_window_that_does_not(
         ),
     );
     assert!(
-        said.contains("no window answered; the muster-daemon at") && said.contains(first),
+        said.contains("no window answered; the muster-daemon at") && said.contains(callsign),
         "with its window gone, a devenv pane's `muster window` is answered by its daemon: {said}"
     );
     assert!(said.contains("said=42."), "and `pane read` reads the pane from there: {said}");

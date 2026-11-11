@@ -106,7 +106,13 @@ fn a_machine_with_no_daemon_gets_this_one_installed_started_and_then_adopted() {
     agents_message_each_other_over_there(&tunnel, &installed);
     make(&mut control, create("p4", in_new_tab("t4")));
     until_text(&mut control, "p4", "$");
-    its_panes_are_driven_over_there_with_no_window(&tunnel, &installed);
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "p4")
+        .and_then(|pane| pane.callsign)
+        .expect("the daemon draws p4 a callsign");
+    its_panes_are_driven_over_there_with_no_window(&tunnel, &installed, &callsign);
     with_the_laptop_asleep_quit_and_gone(&tunnel, &installed, &laptop);
 
     let (reached, adopted) =
@@ -150,7 +156,13 @@ fn muster_is_on_the_path_over_there(control: &mut Control, local: &Path) {
 
 /// The CLI the install linked into `~/.muster/bin` lists, types into and reads the panes of the
 /// daemon over there, where no window is: its daemon answers in the window's place.
-fn its_panes_are_driven_over_there_with_no_window(tunnel: &Tunnel, installed: &Installed) {
+///
+/// The listing names a pane by its callsign, so that is what is looked for: `p4`'s is `callsign`.
+fn its_panes_are_driven_over_there_with_no_window(
+    tunnel: &Tunnel,
+    installed: &Installed,
+    callsign: &str,
+) {
     let muster = muster_ssh::quoted(&installed.commands.join("muster").to_string_lossy());
     let said = tunnel
         .remote()
@@ -162,7 +174,7 @@ fn its_panes_are_driven_over_there_with_no_window(tunnel: &Tunnel, installed: &I
         ))
         .unwrap();
     assert!(
-        said.contains("no window answered; the muster-daemon at") && said.contains("p4"),
+        said.contains("no window answered; the muster-daemon at") && said.contains(callsign),
         "`muster window` over there lists the daemon's panes, saying the daemon answered: {said}"
     );
     assert!(said.contains("sent=0"), "a confirmed send over there reached its pane: {said}");
