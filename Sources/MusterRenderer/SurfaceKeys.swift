@@ -111,7 +111,7 @@ extension Surface {
 
     // libghostty encodes control characters itself, so text that starts with one goes as no
     // text at all: otherwise ctrl+enter does the wrong thing.
-    guard let text, let first = text.utf8.first, first >= 0x20 else {
+    guard let text, let first = text.unicodeScalars.first, !first.isASCIIControl else {
       _ = ghostty_surface_key(surface, input)
       return
     }
@@ -129,7 +129,7 @@ extension NSEvent {
   fileprivate var ghosttyCharacters: String? {
     guard let characters else { return nil }
     if characters.count == 1, let scalar = characters.unicodeScalars.first {
-      if scalar.value < 0x20 {
+      if scalar.isASCIIControl {
         return self.characters(byApplyingModifiers: modifierFlags.subtracting(.control))
       }
       if scalar.value >= 0xF700 && scalar.value <= 0xF8FF {
@@ -163,4 +163,10 @@ private func eventModifierFlags(_ mods: ghostty_input_mods_e) -> NSEvent.Modifie
   if mods.rawValue & GHOSTTY_MODS_ALT.rawValue != 0 { flags.insert(.option) }
   if mods.rawValue & GHOSTTY_MODS_SUPER.rawValue != 0 { flags.insert(.command) }
   return flags
+}
+
+extension Unicode.Scalar {
+  /// A C0 control character or DEL, which a key encoder maps from the key itself. DEL is the
+  /// one outside the C0 range, and Backspace's character with or without Option.
+  public var isASCIIControl: Bool { value < 0x20 || value == 0x7F }
 }

@@ -77,6 +77,22 @@ func controlCharacterKeysCarryNoText() throws {
   }
 }
 
+@Test("Backspace carries no text, with Option or without, and keeps Option")
+func backspaceCarriesNoText() throws {
+  // Backspace's character is DEL with or without Option. Given it as text, the encoder counts
+  // Option as spent on it, and a program in kitty keyboard mode gets a bare DEL rather than
+  // alt+backspace (corpus/conformance/key-encoder.json has the bytes each way).
+  let optionBackspace = try #require(key("\u{7F}", keyCode: 0x33, flags: .option))
+  let translated = optionBackspace.musterKeyEvent(action: "press", isComposing: false)
+  #expect(translated.key == "Backspace")
+  #expect(translated.text == "")
+  #expect(translated.textWithoutOption == "")
+  #expect(translated.modifiers.contains("alt"))
+
+  let backspace = try #require(key("\u{7F}", keyCode: 0x33))
+  #expect(backspace.musterKeyEvent(action: "press", isComposing: false).text == "")
+}
+
 @Test("ctrl+return goes as Ghostty's app sends it: Enter with ctrl, nothing spent, no text")
 func ctrlReturnIsTheEventGhosttySends() throws {
   // The daemon's typing suite pins what a program receives for exactly this event, in each

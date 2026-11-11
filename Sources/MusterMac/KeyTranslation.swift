@@ -1,4 +1,5 @@
 import AppKit
+import MusterRenderer
 
 // The one place an NSEvent becomes something the core understands. Everything below the
 // shell speaks the seam's vocabulary, so this is the whole surface area of "macOS" in
@@ -55,14 +56,15 @@ extension NSEvent {
     // A control character means macOS already applied ctrl. The encoder does its own
     // control mapping, and would otherwise apply it twice.
     //
-    // Undoing ctrl leaves a character for ctrl+C, but not for Tab, Return or Escape, whose
-    // characters are control characters with or without it. Those go with no text, as
-    // Ghostty's app sends them: given text, the encoder counts shift as spent on it, so a
-    // program in kitty keyboard mode gets a bare Tab for Shift+Tab and a bare Return for
-    // Shift+Return.
-    if scalar.value < 0x20 {
+    // Undoing ctrl leaves a character for ctrl+C, but not for Tab, Return, Escape or
+    // Backspace, whose characters are control characters with or without it - Backspace's is
+    // DEL, which is above the C0 range. Those go with no text, as Ghostty's app sends them:
+    // given text, the encoder counts the modifiers as spent on it, so a program in kitty
+    // keyboard mode gets a bare Tab for Shift+Tab, a bare Return for Shift+Return, and a bare
+    // DEL for Option+Backspace.
+    if scalar.isASCIIControl {
       let unwound = characters(byApplyingModifiers: modifierFlags.subtracting(.control))
-      guard let first = unwound?.unicodeScalars.first, first.value >= 0x20 else { return nil }
+      guard let first = unwound?.unicodeScalars.first, !first.isASCIIControl else { return nil }
       return unwound
     }
 

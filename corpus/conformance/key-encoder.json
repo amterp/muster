@@ -123,6 +123,44 @@
   },
   "cases": [
     {
+      "name": "opt+backspace in kitty mode is alt+backspace",
+      "why": "The event the shell builds for Option+Backspace: macOS counts Option as spent, and the key's character is DEL, which goes as no text because the encoder maps a control character from the key itself. Upstream's encoder test (kitty: alt+backspace emits CSI u) expects these bytes for the same event.",
+      "given": {
+        "profile": "kittyModes",
+        "key": "Backspace",
+        "modifiers": [
+          "alt"
+        ],
+        "text": "",
+        "unshiftedCodepoint": "",
+        "consumedModifiers": [
+          "alt"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "1b5b3132373b3375"
+      }
+    },
+    {
+      "name": "opt+backspace in kitty mode with DEL as its text loses Option",
+      "why": "Why the shell sends DEL as no text. Given DEL as text with Option consumed, the encoder takes Option as spent on producing it, and a program in kitty keyboard mode gets a bare DEL, which it reads as Backspace with no Option.",
+      "given": {
+        "profile": "kittyModes",
+        "key": "Backspace",
+        "modifiers": [
+          "alt"
+        ],
+        "text": "",
+        "unshiftedCodepoint": "",
+        "consumedModifiers": [
+          "alt"
+        ]
+      },
+      "expect": {
+        "bytes_hex": "7f"
+      }
+    },
+    {
       "name": "enter is a carriage return under the conservative default",
       "why": "The baseline for the case below. Enter is submit in every agent harness, so if these bytes are wrong the pane is unusable rather than degraded.",
       "given": {
