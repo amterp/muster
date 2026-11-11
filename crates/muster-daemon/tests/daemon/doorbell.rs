@@ -1665,6 +1665,32 @@ fn a_group_held_up_on_an_agent_that_stopped_reading_is_told_why_once() {
     assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told twice");
 }
 
+/// A pane at a dialog that a message has waited on for half an hour is told to the person, once:
+/// the poster heard at two minutes, and is often an idle agent that cannot answer the dialog.
+#[test]
+fn a_pane_at_a_dialog_a_message_waited_on_for_half_an_hour_is_told_to_the_person() {
+    // Half an hour is fifteen stalls, so fifteen seconds here.
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "1000")]);
+    let mut logging = following(&agent.daemon);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    agent.post("p1", "a brief");
+
+    let escalated = r#""event":"msg.group.escalated""#;
+    let logged = logging.logged_until(escalated, Duration::from_secs(40));
+    assert!(logged.iter().any(|line| line.line.contains(escalated)), "never told the person");
+    let read = agent.reading(msg_request::Caller::default());
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].contains("@muster: ")
+            && read[0].contains(" (p1) has had #4, from integrator,")
+            && read[0].contains("it is at a dialog")
+            && read[0].contains("`muster pane show --pane "),
+        "{read:?}"
+    );
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told twice");
+}
+
 /// A stall whose poster is at work is not told while it works, since it would read the notice
 /// only once its turn ends; and once the member has read the message, nothing is told at all.
 #[test]

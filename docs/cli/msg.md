@@ -389,6 +389,15 @@ the member asks the group's machine to post it there, naming the member as that 
 stall is in the log alone. Members waiting on each other with everything read
 are not watched, since that is also what a finished group looks like.
 
+**A stall only a person can free is told to you, after half an hour.** When the member is at a
+dialog, or something covers its prompt, its poster is told at two minutes as above, but is often an
+agent that can do nothing about it, and on a night nobody is watching the pane stays that way until
+morning. So once a message has waited on such a member for 30 minutes, you are told too, once, from
+`@muster`, in your group with the member, with the command that brings its pane forward. Not for a
+helper, whose maker is told and can answer, nor when the message is yours. A member that reads it,
+goes to work or leaves first was never stuck, and nothing is said. On a machine your window is not
+on, the notice waits until that machine is linked to yours.
+
 **A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An
 agent's helpers") becomes blocked, becomes stuck, or goes idle without having posted to its maker
 since it last went to work, and stays that way for 10 seconds, its daemon tells the maker, once

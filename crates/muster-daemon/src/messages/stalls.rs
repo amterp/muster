@@ -111,6 +111,8 @@ pub(crate) enum Act {
     Tell { group: String, to: Vec<String>, body: String },
     /// A member that held its group up has moved: read, gone to work, or left.
     Moving { name: String, group: String, held_ms: u64 },
+    /// Tell the human of a stall that only a person can free, which has held for long enough.
+    Escalate { name: String, pane: String, group: String, body: String },
     /// What whoever waits was to be told once free stopped being true first, so nobody is.
     Dropped { name: String, group: String, first: u64, to: Vec<String>, reason: &'static str },
 }
@@ -155,6 +157,8 @@ struct Episode {
     recorded: bool,
     /// What whoever waits and is busy is to be told once free, while it still holds.
     pending: Option<Pending>,
+    /// The human has been told of it, as a stall only a person can free.
+    escalated: bool,
 }
 
 impl Episode {
@@ -166,6 +170,7 @@ impl Episode {
             told: false,
             recorded: false,
             pending: None,
+            escalated: false,
         }
     }
 }
@@ -214,6 +219,9 @@ pub(crate) struct Stalls {
     /// took over from another, would otherwise find every unread message stalled at its first
     /// look.
     started_ms: u64,
+    /// Whether what is posted to the human here reaches them now, as of this look: a stall only a
+    /// person can free waits to be told to them until it does.
+    human_in_reach: bool,
 }
 
 impl Stalls {
@@ -234,6 +242,7 @@ impl Stalls {
             working: HashMap::new(),
             working_since: HashMap::new(),
             started_ms,
+            human_in_reach: true,
         }
     }
 
@@ -317,6 +326,19 @@ impl Stalls {
                     episode.stage = Stage::Told;
                 }
                 Stage::WokenAgain { .. } | Stage::Told => {}
+            }
+            if held_ms >= self.worked_after_ms
+                && !episode.escalated
+                && self.human_in_reach
+                && needs_a_person(member)
+            {
+                acts.push(Act::Escalate {
+                    name: key.0.clone(),
+                    pane: member.holding.pane.clone(),
+                    group: key.1.clone(),
+                    body: escalation(member, called, now_ms),
+                });
+                episode.escalated = true;
             }
         }
         let moved: Vec<(String, String)> =
@@ -432,6 +454,36 @@ fn episode<'a>(
         *episode = Episode::new(first, since_ms);
     }
     episode
+}
+
+/// Whether only a person can free `member`, so that a stall of it held long enough is told to
+/// the human as well as to whoever waits: it is at a dialog, or something covers its prompt.
+/// Not a helper, whose maker is told and can answer; and not when the human is among those who
+/// wait, who were told already.
+fn needs_a_person(member: &Member) -> bool {
+    let covered = matches!(member.held, Some(Held::Unseen(Unseen::Covered(_), _)));
+    (member.activity == Some(Activity::Blocked) || covered)
+        && member.maker.is_empty()
+        && !member.holding.authors.iter().any(|author| author == muster_msg::HUMAN)
+}
+
+/// What the human is told of a stall only a person can free.
+fn escalation(member: &Member, called: &BTreeMap<String, String>, now_ms: u64) -> String {
+    let held = &member.holding;
+    let pane = called.get(&held.pane).unwrap_or(&held.pane);
+    let named =
+        if held.pane == held.name { String::new() } else { format!(" ({})", shown(called, pane)) };
+    format!(
+        "{name}{named} has had #{first}, from {authors}, waiting unread for {waited}: {why}. Only \
+         somebody at its pane can free it, so Muster tells you, once; `muster pane show --pane \
+         {pane}` brings it forward.",
+        name = shown(called, &held.name),
+        first = held.first,
+        authors =
+            held.authors.iter().map(|author| shown(called, author)).collect::<Vec<_>>().join(", "),
+        waited = said_as_time(now_ms.saturating_sub(held.first_at_ms)),
+        why = why(member, called),
+    )
 }
 
 /// Records the end of `episode`, the member having moved for `reason`: its move, when its stall
@@ -732,6 +784,7 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
         }
         let mut members = members(&messages, &panes);
         let now = now_ms();
+        stalls.human_in_reach = messages.service.human_in_reach(&panes);
         for member in &mut members {
             member.maker = makers::tells(&messages.service, &panes, makers, &member.holding.pane);
             for name in waiting_on(member) {
@@ -982,6 +1035,9 @@ fn act_on(shared: &Arc<Shared>, panes: &Panes, act: Act, others: &HashMap<String
                 Err(reply) => untold(&group, &to, &reply.reason),
             }
         }
+        Act::Escalate { name, pane, group, body } => {
+            escalate(shared, panes, &name, &pane, &group, &body);
+        }
         Act::Dropped { name, group, first, to, reason } => {
             log::info(
                 "msg.group.untold_settled",
@@ -1019,6 +1075,56 @@ fn tell_at_home(shared: &Arc<Shared>, group: String, to: Vec<String>, body: &str
     notices::post_at_home(shared, away, "msg.group.told", body.len(), move |why| {
         untold(&group, &to, why);
     });
+}
+
+/// Tells the human of a stall of `name`, in `pane`, that only a person can free, in the group the
+/// two share or one made for them, which is posted where it is kept.
+fn escalate(shared: &Arc<Shared>, panes: &Panes, name: &str, pane: &str, group: &str, body: &str) {
+    let called = panes.name_of(pane);
+    let routed = shared.messages().service.route_tell_as_muster(
+        muster_msg::HUMAN,
+        pane,
+        called.as_deref(),
+        body,
+        panes,
+    );
+    let unescalated = {
+        let (name, group) = (name.to_string(), group.to_string());
+        move |why: &str| unescalated(&name, &group, why)
+    };
+    match routed {
+        Ok(Some(away)) => {
+            notices::post_at_home(shared, away, "msg.group.escalated", body.len(), unescalated);
+            return;
+        }
+        Ok(None) => {}
+        Err(refusal) => return unescalated(&words(&refusal)),
+    }
+    let delivered = delivering(shared, panes, |service| {
+        service.tell_as_muster(muster_msg::HUMAN, pane, called.as_deref(), body, panes, now_ms())
+    });
+    match delivered {
+        Ok(delivered) => {
+            told("msg.group.escalated", Some(body.len()), &delivered);
+        }
+        Err(reply) => unescalated(&reply.reason),
+    }
+}
+
+/// Logs that the human was not told of a stall only a person can free, and why not.
+fn unescalated(name: &str, group: &str, reason: &str) {
+    log::warn(
+        "msg.group.unescalated",
+        fields! {
+            "group" => group,
+            "member" => name,
+            "reason" => reason,
+            "impact" => "a member at a dialog, or with its prompt covered, has held its group up \
+                         for half an hour and the person was not told; whoever posted to it was, \
+                         and may be an agent that cannot answer it",
+            "check" => "the reason; the member's pane, which only somebody at it can free",
+        },
+    );
 }
 
 /// Logs that whoever waits on a member was not told why it has not answered, and why not.
@@ -1083,6 +1189,7 @@ mod tests {
                 Act::Tell { .. } => "tell",
                 Act::Moving { .. } => "moving",
                 Act::Dropped { .. } => "dropped",
+                Act::Escalate { .. } => "escalate",
             })
             .collect()
     }
@@ -1203,6 +1310,99 @@ mod tests {
         let free = Member { activity: Some(Activity::Working), ..rung_with_busy(&[]) };
         let acts = stalls.judge(&[free], &called, worked + 2);
         assert!(!kinds(&acts).contains(&"tell"), "told after the break: {acts:?}");
+    }
+
+    fn blocked() -> Member {
+        Member { activity: Some(Activity::Blocked), ..worker() }
+    }
+
+    fn escalations(acts: &[Act]) -> Vec<&str> {
+        acts.iter()
+            .filter_map(|act| match act {
+                Act::Escalate { body, .. } => Some(body.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Judges `member` at every stall-length look from 1000 until half an hour has passed, and
+    /// says what the human was told of it on the way.
+    fn escalated_over_half_an_hour(member: &Member) -> Vec<String> {
+        let mut stalls = stalls();
+        let called = BTreeMap::from([("p2".to_string(), "otter".to_string())]);
+        let mut said = Vec::new();
+        for at in (0..=WORKED_AFTER + 2).map(|n| 1000 + n * AFTER) {
+            let acts = stalls.judge(std::slice::from_ref(member), &called, at);
+            said.extend(escalations(&acts).into_iter().map(str::to_string));
+        }
+        said
+    }
+
+    /// A member at a dialog that has held its group up for half an hour is told to the human,
+    /// once, with how to bring its pane forward: whoever posted to it was told at two minutes,
+    /// and is often an agent that can do nothing about it.
+    #[test]
+    fn a_stall_at_a_dialog_for_half_an_hour_is_told_to_the_human_once() {
+        let mut stalls = stalls();
+        let called = BTreeMap::from([("p2".to_string(), "otter".to_string())]);
+        let acts = stalls.judge(&[blocked()], &called, 1000 + AFTER);
+        assert_eq!(kinds(&acts), ["stalled", "tell"], "the poster first");
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        assert!(stalls.judge(&[blocked()], &called, worked - 1).is_empty(), "too soon");
+        let acts = stalls.judge(&[blocked()], &called, worked);
+        let said = escalations(&acts);
+        assert_eq!(said.len(), 1, "{acts:?}");
+        assert!(said[0].starts_with("worker (otter) has had #4, from director,"), "{}", said[0]);
+        assert!(said[0].contains("30 minutes: it is at a dialog"), "{}", said[0]);
+        assert!(said[0].contains("`muster pane show --pane otter`"), "{}", said[0]);
+        assert!(stalls.judge(&[blocked()], &called, worked + 5 * AFTER).is_empty(), "told twice");
+    }
+
+    /// A prompt something covers is only a person's to clear too.
+    #[test]
+    fn a_stall_behind_a_covered_prompt_is_told_to_the_human() {
+        let covered = Member {
+            held: Some(Held::Unseen(Unseen::Covered(None), Judged::default())),
+            waking: true,
+            ..worker()
+        };
+        assert_eq!(escalated_over_half_an_hour(&covered).len(), 1);
+    }
+
+    /// What an agent can free, a helper whose maker hears of it, a stall the human posted to,
+    /// and a member that read in time are not the human's to hear of.
+    #[test]
+    fn a_stall_an_agent_can_free_is_not_told_to_the_human() {
+        let rung = Member { holding: Holding { woken: true, ..worker().holding }, ..worker() };
+        assert!(escalated_over_half_an_hour(&rung).is_empty(), "rung and idle");
+        let helper = Member { maker: vec!["director".to_string()], ..blocked() };
+        assert!(escalated_over_half_an_hour(&helper).is_empty(), "a helper");
+        let authors = vec!["@human".to_string()];
+        let from_human = Member { holding: Holding { authors, ..worker().holding }, ..blocked() };
+        assert!(escalated_over_half_an_hour(&from_human).is_empty(), "posted by the human");
+
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        stalls.judge(&[blocked()], &called, 1000 + AFTER);
+        assert!(escalations(&stalls.judge(&[], &called, 1000 + 2 * AFTER)).is_empty());
+        let later = stalls.judge(&[], &called, 1000 + WORKED_AFTER * AFTER);
+        assert!(escalations(&later).is_empty(), "read in time");
+    }
+
+    /// While nothing posted to the human here reaches them, the stall waits, and is told once
+    /// they are in reach again.
+    #[test]
+    fn a_stall_for_the_human_waits_until_they_are_in_reach() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        stalls.human_in_reach = false;
+        let worked = 1000 + WORKED_AFTER * AFTER;
+        for at in [1000 + AFTER, worked, worked + AFTER] {
+            assert!(escalations(&stalls.judge(&[blocked()], &called, at)).is_empty());
+        }
+        stalls.human_in_reach = true;
+        let acts = stalls.judge(&[blocked()], &called, worked + 2 * AFTER);
+        assert_eq!(escalations(&acts).len(), 1, "{acts:?}");
     }
 
     /// Of two posters, the one free now is told now and the busy one once it is free.
