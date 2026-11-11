@@ -18,6 +18,12 @@
       "body": "Another instance from tooling feedback a_2gwhjWx6n, 2026-10-24/25 on the Mac: a background subagent's inline for loop over a command substitution raised Claude Code's approval prompt in the orchestrator pane at 23:41. It sat there until the owner came back at about 09:15, 9.5 hours later, with the screen locked. Muster detected it and told only the two worker panes that had posted to the orchestrator ('spruce ... is at a dialog, waiting for somebody to answer it'); both were finished and idle and could do nothing. Cost: a night's orchestration.",
       "author": "Alexander Terp",
       "created_at_millis": 1794270003390
+    },
+    {
+      "id": "c_2xlrlbvEa",
+      "body": "2026-11-11: first step on main (45470119, e705febd): when a message has waited 30 minutes on a pane only a person can free (at a dialog, or its prompt covered), @muster tells the person once in their group with that pane. Helpers and messages the person posted are left out. No setting. Follow-ups being built: a helper's dialog its maker left for 30 minutes, and a pane blocked for hours with nothing unread. Not done: a watcher pane named in config, a per-pane runs-unattended opt-in.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794380375870
     }
   ],
   "created_at_millis": 1791946592114,
@@ -30,7 +36,7 @@
   "position": "Zn",
   "title": "A pane blocked at a dialog for hours tells only an agent that cannot answer",
   "type": "feature",
-  "updated_at_millis": 1794378941042,
+  "updated_at_millis": 1794380375870,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791946592114},
     {"field":"column","value":"in-progress","at":1794378941042}
