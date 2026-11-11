@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "run-muster-upgrade",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794363683264,
+  "creator": "Alexander Terp",
+  "description": "Typing `muster upgrade` in a shell pane opens a new \"⬆️ Upgrade Muster\" tab and runs brew there,\nwhen you'd expect it to run where you typed it. The tab exists so that brew outlives the app,\nwhich the cask's `uninstall quit:` quits partway through (fccec5c7). But the calling pane is\nalready on the daemon and survives the quit just as well, so the new tab isn't needed for that.\n\nProposed: when called from a pane on this machine, the CLI asks the app for the upgrade command\n(or its refusal), which `Upgrading.plan` already works out at launch, then runs it as its own\nchild process and exits with brew's status. Brew's output lands where you typed. An agent\ncalling it through its shell tool gets the output as that command's result, and its pane is\nuntouched.\n\nKeep the separate tab where there is no suitable local shell: the \"Upgrade muster\" menu item,\nand `muster upgrade` from an SSH pane, whose pane is on the wrong machine for brew.\n\nKnown gap, accepted: if brew ever stops for input (a sudo password), an agent's shell tool hangs.\nInstalls into /Applications don't normally ask.\n\n`crates/muster-cli/tests/cli/upgrading.rs` changes from \"opens a tab and prints its callsign\" to\n\"runs the command and exits with its status\"; update docs/cli/overview.md's Upgrading section.",
+  "id": "a_2xerVwFvw",
+  "position": "b2y",
+  "title": "Run muster upgrade in the calling pane, not a new tab",
+  "type": "enhancement",
+  "updated_at_millis": 1794363683264,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794363683264}
+  ]
+}

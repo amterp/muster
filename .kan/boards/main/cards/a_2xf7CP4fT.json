@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-linked-machine-s",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794364286193,
+  "creator": "Alexander Terp",
+  "description": "From the tooling feedback hub (a_2x3D6uh63), Muster 0.24.0, four sightings 2026-11-09 to 11-10. An integrator on a devenv (wren) and a worker on the Mac (bison) talk in group bison+wren.\n\nWhen bison blocked at a dialog, the Mac's daemon posted its @muster notice in a new group, `bison+wren@mac` (or, seen from the other side, `bison+wren@devenv`), rather than the existing one, and late: the dialog had been answered before the notice arrived. From then on a plain `muster msg post --to bison` (or the worker's `--to wren`) is refused: \"this post could go to bison+wren or bison+wren@mac; say which with --group\". Workers following the parallel-work skill (\"a post finds it without --group\") hit this after any blocked dialog, and later idle notices keep landing in the second group, so one conversation is split in two.\n\nWanted: put a linked machine's @muster notices about a pane in the existing group for that pair; and drop a blocked notice whose dialog was answered before it was delivered (a-stall-notice is the same check for stall notices).",
+  "id": "a_2xf7CP4fT",
+  "position": "b1m",
+  "related": [
+    "a_2x07ySYye"
+  ],
+  "title": "A linked machine's @muster notice opens a second group for a pair, and every later post needs --group",
+  "type": "bug",
+  "updated_at_millis": 1794364286342,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794364286193}
+  ]
+}

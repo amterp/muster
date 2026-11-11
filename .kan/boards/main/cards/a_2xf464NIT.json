@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "a-k-bar-that-finds-a",
+  "alias_explicit": false,
+  "area": [
+    "shell"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794364166956,
+  "creator": "Alexander Terp",
+  "description": "From the owner's note, 2026-11-10: \"CMD k Omni bar for finding pane\".\n\n⌘K opens a search bar over every pane in every tab and window: its callsign, its name, its agent, its directory, and what it is doing. Picking a result focuses that pane, as a chord to a row does.\n\nA match on a callsign (kettle, ivory, leopard) ranks above every other kind of match, so typing a callsign always lands on that pane first.\n\nOpen: whether the bar also runs actions (a command palette), or only finds panes. The owner confirmed finding panes.",
+  "id": "a_2xf464NIT",
+  "position": "b1j",
+  "title": "A ⌘K bar that finds a pane by its callsign, name or what it is doing",
+  "type": "feature",
+  "updated_at_millis": 1794364166956,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794364166956}
+  ]
+}

@@ -42,6 +42,12 @@
       "body": "2026-11-09 instance, Lectern round: worker panda (slot 3) ended turns to wait on its own two reviewer helpers (stone, condor) after posting them briefs, and once while a background test ran under a declared wait. Muster twice told integrator lizard 'panda went idle without posting to you', though panda was mid-assignment and posted its done report minutes later. A worker waiting on its own helpers is not idle-without-posting.",
       "author": "Alexander Terp",
       "created_at_millis": 1794280156131
+    },
+    {
+      "id": "c_2xf7OEpQt",
+      "body": "From the tooling feedback hub (a_2lt9THKQ6), five more instances:\n- 2026-11-06 (devenv, an integrator): four helpers (two Claude Code, two Codex) were each told 'landed, stand by' or 'findings assigned, stand by', read it and went idle within 30s, and each time @muster woke the integrator with 'went idle without posting to you ... may have ended on an error': four wasted integrator turns in one afternoon.\n- Muster 0.24.0: a Codex reviewer helper told its findings were accepted and to keep its context until fix commits arrive acknowledged in its pane and went idle as asked; Muster then posted the same notice to its maker, which cost a pane read to rule out an error.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794364293460
     }
   ],
   "created_at_millis": 1792709971945,
@@ -51,7 +57,7 @@
   "position": "b1c",
   "title": "A helper told to stay idle is reported to its maker as idle without posting",
   "type": "bug",
-  "updated_at_millis": 1794280156131,
+  "updated_at_millis": 1794364293460,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792709971945}
   ]

@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "an-urgent-post-typed",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794364285446,
+  "creator": "Alexander Terp",
+  "description": "From the tooling feedback hub (a_2x0oGSR9A), Muster 0.24.0, three sightings on 2026-11-09, each a Claude Code agent on the Mac in a long turn of tool calls, sent an `--urgent` post from a devenv pane.\n\nThe notice text was typed into the agent's prompt box but never submitted, so the running turn never took it. 30 minutes later @muster told the sender \"it has read as working for 30 minutes without a break, so it is rung only once it stops; an urgent post reaches it at work\", which was false: it had not reached it. `muster pane send --pane \u003cit\u003e --key Enter --confirm` submitted the waiting text, and the agent read the post at its next tool call. The urgent help says the post is \"typed into its prompt for the turn it is running\"; the Return never landed, or Claude Code dropped it mid-turn.\n\nWanted: after typing an urgent notice, check the prompt box emptied and press Return again if not; and when it is still sitting there, the 30-minute notice should say so instead of claiming it reached the agent.",
+  "id": "a_2xf7BCQW3",
+  "position": "b1k",
+  "related": [
+    "a_2j4C0fQOT"
+  ],
+  "title": "An urgent post typed into a working Claude Code prompt can sit there unsubmitted",
+  "type": "bug",
+  "updated_at_millis": 1794364285597,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794364285446}
+  ]
+}

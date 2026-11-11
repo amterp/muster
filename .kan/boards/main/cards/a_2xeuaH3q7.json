@@ -1,0 +1,23 @@
+{
+  "_v": 4,
+  "alias": "a-pane-nobody-made",
+  "alias_explicit": false,
+  "area": [
+    "backend"
+  ],
+  "column": "backlog-hi",
+  "created_at_millis": 1794363801278,
+  "creator": "Alexander Terp",
+  "description": "From tooling feedback a_2xehWmodH, 2026-11-10. A Quartermaster orchestrator in a pane the owner made (so no maker pane) declared `report --waiting` while two Claude Code subagents ran, and ended its turn. One subagent's integration test hung at 07:27; the orchestrator stayed `waiting` until 20:12, almost 13 hours, when the owner asked for status with an urgent post.\n\na-helper-waiting-on (2169764c, 630b9297) tells a helper's maker after 10 minutes of waiting. A pane with no maker has nobody to tell, so the same hang goes unnoticed.\n\nOptions from the report: tell the owner once a maker-less pane has waited past a limit (a notice, or a mark in `muster window`); or let `report --waiting` take a deadline (e.g. `--until-time 45m`) after which Muster wakes the waiting agent itself, so an orchestrator can enforce the stop times it gives its subagents. Who gets told is a decision for the owner.",
+  "id": "a_2xeuaH3q7",
+  "position": "b1i",
+  "related": [
+    "a_2nj9krSRa"
+  ],
+  "title": "A pane nobody made can wait for hours and nobody is told",
+  "type": "feature",
+  "updated_at_millis": 1794363805669,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794363801278}
+  ]
+}
