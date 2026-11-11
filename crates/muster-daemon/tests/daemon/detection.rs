@@ -894,6 +894,8 @@ fn claude_codes_hooks_report_working_blocked_and_idle() {
             .env("MUSTER_DAEMON", env!("CARGO_BIN_EXE_muster-daemon"))
             .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
             .env("MUSTER_PANE", "p1")
+            // The working hooks read their stdin to its end, and the test's own may never end.
+            .stdin(std::process::Stdio::null())
             .status()
             .unwrap();
         assert!(ran.success(), "{event}'s hook");
