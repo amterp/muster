@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "migrate-mip-1-to-mip",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1794369888887,
+  "creator": "Alexander Terp",
+  "description": "Record the decisions in MIP-1 to MIP-10 as Fencil decisions, so `fencil search` finds every ruling that covers a change.\n\nThe owner, 2026-11-10: \"we should fully migrate to and adopt fencil\". Since 2026-11-08 new decisions go to Fencil and no new MIPs are written, but the MIPs still hold most of the project's large decisions, their rejected alternatives, and owner answers such as MIP-8's question D (`muster window --json` drops `regions[]`). An agent that runs `fencil search` before changing a spanning tab's layout finds MIP-8's questions A to C, now in Fencil, and not D.\n\nFor each MIP: one decision per question it settled, at the level its recorded owner words support (`fencil rules`), citing the MIP's path as the source and quoting the owner where the MIP or its kan card does. Where a MIP records that an agent chose because the owner left it open, as MIP-8 does for question D, the level is `none` or `shown`, not an owner level. Then add a line to each MIP's History naming the Fencil decisions it became, and say in CLAUDE.md that MIPs are history and Fencil is where decisions are read.\n\nCheck that `fencil search` finds each migrated decision by the terms a later change would use, and that `fencil check` passes.",
+  "id": "a_2xhSx0Jzq",
+  "labels": [
+    "ai-lo"
+  ],
+  "position": "b1l",
+  "title": "Migrate MIP-1 to MIP-10's decisions into Fencil",
+  "type": "docs",
+  "updated_at_millis": 1794369888887,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1794369888887}
+  ]
+}
