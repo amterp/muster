@@ -5,20 +5,21 @@
   "area": [
     "backend"
   ],
-  "column": "next",
+  "column": "in-progress",
   "created_at_millis": 1794364285820,
   "creator": "Alexander Terp",
   "description": "From the tooling feedback hub (a_2x15qRGGf), codex-cli 0.167.0 on a devenv, Muster 0.24.0.\n\n`muster pane send --pane \u003cit\u003e \"/new\" --enter --confirm` opened a dialog mid-session: \"Where should the new conversation run? 1. Use current Git worktree 2. Create new Git worktree ... enter select · esc back\". `muster pane wait --until idle` returned at once with `done`, and `muster window` showed the pane done, though Codex was waiting on the dialog and would not take a posted message. Only `muster pane read` showed it. 0.15.0 made Codex's pre-session screens read blocked (a_2die6kvWY); this dialog comes after the session started.\n\nWanted: recognize Codex's in-session selection dialogs (this one's \"enter select · esc back\" footer) as blocked, so `--until idle,blocked` and helper notices report it.",
   "id": "a_2xf7BoaPK",
-  "position": "Zw",
+  "position": "Zt",
   "related": [
     "a_2die6kvWY"
   ],
   "title": "Codex at its /new worktree dialog reads done, not blocked",
   "type": "bug",
-  "updated_at_millis": 1794364939386,
+  "updated_at_millis": 1794370430749,
   "history": [
     {"field":"column","value":"backlog-hi","at":1794364285820},
-    {"field":"column","value":"next","at":1794364939386}
+    {"field":"column","value":"next","at":1794364939386},
+    {"field":"column","value":"in-progress","at":1794370430749}
   ]
 }
