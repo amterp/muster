@@ -5,20 +5,29 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2xkPDuZjT",
+      "body": "2026-11-11: fixed by the vt-1.0.0 pin; 051d02cb re-judges the six keys' expectations.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794376895383
+    }
+  ],
   "created_at_millis": 1794273276105,
   "creator": "Alexander Terp",
   "description": "Recorded by ec6628ce's key-encoder oracle (corpus/conformance/key-encoder.json), 2026-11-09: under modifyOtherKeys 2, Ctrl+[, Ctrl+Shift+A, F13, F20, F25 and Help encode to empty output at pin 9f9b8d1d. Claude Code runs with modifyOtherKeys 2 on, so if a person's keystrokes reach a pane through this encoder, those keys would send nothing to it. Not checked: whether the shell's real key path goes through the encoder for these keys (Ctrl+[ may arrive as Escape) or whether the empty output is the encoder declining and something else sending the key. vt-1.0.0 changes this output (#14144, #14145, #14146), so look at these six cases first in a_2vgzMmJ4x's diff.",
   "id": "a_2x2vbvFbn",
-  "position": "b2i",
+  "position": "YuB",
   "related": [
     "a_2vgzMmJ4x",
     "a_2vgzfqpgw"
   ],
   "title": "Six keys encode to nothing under modifyOtherKeys 2 at the current libghostty pin",
   "type": "bug",
-  "updated_at_millis": 1794273276435,
+  "updated_at_millis": 1794376896466,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794273276105}
+    {"field":"column","value":"backlog-lo","at":1794273276105},
+    {"field":"column","value":"done","at":1794376896466}
   ]
 }

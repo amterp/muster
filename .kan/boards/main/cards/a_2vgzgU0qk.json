@@ -5,7 +5,15 @@
   "area": [
     "testing"
   ],
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2xkPE3wTH",
+      "body": "2026-11-11: done on main with the vt-1.0.0 move (62ccd658): highway, simdutf, uucode and wuffs are attributed.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794376895476
+    }
+  ],
   "created_at_millis": 1794073237160,
   "creator": "Alexander Terp",
   "description": "Upstream's new deps/libghostty-vt-third-party.json lists what libghostty-vt links: highway (Apache-2.0 OR BSD-3-Clause), simdutf (Apache-2.0 OR MIT), uucode (MIT AND Unicode-3.0) and wuffs (Apache-2.0 OR MIT). A search finds none of the first three in licenses/, NOTICE or tools/. highway and simdutf were already linked at the pin, so the gap exists today, including in the daemon Muster sends to other machines.\n\nAdd the `linked` entries to tools/ghostty-embeds.py and NOTICE. Wuffs reaches libghostty-vt only with vt-1.0.0, which falsifies the \"carries none of these - it is the terminal state machine and nothing else\" line ghostty-embeds.py:135 writes into licenses/GHOSTTY-EMBEDDED.md.",
@@ -13,11 +21,12 @@
   "labels": [
     "ai-hi"
   ],
-  "position": "Zvzt",
+  "position": "YuA",
   "title": "The binaries Muster ships carry highway, simdutf and uucode with no attribution",
   "type": "bug",
-  "updated_at_millis": 1794073308672,
+  "updated_at_millis": 1794376896653,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794073237160}
+    {"field":"column","value":"backlog-hi","at":1794073237160},
+    {"field":"column","value":"done","at":1794376896653}
   ]
 }
