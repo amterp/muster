@@ -318,6 +318,8 @@ other way to tell where each pane sits.
   divider divides. The whole tree even while the tab is zoomed, since a zoom covers the
   arrangement without changing it. `null` while no machine has said how the tab is arranged,
   which is ordinary rather than a failure and is a different answer from a tab holding no panes.
+  A leaf with `"unreachable": true` is a pane on a machine this window has not reached since it
+  opened, kept in its place until that machine answers; it has no row in `panes[]`.
 - `zoomed` - the pane filling the tab while it is zoomed, which is the pane the keyboard is on
   there, or `null`. Nothing else in the answer says so: a zoom's hidden panes read
   `on_screen: false` exactly like the panes of a tab in the background.
@@ -354,7 +356,8 @@ in columns by rows; with more than one machine attached, which one it is on. `â–
 keyboard is on. A zoomed tab says `zoomed on` the pane filling it and draws that pane alone,
 filling the tab, since that is what is on screen and the size its program sees; the panes behind
 the zoom, other machines' panes among them, are named on a line under it, `behind the zoom:
-p1w3r0ab2n`. The drawing is as wide as the terminal, and boxes too small for their text
+p1w3r0ab2n`. A pane on a machine the window has not reached since it opened is drawn in its place
+by its id, saying `unreachable` and which machine it is on. The drawing is as wide as the terminal, and boxes too small for their text
 are cut rather than dropped, so every pane is named even where a ratio cannot be drawn exactly.
 
 A pane's size is the one its program last saw, as its daemon holds it: what it is drawn at, or

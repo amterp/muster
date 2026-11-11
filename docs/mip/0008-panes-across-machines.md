@@ -30,7 +30,7 @@ whole shape, and the window still owns no truth.
 This reverses two linked decisions in `docs/architecture.md`: that a tab holds one region per
 machine side by side, and that Muster owns no tree over panes because owning one "would make it a
 multiplexer". Section 10 says what changes in the doctrine. Four questions were put to amterp
-and end this document; D is decided, A to C are open.
+and end this document; all four are decided.
 
 ## Context / Motivation
 
@@ -220,7 +220,8 @@ change.
 ### 6. Each placement path, afterwards
 
 - **Split on Machine** creates the pane on the chosen machine beside the pane clicked, on the side
-  asked for, with `Placement.InTree`. Which sides the menu offers is question C.
+  asked for, with `Placement.InTree`. The menu offers a submenu per side, "Split Right on" to
+  "Split Up on", each listing the machines (question C).
 - **`muster pane new --daemon devenv --down`** puts the pane below the pane it ran from, or below
   `--pane` when one is named, whatever machine either is on.
 - **Dragging a pane onto another pane's edge** is accepted across machines. `PaneDrag.accepts`
@@ -254,12 +255,22 @@ change.
   side that wrote more changes rather than the one that wrote last, and the other side's changes to
   the arrangement are lost. No pane is lost, because only its own machine can drop it.
 - **A window opens while a machine is down.** The reachable parts carry the whole tree, so the
-  window knows where the missing panes go, but it has no frames to draw in their places. What it
-  draws there is question A.
+  window knows where the missing panes go, but it has no frames to draw in their places. It draws
+  a placeholder in each one's place, naming the pane by its id and saying its machine is
+  unreachable; when the machine answers, each placeholder becomes its pane and nothing else
+  moves (question A). A placeholder is drawn for a machine the window follows or is still
+  attaching; a machine it does not follow at all is the last bullet below.
 - **A pane closes on one machine.** That daemon drops its leaf, and the window writes the result
   to the other parts. With no window open, the other parts keep a foreign leaf for a pane that has
   gone; the next window to merge drops it.
-- **A machine leaves the config, or is gone for good.** Question B.
+- **A machine leaves the config, or is gone for good.** A placeholder's right-click menu offers
+  Remove from Tab, which writes every part that answers without that pane. Taking the machine out
+  of the config does the same for every one of its panes in every tab the window holds, at the
+  next launch, since a machine taken out of the config stays attached until then; the window
+  knows it from its saved arrangement, which lists the machines it followed. If the machine ever
+  answers again, its part of a tab comes back as a tab of its own: the window recognises a part
+  whose copy is older than the tab's newest one and whose panes that copy no longer names, keeps
+  it out of the tab, and moves its panes into a new tab on that machine (question B).
 - **A tab is closed while one of its machines is unreachable.** MIP-3 section 2 already answers
   this, and the answer stands: that machine's part comes back as a tab of its own when it
   answers, because its processes are still running. Its copy of the tree still names the other
@@ -276,7 +287,7 @@ helper as a column after the others, which works the same in a spanning tree.
 
 `--layout` draws one tree per tab, and each box names its machine whenever more than one is
 attached, as boxes already do. A pane on an unreachable machine is drawn in its place and says
-`unreachable`. A zoomed tab still draws the one pane filling it and names the others under it.
+`unreachable`, and so is a placeholder, which `--json` marks `"unreachable": true`. A zoomed tab still draws the one pane filling it and names the others under it.
 
 `--json` gives each tab a `layout`, the tab's whole tree, with `daemon` on each leaf. A list of
 regions cannot describe a tab whose machines interleave; what happens to `regions[]` and
@@ -478,6 +489,8 @@ Recommendation: (a). It is the same picture as a machine that drops mid-session,
 moves under somebody who is typing when the devenv comes back. It costs room on screen for panes
 that cannot be used yet.
 
+Decided 2026-11-10 by amterp: (a). Recorded in Fencil as `spanning-tab-unreachable-machine`.
+
 **Question B. How a machine's panes leave a tab when the machine is gone for good.** This assumes
 (a) in question A; with (b), the only way out is the config.
 
@@ -493,6 +506,8 @@ file, and (c) leaves a removed machine's placeholders in every tab until each is
 (a) costs one more item on the placeholder and one more thing a config edit does, which somebody
 taking a machine out of the config for an afternoon may not expect.
 
+Decided 2026-11-10 by amterp: (a). Recorded in Fencil as `spanning-tab-departed-machine`.
+
 **Question C. What the right-click menu offers for putting a pane on another machine.** The pane
 menu already has Split Right, Split Down, Split Left and Split Up.
 
@@ -505,6 +520,9 @@ menu already has Split Right, Split Down, Split Left and Split Up.
 Recommendation: (a). (b) puts four submenus in a menu that has one, and (c) leaves three sides
 reachable only by dragging, which a person looking in the menu for them will not think to try.
 (a) costs a third level of menu for every split onto another machine.
+
+Decided 2026-11-10 by amterp: (b), against the recommendation. Recorded in Fencil as
+`split-onto-machine-menu`.
 
 **Question D. Whether `muster window --json` drops `regions[]` at once.**
 
@@ -529,3 +547,6 @@ release that ships stage 3 says in its notes that `regions[]` is gone and what r
   before this are written as one.
 - 2026-10-24 Stage 4: every placement path works out the tab's whole tree, so a pane goes beside
   any pane on any machine. Split on Machine still offers one side (question C).
+- 2026-11-10 Questions A, B and C decided, and stage 5 built with the menu: placeholders for a
+  machine down when the window opens, Remove from Tab, a machine taken out of the config leaving
+  every tab, its part coming back as a tab of its own, and a split submenu per side.
