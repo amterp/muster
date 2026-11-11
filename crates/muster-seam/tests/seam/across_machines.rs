@@ -2069,6 +2069,84 @@ fn a_pane_removed_before_a_relaunch_still_comes_back_in_a_tab_of_its_own() {
     );
 }
 
+/// The saved arrangement holds the devenv's region of the tab from a launch when both machines
+/// answered, so a later launch with both answering reopens it before anything asks whether its
+/// panes were removed. A pane removed in between still goes into a tab of its own.
+#[test]
+fn a_removed_pane_leaves_a_region_the_saved_arrangement_reopens() {
+    let turn = muster::testing::fresh_session();
+    let laptop = Daemon::start_built();
+    let mut devenv = Daemon::start_built();
+    let mut control = laptop.connect();
+    make(&mut control, create(SPAN_A, in_new_tab(SPANNING_TAB)));
+    let laptop_copy = format!("[{SPAN_A}|[~{SPAN_X}@devenv/~{SPAN_B}@devenv 0.50] 0.50]");
+    expect(&mut control, seeded(&laptop_copy, 1), daemon_proto::Outcome::Done);
+    let mut control = devenv.connect();
+    make(&mut control, create(SPAN_X, in_new_tab(SPANNING_TAB)));
+    let below = muster_harness::requests::beside(SPAN_X, daemon_proto::Side::Down);
+    make(&mut control, create(SPAN_B, below));
+    let devenv_copy = format!("[~{SPAN_A}@laptop|[{SPAN_X}/{SPAN_B} 0.50] 0.50]");
+    expect(&mut control, seeded(&devenv_copy, 1), daemon_proto::Outcome::Done);
+    let config = laptop.muster_config_naming("laptop", &[("devenv", &devenv)]);
+    let arrangement = laptop.root().join("window-1.toml");
+    let start = || {
+        watch();
+        assert_ok(&answer(request::Payload::Startup(Startup {
+            config_path: config.to_string_lossy().into_owned(),
+            state_path: arrangement.to_string_lossy().into_owned(),
+            ..Startup::default()
+        })));
+        assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    };
+    start();
+    until(
+        "the arrangement to hold the devenv's region of the tab",
+        || {
+            std::fs::read_to_string(&arrangement)
+                .is_ok_and(|saved| saved.matches(SPANNING_TAB).count() >= 2)
+        },
+        || std::fs::read_to_string(&arrangement).unwrap_or_default(),
+    );
+    let state = devenv.root().join("daemon.state.json");
+    until(
+        "the devenv to write its copy of the tab down",
+        || std::fs::read_to_string(&state).is_ok_and(|saved| saved.contains(SPAN_A)),
+        || std::fs::read_to_string(&state).unwrap_or_default(),
+    );
+    assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
+
+    devenv.kill();
+    turn.relaunch();
+    start();
+    until(
+        "the devenv's panes to be drawn unreachable",
+        || drawn(SPANNING_TAB).is_some_and(|tree| tree.matches('?').count() == 2),
+        || format!("the tab is drawn {:?}", drawn(SPANNING_TAB)),
+    );
+    assert_ok(&answer(request::Payload::RemoveFromTab(RemoveFromTab {
+        daemon_id: "devenv".to_string(),
+        pane_id: SPAN_X.to_string(),
+    })));
+    until(
+        "the arrangement to remember the removal",
+        || std::fs::read_to_string(&arrangement).is_ok_and(|saved| saved.contains("[[removed]]")),
+        || std::fs::read_to_string(&arrangement).unwrap_or_default(),
+    );
+    assert_ok(&answer(request::Payload::Quitting(muster::proto::Quitting::default())));
+
+    devenv.restart();
+    turn.relaunch();
+    start();
+    until(
+        "the removed pane to be in a tab of its own, and the other back in the tab",
+        || {
+            tab_holding(SPAN_X).is_some_and(|tab| tab != SPANNING_TAB)
+                && tab_holding(SPAN_B).as_deref() == Some(SPANNING_TAB)
+        },
+        || format!("the window lists {:?}", rows_by_tab()),
+    );
+}
+
 /// The devenv was unreachable while the laptop's copy was rearranged, so its copy is older. The
 /// window merges the two as it attaches and catches the devenv up with the laptop's tree, at the
 /// laptop's generation (MIP-8, section 2).

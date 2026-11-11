@@ -1674,25 +1674,15 @@ impl Session {
             for (id, window) in self.windows.iter().filter(|(_, window)| !window.is_closed()) {
                 let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
                 for tab in window.composition.tabs() {
-                    if tab.daemons().any(|part| part == daemon)
-                        || window.composition.kept_apart(daemon, &tab.id)
-                    {
+                    if window.composition.kept_apart(daemon, &tab.id) {
                         continue;
                     }
                     let Some(layout) = arriving.tab(&tab.id).filter(|layout| !layout.hidden) else {
                         continue;
                     };
                     let Some(own) = layout.copy.own() else { continue };
-                    let part = spanning::Part {
-                        daemon: daemon.clone(),
-                        copy: layout.copy.clone(),
-                        zoomed: layout.copy_zoomed.clone(),
-                        generation: layout.layout_generation,
-                        holds: arriving.panes_in_tab(&tab.id).map(|pane| pane.id.clone()).collect(),
-                        weight: 1.0,
-                        writable: true,
-                    };
-                    let (others, _) = spanning::parts_of(tab, mirror, |_| true, |_| false);
+                    let holds: BTreeSet<PaneId> =
+                        arriving.panes_in_tab(&tab.id).map(|pane| pane.id.clone()).collect();
                     let departure = |own: LayoutNode, rest_rejoins: bool| Departure {
                         window: id,
                         daemon: daemon.clone(),
@@ -1701,15 +1691,27 @@ impl Session {
                         own,
                         rest_rejoins,
                     };
-                    if spanning::departed(&part, &others) {
-                        found.push(departure(own, false));
-                        continue;
+                    // A part already in the tab - a region the saved arrangement reopened - is
+                    // asked only about the panes this window removed.
+                    if !tab.daemons().any(|part| part == daemon) {
+                        let part = spanning::Part {
+                            daemon: daemon.clone(),
+                            copy: layout.copy.clone(),
+                            zoomed: layout.copy_zoomed.clone(),
+                            generation: layout.layout_generation,
+                            holds: holds.clone(),
+                            weight: 1.0,
+                            writable: true,
+                        };
+                        let (others, _) = spanning::parts_of(tab, mirror, |_| true, |_| false);
+                        if spanning::departed(&part, &others) {
+                            found.push(departure(own, false));
+                            continue;
+                        }
                     }
-                    let removed: BTreeSet<PaneId> = part
-                        .holds
-                        .iter()
-                        .filter(|pane| window.removed.contains(&(tab.id.clone(), (*pane).clone())))
-                        .cloned()
+                    let removed: BTreeSet<PaneId> = holds
+                        .into_iter()
+                        .filter(|pane| window.removed.contains(&(tab.id.clone(), pane.clone())))
                         .collect();
                     if let Some(own) = only(&own, &removed) {
                         found.push(departure(own, true));
