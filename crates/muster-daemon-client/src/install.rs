@@ -103,15 +103,14 @@ impl Carried {
         // Without them the panes over there work as well, and only `muster harness install`
         // there has nothing to install.
         let extras = self.extras.as_deref().filter(|extras| extras.is_dir());
-        let archive = archive(&daemon, library.as_ref(), cli.as_deref(), data, extras).map_err(
-            |error| {
+        let archive =
+            archive(&daemon, library.as_ref(), cli.as_deref(), data, extras).map_err(|error| {
                 format!(
                     "could not pack the daemon for {host} from {} ({error}), so that machine's \
                  panes are absent from the window. Check that the app's files are readable.",
                     daemon.display()
                 )
-            },
-        )?;
+            })?;
         let stamp = format!("{:x}", Sha256::digest(&archive));
         Ok(Payload { build, archive, stamp, carries_cli: cli.is_some() })
     }

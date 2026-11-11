@@ -245,12 +245,8 @@ impl Terminal {
         }
         match style {
             ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BAR => CursorShape::Bar,
-            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_UNDERLINE => {
-                CursorShape::Underline
-            }
-            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW => {
-                CursorShape::HollowBlock
-            }
+            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_UNDERLINE => CursorShape::Underline,
+            ffi::GhosttyCursorStyle_GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW => CursorShape::HollowBlock,
             _ => CursorShape::Block,
         }
     }

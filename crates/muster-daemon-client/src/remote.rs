@@ -612,7 +612,8 @@ mod tests {
         let (reached, started) =
             ensure_running(&Here, &installed, &carried, &installed.socket, &given).unwrap();
         assert_eq!(reached, Reached::Started);
-        for placed in ["muster-daemon", muster_vt::LIBRARY_FILE_NAME, "muster-daemon-data/terminfo"] {
+        for placed in ["muster-daemon", muster_vt::LIBRARY_FILE_NAME, "muster-daemon-data/terminfo"]
+        {
             assert!(installed.directory.join(placed).exists(), "{placed} was not installed");
         }
         let wrapper = installed.directory.join("muster-daemon-data/bin/ghostty");

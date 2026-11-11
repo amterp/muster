@@ -214,11 +214,13 @@ impl Terminal {
         let emit = options.format.raw();
         let extras = options.extras.bits();
         let set = formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_EMIT, &emit)
-            && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_UNWRAP, &options.unwrap)
+            && formatter
+                .set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_UNWRAP, &options.unwrap)
             && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_TRIM, &options.trim)
             && formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_EXTRAS, &extras)
             && selection.as_ref().is_none_or(|selection| {
-                formatter.set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_SELECTION, selection)
+                formatter
+                    .set(ffi::GhosttyFormatterOption_GHOSTTY_FORMATTER_OPT_SELECTION, selection)
             });
         if !set {
             return Vec::new();
@@ -327,9 +329,8 @@ impl Formatter {
     /// Sets one option, whose value has the type the header lists for it.
     fn set<T>(&self, option: ffi::GhosttyFormatterOption, value: &T) -> bool {
         // SAFETY: the formatter is live, and copies the value before returning.
-        let result = unsafe {
-            ffi::ghostty_formatter_set(self.0, option, std::ptr::from_ref(value).cast())
-        };
+        let result =
+            unsafe { ffi::ghostty_formatter_set(self.0, option, std::ptr::from_ref(value).cast()) };
         result == ffi::GhosttyResult_GHOSTTY_SUCCESS
     }
 }
