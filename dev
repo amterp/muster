@@ -548,6 +548,8 @@ SKIPPED_SUITES = [
       "skipped": 2, "note": "need the devenv container; ./dev --ssh runs them" },
     { "language": "Rust", "suite": "muster-seam's laptop and devenv agents sharing a group",
       "skipped": 1, "note": "needs the devenv container; ./dev --ssh runs it" },
+    { "language": "Rust", "suite": "muster-seam's devenv restarted under a tab interleaving it with the laptop",
+      "skipped": 1, "note": "needs the devenv container; ./dev --ssh runs it" },
     { "language": "Rust", "suite": "fresh_session's doc example", "skipped": 1,
       "note": "an illustration in a doc comment rather than a test, so nothing runs it" },
     { "language": "Rust", "suite": "muster-daemon's resume through a wrapper", "skipped": 1,
