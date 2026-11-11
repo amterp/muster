@@ -1077,38 +1077,20 @@ fn tell_at_home(shared: &Arc<Shared>, group: String, to: Vec<String>, body: &str
     });
 }
 
-/// Tells the human of a stall of `name`, in `pane`, that only a person can free, in the group the
-/// two share or one made for them, which is posted where it is kept.
+/// Tells the human of a stall of `name`, in `pane`, that only a person can free.
 fn escalate(shared: &Arc<Shared>, panes: &Panes, name: &str, pane: &str, group: &str, body: &str) {
     let called = panes.name_of(pane);
-    let routed = shared.messages().service.route_tell_as_muster(
-        muster_msg::HUMAN,
+    let (name, group) = (name.to_string(), group.to_string());
+    let untold = move |why: &str| unescalated(&name, &group, why);
+    notices::tell_the_person(
+        shared,
+        panes,
         pane,
         called.as_deref(),
         body,
-        panes,
+        "msg.group.escalated",
+        untold,
     );
-    let unescalated = {
-        let (name, group) = (name.to_string(), group.to_string());
-        move |why: &str| unescalated(&name, &group, why)
-    };
-    match routed {
-        Ok(Some(away)) => {
-            notices::post_at_home(shared, away, "msg.group.escalated", body.len(), unescalated);
-            return;
-        }
-        Ok(None) => {}
-        Err(refusal) => return unescalated(&words(&refusal)),
-    }
-    let delivered = delivering(shared, panes, |service| {
-        service.tell_as_muster(muster_msg::HUMAN, pane, called.as_deref(), body, panes, now_ms())
-    });
-    match delivered {
-        Ok(delivered) => {
-            told("msg.group.escalated", Some(body.len()), &delivered);
-        }
-        Err(reply) => unescalated(&reply.reason),
-    }
 }
 
 /// Logs that the human was not told of a stall only a person can free, and why not.

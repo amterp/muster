@@ -834,35 +834,12 @@ fn orphaned_body(orphaned: &Orphaned) -> String {
 fn tell_person(shared: &Arc<Shared>, panes: &Panes, orphaned: &Orphaned) {
     let body = orphaned_body(orphaned);
     let called = Some(orphaned.called.as_str());
-    let routed = shared.messages().service.route_tell_as_muster(
-        muster_msg::HUMAN,
-        &orphaned.maker,
-        called,
-        &body,
-        panes,
-    );
-    match routed {
-        Ok(Some(away)) => {
-            let orphaned = orphaned.clone();
-            let told = "msg.helper.orphans_told";
-            notices::post_at_home(shared, away, told, body.len(), move |why| {
-                orphans_untold(&orphaned, why);
-            });
-            return;
-        }
-        Ok(None) => {}
-        Err(refusal) => return orphans_untold(orphaned, &words(&refusal)),
-    }
-    let delivered = delivering(shared, panes, |service| {
-        let called = Some(orphaned.called.as_str());
-        service.tell_as_muster(muster_msg::HUMAN, &orphaned.maker, called, &body, panes, now_ms())
-    });
-    match delivered {
-        Ok(delivered) => {
-            told("msg.helper.orphans_told", Some(body.len()), &delivered);
-        }
-        Err(reply) => orphans_untold(orphaned, &reply.reason),
-    }
+    let untold = {
+        let orphaned = orphaned.clone();
+        move |why: &str| orphans_untold(&orphaned, why)
+    };
+    let told = "msg.helper.orphans_told";
+    notices::tell_the_person(shared, panes, &orphaned.maker, called, &body, told, untold);
 }
 
 fn orphans_untold(orphaned: &Orphaned, reason: &str) {

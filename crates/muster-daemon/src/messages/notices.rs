@@ -2,13 +2,16 @@
 //! member in a group kept there, or a helper here telling its maker in the group the two share
 //! there. Only a group's home appends to it, so the home is asked to post the notice
 //! ([`muster_msg::Call::Muster`]), and this machine's members are reached from the answer.
+//!
+//! Also the notices for the person about an agent, which go in their group with it wherever that
+//! is kept.
 
 use std::sync::Arc;
 
 use muster_msg::{Away, Settled};
 
 use super::presence::Panes;
-use super::{Delivered, activities_of, peer, ring, told, words};
+use super::{Delivered, activities_of, delivering, now_ms, peer, ring, told, words};
 use crate::session::Shared;
 
 /// The protocol minor from which a group's home posts Muster's notice for a member on another
@@ -55,5 +58,35 @@ pub(super) fn post_at_home(
     });
     if let Err(error) = started {
         untold_here(&format!("no thread could be started to ask the group's home: {error}"));
+    }
+}
+
+/// Tells the human Muster's notice about the agent in `pane`, which `called` is what it is called,
+/// in the group the two share or one made for them: posted where that group is kept, here or on
+/// another machine. Logs `told_event` once it is posted, and calls `untold` with why when it is not.
+pub(super) fn tell_the_person(
+    shared: &Arc<Shared>,
+    panes: &Panes,
+    pane: &str,
+    called: Option<&str>,
+    body: &str,
+    told_event: &'static str,
+    untold: impl Fn(&str) + Send + Sync + 'static,
+) {
+    let human = muster_msg::HUMAN;
+    let routed = shared.messages().service.route_tell_as_muster(human, pane, called, body, panes);
+    match routed {
+        Ok(Some(away)) => return post_at_home(shared, away, told_event, body.len(), untold),
+        Ok(None) => {}
+        Err(refusal) => return untold(&words(&refusal)),
+    }
+    let delivered = delivering(shared, panes, |service| {
+        service.tell_as_muster(human, pane, called, body, panes, now_ms())
+    });
+    match delivered {
+        Ok(delivered) => {
+            told(told_event, Some(body.len()), &delivered);
+        }
+        Err(reply) => untold(&reply.reason),
     }
 }
