@@ -456,6 +456,23 @@ impl Detection {
         let tick = self.detector.tick(now, &mut observed, &System, &manifests);
         io.set_agent_group(self.detector.agent_group());
         self.due = now + tick.next;
+        if let Some(blocked_for) = tick.key_ignored {
+            log::warn(
+                "daemon.pane.key_ignored",
+                fields! {
+                    "serial" => io.serial,
+                    "agent" => self.detector.agent().map_or_else(String::new, |agent| agent.id().to_string()),
+                    "blocked_for_ms" => blocked_for.as_millis(),
+                    "impact" => "a Return or Esc typed at the pane's dialog left it unchanged, so \
+                                 the dialog is still waiting; whoever sent the key may believe \
+                                 it was answered",
+                    "check" => "how soon after the pane read blocked the key came \
+                                (blocked_for_ms): a harness can draw a dialog before it takes \
+                                keys. Send the key again once `muster pane read` shows the \
+                                dialog still there",
+                },
+            );
+        }
         tick.publication
     }
 }

@@ -1739,6 +1739,42 @@ fn a_dialog_whose_screen_never_changes_reads_blocked_again_after_a_while() {
     assert!(after >= ANSWERED_CAP, "blocked again {after:?} after the key");
 }
 
+impl Run {
+    /// Ticks for `span` and returns every key the detector said a dialog ignored.
+    fn keys_ignored_within(&mut self, span: Duration) -> Vec<Duration> {
+        let start = self.now;
+        let mut ignored = Vec::new();
+        while self.now - start < span {
+            self.now += self.next;
+            let tick =
+                self.detector.tick(self.now, &mut self.pane, &self.processes, &self.manifests);
+            self.next = tick.next;
+            ignored.extend(tick.key_ignored);
+        }
+        ignored
+    }
+}
+
+/// The same key is reported once, with how long the pane had been published blocked when it
+/// came, so a log can tell a key sent the moment a wait answered from one sent long after.
+#[test]
+fn a_key_a_dialog_never_took_is_reported_once() {
+    let mut run = Run::at_a_dialog();
+    run.run_for(Duration::from_secs(2), None);
+    run.answer();
+    let ignored = run.keys_ignored_within(ANSWERED_CAP * 3);
+    assert_eq!(ignored.len(), 1, "{ignored:?}");
+    assert!(ignored[0] >= Duration::from_secs(2), "{ignored:?}");
+}
+
+#[test]
+fn a_key_that_closed_its_dialog_is_not_reported() {
+    let mut run = Run::at_a_dialog();
+    run.answer();
+    run.paint("ready>");
+    assert_eq!(run.keys_ignored_within(ANSWERED_CAP * 2), []);
+}
+
 /// A blocked report from before the key gives way as soon as the screen shows the dialog gone,
 /// rather than holding the pane blocked while the rules read otherwise.
 #[test]

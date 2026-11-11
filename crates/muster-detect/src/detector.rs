@@ -93,6 +93,10 @@ pub trait Pane {
 pub struct Tick {
     pub publication: Option<Publication>,
     pub next: Duration,
+    /// A Return or Esc typed at a dialog left the screen unchanged for [`ANSWERED_CAP`]: the
+    /// harness never took it. Says how long the pane had been published blocked when the key
+    /// came.
+    pub key_ignored: Option<Duration>,
 }
 
 /// A pane's agent and its state, published because one of them changed.
@@ -176,6 +180,8 @@ pub struct Detector {
     /// Since when the pane has read blocked without being published as blocked
     /// ([`DIALOG_SETTLE`]).
     unsettled_since: Option<Instant>,
+    /// When the pane was last published as blocked, while it still is.
+    blocked_at: Option<Instant>,
     /// A reset forgot what was known, so the next tick publishes what it finds, even when it
     /// finds nothing that would count as a change. Otherwise a pane whose agent went with its
     /// manifest would go on showing the old agent's last state.
@@ -224,6 +230,7 @@ impl Detector {
             reporting: Reporting::default(),
             answered: None,
             unsettled_since: None,
+            blocked_at: None,
             owed: false,
         }
     }
@@ -253,6 +260,7 @@ impl Detector {
         self.waited_out = false;
         self.answered = None;
         self.unsettled_since = None;
+        self.blocked_at = None;
         self.owed = true;
     }
 
@@ -356,7 +364,9 @@ impl Detector {
     pub fn answered(&mut self, now: Instant) {
         if self.last_emitted.as_ref().is_some_and(|emitted| emitted.state == State::Blocked) {
             let screen = self.last_detection_text.clone();
-            self.answered = Some(Answered { at: now, screen, changed: None });
+            let blocked_for =
+                self.blocked_at.map_or(Duration::ZERO, |at| now.saturating_duration_since(at));
+            self.answered = Some(Answered { at: now, screen, changed: None, blocked_for });
         }
     }
 
@@ -402,8 +412,11 @@ impl Detector {
         manifests: &Manifests,
     ) -> Tick {
         let concluded = self.step(now, pane, processes, manifests).or_else(|| self.wait_out(now));
-        if self.answered.as_ref().is_some_and(|answered| now >= answered.at + ANSWERED_CAP) {
-            self.answered = None;
+        let mut key_ignored = None;
+        if let Some(answered) = self.answered.take_if(|answered| now >= answered.at + ANSWERED_CAP)
+            && answered.changed.is_none()
+        {
+            key_ignored = Some(answered.blocked_for);
         }
         if std::mem::take(&mut self.owed) && concluded.is_none() {
             self.conclude(self.presence.current.clone(), self.published.state);
@@ -415,6 +428,13 @@ impl Detector {
             .effective(now)
             .and_then(|effective| self.settled(effective, now))
             .and_then(|effective| self.emit(effective));
+        if let Some(publication) = &publication {
+            if publication.state == State::Blocked {
+                self.blocked_at.get_or_insert(now);
+            } else {
+                self.blocked_at = None;
+            }
+        }
         let next = if self.pending_idle.active() {
             PENDING_IDLE_RECHECK
         } else if self.presence.current.is_none() {
@@ -426,7 +446,7 @@ impl Detector {
             Some(since) => next.min((since + DIALOG_SETTLE).saturating_duration_since(now)),
             None => next,
         };
-        Tick { publication, next }
+        Tick { publication, next, key_ignored }
     }
 
     fn step(
@@ -797,6 +817,8 @@ struct Answered {
     screen: String,
     /// The last screen read since, once one has differed from `screen`.
     changed: Option<String>,
+    /// How long the pane had been published blocked when the key came.
+    blocked_for: Duration,
 }
 
 impl Answered {
