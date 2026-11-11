@@ -1,39 +1,26 @@
-Formatter: format any screen, and terminal state Muster reads
+Muster: format any screen and terminal state, and read state Muster needs
 
 Muster replays a pane's terminal into a fresh one when a surface attaches
-(docs/mip/0003-own-daemon.md, section 5). The pinned C formatter reaches
-only the active screen, and always emits content with the terminal's
-extras. So it cannot reproduce the primary screen while a program holds
-the alternate one, and cannot emit tabstops, the scrolling region or the
-pen apart from content. formatter.zig's own comment on TerminalFormatter
-names the way out: a no-content terminal formatter followed by screen
-formatters. This exposes both to C:
+(docs/mip/0003-own-daemon.md, section 5). The C formatter reaches only the
+active screen and always emits content with the terminal's extras, so it
+cannot reproduce the primary screen while a program holds the alternate
+one, and cannot emit tabstops, the scrolling region or the pen apart from
+content. This adds, in src/terminal/c/muster.zig and its header
+include/ghostty/vt/muster.h, built only on the formatter's public Zig
+types:
 
-- ghostty_formatter_terminal_state_new: the terminal formatter with
-  content none. Same options; the selection must be NULL.
-- ghostty_formatter_screen_new: a screen formatter for the primary or
-  alternate screen, looked up on every format call. It can omit content,
-  can leave out history and emit only the active area, and can emit the
-  blank rows below the last row with text, which the formatter always
-  drops, so that its output spans every row. Leaving out history is how
-  a surface that fell behind is caught up with the screen alone.
-- Three formatter.Options, each default false, which only
-  ghostty_formatter_screen_new turns on:
-  - unstyled_blanks. The formatter writes a run of blank cells before
-    the next text in whatever style the previous text left open, so a
-    background or underline bleeds across the gap; with the option it
-    closes the style first.
-  - styled_blank_rows. The formatter drops a row with no text as blank,
-    and with it a background the row was erased with; with the option a
-    painted row is written, as the content loop already writes such
-    cells.
-  - vt_hyperlinks. VT output writes no hyperlinks, so a link on text
-    already written is lost; with the option VT output writes OSC 8
-    where HTML output writes a link, and closes it across cells nobody
-    wrote, which belong to no link.
+- ghostty_terminal_format_screen: a ScreenFormatter for the primary or
+  alternate screen, with all its rows, the active area only (how a
+  surface that fell behind is caught up), or the history only, which
+  ends at the row above the active area exactly.
+- ghostty_terminal_format_state: the terminal's extras with no content,
+  then the active screen's, with the cursor placed for the receiver's
+  origin mode and right margin whether or not the modes extra is asked
+  for. TerminalFormatter sets cursor_origin and wrap_column only when it
+  emits the modes itself; Muster writes modes on its own, and a pending
+  wrap at a blank cell is lost without them.
 
-It also adds, in src/terminal/c/muster.zig and its header
-include/ghostty/vt/muster.h, terminal state the C API does not reach:
+It also adds terminal state the C API does not reach:
 
 - ghostty_terminal_screen_cursor_style: either screen's cursor style.
   DECSCUSR sets the active screen's only, and the render state reads
@@ -45,151 +32,41 @@ include/ghostty/vt/muster.h, terminal state the C API does not reach:
 - ghostty_terminal_clear_screen: the terminal half of Ghostty's own
   clear_screen binding (Termio.clearScreen), for a daemon that performs
   the binding on a terminal with no Termio.
-- ghostty_terminal_kitty_image_loading: whether a chunked kitty image is
-  still arriving, so a caller forgetting images can wait for its end.
-- ghostty_terminal_kitty_image_loading_bytes and
-  ghostty_terminal_kitty_image_drop_loading: how much of that image has
-  arrived, and dropping it. A program cut off between two chunks leaves
-  its image arriving until a full reset, so a caller that sees it stop
-  growing can let it go.
+- ghostty_terminal_kitty_image_loading, _loading_bytes and
+  _drop_loading: whether a chunked kitty image is still arriving, how
+  much of it has, and dropping it. A program cut off between two chunks
+  leaves its image arriving until a full reset.
 
-Additive only: new functions, one struct, options that default to the
-existing output, no existing behavior changed.
-Muster carries this for good rather than sending it upstream, so it is
-kept small enough to rebase on a re-pin. The Zig tests at the end of
-src/terminal/c/formatter.zig and in src/terminal/c/muster.zig cover it:
-zig build test-lib-vt.
+Additive only: a new file and header plus their export lines; no
+existing behavior changed and no formatter code touched, so a re-pin
+rebases the export lines only. Muster carries this for good rather than
+sending it upstream. The Zig tests at the end of src/terminal/c/muster.zig
+cover it: zig build test-lib-vt -Dtest-filter=muster.
 
 diff --git a/include/ghostty/vt.h b/include/ghostty/vt.h
-index 7519a3f2..83d2d35a 100644
+index f83662bd..1987af74 100644
 --- a/include/ghostty/vt.h
 +++ b/include/ghostty/vt.h
-@@ -151,6 +151,7 @@ extern "C" {
+@@ -184,6 +184,7 @@ extern "C" {
+ #include <ghostty/vt/key.h>
  #include <ghostty/vt/kitty_graphics.h>
  #include <ghostty/vt/modes.h>
- #include <ghostty/vt/mouse.h>
 +#include <ghostty/vt/muster.h>
+ #include <ghostty/vt/mouse.h>
  #include <ghostty/vt/paste.h>
  #include <ghostty/vt/point.h>
- #include <ghostty/vt/screen.h>
-diff --git a/include/ghostty/vt/formatter.h b/include/ghostty/vt/formatter.h
-index 5cdcd11a..e6e3200b 100644
---- a/include/ghostty/vt/formatter.h
-+++ b/include/ghostty/vt/formatter.h
-@@ -117,6 +117,43 @@ typedef struct {
-   const GhosttySelection *selection;
- } GhosttyFormatterTerminalOptions;
- 
-+/**
-+ * Options for creating a screen formatter.
-+ *
-+ * @ingroup formatter
-+ */
-+typedef struct {
-+  /** Size of this struct in bytes. Must be set to sizeof(GhosttyFormatterScreenOptions). */
-+  size_t size;
-+
-+  /** Output format to emit. */
-+  GhosttyFormatterFormat emit;
-+
-+  /** Whether to unwrap soft-wrapped lines. */
-+  bool unwrap;
-+
-+  /** Whether to trim trailing whitespace on non-blank lines. */
-+  bool trim;
-+
-+  /** Whether to emit the screen's rows. If false, only the extras are emitted. */
-+  bool content;
-+
-+  /**
-+   * Whether to emit the blank rows below the last row with text, so the
-+   * content spans every row of the screen. Ignored without content.
-+   */
-+  bool trailing_blank_rows;
-+
-+  /**
-+   * Whether the content includes the screen's history. If false, only the
-+   * active area's rows are emitted. Ignored without content.
-+   */
-+  bool history;
-+
-+  /** Extra screen state to include in styled output. */
-+  GhosttyFormatterScreenExtra extra;
-+} GhosttyFormatterScreenOptions;
-+
- /**
-  * Create a formatter for a terminal's active screen.
-  *
-@@ -137,6 +174,58 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
-     GhosttyTerminal terminal,
-     GhosttyFormatterTerminalOptions options);
- 
-+/**
-+ * Create a formatter for a terminal's state without any screen content.
-+ *
-+ * This emits the same extras as ghostty_formatter_terminal_new(), including
-+ * the active screen's extras, but no rows. Combined with screen formatters
-+ * it can reproduce a terminal whose screens are formatted separately, for
-+ * example the primary screen while the alternate screen is active.
-+ *
-+ * The terminal must outlive the formatter. The selection option must be NULL.
-+ *
-+ * @param allocator Pointer to allocator, or NULL to use the default allocator
-+ * @param formatter Pointer to store the created formatter handle
-+ * @param terminal The terminal to format (must not be NULL)
-+ * @param options Formatting options
-+ * @return GHOSTTY_SUCCESS on success, or an error code on failure
-+ *
-+ * @ingroup formatter
-+ */
-+GHOSTTY_API GhosttyResult ghostty_formatter_terminal_state_new(
-+    const GhosttyAllocator* allocator,
-+    GhosttyFormatter* formatter,
-+    GhosttyTerminal terminal,
-+    GhosttyFormatterTerminalOptions options);
-+
-+/**
-+ * Create a formatter for one of a terminal's screens, active or not.
-+ *
-+ * The screen is looked up on each format call. A screen the terminal has
-+ * never initialized formats as empty output.
-+ *
-+ * Unlike ghostty_formatter_terminal_new(), blank cells between text are
-+ * written unstyled, as the screen holds them, rather than in the style of
-+ * the text before them.
-+ *
-+ * The terminal must outlive the formatter.
-+ *
-+ * @param allocator Pointer to allocator, or NULL to use the default allocator
-+ * @param formatter Pointer to store the created formatter handle
-+ * @param terminal The terminal to format (must not be NULL)
-+ * @param screen The screen to format
-+ * @param options Formatting options
-+ * @return GHOSTTY_SUCCESS on success, or an error code on failure
-+ *
-+ * @ingroup formatter
-+ */
-+GHOSTTY_API GhosttyResult ghostty_formatter_screen_new(
-+    const GhosttyAllocator* allocator,
-+    GhosttyFormatter* formatter,
-+    GhosttyTerminal terminal,
-+    GhosttyTerminalScreen screen,
-+    GhosttyFormatterScreenOptions options);
-+
- /**
-  * Run the formatter and produce output into the caller-provided buffer.
-  *
 diff --git a/include/ghostty/vt/muster.h b/include/ghostty/vt/muster.h
 new file mode 100644
-index 00000000..150eb755
+index 00000000..2bb8a624
 --- /dev/null
 +++ b/include/ghostty/vt/muster.h
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,171 @@
 +/**
 + * @file muster.h
 + *
-+ * Terminal state and actions Muster reads and takes through its own patch
-+ * to libghostty: each screen's cursor style, the mouse tracking mode in
++ * Formatting and terminal state Muster reads through its own patch to
++ * libghostty: a screen whether or not it is active, the terminal's state
++ * with no content, each screen's cursor style, the mouse tracking mode in
 + * effect, the XTSHIFTESCAPE flag, the terminal half of clear_screen, and
 + * whether a kitty image is still arriving.
 + */
@@ -198,13 +75,69 @@ index 00000000..150eb755
 +#define GHOSTTY_VT_MUSTER_H
 +
 +#include <stdbool.h>
++#include <stddef.h>
 +#include <stdint.h>
++#include <ghostty/vt/allocator.h>
++#include <ghostty/vt/formatter.h>
 +#include <ghostty/vt/types.h>
 +#include <ghostty/vt/terminal.h>
 +
 +#ifdef __cplusplus
 +extern "C" {
 +#endif
++
++/** Rows for ghostty_terminal_format_screen: history and the active area. */
++#define GHOSTTY_MUSTER_ROWS_ALL 0
++/** Rows for ghostty_terminal_format_screen: the active area only. */
++#define GHOSTTY_MUSTER_ROWS_ACTIVE 1
++/**
++ * Rows for ghostty_terminal_format_screen: history only, ending at the row
++ * above the active area. Empty when the screen has no history.
++ */
++#define GHOSTTY_MUSTER_ROWS_HISTORY 2
++
++/**
++ * Format one screen of the terminal, whether or not it is the active one.
++ * The formatter's own functions reach only the active screen, so this is
++ * how the primary screen is read while a program holds the alternate one.
++ *
++ * `rows` is one of GHOSTTY_MUSTER_ROWS_*. `extras` may hold only screen
++ * extras (GHOSTTY_FORMATTER_EXTRA_CURSOR and above). A screen never
++ * entered formats to nothing. The output is allocated with `allocator`
++ * and freed with ghostty_free; empty output sets `*out_ptr` to NULL.
++ *
++ * @return GHOSTTY_SUCCESS, GHOSTTY_INVALID_VALUE for a NULL argument, an
++ *         unknown screen, rows or format, or a terminal extra in `extras`,
++ *         or GHOSTTY_OUT_OF_MEMORY
++ */
++GHOSTTY_API GhosttyResult ghostty_terminal_format_screen(
++    GhosttyTerminal terminal,
++    GhosttyTerminalScreen screen,
++    int rows,
++    GhosttyFormatterFormat emit,
++    bool unwrap,
++    bool trim,
++    GhosttyFormatterExtras extras,
++    const GhosttyAllocator* allocator,
++    uint8_t** out_ptr,
++    size_t* out_len);
++
++/**
++ * Format the terminal's state with no screen content, as VT sequences:
++ * the terminal extras in `extras`, then the active screen's. The cursor is
++ * written for the receiver's origin mode and right margin whether or not
++ * `extras` includes the modes, so a caller that writes modes itself still
++ * gets a cursor, and a pending wrap, where they put it.
++ *
++ * @return GHOSTTY_SUCCESS, GHOSTTY_INVALID_VALUE for a NULL argument or an
++ *         unknown extra, or GHOSTTY_OUT_OF_MEMORY
++ */
++GHOSTTY_API GhosttyResult ghostty_terminal_format_state(
++    GhosttyTerminal terminal,
++    GhosttyFormatterExtras extras,
++    const GhosttyAllocator* allocator,
++    uint8_t** out_ptr,
++    size_t* out_len);
 +
 +/**
 + * The cursor style of the given screen. DECSCUSR sets the style of the
@@ -218,7 +151,7 @@ index 00000000..150eb755
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_cursor_style(
 +    GhosttyTerminal terminal,
 +    GhosttyTerminalScreen screen,
-+    GhosttyTerminalCursorStyle* out);
++    GhosttyCursorStyle* out);
 +
 +/**
 + * The mouse tracking mode in effect and the report format, as the DEC
@@ -300,18 +233,15 @@ index 00000000..150eb755
 +
 +#endif /* GHOSTTY_VT_MUSTER_H */
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 5b78b8cb..5ed7391c 100644
+index 1a338e6c..511df4af 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -262,9 +262,18 @@ comptime {
-         @export(&c.sgr_attribute_tag, .{ .name = "ghostty_sgr_attribute_tag" });
-         @export(&c.sgr_attribute_value, .{ .name = "ghostty_sgr_attribute_value" });
-         @export(&c.formatter_terminal_new, .{ .name = "ghostty_formatter_terminal_new" });
-+        @export(&c.formatter_terminal_state_new, .{ .name = "ghostty_formatter_terminal_state_new" });
-+        @export(&c.formatter_screen_new, .{ .name = "ghostty_formatter_screen_new" });
+@@ -283,6 +283,15 @@ comptime {
+         @export(&c.formatter_format, .{ .name = "ghostty_formatter_format" });
          @export(&c.formatter_format_buf, .{ .name = "ghostty_formatter_format_buf" });
          @export(&c.formatter_format_alloc, .{ .name = "ghostty_formatter_format_alloc" });
-         @export(&c.formatter_free, .{ .name = "ghostty_formatter_free" });
++        @export(&c.muster_format_screen, .{ .name = "ghostty_terminal_format_screen" });
++        @export(&c.muster_format_state, .{ .name = "ghostty_terminal_format_state" });
 +        @export(&c.muster_screen_cursor_style, .{ .name = "ghostty_terminal_screen_cursor_style" });
 +        @export(&c.muster_mouse_tracking, .{ .name = "ghostty_terminal_mouse_tracking" });
 +        @export(&c.muster_mouse_shift_capture, .{ .name = "ghostty_terminal_mouse_shift_capture" });
@@ -319,697 +249,27 @@ index 5b78b8cb..5ed7391c 100644
 +        @export(&c.muster_kitty_image_loading, .{ .name = "ghostty_terminal_kitty_image_loading" });
 +        @export(&c.muster_kitty_image_loading_bytes, .{ .name = "ghostty_terminal_kitty_image_loading_bytes" });
 +        @export(&c.muster_kitty_image_drop_loading, .{ .name = "ghostty_terminal_kitty_image_drop_loading" });
-         @export(&c.terminal_selection_format_buf, .{ .name = "ghostty_terminal_selection_format_buf" });
-         @export(&c.terminal_selection_format_alloc, .{ .name = "ghostty_terminal_selection_format_alloc" });
+         @export(&c.formatter_free, .{ .name = "ghostty_formatter_free" });
          @export(&c.render_state_new, .{ .name = "ghostty_render_state_new" });
-diff --git a/src/terminal/c/formatter.zig b/src/terminal/c/formatter.zig
-index 9b3c143a..b1464f67 100644
---- a/src/terminal/c/formatter.zig
-+++ b/src/terminal/c/formatter.zig
-@@ -6,7 +6,10 @@ const terminal_c = @import("terminal.zig");
- const grid_ref = @import("grid_ref.zig");
- const selection_c = @import("selection.zig");
- const ZigTerminal = @import("../Terminal.zig");
-+const ScreenSet = @import("../ScreenSet.zig");
- const formatterpkg = @import("../formatter.zig");
-+const pagepkg = @import("../page.zig");
-+const Screen = @import("../Screen.zig");
- const Result = @import("result.zig").Result;
- 
- /// Wrapper around formatter that tracks the allocator for C API usage.
-@@ -16,6 +19,82 @@ const FormatterWrapper = struct {
- 
-     const Kind = union(enum) {
-         terminal: formatterpkg.TerminalFormatter,
-+        screen: ScreenKind,
-+    };
-+
-+    /// A screen formatter holds the terminal and the screen's key rather
-+    /// than a screen pointer, and resolves the screen on every format call,
-+    /// so it follows the terminal like a terminal formatter does (for
-+    /// example, an alternate screen that is created after the formatter).
-+    const ScreenKind = struct {
-+        terminal: *const ZigTerminal,
-+        key: ScreenSet.Key,
-+        opts: formatterpkg.Options,
-+        content: bool,
-+        trailing_blank_rows: bool,
-+        history: bool,
-+        extra: formatterpkg.ScreenFormatter.Extra,
-+
-+        fn format(self: *const ScreenKind, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-+            // A screen that was never initialized has no content or state,
-+            // so it formats as nothing.
-+            const screen = self.terminal.screens.get(self.key) orelse return;
-+
-+            // Content and extras are formatted separately so that trailing
-+            // blank rows, when requested, come between the two: extras such
-+            // as the cursor position must be emitted last.
-+            if (self.content) {
-+                var content: formatterpkg.ScreenFormatter = .init(screen, self.opts);
-+                content.extra = .none;
-+                if (!self.history) {
-+                    const bottom = screen.pages.getBottomRight(.active) orelse return;
-+                    content.content = .{ .selection = .init(
-+                        screen.pages.getTopLeft(.active),
-+                        bottom,
-+                        false,
-+                    ) };
-+                }
-+                try content.format(writer);
-+                if (self.trailing_blank_rows) try self.formatTrailingBlankRows(screen, writer);
-+            }
-+
-+            var extra: formatterpkg.ScreenFormatter = .init(screen, self.opts);
-+            extra.content = .none;
-+            extra.extra = self.extra;
-+            try extra.format(writer);
-+        }
-+
-+        /// The formatter always omits blank rows below the last row with
-+        /// text. Emitting them makes the output span every row of the
-+        /// screen, so replaying it lines the screen up with the original.
-+        fn formatTrailingBlankRows(
-+            self: *const ScreenKind,
-+            screen: *const Screen,
-+            writer: *std.Io.Writer,
-+        ) std.Io.Writer.Error!void {
-+            const rows: usize = if (self.history) screen.pages.total_rows else screen.pages.rows;
-+            var blank: usize = 0;
-+            const bl_pin = screen.pages.getBottomRight(.screen) orelse return;
-+            var it = bl_pin.rowIterator(.left_up, null);
-+            while (it.next()) |row_pin| {
-+                if (blank == rows) break;
-+                const cells = row_pin.cells(.all);
-+                if (pagepkg.Cell.hasTextAny(cells)) break;
-+                if (self.opts.styled_blank_rows and self.opts.emit != .plain and
-+                    formatterpkg.paintedAny(cells)) break;
-+                blank += 1;
-+            }
-+
-+            // With no text at all, the content was empty and already
-+            // occupies the first row.
-+            if (blank == rows) blank -|= 1;
-+
-+            const sequence: []const u8 = switch (self.opts.emit) {
-+                .plain, .html => "\n",
-+                .vt => "\r\n",
-+            };
-+            for (0..blank) |_| try writer.writeAll(sequence);
-+        }
-     };
- };
- 
-@@ -29,6 +108,25 @@ const CSelection = selection_c.CSelection;
- 
- /// C: GhosttyFormatterScreenOptions
- pub const ScreenOptions = extern struct {
-+    size: usize = @sizeOf(ScreenOptions),
-+    emit: Format,
-+    unwrap: bool,
-+    trim: bool,
-+
-+    /// Whether to emit the screen's rows. If false, only the requested
-+    /// extras are emitted.
-+    content: bool,
-+
-+    /// Whether to emit the blank rows below the last row with text, so the
-+    /// content spans every row of the screen. Ignored without content.
-+    trailing_blank_rows: bool,
-+
-+    /// Whether the content includes the screen's history. If false, only
-+    /// the active area's rows are emitted. Ignored without content.
-+    history: bool = true,
-+
-+    extra: Extra,
-+
-     /// C: GhosttyFormatterScreenExtra
-     pub const Extra = extern struct {
-         size: usize = @sizeOf(Extra),
-@@ -160,6 +258,107 @@ fn terminal_new_(
-     return ptr;
- }
- 
-+pub fn terminal_state_new(
-+    alloc_: ?*const CAllocator,
-+    result: *Formatter,
-+    terminal_: terminal_c.Terminal,
-+    opts: TerminalOptions,
-+) callconv(lib.calling_conv) Result {
-+    result.* = terminal_state_new_(
-+        alloc_,
-+        terminal_,
-+        opts,
-+    ) catch |err| {
-+        result.* = null;
-+        return switch (err) {
-+            error.InvalidValue => .invalid_value,
-+            error.OutOfMemory => .out_of_memory,
-+        };
-+    };
-+
-+    return .success;
-+}
-+
-+fn terminal_state_new_(
-+    alloc_: ?*const CAllocator,
-+    terminal_: terminal_c.Terminal,
-+    opts: TerminalOptions,
-+) error{
-+    InvalidValue,
-+    OutOfMemory,
-+}!*FormatterWrapper {
-+    // A selection restricts content, and this formatter emits none.
-+    if (opts.selection != null) return error.InvalidValue;
-+
-+    const ptr = try terminal_new_(alloc_, terminal_, opts);
-+    ptr.kind.terminal.content = .none;
-+    return ptr;
-+}
-+
-+pub fn screen_new(
-+    alloc_: ?*const CAllocator,
-+    result: *Formatter,
-+    terminal_: terminal_c.Terminal,
-+    screen: ScreenSet.Key,
-+    opts: ScreenOptions,
-+) callconv(lib.calling_conv) Result {
-+    result.* = screen_new_(
-+        alloc_,
-+        terminal_,
-+        screen,
-+        opts,
-+    ) catch |err| {
-+        result.* = null;
-+        return switch (err) {
-+            error.InvalidValue => .invalid_value,
-+            error.OutOfMemory => .out_of_memory,
-+        };
-+    };
-+
-+    return .success;
-+}
-+
-+fn screen_new_(
-+    alloc_: ?*const CAllocator,
-+    terminal_: terminal_c.Terminal,
-+    screen: ScreenSet.Key,
-+    opts: ScreenOptions,
-+) error{
-+    InvalidValue,
-+    OutOfMemory,
-+}!*FormatterWrapper {
-+    const t: *ZigTerminal = (terminal_ orelse return error.InvalidValue).terminal;
-+    _ = std.enums.fromInt(ScreenSet.Key, @intFromEnum(screen)) orelse
-+        return error.InvalidValue;
-+
-+    const alloc = lib.alloc.default(alloc_);
-+    const ptr = alloc.create(FormatterWrapper) catch
-+        return error.OutOfMemory;
-+    errdefer alloc.destroy(ptr);
-+
-+    ptr.* = .{
-+        .kind = .{ .screen = .{
-+            .terminal = t,
-+            .key = screen,
-+            .opts = .{
-+                .emit = opts.emit,
-+                .unwrap = opts.unwrap,
-+                .trim = opts.trim,
-+                .unstyled_blanks = true,
-+                .styled_blank_rows = true,
-+                .vt_hyperlinks = true,
-+            },
-+            .content = opts.content,
-+            .trailing_blank_rows = opts.trailing_blank_rows,
-+            .history = opts.history,
-+            .extra = opts.extra.toZig(),
-+        } },
-+        .alloc = alloc,
-+    };
-+
-+    return ptr;
-+}
-+
- pub fn format_buf(
-     formatter_: Formatter,
-     out_: ?[*]u8,
-@@ -174,12 +373,12 @@ pub fn format_buf(
-         &.{});
- 
-     switch (wrapper.kind) {
--        .terminal => |*t| t.format(&writer) catch |err| switch (err) {
-+        inline else => |*f| f.format(&writer) catch |err| switch (err) {
-             error.WriteFailed => {
-                 // On write failed we always report how much
-                 // space we actually needed.
-                 var discarding: std.Io.Writer.Discarding = .init(&.{});
--                t.format(&discarding.writer) catch unreachable;
-+                f.format(&discarding.writer) catch unreachable;
-                 out_written.* = @intCast(discarding.count);
-                 return .out_of_space;
-             },
-@@ -203,7 +402,7 @@ pub fn format_alloc(
-     defer aw.deinit();
- 
-     switch (wrapper.kind) {
--        .terminal => |*t| t.format(&aw.writer) catch return .out_of_memory,
-+        inline else => |*f| f.format(&aw.writer) catch return .out_of_memory,
-     }
- 
-     const buf = aw.toOwnedSlice() catch return .out_of_memory;
-@@ -481,3 +680,416 @@ test "format html" {
-     try testing.expect(written > 0);
-     try testing.expect(std.mem.indexOf(u8, buf[0..written], "Html") != null);
- }
-+
-+test "terminal_state_new emits extras without content" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        80,
-+        24,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    const input = "Hello\x1b[3;10r";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, terminal_state_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .extra = .{ .palette = false, .modes = false, .scrolling_region = true, .tabstops = false, .pwd = false, .keyboard = false, .screen = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } } },
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("\x1b[3;10r", buf[0..written]);
-+}
-+
-+test "terminal_state_new rejects a selection" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        80,
-+        24,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    var sel: CSelection = undefined;
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.invalid_value, terminal_state_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .extra = .{ .palette = false, .modes = false, .scrolling_region = false, .tabstops = false, .pwd = false, .keyboard = false, .screen = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } }, .selection = &sel },
-+    ));
-+    try testing.expect(f == null);
-+}
-+
-+test "screen_new formats the primary screen while the alternate is active" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        80,
-+        24,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    const input = "primary\x1b[?1049h\x1b[Halternate";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+
-+    var primary: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &primary,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(primary);
-+
-+    var alternate: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &alternate,
-+        t,
-+        .alternate,
-+        opts,
-+    ));
-+    defer free(alternate);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(primary, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("primary", buf[0..written]);
-+    try testing.expectEqual(Result.success, format_buf(alternate, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("alternate", buf[0..written]);
-+}
-+
-+test "screen_new without content emits only extras" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        80,
-+        24,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    const input = "Hello\x1b[>1u";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .content = false, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = true, .charsets = false } },
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expect(std.mem.indexOf(u8, buf[0..written], "Hello") == null);
-+    try testing.expect(written > 0);
-+}
-+
-+test "screen_new on a screen never initialized formats as empty" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        80,
-+        24,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .alternate,
-+        .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } },
-+    ));
-+    defer free(f);
-+
-+    var buf: [16]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqual(@as(usize, 0), written);
-+}
-+
-+test "screen_new invalid_value on null terminal" {
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.invalid_value, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        null,
-+        .primary,
-+        .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } },
-+    ));
-+    try testing.expect(f == null);
-+}
-+
-+test "screen_new with trailing blank rows spans the whole screen" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        10,
-+        4,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    // Two rows of history, then a screen whose only text is on its first row.
-+    const input = "a\r\nb\r\nc\r\nd\r\ne\r\nf\x1b[H\x1b[J$";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = true, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("a\nb\n$\n\n\n", buf[0..written]);
-+}
-+
-+test "screen_new without history emits only the active area" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        10,
-+        4,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    // Two rows of history, then a screen whose only text is on its first row.
-+    const input = "a\r\nb\r\nc\r\nd\r\ne\r\nf\x1b[H\x1b[J$";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .plain, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = true, .history = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("$\n\n\n", buf[0..written]);
-+
-+    // A blank active area spans its own rows, not the history above it.
-+    const clear = "\x1b[H\x1b[J";
-+    terminal_c.vt_write(t, clear, clear.len);
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("\n\n\n", buf[0..written]);
-+}
-+
-+test "screen_new with trailing blank rows on an empty screen" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        10,
-+        4,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = true, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } },
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings("\r\n\r\n\r\n", buf[0..written]);
-+}
-+
-+test "screen_new writes blanks between text unstyled, terminal_new does not" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        20,
-+        3,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    // Red text, then more text further along the row with nothing between.
-+    const input = "\x1b[41mred\x1b[0m\x1b[1;10Hx\x1b[41m\x1b[1;15Hy\x1b[2;1Ha\x1b[2;5Hb\x1b[0m";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    var existing: Formatter = null;
-+    try testing.expectEqual(Result.success, terminal_new(
-+        &lib.alloc.test_allocator,
-+        &existing,
-+        t,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .extra = .{ .palette = false, .modes = false, .scrolling_region = false, .tabstops = false, .pwd = false, .keyboard = false, .screen = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } } },
-+    ));
-+    defer free(existing);
-+
-+    var screen: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &screen,
-+        t,
-+        .primary,
-+        .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } },
-+    ));
-+    defer free(screen);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    // The existing formatter is unchanged: the gaps take the red of the text before them.
-+    try testing.expectEqual(Result.success, format_buf(existing, &buf, buf.len, &written));
-+    try testing.expectEqualStrings(
-+        "\x1b[0m\x1b[48;5;1mred      \x1b[0mx    \x1b[0m\x1b[48;5;1my\x1b[0m\r\n" ++
-+            "\x1b[0m\x1b[48;5;1ma   b\x1b[0m",
-+        buf[0..written],
-+    );
-+
-+    // A screen formatter closes the style before a gap, including a gap between two runs
-+    // of the same style.
-+    try testing.expectEqual(Result.success, format_buf(screen, &buf, buf.len, &written));
-+    try testing.expectEqualStrings(
-+        "\x1b[0m\x1b[48;5;1mred\x1b[0m      x    \x1b[0m\x1b[48;5;1my\x1b[0m\r\n" ++
-+            "\x1b[0m\x1b[48;5;1ma\x1b[0m   \x1b[0m\x1b[48;5;1mb\x1b[0m",
-+        buf[0..written],
-+    );
-+}
-+
-+test "screen_new keeps a row painted with only a background" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        10,
-+        3,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    // The first row erased in red and holding no text, then text below it.
-+    const input = "\x1b[41m\x1b[K\x1b[0m\r\nx";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .history = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    const out = buf[0..written];
-+    const x = std.mem.indexOfScalar(u8, out, 'x') orelse return error.TestUnexpectedResult;
-+    // The painted row comes first, as spaces in its background, rather than being dropped.
-+    try testing.expect(std.mem.indexOf(u8, out[0..x], "\x1b[") != null);
-+    try testing.expect(std.mem.indexOf(u8, out[0..x], " ") != null);
-+}
-+
-+test "screen_new writes the links on written text as OSC 8" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        20,
-+        3,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    const input = "a \x1b]8;id=x;https://e.com\x1b\\link\x1b]8;;\x1b\\ b";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .history = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    try testing.expectEqualStrings(
-+        "a \x1b]8;id=x;https://e.com\x1b\\link\x1b]8;;\x1b\\ b",
-+        buf[0..written],
-+    );
-+}
-+
-+test "screen_new closes a link across cells nobody wrote" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        20,
-+        3,
-+    ));
-+    defer terminal_c.free(t);
-+
-+    // The cursor skips three cells inside the link, and the next row starts with a skip too.
-+    const input = "\x1b]8;id=x;https://e.com\x1b\\ab\x1b[3Ccd\r\n\x1b[2Cef\x1b]8;;\x1b\\";
-+    terminal_c.vt_write(t, input, input.len);
-+
-+    const opts: ScreenOptions = .{ .emit = .vt, .unwrap = false, .trim = true, .content = true, .trailing_blank_rows = false, .history = false, .extra = .{ .cursor = false, .style = false, .hyperlink = false, .protection = false, .kitty_keyboard = false, .charsets = false } };
-+    var f: Formatter = null;
-+    try testing.expectEqual(Result.success, screen_new(
-+        &lib.alloc.test_allocator,
-+        &f,
-+        t,
-+        .primary,
-+        opts,
-+    ));
-+    defer free(f);
-+
-+    var buf: [1024]u8 = undefined;
-+    var written: usize = 0;
-+    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
-+    const open = "\x1b]8;id=x;https://e.com\x1b\\";
-+    const close = "\x1b]8;;\x1b\\";
-+    try testing.expectEqualStrings(
-+        open ++ "ab" ++ close ++ "   " ++ open ++ "cd\r\n" ++ close ++ "  " ++ open ++ "ef" ++ close,
-+        buf[0..written],
-+    );
-+}
+         @export(&c.render_state_update, .{ .name = "ghostty_render_state_update" });
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index d6f9e665..57950c56 100644
+index 3c32b58b..901d78b2 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
-@@ -78,10 +78,21 @@ pub const focus_encode = focus.encode;
- pub const mode_report_encode = modes.report_encode;
- 
- pub const formatter_terminal_new = formatter.terminal_new;
-+pub const formatter_terminal_state_new = formatter.terminal_state_new;
-+pub const formatter_screen_new = formatter.screen_new;
- pub const formatter_format_buf = formatter.format_buf;
+@@ -10,6 +10,7 @@ pub const color = @import("color.zig");
+ pub const color_scheme = @import("color_scheme.zig");
+ pub const focus = @import("focus.zig");
+ pub const formatter = @import("formatter.zig");
++pub const muster = @import("muster.zig");
+ pub const grid_ref = @import("grid_ref.zig");
+ pub const grid_ref_tracked = @import("grid_ref_tracked.zig");
+ pub const io = @import("io.zig");
+@@ -91,6 +92,16 @@ pub const formatter_format_buf = formatter.format_buf;
  pub const formatter_format_alloc = formatter.format_alloc;
  pub const formatter_free = formatter.free;
  
-+pub const muster = @import("muster.zig");
++pub const muster_format_screen = muster.format_screen;
++pub const muster_format_state = muster.format_state;
 +pub const muster_screen_cursor_style = muster.screen_cursor_style;
 +pub const muster_mouse_tracking = muster.mouse_tracking;
 +pub const muster_mouse_shift_capture = muster.mouse_shift_capture;
@@ -1021,50 +281,201 @@ index d6f9e665..57950c56 100644
  pub const render_state_new = render.new;
  pub const render_state_free = render.free;
  pub const render_state_update = render.update;
-@@ -260,6 +271,7 @@ test {
+@@ -283,6 +294,7 @@ test {
+     _ = row;
      _ = focus;
      _ = formatter;
-     _ = modes;
 +    _ = muster;
+     _ = modes;
      _ = osc;
      _ = render;
-     _ = selection;
 diff --git a/src/terminal/c/muster.zig b/src/terminal/c/muster.zig
 new file mode 100644
-index 00000000..ce044226
+index 00000000..f9693fb1
 --- /dev/null
 +++ b/src/terminal/c/muster.zig
-@@ -0,0 +1,297 @@
-+//! Terminal state and actions Muster needs that the rest of the C API does not reach: each
-+//! screen's cursor style, the mouse tracking mode in effect, the shift-capture flag, and the
-+//! terminal half of Ghostty's clear_screen, and the kitty image still arriving. Kept in a file of its own so a re-pin rebases only
-+//! the lines that export it.
+@@ -0,0 +1,543 @@
++//! Terminal state and actions Muster needs that the rest of the C API does not reach: formatting
++//! a screen that is not the active one, formatting terminal state with no content, each screen's
++//! cursor style, the mouse tracking mode in effect, the shift-capture flag, the terminal half of
++//! Ghostty's clear_screen, and the kitty image still arriving. Kept in a file of its own, built
++//! only from the formatter's and terminal's public Zig API, so a re-pin rebases only the lines
++//! that export it.
 +
 +const std = @import("std");
 +const testing = std.testing;
 +const build_options = @import("terminal_options");
 +const lib = @import("../lib.zig");
++const CAllocator = lib.alloc.Allocator;
 +const terminal_c = @import("terminal.zig");
++const formatter_c = @import("formatter.zig");
++const CursorStyle = @import("types.zig").CursorStyle;
++const formatterpkg = @import("../formatter.zig");
 +const ScreenSet = @import("../ScreenSet.zig");
++const Selection = @import("../Selection.zig");
 +const Result = @import("result.zig").Result;
++
++const TerminalExtra = formatterpkg.TerminalFormatter.Extra;
++const ScreenExtra = formatterpkg.ScreenFormatter.Extra;
++
++/// GHOSTTY_MUSTER_ROWS_*: which rows of a screen ghostty_terminal_format_screen writes.
++pub const Rows = enum(c_int) {
++    /// History and the active area.
++    all = 0,
++    /// The active area only.
++    active = 1,
++    /// History only, ending at the row above the active area.
++    history = 2,
++};
++
++/// The screen extras' bits within a GhosttyFormatterExtras value. The terminal extras come first
++/// in `TerminalFormatter.Extra`, as formatter_c's bit check makes sure.
++const screen_extras_shift = @bitOffsetOf(TerminalExtra, "screen");
++const extras_valid: formatter_c.Extras = (@as(formatter_c.Extras, 1) << @bitSizeOf(TerminalExtra)) - 1;
++const screen_extras_mask: formatter_c.Extras = extras_valid & ~((@as(formatter_c.Extras, 1) << screen_extras_shift) - 1);
++
++fn terminalExtra(extras: formatter_c.Extras) ?TerminalExtra {
++    if (extras & ~extras_valid != 0) return null;
++    const Int = @typeInfo(TerminalExtra).@"struct".backing_integer.?;
++    return @bitCast(@as(Int, @intCast(extras)));
++}
++
++/// Formats one screen of the terminal, whichever is active: the primary screen's history while a
++/// program holds the alternate one is the case that needs it, since the C formatter formats only
++/// the active screen. `extras` may hold screen extras only.
++pub fn format_screen(
++    terminal_: terminal_c.Terminal,
++    screen: c_int,
++    rows: c_int,
++    emit: c_int,
++    unwrap: bool,
++    trim: bool,
++    extras: formatter_c.Extras,
++    alloc_: ?*const CAllocator,
++    out_ptr: ?*?[*]u8,
++    out_len: ?*usize,
++) callconv(lib.calling_conv) Result {
++    if (comptime !lib.feature(.formatter)) return .unsupported;
++    const t = (terminal_ orelse return .invalid_value).terminal;
++    const key = std.enums.fromInt(ScreenSet.Key, screen) orelse return .invalid_value;
++    const which = std.enums.fromInt(Rows, rows) orelse return .invalid_value;
++    const format = std.enums.fromInt(formatterpkg.Format, emit) orelse return .invalid_value;
++    if (extras & ~screen_extras_mask != 0) return .invalid_value;
++    const extra = (terminalExtra(extras) orelse return .invalid_value).screen;
++
++    // A screen never entered has no rows to write.
++    const s = t.screens.get(key) orelse return writeAlloc(alloc_, out_ptr, out_len, &.{});
++
++    var formatter: formatterpkg.ScreenFormatter = .init(s, .{
++        .emit = format,
++        .unwrap = unwrap,
++        .trim = trim,
++    });
++    formatter.extra = extra;
++    formatter.content = .{ .selection = switch (which) {
++        .all => null,
++        .active => Selection.init(
++            s.pages.getTopLeft(.active),
++            s.pages.getBottomRight(.active).?,
++            false,
++        ),
++        .history => Selection.init(
++            s.pages.getTopLeft(.history),
++            s.pages.getBottomRight(.history) orelse
++                return writeAlloc(alloc_, out_ptr, out_len, &.{}),
++            false,
++        ),
++    } };
++    return formatAlloc(formatterpkg.ScreenFormatter, &formatter, alloc_, out_ptr, out_len);
++}
++
++/// Formats the terminal's state with no content, as VT: the terminal extras in `extras` first,
++/// then its active screen's. Unlike the C formatter, the cursor is placed for the receiver's
++/// origin mode and right margin whether or not `extras` asks for the modes, because a caller
++/// that writes modes itself still needs the cursor to land where they put it.
++pub fn format_state(
++    terminal_: terminal_c.Terminal,
++    extras: formatter_c.Extras,
++    alloc_: ?*const CAllocator,
++    out_ptr: ?*?[*]u8,
++    out_len: ?*usize,
++) callconv(lib.calling_conv) Result {
++    if (comptime !lib.feature(.formatter)) return .unsupported;
++    const t = (terminal_ orelse return .invalid_value).terminal;
++    const extra = terminalExtra(extras) orelse return .invalid_value;
++    const alloc = lib.alloc.default(alloc_);
++    const opts: formatterpkg.Options = .{ .emit = .vt, .unwrap = false, .trim = false };
++
++    var aw: std.Io.Writer.Allocating = .init(alloc);
++    defer aw.deinit();
++
++    var terminal_formatter: formatterpkg.TerminalFormatter = .init(t, opts);
++    terminal_formatter.content = .none;
++    terminal_formatter.extra = extra;
++    terminal_formatter.extra.screen = .none;
++    terminal_formatter.format(&aw.writer) catch return .out_of_memory;
++
++    var screen_formatter: formatterpkg.ScreenFormatter = .init(t.screens.active, opts);
++    screen_formatter.content = .none;
++    screen_formatter.extra = extra.screen;
++    if (t.modes.get(.origin)) screen_formatter.cursor_origin = .{
++        .x = t.scrolling_region.left,
++        .y = t.scrolling_region.top,
++    };
++    if (t.screens.active.cursor.x <= t.scrolling_region.right) {
++        screen_formatter.wrap_column = t.scrolling_region.right;
++    }
++    screen_formatter.format(&aw.writer) catch return .out_of_memory;
++
++    return finishAlloc(&aw, out_ptr, out_len);
++}
++
++fn formatAlloc(
++    comptime Formatter: type,
++    formatter: *const Formatter,
++    alloc_: ?*const CAllocator,
++    out_ptr: ?*?[*]u8,
++    out_len: ?*usize,
++) Result {
++    var aw: std.Io.Writer.Allocating = .init(lib.alloc.default(alloc_));
++    defer aw.deinit();
++    formatter.format(&aw.writer) catch return .out_of_memory;
++    return finishAlloc(&aw, out_ptr, out_len);
++}
++
++fn writeAlloc(
++    alloc_: ?*const CAllocator,
++    out_ptr: ?*?[*]u8,
++    out_len: ?*usize,
++    bytes: []const u8,
++) Result {
++    var aw: std.Io.Writer.Allocating = .init(lib.alloc.default(alloc_));
++    defer aw.deinit();
++    aw.writer.writeAll(bytes) catch return .out_of_memory;
++    return finishAlloc(&aw, out_ptr, out_len);
++}
++
++/// Hands the bytes over as the C formatter's format_alloc does: freed with ghostty_free.
++fn finishAlloc(aw: *std.Io.Writer.Allocating, out_ptr_: ?*?[*]u8, out_len_: ?*usize) Result {
++    const out_ptr = out_ptr_ orelse return .invalid_value;
++    const out_len = out_len_ orelse return .invalid_value;
++    const buf = aw.toOwnedSlice() catch return .out_of_memory;
++    out_ptr.* = if (buf.len == 0) null else buf.ptr;
++    out_len.* = buf.len;
++    return .success;
++}
 +
 +/// The cursor style of the given screen, which DECSCUSR sets per screen. A screen that was never
 +/// entered has the style a terminal starts with.
 +pub fn screen_cursor_style(
 +    terminal_: terminal_c.Terminal,
-+    screen: ScreenSet.Key,
-+    out: ?*terminal_c.TerminalCursorStyle,
++    screen: c_int,
++    out: ?*CursorStyle,
 +) callconv(lib.calling_conv) Result {
 +    const t = (terminal_ orelse return .invalid_value).terminal;
-+    const key = std.enums.fromInt(ScreenSet.Key, @intFromEnum(screen)) orelse
-+        return .invalid_value;
++    const key = std.enums.fromInt(ScreenSet.Key, screen) orelse return .invalid_value;
 +    const style = if (t.screens.get(key)) |s| s.cursor.cursor_style else .block;
-+    (out orelse return .invalid_value).* = switch (style) {
-+        .bar => .bar,
-+        .block => .block,
-+        .underline => .underline,
-+        .block_hollow => .block_hollow,
-+    };
++    (out orelse return .invalid_value).* = .fromZig(style);
 +    return .success;
 +}
 +
@@ -1193,26 +604,135 @@ index 00000000..ce044226
 +    return .success;
 +}
 +
-+test "screen_cursor_style reads each screen's own style" {
++fn testTerminal(cols: u16, rows: u16) !terminal_c.Terminal {
 +    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 4));
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, cols, rows));
++    return t;
++}
++
++fn write(t: terminal_c.Terminal, bytes: []const u8) void {
++    terminal_c.vt_write(t, bytes.ptr, bytes.len);
++}
++
++const Formatted = struct {
++    bytes: []const u8,
++
++    fn deinit(self: Formatted) void {
++        lib.alloc.default(&lib.alloc.test_allocator).free(@constCast(self.bytes));
++    }
++};
++
++fn screenText(t: terminal_c.Terminal, key: ScreenSet.Key, rows: Rows, emit: formatterpkg.Format, trim: bool, extras: formatter_c.Extras) !Formatted {
++    var ptr: ?[*]u8 = null;
++    var len: usize = 0;
++    try testing.expectEqual(Result.success, format_screen(t, @intFromEnum(key), @intFromEnum(rows), @intFromEnum(emit), false, trim, extras, &lib.alloc.test_allocator, &ptr, &len));
++    return .{ .bytes = if (ptr) |p| p[0..len] else &.{} };
++}
++
++fn stateText(t: terminal_c.Terminal, extras: formatter_c.Extras) !Formatted {
++    var ptr: ?[*]u8 = null;
++    var len: usize = 0;
++    try testing.expectEqual(Result.success, format_state(t, extras, &lib.alloc.test_allocator, &ptr, &len));
++    return .{ .bytes = if (ptr) |p| p[0..len] else &.{} };
++}
++
++const cursor_extra = formatter_c.ExtraBit.cursor.mask();
++
++test "format_screen writes the primary screen while the alternate is active" {
++    const t = try testTerminal(10, 3);
++    defer terminal_c.free(t);
++    write(t, "a\r\nb\r\nc\r\nd\x1b[?1049h\x1b[Hvim");
++
++    const primary = try screenText(t, .primary, .all, .plain, true, 0);
++    defer primary.deinit();
++    try testing.expectEqualStrings("a\nb\nc\nd", primary.bytes);
++
++    const alternate = try screenText(t, .alternate, .all, .plain, true, 0);
++    defer alternate.deinit();
++    try testing.expectEqualStrings("vim", alternate.bytes);
++}
++
++test "format_screen splits history from the active area at the exact row" {
++    const t = try testTerminal(10, 3);
++    defer terminal_c.free(t);
++    // Two rows of history, then an active area whose bottom two rows are blank.
++    write(t, "a\r\nb\r\nc\r\n\r\n");
++
++    const history = try screenText(t, .primary, .history, .plain, true, 0);
++    defer history.deinit();
++    try testing.expectEqualStrings("a\nb", history.bytes);
++
++    const active = try screenText(t, .primary, .active, .plain, true, 0);
++    defer active.deinit();
++    try testing.expectEqualStrings("c", active.bytes);
++}
++
++test "format_screen writes no history for a screen without any" {
++    const t = try testTerminal(10, 3);
++    defer terminal_c.free(t);
++    write(t, "a");
++    const history = try screenText(t, .primary, .history, .plain, true, 0);
++    defer history.deinit();
++    try testing.expectEqualStrings("", history.bytes);
++}
++
++test "format_screen refuses terminal extras and a screen never entered is empty" {
++    const t = try testTerminal(10, 3);
++    defer terminal_c.free(t);
++    var ptr: ?[*]u8 = null;
++    var len: usize = 0;
++    try testing.expectEqual(Result.invalid_value, format_screen(t, @intFromEnum(ScreenSet.Key.primary), 0, @intFromEnum(formatterpkg.Format.vt), false, false, formatter_c.ExtraBit.palette.mask(), &lib.alloc.test_allocator, &ptr, &len));
++
++    const alternate = try screenText(t, .alternate, .all, .vt, false, 0);
++    defer alternate.deinit();
++    try testing.expectEqualStrings("", alternate.bytes);
++}
++
++test "format_state writes no content and places the cursor relative to origin mode" {
++    const t = try testTerminal(10, 6);
++    defer terminal_c.free(t);
++    write(t, "text\x1b[2;5r\x1b[?6h\x1b[2;3H");
++
++    const state = try stateText(t, cursor_extra);
++    defer state.deinit();
++    // Row 3, column 3 of the screen is row 2 of the region starting at row 2.
++    try testing.expectEqualStrings("\x1b[2;3H", state.bytes);
++}
++
++test "format_state restores a pending wrap on a blank cell" {
++    const t = try testTerminal(5, 3);
++    defer terminal_c.free(t);
++    // The cursor waits to wrap at the last column, whose cell holds nothing visible.
++    write(t, "abcd ");
++    try testing.expect(t.?.terminal.screens.active.cursor.pending_wrap);
++
++    const state = try stateText(t, cursor_extra);
++    defer state.deinit();
++
++    const replayed = try testTerminal(5, 3);
++    defer terminal_c.free(replayed);
++    write(replayed, state.bytes);
++    try testing.expect(replayed.?.terminal.screens.active.cursor.pending_wrap);
++    try testing.expectEqual(@as(u16, 4), replayed.?.terminal.screens.active.cursor.x);
++}
++
++test "screen_cursor_style reads each screen's own style" {
++    const t = try testTerminal(10, 4);
 +    defer terminal_c.free(t);
 +
-+    var style: terminal_c.TerminalCursorStyle = .bar;
-+    try testing.expectEqual(Result.success, screen_cursor_style(t, .alternate, &style));
-+    try testing.expectEqual(terminal_c.TerminalCursorStyle.block, style);
++    var style: CursorStyle = .bar;
++    try testing.expectEqual(Result.success, screen_cursor_style(t, @intFromEnum(ScreenSet.Key.alternate), &style));
++    try testing.expectEqual(CursorStyle.block, style);
 +
-+    const input = "\x1b[5 q\x1b[?1049h\x1b[4 q";
-+    terminal_c.vt_write(t, input, input.len);
-+    try testing.expectEqual(Result.success, screen_cursor_style(t, .primary, &style));
-+    try testing.expectEqual(terminal_c.TerminalCursorStyle.bar, style);
-+    try testing.expectEqual(Result.success, screen_cursor_style(t, .alternate, &style));
-+    try testing.expectEqual(terminal_c.TerminalCursorStyle.underline, style);
++    write(t, "\x1b[5 q\x1b[?1049h\x1b[4 q");
++    try testing.expectEqual(Result.success, screen_cursor_style(t, @intFromEnum(ScreenSet.Key.primary), &style));
++    try testing.expectEqual(CursorStyle.bar, style);
++    try testing.expectEqual(Result.success, screen_cursor_style(t, @intFromEnum(ScreenSet.Key.alternate), &style));
++    try testing.expectEqual(CursorStyle.underline, style);
 +}
 +
 +test "mouse_tracking reads the mode set last, not the highest" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 4));
++    const t = try testTerminal(10, 4);
 +    defer terminal_c.free(t);
 +
 +    var event: u16 = 1;
@@ -1221,36 +741,32 @@ index 00000000..ce044226
 +    try testing.expectEqual(@as(u16, 0), event);
 +    try testing.expectEqual(@as(u16, 0), format);
 +
-+    const input = "\x1b[?1002h\x1b[?1000h\x1b[?1006h";
-+    terminal_c.vt_write(t, input, input.len);
++    write(t, "\x1b[?1002h\x1b[?1000h\x1b[?1006h");
 +    try testing.expectEqual(Result.success, mouse_tracking(t, &event, &format));
 +    try testing.expectEqual(@as(u16, 1000), event);
 +    try testing.expectEqual(@as(u16, 1006), format);
 +}
 +
 +test "mouse_shift_capture says whether and what a program asked" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 4));
++    const t = try testTerminal(10, 4);
 +    defer terminal_c.free(t);
 +
 +    var capture: u8 = 9;
 +    try testing.expectEqual(Result.success, mouse_shift_capture(t, &capture));
 +    try testing.expectEqual(@as(u8, 0), capture);
-+    terminal_c.vt_write(t, "\x1b[>1s", 5);
++    write(t, "\x1b[>1s");
 +    try testing.expectEqual(Result.success, mouse_shift_capture(t, &capture));
 +    try testing.expectEqual(@as(u8, 2), capture);
-+    terminal_c.vt_write(t, "\x1b[>0s", 5);
++    write(t, "\x1b[>0s");
 +    try testing.expectEqual(Result.success, mouse_shift_capture(t, &capture));
 +    try testing.expectEqual(@as(u8, 1), capture);
 +}
 +
 +test "clear_screen away from a prompt erases above the cursor and history" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    const t = try testTerminal(10, 3);
 +    defer terminal_c.free(t);
 +
-+    const input = "old\r\na\r\nb\r\nc";
-+    terminal_c.vt_write(t, input, input.len);
++    write(t, "old\r\na\r\nb\r\nc");
 +    var at_prompt = true;
 +    try testing.expectEqual(Result.success, clear_screen(t, true, &at_prompt));
 +    try testing.expect(!at_prompt);
@@ -1261,50 +777,56 @@ index 00000000..ce044226
 +}
 +
 +test "clear_screen at a prompt erases the screen and says so" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    const t = try testTerminal(10, 3);
 +    defer terminal_c.free(t);
 +
-+    const input = "a\r\nb\r\n\x1b]133;A\x07$ ";
-+    terminal_c.vt_write(t, input, input.len);
++    write(t, "a\r\nb\r\n\x1b]133;A\x07$ ");
 +    var at_prompt = false;
 +    try testing.expectEqual(Result.success, clear_screen(t, true, &at_prompt));
 +    try testing.expect(at_prompt);
 +}
 +
++test "clear_screen leaves the alternate screen alone" {
++    const t = try testTerminal(10, 3);
++    defer terminal_c.free(t);
++
++    write(t, "\x1b[?1049hvim\r\nhere");
++    var at_prompt = true;
++    try testing.expectEqual(Result.success, clear_screen(t, true, &at_prompt));
++    try testing.expect(!at_prompt);
++
++    const text = try t.?.terminal.plainString(testing.allocator);
++    defer testing.allocator.free(text);
++    try testing.expectEqualStrings("vim\nhere", text);
++}
++
 +test "kitty_image_loading is set from the first chunk until the last" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    const t = try testTerminal(10, 3);
 +    defer terminal_c.free(t);
 +
 +    var loading = true;
 +    try testing.expectEqual(Result.success, kitty_image_loading(t, &loading));
 +    try testing.expect(!loading);
 +
-+    const first = "\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\";
-+    terminal_c.vt_write(t, first, first.len);
++    write(t, "\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\");
 +    try testing.expectEqual(Result.success, kitty_image_loading(t, &loading));
 +    try testing.expect(loading == build_options.kitty_graphics);
 +
-+    const last = "\x1b_Gm=0;/w==\x1b\\";
-+    terminal_c.vt_write(t, last, last.len);
++    write(t, "\x1b_Gm=0;/w==\x1b\\");
 +    try testing.expectEqual(Result.success, kitty_image_loading(t, &loading));
 +    try testing.expect(!loading);
 +}
 +
 +test "kitty_image_drop_loading ends an upload whose program stopped sending" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    const t = try testTerminal(10, 3);
 +    defer terminal_c.free(t);
 +
 +    var bytes: u64 = 1;
 +    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
 +    try testing.expectEqual(@as(u64, 0), bytes);
 +
-+    const first = "\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\";
-+    terminal_c.vt_write(t, first, first.len);
-+    const prompt = "\r\n$ ";
-+    terminal_c.vt_write(t, prompt, prompt.len);
++    write(t, "\x1b_Ga=t,f=32,s=1,v=1,i=7,q=2,m=1;AAAA\x1b\\");
++    write(t, "\r\n$ ");
 +    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
 +    if (!build_options.kitty_graphics) return;
 +    try testing.expect(bytes > 0);
@@ -1316,201 +838,3 @@ index 00000000..ce044226
 +    try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
 +    try testing.expectEqual(@as(u64, 0), bytes);
 +}
-+
-+test "clear_screen leaves the alternate screen alone" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
-+    defer terminal_c.free(t);
-+
-+    const input = "\x1b[?1049hvim\r\nhere";
-+    terminal_c.vt_write(t, input, input.len);
-+    var at_prompt = true;
-+    try testing.expectEqual(Result.success, clear_screen(t, true, &at_prompt));
-+    try testing.expect(!at_prompt);
-+
-+    const text = try t.?.terminal.plainString(testing.allocator);
-+    defer testing.allocator.free(text);
-+    try testing.expectEqualStrings("vim\nhere", text);
-+}
-diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
-index 701a798b..f6726464 100644
---- a/src/terminal/formatter.zig
-+++ b/src/terminal/formatter.zig
-@@ -82,6 +82,15 @@ pub const CodepointMap = struct {
- };
- 
- /// Common encoding options regardless of what exact formatter is used.
-+/// Whether any of the cells is painted - with a background or another style -
-+/// whether or not it has text. For `Options.styled_blank_rows`.
-+pub fn paintedAny(cells: []const Cell) bool {
-+    for (cells) |cell| {
-+        if (!cell.isEmpty() or cell.hasStyling()) return true;
-+    }
-+    return false;
-+}
-+
- pub const Options = struct {
-     /// The format to emit.
-     emit: Format,
-@@ -96,6 +105,21 @@ pub const Options = struct {
-     /// is currently only space characters (0x20).
-     trim: bool = true,
- 
-+    /// Write blank cells that fall between text unstyled, as the screen
-+    /// holds them. By default a run of blank cells is written as spaces in
-+    /// whatever style the previous text left open, so a background or an
-+    /// underline carries across the gap to the next text on the row.
-+    unstyled_blanks: bool = false,
-+
-+    /// In styled output, keep a row with no text but a cell painted with a
-+    /// background or another style, as erasing with a background leaves it.
-+    /// By default such a row is dropped as blank, and the paint with it.
-+    styled_blank_rows: bool = false,
-+
-+    /// In VT output, write the hyperlinks cells carry as OSC 8, as HTML
-+    /// output writes them as links. By default VT output writes none.
-+    vt_hyperlinks: bool = false,
-+
-     /// Replace matching Unicode codepoints with some other values.
-     /// This will use the last matching range found in the list.
-     codepoint_map: ?std.MultiArrayList(CodepointMap) = .{},
-@@ -1177,7 +1201,10 @@ pub const PageFormatter = struct {
-             // If this row is blank, accumulate to avoid a bunch of extra
-             // work later. If it isn't blank, make sure we dump all our
-             // blanks.
--            if (!Cell.hasTextAny(cells_subset)) {
-+            const styled = comptime formatStyled(emit);
-+            if (!Cell.hasTextAny(cells_subset) and
-+                !(styled and self.opts.styled_blank_rows and paintedAny(cells_subset)))
-+            {
-                 blank_rows += 1;
-                 continue;
-             }
-@@ -1337,6 +1364,18 @@ pub const PageFormatter = struct {
-                 // This cell is not blank. If we have accumulated blank cells
-                 // then we want to emit them now.
-                 if (blank_cells > 0) {
-+                    if (comptime formatStyled(emit)) {
-+                        if (self.opts.unstyled_blanks and !style.default()) {
-+                            try self.formatStyleClose(emit, writer);
-+                            style = .{};
-+                            style_id = 0;
-+                        }
-+                    }
-+                    // Cells nobody wrote belong to no link; the next linked cell opens it again.
-+                    if (emit == .vt and self.opts.vt_hyperlinks and current_hyperlink_id != null) {
-+                        try self.formatHyperlinkClose(emit, writer);
-+                        current_hyperlink_id = null;
-+                    }
-                     try writer.splatByteAll(' ', blank_cells);
- 
-                     if (self.point_map) |*map| try self.appendBlankPoints(
-@@ -1432,10 +1471,9 @@ pub const PageFormatter = struct {
- 
-                 // Hyperlink state
-                 hyperlink: {
--                    // We currently only emit hyperlinks for HTML. In the
--                    // future we can support emitting OSC 8 hyperlinks for
--                    // VT output as well.
--                    if (comptime emit != .html) break :hyperlink;
-+                    // HTML always, VT only when asked for.
-+                    if (comptime emit == .plain) break :hyperlink;
-+                    if (emit == .vt and !self.opts.vt_hyperlinks) break :hyperlink;
- 
-                     // Get the hyperlink ID. This ID is our internal ID,
-                     // not necessarily the OSC8 ID.
-@@ -1460,17 +1498,17 @@ pub const PageFormatter = struct {
-                     current_hyperlink_id = link_id;
- 
-                     // Emit the opening hyperlink tag
--                    const uri = uri: {
--                        const link = self.page.hyperlink_set.get(
--                            self.page.memory,
--                            link_id,
--                        );
--                        break :uri link.uri.offset.ptr(self.page.memory)[0..link.uri.len];
-+                    const link = self.page.hyperlink_set.get(self.page.memory, link_id);
-+                    const uri = link.uri.offset.ptr(self.page.memory)[0..link.uri.len];
-+                    const id: ?[]const u8 = switch (link.id) {
-+                        .explicit => |explicit| explicit.offset.ptr(self.page.memory)[0..explicit.len],
-+                        .implicit => null,
-                     };
-                     try self.formatHyperlinkOpen(
-                         emit,
-                         writer,
-                         uri,
-+                        id,
-                     );
- 
-                     // If we have a point map, we map the hyperlink to
-@@ -1481,6 +1519,7 @@ pub const PageFormatter = struct {
-                             emit,
-                             &discarding.writer,
-                             uri,
-+                            id,
-                         );
-                         map.map.appendNTimes(
-                             map.alloc,
-@@ -1531,7 +1570,7 @@ pub const PageFormatter = struct {
-         // If the style is non-default, we need to close our style tag.
-         if (!style.default()) try self.formatStyleClose(emit, writer);
- 
--        // Close any open hyperlink for HTML output
-+        // Close any open hyperlink
-         if (current_hyperlink_id != null) try self.formatHyperlinkClose(emit, writer);
- 
-         // Close the monospace wrapper for HTML output
-@@ -1650,7 +1689,7 @@ pub const PageFormatter = struct {
-             // cell must belong to the currently open hyperlink (or none).
-             // Transitions take the slow path. This is checked after blank
-             // accounting because blank cells never touch hyperlink state.
--            if (comptime emit == .html) {
-+            if (emit == .html or (emit == .vt and self.opts.vt_hyperlinks)) {
-                 if (cell.hyperlink) {
-                     const run_id = run_hyperlink_id orelse break;
-                     const cell_id = self.page.lookupHyperlink(cell) orelse break;
-@@ -1661,6 +1700,17 @@ pub const PageFormatter = struct {
-             // The page coordinate of this cell, for point tracking.
-             const x: size.CellCountInt = @intCast(run_x + i);
- 
-+            // Blanks inside a styled run would take the run's style. The
-+            // slow path writes them unstyled when asked to.
-+            if (comptime formatStyled(emit)) {
-+                if (pending > 0 and self.opts.unstyled_blanks and run_style_id != 0) break;
-+            }
-+
-+            // So would they take an open link; the slow path closes it first.
-+            if (emit == .vt and self.opts.vt_hyperlinks) {
-+                if (pending > 0 and run_hyperlink_id != null) break;
-+            }
-+
-             // This cell produces output: materialize accumulated blanks.
-             if (pending > 0) {
-                 if (comptime track_points) try self.appendBlankPoints(
-@@ -2049,9 +2099,15 @@ pub const PageFormatter = struct {
-         comptime emit: Format,
-         writer: *std.Io.Writer,
-         uri: []const u8,
-+        id: ?[]const u8,
-     ) std.Io.Writer.Error!void {
-         switch (emit) {
--            .plain, .vt => unreachable,
-+            .plain => unreachable,
-+
-+            .vt => if (id) |explicit|
-+                try writer.print("\x1b]8;id={s};{s}\x1b\\", .{ explicit, uri })
-+            else
-+                try writer.print("\x1b]8;;{s}\x1b\\", .{uri}),
- 
-             // layout since we're primarily using it as a CSS wrapper.
-             .html => {
-@@ -2073,7 +2129,8 @@ pub const PageFormatter = struct {
-     ) std.Io.Writer.Error!void {
-         const str: []const u8 = switch (emit) {
-             .html => "</a>",
--            .plain, .vt => return,
-+            .vt => "\x1b]8;;\x1b\\",
-+            .plain => return,
-         };
- 
-         try writer.writeAll(str);

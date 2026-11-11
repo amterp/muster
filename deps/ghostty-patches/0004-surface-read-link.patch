@@ -6,11 +6,12 @@ It reuses OSC 8 data and configured link patterns without resolving paths.
 Existing link callbacks and mouse behavior are unchanged.
 
 diff --git a/include/ghostty.h b/include/ghostty.h
+index 439195c7..83fe7152 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
-@@ -1184,6 +1184,10 @@
-                                                                void*,
-                                                                bool);
+@@ -1261,6 +1261,10 @@ GHOSTTY_API void ghostty_surface_complete_clipboard_request(
+ GHOSTTY_API void ghostty_surface_deny_clipboard_request(ghostty_surface_t,
+                                                            void*);
  GHOSTTY_API bool ghostty_surface_has_selection(ghostty_surface_t);
 +// Read a raw link at points from the surface's top left, ignoring mouse capture
 +// and modifiers. Paths are not resolved. Free the returned string with ghostty_string_free.
@@ -19,10 +20,47 @@ diff --git a/include/ghostty.h b/include/ghostty.h
  GHOSTTY_API bool ghostty_surface_read_selection(ghostty_surface_t, ghostty_text_s*);
  GHOSTTY_API bool ghostty_surface_read_text(ghostty_surface_t,
                                                ghostty_selection_s,
+diff --git a/src/Surface.zig b/src/Surface.zig
+index 7f7b1df8..749dee55 100644
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -4440,6 +4440,31 @@ const Link = struct {
+     selection: terminal.Selection,
+ };
+ 
++/// Reads a raw link without applying mouse capture, modifiers, or path resolution.
++/// The caller owns the returned URL, allocated with alloc.
++pub fn readLinkAtPos(
++    self: *Surface,
++    pos: apprt.CursorPos,
++    alloc: Allocator,
++) !?struct { kind: apprt.action.OpenUrl.Kind, url: [:0]const u8 } {
++    self.renderer_state.mutex.lockUncancelable(global.io());
++    defer self.renderer_state.mutex.unlock(global.io());
++
++    const screen = self.renderer_state.terminal.screens.active;
++    const pin = screen.pages.pin(.{ .viewport = self.posToViewport(pos.x, pos.y) }) orelse return null;
++    if (self.config.link_osc8) {
++        if (self.osc8URI(pin)) |uri| return .{
++            .kind = .osc8,
++            .url = try alloc.dupeSentinel(u8, uri, 0),
++        };
++    }
++    const link = try self.linkAtPin(pin, null) orelse return null;
++    return .{
++        .kind = .unknown,
++        .url = try screen.selectionString(alloc, .{ .sel = link.selection, .trim = false }),
++    };
++}
++
+ /// Returns the link at the given cursor position, if any.
+ ///
+ /// Requires the renderer mutex is held.
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+index 548169bc..c6e5ed96 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
-@@ -1898,6 +1898,25 @@
+@@ -2147,6 +2147,25 @@ pub const CAPI = struct {
      }
  
      /// Tell the surface that it needs to schedule a render
@@ -48,38 +86,3 @@ diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
      export fn ghostty_surface_mouse_button(
          surface: *Surface,
          action: input.MouseButtonState,
-diff --git a/src/Surface.zig b/src/Surface.zig
---- a/src/Surface.zig
-+++ b/src/Surface.zig
-@@ -4310,6 +4310,31 @@
-     selection: terminal.Selection,
- };
- 
-+/// Reads a raw link without applying mouse capture, modifiers, or path resolution.
-+/// The caller owns the returned URL, allocated with alloc.
-+pub fn readLinkAtPos(
-+    self: *Surface,
-+    pos: apprt.CursorPos,
-+    alloc: Allocator,
-+) !?struct { kind: apprt.action.OpenUrl.Kind, url: [:0]const u8 } {
-+    self.renderer_state.mutex.lockUncancelable(global.io());
-+    defer self.renderer_state.mutex.unlock(global.io());
-+
-+    const screen = self.renderer_state.terminal.screens.active;
-+    const pin = screen.pages.pin(.{ .viewport = self.posToViewport(pos.x, pos.y) }) orelse return null;
-+    if (self.config.link_osc8) {
-+        if (self.osc8URI(pin)) |uri| return .{
-+            .kind = .osc8,
-+            .url = try alloc.dupeZ(u8, uri),
-+        };
-+    }
-+    const link = try self.linkAtPin(pin, null) orelse return null;
-+    return .{
-+        .kind = .unknown,
-+        .url = try screen.selectionString(alloc, .{ .sel = link.selection, .trim = false }),
-+    };
-+}
-+
- /// Returns the link at the given cursor position, if any.
- ///
- /// Requires the renderer mutex is held.

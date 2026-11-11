@@ -31,10 +31,10 @@ Muster carries this for good rather than sending it upstream. The Zig
 test at the end of src/terminal/c/muster.zig covers it.
 
 diff --git a/include/ghostty/vt/muster.h b/include/ghostty/vt/muster.h
-index 150eb755..c80dcddc 100644
+index 2bb8a624..1ac16321 100644
 --- a/include/ghostty/vt/muster.h
 +++ b/include/ghostty/vt/muster.h
-@@ -107,6 +107,20 @@ GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_loading_bytes(
+@@ -164,6 +164,20 @@ GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_loading_bytes(
  GHOSTTY_API GhosttyResult ghostty_terminal_kitty_image_drop_loading(
      GhosttyTerminal terminal);
  
@@ -56,22 +56,22 @@ index 150eb755..c80dcddc 100644
  }
  #endif
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 5ed7391c..f31f41d5 100644
+index 511df4af..2baeb71e 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -274,6 +274,7 @@ comptime {
+@@ -292,6 +292,7 @@ comptime {
          @export(&c.muster_kitty_image_loading, .{ .name = "ghostty_terminal_kitty_image_loading" });
          @export(&c.muster_kitty_image_loading_bytes, .{ .name = "ghostty_terminal_kitty_image_loading_bytes" });
          @export(&c.muster_kitty_image_drop_loading, .{ .name = "ghostty_terminal_kitty_image_drop_loading" });
 +        @export(&c.muster_rows_trimmed, .{ .name = "ghostty_terminal_rows_trimmed" });
-         @export(&c.terminal_selection_format_buf, .{ .name = "ghostty_terminal_selection_format_buf" });
-         @export(&c.terminal_selection_format_alloc, .{ .name = "ghostty_terminal_selection_format_alloc" });
+         @export(&c.formatter_free, .{ .name = "ghostty_formatter_free" });
          @export(&c.render_state_new, .{ .name = "ghostty_render_state_new" });
+         @export(&c.render_state_update, .{ .name = "ghostty_render_state_update" });
 diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
-index 429a3633..1ccca028 100644
+index f46d75b6..afb3ab5d 100644
 --- a/src/terminal/PageList.zig
 +++ b/src/terminal/PageList.zig
-@@ -419,6 +419,14 @@ limits: Limits,
+@@ -469,6 +469,14 @@ limits: Limits,
  /// specifically for scrollbar information so we can have the total size.
  total_rows: usize,
  
@@ -86,15 +86,15 @@ index 429a3633..1ccca028 100644
  /// The list of tracked pins. These are kept up to date automatically.
  tracked_pins: PinSet,
  
-@@ -1015,6 +1023,7 @@ pub fn reset(self: *PageList) void {
+@@ -1048,6 +1056,7 @@ pub fn reset(self: *PageList) void {
      ) catch @panic("initPages failed");
  
      // Our total rows always goes back to the default
 +    self.rows_trimmed += self.total_rows;
      self.total_rows = self.rows;
  
-     // Update all our tracked pins to point to our first page top-left
-@@ -3956,6 +3965,7 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
+     // The pages the hints were measured from are gone.
+@@ -4092,6 +4101,7 @@ pub fn grow(self: *PageList) Allocator.Error!?*List.Node {
              self.total_rows += first.rows();
              break :prune;
          }
@@ -102,7 +102,7 @@ index 429a3633..1ccca028 100644
  
          // If we have a pin viewport cache then we need to update it.
          if (self.viewport == .pin) viewport: {
-@@ -5426,6 +5436,7 @@ fn eraseRows(
+@@ -6173,6 +6183,7 @@ fn eraseRows(
  
      // Update our total row count
      self.total_rows -= erased;
@@ -110,7 +110,7 @@ index 429a3633..1ccca028 100644
  
      // If we deleted active, we need to regrow because one of our invariants
      // is that we always have full active space.
-@@ -6859,6 +6870,7 @@ const Limits = struct {
+@@ -7651,6 +7662,7 @@ const Limits = struct {
              // by paths that already adjusted total_rows.
              pagelist.erasePage(first);
              pagelist.total_rows -= first_rows;
@@ -119,10 +119,10 @@ index 429a3633..1ccca028 100644
          }
  
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index 57950c56..a4e8aa2f 100644
+index 901d78b2..6c6d740e 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
-@@ -92,6 +92,7 @@ pub const muster_clear_screen = muster.clear_screen;
+@@ -101,6 +101,7 @@ pub const muster_clear_screen = muster.clear_screen;
  pub const muster_kitty_image_loading = muster.kitty_image_loading;
  pub const muster_kitty_image_loading_bytes = muster.kitty_image_loading_bytes;
  pub const muster_kitty_image_drop_loading = muster.kitty_image_drop_loading;
@@ -131,13 +131,13 @@ index 57950c56..a4e8aa2f 100644
  pub const render_state_new = render.new;
  pub const render_state_free = render.free;
 diff --git a/src/terminal/c/muster.zig b/src/terminal/c/muster.zig
-index ce044226..95afeb1f 100644
+index f9693fb1..5d0010b4 100644
 --- a/src/terminal/c/muster.zig
 +++ b/src/terminal/c/muster.zig
-@@ -142,6 +142,19 @@ pub fn kitty_image_loading_bytes(
- /// Drops the kitty images still arriving on both screens, as a full reset does. Nothing else
- /// does: a program cut off between two chunks leaves its image arriving until another
- /// transmission ends it, and that one is appended to it.
+@@ -290,6 +290,19 @@ pub fn kitty_image_loading_bytes(
+     return .success;
+ }
+ 
 +/// How many rows have left the top of the active screen's history since the screen was made:
 +/// pruned to the scrollback limit, erased, or discarded by a reset. A row's index counted from
 +/// the oldest row held, plus this, numbers it from the start of the screen's history, which
@@ -151,33 +151,31 @@ index ce044226..95afeb1f 100644
 +    return .success;
 +}
 +
- pub fn kitty_image_drop_loading(terminal_: terminal_c.Terminal) callconv(lib.calling_conv) Result {
-     const t = (terminal_ orelse return .invalid_value).terminal;
-     if (comptime build_options.kitty_graphics) {
-@@ -295,3 +308,26 @@ test "clear_screen leaves the alternate screen alone" {
-     defer testing.allocator.free(text);
-     try testing.expectEqualStrings("vim\nhere", text);
+ /// Drops the kitty images still arriving on both screens, as a full reset does. Nothing else
+ /// does: a program cut off between two chunks leaves its image arriving until another
+ /// transmission ends it, and that one is appended to it.
+@@ -541,3 +554,24 @@ test "kitty_image_drop_loading ends an upload whose program stopped sending" {
+     try testing.expectEqual(Result.success, kitty_image_loading_bytes(t, &bytes));
+     try testing.expectEqual(@as(u64, 0), bytes);
  }
 +
 +test "rows_trimmed counts the history erased and the rows a reset discards" {
-+    var t: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &t, 10, 3));
++    const t = try testTerminal(10, 3);
 +    defer terminal_c.free(t);
 +
 +    var trimmed: u64 = 9;
 +    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
 +    try testing.expectEqual(@as(u64, 0), trimmed);
 +
-+    const input = "a\r\nb\r\nc\r\nd\r\ne";
-+    terminal_c.vt_write(t, input, input.len);
++    write(t, "a\r\nb\r\nc\r\nd\r\ne");
 +    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
 +    try testing.expectEqual(@as(u64, 0), trimmed);
 +
-+    terminal_c.vt_write(t, "\x1b[3J", 4);
++    write(t, "\x1b[3J");
 +    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
 +    try testing.expectEqual(@as(u64, 2), trimmed);
 +
-+    terminal_c.vt_write(t, "\x1bc", 2);
++    write(t, "\x1bc");
 +    try testing.expectEqual(Result.success, rows_trimmed(t, &trimmed));
 +    try testing.expectEqual(@as(u64, 5), trimmed);
 +}
