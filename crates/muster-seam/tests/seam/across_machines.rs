@@ -2136,7 +2136,20 @@ fn a_removed_pane_leaves_a_region_the_saved_arrangement_reopens() {
 
     devenv.restart();
     turn.relaunch();
-    start();
+    // Both machines answer and are heard before the window opens, so nothing a machine says
+    // afterwards moves the removed pane: opening the window has to.
+    watch();
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: config.to_string_lossy().into_owned(),
+        state_path: arrangement.to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    until(
+        "the window to follow the devenv and hear its panes",
+        || followed_panes().iter().any(|pane| pane == SPAN_X),
+        || format!("the window follows {:?}", followed_panes()),
+    );
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
     until(
         "the removed pane to be in a tab of its own, and the other back in the tab",
         || {
@@ -2145,6 +2158,16 @@ fn a_removed_pane_leaves_a_region_the_saved_arrangement_reopens() {
         },
         || format!("the window lists {:?}", rows_by_tab()),
     );
+}
+
+/// Every pane the daemons this window follows hold, whether or not the window is open.
+fn followed_panes() -> Vec<String> {
+    match answer(request::Payload::ReadWindow(ReadWindow::default())).payload {
+        Some(response::Payload::Window(window)) => {
+            window.panes.into_iter().map(|pane| pane.pane_id).collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// The devenv was unreachable while the laptop's copy was rearranged, so its copy is older. The

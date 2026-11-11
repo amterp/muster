@@ -5662,11 +5662,14 @@ fn settle_what_every_window_shows() {
 ///
 /// Idempotent, and the same call the event path makes for one daemon.
 fn reconcile_every_daemon() {
-    let mut session = poison::lock(&SESSION, "session");
-    let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
-    for daemon in &daemons {
-        session.reconcile(daemon);
+    {
+        let mut session = poison::lock(&SESSION, "session");
+        let daemons: Vec<DaemonId> = session.backends.keys().cloned().collect();
+        for daemon in &daemons {
+            session.reconcile(daemon);
+        }
     }
+    move_departed_parts();
 }
 
 /// Writes the arrangement down, if it has changed since the last time.
@@ -6033,6 +6036,7 @@ fn publish(cause: &str) {
     read_what_is_looked_at();
     announce_asking();
     banners::announce();
+    move_departed_parts();
 }
 
 /// One window's part of a publish, settled under the lock and sent after it.
@@ -6103,15 +6107,12 @@ impl Published {
 /// shell, the shell reacts by dispatching, and a dispatch that arrived while this held the
 /// session would deadlock against it on the same thread.
 fn reconcile(daemon: &DaemonId) {
-    let (opened, departing) = {
+    let opened = {
         let mut session = poison::lock(&SESSION, "session");
         session.reconcile(daemon);
-        let departing = std::mem::take(&mut session.departing);
-        (session.windows.values().any(Window::is_open), departing)
+        session.windows.values().any(Window::is_open)
     };
-    for departure in departing {
-        departure.move_into_a_tab_of_its_own();
-    }
+    move_departed_parts();
     // A standing rule rather than a launch-time one, because the states that produce a
     // daemon with nothing on screen keep arriving: a tab Muster asked for a moment ago
     // and is waiting on, a daemon that came back after a restart with its tabs, a tab closed
@@ -6129,6 +6130,15 @@ fn reconcile(daemon: &DaemonId) {
     // difference between empty and dismissed.
     if opened {
         settle_what_every_window_shows();
+    }
+}
+
+/// Moves each part a reconcile found taken out of its tab into a tab of its own. After every
+/// place that reconciles under the session's lock, since the moves are requests that need it.
+fn move_departed_parts() {
+    let departing = std::mem::take(&mut poison::lock(&SESSION, "session").departing);
+    for departure in departing {
+        departure.move_into_a_tab_of_its_own();
     }
 }
 
