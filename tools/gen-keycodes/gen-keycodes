@@ -67,7 +67,14 @@ def c_enum_names() -> list[str]:
     if not body:
         die(f"could not find the GhosttyKey enum in {EVENT_H}")
     names = ["GHOSTTY_KEY_UNIDENTIFIED"]
-    names += re.findall(r"^\s*(GHOSTTY_KEY_[A-Z0-9_]+),\s*$", body.group(1), re.M)
+    # Members may spell their value out (`GHOSTTY_KEY_A = 20,`). The tables use a key's
+    # position as its value, so a spelled-out value has to agree with it.
+    members = re.findall(r"^\s*(GHOSTTY_KEY_[A-Z0-9_]+)(?:\s*=\s*(\d+))?,\s*$", body.group(1), re.M)
+    for name, value in members:
+        if value and int(value) != len(names):
+            die(f"{name} is {value} in {EVENT_H} but at position {len(names)}; "
+                "the generator assumes the enum counts up from 0 in order")
+        names.append(name)
     if len(names) < 100:
         die(f"only {len(names)} keys parsed from {EVENT_H}; the enum shape must have changed")
     if len(names) != len(set(names)):
