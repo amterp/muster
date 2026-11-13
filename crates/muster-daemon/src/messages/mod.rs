@@ -105,6 +105,9 @@ pub(crate) struct Messages {
     commanded: Vec<doorbell::Commanded>,
     /// Panes whose wake command is running. Nothing else is typed or run there until it ends.
     commanding: HashSet<String>,
+    /// The wake each running command hands over, by pane, as participant and group: on its way,
+    /// though in no other list until the command ends.
+    command_wakes: HashMap<String, (String, String)>,
     /// Wakes a doorbell look has taken from `pending` to ring or hand to a command, by
     /// participant and group, while it does so without this lock: on their way, though nothing
     /// else records them until each is rung or put back.
@@ -177,6 +180,7 @@ impl Messages {
             rung: Vec::new(),
             commanded: Vec::new(),
             commanding: HashSet::new(),
+            command_wakes: HashMap::new(),
             in_hand: HashSet::new(),
             type_instead: HashSet::new(),
             stalled: HashSet::new(),
@@ -967,11 +971,12 @@ impl Messages {
     }
 
     /// Whether a wake for `name` about `group` is past waiting: being rung or handed over, rung
-    /// and not yet taken, or handed to its session by command and not yet taken.
+    /// and not yet taken, being handed to its session by command, or handed and not yet taken.
     fn delivering(&self, name: &str, group: &str) -> bool {
         self.in_hand.contains(&(name.to_string(), group.to_string()))
             || self.rung.iter().any(|rung| rung.is_for(name, group))
             || self.commanded.iter().any(|commanded| commanded.is_for(name, group))
+            || self.command_wakes.values().any(|(to, about)| to == name && about == group)
     }
 
     /// A wake that `wake` is left to while a doorbell look has it in hand, told by what held it at
@@ -2806,6 +2811,18 @@ mod tests {
                 again: false,
             },
         }
+    }
+
+    /// A wake whose command is running is on its way, as one rung or handed over is: `msg who`
+    /// says so rather than that the agent was rung and has not read it.
+    #[test]
+    fn a_wake_whose_command_is_running_is_on_its_way() {
+        let mut messages = scratch("commanding");
+        assert!(!messages.wakes_for("heron", "g"));
+        let handed = ("heron".to_string(), "g".to_string());
+        messages.command_wakes.insert("p3".to_string(), handed);
+        assert!(messages.wakes_for("heron", "g"));
+        assert!(!messages.wakes_for("heron", "other"), "a wake about another group");
     }
 
     /// A post that lands while a doorbell look has the agent's earlier wake in hand is reported

@@ -589,6 +589,8 @@ fn command_all(shared: &Arc<Shared>, commanding: Reaching) -> Vec<Came> {
         {
             let mut messages = shared.messages();
             messages.commanding.insert(pane.clone());
+            let handed = (wake.name.clone(), wake.notice.group.clone());
+            messages.command_wakes.insert(pane.clone(), handed);
             messages.held.remove(&pane);
         }
         // A harness can start its turn before the command exits.
@@ -684,6 +686,7 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
             let mut messages = shared.messages();
             messages.stalled.remove(&pane);
             messages.commanding.remove(&pane);
+            messages.command_wakes.remove(&pane);
             messages.commanded.push(Commanded { wake, session, at: Instant::now(), wait });
         }
         Err(failed) => {
@@ -717,6 +720,7 @@ fn settle(shared: &Shared, ran: Ran, outcome: Result<(), command::Failed>) {
             // After the id is forgotten, so the doorbell's next look at the pane types the wake.
             let mut messages = shared.messages();
             messages.commanding.remove(&pane);
+            messages.command_wakes.remove(&pane);
             messages.pending.push(wake);
         }
     }
