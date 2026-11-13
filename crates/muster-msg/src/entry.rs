@@ -26,6 +26,10 @@ pub enum What {
         /// idle.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         urgent: bool,
+        /// Its author asked for no reply, as "stand by" or "nothing further" does: it does not
+        /// ask whom it is for for work, so a turn it starts is not their going to work.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        no_reply: bool,
         /// Answers its author offers, which make it a question (MIP-9, section 6).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         answers: Vec<String>,
@@ -166,6 +170,7 @@ mod tests {
                 to: vec!["a".to_string()],
                 body: "Answer: Skip it".to_string(),
                 urgent: false,
+                no_reply: false,
                 answers: vec!["Again?".to_string(), "No".to_string()],
                 recommended: Some("No".to_string()),
                 answering: Some(Answering { question: 3, answer: "Skip it".to_string() }),
@@ -190,6 +195,7 @@ mod tests {
                 to: vec!["a".to_string()],
                 body: "Answer: neither, try the cache".to_string(),
                 urgent: false,
+                no_reply: false,
                 answers: Vec::new(),
                 recommended: None,
                 answering: Some(Answering { question: 3, answer: String::new() }),

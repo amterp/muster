@@ -2,7 +2,9 @@
 //! needs it, and the human that a maker closed with its helpers still running. Which group it
 //! lands in, who it reaches, and whether a helper has posted to its maker.
 
-use muster_msg::{Caller, HUMAN, MUSTER, Memory, Messaging, Participant, Presence, Refusal, What};
+use muster_msg::{
+    Caller, Draft, HUMAN, MUSTER, Memory, Messaging, Participant, Presence, Refusal, What,
+};
 
 /// `p1` is the integrator and `p2` its helper maple, each with an agent in it; `p3` is critic.
 /// Any other pane is closed.
@@ -149,6 +151,27 @@ fn a_message_for_the_helper_asks_it_for_work_and_its_own_or_musters_do_not() {
     messaging.read(&in_pane("p3"), None, &Open).ok();
     messaging.post(&in_pane("p3"), Some("crew"), &[], "everyone", &Open, 80).unwrap();
     assert!(messaging.asked_since("p2", 70), "unaddressed in a group that rings it");
+}
+
+/// A message its author marked as wanting no reply, as "stand by" is, asks its helper for no
+/// work, though it still reaches it.
+#[test]
+fn a_message_wanting_no_reply_asks_for_no_work() {
+    let mut messaging = Messaging::new(Memory::default());
+    for pane in ["p1", "p2"] {
+        join(&mut messaging, pane, "crew");
+    }
+    let to = vec!["maple".to_string()];
+    let draft = Draft {
+        group: Some("crew"),
+        to: &to,
+        body: "stand by",
+        no_reply: true,
+        ..Draft::default()
+    };
+    let posted = messaging.post_draft(&in_pane("p1"), &draft, &Open, 70).unwrap();
+    assert_eq!(posted.wakes.len(), 1, "it still wakes the helper: {:?}", posted.wakes);
+    assert!(!messaging.asked_since("p2", 60), "it asked for no reply");
 }
 
 /// What Muster tells a maker about its helper does not hold the helper's next post, since the

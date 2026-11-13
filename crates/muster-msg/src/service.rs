@@ -279,6 +279,8 @@ pub struct Draft<'a> {
     /// To reach its addressees mid-turn, even those woken already, rather than once they are
     /// idle.
     pub urgent: bool,
+    /// Its author asks for no reply ([`What::Message`]'s `no_reply`).
+    pub no_reply: bool,
     /// Answers its author offers, which make it a question (MIP-9, section 6).
     pub answers: &'a [String],
     /// The offered answer its author recommends, as written in `answers`.
@@ -306,6 +308,7 @@ pub struct Operation {
 pub(crate) struct Content<'a> {
     pub body: &'a str,
     pub urgent: bool,
+    pub no_reply: bool,
     pub answers: &'a [String],
     pub recommended: Option<&'a str>,
     pub answering: Option<&'a Answering>,
@@ -1069,6 +1072,7 @@ impl<S: Store> Messaging<S> {
         let content = Content {
             body: draft.body,
             urgent: draft.urgent,
+            no_reply: draft.no_reply,
             answers: draft.answers,
             recommended: draft.recommended,
             answering: draft.answering,
@@ -1129,6 +1133,7 @@ impl<S: Store> Messaging<S> {
             to: addressees.clone(),
             body: content.body.to_string(),
             urgent,
+            no_reply: content.no_reply,
             answers: content.answers.to_vec(),
             recommended: content.recommended.map(str::to_string),
             answering: content.answering.cloned(),
@@ -1215,6 +1220,7 @@ impl<S: Store> Messaging<S> {
             to: to.clone(),
             body: body.to_string(),
             urgent: false,
+            no_reply: false,
             answers: Vec::new(),
             recommended: None,
             answering: None,
