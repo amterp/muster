@@ -396,7 +396,9 @@ it posts never counts as a stall itself. In a group kept on another machine, the
 the member asks the group's machine to post it there, naming the member as that machine does
 (`otter@devenv`); when that machine cannot be asked, or its daemon is older than this one, the
 stall is in the log alone. Members waiting on each other with everything read
-are not watched, since that is also what a finished group looks like.
+are not watched, since that is also what a finished group looks like. Nor is a helper closed by
+request with only its maker's messages unread, as a reviewer its maker thanked and then closed:
+the maker closed it on purpose. A message from anybody else to it is still told to them.
 
 **A stall only a person can free is told to you, after half an hour.** When the member is at a
 dialog, or something covers its prompt, its poster is told at two minutes as above, but is often an

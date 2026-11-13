@@ -218,6 +218,7 @@ impl Shared {
                     reserved: HashSet::new(),
                     naming: HashMap::new(),
                     released: VecDeque::new(),
+                    closed_helpers: VecDeque::new(),
                     closed: closed_panes,
                     persister,
                     log,
@@ -465,6 +466,10 @@ pub(crate) struct Session {
     /// The words of the panes that closed most recently, oldest first, which a draw passes over
     /// while it can.
     released: VecDeque<String>,
+    /// The helpers closed by request most recently, each with the maker it had, oldest first:
+    /// the stall watch holds nobody up on a maker's message to a helper closed while it was
+    /// unread.
+    closed_helpers: VecDeque<(String, String)>,
     /// The closed panes a reopen can still bring back, oldest first, at most
     /// [`muster_daemon_proto::CLOSED_PANES_KEPT`].
     /// One past its time is dropped whenever the list is next looked at.
@@ -875,6 +880,9 @@ const REOPEN_CLOSED_MINUTES: u32 = 60;
 /// How many closed panes' words a draw passes over, newest first. Under half the list, so a
 /// machine with a few dozen panes open still has most words to draw from.
 const RELEASED_CALLSIGNS: usize = 128;
+
+/// How many closed helpers' makers are kept for the stall watch, newest first.
+const CLOSED_HELPERS_KEPT: usize = 64;
 
 /// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
@@ -3355,6 +3363,11 @@ impl Session {
         log::info("daemon.pane.remembered", fields! { "pane" => pane, "minutes" => minutes });
     }
 
+    /// Each helper closed by request recently, with the maker it had.
+    pub(crate) fn closed_helpers(&self) -> impl Iterator<Item = &(String, String)> {
+        self.closed_helpers.iter()
+    }
+
     /// The latest a reopen can bring `pane` back, while it is remembered.
     pub(crate) fn reopen_until(&self, pane: &str) -> Option<u64> {
         self.remembered(state_since::now_ms())
@@ -3533,6 +3546,15 @@ impl Session {
             self.released.push_back(callsign);
             if self.released.len() > RELEASED_CALLSIGNS {
                 self.released.pop_front();
+            }
+        }
+        let closed_by_request = reason == proto::CloseReason::Requested
+            && !self.stopping
+            && self.replacing == Replacing::No;
+        if let Some(maker) = removed.record.maker.clone().filter(|_| closed_by_request) {
+            self.closed_helpers.push_back((pane.to_string(), maker));
+            if self.closed_helpers.len() > CLOSED_HELPERS_KEPT {
+                self.closed_helpers.pop_front();
             }
         }
         let maker = &removed.record;

@@ -107,6 +107,8 @@ pub(crate) struct Panes {
     makers: HashMap<String, String>,
     /// The helpers whose maker has closed and that nobody has taken over, which close once idle.
     closing: Vec<String>,
+    /// The maker of each helper closed by request recently, by the helper.
+    closed_helpers: HashMap<String, String>,
 }
 
 impl Panes {
@@ -187,6 +189,7 @@ impl Panes {
             attended: session.attended(),
             restoring: session.restoring(),
             zoomed: session.zoomed_away().into_iter().collect(),
+            closed_helpers: session.closed_helpers().cloned().collect(),
             ..Panes::default()
         };
         drop(session);
@@ -232,6 +235,11 @@ impl Panes {
     }
 
     /// Every helper open here whose maker has not closed, with the pane that made it.
+    /// The maker `pane` had, when it is a helper closed by request recently.
+    pub(crate) fn closed_helpers_maker(&self, pane: &str) -> Option<&str> {
+        self.closed_helpers.get(pane).map(String::as_str)
+    }
+
     pub(crate) fn makers(&self) -> impl Iterator<Item = (&String, &String)> {
         self.makers.iter()
     }
