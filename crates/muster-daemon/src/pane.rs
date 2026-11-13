@@ -989,6 +989,9 @@ pub(crate) struct Pane {
     /// When the pane's agent last started reading blocked, kept once it reads otherwise, for
     /// the dialog a key left unchanged to go on from ([`crate::effects::Reported::Agent`]).
     pub(crate) blocked_since_ms: Option<u64>,
+    /// Working only while a key typed at its dialog may have answered it
+    /// ([`crate::effects::Reported::Agent`]): the dialog still asks for the person until then.
+    pub(crate) answering: bool,
     /// The person took it over after its maker closed
     /// (`persist::Pane::kept_after_maker_closed`).
     pub(crate) kept_after_maker_closed: bool,
@@ -1244,6 +1247,7 @@ impl Pane {
             block: None,
             quiet_before_orphaned: None,
             blocked_since_ms: None,
+            answering: false,
             kept_after_maker_closed: false,
             hidden_from: None,
             restart_env: crate::persist::Environment::default(),
@@ -1530,6 +1534,7 @@ impl Reader {
             let again =
                 state == proto::AgentState::Blocked && self.detection.published_after_ignored_key();
             let (reported, unreadable) = (publication.reported, publication.unreadable);
+            let answering = publication.answering;
             Reported::Agent {
                 agent,
                 state,
@@ -1538,6 +1543,7 @@ impl Reader {
                 waiting: publication.waiting,
                 prompt_covered_by: publication.prompt_covered_by,
                 again,
+                answering,
             }
         });
         if let Some(Reported::Agent { state, .. }) = &published {
@@ -1952,6 +1958,7 @@ mod tests {
             prompt_covered_by: None,
             waiting: None,
             again: false,
+            answering: false,
         };
         let mut unsent = None;
         publish_agent(&reports, 1, Some(working.clone()), &mut unsent);

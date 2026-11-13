@@ -119,6 +119,9 @@ pub struct Publication {
     /// own work, which wakes it.
     pub waiting: Option<String>,
     pub prompt_covered_by: Option<String>,
+    /// Working only because a Return or Esc was typed at the dialog the pane read as blocked,
+    /// and the screen has not yet shown what came of it ([`Detector::answered`]).
+    pub answering: bool,
 }
 
 impl Publication {
@@ -129,7 +132,15 @@ impl Publication {
         waiting: Option<String>,
         prompt_covered_by: Option<String>,
     ) -> Publication {
-        Publication { agent, state, reported: false, unreadable: false, waiting, prompt_covered_by }
+        Publication {
+            agent,
+            state,
+            reported: false,
+            unreadable: false,
+            waiting,
+            prompt_covered_by,
+            answering: false,
+        }
     }
 }
 
@@ -410,6 +421,7 @@ impl Detector {
             waiting: concluded.waiting.filter(|_| state == State::Idle),
             agent: concluded.agent,
             prompt_covered_by: concluded.prompt_covered_by,
+            answering: self.answered.is_some(),
         })
     }
 

@@ -1625,10 +1625,16 @@ impl Session {
     /// changed.
     fn reconsider_each(&mut self, panes: Vec<String>) {
         for pane in panes {
-            let now = self.pane_index(&pane).and_then(|index| {
-                let record = &self.panes[index].record;
-                attention::asking(record, self.maker_hearing(record))
+            let (now, answering) = self.pane_index(&pane).map_or((None, false), |index| {
+                let held = &self.panes[index];
+                (attention::asking(&held.record, self.maker_hearing(&held.record)), held.answering)
             });
+            // A key typed at a dialog may not have answered it, and a dialog that ignored it is
+            // still the one that asked: it goes on asking, as one spell, until the screen shows
+            // what came of the key.
+            if now.is_none() && answering {
+                continue;
+            }
             if let Some(changed) = self.attention.ask(&pane, now) {
                 self.emit(Payload::Asking(changed));
             }
@@ -3551,8 +3557,10 @@ impl Session {
                 waiting: on_screen,
                 prompt_covered_by,
                 again,
+                answering,
             } => {
                 let before = record.clone();
+                let answered = std::mem::replace(&mut pane.answering, answering) && !answering;
                 // What an agent said about itself leaves with it. Not when a pane with no agent
                 // is first recognised: its statusline can report before the first probe lands,
                 // and that report is the new agent's.
@@ -3609,6 +3617,9 @@ impl Session {
                 if *record != before {
                     let record = record.clone();
                     self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+                } else if answered {
+                    // Working before and after: the screen showed the key closed the dialog.
+                    self.reconsider_asking(&name);
                 }
             }
         }

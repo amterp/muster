@@ -250,7 +250,8 @@ ring them, with how many and the newest; and their presence at the desk as Muste
 it, which reads as unknown once the app stops reporting. With Muster's app not running there is no
 presence, and attention still accumulates. An event when any of it changes, and one when the app
 shows the human a banner or posts a notification, which a client may use and nothing depends on.
-What the human has read of a group is one event to a client hearing either this topic or Messages.
+A Return or Esc typed at a blocked pane's dialog keeps it asking until its screen shows what the
+key did, so a dialog that ignored the key is one asking spell, not two. What the human has read of a group is one event to a client hearing either this topic or Messages.
 
 ### Places
 

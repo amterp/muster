@@ -593,6 +593,7 @@ fn published(agent: Option<Agent>, state: State) -> Publication {
         unreadable: false,
         waiting: None,
         prompt_covered_by: None,
+        answering: false,
     }
 }
 
@@ -1018,6 +1019,7 @@ fn reported(state: State) -> Publication {
         unreadable: false,
         waiting: None,
         prompt_covered_by: None,
+        answering: false,
     }
 }
 
@@ -1767,13 +1769,14 @@ impl Run {
     }
 }
 
-/// Answered, the pane reads working at once. A screen that still shows the dialog says nothing
-/// yet about what came of the key - the harness may not have redrawn - however often the pane
-/// produces output that leaves its text as it was.
+/// Answered, the pane reads working at once, saying it is only the key. A screen that still
+/// shows the dialog says nothing yet about what came of the key - the harness may not have
+/// redrawn - however often the pane produces output that leaves its text as it was.
 #[test]
 fn a_dialog_answered_reads_working_until_its_screen_changes() {
     let mut run = Run::at_a_dialog();
-    assert_eq!(run.answer(), Some(published(Some(claude()), State::Working)));
+    let answering = Publication { answering: true, ..published(Some(claude()), State::Working) };
+    assert_eq!(run.answer(), Some(answering));
     for _ in 0..5 {
         run.pane.content_seq += 1;
         assert_eq!(run.tick(), None);
@@ -1882,7 +1885,11 @@ fn a_blocked_report_from_before_the_key_gives_way_to_the_new_screen() {
 
     run.answer();
     run.paint("busy");
-    assert_eq!(run.tick(), None, "working, as it already reads");
+    assert_eq!(
+        run.tick(),
+        Some(published(Some(claude()), State::Working)),
+        "working, as it already reads, and no longer only for the key"
+    );
     run.paint("ready>");
     assert_eq!(run.tick(), Some(published(Some(claude()), State::Idle)));
 }

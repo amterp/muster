@@ -184,6 +184,9 @@ pub(crate) enum Reported {
         /// Blocked again by the dialog a Return or Esc left unchanged, rather than by a new one:
         /// the pane has been waiting on it since before the key.
         again: bool,
+        /// Working only because a Return or Esc was typed at the dialog it read blocked at, and
+        /// the screen has not shown what came of it yet.
+        answering: bool,
     },
     /// What the program says with XTSHIFTESCAPE, for the pane's record.
     ShiftCapture(Option<bool>),
