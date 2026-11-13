@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794266601262,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-09 on 0.24.0. An agent posted a short thanks (#7) to a finished helper, then closed the helper's pane with `muster pane close` straight away. Two minutes later @muster woke the agent with: \"unicorn (p2jdn1e5mv) has not read #7, from mint (p2jdckxq5n), 2 minutes after it was posted: no agent is in its pane any more.\" The sender had closed that pane itself, so the notice told it nothing it did not know and cost it a turn.\n\nPossibly: send no unread notice for a pane closed by `pane close`, at least when the sender or the pane's maker closed it, as opposed to a pane whose agent exited.",
   "id": "a_2x07y2Daj",
-  "position": "b2X",
+  "position": "Ytc",
   "title": "An unread notice for a pane its sender closed on purpose",
   "type": "bug",
-  "updated_at_millis": 1794266601262,
+  "updated_at_millis": 1794583350427,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794266601262}
+    {"field":"column","value":"backlog-lo","at":1794266601262},
+    {"field":"column","value":"done","at":1794583350427}
   ]
 }

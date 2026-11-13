@@ -5,7 +5,7 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "comments": [
     {
       "id": "c_2x0802LuN",
@@ -18,14 +18,15 @@
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-06. A brief was posted while Codex sat at its upgrade prompt; accepting the upgrade made Codex exit, and it was restarted in the same pane with `pane send`. Muster showed it `done` at an empty prompt but never rang post #4, whose own answer had said \"rung once an agent is found\". A later notice said \"no agent is in its pane any more\". A second post rang at once.\n\nRing for any unread post to a pane when an agent is detected there, or say on the post that a restart will not ring it.",
   "id": "a_2vgaoHZt3",
-  "position": "Zz",
+  "position": "Ytb",
   "related": [
     "a_2vDjIbqTt"
   ],
   "title": "A post to a pane whose agent died does not ring the agent restarted there",
   "type": "bug",
-  "updated_at_millis": 1794266602425,
+  "updated_at_millis": 1794583350612,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794072281013}
+    {"field":"column","value":"backlog-lo","at":1794072281013},
+    {"field":"column","value":"done","at":1794583350612}
   ]
 }

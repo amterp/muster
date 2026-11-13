@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794579872061,
   "creator": "Alexander Terp",
   "description": "The general case of a_2xmxqHbeY, whose fix (2026-11-13) covers a helper closed by its maker. The daemon's pane Close carries no caller; telling who closed a pane means threading it through the core, the backend seam, the daemon client and the windowless CLI.",
   "id": "a_2z7ZZXk4j",
-  "position": "b34",
+  "position": "YtZ",
   "title": "Say which agent closed a pane, so a close by whoever waits on it is no stall",
   "type": "enhancement",
-  "updated_at_millis": 1794579872061,
+  "updated_at_millis": 1794583350985,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794579872061}
+    {"field":"column","value":"backlog-lo","at":1794579872061},
+    {"field":"column","value":"done","at":1794583350985}
   ]
 }

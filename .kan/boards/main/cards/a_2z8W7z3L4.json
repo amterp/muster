@@ -5,16 +5,17 @@
   "area": [
     "testing"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1794582122947,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-13: ./dev --codex and ./dev -l run at once in one checkout; the live run's footer listed style and lint steps. Checks and exit statuses were right. Both share target/gate/steps.txt (GATE_STEPS, mark, report_steps). Keep timing marks per invocation.",
   "id": "a_2z8W7z3L4",
-  "position": "a1",
+  "position": "YtV",
   "title": "./dev: concurrent runs in one checkout mix their timing footers",
   "type": "bug",
-  "updated_at_millis": 1794582122947,
+  "updated_at_millis": 1794583351702,
   "history": [
-    {"field":"column","value":"in-progress","at":1794582122947}
+    {"field":"column","value":"in-progress","at":1794582122947},
+    {"field":"column","value":"done","at":1794583351702}
   ]
 }

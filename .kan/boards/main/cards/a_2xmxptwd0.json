@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794382992520,
   "creator": "Alexander Terp",
   "description": "From review of 0b4d99ad (2026-11-11). A daemon handoff forgets that the person was told of a helper's block and restarts its 30 minutes, so a block that outlasts a handoff earns a second notice 30 minutes after it. The fix is a field beside maker_told in proto/muster_daemon.proto's handoff message. Marking every carried block as told was rejected: it turns a rare duplicate into a missed notice.",
   "id": "a_2xmxptwd0",
-  "position": "b31",
+  "position": "Ytd",
   "title": "Carry through a handoff when a helper's block began and whether the person was told",
   "type": "bug",
-  "updated_at_millis": 1794382992520,
+  "updated_at_millis": 1794583350193,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794382992520}
+    {"field":"column","value":"backlog-lo","at":1794382992520},
+    {"field":"column","value":"done","at":1794583350193}
   ]
 }

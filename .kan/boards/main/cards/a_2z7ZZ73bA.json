@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1794579871802,
   "creator": "Alexander Terp",
   "description": "From a_2mSyvanM4's fix (2026-11-13): muster msg post --no-reply marks a message that wants nothing back, so a helper that reads it and stops is not reported to its maker. The API's NewPost has no such field; it needs API 0.5 and a Welcome option.",
   "id": "a_2z7ZZ73bA",
-  "position": "b20",
+  "position": "Yta",
   "title": "The API's post cannot ask for no reply",
   "type": "feature",
-  "updated_at_millis": 1794579871802,
+  "updated_at_millis": 1794583350801,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1794579871802}
+    {"field":"column","value":"backlog-hi","at":1794579871802},
+    {"field":"column","value":"done","at":1794583350801}
   ]
 }
