@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794588238994,
   "creator": "Alexander Terp",
   "description": "A send with named keys turns its final --enter into a key press (Input::writes), which bypasses the plain-Return fallback added on 2026-11-13 for a shell whose terminal a dead program left in kitty report-all-keys mode. So pane send --key end --enter at such a shell still does not submit. Found in review; predates that fix.",
   "id": "a_2zB5EaJ0e",
-  "position": "b38",
+  "position": "YtD",
   "title": "pane send --key ... --enter sends its Return as a key press, so it is not submitted at a shell a program left in kitty report-all-keys",
   "type": "bug",
-  "updated_at_millis": 1794588238994,
+  "updated_at_millis": 1794590910147,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794588238994}
+    {"field":"column","value":"backlog-lo","at":1794588238994},
+    {"field":"column","value":"done","at":1794590910147}
   ]
 }
