@@ -1360,6 +1360,22 @@ mod tests {
         assert!(stalls.judge(&[free], &called, 1000 + 6 * AFTER).is_empty(), "told twice");
     }
 
+    /// A notice still held for a busy poster is owed, so a handover does not carry its stall as
+    /// told: the newer daemon tells the poster once it is free. One delivered is carried.
+    #[test]
+    fn a_stall_whose_notice_is_still_held_is_not_carried_as_told() {
+        let mut stalls = stalls();
+        let called = BTreeMap::new();
+        let busy = rung_with_busy(&["director"]);
+        stalls.judge(std::slice::from_ref(&busy), &called, 1000);
+        stalls.judge(std::slice::from_ref(&busy), &called, 1000 + AFTER);
+        assert!(stalls.told().is_empty(), "carried a notice still owed: {:?}", stalls.told());
+
+        let free = rung_with_busy(&[]);
+        stalls.judge(std::slice::from_ref(&free), &called, 1000 + 2 * AFTER);
+        assert_eq!(stalls.told().len(), 1, "a delivered notice is carried");
+    }
+
     /// A notice held for a busy poster is dropped once what it says has stopped being true: the
     /// member read the message, or went to work on it.
     #[test]
