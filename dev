@@ -109,7 +109,7 @@ GATE_RUST_LOG = "target/gate/rust-tests.log"
 GATE_LOAD = "target/gate/load.txt"
 // When each step of this run began, for the table every run ends with. A file rather than a
 // variable, so a red run's timing outlives it beside the suite's log.
-GATE_STEPS = "target/gate/steps.txt"
+GATE_STEPS = "target/gate/steps-{uuid_v4()}.txt"
 RUN_STARTED = now().epoch.millis
 
 // Every command captured here names its targets `stdout`, `stderr` and `code`, and never

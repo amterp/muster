@@ -198,6 +198,9 @@ Muster's principles, adapted to that evidence:
   can pass. The Rust suite runs with `--no-fail-fast` so that list names every failing test rather than the first
   binary's.
 
+  Each run keeps its timing marks in `target/gate/steps-<uuid>.txt`, including a failed run. Two
+  invocations in one checkout therefore print separate timing tables.
+
   Every run says what the machine was doing, narrowed flags included, because the failure this guards against is
   not a red run but a plausible one: seventy-four minutes of a machine with seven of its ten cores eaten by
   orphaned background loops read as nothing worse than a gate taking half an hour, which is not obviously wrong
