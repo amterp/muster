@@ -2847,6 +2847,33 @@ fn leaving_every_group_while_a_fold_is_owed_takes_the_pane_out_at_the_home() {
     }
 }
 
+/// An owed leave the home took, whose answer was lost, is refused as no longer a member when it
+/// is sent again. That settles it, and stays settled across a restart.
+#[test]
+fn an_owed_leave_the_home_already_took_stays_settled_after_a_restart() {
+    let (mut wire, agent) = devenv_pane_in_a_laptop_group();
+    wire.cut();
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.join(&agent, Some("tracer"), None, sessions, now).unwrap();
+    wire.fold(Side::Devenv);
+    let now = wire.tick();
+    let (devenv, sessions) = wire.split(Side::Devenv);
+    devenv.leave(&agent, None, sessions, now).expect("it leaves every group here");
+    wire.up = true;
+    wire.laptop.linked(&Side::Laptop.peer());
+    wire.devenv.linked(&Side::Devenv.peer());
+    let owed = wire.devenv.folds_owed_to("lap");
+    let leave = owed.iter().find(|away| matches!(away.call, Call::Leave { .. })).expect("owed");
+    let _lost = wire.answer_unheard(Side::Devenv, &leave.call);
+
+    let again = wire.send(Side::Devenv, &leave.call);
+    assert!(matches!(again, Err(Refusal::NotAMember { .. })), "{again:?}");
+    let saved = wire.devenv.store().saved.clone().unwrap();
+    wire.devenv = Messaging::restore(Memory::default(), saved, BTreeMap::default());
+    assert!(wire.devenv.folds_owed_to("lap").is_empty(), "settled, and saved so");
+}
+
 /// A restart refetches a replica from nothing, and its log still says the pane joined before the
 /// name took its place. The pane means whoever holds it now, so the replay makes no second
 /// participant in the pane, and a caller known only by its pane, as Codex is, is the name.
