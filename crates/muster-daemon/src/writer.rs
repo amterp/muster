@@ -553,7 +553,8 @@ impl Writer {
     /// A program waiting on the answer to a terminal query would otherwise wait out every key
     /// of a send queued before it. A reply answers the program rather than typing at it, so it
     /// cannot land in a dialog the keys are working through; what somebody types still waits,
-    /// in order.
+    /// in order. The key's deadline is set when its wait begins: a program asking one query
+    /// after another would otherwise keep pushing it back.
     fn pace(
         &mut self,
         queued: &Receiver<Stamped>,
@@ -561,8 +562,9 @@ impl Writer {
         master: &OwnedFd,
         wake: &OwnedFd,
     ) -> bool {
+        let deadline = Instant::now() + pause_before(self.last_write, Instant::now());
         loop {
-            let pause = pause_before(self.last_write, Instant::now());
+            let pause = deadline.saturating_duration_since(Instant::now());
             if pause.is_zero() {
                 return true;
             }
