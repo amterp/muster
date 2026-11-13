@@ -1940,6 +1940,10 @@ message Pane {
   // daemon holds it, says how. False for a pane running no agent, and from a daemon that does not
   // say, so a view offers clearing only where it is known to work.
   bool agent_clears = 31;
+  // Since 1.16. Why a wake for the pane's agent is held, in words, as `msg who` says it: "its
+  // prompt holds something typed and not sent". Absent while no wake for it is held at its
+  // prompt. Derived from the doorbell's last look, never persisted.
+  optional string wake_held = 32;
 }
 
 // The compaction thresholds applying to one pane (`Pane.compaction`).

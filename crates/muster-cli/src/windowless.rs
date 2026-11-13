@@ -1152,6 +1152,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         reported: pane.state_reported,
         unreadable: pane.screen_unreadable,
         prompt_covered_by: pane.prompt_covered_by.clone(),
+        wake_held: pane.wake_held.clone(),
         facts: said.then(|| muster_proto::AgentFacts {
             context_used: facts.context_used,
             subagents: facts.subagents,

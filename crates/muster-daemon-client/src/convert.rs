@@ -207,6 +207,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         reported: record.state_reported,
         unreadable: record.screen_unreadable,
         prompt_covered_by: record.prompt_covered_by,
+        wake_held: record.wake_held,
         adapter,
         unread_input: record.unread_input.map(|unread| UnreadInput {
             bytes: unread.bytes,

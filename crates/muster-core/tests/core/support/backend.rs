@@ -185,6 +185,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         reported: given.get("reported").and_then(Value::as_bool).unwrap_or_default(),
         unreadable: given.get("unreadable").and_then(Value::as_bool).unwrap_or_default(),
         prompt_covered_by: optional(given, "promptCoveredBy"),
+        wake_held: optional(given, "wakeHeld"),
         adapter: muster_core::mirror::Adapter::default(),
         unread_input: given.get("unreadInput").map(|unread| muster_core::mirror::UnreadInput {
             bytes: unread

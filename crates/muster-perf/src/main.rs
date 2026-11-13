@@ -554,6 +554,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         reported: true,
         unreadable: false,
         prompt_covered_by: None,
+        wake_held: None,
         adapter: muster_core::mirror::Adapter::Reporting,
         unread_input: None,
         quiet: false,

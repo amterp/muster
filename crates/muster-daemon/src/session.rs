@@ -3294,6 +3294,18 @@ impl Session {
         pane.restart_env = env;
     }
 
+    /// Says on each pane's record why the wake waiting for its agent is held, by pane.
+    pub(crate) fn wakes_held(&mut self, held: &HashMap<String, String>) {
+        for index in 0..self.panes.len() {
+            let said = held.get(&self.panes[index].record.pane).cloned();
+            if self.panes[index].record.wake_held != said {
+                self.panes[index].record.wake_held = said;
+                let record = self.panes[index].record.clone();
+                self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+            }
+        }
+    }
+
     /// Keeps what starts the pane's agent session again, saving it when it changed.
     fn resume_changed(&mut self, index: usize, resume: Option<persist::Resume>) {
         if self.panes[index].resume != resume {

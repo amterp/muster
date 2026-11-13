@@ -32,8 +32,10 @@ own progress, `(40% done)` or `(progress failed)`, a compaction queued and what 
 to carry on with, `(follow-up queued, waiting for an empty prompt)`, and `(quiet)` for a pane that
 raises nothing for you. A waiting agent's second line is what it waits on. A named notice or menu
 covering the prompt appears as `(prompt covered by ...)`, even while the pane reads idle or
-done. `prompt_covered_by` carries that description in JSON, and is null when none is known.
-The model, its effort and the cost are in `--json`.
+done. `prompt_covered_by` carries that description in JSON, and is null when none is known. A
+message's wake that Muster could not ring at the prompt appears as `(a wake waits: ...)`, saying
+why as `muster msg who` does, and `wake_held` carries it in JSON. The model, its effort and the
+cost are in `--json`.
 
 A machine's own block says one more thing, on the machine the `muster` you ran is on:
 

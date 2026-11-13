@@ -1245,7 +1245,23 @@ fn look(
         wait.finish(shared);
     }
     deliver(shared, &panes, moving, commanding, ringing, pressing, &mut next);
+    tell_held(shared);
     until(next, unfound)
+}
+
+/// Puts on each pane's record why the wake waiting for its agent is held, while one waits, so
+/// that `muster window` says it as `muster msg who` does.
+fn tell_held(shared: &Shared) {
+    let held: HashMap<String, String> = {
+        let messages = shared.messages();
+        messages
+            .held
+            .iter()
+            .filter(|(pane, _)| messages.pending.iter().any(|wake| pane_of(wake) == pane.as_str()))
+            .map(|(pane, held)| (pane.clone(), held.why().into_owned()))
+            .collect()
+    };
+    shared.lock().wakes_held(&held);
 }
 
 fn ring_dropped(wake: &Wake, pane: &str, why: &str) {

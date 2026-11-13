@@ -40,6 +40,8 @@ fn main() {
     config.boxed("PaneStateChanged.unread_input");
     // And the thresholds, which only a pane on a daemon that says them carries.
     config.boxed("PaneStateChanged.thresholds");
+    // And a program's progress, which few panes report.
+    config.boxed("PaneStateChanged.progress");
     // A thread is mostly messages, but its dividers, merged changes and folds are rows too, and
     // a message row carries its body and its answers: boxed, the small rows stay small.
     config.boxed("ConversationRow.kind.message");

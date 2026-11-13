@@ -112,6 +112,8 @@ pub struct Pane {
     /// comes only from what the agent reports.
     pub unreadable: bool,
     pub prompt_covered_by: Option<String>,
+    /// Why a wake for its agent is held at its prompt, in words, while one is.
+    pub wake_held: Option<String>,
     /// Whether the agent reports itself through its harness's adapter, as its daemon judged it.
     pub adapter: Adapter,
     /// The pane's program has stopped reading its input, as its daemon measured it.

@@ -1257,6 +1257,9 @@ fn agent_notes(agent: &muster_proto::PaneStateChanged) -> Vec<String> {
     if let Some(covered) = &agent.prompt_covered_by {
         notes.push(format!("(prompt covered by {covered})"));
     }
+    if let Some(held) = &agent.wake_held {
+        notes.push(format!("(a wake waits: {held})"));
+    }
     if agent.unreadable {
         notes.push("(cannot read the screen)".to_string());
     }
@@ -1504,6 +1507,7 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
         "reported": agent.is_some_and(|agent| agent.reported),
         "unreadable": agent.is_some_and(|agent| agent.unreadable),
         "prompt_covered_by": agent.and_then(|agent| agent.prompt_covered_by.as_deref()),
+        "wake_held": agent.and_then(|agent| agent.wake_held.as_deref()),
         "facts": agent.and_then(|agent| agent.facts.as_ref()).map_or(Value::Null, facts_json),
         "progress": agent.and_then(|agent| agent.progress.as_ref()).map_or(Value::Null, |progress| {
             json!({ "state": progress.state, "percent": progress.percent })
@@ -1545,6 +1549,7 @@ fn with_agent(mut row: Value, agent: Option<&muster_proto::PaneStateChanged>) ->
                 "reported",
                 "subtitle",
                 "prompt_covered_by",
+                "wake_held",
             ] {
                 row_fields.remove(stale);
             }
@@ -1973,10 +1978,29 @@ pub(crate) fn shell_word(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Local, Others, QUIET, agent_style, daemons_json, daemons_text, held_for, window_json,
-        window_text, windows,
+        Local, Others, QUIET, agent_notes, agent_style, daemons_json, daemons_text, held_for,
+        window_json, window_text, windows,
     };
     use anstyle::{AnsiColor, Color, Style};
+
+    /// A wake held at an agent's prompt is said on its row, as `msg who` says it, and only while
+    /// its daemon can be reached.
+    #[test]
+    fn a_wake_held_at_a_prompt_is_said_on_the_row() {
+        use muster_proto::PaneStateChanged;
+        let held = PaneStateChanged {
+            state: "idle".to_string(),
+            wake_held: Some("its prompt holds something typed and not sent".to_string()),
+            ..PaneStateChanged::default()
+        };
+        let notes = agent_notes(&held);
+        assert!(
+            notes.contains(&"(a wake waits: its prompt holds something typed and not sent)".into()),
+            "{notes:?}"
+        );
+        let away = PaneStateChanged { state: "unreachable".to_string(), ..held };
+        assert!(agent_notes(&away).is_empty());
+    }
 
     #[test]
     fn window_json_names_a_groups_partner_on_its_own_daemon() {

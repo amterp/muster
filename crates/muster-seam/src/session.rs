@@ -2177,6 +2177,7 @@ impl Session {
             } else {
                 pane.prompt_covered_by.clone()
             },
+            wake_held: pane.wake_held.clone().filter(|_| state != AgentState::Unreachable),
             facts: pane.facts.clone(),
             progress,
             rang: self.attention.has_rung(key),
@@ -5192,6 +5193,8 @@ pub(crate) struct PaneAgent {
     /// Whether the daemon's rules have stopped reading this agent's screen.
     pub unreadable: bool,
     pub prompt_covered_by: Option<String>,
+    /// Why a wake for its agent is held at its prompt, in words, while one is.
+    pub wake_held: Option<String>,
     pub facts: AgentFacts,
     /// What a program in the pane says of its progress.
     pub progress: Option<Progress>,

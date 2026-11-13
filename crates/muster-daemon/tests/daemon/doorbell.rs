@@ -1800,6 +1800,11 @@ fn a_group_held_up_on_a_wake_a_menu_holds_is_told_so() {
         assert!(!line.line.contains(&empty), "{field} empty in {}", line.line);
     }
     assert!(line.line.contains(r#""title":"#), "title missing from {}", line.line);
+    // The pane's record says it too, for `muster window` to show on its row.
+    let records = snapshot(&mut agent.control).panes;
+    let p1 = records.iter().find(|record| record.pane == "p1").expect("p1");
+    let said = p1.wake_held.as_deref().unwrap_or_default();
+    assert!(said.contains("a menu opened from its prompt covers its prompt"), "{said:?}");
 
     logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(10));
     let read = agent.read_as("integrator");

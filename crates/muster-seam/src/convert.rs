@@ -34,10 +34,13 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         reported: agent.reported,
         unreadable: agent.unreadable,
         prompt_covered_by: agent.prompt_covered_by.clone(),
+        wake_held: agent.wake_held.clone(),
         facts: (agent.facts != AgentFacts::default()).then(|| facts(&agent.facts)),
-        progress: agent.progress.map(|progress| proto::PaneProgress {
-            state: progress.state.as_str().to_string(),
-            percent: progress.percent.map(u32::from),
+        progress: agent.progress.map(|progress| {
+            Box::new(proto::PaneProgress {
+                state: progress.state.as_str().to_string(),
+                percent: progress.percent.map(u32::from),
+            })
         }),
         rang: agent.rang,
         // A watch fills it in; the shell and a read have the roster for it.

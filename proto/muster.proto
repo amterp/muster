@@ -3758,6 +3758,8 @@ message PaneStateChanged {
   // Whether its agent can be cleared (ClearAgent), by the manifests its daemon holds. False
   // for a pane running no agent, and from a daemon that does not say.
   bool clearable = 19;
+  // Why a wake for the pane's agent is held at its prompt, in words; absent while none is.
+  optional string wake_held = 20;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.
