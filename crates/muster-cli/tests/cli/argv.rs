@@ -284,6 +284,12 @@ fn described_pane_or_window(payload: &request::Payload) -> Value {
                 ("focus", said(&compact.focus)),
             ])
         }),
+        request::Payload::ClearAgent(clear) => json!({
+            "clear_agent": fields([
+                ("pane_id", said(&clear.pane_id)),
+                ("then", said(&clear.then)),
+            ])
+        }),
         request::Payload::PaneCompaction(set) => json!({
             "pane_compaction": fields([
                 ("pane_id", said(&set.pane_id)),

@@ -442,6 +442,12 @@ impl BackendChannel for DaemonBackend {
                 self.pane_request(pane_request::Request::Compact(compact))?;
                 done
             }
+            BackendIntent::ClearPane { pane, then } => {
+                self.speaks_since(muster_daemon_proto::version::CLEARS, "clear an agent")?;
+                let clear = pane_request::Clear { pane: pane.to_string(), then };
+                self.pane_request(pane_request::Request::Clear(clear))?;
+                done
+            }
             BackendIntent::SetPaneCompaction { pane, compact_at, nudge_at, clear } => {
                 let since = muster_daemon_proto::version::SCOPED_COMPACTION;
                 self.speaks_since(since, "set compaction thresholds for one pane")?;

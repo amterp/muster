@@ -28,6 +28,7 @@ window`).
 | Its session named after the pane | yes | yes | no | no |
 | The pane named after its session | yes | no | no | no |
 | Compacted when asked | yes | yes | no | no |
+| Cleared when asked | yes | yes | no | no |
 | Says when its context was cleared or compacted | yes | yes | no | no |
 | Resumed after a restart | yes | yes | yes | no |
 | Clipboard image pasted into a remote composer | yes | yes | no | no |
@@ -114,6 +115,11 @@ kimi, kiro, maki, pi, qodercli.
   reports the context a compaction left as it finishes, since no turn ends after one. OpenCode's
   `/compact` runs only on a second Return, the first taking it from the list of commands, so
   Muster does not type it.
+- **Cleared when asked**: `muster pane clear` types the harness's clear command at the agent's
+  prompt once it is idle and the prompt is empty, as a compaction is: `/clear` for Claude Code and
+  for Codex, whose `/new` would first ask which worktree the new conversation runs in. The agent
+  begins a new session. Codex reports the new session only at its first prompt, so until then its
+  row and a restart still name the old one. Needs no adapter.
 - **Resumed after a restart**: a pane whose agent reported its session comes back after a daemon
   restart or a reboot running that session again, with the flags the agent was started with,
   less what would start a session of its own (`docs/configuration.md`, `resume_agents`). Claude

@@ -522,6 +522,7 @@ pub(crate) fn handle(
                 pane_request::Request::Rename(_)
                     | pane_request::Request::Report(_)
                     | pane_request::Request::Compact(_)
+                    | pane_request::Request::Clear(_)
                     | pane_request::Request::SetCompaction(_)
             )
         }) | Service::Session(proto::SessionRequest {

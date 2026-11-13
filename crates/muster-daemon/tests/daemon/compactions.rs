@@ -707,3 +707,64 @@ fn a_prompt_to_carry_on_with_is_refused_as_a_focus_is() {
     std::thread::sleep(WOULD_HAVE_TYPED);
     assert_eq!(p1.compactions_heard(), Vec::<String>::new(), "a refused ask compacted");
 }
+
+impl Pane {
+    /// Asks for `p1`'s agent to have its context cleared, and then to be given `then`.
+    fn clear_then(&mut self, then: Option<&str>) -> proto::Outcome {
+        let clear =
+            proto::pane_request::Clear { pane: "p1".to_string(), then: then.map(str::to_string) };
+        self.control.ask(pane(proto::pane_request::Request::Clear(clear))).outcome()
+    }
+
+    fn clears_heard(&self) -> Vec<String> {
+        self.heard().into_iter().filter(|line| line == "/clear").collect()
+    }
+}
+
+/// A clear rides the compaction's queue: held while the agent works, typed once at its idle,
+/// empty prompt, and followed by the prompt it was asked to carry on with.
+#[test]
+fn a_clear_asked_of_an_agent_at_work_is_typed_once_it_is_idle_and_then_its_prompt() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    assert_eq!(p1.clear_then(Some("read brief.md")), proto::Outcome::Done);
+    assert!(p1.queued(), "the record says a line is queued for the agent");
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.clears_heard(), Vec::<String>::new(), "typed into an agent at work");
+
+    p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    p1.until_heard_line("/clear");
+    p1.until_heard_line("read brief.md");
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.clears_heard(), ["/clear"], "typed once");
+}
+
+/// A clear asked after a compaction not yet typed takes its place: the later ask is meant.
+#[test]
+fn a_clear_replaces_a_compaction_not_yet_typed() {
+    let mut p1 = Pane::with_an_agent();
+    p1.daemon.set_agent_state("p1", proto::AgentState::Working);
+    assert_eq!(p1.compact(Some("keep the notes")), proto::Outcome::Done);
+    assert_eq!(p1.clear_then(None), proto::Outcome::Done);
+    p1.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    p1.until_heard_line("/clear");
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.compactions_heard(), Vec::<String>::new());
+}
+
+#[test]
+fn a_clear_is_refused_where_nothing_could_type_it() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let mut shell = Pane { daemon, control };
+    assert_eq!(shell.clear_then(None), proto::Outcome::Refused, "a shell has no context");
+
+    let mut p1 = Pane::with_an_agent();
+    assert_eq!(p1.clear_then(Some("two\nlines")), proto::Outcome::Refused, "two lines");
+    let elsewhere = proto::pane_request::Clear { pane: "p9".to_string(), then: None };
+    let asked = p1.control.ask(pane(proto::pane_request::Request::Clear(elsewhere)));
+    assert_eq!(asked.outcome(), proto::Outcome::NotThere);
+    std::thread::sleep(WOULD_HAVE_TYPED);
+    assert_eq!(p1.clears_heard(), Vec::<String>::new());
+}

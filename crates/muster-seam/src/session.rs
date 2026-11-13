@@ -3024,6 +3024,7 @@ pub(crate) fn submit_from(
             | BackendIntent::CreateInTree { .. }
             | BackendIntent::RenamePane { .. }
             | BackendIntent::CompactPane { .. }
+            | BackendIntent::ClearPane { .. }
             | BackendIntent::SetPaneCompaction { .. }
             | BackendIntent::RestartAgent { .. }
             | BackendIntent::RenameTab { .. }

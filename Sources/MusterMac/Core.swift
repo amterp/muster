@@ -1854,6 +1854,7 @@ public enum Core {
     // their own work, and this line ends up in a file destined for a bug report.
     case .renamePane: return "rename_pane"
     case .compactPane: return "compact_pane"
+    case .clearAgent_p: return "clear_agent"
     case .restartAgent: return "restart_agent"
     case .reopenPane: return "reopen_pane"
     case .readClosedPanes: return "read_closed_panes"

@@ -118,6 +118,7 @@ message Request {
     SetNeedsYouFolded set_needs_you_folded = 109;
     PaneCompaction pane_compaction = 110;
     RemoveFromTab remove_from_tab = 111;
+    ClearAgent clear_agent = 112;
   }
 
   // The window this request is for, by its name: `window-2`. Empty leaves it to the core, which
@@ -367,6 +368,23 @@ message CompactPane {
   // A prompt typed at the agent's next idle, empty prompt once the compaction has run, so it
   // carries on. One line. Empty: none.
   string then = 4;
+}
+
+// Clears the context of the agent in a pane, beginning a new session in its harness, by typing
+// its harness's clear command at its prompt once it is idle and the prompt is empty, as a
+// CompactPane is typed and in its place when a compaction waits to be.
+//
+// Answered once the pane's daemon has taken it to type. Refused, saying why, when the pane runs
+// no agent or its harness gives no way to clear it from its prompt (`muster docs harnesses`).
+message ClearAgent {
+  string daemon_id = 1;
+
+  // Empty means the pane the keyboard is on.
+  string pane_id = 2;
+
+  // A prompt typed at the agent's next idle, empty prompt once the clear has run. One line.
+  // Empty: none.
+  string then = 3;
 }
 
 // Restarts the agent in a pane, in the session it reported: its pane's daemon empties what waits

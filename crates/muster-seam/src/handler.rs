@@ -461,6 +461,7 @@ fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Respon
         request::Payload::EqualizePanes(even) => equalize_panes(window, &even),
         request::Payload::RenamePane(rename) => rename_pane(window, &rename),
         request::Payload::CompactPane(compact) => compact_pane(window, &compact),
+        request::Payload::ClearAgent(clear) => clear_agent(window, &clear),
         request::Payload::PaneCompaction(set) => pane_compaction(window, &set),
         request::Payload::RestartAgent(restart) => restart_agent(window, restart),
         request::Payload::ReopenPane(reopen) => reopen_pane(window, &reopen),
@@ -619,11 +620,37 @@ fn compact_pane(window: WindowId, compact: &proto::CompactPane) -> Response {
         return nothing_to_act_on(window, &target.daemon);
     };
     let intent = BackendIntent::CompactPane { pane: pane.clone(), focus, then };
-    let answer = placed(submit(window, &target.daemon, &intent, Keyboard::StaysPut), &target);
+    queued_at_prompt(window, &target, &pane, &intent)
+}
+
+/// Clears the context of the agent in a pane, once it is idle at an empty prompt, as a
+/// compaction is typed, and then types the prompt it was asked to start on.
+fn clear_agent(window: WindowId, clear: &proto::ClearAgent) -> Response {
+    let then = Some(clear.then.trim().to_string()).filter(|then| !then.is_empty());
+    let target = match target(window, &clear.daemon_id, &clear.pane_id) {
+        Ok(target) => target,
+        Err(refusal) => return *refusal,
+    };
+    let Some(pane) = target.pane.clone() else {
+        return nothing_to_act_on(window, &target.daemon);
+    };
+    let intent = BackendIntent::ClearPane { pane: pane.clone(), then };
+    queued_at_prompt(window, &target, &pane, &intent)
+}
+
+/// Hands a line for an agent's prompt to its daemon, with the keyboard left where it is, and
+/// says what it waits for when the agent is not at its prompt.
+fn queued_at_prompt(
+    window: WindowId,
+    target: &Target,
+    pane: &PaneId,
+    intent: &BackendIntent,
+) -> Response {
+    let answer = placed(submit(window, &target.daemon, intent, Keyboard::StaysPut), target);
     if !matches!(answer.payload, Some(response::Payload::Ok(_))) {
         return answer;
     }
-    let key = PaneKey::new(&target.daemon, &pane);
+    let key = PaneKey::new(&target.daemon, pane);
     let now = session::window(window, false);
     let agent = now.agents.iter().find(|agent| agent.pane == key);
     match agent.and_then(|agent| agent.state.queued_note(agent.facts.subagents)) {

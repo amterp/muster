@@ -427,9 +427,9 @@ pub(crate) fn neither(window: &str, daemon: Trouble) -> Trouble {
 
 /// What a refusal for want of a window adds, so a caller learns what still works.
 const WITHOUT_A_WINDOW: &str = "Without one, `muster window`, `muster daemons` and the pane \
-    verbs that make, name, read, type into, wait on, compact, restart, hide, show, quiet and \
-    close panes on this machine still work, answered by its muster-daemon or the records beside \
-    it; the rest is about what only a window holds: its tabs, its keyboard and what it has on \
+    verbs that make, name, read, type into, wait on, compact, clear, restart, hide, show, quiet \
+    and close panes on this machine still work, answered by its muster-daemon or the records \
+    beside it; the rest is about what only a window holds: its tabs, its keyboard and what it has on \
     screen.";
 
 /// Asks this machine's daemon what a window was asked, and renders what it says the way a

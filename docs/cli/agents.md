@@ -313,6 +313,24 @@ objects `muster window --json` carries on each pane, `compact_at` and `compact_n
 on a daemon from before Muster 0.25 has neither: that daemon takes one percent for every agent
 (`docs/configuration.md` says which it is sent), and setting a pane's own is refused there.
 
+## Clearing an agent
+
+An agent whose context holds nothing worth keeping can be cleared instead, which begins a new
+session in its harness:
+
+    muster pane clear otter --then "read brief-2.md and start"
+
+The daemon types the harness's clear command, `/clear` for Claude Code and for Codex, the way it
+types a compaction: once the agent is idle at an empty prompt, never while it works, and with
+`--then` typed as its next prompt once the clear has run. The two share one place to wait, so a
+clear asked for while a compaction waits replaces it, and the other way round, and `muster window`
+shows a waiting clear as `compaction queued`. A harness that gives no way to clear it from its
+prompt is refused with the reason (`muster docs harnesses`), and so is a pane running no agent.
+
+Codex reports its new session only at the first prompt after a clear, so until that prompt the
+pane's `resume` still names the conversation the clear left, and a restart or a daemon restart in
+that window brings the old one back. `--then` closes the window at once.
+
 ## Restarting an agent
 
     muster pane restart --pane p1w3r0ab2n

@@ -23,12 +23,13 @@ use clap_complete::Shell;
 use muster_core::input::check_sent_keys;
 use muster_core::names::could_be_minted;
 use muster_proto::{
-    AdjustFontSize, ArrangePane, ClosePane, CloseTab, CompactPane, CreateTab, EqualizePanes,
-    FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab, FocusTabRelative,
-    HideHelpers, HidePane, LeaveConversation, MoveTab, PaneCompaction, QuietPane, ReadClosedPanes,
-    ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RemoveFromTab, RenamePane,
-    RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane, ShowConversation,
-    ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes, ZoomPane, request,
+    AdjustFontSize, ArrangePane, ClearAgent, ClosePane, CloseTab, CompactPane, CreateTab,
+    EqualizePanes, FocusAsking, FocusHistory, FocusPane, FocusPaneAt, FocusRelative, FocusTab,
+    FocusTabRelative, HideHelpers, HidePane, LeaveConversation, MoveTab, PaneCompaction, QuietPane,
+    ReadClosedPanes, ReadDaemons, ReadPane, ReadWindow, ReattachPane, ReloadConfig, RemoveFromTab,
+    RenamePane, RenameTab, ReopenPane, Request, ResizePane, RestartAgent, SendToPane,
+    ShowConversation, ShowHelpers, ShowPane, SplitPane, ToggleSidebar, UpgradeMuster, WatchPanes,
+    ZoomPane, request,
 };
 
 use crate::{docs, environment};
@@ -567,6 +568,7 @@ impl Doing {
     fn take_bare_pane(&mut self) {
         match self {
             Doing::Restart { pane, bare_pane, .. }
+            | Doing::Clear { pane, bare_pane, .. }
             | Doing::Compaction { pane, bare_pane, .. }
             | Doing::Hide { pane, bare_pane, .. }
             | Doing::Show { pane, bare_pane, .. }
@@ -687,6 +689,24 @@ enum Doing {
         focus: Vec<String>,
 
         /// A prompt to type once the compaction has run, so the agent carries on
+        #[arg(long, value_name = "PROMPT")]
+        then: Option<String>,
+    },
+
+    /// Clear the context of a pane's agent, beginning a new session, once it is idle at an empty
+    /// prompt
+    //
+    // Typed as a compaction is, and in its place when one waits to be typed.
+    Clear {
+        /// The pane whose agent to clear, or the one this is running in
+        #[arg(long, value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
+
+        /// A prompt to type once the clear has run, so the agent starts on something
         #[arg(long, value_name = "PROMPT")]
         then: Option<String>,
     },
@@ -1533,6 +1553,11 @@ fn pane(
         Doing::Compact { pane, focus, then } => {
             compact(pane.as_ref(), focus, then.as_deref(), environment)
         }
+        Doing::Clear { pane, then, .. } => send(request::Payload::ClearAgent(ClearAgent {
+            pane_id: pane_ref(pane.as_ref(), environment),
+            then: then.clone().unwrap_or_default(),
+            ..ClearAgent::default()
+        })),
         Doing::Restart { pane, env, .. } => send(request::Payload::RestartAgent(RestartAgent {
             pane_id: pane_ref(pane.as_ref(), environment),
             env: env.iter().cloned().collect(),

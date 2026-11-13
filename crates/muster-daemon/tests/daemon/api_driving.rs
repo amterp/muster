@@ -29,6 +29,10 @@ fn compact(pane: &str, focus: &str) -> api::request::Request {
     }))
 }
 
+fn clear(pane: &str, then: &str) -> api::request::Request {
+    on_pane(Pane::Clear(api::ClearAgent { pane: pane.to_string(), then: then.to_string() }))
+}
+
 fn restart(pane: &str) -> api::request::Request {
     on_pane(Pane::Restart(api::RestartAgent { pane: pane.to_string(), ..Default::default() }))
 }
@@ -192,6 +196,32 @@ fn a_compaction_asked_through_the_api_is_typed_once_the_agent_is_idle() {
     until_some("the agent to read its compaction", || {
         let heard = std::fs::read_to_string(&heard).unwrap_or_default();
         heard.lines().any(|line| line == "/compact keep the parser notes").then_some(())
+    });
+}
+
+#[test]
+fn a_clear_asked_through_the_api_is_typed_once_the_agent_is_idle() {
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    daemon.run_agent("p1");
+    daemon.set_agent_state("p1", proto::AgentState::Working);
+    let mut api = daemon.api();
+
+    refused_as(&api.ask(clear("p1", "two\nlines")), api::Refusal::Invalid);
+    refused_as(&api.ask(clear("p2", "")), api::Refusal::Unspecified);
+    refused_as(&api.ask(clear("p9", "")), api::Refusal::NotFound);
+    let asked = api.ask(clear("p1", "read brief.md"));
+    assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+
+    daemon.set_agent_state("p1", proto::AgentState::Idle);
+    let heard = daemon.root().join("home/fake-agent-heard");
+    until_some("the agent to read its clear and then its prompt", || {
+        let heard = std::fs::read_to_string(&heard).unwrap_or_default();
+        let lines: Vec<&str> = heard.lines().collect();
+        let cleared = lines.iter().position(|line| *line == "/clear")?;
+        lines[cleared..].contains(&"read brief.md").then_some(())
     });
 }
 

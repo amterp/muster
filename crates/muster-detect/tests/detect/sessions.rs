@@ -26,6 +26,16 @@ fn codex_compacts_with_a_bare_slash_command_and_opencode_is_not_compacted() {
     assert_eq!(manifests.session_compact(&Agent::new("opencode"), None), None);
 }
 
+/// Claude Code and Codex both clear with `/clear`: Codex's `/new` would first ask which worktree
+/// the new conversation runs in. OpenCode gives no way to clear from its prompt.
+#[test]
+fn claude_and_codex_clear_with_a_bare_slash_command_and_opencode_is_not_cleared() {
+    let manifests = Manifests::built_in();
+    assert_eq!(manifests.session_clear(&Agent::new("claude")), Some("/clear"));
+    assert_eq!(manifests.session_clear(&Agent::new("codex")), Some("/clear"));
+    assert_eq!(manifests.session_clear(&Agent::new("opencode")), None);
+}
+
 /// The flags the recording started Codex with go along, so the session comes back on the same
 /// model, effort and permissions: `codex resume` runs with what it is given, not with what the
 /// session started with.

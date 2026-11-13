@@ -317,6 +317,8 @@ message PaneRequest {
     SetCompaction set_compaction = 17;
     // Since 1.16.
     Send send = 18;
+    // Since 1.16.
+    Clear clear = 19;
   }
 
   // Types into a pane as `muster pane send` does: the text, then each key, then Return. DONE
@@ -383,6 +385,18 @@ message PaneRequest {
     // run, so an agent compacted mid-task carries on. One line. Absent or blank: none, and the
     // agent waits at its prompt as before. A compaction given up drops its prompt with it.
     optional string then = 3;
+  }
+
+  // Clears the pane's agent's context, beginning a new session, by typing the line its manifest
+  // gives in `[session] clear` at its next idle, empty prompt, as a Compact is typed and in the
+  // same queue: a clear asked replaces a compaction not yet typed, and the other way round.
+  // REFUSED for a pane running no agent, or one whose manifest says no way to clear it; DONE
+  // once it is queued.
+  message Clear {
+    string pane = 1;
+    // A prompt typed at the agent's next idle, empty prompt once the clear has run, as a
+    // Compact's `then` is. One line. Absent or blank: none.
+    optional string then = 2;
   }
 
   // Restarts the pane's agent where it runs, in the session it reported: empties what waits for

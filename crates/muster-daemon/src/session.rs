@@ -1434,6 +1434,7 @@ impl Session {
                 P::Report(report) => self.report(report),
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
+                P::Clear(clear) => self.clear(&clear),
                 P::Quiet(quiet) => self.quiet(&quiet),
                 P::SetCompaction(set) => self.set_compaction(&set),
                 P::MakerClosed(closed) => self.maker_closed(&closed),
@@ -4336,6 +4337,46 @@ impl Session {
         Reply::done()
     }
 
+    /// Asks for the agent in a pane to have its context cleared, at its next idle, empty prompt.
+    /// It takes the compaction's place in the queue, since both are a line typed there and a
+    /// later ask is the one its asker means.
+    fn clear(&mut self, clear: &pane_request::Clear) -> Reply {
+        let Some(index) = self.pane_index(&clear.pane) else {
+            return Reply::not_there(format!("no pane {} on this daemon", clear.pane));
+        };
+        let Some(agent) = self.panes[index].record.agent.clone() else {
+            return Reply::refused(format!(
+                "pane {} runs no agent Muster recognizes, so there is no context to clear",
+                clear.pane
+            ));
+        };
+        let then = match then_line(clear.then.as_deref()) {
+            Ok(then) => then,
+            Err(refused) => return refused,
+        };
+        let Some(manifests) = self.detecting.manifests() else {
+            return Reply::refused(
+                "this daemon has not loaded its agents' manifests yet, so it cannot say how to \
+                 clear one; ask again in a moment",
+            );
+        };
+        let Some(line) = manifests.session_clear(&muster_detect::Agent::new(&agent)) else {
+            return Reply::refused(format!(
+                "{agent} gives Muster no way to clear it from its prompt, so pane {} is left as \
+                 it is; `muster docs harnesses` says which harnesses can be",
+                clear.pane
+            ));
+        };
+        let line = line.to_string();
+        log::info(
+            "daemon.clear.asked",
+            fields! { "pane" => clear.pane, "agent" => agent, "then" => then.is_some() },
+        );
+        self.panes[index].compaction.ask(line, then.map(str::to_string));
+        self.compaction_changed(index);
+        Reply::done()
+    }
+
     /// Puts what pane `index` has queued to type at its agent's prompt on its record, and tells
     /// the subscribers when that changed.
     fn compaction_changed(&mut self, index: usize) {
@@ -5509,12 +5550,17 @@ pub(crate) fn compact_lines(
         "a focus",
         "a longer brief belongs in a message (`muster msg post`)",
     )?;
-    let then = typed_line(
-        compact.then.as_deref(),
+    Ok((focus, then_line(compact.then.as_deref())?))
+}
+
+/// The prompt to carry on with once a compaction or a clear has run, typed as one line, or why
+/// it cannot be.
+pub(crate) fn then_line(then: Option<&str>) -> Result<Option<&str>, Reply> {
+    typed_line(
+        then,
         "a prompt to carry on with",
         "a longer brief belongs in a file the prompt names",
-    )?;
-    Ok((focus, then))
+    )
 }
 
 fn typed_line<'a>(

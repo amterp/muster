@@ -51,6 +51,7 @@ pub fn can_answer(request: &Request) -> bool {
                     | request::Payload::SendToPane(_)
                     | request::Payload::WatchPanes(_)
                     | request::Payload::CompactPane(_)
+                    | request::Payload::ClearAgent(_)
                     | request::Payload::PaneCompaction(_)
                     | request::Payload::RestartAgent(_)
                     | request::Payload::HidePane(_)
@@ -125,6 +126,10 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         Some(request::Payload::CompactPane(compact)) => {
             let pane = named(&compact.pane_id, "compacted")?;
             respond(compact_pane(&socket, pane, &compact.focus, &compact.then)?)
+        }
+        Some(request::Payload::ClearAgent(clear)) => {
+            let pane = named(&clear.pane_id, "cleared")?;
+            respond(clear_pane(&socket, pane, &clear.then)?)
         }
         Some(request::Payload::RestartAgent(restart)) => {
             let pane = named(&restart.pane_id, "restarted")?;
@@ -542,8 +547,30 @@ fn compact_pane(socket: &Path, pane: &str, focus: &str, then: &str) -> Result<Re
     } else {
         asked(socket, service)?
     };
+    queued_at_prompt(socket, pane, answer, "compacted")
+}
+
+/// Asks the daemon to clear the context of the agent in a pane, and then to give it `then`.
+fn clear_pane(socket: &Path, pane: &str, then: &str) -> Result<Response, Trouble> {
+    let then = Some(then.trim().to_string()).filter(|then| !then.is_empty());
+    let service = pane_service(daemon_proto::pane_request::Request::Clear(
+        daemon_proto::pane_request::Clear { pane: pane.to_string(), then },
+    ));
+    let answer =
+        asked_of_one_since(socket, service, daemon_proto::version::CLEARS, "clear an agent")?;
+    queued_at_prompt(socket, pane, answer, "cleared")
+}
+
+/// What a line queued for an agent's prompt answers: what it waits for when the agent is not at
+/// its prompt.
+fn queued_at_prompt(
+    socket: &Path,
+    pane: &str,
+    answer: daemon_proto::Answer,
+    done: &str,
+) -> Result<Response, Trouble> {
     Ok(match answer.outcome() {
-        daemon_proto::Outcome::NotThere => not_held(socket, pane, "compacted"),
+        daemon_proto::Outcome::NotThere => not_held(socket, pane, done),
         daemon_proto::Outcome::Done => {
             let held = snapshot(socket)?;
             let record = held.panes.iter().find(|record| record.pane == pane);

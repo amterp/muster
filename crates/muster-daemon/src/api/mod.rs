@@ -34,12 +34,13 @@ use crate::control::{Budget, Farewell, Outbox};
 use crate::session::Shared;
 
 /// Every request this daemon serves, by the name a client tests for in Welcome's features.
-const REQUESTS: [&str; 11] = [
+const REQUESTS: [&str; 12] = [
     "api.read_pane",
     "api.subscribe",
     "msg.ack",
     "msg.history",
     "msg.post",
+    "pane.clear",
     "pane.close",
     "pane.compact",
     "pane.new",
@@ -219,6 +220,7 @@ fn handle(shared: &Arc<Shared>, caller: &Caller, request: api::Request) {
                 Pane::Send(asked) => acting::send(shared, caller, correlation, &asked),
                 Pane::Close(asked) => acting::close(shared, caller, correlation, &asked),
                 Pane::Compact(asked) => acting::compact(shared, caller, correlation, &asked),
+                Pane::Clear(asked) => acting::clear(shared, caller, correlation, &asked),
                 Pane::Restart(asked) => acting::restart(shared, caller, correlation, &asked),
                 Pane::Reopen(asked) => pane::reopen(shared, caller, correlation, &asked),
             }

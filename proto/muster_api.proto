@@ -161,8 +161,8 @@
 //
 // ## Acting on a pane
 //
-// `pane.send`, `pane.close`, `pane.compact` and `pane.restart` do what `muster pane send`,
-// `close`, `compact` and `restart` do, through the same code in the daemon. None takes an
+// `pane.send`, `pane.close`, `pane.compact`, `pane.clear` and `pane.restart` do what `muster pane
+// send`, `close`, `compact`, `clear` and `restart` do, through the same code in the daemon. None takes an
 // operation id. A send is never retried for the client, a close of a pane already gone is
 // refused NOT_FOUND, and a compaction or restart asked twice is either carried out twice or
 // refused saying why.
@@ -352,6 +352,8 @@ message PaneRequest {
     RestartAgent restart = 5;
     // "pane.reopen", since 0.3: answered with MadePane.
     ReopenPane reopen = 6;
+    // "pane.clear", since 0.5: answered DONE once the clear is queued.
+    ClearAgent clear = 7;
   }
 }
 
@@ -449,6 +451,19 @@ message CompactAgent {
   string focus = 2;
   // A prompt typed once the compaction has run. Empty is none.
   string then = 3;
+}
+
+// Clearing the context of the agent in a pane, which begins a new session in its harness, typed
+// as `pane.compact` is: once the agent is idle at an empty prompt, never in the middle of a turn,
+// and in its place when a compaction is still to be typed. Refused for a pane with no agent, or
+// one whose harness Muster cannot clear, and INVALID for a prompt of more than one line. A Codex
+// agent reports its new session only at its first prompt, so until then the pane's
+// `context_change` and a restart still name the old one.
+message ClearAgent {
+  // The pane's id.
+  string pane = 1;
+  // A prompt typed once the clear has run. Empty is none.
+  string then = 2;
 }
 
 // Ending the agent in a pane and starting its session again, with the flags it ran with, as

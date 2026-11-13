@@ -15,6 +15,10 @@
 //! stays past it, and a compaction that did not bring it back under must not be typed again on
 //! each of them: the context has to fall below the threshold before it can cross it again.
 //!
+//! A clear (`muster pane clear`) is queued here too, as a line its manifest's `[session] clear`
+//! gives in place of the compaction's: both are typed at the idle, empty prompt, may carry a
+//! prompt to follow, and a later ask of either replaces the one not yet typed.
+//!
 //! A second threshold, lower, has the agent told to compact itself instead: a nudge, posted as a
 //! message (`messages/compact_nudges.rs`). Once per crossing too, and counted apart from the
 //! compaction's, since an agent can be past one and not the other.

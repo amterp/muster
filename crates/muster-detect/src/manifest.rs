@@ -37,8 +37,9 @@ use region::Region;
 /// the work of its own an agent at its prompt is waiting on, and 17 a `[session]`
 /// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends,
 /// and 18 `[session] image_paste`, allowing image paths in a readable composer. Engine 19 adds
-/// `defer_idle_while_working`, holding idle reports behind a positive working signal.
-pub const ENGINE_VERSION: u32 = 19;
+/// `defer_idle_while_working`, holding idle reports behind a positive working signal. Engine 20
+/// adds `[session]` `clear`, the line that empties the session's context.
+pub const ENGINE_VERSION: u32 = 20;
 
 const DEFER_IDLE_ENGINE_VERSION: u32 = 19;
 
@@ -63,6 +64,9 @@ const WAKE_ENGINE_VERSION: u32 = 10;
 
 /// The engine version that introduced `[session]` `compact`.
 const COMPACT_ENGINE_VERSION: u32 = 11;
+
+/// The engine version that introduced `[session]` `clear`.
+const CLEAR_ENGINE_VERSION: u32 = 20;
 
 /// The engine version that introduced `[session]` `resume`, `resume_drops` and `resume_values`.
 const RESUME_ENGINE_VERSION: u32 = 12;
@@ -177,6 +181,8 @@ pub struct Manifest {
     /// What typed at the agent's empty prompt compacts its context, with `{focus}` where the
     /// harness takes what to keep, if it takes it.
     compact: Option<String>,
+    /// What typed at the agent's empty prompt empties its context and begins a new session.
+    clear: Option<String>,
     /// The command that starts the session again after a daemon restart.
     resume: Option<resume::Spelling>,
     /// Whether a job the agent started in the background starts its next turn when it ends.
@@ -343,6 +349,12 @@ impl Manifest {
             )));
         }
         Some(Ok(template.replace(FOCUS_PLACEHOLDER, focus.unwrap_or_default()).trim().to_string()))
+    }
+
+    /// The line that, typed at the agent's empty prompt with a Return, empties its context and
+    /// begins a new session. None when the manifest does not say how.
+    pub fn session_clear(&self) -> Option<&str> {
+        self.clear.as_deref()
     }
 
     /// Whether a job the agent started in the background starts its next turn when it ends, so
@@ -607,6 +619,7 @@ struct RawSession {
     rename: Option<String>,
     wake: Option<Vec<String>>,
     compact: Option<String>,
+    clear: Option<String>,
     resume: Option<Vec<String>>,
     #[serde(default)]
     resume_drops: Vec<String>,
@@ -893,6 +906,9 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
     if let Some(compact) = &session.compact {
         validate_compact(manifest, compact)?;
     }
+    if let Some(clear) = &session.clear {
+        validate_clear(manifest, clear)?;
+    }
     if session.wakes_when_jobs_end
         && manifest.min_engine_version.unwrap_or(0) < JOBS_WAKE_ENGINE_VERSION
     {
@@ -972,6 +988,22 @@ fn validate_compact(manifest: &RawManifest, compact: &str) -> Result<(), String>
     }
     if compact.chars().any(char::is_control) {
         return Err("[session] compact holds a control character".to_string());
+    }
+    Ok(())
+}
+
+/// A clear is typed as one line and sent with one Return, as a compaction is, and takes nothing.
+fn validate_clear(manifest: &RawManifest, clear: &str) -> Result<(), String> {
+    if manifest.min_engine_version.unwrap_or(0) < CLEAR_ENGINE_VERSION {
+        return Err(format!(
+            "[session] clear needs min_engine_version {CLEAR_ENGINE_VERSION} or later"
+        ));
+    }
+    if clear.trim().is_empty() {
+        return Err("[session] clear types nothing".to_string());
+    }
+    if clear.chars().any(char::is_control) {
+        return Err("[session] clear holds a control character".to_string());
     }
     Ok(())
 }
@@ -1264,6 +1296,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
         rules,
         rename: raw.session.as_ref().and_then(|session| session.rename.clone()),
         compact: raw.session.as_ref().and_then(|session| session.compact.clone()),
+        clear: raw.session.as_ref().and_then(|session| session.clear.clone()),
         wakes_when_jobs_end: raw
             .session
             .as_ref()

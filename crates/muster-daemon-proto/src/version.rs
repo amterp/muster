@@ -13,6 +13,10 @@ use crate::Version;
 /// baseline follows, and the `compatible` test holds the two together.
 pub const PROTOCOL: Version = Version { major: 1, minor: 16 };
 
+/// The first minor whose daemon clears an agent's context (`PaneRequest.Clear`). An older one
+/// refuses the request as unknown, so a client asks first.
+pub const CLEARS: u32 = 16;
+
 /// The first minor whose daemon answers a send on the control connection, refusing one it could
 /// not queue. An older one takes sends only on an input connection, which answers nothing.
 pub const SENDS_ANSWERED: u32 = 16;

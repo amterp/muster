@@ -1,6 +1,6 @@
 id = "codex"
-version = "2026.11.13.1"
-min_engine_version = 19
+version = "2026.11.13.2"
+min_engine_version = 20
 updated_at = "2026-11-13T00:00:00Z"
 
 # Stop runs before Codex accepts commands again; its working spinner covers the remaining hooks.
@@ -30,6 +30,11 @@ rename = "/rename {name}"
 # Typed at an empty composer with a Return, it compacts at once; words after it are not a focus
 # but a message to the model (docs/observations/codex-0.167.0.md, section 3).
 compact = "/compact"
+# Typed at an empty composer with a Return, it clears the conversation once Codex accepts commands
+# (docs/observations/codex-0.167.2.md, section 2). Not `/new`, which in a Git repository first asks
+# where the new conversation runs (docs/observations/codex-0.167.0.md, section 1). The new
+# session's id is reported only at its first prompt (docs/observations/codex-0.166.0.md).
+clear = "/clear"
 # /new leaves the old conversation loaded and its id reported until the first new prompt.
 # A queued wake can reach that old conversation or survive a read and replay on resume.
 # Typing reaches the visible composer instead (docs/observations/codex-0.166.0.md).

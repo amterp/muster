@@ -28,6 +28,7 @@
                         "msg.ack",
                         "msg.history",
                         "msg.post",
+                        "pane.clear",
                         "pane.close",
                         "pane.compact",
                         "pane.new",

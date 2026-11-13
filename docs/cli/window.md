@@ -244,8 +244,8 @@ One entry per pane every followed daemon holds, on screen or not.
   when they did. `null` while there is no session or no way to resume it. Both stay on an
   `unreachable` pane, where they say what to resume once its machine is back.
 - `compaction` - what its daemon holds to type at the agent's next idle, empty prompt: `queued`,
-  a compaction (`muster pane compact`, or `compact_at`); `follow_up`, the prompt a compaction was
-  asked to carry on with, once it has run. `null` while neither waits. What it waits for follows
+  a compaction (`muster pane compact`, or `compact_at`) or a clear (`muster pane clear`);
+  `follow_up`, the prompt either was asked to carry on with, once it has run. `null` while neither waits. What it waits for follows
   from `state` and `facts.subagents`.
 - `compact_at`, `compact_nudge_at` - the percent of its context at which the pane's agent is
   compacted unasked, and at which it is told to compact itself (`muster docs agents`):

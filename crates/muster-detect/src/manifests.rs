@@ -344,6 +344,12 @@ impl Manifests {
         self.entry(agent).is_some_and(|entry| entry.manifest.wakes_when_jobs_end())
     }
 
+    /// The line that empties the agent's context and begins a new session, typed at its empty
+    /// prompt; none when its manifest does not say how.
+    pub fn session_clear(&self, agent: &Agent) -> Option<&str> {
+        self.entry(agent)?.manifest.session_clear()
+    }
+
     /// Whether the agent's manifest says how to compact its session from its prompt.
     pub fn compacts(&self, agent: &Agent) -> bool {
         self.entry(agent).is_some_and(|entry| entry.manifest.session_compact(None).is_some())

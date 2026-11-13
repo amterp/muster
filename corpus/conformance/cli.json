@@ -1183,6 +1183,21 @@
       }
     },
     {
+      "name": "clearing a pane's agent names it bare and says what to start on",
+      "why": "An orchestrator hands a worker its next assignment in a fresh context: the clear empties what the last one left, and the prompt after it points at the new brief.",
+      "given": {
+        "argv": ["pane", "clear", "p1w3r07bsd", "--then", "read brief-2.md"]
+      },
+      "expect": {
+        "request": {
+          "clear_agent": {
+            "pane_id": "p1w3r07bsd",
+            "then": "read brief-2.md"
+          }
+        }
+      }
+    },
+    {
       "name": "an agent restarts another in its session, with what its environment should change",
       "why": "Twelve agents had to pick up a changed proxy, each resuming its conversation, and an agent did it by hand. A restart names the pane and the variables, and asks nothing: the agent driving it has already decided.",
       "given": {

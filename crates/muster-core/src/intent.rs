@@ -354,6 +354,14 @@ pub enum BackendIntent {
         then: Option<String>,
     },
 
+    /// Clears the context of the agent in a pane, at its next idle, empty prompt, as a
+    /// compaction is typed.
+    ClearPane {
+        pane: PaneId,
+        /// The prompt typed once the clear has run.
+        then: Option<String>,
+    },
+
     /// Brings back a pane its daemon remembers closing, under its id, callsign and name, where it
     /// was ([`crate::mirror::ClosedPane`]).
     ///
@@ -504,6 +512,9 @@ impl BackendIntent {
                 counted(focus.as_ref()),
                 counted(then.as_ref())
             ),
+            BackendIntent::ClearPane { pane, then } => {
+                format!("ClearPane {{ pane: {pane}, then: {} }}", counted(then.as_ref()))
+            }
             // A variable's value can be a proxy's password.
             BackendIntent::RestartAgent { pane, env } => format!(
                 "RestartAgent {{ pane: {pane}, env: {:?} }}",

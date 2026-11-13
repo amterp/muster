@@ -103,6 +103,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::StoreImage(_)) => "pane.store_image",
             Some(pane_request::Request::Reopen(_)) => "pane.reopen",
             Some(pane_request::Request::Send(_)) => "pane.send",
+            Some(pane_request::Request::Clear(_)) => "pane.clear",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

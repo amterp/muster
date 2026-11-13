@@ -1,4 +1,4 @@
-//! `pane.send`, `pane.close`, `pane.compact` and `pane.restart`: acting on a pane through the
+//! `pane.send`, `pane.close`, `pane.compact`, `pane.clear` and `pane.restart`: acting on a pane through the
 //! daemon's own handling of the request `muster pane` sends with no window open, so the API and
 //! the CLI cannot do it differently.
 
@@ -50,6 +50,27 @@ pub(super) fn compact(
         refused(correlation, api::Refusal::Invalid, refusal.reason)
     } else {
         match handled(shared, caller, &correlation, pane_request::Request::Compact(compact)) {
+            Ok(handled) => answered(correlation, &replied(handled)),
+            Err(unavailable) => *unavailable,
+        }
+    };
+    answer_after(shared, caller, answer);
+}
+
+pub(super) fn clear(
+    shared: &Shared,
+    caller: &Caller,
+    correlation: String,
+    asked: &api::ClearAgent,
+) {
+    let clear = pane_request::Clear {
+        pane: asked.pane.clone(),
+        then: (!asked.then.is_empty()).then(|| asked.then.clone()),
+    };
+    let answer = if let Err(refusal) = crate::session::then_line(clear.then.as_deref()) {
+        refused(correlation, api::Refusal::Invalid, refusal.reason)
+    } else {
+        match handled(shared, caller, &correlation, pane_request::Request::Clear(clear)) {
             Ok(handled) => answered(correlation, &replied(handled)),
             Err(unavailable) => *unavailable,
         }
