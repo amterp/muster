@@ -32,7 +32,7 @@ wakes_when_jobs_end = true
 # this fake from where the harness installed it rather than a `claude` on the PATH.
 resume = ["/bin/sh", "-c", "exec \"$HOME/.muster/bin/claude\" \"$@\"", "claude", "{args}", "--resume", "{session}"]
 resume_drops = ["-p", "--print", "--resume"]
-resume_values = ["--model", "--effort", "--resume"]
+resume_values = ["--model", "--effort", "--resume", "--settings"]
 resume_keeps = ["--model", "--effort"]
 # Exercise command-delivered wakes with sessions that refuse ("gone"), accept without starting
 # a turn ("dead"), exceed the command timeout ("slow"), or start a turn 8 seconds later ("late").

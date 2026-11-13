@@ -192,6 +192,28 @@ fn a_pane_whose_directory_is_gone_comes_back_as_a_shell() {
     assert!(log.contains("daemon.state.resume_skipped"), "{log}");
 }
 
+/// A settings file a wrapper deleted once the agent had read it would stop the resumed agent at
+/// once, so its flag is dropped, and the record says so; an inline settings value is kept.
+#[test]
+fn a_resume_drops_a_settings_file_that_has_gone() {
+    let settings =
+        std::env::temp_dir().join(format!("muster-settings-{}.json", std::process::id()));
+    std::fs::write(&settings, "{}").expect("the test writes a settings file");
+    let arguments = format!("--settings {} --model opus", settings.display());
+    let (mut daemon, mut control) = reported(&arguments, "s-6");
+    std::fs::remove_file(&settings).expect("the test removes the settings file");
+
+    let mut control = restarted(&mut daemon, &mut control);
+
+    let command = until_some("p1 to come back running its agent", || {
+        record(&snapshot(&mut control), "p1").command.clone()
+    });
+    assert!(command.ends_with("claude --model opus --resume s-6"), "resumed as {command:?}");
+    let resume = record(&snapshot(&mut control), "p1").resume.clone().expect("a resume");
+    let uncarried = resume.uncarried.unwrap_or_default();
+    assert!(uncarried.contains("--settings"), "the record says what was dropped: {uncarried:?}");
+}
+
 /// The pane's record says which session its agent runs and how the daemon would resume it, for
 /// a client to show, and says neither once the agent has left.
 #[test]
