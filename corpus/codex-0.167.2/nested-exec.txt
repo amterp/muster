@@ -1,0 +1,94 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, isolated daemon and 80x24 pane.
+An isolated CODEX_HOME registers a SessionStart hook in config.toml for both modes.
+The hook records stdin and calls the same report flags as the shipped SessionStart hook:
+  "$MUSTER_DAEMON" report --agent codex --from session-id=/session_id --from session-source=/source
+A local Responses provider answers both turns; no real model or user account is contacted.
+Outer command: codex --no-daemon
+After one interactive prompt finishes, enter shell mode with --key shift+1, then send:
+  codex exec --dangerously-bypass-hook-trust 'Nested exec probe' </dev/null > exec-output 2>&1; printf ended > exec-ended
+Both hooks report source=startup and inherit the same MUSTER_PANE.
+Interactive report exits 0. Nested report exits 1, refused as another codex outside the
+pane agent's process group. The child completes successfully despite the refused report.
+Window snapshots before and after the child retain $INTERACTIVE_SESSION as session and as
+the last argument to resume.command. The child's ID does not replace it.
+Hook JSON and report status/stderr are recorded in nested-exec-hooks.jsonl.
+
+03-interactive-session
+
+  >_ OpenAI Codex (v0.167.2)
+     /private/var/folders/5p/…/T/muster-slot4d-attribution-rz0j_d1t/project
+
+
+› interactive probe
+
+
+• probe ready
+
+  Worked for <1s • 09:37
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  dummy default · /private/var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/must…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+04-after-nested-exec
+     /private/var/folders/5p/…/T/muster-slot4d-attribution-rz0j_d1t/project
+
+
+› interactive probe
+
+
+• probe ready
+
+  Worked for <1s • 09:37
+
+• You ran codex exec --dangerously-bypass-hook-trust 'Nested exec probe' </dev/
+  │ null > /var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/muster-slot4d-
+  │ attribution-rz0j_d1t/exec-output 2>&1; printf ended > /
+  │ … +2 lines
+  └ (no output)
+    + Show details
+
+  Worked for <1s • 09:37
+
+
+› Ask Codex to do anything
+
+  dummy default · /private/var/folders/5p/tw1cmgbs6xnd5wl087xjm9sc0000gn/T/must…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+Nested exec output:
+Reading additional input from stdin...
+OpenAI Codex v0.167.2
+--------
+workdir: /private$PROBE_ROOT/project
+model: dummy
+provider: unreachable
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: none
+reasoning summaries: none
+session id: $EXEC_SESSION
+--------
+user
+Nested exec probe
+warning: `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.
+warning: `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.
+warning: Model metadata for `dummy` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+hook: SessionStart
+hook: SessionStart Completed
+codex
+probe ready
+tokens used
+33
+probe ready

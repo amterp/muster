@@ -119,3 +119,20 @@ The manifest now reads both option labels as a visible blocker. Down changes the
 leaves the dialog blocked. Return on `Use existing model` closes it and leaves an idle composer.
 All three recorded screens are conformance cases. No new manifest key or engine version is
 needed.
+
+## 8. Nested exec has the same hook source, but its report is refused
+
+`corpus/codex-0.167.2/nested-exec.txt` and `nested-exec-hooks.jsonl` record an interactive
+session and `codex exec` launched from its shell mode. Both use a scratch home with SessionStart
+registered in `config.toml`, and a local provider answers both turns. Both hooks receive
+`source: startup`, their own session and transcript IDs, and the same inherited `MUSTER_PANE`.
+The permission modes differ in this run, which reflects the invocations rather than identifying
+interactive versus exec mode.
+
+The hook calls the shipped SessionStart report flags. Muster accepts the interactive report
+and refuses the nested report because its nearest Codex is outside the pane agent's process
+group. Window snapshots before and after the child retain the interactive session ID and resume
+command. The nested ID never becomes the pane's resume target. No hook-input filter or new
+production guard is needed: process attribution already handles this case once Muster has
+identified the pane's agent and group. This measurement does not cover a report that arrives
+before that identification.
