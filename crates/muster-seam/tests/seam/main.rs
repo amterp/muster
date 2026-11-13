@@ -19,6 +19,7 @@ mod effects;
 mod focus_history;
 mod group_messages;
 mod handing_over;
+mod held_prompt;
 mod hiding;
 mod holding;
 mod image_paste;
