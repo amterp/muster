@@ -16,6 +16,12 @@
       "body": "Since helpers close with their maker once idle (94edf9e8), the closed-maker banner only appears for helpers still at work. A click doing pane show --helpers-of would now also keep them open, which this card should account for.",
       "author": "Alexander Terp",
       "created_at_millis": 1794290320468
+    },
+    {
+      "id": "c_2zCujVrmn",
+      "body": "2026-11-13 design, not started: the maker id has to travel with the notice, as an optional field on What::Message (crates/muster-msg/src/entry.rs) and its cross-machine copy, then the notice to the window, the core's attention state, and the banner in proto/muster.proto. Both click paths in Swift (Muster's banner and the macOS notification) then send ShowHelpers for that maker. Seam test beside a_closed_makers_notice_carries_its_words_to_the_banner in crates/muster-seam/tests/seam/hiding.rs.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794592601819
     }
   ],
   "created_at_millis": 1792249544851,
@@ -25,7 +31,7 @@
   "position": "b1L",
   "title": "A click on a closed-maker banner brings its helpers forward",
   "type": "enhancement",
-  "updated_at_millis": 1794290320468,
+  "updated_at_millis": 1794592601819,
   "history": [
     {"field":"column","value":"backlog-lo","at":1792249544851}
   ]
