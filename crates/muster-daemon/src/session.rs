@@ -1448,6 +1448,7 @@ impl Session {
                 P::Seen(seen) => self.seen(&seen.panes),
                 P::Compact(compact) => self.compact(&compact),
                 P::Clear(clear) => self.clear(&clear),
+                P::Unseen(unseen) => self.unseen(&unseen.pane),
                 P::Quiet(quiet) => self.quiet(&quiet),
                 P::SetCompaction(set) => self.set_compaction(&set),
                 P::MakerClosed(closed) => self.maker_closed(&closed),
@@ -3391,6 +3392,33 @@ impl Session {
             self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
         }
         reply
+    }
+
+    /// Marks a pane unread: its idle agent reads as finished and unseen, as one that finished
+    /// out of sight does, until somebody sees it again.
+    fn unseen(&mut self, pane: &str) -> Reply {
+        let Some(index) = self.pane_index(pane) else {
+            return Reply::not_there(format!("no pane {pane} on this daemon"));
+        };
+        let record = &mut self.panes[index].record;
+        if record.agent.is_none() {
+            return Reply::refused(format!(
+                "pane {pane} runs no agent Muster recognizes, so there is no finish to mark unread"
+            ));
+        }
+        if record.agent_state() != proto::AgentState::Idle {
+            return Reply::refused(format!(
+                "pane {pane}'s agent is not idle, so there is no finish to mark unread; it asks for \
+                 somebody when it next finishes or blocks"
+            ));
+        }
+        if record.finished_unseen {
+            return Reply::already();
+        }
+        record.finished_unseen = true;
+        let record = record.clone();
+        self.emit(Payload::PaneChanged(proto::PaneChanged { pane: Some(record) }));
+        Reply::done()
     }
 
     fn close_pane(&mut self, pane: &str, by: &str) -> Reply {

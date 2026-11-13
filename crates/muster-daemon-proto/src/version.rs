@@ -18,6 +18,10 @@ pub const PROTOCOL: Version = Version { major: 1, minor: 16 };
 /// refuses the request as unknown, so a client asks first.
 pub const CLEARS: u32 = 16;
 
+/// The first minor whose daemon marks a pane unread (`PaneRequest.Unseen`). An older one refuses
+/// the request as unknown, so a client asks first.
+pub const MARKS_UNREAD: u32 = 16;
+
 /// The first minor whose daemon answers a send on the control connection, refusing one it could
 /// not queue. An older one takes sends only on an input connection, which answers nothing.
 pub const SENDS_ANSWERED: u32 = 16;

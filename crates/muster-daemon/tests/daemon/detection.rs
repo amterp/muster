@@ -497,6 +497,36 @@ fn seen(control: &mut Control, panes: &[&str], outcome: proto::Outcome) {
     expect(control, pane(proto::pane_request::Request::Seen(seen)), outcome);
 }
 
+fn unseen(control: &mut Control, pane_name: &str, outcome: proto::Outcome) {
+    let unseen = proto::pane_request::Unseen { pane: pane_name.to_string() };
+    expect(control, pane(proto::pane_request::Request::Unseen(unseen)), outcome);
+}
+
+/// Marking a pane unread gives its idle agent the finish nobody has seen, which a look clears
+/// as it clears any other; there is none to give an agent at work or a pane with no agent.
+#[test]
+fn a_pane_marked_unread_reads_as_finished_until_somebody_sees_it() {
+    let home = Home::new("marked-unread", &[("claude.toml", PROBE_MANIFEST)], &["claude"]);
+    let daemon = home.daemon();
+    let mut control = daemon.connect();
+    let mut input = Input::connect(daemon.socket_path());
+    run_agent(&mut control, &mut input, "p1", &home.agent("claude"));
+    until_detected(&mut control, "p1", Some("claude"), proto::AgentState::Idle);
+    make(&mut control, create("p2", beside("p1", proto::Side::Right)));
+    unseen(&mut control, "p2", proto::Outcome::Refused);
+    unseen(&mut control, "p9", proto::Outcome::NotThere);
+
+    unseen(&mut control, "p1", proto::Outcome::Done);
+    assert!(finished_unseen(&mut control, "p1"));
+    unseen(&mut control, "p1", proto::Outcome::AlreadySo);
+    seen(&mut control, &["p1"], proto::Outcome::Done);
+    assert!(!finished_unseen(&mut control, "p1"));
+
+    settle(&mut control, &mut input, "working", proto::AgentState::Working);
+    unseen(&mut control, "p1", proto::Outcome::Refused);
+    assert!(!finished_unseen(&mut control, "p1"), "an agent at work has finished nothing");
+}
+
 /// An agent that stops working with nobody looking has finished something unseen. The daemon
 /// keeps that until somebody sees the pane, so it outlives the window that was not looking, and
 /// every client connecting later hears it.

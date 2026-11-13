@@ -104,6 +104,7 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(pane_request::Request::Reopen(_)) => "pane.reopen",
             Some(pane_request::Request::Send(_)) => "pane.send",
             Some(pane_request::Request::Clear(_)) => "pane.clear",
+            Some(pane_request::Request::Unseen(_)) => "pane.unseen",
             None => "pane",
         },
         Service::Msg(asked) => match &asked.request {

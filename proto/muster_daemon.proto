@@ -319,6 +319,8 @@ message PaneRequest {
     Send send = 18;
     // Since 1.16.
     Clear clear = 19;
+    // Since 1.16.
+    Unseen unseen = 20;
   }
 
   // Types into a pane as `muster pane send` does: the text, then each key, then Return. DONE
@@ -368,6 +370,14 @@ message PaneRequest {
   // does not stop the others being seen; NOT_THERE only when none of them is here.
   message Seen {
     repeated string panes = 1;
+  }
+
+  // Somebody marked the pane unread: sets its `finished_unseen` as an agent finishing out of
+  // sight does, so it reads `done` until somebody sees it again. REFUSED for a pane running no
+  // agent, or one whose agent is at work or asking, since a finish there is not one; ALREADY_SO
+  // when it already carries one.
+  message Unseen {
+    string pane = 1;
   }
 
   // Compacts the context of the agent in a pane, by typing what its manifest gives in `[session]
