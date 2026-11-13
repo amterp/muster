@@ -1,0 +1,473 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, bare 100x60 PTY.
+Isolated HOME/CODEX_HOME, --no-daemon, no hooks, local Responses provider.
+The provider returns 160 numbered lines so there is transcript history to scroll.
+Input is nonblocking; PTY output is drained while each burst is written.
+The historical burst is reconstructed from the card, not copied from its unavailable recording.
+Burst: ESC[<64;40;50M repeated 220 times (2640 bytes), then 2200 times (26400 bytes).
+Each burst is accepted in full. Ctrl-End returns to bottom before the next prompt.
+An idle prompt after each burst reaches the local provider and finishes.
+A third burst of 220 reports arrives while a provider response is held; the held turn
+finishes after release, and the next prompt reaches the provider and finishes.
+No input freeze reproduced in this run. Five user turns completed.
+
+codex 0.167.2: Establish long transcript completed
+title: project
+The provider received request 2 and Codex returned to idle.
+
+› Establish long transcript
+  Probe history line 109
+  Probe history line 110
+  Probe history line 111
+  Probe history line 112
+  Probe history line 113
+  Probe history line 114
+  Probe history line 115
+  Probe history line 116
+  Probe history line 117
+  Probe history line 118
+  Probe history line 119
+  Probe history line 120
+  Probe history line 121
+  Probe history line 122
+  Probe history line 123
+  Probe history line 124
+  Probe history line 125
+  Probe history line 126
+  Probe history line 127
+  Probe history line 128
+  Probe history line 129
+  Probe history line 130
+  Probe history line 131
+  Probe history line 132
+  Probe history line 133
+  Probe history line 134
+  Probe history line 135
+  Probe history line 136
+  Probe history line 137
+  Probe history line 138
+  Probe history line 139
+  Probe history line 140
+  Probe history line 141
+  Probe history line 142
+  Probe history line 143
+  Probe history line 144
+  Probe history line 145
+  Probe history line 146
+  Probe history line 147
+  Probe history line 148
+  Probe history line 149
+  Probe history line 150
+  Probe history line 151
+  Probe history line 152
+  Probe history line 153
+  Probe history line 154
+  Probe history line 155
+  Probe history line 156
+  Probe history line 157
+  Probe history line 158
+  Probe history line 159
+
+  Worked for <1s • 09:06
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: 220 idle wheel reports
+title: project
+Reconstructed wheel-up burst at cell 40,50.
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› Establish long transcript
+
+
+• Probe history line 000
+  Probe history line 001
+  Probe history line 002
+  Probe history line 003
+  Probe history line 004
+  Probe history line 005
+  Probe history line 006
+  Probe history line 007
+  Probe history line 008
+  Probe history line 009
+  Probe history line 010
+  Probe history line 011
+  Probe history line 012
+  Probe history line 013
+  Probe history line 014
+  Probe history line 015
+  Probe history line 016
+  Probe history line 017
+  Probe history line 018
+  Probe history line 019
+  Probe history line 020
+  Probe history line 021
+  Probe history line 022
+  Probe history line 023
+  Probe history line 024
+  Probe history line 025
+  Probe history line 026
+  Probe history line 027
+  Probe history line 028
+  Probe history line 029
+  Probe history line 030
+  Probe history line 031
+  Probe history line 032
+  Probe history line 033
+  Probe history line 034
+  Probe history line 035
+  Probe history line 036
+  Probe history line 037
+                                       ↓ Back to bottom · esc
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  enter/esc latest · ? shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: Input after 220 idle wheel reports completed
+title: project
+The provider received request 4 and Codex returned to idle.
+
+› Input after 220 idle wheel reports
+  Probe history line 109
+  Probe history line 110
+  Probe history line 111
+  Probe history line 112
+  Probe history line 113
+  Probe history line 114
+  Probe history line 115
+  Probe history line 116
+  Probe history line 117
+  Probe history line 118
+  Probe history line 119
+  Probe history line 120
+  Probe history line 121
+  Probe history line 122
+  Probe history line 123
+  Probe history line 124
+  Probe history line 125
+  Probe history line 126
+  Probe history line 127
+  Probe history line 128
+  Probe history line 129
+  Probe history line 130
+  Probe history line 131
+  Probe history line 132
+  Probe history line 133
+  Probe history line 134
+  Probe history line 135
+  Probe history line 136
+  Probe history line 137
+  Probe history line 138
+  Probe history line 139
+  Probe history line 140
+  Probe history line 141
+  Probe history line 142
+  Probe history line 143
+  Probe history line 144
+  Probe history line 145
+  Probe history line 146
+  Probe history line 147
+  Probe history line 148
+  Probe history line 149
+  Probe history line 150
+  Probe history line 151
+  Probe history line 152
+  Probe history line 153
+  Probe history line 154
+  Probe history line 155
+  Probe history line 156
+  Probe history line 157
+  Probe history line 158
+  Probe history line 159
+
+  Worked for <1s • 09:06
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: 2200 idle wheel reports
+title: project
+Reconstructed wheel-up burst at cell 40,50.
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› Establish long transcript
+
+
+• Probe history line 000
+  Probe history line 001
+  Probe history line 002
+  Probe history line 003
+  Probe history line 004
+  Probe history line 005
+  Probe history line 006
+  Probe history line 007
+  Probe history line 008
+  Probe history line 009
+  Probe history line 010
+  Probe history line 011
+  Probe history line 012
+  Probe history line 013
+  Probe history line 014
+  Probe history line 015
+  Probe history line 016
+  Probe history line 017
+  Probe history line 018
+  Probe history line 019
+  Probe history line 020
+  Probe history line 021
+  Probe history line 022
+  Probe history line 023
+  Probe history line 024
+  Probe history line 025
+  Probe history line 026
+  Probe history line 027
+  Probe history line 028
+  Probe history line 029
+  Probe history line 030
+  Probe history line 031
+  Probe history line 032
+  Probe history line 033
+  Probe history line 034
+  Probe history line 035
+  Probe history line 036
+  Probe history line 037
+                                       ↓ Back to bottom · esc
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  enter/esc latest · ? shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: Input after 2200 idle wheel reports completed
+title: project
+The provider received request 6 and Codex returned to idle.
+
+› Input after 2200 idle wheel reports
+  Probe history line 110
+  Probe history line 111
+  Probe history line 112
+  Probe history line 113
+  Probe history line 114
+  Probe history line 115
+  Probe history line 116
+  Probe history line 117
+  Probe history line 118
+  Probe history line 119
+  Probe history line 120
+  Probe history line 121
+  Probe history line 122
+  Probe history line 123
+  Probe history line 124
+  Probe history line 125
+  Probe history line 126
+  Probe history line 127
+  Probe history line 128
+  Probe history line 129
+  Probe history line 130
+  Probe history line 131
+  Probe history line 132
+  Probe history line 133
+  Probe history line 134
+  Probe history line 135
+  Probe history line 136
+  Probe history line 137
+  Probe history line 138
+  Probe history line 139
+  Probe history line 140
+  Probe history line 141
+  Probe history line 142
+  Probe history line 143
+  Probe history line 144
+  Probe history line 145
+  Probe history line 146
+  Probe history line 147
+  Probe history line 148
+  Probe history line 149
+  Probe history line 150
+  Probe history line 151
+  Probe history line 152
+  Probe history line 153
+  Probe history line 154
+  Probe history line 155
+  Probe history line 156
+  Probe history line 157
+  Probe history line 158
+  Probe history line 159
+  └ Tip: Use /hooks to view and manage lifecycle hooks.
+
+  Worked for <1s • 09:06
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: 220 working wheel reports
+title: ⠇ project
+Provider response is held while the burst is sent.
+
+› Input after 220 idle wheel reports
+  Probe history line 062
+  Probe history line 063
+  Probe history line 064
+  Probe history line 065
+  Probe history line 066
+  Probe history line 067
+  Probe history line 068
+  Probe history line 069
+  Probe history line 070
+  Probe history line 071
+  Probe history line 072
+  Probe history line 073
+  Probe history line 074
+  Probe history line 075
+  Probe history line 076
+  Probe history line 077
+  Probe history line 078
+  Probe history line 079
+  Probe history line 080
+  Probe history line 081
+  Probe history line 082
+  Probe history line 083
+  Probe history line 084
+  Probe history line 085
+  Probe history line 086
+  Probe history line 087
+  Probe history line 088
+  Probe history line 089
+  Probe history line 090
+  Probe history line 091
+  Probe history line 092
+  Probe history line 093
+  Probe history line 094
+  Probe history line 095
+  Probe history line 096
+  Probe history line 097
+  Probe history line 098
+  Probe history line 099
+  Probe history line 100
+  Probe history line 101
+  Probe history line 102
+  Probe history line 103
+  Probe history line 104
+  Probe history line 105
+  Probe history line 106
+  Probe history line 107
+  Probe history line 108
+  Probe history line 109
+  Probe history line 110
+  Probe history line 111
+
+◦ Working (1s • esc to interrupt)
+
+                                       ↓ Back to bottom · esc
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  enter/esc latest · ? shortcuts                                           ⚠ 1 warning · f2 to view
+
+
+codex 0.167.2: Input after working wheel reports completed
+title: project
+The provider received request 10 and Codex returned to idle.
+
+› Input after working wheel reports
+  Probe history line 109
+  Probe history line 110
+  Probe history line 111
+  Probe history line 112
+  Probe history line 113
+  Probe history line 114
+  Probe history line 115
+  Probe history line 116
+  Probe history line 117
+  Probe history line 118
+  Probe history line 119
+  Probe history line 120
+  Probe history line 121
+  Probe history line 122
+  Probe history line 123
+  Probe history line 124
+  Probe history line 125
+  Probe history line 126
+  Probe history line 127
+  Probe history line 128
+  Probe history line 129
+  Probe history line 130
+  Probe history line 131
+  Probe history line 132
+  Probe history line 133
+  Probe history line 134
+  Probe history line 135
+  Probe history line 136
+  Probe history line 137
+  Probe history line 138
+  Probe history line 139
+  Probe history line 140
+  Probe history line 141
+  Probe history line 142
+  Probe history line 143
+  Probe history line 144
+  Probe history line 145
+  Probe history line 146
+  Probe history line 147
+  Probe history line 148
+  Probe history line 149
+  Probe history line 150
+  Probe history line 151
+  Probe history line 152
+  Probe history line 153
+  Probe history line 154
+  Probe history line 155
+  Probe history line 156
+  Probe history line 157
+  Probe history line 158
+  Probe history line 159
+
+  Worked for <1s • 09:06
+
+
+› Ask Codex to do anything
+
+  probe default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
+

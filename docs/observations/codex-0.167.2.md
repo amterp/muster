@@ -55,3 +55,25 @@ last reported ID cannot identify the empty new composer. The empty screen alone 
 establish a lifecycle event: clearing a terminal can remove history without changing sessions.
 No resume behavior is changed from this recording; a fix needs a reliable command or lifecycle
 signal before the new prompt, beyond the hook signals measured here.
+
+## 4. Reconstructed wheel bursts did not freeze this version
+
+`corpus/codex-0.167.2/wheel-bursts.txt` records a bare 100x60 PTY with no Muster daemon or
+adapter. A local Responses provider returns 160 numbered lines to give Codex scrollback. With
+that transcript idle, the probe writes 220 identical `ESC[<64;40;50M` wheel-up reports at cell
+40,50, then repeats with 2,200 reports. Each write finishes, Ctrl-End returns to the bottom, and
+a new prompt reaches the provider and finishes. Another 220-report burst arrives while the
+provider holds a turn's response; that turn finishes after release, and a subsequent prompt
+also works. Five user turns complete. No input freeze reproduced.
+
+`wheel-input.json` records the exact inputs, their output offsets, and accepted byte counts.
+For a wheel entry, decode `hex` and repeat it `repeat` times; the other entries hold their whole
+input. The 220-report burst is 2,640 bytes, and the 2,200-report burst is 26,400 bytes. The probe
+writes nonblocking and drains PTY output while writing, so terminal output backpressure cannot
+block the probe itself before it observes the result.
+
+These bursts reconstruct the shape described in the 0.162.1 report; the original captures on
+the devenv were not supplied for this measurement. This is a macOS measurement, while that
+report was on Linux. It establishes responsiveness for these inputs on 0.167.2, not that every
+wheel-related freeze is fixed. No wheel coalescing or other input behavior changes follow from
+this result.

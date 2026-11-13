@@ -1,0 +1,117 @@
+[
+  {
+    "label": "Establish long transcript paste",
+    "offset": 5703,
+    "hex": "1b5b3230307e45737461626c697368206c6f6e67207472616e7363726970741b5b3230317e",
+    "bytes": 37,
+    "accepted": 37
+  },
+  {
+    "label": "Establish long transcript Return",
+    "offset": 6027,
+    "hex": "0d",
+    "bytes": 1,
+    "accepted": 1
+  },
+  {
+    "label": "220 idle wheel-up reports",
+    "offset": 10167,
+    "hex": "1b5b3c36343b34303b35304d",
+    "bytes": 2640,
+    "accepted": 2640,
+    "repeat": 220
+  },
+  {
+    "label": "Ctrl-End",
+    "offset": 83750,
+    "hex": "1b5b313b3546",
+    "bytes": 6,
+    "accepted": 6
+  },
+  {
+    "label": "Input after 220 idle wheel reports paste",
+    "offset": 85181,
+    "hex": "1b5b3230307e496e707574206166746572203232302069646c6520776865656c207265706f7274731b5b3230317e",
+    "bytes": 46,
+    "accepted": 46
+  },
+  {
+    "label": "Input after 220 idle wheel reports Return",
+    "offset": 85346,
+    "hex": "0d",
+    "bytes": 1,
+    "accepted": 1
+  },
+  {
+    "label": "2200 idle wheel-up reports",
+    "offset": 88723,
+    "hex": "1b5b3c36343b34303b35304d",
+    "bytes": 26400,
+    "accepted": 26400,
+    "repeat": 2200
+  },
+  {
+    "label": "Ctrl-End",
+    "offset": 326503,
+    "hex": "1b5b313b3546",
+    "bytes": 6,
+    "accepted": 6
+  },
+  {
+    "label": "Input after 2200 idle wheel reports paste",
+    "offset": 327943,
+    "hex": "1b5b3230307e496e70757420616674657220323230302069646c6520776865656c207265706f7274731b5b3230317e",
+    "bytes": 47,
+    "accepted": 47
+  },
+  {
+    "label": "Input after 2200 idle wheel reports Return",
+    "offset": 328109,
+    "hex": "0d",
+    "bytes": 1,
+    "accepted": 1
+  },
+  {
+    "label": "held turn paste",
+    "offset": 331603,
+    "hex": "1b5b3230307e48656c64207475726e1b5b3230317e",
+    "bytes": 21,
+    "accepted": 21
+  },
+  {
+    "label": "held turn Return",
+    "offset": 332280,
+    "hex": "0d",
+    "bytes": 1,
+    "accepted": 1
+  },
+  {
+    "label": "220 working wheel-up reports",
+    "offset": 334589,
+    "hex": "1b5b3c36343b34303b35304d",
+    "bytes": 2640,
+    "accepted": 2640,
+    "repeat": 220
+  },
+  {
+    "label": "Ctrl-End",
+    "offset": 459456,
+    "hex": "1b5b313b3546",
+    "bytes": 6,
+    "accepted": 6
+  },
+  {
+    "label": "Input after working wheel reports paste",
+    "offset": 460366,
+    "hex": "1b5b3230307e496e70757420616674657220776f726b696e6720776865656c207265706f7274731b5b3230317e",
+    "bytes": 45,
+    "accepted": 45
+  },
+  {
+    "label": "Input after working wheel reports Return",
+    "offset": 460530,
+    "hex": "0d",
+    "bytes": 1,
+    "accepted": 1
+  }
+]
