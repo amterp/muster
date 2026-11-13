@@ -15,7 +15,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::claude_code_inbox::{log_of, pair_group, until_turns};
-use crate::claude_code_live::{quoted, until_settled};
+use crate::claude_code_live::quoted;
 use crate::support::*;
 use muster_harness::Input;
 use proto::input_event::{self, Input as Event};
@@ -206,6 +206,57 @@ pub(super) fn type_line(input: &mut Input, pane: &str, text: &str) {
 }
 
 const PANES: [&str; 2] = ["hooked", "screen"];
+
+fn codex_turn_settled(seen: &[proto::Pane], _hooked: bool) -> bool {
+    let working = seen.iter().position(|record| record.agent_state() == proto::AgentState::Working);
+    working.is_some_and(|at| {
+        seen[at..].iter().any(|record| record.agent_state() == proto::AgentState::Idle)
+    })
+}
+
+fn until_settled<const N: usize>(control: &mut Control, panes: [&str; N]) -> [Vec<proto::Pane>; N] {
+    let deadline = Instant::now() + TURN;
+    let mut seen = std::array::from_fn(|_| Vec::new());
+    while !seen
+        .iter()
+        .enumerate()
+        .all(|(index, seen)| codex_turn_settled(seen, panes[index] == "hooked"))
+    {
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            for pane in panes {
+                eprintln!("codex: {pane} shows:\n{}", read_text(control, pane, 0, 0).text);
+            }
+            panic!("the panes did not all settle within {TURN:?}: {seen:?}");
+        };
+        if let Some(proto::control_message::Message::Event(event)) = control.next_message(left)
+            && let Some(proto::event::Event::PaneChanged(changed)) = event.event
+            && let Some(record) = changed.pane
+            && let Some(index) = panes.iter().position(|pane| *pane == record.pane)
+        {
+            seen[index].push(record);
+        }
+    }
+    seen
+}
+
+#[test]
+fn an_earlier_idle_frame_does_not_finish_a_codex_turn_that_is_still_working() {
+    let record = |state, reported| proto::Pane {
+        agent_state: state as i32,
+        state_reported: reported,
+        ..Default::default()
+    };
+    let mut seen = vec![
+        record(proto::AgentState::Working, false),
+        record(proto::AgentState::Idle, false),
+        record(proto::AgentState::Working, true),
+    ];
+    assert!(!codex_turn_settled(&seen, true));
+    seen.push(record(proto::AgentState::Idle, true));
+    assert!(codex_turn_settled(&seen, true));
+    seen.push(record(proto::AgentState::Working, true));
+    assert!(!codex_turn_settled(&seen, true));
+}
 
 #[test]
 #[ignore = "reaches the network with the real Codex; run through ./dev --codex"]
