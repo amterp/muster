@@ -28,13 +28,16 @@ fn conversation_conformance() {
         };
         let rows = thread::rows(&group, &reading);
         // A case naming its group is about the header too.
-        let keeper = text(given, "group").map(|name| {
+        let header = text(given, "group").map(|name| {
             let key = GroupKey { daemon: "local".into(), group: name.to_string() };
-            json!(members::header(&key, &group).keeper)
+            members::header(&key, &group, text(given, "partner"))
         });
+        // A case naming a partner is about the header's title.
+        let title = given.get("partner").and(header.as_ref()).map(|header| json!(header.title));
         Ok(fields([
             ("rows", Some(json!(rows.iter().map(row_json).collect::<Vec<_>>()))),
-            ("keeper", keeper),
+            ("keeper", header.map(|header| json!(header.keeper))),
+            ("title", title),
         ]))
     });
     assert_eq!(ran, corpus.cases.len());

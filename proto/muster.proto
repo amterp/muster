@@ -2810,6 +2810,9 @@ message ConversationHeader {
   bool paused = 5;
   // The keeper, while it cannot be reached and what was posted there since may be missing here.
   string behind = 6;
+  // What to call the conversation: the agent's callsign for one between the person and one agent
+  // whose pane a window holds, else the group's name.
+  string title = 7;
 }
 
 message ConversationRow {

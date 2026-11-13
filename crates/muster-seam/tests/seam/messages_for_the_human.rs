@@ -4,9 +4,9 @@
 
 use crate::group_messages::{group_of_three, msg, named, post, posted, the_human};
 use muster::proto::{
-    AskingListChanged, AttentionChanged, DeleteGroup, Event, FocusAsking, GroupsChanged,
-    LeaveGroup, OpenWindow, ReadWindow, Request, Response, Startup, WindowFocus, event, request,
-    response,
+    AskingListChanged, AttentionChanged, ConversationChanged, DeleteGroup, Event, FocusAsking,
+    GroupsChanged, LeaveGroup, OpenWindow, ReadWindow, Request, Response, Startup, WindowFocus,
+    event, request, response,
 };
 use muster_daemon_proto as daemon_proto;
 use muster_daemon_proto::msg_answer::{self, Answer};
@@ -179,6 +179,56 @@ fn the_humans_groups_are_listed_with_what_waits_in_each_until_they_leave() {
     let leave = Asked::Leave(msg_request::Leave { group: Some("g".to_string()) });
     expect(&mut control, msg(&the_human(), leave), daemon_proto::Outcome::Done);
     until_groups(&[]);
+}
+
+/// A conversation between the person and one agent is titled with the agent's callsign, as its
+/// banner calls it, and with the group's name once a third member makes it a group.
+#[test]
+fn a_conversation_with_one_agent_is_titled_with_its_callsign() {
+    let _turn = muster::testing::fresh_session();
+    GROUPS.lock().expect("groups").take();
+    CONVERSATION.lock().expect("conversation").take();
+    muster::ffi::muster_set_event_callback(Some(note));
+    let daemon = Daemon::start_detecting();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    daemon.run_agent("p1");
+    open_window(&daemon);
+    join_pair(&mut control, &the_human(), "@human");
+    let agent = msg_request::Caller {
+        as_name: Some("agent".into()),
+        pane: Some("p1".into()),
+        ..Default::default()
+    };
+    join_pair(&mut control, &agent, "agent");
+    until_partner(Some(("local", "p1")));
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|pane| pane.pane == "p1")
+        .and_then(|pane| pane.callsign)
+        .expect("p1 has a callsign");
+    assert_ok(&answer(show_conversation("")));
+    until_title(&callsign);
+
+    join_pair(&mut control, &named("third"), "third");
+    until_partner(None);
+    until_title("g");
+}
+
+fn until_title(title: &str) {
+    until(
+        &format!("the conversation to be titled {title}"),
+        || {
+            CONVERSATION
+                .lock()
+                .expect("conversation")
+                .as_ref()
+                .and_then(|changed| changed.header.as_ref())
+                .is_some_and(|header| header.title == title)
+        },
+        || format!("the conversation: {:?}", CONVERSATION.lock().expect("conversation")),
+    );
 }
 
 #[test]
@@ -863,6 +913,7 @@ static ASKED: Mutex<Vec<AttentionChanged>> = Mutex::new(Vec::new());
 /// What the shell was last told of the human's groups.
 static GROUPS: Mutex<Option<GroupsChanged>> = Mutex::new(None);
 static ASKING_LISTS: Mutex<Vec<AskingListChanged>> = Mutex::new(Vec::new());
+static CONVERSATION: Mutex<Option<ConversationChanged>> = Mutex::new(None);
 
 extern "C" fn note(bytes: *const u8, len: usize) {
     // SAFETY: the core guarantees `len` readable bytes for the duration of this call, which
@@ -878,6 +929,9 @@ extern "C" fn note(bytes: *const u8, len: usize) {
         }
         Some(event::Payload::AskingListChanged(list)) => {
             ASKING_LISTS.lock().expect("asking lists").push(list);
+        }
+        Some(event::Payload::ConversationChanged(changed)) => {
+            *CONVERSATION.lock().expect("conversation") = Some(changed);
         }
         _ => {}
     }

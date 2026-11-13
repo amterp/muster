@@ -7,7 +7,7 @@
 //! (`muster_core::conversation`). This asks the daemons, keeps what they answered, and tells the
 //! shell.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -322,7 +322,9 @@ fn follow_log(following: &Following) {
             tell(following, &mut telling);
         } else if members_moved(following) {
             refresh_members(following);
-            announce_group(group, Parts::MEMBERS);
+            // A conversation with one agent is titled with its callsign, which a rename moves.
+            let one_agent = poison::lock(&SESSION, "session").partners.contains_key(group);
+            announce_group(group, if one_agent { Parts::ALL } else { Parts::MEMBERS });
         }
         if waiting.is_none() {
             if connection.is_none() {
@@ -708,6 +710,15 @@ pub(super) fn pane_of(session: &Session, group: &GroupKey, pane: &str) -> Option
         return Some(PaneKey::new(&group.daemon, &id));
     }
     session.backends.keys().find(|daemon| holds(daemon)).map(|daemon| PaneKey::new(daemon, &id))
+}
+
+/// What the one agent in `group`'s conversation with the person is called, when a window
+/// holds its pane: its callsign, or its label from a daemon before callsigns.
+fn partner_called(session: &Session, group: &GroupKey) -> Option<String> {
+    let pane = session.partners.get(group)?.pane.as_ref()?;
+    let mirror = poison::lock(&session.backends.get(&pane.daemon)?.mirror, "mirror");
+    let held = mirror.panes().find(|held| held.id == pane.pane)?;
+    Some(held.callsign.clone().unwrap_or_else(|| muster_core::roster::pane_label(held)))
 }
 
 pub(super) fn messaging_changed() {
@@ -1104,6 +1115,13 @@ fn announce_parts(windows: &[WindowId], parts: Parts) {
     let mut events = Vec::new();
     {
         let mut session = poison::lock(&SESSION, "session");
+        let partners: BTreeMap<GroupKey, String> = windows
+            .iter()
+            .filter_map(|&id| session.windows[id].conversation.as_ref())
+            .filter_map(|shown| {
+                Some((shown.group.clone(), partner_called(&session, &shown.group)?))
+            })
+            .collect();
         let Session { conversations, windows: held, .. } = &mut *session;
         let unheard = Shared::default();
         for &id in windows {
@@ -1114,9 +1132,9 @@ fn announce_parts(windows: &[WindowId], parts: Parts) {
                 .as_ref()
                 .map(|shown| (shown, conversations.get(&shown.group).unwrap_or(&unheard)));
             if parts.thread {
-                let thread = shown
-                    .map_or_else(proto::ConversationChanged::default, |(shown, shared)| {
-                        conversation(shown, shared)
+                let thread =
+                    shown.map_or_else(proto::ConversationChanged::default, |(shown, shared)| {
+                        conversation(shown, shared, partners.get(&shown.group).map(String::as_str))
                     });
                 if window.conversation_sent.as_ref() != Some(&thread) {
                     window.conversation_sent = Some(thread.clone());
@@ -1157,13 +1175,17 @@ fn announce_parts(windows: &[WindowId], parts: Parts) {
     }
 }
 
-fn conversation(shown: &Showing, shared: &Shared) -> proto::ConversationChanged {
+fn conversation(
+    shown: &Showing,
+    shared: &Shared,
+    partner: Option<&str>,
+) -> proto::ConversationChanged {
     let group = &shared.group;
     let view = ThreadView { utc_offsets: utc_offsets(group), ..shown.view.clone() };
     let rows = thread::rows(group, &view);
     let mut changed = convert::conversation(
         &shown.group,
-        &members::header(&shown.group, group),
+        &members::header(&shown.group, group, partner),
         &rows,
         shown.posted.as_ref(),
     );

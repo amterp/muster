@@ -168,6 +168,8 @@ fn run() {
         done = reading;
         drop(generation);
         announce_groups();
+        let windows = poison::lock(&SESSION, "session").windows.opened();
+        conversation::announce(&windows);
         poison::lock(&WAKE.0, "message-partners").completed = reading;
     }
 }

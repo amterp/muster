@@ -464,6 +464,7 @@ pub(crate) fn conversation(
         group: group.group.clone(),
         header: Some(proto::ConversationHeader {
             group: header.group.clone(),
+            title: header.title.clone(),
             keeper: header.keeper.clone().unwrap_or_default(),
             members: header.members.map_or(0, |count| u32::try_from(count).unwrap_or(u32::MAX)),
             members_known: header.members.is_some(),

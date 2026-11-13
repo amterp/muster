@@ -11,6 +11,18 @@
       "expect": { "rows": [], "keeper": "devenv" }
     },
     {
+      "name": "a conversation with one agent is titled with the agent's name",
+      "why": "Its banner and the Needs you strip call it after the agent, so its header does too: one conversation, one name everywhere.",
+      "given": { "group": "human+otter", "partner": "otter" },
+      "expect": { "rows": [], "keeper": null, "title": "otter" }
+    },
+    {
+      "name": "a group with no one agent to call it after is titled with its own name",
+      "why": "A group of several agents, or one whose agent's pane no window holds, has nobody else to be called after.",
+      "given": { "group": "review", "partner": null },
+      "expect": { "rows": [], "keeper": null, "title": "review" }
+    },
+    {
       "name": "a pair group with the human is kept here, whatever its @",
       "why": "Every agent-to-human pair group is named @human+agent, and reading the @ in it as a machine would name a machine called human+agent in the header of the most common group there is.",
       "given": { "group": "@human+p2" },

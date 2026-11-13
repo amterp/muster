@@ -77,6 +77,9 @@ pub fn rows(group: &Group) -> Vec<MemberRow> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub group: String,
+    /// What the conversation is called: the agent's name for one between the person and one
+    /// agent, as its banner and the Needs you strip call it; else the group's name.
+    pub title: String,
     /// The machine that keeps the group, for one this daemon holds a copy of; `None` for one
     /// kept here.
     pub keeper: Option<String>,
@@ -88,10 +91,13 @@ pub struct Header {
     pub behind: Option<String>,
 }
 
-pub fn header(key: &GroupKey, group: &Group) -> Header {
+/// The header of `key`'s conversation. `partner` is what the one agent in a conversation with the
+/// person is called, when the window knows its pane.
+pub fn header(key: &GroupKey, group: &Group, partner: Option<&str>) -> Header {
     let keeper = split_machine(&key.group).map(|(_, machine)| machine.to_string());
     Header {
         group: key.group.clone(),
+        title: partner.map_or_else(|| key.group.clone(), str::to_string),
         keeper,
         members: group.members.as_ref().map(Vec::len),
         paused: group.policy.as_ref().is_some_and(|policy| policy.paused),

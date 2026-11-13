@@ -608,7 +608,7 @@ struct ConversationHeader: View {
     let header = thread.shown.header
     VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 8) {
-        Text(header.group).font(.headline)
+        Text(header.title).font(.headline)
         if !header.keeper.isEmpty {
           Text("kept on \(header.keeper)").foregroundStyle(look.dimText)
         }
