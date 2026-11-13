@@ -53,10 +53,10 @@ fn a_pane_marked_unread_is_done_until_seen_again_after_leaving_sight() {
     assert!(attention.marked_unread(&pane));
     assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
     assert_eq!(attention.asking(), vec![(Asker::Pane(pane.clone()), Alert::Done)]);
-    let before_the_mark = attention.observed(&pane, AgentState::Idle, false);
+    let before_the_mark = attention.observed(&pane, AgentState::Idle, false, None);
     assert_eq!(before_the_mark.attend, None, "a record sent before the daemon took the mark");
     assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Done);
-    let echoed = attention.observed(&pane, AgentState::Idle, true);
+    let echoed = attention.observed(&pane, AgentState::Idle, true, None);
     assert_eq!((echoed.attend, echoed.reported), (None, false), "no banner, not reported seen");
     let still = attention.showing(shown.clone());
     assert!(still.reported.is_empty(), "still on screen, so still unread");
@@ -77,14 +77,14 @@ fn new_work_in_a_pane_marked_unread_in_view_ends_the_mark() {
     attention.window_focused(true);
     attention.showing(BTreeSet::from([pane.clone()]));
     attention.marked_unread(&pane);
-    attention.observed(&pane, AgentState::Idle, true);
+    attention.observed(&pane, AgentState::Idle, true, None);
 
-    attention.observed(&pane, AgentState::Working, false);
-    let blocked = attention.observed(&pane, AgentState::Blocked, false);
+    attention.observed(&pane, AgentState::Working, false, None);
+    let blocked = attention.observed(&pane, AgentState::Blocked, false, None);
     assert_eq!(blocked.attend, None, "a pane in view raises nothing");
     assert!(attention.asking().is_empty(), "{:?}", attention.asking());
-    attention.observed(&pane, AgentState::Working, false);
-    let finished = attention.observed(&pane, AgentState::Idle, true);
+    attention.observed(&pane, AgentState::Working, false, None);
+    let finished = attention.observed(&pane, AgentState::Idle, true, None);
     assert_eq!((finished.attend, finished.reported), (None, true), "seen as it finished");
     assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Idle);
 }
