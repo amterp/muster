@@ -689,10 +689,8 @@ impl Writer {
             | Input::Ring { text, enter }
             | Input::Chore { text, enter } => {
                 let mut bytes = sent_text(text, modes.bracketed_paste);
-                if enter && self.shell_in_front() {
-                    bytes.push(b'\r');
-                } else if enter {
-                    bytes.extend(self.pressed(&mut encoding, &KeyEvent::press(Key::Enter)));
+                if enter {
+                    bytes.extend(self.enter(&mut encoding));
                 }
                 bytes
             }
@@ -700,6 +698,7 @@ impl Writer {
                 let backspace = self.pressed(&mut encoding, &KeyEvent::press(Key::Backspace));
                 backspace.repeat(chars)
             }
+            Input::Press(key) if key == KeyEvent::press(Key::Enter) => self.enter(&mut encoding),
             Input::Press(key) => {
                 // Somebody naming alt in a chord means the modifier, not option's compose layer.
                 encoding.key.set_option_as_alt(OptionAsAlt::Always);
@@ -733,6 +732,16 @@ impl Writer {
 
     /// A key pressed and let go, encoded against the pane's modes: the release is written only
     /// to a program that asked for releases, which the encoder decides.
+    /// A sent Return: a plain carriage return to a shell in front, which reads nothing else as
+    /// one whatever kitty keys a program before it left in force, and otherwise encoded as the
+    /// program in front asked.
+    fn enter(&self, encoding: &mut Encoding) -> Vec<u8> {
+        if self.shell_in_front() {
+            return b"\r".to_vec();
+        }
+        self.pressed(encoding, &KeyEvent::press(Key::Enter))
+    }
+
     fn pressed(&self, encoding: &mut Encoding, key: &KeyEvent) -> Vec<u8> {
         let mut bytes = Vec::new();
         for action in [KeyAction::Press, KeyAction::Release] {
