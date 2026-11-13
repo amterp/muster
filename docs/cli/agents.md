@@ -486,8 +486,10 @@ of the notifications:
 was split from. Nothing draws it, and its agent runs as any other does: `pane send`, `pane read`,
 `pane wait`, `pane compact` and `muster msg` reach it by name. `muster window` lists it after the
 window's own tabs, under `hidden`, and the agent list has it under a Hidden caption, which a click
-folds down to a count and the most urgent state among its panes. A pane made beside a hidden one
-with `pane new` is in that hidden tab too, so a hidden agent's own helpers are hidden with it.
+folds down to a count and the most urgent state among its panes. With the sidebar closed, Window >
+Hidden Panes lists the same panes with their states, and picking one brings it into the window
+with the keyboard on it. A pane made beside a hidden one with `pane new` is in that hidden tab
+too, so a hidden agent's own helpers are hidden with it.
 `--hidden` takes no side and no `--focus`, since it is not a split and nothing shows it.
 
 A pane already open is hidden and brought back by name:

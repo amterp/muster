@@ -1471,6 +1471,10 @@ extension MusterWindow {
 
   /// The groups a Conversations menu lists in this window: every one the person is in, or with
   /// `pane` the conversations with that pane's agent.
+  func hiddenPanes() -> [HiddenPanesMenu.Entry] {
+    HiddenPanesMenu.entries(roster: roster, states: agents.mapValues(\.state))
+  }
+
   func conversations(with pane: PaneKey? = nil) -> [ConversationsMenu.Entry] {
     ConversationsMenu.entries(groups: sidebar.groups, roster: roster, pane: pane)
   }

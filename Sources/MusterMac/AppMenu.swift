@@ -147,6 +147,7 @@ public enum AppMenu {
       if group == .window {
         groupMenu.addItem(.separator())
         groupMenu.addItem(WindowConversationsMenu.shared.item())
+        groupMenu.addItem(HiddenPanesMenu.shared.item())
       }
       groupItem.submenu = groupMenu
       menu.addItem(groupItem)
@@ -427,6 +428,65 @@ public final class MoveTabMenu: NSObject, NSMenuDelegate {
       window.tell(TabRefusal.move, refused)
     } else if refused != nil {
       NSSound.beep()
+    }
+  }
+}
+
+/// Hidden Panes, which lists each pane hidden from every window, by its row's label and its
+/// agent's state, as it is when the menu opens; picking one brings it into this window, as
+/// `muster pane show --focus` does.
+@MainActor
+public final class HiddenPanesMenu: NSObject, NSMenuDelegate {
+  public static let shared = HiddenPanesMenu()
+  static let title = "Hidden Panes"
+
+  /// One hidden pane as the menu lists it: what its row in the agent list says, and its state.
+  public struct Entry: Equatable {
+    public let pane: PaneKey
+    public let title: String
+  }
+
+  /// The hidden panes of a roster, in the agent list's order, each named as its row is and with
+  /// its agent's state when it has one.
+  public static func entries(roster: Roster, states: [PaneKey: String]) -> [Entry] {
+    roster.hiddenPanes.map { pane in
+      let state = states[pane.key] ?? ""
+      let said = !state.isEmpty && state != "unknown"
+      return Entry(pane: pane.key, title: said ? "\(pane.label) · \(state)" : pane.label)
+    }
+  }
+
+  func item() -> NSMenuItem {
+    let item = NSMenuItem(title: Self.title, action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: Self.title)
+    submenu.delegate = self
+    item.submenu = submenu
+    return item
+  }
+
+  /// Built each time, because panes are hidden and shown between one look and the next. The
+  /// sidebar's Hidden section lists the same panes, and this reaches them while it is closed.
+  public func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    let entries = (Windows.inFront as? MusterWindow)?.hiddenPanes() ?? []
+    if entries.isEmpty {
+      let none = NSMenuItem(title: "No Hidden Panes", action: nil, keyEquivalent: "")
+      none.isEnabled = false
+      menu.addItem(none)
+      return
+    }
+    for entry in entries {
+      let item = NSMenuItem(title: entry.title, action: #selector(show(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = [entry.pane.daemon, entry.pane.pane]
+      menu.addItem(item)
+    }
+  }
+
+  @objc private func show(_ sender: NSMenuItem) {
+    guard let key = sender.representedObject as? [String], key.count == 2 else { return }
+    if let why = Core.showPane(daemonID: key[0], paneID: key[1]) {
+      (Windows.inFront as? MusterWindow)?.tell(PaneRefusal.show, why)
     }
   }
 }
