@@ -3,7 +3,7 @@ Fresh Git project, isolated HOME/CODEX_HOME, --no-daemon.
 Unreachable local provider; no model is contacted. A UserPromptSubmit hook writes a marker.
 --key 1 selects the highlighted trust option; it does not submit the dialog.
 --key enter accepts folder trust. --key down selects Trust all and continue at hooks review;
---key enter accepts it. The second live-tier case also accepts hooks review with --key 2 --key enter.
+--key enter accepts it. The shared-server live-tier case accepts hooks review with --key 2 --key enter.
 All CLI sends exit 0. Paths and pane IDs below are replaced with placeholders.
 
 01-folder-trust

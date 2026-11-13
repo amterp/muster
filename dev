@@ -172,6 +172,7 @@ fn report_steps():
         print(dim("{seconds:>7.1}s  {label}"))
     total = (ended - RUN_STARTED) / 1000.0
     print("{total:>7.1}s  total")
+    print(dim("  marks: {GATE_STEPS}"))
 
 fn is_part(name):
     return matches(name, ": ", partial=true)

@@ -199,7 +199,8 @@ Muster's principles, adapted to that evidence:
   binary's.
 
   Each run keeps its timing marks in `target/gate/steps-<uuid>.txt`, including a failed run. Two
-  invocations in one checkout therefore print separate timing tables.
+  invocations in one checkout therefore print separate timing tables. Each footer prints its
+  file's path.
 
   Every run says what the machine was doing, narrowed flags included, because the failure this guards against is
   not a red run but a plausible one: seventy-four minutes of a machine with seven of its ten cores eaten by
