@@ -1,0 +1,23 @@
+Codex 0.167.2, recorded 2026-11-13 on macOS arm64.
+A local muster-codex plugin has a SessionStart hook: printf plugin-start >> plugin-marker.
+The scratch CODEX_HOME config enables plugins."muster-codex@muster".enabled=true.
+Project hooks and a loopback Responses stub complete one turn.
+
+dotted-key override
+argv adds: -c 'plugins."muster-codex@muster".enabled=false'
+marked Stop hook began at 6170 bytes
+disabled: False plugin marker: True title: 'enabled'
+marked Stop hook began at 5708 bytes
+disabled: True plugin marker: True title: '⠸ disabled'
+
+inline-table override
+argv adds: -c 'plugins={"muster-codex@muster"={enabled=false}}'
+marked Stop hook began at 6170 bytes
+disabled: False plugin marker: True title: 'enabled'
+marked Stop hook began at 5602 bytes
+disabled: True plugin marker: False title: '⠹ disabled'
+marked clear during held Stop hook at 6359 bytes
+marked Stop hook released at 6851 bytes
+marked clear after Stop hook at 8175 bytes
+plugin enabled/disabled and Stop-hook capture passed
+

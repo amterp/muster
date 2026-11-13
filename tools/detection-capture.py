@@ -502,7 +502,7 @@ CODEX = Harness(
         "-c", "notify=[]",
         # Trusted for this run only: answering the trust question writes it into ~/.codex.
         "-c", f'projects={{"{out}"={{trust_level="trusted"}}}}',
-        "-m", "gpt-5.6-luna",
+        "-m", "gpt-6.1-terra",
         "-c", 'model_reasoning_effort="low"',
         "-a", "on-request",
         "-s", "read-only",

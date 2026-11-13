@@ -90,6 +90,9 @@ fn project_with(daemon: &Daemon, name: &str, hooks: &[&str], extra: &[&str]) -> 
         "-c".to_string(),
         "notify=[]".to_string(),
         "-c".to_string(),
+        // Codex 0.167.2 ignores the equivalent dotted-key plugin override.
+        "plugins={\"muster-codex@muster\"={enabled=false}}".to_string(),
+        "-c".to_string(),
         "model_reasoning_effort=\"low\"".to_string(),
         "-c".to_string(),
         format!("projects={{\"{}\"={{trust_level=\"trusted\"}}}}", folder.display()),
