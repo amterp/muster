@@ -140,6 +140,33 @@ pub fn run(
                 Err(trouble) => report(&trouble, json, errors),
             };
         }
+        args::Asking::RefreshCodex { login } => {
+            let mut said = Vec::new();
+            let refreshed = if login {
+                harness::login_environment(environment)
+                    .and_then(|environment| harness::refresh(&environment, &mut said))
+            } else {
+                harness::refresh(environment, &mut said)
+            };
+            return match refreshed {
+                Ok(()) => {
+                    let outcome = String::from_utf8_lossy(&said);
+                    let _ = if json {
+                        writeln!(
+                            out,
+                            "{}",
+                            serde_json::json!({
+                                "harness": "codex", "outcome": outcome.trim(),
+                            })
+                        )
+                    } else {
+                        out.write_all(&said)
+                    };
+                    0
+                }
+                Err(trouble) => report(&trouble, json, errors),
+            };
+        }
         asking @ (args::Asking::MakeWindow(_)
         | args::Asking::ReopenWindow(_)
         | args::Asking::CloseWindow(_)) => {

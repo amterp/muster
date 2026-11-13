@@ -25,10 +25,14 @@ Codex runs a hook only once it is trusted: a session asks about new hooks before
 "Hooks need review", or review them in `/hooks`. Or copy `hooks/hooks.json` to a trusted
 project's `.codex/hooks.json`, which is the same format.
 
-Codex installs a copy of the plugin, and a session never refreshes it, so run the install again
-after updating Muster. Codex records the marketplace by its resolved path, which on an SSH machine
-is the version `~/.muster/extras` pointed at, so the install first removes a `muster` marketplace
-an earlier Muster install left; one added from anywhere else is left for you to remove.
+The Muster app refreshes its local Codex plugin in the background at launch when its content
+changes. Restart Codex and review the changed hooks in `/hooks` afterward. Unchanged hooks are
+left alone. On an SSH machine, run the install again after updating Muster, or use
+`muster harness refresh codex` to refresh only an existing installation.
+
+Codex records the marketplace by its resolved path, which on an SSH machine is the version
+`~/.muster/extras` pointed at. Install and refresh remove a marketplace an earlier Muster install
+left; one added from another source, such as a checkout, is left for you to remove.
 
 `extras/` holds Claude Code's plugin too. Codex reads `.agents/plugins/marketplace.json` before
 `.claude-plugin/marketplace.json`, so it is offered only `muster-codex`, and Claude Code only

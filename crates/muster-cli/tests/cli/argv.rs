@@ -473,5 +473,6 @@ fn answers_here(asking: &Asking) -> Option<Value> {
         Asking::Install { harness, dry_run: true } => {
             Some(json!(format!("printing how to install {}'s adapter", harness.name)))
         }
+        Asking::RefreshCodex { .. } => Some(json!("refreshing Codex's installed adapter")),
     }
 }

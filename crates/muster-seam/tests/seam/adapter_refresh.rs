@@ -47,7 +47,7 @@ fn launch_refresh(fails: bool) -> serde_json::Value {
         },
         || std::fs::read_to_string(&log).unwrap_or_default(),
     );
-    assert_eq!(std::fs::read_to_string(invoked).unwrap(), "harness refresh codex");
+    assert_eq!(std::fs::read_to_string(invoked).unwrap(), "harness refresh codex --login");
     recorded.unwrap()
 }
 

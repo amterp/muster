@@ -92,6 +92,9 @@ pub enum Asking {
         harness: muster_core::harnesses::Harness,
         dry_run: bool,
     },
+    RefreshCodex {
+        login: bool,
+    },
 }
 
 /// Where the text of a `pane send` comes from when it is not on the command line.
@@ -363,10 +366,7 @@ enum What {
         change: FontChange,
     },
 
-    /// Install the adapter Muster ships for a harness, through the harness's own command
-    //
-    // A namespace of one verb so far: `install` is what a person reaches for, and a harness is
-    // the thing it is about. Nothing here talks to a window or a daemon.
+    /// Install or refresh the adapter Muster ships for a harness
     Harness {
         #[command(subcommand)]
         verb: HarnessVerb,
@@ -390,13 +390,25 @@ enum What {
 }
 
 fn installing(verb: &HarnessVerb) -> Result<Asking, Failure> {
-    let HarnessVerb::Install { harness, dry_run } = verb;
-    let harness = crate::harness::harness(harness).map_err(Failure::Refused)?;
-    Ok(Asking::Install { harness, dry_run: *dry_run })
+    match verb {
+        HarnessVerb::Install { harness, dry_run } => {
+            let harness = crate::harness::harness(harness).map_err(Failure::Refused)?;
+            Ok(Asking::Install { harness, dry_run: *dry_run })
+        }
+        HarnessVerb::Refresh { login, .. } => Ok(Asking::RefreshCodex { login: *login }),
+    }
 }
 
 #[derive(Debug, Subcommand)]
 pub enum HarnessVerb {
+    /// Refresh an installed Codex adapter when its content differs from this Muster
+    Refresh {
+        #[arg(value_name = "HARNESS", value_parser = ["codex"])]
+        harness: String,
+        /// Read the login-shell environment first, as an app launched from the Dock needs
+        #[arg(long)]
+        login: bool,
+    },
     /// Install a harness's adapter, so its agents report their own state, context and session
     ///
     /// Runs the harness's own plugin commands against the adapters this Muster carries, and
@@ -1271,9 +1283,10 @@ fn for_window(asking: Asking, window: &str) -> Result<Asking, Failure> {
         Asking::MakeWindow(_) => {
             "`muster window new` opens a window rather than acting in one".to_string()
         }
-        Asking::Print(_) | Asking::CloseWindow(_) | Asking::Install { .. } => {
-            "this command is not about a window".to_string()
-        }
+        Asking::Print(_)
+        | Asking::CloseWindow(_)
+        | Asking::Install { .. }
+        | Asking::RefreshCodex { .. } => "this command is not about a window".to_string(),
     };
     Err(Failure::Refused(format!(
         "--window {window} names the window a command is about, so nothing was done: {instead}."

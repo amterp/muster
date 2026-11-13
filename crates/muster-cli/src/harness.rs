@@ -7,6 +7,8 @@
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -17,6 +19,9 @@ use serde_json::json;
 use crate::Trouble;
 use crate::environment::muster_home;
 use crate::render::shell_word;
+
+mod login;
+pub use login::environment as login_environment;
 
 /// What installing one harness's adapter takes: the harness's own commands, run in order, and
 /// what is left for the person afterwards, a line each.
@@ -125,12 +130,9 @@ pub fn plan(harness: Harness, extras: &Path, replace: bool) -> Plan {
             ],
         },
         Kind::Codex => Plan {
-            commands: replace
-                .then(|| Step::of(&["codex", "plugin", "marketplace", "remove", "muster"]))
+            commands: codex_plugin_commands(extras, replace)
                 .into_iter()
                 .chain([
-                    Step::of(&["codex", "plugin", "marketplace", "add", &extras_path]),
-                    Step::of(&["codex", "plugin", "add", "muster-codex@muster"]),
                     // Last, so that a Codex too old to know the flag has its plugin already.
                     Step {
                         done_if_said: Some((
@@ -155,7 +157,8 @@ pub fn plan(harness: Harness, extras: &Path, replace: bool) -> Plan {
                 "An app-server already running still takes new sessions until `codex app-server \
                  daemon stop`, which ends the sessions running in it."
                     .to_string(),
-                "Codex keeps its own copy of the plugin, so run this again after updating Muster."
+                "Muster refreshes Codex's copy in the background at launch when its content \
+                 changes. Review changed hooks in /hooks after restarting Codex."
                     .to_string(),
                 format!("{readme} has the messaging hooks and what its sandbox needs."),
             ],
@@ -277,6 +280,31 @@ fn collect_files(root: &Path, relative: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
+fn installation_plan(
+    harness: Harness,
+    extras: &Path,
+    dry_run: bool,
+    environment: &BTreeMap<String, String>,
+) -> Plan {
+    let replace = !dry_run
+        && harness.kind == Kind::Codex
+        && codex_registration(environment).is_some_and(|registered| {
+            let home = muster_home(environment).map(PathBuf::from);
+            stale_registration(&registered, extras, home.as_deref())
+        });
+    let mut plan = plan(harness, extras, replace);
+    if dry_run && harness.kind == Kind::Codex {
+        plan.then.insert(
+            0,
+            "No Codex command was run to check its marketplace. An install removes an earlier \
+             Muster's marketplace first when needed; if running this plan reports a different \
+             source, run `codex plugin marketplace remove muster` before adding it again."
+                .to_string(),
+        );
+    }
+    plan
+}
+
 /// Installs `harness`'s adapter, or with `dry_run` prints what that would run.
 pub fn install(
     harness: Harness,
@@ -287,22 +315,7 @@ pub fn install(
     errors: &mut impl Write,
 ) -> Result<(), Trouble> {
     let extras = extras(environment, std::env::current_exe().ok())?;
-    let replace = !dry_run
-        && harness.kind == Kind::Codex
-        && codex_registration(environment).is_some_and(|registered| {
-            let home = muster_home(environment).map(PathBuf::from);
-            stale_registration(&registered, &extras, home.as_deref())
-        });
-    let mut plan = plan(harness, &extras, replace);
-    if dry_run && harness.kind == Kind::Codex {
-        plan.then.insert(
-            0,
-            "No Codex command was run to check its marketplace. An install removes an earlier \
-             Muster's marketplace first when needed; if running this plan reports a different \
-             source, run `codex plugin marketplace remove muster` before adding it again."
-                .to_string(),
-        );
-    }
+    let plan = installation_plan(harness, &extras, dry_run, environment);
     let printed = |out: &mut dyn Write, ran: bool| {
         let _ = if json {
             writeln!(
@@ -406,37 +419,197 @@ const PATIENCE: Duration = Duration::from_mins(2);
 /// Runs `command` to its end and says what it printed, or stops it and says nothing once it has
 /// run for `limit`.
 fn run_within(command: &mut Command, limit: Duration) -> std::io::Result<Option<Output>> {
-    let mut child =
-        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut child = command
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        let (send, receive) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut bytes = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut bytes);
             }
-            bytes
-        })
+            let _ = send.send(bytes);
+        });
+        receive
     };
     let stdout = drain(child.stdout.take().map(|pipe| Box::new(pipe) as Box<dyn Read + Send>));
     let stderr = drain(child.stderr.take().map(|pipe| Box::new(pipe) as Box<dyn Read + Send>));
     let began = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break Some(status);
+    let mut status = None;
+    let mut output = None;
+    let mut errors = None;
+    loop {
+        if status.is_none() {
+            status = child.try_wait()?;
+        }
+        if output.is_none() {
+            output = stdout.try_recv().ok();
+        }
+        if errors.is_none() {
+            errors = stderr.try_recv().ok();
+        }
+        if let (Some(status), Some(stdout), Some(stderr)) = (status, &output, &errors) {
+            return Ok(Some(Output { status, stdout: stdout.clone(), stderr: stderr.clone() }));
         }
         if began.elapsed() >= limit {
+            // A harness can leave a child holding its pipes even after the harness itself exits.
+            // Stop the group and never wait for pipe-reader threads past the deadline.
+            if let Ok(group) = i32::try_from(child.id()) {
+                // SAFETY: the child created its own process group; this signals only that group.
+                unsafe { libc::kill(-group, libc::SIGKILL) };
+            }
             let _ = child.kill();
             let _ = child.wait();
-            break None;
+            return Ok(None);
         }
         std::thread::sleep(Duration::from_millis(20));
-    };
-    let (stdout, stderr) = (stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
-    Ok(status.map(|status| Output { status, stdout, stderr }))
+    }
 }
 
 fn line(command: &[String]) -> String {
     command.iter().map(|word| shell_word(word)).collect::<Vec<_>>().join(" ")
+}
+
+const REFRESH_PATIENCE: Duration = Duration::from_secs(10);
+
+/// Refreshes a plugin Codex already installed, leaving first installs and feature settings alone.
+pub fn refresh(
+    environment: &BTreeMap<String, String>,
+    out: &mut impl Write,
+) -> Result<(), Trouble> {
+    let extras = extras(environment, std::env::current_exe().ok())?;
+    let Some(home) = codex_home(environment) else {
+        let _ = writeln!(out, "Codex plugin not installed: no Codex home.");
+        return Ok(());
+    };
+    refresh_with(&extras, &home, environment, out, |words| {
+        let mut command = Command::new(&words[0]);
+        command.args(&words[1..]).env_clear().envs(environment);
+        run_within(&mut command, REFRESH_PATIENCE)
+    })
+}
+
+fn refresh_with(
+    extras: &Path,
+    home: &Path,
+    environment: &BTreeMap<String, String>,
+    out: &mut impl Write,
+    mut run: impl FnMut(&[String]) -> std::io::Result<Option<Output>>,
+) -> Result<(), Trouble> {
+    if newest_subdirectory(&home.join("plugins/cache/muster/muster-codex")).is_none() {
+        let _ = writeln!(out, "Codex plugin not installed; nothing to refresh.");
+        return Ok(());
+    }
+    if !codex_copy_differs(extras, home) {
+        let _ = writeln!(out, "Codex plugin matches this Muster; hooks were left alone.");
+        return Ok(());
+    }
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(home.join("plugins/.muster-refresh.lock"))
+        .map_err(|error| {
+            Trouble::Refused(format!("could not lock Codex's adapter refresh: {error}"))
+        })?;
+    // SAFETY: lock owns an open file descriptor for the lifetime of this refresh.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            let _ = writeln!(out, "Another Muster is already refreshing Codex's plugin.");
+            return Ok(());
+        }
+        return Err(Trouble::Refused(format!("could not lock Codex's adapter refresh: {error}")));
+    }
+    if !codex_copy_differs(extras, home) {
+        let _ = writeln!(out, "Codex plugin matches this Muster; another launch refreshed it.");
+        return Ok(());
+    }
+    let listing = Step::of(&["codex", "plugin", "marketplace", "list", "--json"]);
+    let listed = refresh_step(&listing, &mut run)?;
+    let value: serde_json::Value = serde_json::from_slice(&listed.stdout)
+        .map_err(|error| refresh_failed(&listing, &format!("its listing was not JSON: {error}")))?;
+    if !value["marketplaces"].is_array() {
+        return Err(refresh_failed(&listing, "its listing had no marketplaces array"));
+    }
+    let Some(registered) = registered_in(&String::from_utf8_lossy(&listed.stdout)) else {
+        let _ =
+            writeln!(out, "Codex's muster marketplace is not registered; nothing was installed.");
+        return Ok(());
+    };
+    let muster_home = muster_home(environment).map(PathBuf::from);
+    let replace = stale_registration(&registered, extras, muster_home.as_deref());
+    let ours = extras.canonicalize().unwrap_or_else(|_| extras.to_path_buf());
+    let same_source = registered.0 == ours || registered.0 == extras;
+    let Some(commands) = refresh_commands(replace, same_source, extras) else {
+        let _ = writeln!(out, "Codex's muster marketplace uses another source; it was left alone.");
+        return Ok(());
+    };
+    for command in commands {
+        refresh_step(&command, &mut run)?;
+    }
+    if codex_copy_differs(extras, home) {
+        return Err(Trouble::Refused(
+            "Codex reported success but its plugin copy still differs from this Muster. Run \
+             `muster harness install codex` and review the hooks in `/hooks`."
+                .to_string(),
+        ));
+    }
+    let _ =
+        writeln!(out, "Codex plugin refreshed; restart Codex and review changed hooks in /hooks.");
+    Ok(())
+}
+
+fn refresh_commands(replace: bool, same_source: bool, extras: &Path) -> Option<Vec<Step>> {
+    if !replace && !same_source {
+        return None;
+    }
+    Some(codex_plugin_commands(extras, replace))
+}
+
+fn codex_plugin_commands(extras: &Path, replace: bool) -> Vec<Step> {
+    let mut commands = Vec::new();
+    if replace {
+        commands.push(Step::of(&["codex", "plugin", "marketplace", "remove", "muster"]));
+    }
+    commands.push(Step::of(&[
+        "codex",
+        "plugin",
+        "marketplace",
+        "add",
+        &extras.display().to_string(),
+    ]));
+    commands.push(Step::of(&["codex", "plugin", "add", "muster-codex@muster"]));
+    commands
+}
+
+fn refresh_step(
+    step: &Step,
+    run: &mut impl FnMut(&[String]) -> std::io::Result<Option<Output>>,
+) -> Result<Output, Trouble> {
+    let ran = run(&step.words)
+        .map_err(|error| refresh_failed(step, &error.to_string()))?
+        .ok_or_else(|| refresh_failed(step, "it timed out after 10 seconds and was stopped"))?;
+    if !ran.status.success() {
+        return Err(refresh_failed(
+            step,
+            &format!("{}: {}", ran.status, String::from_utf8_lossy(&ran.stderr).trim()),
+        ));
+    }
+    Ok(ran)
+}
+
+fn refresh_failed(step: &Step, reason: &str) -> Trouble {
+    Trouble::Refused(format!(
+        "`{}` failed ({reason}), so Codex's adapter was not refreshed. Its existing copy may \
+         still be old; `muster window` says when it differs. Run `muster harness install codex` \
+         and review changed hooks in `/hooks`.",
+        line(&step.words)
+    ))
 }
 
 #[cfg(test)]
@@ -651,5 +824,26 @@ mod tests {
             "{:?}",
             plan.then
         );
+    }
+
+    #[test]
+    fn a_refresh_timeout_names_the_command_and_leaves_the_copy_unchanged() {
+        let copies = Copies::new("refresh-timeout");
+        copies.install("local");
+        Copies::write(&copies.version("local"), "hooks/hooks.json", "{}");
+        let error = refresh_with(
+            &copies.extras(),
+            &copies.codex_home(),
+            &BTreeMap::new(),
+            &mut Vec::new(),
+            |words| {
+                assert_eq!(words, ["codex", "plugin", "marketplace", "list", "--json"]);
+                Ok(None)
+            },
+        );
+        let Err(Trouble::Refused(reason)) = error else { panic!("{error:?}") };
+        assert!(reason.contains("codex plugin marketplace list --json"), "{reason}");
+        assert!(reason.contains("timed out after 10 seconds"), "{reason}");
+        assert!(copies.differs());
     }
 }

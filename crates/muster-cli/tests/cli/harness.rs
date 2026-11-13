@@ -2,6 +2,7 @@
 //! a test never runs a real harness's install, which would write into the config of whoever runs
 //! the suite.
 
+use std::fmt::Write as _;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -289,11 +290,13 @@ impl Home {
         self.codex(listing, "exit 93");
         let path = self.0.join("bin/codex");
         let mut script = std::fs::read_to_string(&path).unwrap();
-        script.push_str(&format!(
+        write!(
+            script,
             "\nif [ \"$*\" = 'plugin add muster-codex@muster' ]; then\n\
              /bin/cp -R '{EXTRAS}/codex/.' '{}'\nfi\n",
             self.copy().display()
-        ));
+        )
+        .unwrap();
         std::fs::write(path, script).unwrap();
     }
 
@@ -446,10 +449,14 @@ fn automatic_refresh_uses_the_login_profiles_path_and_codex_home() {
     std::fs::write(codex, script).unwrap();
     std::fs::write(
         home.0.join("home/.zprofile"),
+        format!("export CODEX_HOME='{}'\n", custom.display()),
+    )
+    .unwrap();
+    std::fs::write(
+        home.0.join("home/.zshrc"),
         format!(
-            "echo 'login profile output'\nexport PATH='{}:/usr/bin:/bin'\nexport CODEX_HOME='{}'\n",
-            home.0.join("bin").display(),
-            custom.display()
+            "echo 'login profile output'\nexport PATH='{}:/usr/bin:/bin'\n",
+            home.0.join("bin").display()
         ),
     )
     .unwrap();

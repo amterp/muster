@@ -198,9 +198,20 @@ refuses every report and `muster msg` request that comes through it (`muster doc
 `codex features enable daemon_auto_start` turns it back on, at the cost of those. An app-server already running
 still takes new sessions until `codex app-server daemon stop`, which install leaves to you because
 it ends the sessions running there. Codex installs a copy of the plugin, recorded against the
-resolved path of `<extras>`, so run the install again after updating Muster: it first removes a
-`muster` marketplace an earlier Muster install left, and leaves one added from anywhere else, such
-as a source checkout. `muster window` says when the copy no longer matches this Muster's adapter.
+resolved path of `<extras>`. At launch, the Muster app reads your login-shell environment and
+checks its local copy in the background and refreshes it when its content changes. An unchanged
+copy, including one differing only in Markdown, is left alone so it does not ask you to trust the
+same hooks again. Refresh only runs for an installed plugin whose `muster` marketplace is still
+registered. It replaces a marketplace an earlier Muster install left and leaves one added from
+another source, such as a checkout, alone. It never changes `daemon_auto_start`.
+
+After a refresh, restart Codex and review the changed hooks in `/hooks` before trusting them.
+Sessions already running keep their loaded adapter until they restart. Reading the login
+environment and each refresh command have separate 10-second limits. A failure leaves a warning
+with the repair command in Muster's run log. `muster window` still says when the copy differs.
+`muster harness refresh codex --login` runs the same check by hand; without `--login` it uses the
+current environment. `muster harness install codex` reinstalls it explicitly.
+
 Its sandbox refuses a command connecting to Muster's daemon, so a sandboxed
 Codex cannot run `muster msg read` or `post` itself unless its sandbox may use the network; the
 messaging hooks hand it what it is sent regardless. `extras/codex/README.md` has both, and the

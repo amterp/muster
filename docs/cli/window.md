@@ -39,12 +39,12 @@ A machine's own block says one more thing, on the machine the `muster` you ran i
 
     Codex's copy of Muster's adapter differs from this Muster's: muster harness install codex
 
-Codex copies Muster's plugin once, when it is installed, so after Muster is updated every Codex session runs
-the adapter it had until that command runs again. It is said only when Codex has Muster's plugin
-installed, and when a file the plugin ships, other than its documentation, is not the one in the
-copy: the adapters are compared by content, since development builds share a version. Sessions
-already running take the new adapter when they restart, and Codex asks you to trust its hooks again
-only if they changed.
+The Muster app refreshes its local Codex plugin in the background at launch when its content
+changes. The note still appears while the copy differs, including after a failed refresh. It is
+shown only when Codex has Muster's plugin installed and a file the plugin ships, other than its
+documentation, is not the one in the copy. The adapters are compared by content, since development
+builds share a version. Sessions already running take the new adapter when they restart, and
+Codex asks you to trust its hooks again only if they changed.
 
 The tabs come first because that is what the window is: it holds an ordered list of them and
 shows one. The machines follow rather than heading the list, because a tab can hold panes on more

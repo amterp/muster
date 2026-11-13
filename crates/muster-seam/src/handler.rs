@@ -2743,6 +2743,7 @@ fn start(startup: &proto::Startup) -> Response {
     if let Err(refusal) = start_logging(startup) {
         return *refusal;
     }
+    crate::adapter_refresh::start(&startup.commands_path);
     // After logging, because the one line that says where this window is listening is the first
     // thing anybody reads when the CLI cannot find a window - and bound before the config,
     // because applying one can wait on a daemon starting. A caller that dials during that gets a
