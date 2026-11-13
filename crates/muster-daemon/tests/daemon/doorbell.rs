@@ -698,6 +698,23 @@ fn a_ring_waiting_for_an_agent_that_exits_is_not_typed_into_its_shell() {
     assert!(!shown.contains("[muster]"), "typed into the shell: {shown}");
 }
 
+/// A post whose agent exited before it could be rung is rung for the agent started next in the
+/// pane: a restarted agent, or one found only after a dialog, still has it unread.
+#[test]
+fn a_post_its_agent_left_unread_rings_the_next_agent_in_the_pane() {
+    // A pane old enough that no agent is expected once its own has left.
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_AGENT_TO_COME_MS", "1000")]);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    agent.post("p1", "a brief");
+    agent.type_in("quit", true);
+    std::thread::sleep(QUIET + Duration::from_secs(2));
+    assert!(agent.rung().is_empty(), "rung into the shell");
+
+    agent.daemon.run_agent("p1");
+    let rung = agent.until_rung(1);
+    assert!(rung[0].starts_with(&format!("[muster] {0}: 1 new", agent.pair("p1"))), "{rung:?}");
+}
+
 /// A daemon that takes the panes over by a handoff does not know whether a wake still unread
 /// was rung, so it rings it again, without waiting for a post or a change in the pane to prompt
 /// it.
