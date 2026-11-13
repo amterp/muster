@@ -65,6 +65,27 @@ fn a_pane_marked_unread_is_done_until_seen_again_after_leaving_sight() {
     assert!(attention.asking().is_empty());
 }
 
+/// New work in a pane marked unread replaces the finish that was marked, so the mark goes with
+/// it: a pane still in view is seen again, and asks for nobody when it next blocks or finishes.
+#[test]
+fn new_work_in_a_pane_marked_unread_in_view_ends_the_mark() {
+    let mut attention = Attention::new();
+    let pane = PaneKey::new(&DaemonId::new("local"), &PaneId::new("p1"));
+    attention.window_focused(true);
+    attention.showing(BTreeSet::from([pane.clone()]));
+    attention.marked_unread(&pane);
+    attention.observed(&pane, AgentState::Idle, true);
+
+    attention.observed(&pane, AgentState::Working, false);
+    let blocked = attention.observed(&pane, AgentState::Blocked, false);
+    assert_eq!(blocked.attend, None, "a pane in view raises nothing");
+    assert!(attention.asking().is_empty(), "{:?}", attention.asking());
+    attention.observed(&pane, AgentState::Working, false);
+    let finished = attention.observed(&pane, AgentState::Idle, true);
+    assert_eq!((finished.attend, finished.reported), (None, true), "seen as it finished");
+    assert_eq!(attention.presented(&pane, AgentState::Idle), AgentState::Idle);
+}
+
 /// A pane marked unread out of sight is seen at the next look, and one its daemon refused to
 /// mark is not finished after all.
 #[test]
