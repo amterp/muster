@@ -114,6 +114,14 @@ fn a_restarts_environment_survives_a_daemon_restart() {
     );
     let restarted_env = written_again(&daemon, "fake-agent-env", &before);
     daemon.until_agent("p1", proto::AgentState::Idle);
+    // The resumed agent's hooks report its session as it starts, as Claude Code's do.
+    let report = pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        session_id: Some("s-3".to_string()),
+        ..Default::default()
+    };
+    expect(&mut control, pane(pane_request::Request::Report(report)), proto::Outcome::Done);
     until_saved(&daemon, "HTTPS_PROXY");
 
     let mut control = crate::resume::restarted(&mut daemon, &mut control);

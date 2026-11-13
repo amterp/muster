@@ -1978,12 +1978,9 @@ impl Session {
         let which = spawn::Which { pane: &pane, name: &called, callsign: &callsign };
         let shell = self.settings.shell.clone().unwrap_or_default();
         let resume = saved.resume.clone();
-        let line = resume.as_ref().map(|resume| {
-            spawn::command_line(
-                &pty::shell(shell.command.as_deref(), &self.inherited),
-                &resume.command,
-            )
-        });
+        let line = resume
+            .as_ref()
+            .map(|resume| resume.line(&pty::shell(shell.command.as_deref(), &self.inherited)));
         let (argv, environment) = self.launch_with(&shell, which, line.as_deref(), &HashMap::new());
         let plain = self.launch_with(&shell, which, None, &HashMap::new());
 
@@ -2220,6 +2217,7 @@ impl Session {
         self.panes[index].kept_after_maker_closed = kept && record.maker_closed;
         if let Some(resume) = &reopening.resume {
             self.panes[index].session_id = Some(resume.session.clone());
+            self.panes[index].restart_env.clone_from(&resume.env);
             self.panes[index].resume = Some(resume.clone());
         }
         let Target::Reopened { tab, fresh } = target else {
@@ -3273,7 +3271,20 @@ impl Session {
             session: session.to_string(),
             command: resume.command,
             uncarried: resume.uncarried,
+            env: self.panes[index].restart_env.clone(),
         })
+    }
+
+    /// The agent in `pane` was restarted with `env`: it runs with those variables now, so each
+    /// resume built for it sets them again.
+    pub(crate) fn restarted_with(&mut self, pane: &str, env: persist::Environment) {
+        let Some(index) = self.pane_index(pane) else { return };
+        let pane = &mut self.panes[index];
+        if let Some(resume) = &mut pane.resume {
+            resume.env.clone_from(&env);
+            self.persister.changed();
+        }
+        pane.restart_env = env;
     }
 
     /// Keeps what starts the pane's agent session again, saving it when it changed.
@@ -4498,8 +4509,8 @@ impl Session {
         }
         let shell_path = self.settings.shell.as_ref().and_then(|shell| shell.command.as_deref());
         let shell_path = pty::shell(shell_path, &self.inherited);
-        let command = spawn::command_line(&shell_path, &resume.command);
-        let line = spawn::with_variables(&shell_path, &variables, &command);
+        let env = persist::Environment(restart.env.clone().into_iter().collect());
+        let line = persist::Resume { env: env.clone(), ..resume.clone() }.line(&shell_path);
         log::info(
             "daemon.pane.restarting",
             fields! {
@@ -4515,6 +4526,7 @@ impl Session {
             program: agent,
             session,
             line,
+            env,
             target: restart::Live { io: Arc::clone(&pane.io), group, shell },
         })
     }
@@ -4751,12 +4763,9 @@ impl Session {
             let which = spawn::Which { pane: name, name: &called, callsign: &callsign };
             let shell = self.settings.shell.clone().unwrap_or_default();
             let resume = pane.resume.clone().filter(|_| self.resumes_agents());
-            let command = resume.as_ref().map(|resume| {
-                spawn::command_line(
-                    &pty::shell(shell.command.as_deref(), &self.inherited),
-                    &resume.command,
-                )
-            });
+            let command = resume
+                .as_ref()
+                .map(|resume| resume.line(&pty::shell(shell.command.as_deref(), &self.inherited)));
             let launch = self.launch_with(&shell, which, command.as_deref(), &HashMap::new());
             let plain = self.launch_with(&shell, which, None, &HashMap::new());
             let fallback = proto::Shell { command: None, ..shell };
@@ -4824,6 +4833,7 @@ impl Session {
                     Self::resumed(&name, &resume);
                     let index = self.pane_index(&name).expect("the pane just opened");
                     self.panes[index].session_id = Some(resume.session.clone());
+                    self.panes[index].restart_env.clone_from(&resume.env);
                     self.panes[index].resume = Some(resume);
                 }
                 self.restored_from_file = true;
@@ -5081,6 +5091,9 @@ impl Session {
         .map_err(|error| format!("pane {name}: {error}"))?;
         pane.session_id = resuming.session_id.map(str::to_string);
         pane.resume = resuming.resume.cloned();
+        if let Some(resume) = resuming.resume {
+            pane.restart_env.clone_from(&resume.env);
+        }
         pane.maker_told = resuming.maker_told;
         pane.quiet_before_orphaned = resuming.quiet_before_orphaned;
         pane.compaction.carry_nudged(resuming.nudged);
@@ -5803,6 +5816,9 @@ fn agent_left(pane: &mut Pane, name: &str) -> bool {
     (record.session_id, record.resume) = (None, None);
     let left = record.agent.as_deref().unwrap_or_default();
     let restarting = pane.io.discards().is_restarting();
+    if !restarting {
+        pane.restart_env = persist::Environment::default();
+    }
     forget_compaction(&mut pane.compaction, name, left, restarting);
     record.set_pending_compaction(proto::PendingCompaction::None);
     resumed

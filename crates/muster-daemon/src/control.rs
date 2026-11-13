@@ -677,8 +677,13 @@ fn answer_later(shared: &Arc<Shared>, outbox: &Outbox, restarting: Restarting, a
         let outbox = outbox.clone();
         let shared = Arc::clone(&shared);
         move || {
-            let reply = restarting.run();
-            answer(&shared.lock(), &outbox, reply, answered);
+            let (pane, env) = (restarting.pane.clone(), restarting.env.clone());
+            let (reply, changed) = restarting.carried_out();
+            let mut session = shared.lock();
+            if changed {
+                session.restarted_with(&pane, env);
+            }
+            answer(&session, &outbox, reply, answered);
         }
     });
     if let Err(error) = started {

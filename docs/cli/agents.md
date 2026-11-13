@@ -341,7 +341,11 @@ daemon restart would: the `resume` on its row of `muster window --json`, which i
 resume with the flags the agent was started with (`muster docs harnesses`). It is the way out for
 an agent that is `stuck`, and it works on any agent whose session can be resumed, so a dozen
 agents can pick up a changed proxy without losing their conversations. `--env` sets a variable
-for the resumed agent alone, and can be given more than once.
+for the resumed agent alone, and can be given more than once. The pane keeps the variables with
+its resume while that agent runs, so a daemon restart or a reopen brings it back with them too;
+the next restart replaces them with its own `--env`, or none. Their values are kept in the
+daemon's state file, `~/.muster/daemon/<install>.state.json`, which only you can read, and never
+in `muster window`, the API or the run log.
 
 The daemon first throws away what waits for the agent to read, in its own queue and in the
 terminal, since a stuck agent leaves kilobytes of it and its shell would run whatever is left as

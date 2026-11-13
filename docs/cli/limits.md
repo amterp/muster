@@ -204,7 +204,7 @@ them. What already sits in the pane's terminal stays there too, pointer reports 
 nothing can pick those out of it; `muster pane restart` throws all of it away before it ends the
 program.
 
-## A restart types its resume at the pane's shell, and keeps no environment past it
+## A restart types its resume at the pane's shell
 
 `muster pane restart` types the resume into the shell the agent leaves, so it needs that shell to
 take a line. It waits for the shell to say it has drawn its prompt, which Ghostty's shell
@@ -213,10 +213,11 @@ five seconds, then types anyway; a shell that is still starting reads the line o
 An agent that is the pane's own process, rather than a program its shell started, is refused,
 since ending it would end the pane.
 
-`--env` reaches the resumed agent and nothing else. What a later daemon restart resumes with is
-the flags the agent runs with, never its environment, so after one the agent comes back without
-the change. To make it last, start the agent through a wrapper that sets it and names its own
-resume in `MUSTER_RESUME` (`docs/configuration.md`), or set it where the daemon starts.
+`--env` reaches the resumed agent, and its resume keeps the variables for a later daemon restart
+or reopen. Nothing else the agent's environment holds is kept: an agent started by hand with a
+variable comes back without it. To make one last, start the agent through a wrapper that sets it
+and names its own resume in `MUSTER_RESUME` (`docs/configuration.md`), or set it where the daemon
+starts.
 
 Anything typed into the pane while a restart is under way is thrown away, and so is what waited
 unread for the agent when it began. An agent comes back with the flags it was started with, less

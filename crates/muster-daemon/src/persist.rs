@@ -30,7 +30,7 @@
 //!   setting added since the last fixture: the tests' `FIXTURES` says which fixture holds which
 //!   setting, and fails until every setting is held by one.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt;
@@ -233,9 +233,41 @@ pub(crate) struct Resume {
     /// Why the arguments did not go along, when they did not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) uncarried: Option<String>,
+    /// The variables the agent was last restarted with (`pane.restart --env`), set again for
+    /// it. Their values can be secrets, such as a proxy's password, so they are kept here, in a
+    /// file only the user can read, and never in a record, an event or the run log.
+    #[serde(default, skip_serializing_if = "Environment::is_empty")]
+    pub(crate) env: Environment,
+}
+
+/// Variables and their values, which say only their names when debug-printed.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct Environment(pub(crate) BTreeMap<String, String>);
+
+impl Environment {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn pairs(&self) -> Vec<(&str, &str)> {
+        self.0.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect()
+    }
+}
+
+impl std::fmt::Debug for Environment {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_list().entries(self.0.keys()).finish()
+    }
 }
 
 impl Resume {
+    /// The line the pane's shell runs to resume the session, with its variables set.
+    pub(crate) fn line(&self, shell: &str) -> String {
+        let command = crate::spawn::command_line(shell, &self.command);
+        crate::spawn::with_variables(shell, &self.env.pairs(), &command)
+    }
+
     /// The resume as a pane's record carries it.
     pub(crate) fn record(&self) -> proto::SessionResume {
         proto::SessionResume { command: self.command.clone(), uncarried: self.uncarried.clone() }

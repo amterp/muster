@@ -160,6 +160,8 @@ pub(crate) struct Restarting {
     pub(crate) program: String,
     pub(crate) session: String,
     pub(crate) line: String,
+    /// The variables the line sets, which the pane's resume keeps once the agent is ended.
+    pub(crate) env: crate::persist::Environment,
     pub(crate) target: Live,
 }
 
@@ -245,14 +247,10 @@ pub(crate) enum Failed {
 }
 
 impl Restarting {
-    pub(crate) fn run(self) -> Reply {
-        self.carried_out().0
-    }
-
     /// The answer to the restart, and whether it changed the pane: true unless it stopped before
     /// ending anything.
     pub(crate) fn carried_out(self) -> (Reply, bool) {
-        let Restarting { pane, program, session, line, target } = self;
+        let Restarting { pane, program, session, line, target, .. } = self;
         let outcome = restart(&target, &line, Timing::daemon());
         (said(&pane, &program, &session, &line, &outcome), changed_the_pane(&outcome))
     }

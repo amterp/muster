@@ -991,6 +991,9 @@ pub(crate) struct Pane {
     pub(crate) kept_after_maker_closed: bool,
     /// Where it was when it was hidden (`persist::Pane::hidden_from`).
     pub(crate) hidden_from: Option<crate::persist::ClosedTab>,
+    /// The variables its agent was restarted with, kept with each resume built for it until the
+    /// agent leaves the pane other than by a restart (`persist::Resume::env`).
+    pub(crate) restart_env: crate::persist::Environment,
 }
 
 /// Where the pane's agent stands on its turns, as they bear on what it waits on. Handed over
@@ -1234,6 +1237,7 @@ impl Pane {
             quiet_before_orphaned: None,
             kept_after_maker_closed: false,
             hidden_from: None,
+            restart_env: crate::persist::Environment::default(),
         })
     }
 
