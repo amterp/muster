@@ -1081,6 +1081,20 @@
       },
       "name": "codex 0.167.2: migration existing model accepted",
       "why": "Return accepted Use existing model; the composer is available."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n\n› Explain the native naming probe.\n\n\n• The menu offers Try new model or Use existing model.\n\n  Worked for <1s • 09:48\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  GPT-6.1 Terra default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view\n",
+        "title": "project",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n  Explain the native naming probe.\n\n\n  The menu offers Try new model or Use existing model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  GPT-6.1 Terra default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view"
+      },
+      "name": "codex 0.167.2: idle response discusses model migration choices",
+      "why": "A completed local-provider reply mentions both choice labels in prose; it is not a dialog."
     }
   ]
 }

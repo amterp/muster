@@ -111,3 +111,36 @@ Return accepted Use existing model; the composer is available.
 
   GPT-5.5 default · $PROBE_ROOT/project
   ← for agents · ? for shortcuts
+
+A separate custom local-provider turn returned this prose and finished at its composer:
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+
+› Explain the native naming probe.
+
+
+• The menu offers Try new model or Use existing model.
+
+  Worked for <1s • 09:48
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
