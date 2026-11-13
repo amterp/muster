@@ -42,14 +42,14 @@ const FROM_FLAGS: [&str; 12] = [
 /// sub-agent and a statusline that runs on every message must not hold their harness up.
 const PATIENCE: Duration = Duration::from_secs(2);
 
-const USAGE: &str = "usage: muster-daemon report [--pane NAME] [--context-used PERCENT] \
+const USAGE: &str = "usage: muster-daemon report [--pane PANE] [--context-used PERCENT] \
     [--context-session ID] [--model NAME] [--effort LEVEL] [--cost-usd DOLLARS] [--subagent-started | --subagent-stopped] \
     [--fact KEY=VALUE]... [--waiting TEXT [--until-exits PID | --until-message-from PANE]] [--clear] \
     [--agent NAME [--state working|blocked|idle] [--session-name NAME] \
     [--session-id ID] [--session-source SOURCE] [--compacting] \
     [--context-compacted | --compacted-in TRANSCRIPT]] [--from FLAG=POINTER]...\n\n\
     Tells the daemon that owns this pane what the agent in it says about itself. The pane is \
-    $MUSTER_PANE unless --pane names another, and the daemon is the one at \
+    $MUSTER_PANE unless --pane names another, by its id, callsign or name, and the daemon is the one at \
     $MUSTER_DAEMON_SOCKET. --effort is the reasoning effort the model runs at, as the harness \
     names it (high). An empty model, effort or fact value removes it; --clear forgets everything \
     reported before, and applies first. --context-session is the harness's id for the session \
@@ -441,7 +441,10 @@ fn send(socket: &std::path::Path, report: pane_request::Report) -> Result<(), St
     };
     match answer.outcome() {
         proto::Outcome::Done | proto::Outcome::AlreadySo => Ok(()),
-        proto::Outcome::NotThere => Err(format!("the daemon has no pane {pane}")),
+        proto::Outcome::NotThere => Err(format!(
+            "the daemon has no pane {pane}; name one by the id, callsign or name `muster window` \
+             lists it under"
+        )),
         _ => Err(format!("the daemon refused the report: {}", answer.reason)),
     }
 }

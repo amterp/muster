@@ -499,14 +499,18 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
 /// leave a line to type into an agent's prompt, which the doorbell's thread does - but only if
 /// it changed something: a statusline repeats its report every few seconds. A presence report
 /// wakes it too, which lets the report go when it runs out. A report whose `sender` is another
-/// agent than the pane's own is refused before any of it is taken.
+/// agent than the pane's own is refused before any of it is taken, and one naming its pane by
+/// callsign or given name is taken as naming that pane's id.
 pub(crate) fn handle(
     session: &mut Session,
-    service: Service,
+    mut service: Service,
     sender: Option<&attribution::Sender>,
     outbox: &Outbox,
     shared: &Shared,
 ) -> Handled {
+    if let Err(refused) = session.resolve_report_pane(&mut service) {
+        return Handled::Reply(refused);
+    }
     if let Some(refused) = sender.and_then(|sender| session.foreign_report(&service, sender)) {
         return Handled::Reply(refused);
     }

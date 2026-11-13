@@ -117,3 +117,38 @@ fn the_verb_says_why_when_it_cannot_report() {
     assert_eq!((status, said.as_str()), (Some(0), ""), "a report that lands is silent");
     assert_eq!(facts_of(&mut control, "p1").and_then(|facts| facts.model).as_deref(), Some("Opus"));
 }
+
+/// `--pane` takes a pane's callsign, as every `muster` verb does, and lands on that pane; a name
+/// no pane answers to is refused saying how to name one (kan a_2vgar4Ikf).
+#[test]
+fn the_verb_names_its_pane_by_callsign() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    make(&mut control, create("p2", in_new_tab("t2")));
+    let callsign = snapshot(&mut control)
+        .panes
+        .into_iter()
+        .find(|record| record.pane == "p2")
+        .and_then(|record| record.callsign)
+        .expect("p2 has a callsign");
+    let run = |pane: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+            .args(["report", "--pane", pane, "--model", "Opus"])
+            .env_clear()
+            .env("MUSTER_PANE", "p1")
+            .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+            .output()
+            .expect("the verb runs");
+        (output.status.code(), String::from_utf8_lossy(&output.stderr).into_owned())
+    };
+
+    let (status, said) = run(&callsign);
+    assert_eq!((status, said.as_str()), (Some(0), ""), "{callsign}");
+    assert_eq!(facts_of(&mut control, "p2").and_then(|facts| facts.model).as_deref(), Some("Opus"));
+    assert_eq!(facts_of(&mut control, "p1"), None, "the report went to the pane named");
+
+    let (status, said) = run("nobody");
+    assert_eq!(status, Some(1));
+    assert!(said.contains("no pane nobody") && said.contains("callsign"), "{said}");
+}

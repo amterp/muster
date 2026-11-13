@@ -5037,6 +5037,42 @@ impl Session {
         })
     }
 
+    /// Puts the id of the pane a report names in place of the callsign or given name it names
+    /// it by, as the CLI reads a typed pane (`muster_core::pane_address`), so a reporter can say
+    /// `--pane otter`. A name no pane answers to is left as it is, and the report is then refused
+    /// NOT_THERE; one several answer to, or one a renamed pane gave up, is refused saying so.
+    pub(crate) fn resolve_report_pane(&self, service: &mut Service) -> Result<(), Reply> {
+        use muster_core::pane_address::{self, Address, Candidate};
+        let Service::Pane(proto::PaneRequest {
+            request: Some(pane_request::Request::Report(report)),
+        }) = service
+        else {
+            return Ok(());
+        };
+        if self.pane_index(&report.pane).is_some() {
+            return Ok(());
+        }
+        // No machine: a report goes to the daemon holding the pane, so `otter@machine` asks
+        // nothing a callsign alone does not.
+        let candidates: Vec<Candidate<'_>> = self
+            .panes
+            .iter()
+            .map(|pane| Candidate {
+                pane: &pane.record.pane,
+                name: pane.record.name(),
+                callsign: pane.record.callsign.as_deref().filter(|word| !word.is_empty()),
+                machine: "",
+                former: &pane.record.former_labels,
+            })
+            .collect();
+        match pane_address::resolve(&report.pane, &candidates) {
+            Address::Pane(id) => report.pane = id,
+            Address::AsTyped => {}
+            Address::Ambiguous(why) | Address::Renamed(why) => return Err(Reply::refused(why)),
+        }
+        Ok(())
+    }
+
     fn pane_index(&self, pane: &str) -> Option<usize> {
         self.panes.iter().position(|candidate| candidate.record.pane == pane)
     }

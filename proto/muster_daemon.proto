@@ -531,6 +531,8 @@ message PaneRequest {
   // replaces what the pane held; `clear` forgets everything first. A report outside the bounds
   // on `AgentFacts` is refused whole.
   message Report {
+    // The pane's id, or since 1.16 its callsign or the name somebody gave it, which the daemon
+    // reads as the pane's id.
     string pane = 1;
     optional float context_used = 2;
     // Empty removes the model.
