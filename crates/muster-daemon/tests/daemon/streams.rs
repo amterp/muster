@@ -291,11 +291,7 @@ fn a_closed_pane_lets_go_of_its_terminal_even_when_its_bridge_has_stopped_readin
 fn a_bridge_that_stops_acknowledging_is_behind_after_a_grace_and_the_program_goes_on() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let mut logging = daemon.connect();
-    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
-        after: None,
-    });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let flag = daemon.root().join("go");
     make(
         &mut control,

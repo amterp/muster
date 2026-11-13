@@ -310,11 +310,7 @@ fn a_stopping_daemon_ends_every_api_connection_saying_so() {
 #[test]
 fn a_client_that_stops_reading_is_dropped_at_its_byte_budget_and_subscribes_again() {
     let daemon = daemon_with(&[("MUSTER_DAEMON_API_BUDGET", "16384")]);
-    let mut log = daemon.connect();
-    let followed = log.ask(session(proto::session_request::Request::FollowLog(
-        proto::session_request::FollowLog { after: None },
-    )));
-    assert_eq!(followed.outcome(), proto::Outcome::Done);
+    let mut log = following(&daemon);
 
     let mut api = daemon.api();
     let mut writer = api.writer();

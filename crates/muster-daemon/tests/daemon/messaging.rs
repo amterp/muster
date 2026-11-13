@@ -212,9 +212,7 @@ fn a_wait_returns_when_a_post_arrives_and_a_newer_wait_ends_the_older() {
     join(&mut control, &named("b"), "b", "g");
     let wait = || msg(&named("b"), Asked::Wait(msg_request::Wait::default()));
 
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     waiting.send(wait());
     logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
@@ -245,9 +243,7 @@ fn leaving_ends_the_leavers_wait() {
     let mut control = daemon.connect();
     join(&mut control, &named("a"), "a", "g");
     join(&mut control, &named("b"), "b", "g");
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     waiting.send(msg(&named("b"), Asked::Wait(msg_request::Wait::default())));
     logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
@@ -278,9 +274,7 @@ fn waiting_as_the_callsign_of_its_own_pane_keeps_the_agent_in_its_group() {
     expect(&mut control, msg(&in_pane, joining), proto::Outcome::Done);
     join(&mut control, &named("a"), "a", "g");
 
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     let as_callsign = msg_request::Caller { as_name: Some(callsign), ..in_pane };
     waiting.send(msg(&as_callsign, Asked::Wait(msg_request::Wait::default())));
@@ -316,9 +310,7 @@ fn a_wait_ends_when_its_pane_closes_and_one_from_no_pane_does_not() {
     expect(&mut control, msg(&in_pane, joining), proto::Outcome::Done);
     join(&mut control, &named("a"), "a", "g");
 
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut from_pane = daemon.connect();
     from_pane.send(msg(&in_pane, Asked::Wait(msg_request::Wait::default())));
     let mut from_no_pane = daemon.connect();
@@ -355,9 +347,7 @@ fn a_due_wait_ends_when_its_agents_next_turn_starts_and_does_not_answer_a_post()
     let daemon = Daemon::start_detecting();
     let mut control = daemon.connect();
     let in_pane = agent_after_a_turn(&daemon, &mut control);
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     let due = msg_request::Wait { due: true, ..Default::default() };
     waiting.send(msg(&in_pane, Asked::Wait(due)));
@@ -378,9 +368,7 @@ fn a_plain_wait_outlasts_its_agents_next_turn() {
     let daemon = Daemon::start_detecting();
     let mut control = daemon.connect();
     let in_pane = agent_after_a_turn(&daemon, &mut control);
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     waiting.send(msg(&in_pane, Asked::Wait(msg_request::Wait::default())));
     logging.logged_until("msg.waiting", std::time::Duration::from_secs(20));
@@ -548,9 +536,7 @@ fn a_post_to_a_name_from_before_a_rename_says_what_the_pane_is_called_now() {
 fn messages_are_kept_for_this_user_only_and_never_written_to_the_daemon_log() {
     let daemon = daemon();
     let mut control = daemon.connect();
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     join(&mut control, &named("a"), "a", "g");
     join(&mut control, &named("b"), "b", "g");
     let secret = "the body of a message, which only the store may hold";
@@ -968,9 +954,7 @@ fn a_follow_of_a_log_is_answered_by_the_next_entry() {
         ..Default::default()
     });
 
-    let mut logging = daemon.connect();
-    let log = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(log), DONE);
+    let mut logging = following(&daemon);
     let mut following = daemon.connect();
     following.send(msg(&named("reader"), follow));
     logging.logged_until("msg.following", std::time::Duration::from_secs(20));
@@ -1002,10 +986,7 @@ fn deleting_a_group_removes_its_log_and_ends_what_was_kept_to_it() {
     let log = daemon.socket_path().with_extension("msg").join("groups/g.log");
     assert!(log.exists());
 
-    let mut logging = daemon.connect();
-    let follow_log =
-        session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow_log), DONE);
+    let mut logging = following(&daemon);
     let mut waiting = daemon.connect();
     let wait = msg_request::Wait { group: Some("g".to_string()), ..msg_request::Wait::default() };
     waiting.send(msg(&named("b"), Asked::Wait(wait)));

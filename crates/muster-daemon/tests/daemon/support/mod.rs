@@ -27,6 +27,16 @@ pub fn daemon_holding(descriptor: i32) -> Daemon {
     Daemon::start_holding(env!("CARGO_BIN_EXE_muster-daemon"), descriptor)
 }
 
+/// A connection the daemon's log streams to from its first line.
+pub fn following(daemon: &Daemon) -> Control {
+    let mut logging = daemon.connect();
+    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
+        after: None,
+    });
+    expect(&mut logging, session(follow), proto::Outcome::Done);
+    logging
+}
+
 /// What a file a pane was asked to write says, once it says something.
 pub fn written(path: &Path) -> String {
     until_file(path, &format!("a pane to write {}", path.display()));

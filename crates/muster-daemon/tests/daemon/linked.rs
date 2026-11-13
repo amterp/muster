@@ -14,7 +14,6 @@ use crate::support::*;
 use proto::msg_answer::{self, Answer};
 use proto::msg_request::{self, Request as Asked};
 use proto::request::Service;
-use proto::session_request;
 
 const LINKING: Duration = Duration::from_secs(20);
 
@@ -307,14 +306,6 @@ fn who(control: &mut Control, group: &str) -> Vec<(String, msg_answer::Liveness)
         panic!("expected members, got {:?}", msg_answer(&answered));
     };
     members.members.iter().map(|member| (member.name.clone(), member.liveness())).collect()
-}
-
-/// A daemon whose log this connection follows.
-fn following(daemon: &Daemon) -> Control {
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
-    logging
 }
 
 /// Tells `near` that the machine it calls `far` has its daemon at `far`'s socket, and returns

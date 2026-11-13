@@ -1605,16 +1605,6 @@ fn until_stopped_reading(agent: &mut Agent) {
     });
 }
 
-/// A connection the daemon's log streams to from its first line.
-fn following(daemon: &Daemon) -> Control {
-    let mut logging = daemon.connect();
-    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
-        after: None,
-    });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
-    logging
-}
-
 /// An agent whose program has stopped reading is not rung: the ring would wait in its terminal
 /// with what was already sent. The post says so, and the agent is rung once it reads again.
 #[test]

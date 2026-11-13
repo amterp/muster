@@ -18,7 +18,6 @@ use crate::claude_code_live::{how_to_run, quoted, until_ready};
 use crate::support::*;
 use muster_harness::Input;
 use proto::input_event::{self, Input as Event};
-use proto::session_request;
 
 /// About the size of a brief the integrator writes: past the length at which Claude Code folds
 /// a paste into a placeholder, and under what its Bash tool shows of a command's output.
@@ -100,9 +99,7 @@ fn a_brief_posted_to_a_new_claude_pane_is_rung_read_whole_and_answered() {
             .expect("the muster binary runs")
     };
     // Everything the daemon logs from before the post on, to see what it typed and when.
-    let mut logging = daemon.connect();
-    let follow = session_request::Request::FollowLog(session_request::FollowLog { after: None });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&daemon);
     let joined = integrator(&["msg", "join", "--name", "integrator"]);
     assert!(joined.status.success(), "{}", String::from_utf8_lossy(&joined.stderr));
     // Posted before the session has shown its prompt, let alone had its folder trusted: the ring

@@ -358,11 +358,7 @@ fn a_rename_whose_returns_ran_out_is_sent_when_a_later_post_finds_it() {
             .contains("heedless")
             .then_some(())
     });
-    let mut logging = p1.daemon.connect();
-    let follow = proto::session_request::Request::FollowLog(proto::session_request::FollowLog {
-        after: None,
-    });
-    expect(&mut logging, session(follow), proto::Outcome::Done);
+    let mut logging = following(&p1.daemon);
     p1.renamed("cxp");
     let unsent = r#""event":"msg.line.left_unsent""#;
     let logged = logging.logged_until(unsent, Duration::from_mins(1));
