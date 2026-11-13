@@ -1392,11 +1392,13 @@ impl<S: Store> Messaging<S> {
     }
 
     /// When an agent in `pane` last posted anything, to anybody, in the milliseconds of the
-    /// group's home.
+    /// group's home. Only groups it is in are read, so a look at every helper does not read every
+    /// conversation kept here.
     pub fn last_post_by(&self, pane: &str) -> Option<u64> {
         let authors = self.in_pane(pane);
         self.groups
             .values()
+            .filter(|group| authors.iter().any(|author| group.members.contains(*author)))
             .filter_map(|group| {
                 group.log.iter().rev().find_map(|entry| match &entry.what {
                     What::Message { author, .. } if authors.contains(&author.as_str()) => {
@@ -1419,7 +1421,9 @@ impl<S: Store> Messaging<S> {
             let members: Vec<&str> =
                 names.iter().copied().filter(|name| group.members.contains(*name)).collect();
             !members.is_empty()
-                && group.log.iter().rev().take_while(|entry| entry.at_ms > after_ms).any(|entry| {
+                // Every entry, not those back to the first older one: a host whose clock was set
+                // back appends times out of order.
+                && group.log.iter().filter(|entry| entry.at_ms > after_ms).any(|entry| {
                     let What::Message { author, to, no_reply, .. } = &entry.what else {
                         return false;
                     };
