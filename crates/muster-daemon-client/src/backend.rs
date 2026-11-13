@@ -565,7 +565,16 @@ impl BackendChannel for DaemonBackend {
     }
 
     fn callsigns_elsewhere(&self, held: Vec<String>) {
-        *self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner) = held;
+        *self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner) = held.clone();
+        // The daemon keeps them too, for a pane made there with no list of its own, as `muster
+        // pane new` makes one straight on the daemon. Not waited on: this is the window's event
+        // path, and an older daemon that refuses the request loses nothing it had.
+        let keeps = muster_daemon_proto::version::KEEPS_CALLSIGNS_ELSEWHERE;
+        if let Some(control) = self.connection.control()
+            && control.welcome().protocol.unwrap_or_default().minor >= keeps
+        {
+            drop(control.set_callsigns_elsewhere(held));
+        }
     }
 
     fn read(&self, pane: &PaneId, scope: Scope) -> Result<PaneText, Refusal> {

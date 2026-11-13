@@ -17,6 +17,10 @@ pub const PROTOCOL: Version = Version { major: 1, minor: 16 };
 /// not queue. An older one takes sends only on an input connection, which answers nothing.
 pub const SENDS_ANSWERED: u32 = 16;
 
+/// The first minor whose daemon keeps the callsigns a window says its other machines hold
+/// (`SetCallsignsElsewhere`). An older one refuses the request, so a client does not send it.
+pub const KEEPS_CALLSIGNS_ELSEWHERE: u32 = 16;
+
 /// The first minor whose daemon does a delete, pause or resume carried from another machine as the
 /// agent there that asked, named by the carried request's caller. An older one ignores the caller
 /// and does every carried request as the human, so an agent's is not carried to it.

@@ -1701,16 +1701,45 @@ fn refusal(payload: request::Payload) -> String {
 fn a_pane_is_drawn_no_callsign_another_machine_holds() {
     let _turn = muster::testing::fresh_session();
     let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
-    let callsign_of = |daemon: &Daemon, pane: &str| {
-        muster_harness::requests::snapshot(&mut daemon.connect())
-            .panes
-            .into_iter()
-            .find(|record| record.pane == pane)
-            .and_then(|record| record.callsign)
-            .unwrap_or_else(|| panic!("{pane} was drawn no callsign"))
-    };
-    let on_laptop = callsign_of(&laptop, LAPTOP_PANE);
-    let on_devenv = callsign_of(&devenv, DEVENV_PANE);
+    let left = devenv_left_with_the_laptops_callsign_and_one_other(&laptop, &devenv);
+
+    let before = panes_on("devenv");
+    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
+        pane_id: DEVENV_PANE.to_string(),
+        ..CreateTab::default()
+    })));
+    let made = muster_harness::until_some("the devenv to hold the pane just made", || {
+        panes_on("devenv").into_iter().find(|pane| !before.contains(pane))
+    });
+    assert_eq!(callsign_of(&devenv, &made), left, "drawn the laptop pane's callsign");
+}
+
+/// The same for a pane made straight on the devenv's daemon, as `muster pane new` makes a helper,
+/// carrying no list of its own: the window has told the daemon what the laptop holds, and the
+/// daemon keeps it (kan a_2x07zjV2k).
+#[test]
+fn a_pane_made_without_the_window_is_drawn_no_callsign_another_machine_holds() {
+    let _turn = muster::testing::fresh_session();
+    let TwoMachines { laptop, devenv } = a_window_showing_two_machines();
+    let left = devenv_left_with_the_laptops_callsign_and_one_other(&laptop, &devenv);
+
+    make(&mut devenv.connect(), create("p1direct00", in_new_tab("t1direct00")));
+    assert_eq!(callsign_of(&devenv, "p1direct00"), left, "drawn the laptop pane's callsign");
+}
+
+fn callsign_of(daemon: &Daemon, pane: &str) -> String {
+    muster_harness::requests::snapshot(&mut daemon.connect())
+        .panes
+        .into_iter()
+        .find(|record| record.pane == pane)
+        .and_then(|record| record.callsign)
+        .unwrap_or_else(|| panic!("{pane} was drawn no callsign"))
+}
+
+/// Takes every callsign on the devenv but the laptop pane's and one more, and returns that one.
+fn devenv_left_with_the_laptops_callsign_and_one_other(laptop: &Daemon, devenv: &Daemon) -> String {
+    let on_laptop = callsign_of(laptop, LAPTOP_PANE);
+    let on_devenv = callsign_of(devenv, DEVENV_PANE);
     let held = [on_laptop.as_str(), on_devenv.as_str()];
     let left = muster_core::callsigns::CALLSIGNS
         .iter()
@@ -1739,16 +1768,7 @@ fn a_pane_is_drawn_no_callsign_another_machine_holds() {
             daemon_proto::Outcome::Done,
         );
     }
-
-    let before = panes_on("devenv");
-    assert_ok(&answer(request::Payload::CreateTab(CreateTab {
-        pane_id: DEVENV_PANE.to_string(),
-        ..CreateTab::default()
-    })));
-    let made = muster_harness::until_some("the devenv to hold the pane just made", || {
-        panes_on("devenv").into_iter().find(|pane| !before.contains(pane))
-    });
-    assert_eq!(callsign_of(&devenv, &made), *left, "drawn the laptop pane's callsign");
+    (*left).to_string()
 }
 
 /// One Muster tab with a part on each machine: `A` on the laptop and `X` on the devenv, each

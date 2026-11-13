@@ -218,6 +218,7 @@ impl Shared {
                     reserved: HashSet::new(),
                     naming: HashMap::new(),
                     released: VecDeque::new(),
+                    callsigns_elsewhere: Vec::new(),
                     closed_helpers: VecDeque::new(),
                     closed: closed_panes,
                     persister,
@@ -466,6 +467,9 @@ pub(crate) struct Session {
     /// The words of the panes that closed most recently, oldest first, which a draw passes over
     /// while it can.
     released: VecDeque<String>,
+    /// The callsigns a window last said its other machines hold, which a draw passes over for
+    /// every pane made here, one asked for with no list of its own included.
+    callsigns_elsewhere: Vec<String>,
     /// The helpers closed by request most recently, each with the maker it had, oldest first:
     /// the stall watch holds nobody up on a maker's message to a helper closed while it was
     /// unread.
@@ -1386,6 +1390,10 @@ impl Session {
                 S::SetCompactAt(set) => self.set_compact_at(set.percent),
                 S::SetCompactionRules(set) => {
                     self.set_compaction_rules(&set.rules.unwrap_or_default())
+                }
+                S::SetCallsignsElsewhere(set) => {
+                    self.callsigns_elsewhere = set.callsigns;
+                    Reply::done()
                 }
                 S::ReadGrids(_) => self.grids(),
                 S::FollowLog(follow) => self.follow_log(asker, follow.after),
@@ -5136,6 +5144,7 @@ impl Session {
                 around.contains(word)
                     || self.released.iter().any(|released| released == word)
                     || elsewhere.iter().any(|held| held == word)
+                    || self.callsigns_elsewhere.iter().any(|held| held == word)
             },
         )
     }

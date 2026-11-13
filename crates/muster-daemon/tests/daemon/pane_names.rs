@@ -4,7 +4,7 @@
 use muster_core::callsigns::CALLSIGNS;
 
 use crate::support::*;
-use proto::pane_request;
+use proto::{pane_request, session_request};
 
 fn callsign_of(control: &mut Control, pane: &str) -> String {
     let record = snapshot(control).panes.into_iter().find(|record| record.pane == pane);
@@ -148,6 +148,32 @@ fn a_callsign_another_machine_holds_is_passed_over() {
     };
     make(&mut control, made);
     assert_eq!(callsign_of(&mut control, "p1"), left[1], "drawn another machine's callsign");
+}
+
+/// The callsigns a window last said its other machines hold are passed over for a pane made with
+/// no list of its own, as `muster pane new` makes one straight on the daemon (kan a_2x07zjV2k).
+/// A later list replaces the one before.
+#[test]
+fn a_callsign_a_window_said_another_machine_holds_is_passed_over_for_any_pane() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let (taken, left) = CALLSIGNS.split_at(CALLSIGNS.len() - 2);
+    join_as(&mut control, taken);
+    let held = |callsigns: &[&str]| {
+        session(session_request::Request::SetCallsignsElsewhere(
+            session_request::SetCallsignsElsewhere {
+                callsigns: callsigns.iter().map(|word| (*word).to_string()).collect(),
+            },
+        ))
+    };
+    expect(&mut control, held(&[left[0]]), proto::Outcome::Done);
+    make(&mut control, create("p1", in_new_tab("t1")));
+    assert_eq!(callsign_of(&mut control, "p1"), left[1], "drawn another machine's callsign");
+
+    expect(&mut control, close_request("p1"), proto::Outcome::Done);
+    expect(&mut control, held(&[]), proto::Outcome::Done);
+    make(&mut control, create("p2", in_new_tab("t2")));
+    assert_eq!(callsign_of(&mut control, "p2"), left[0], "an emptied list still passed it over");
 }
 
 /// Only passed over: with no other callsign free, the callsign in the directory is drawn after all.

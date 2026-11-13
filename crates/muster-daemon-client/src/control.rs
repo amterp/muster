@@ -324,6 +324,12 @@ impl Control {
         })))
     }
 
+    pub fn set_callsigns_elsewhere(&self, callsigns: Vec<String>) -> Pending {
+        self.ask(session(session_request::Request::SetCallsignsElsewhere(
+            session_request::SetCallsignsElsewhere { callsigns },
+        )))
+    }
+
     pub fn set_name_sessions(&self, name: bool) -> Pending {
         self.ask(session(session_request::Request::SetNameSessions(proto::SetNameSessions {
             name,

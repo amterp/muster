@@ -71,6 +71,9 @@ pub fn service_name(service: &request::Service) -> &'static str {
             Some(session_request::Request::Shown(_)) => "session.shown",
             Some(session_request::Request::SetReopenClosed(_)) => "session.set_reopen_closed",
             Some(session_request::Request::SetCompactionRules(_)) => "session.set_compaction_rules",
+            Some(session_request::Request::SetCallsignsElsewhere(_)) => {
+                "session.set_callsigns_elsewhere"
+            }
             None => "session",
         },
         Service::Tab(asked) => match &asked.request {

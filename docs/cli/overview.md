@@ -35,7 +35,9 @@ A callsign is unique among one machine's open panes, and no two begin with the s
 letters, so three keystrokes say which one you mean. A daemon draws a callsign no open pane there
 holds, and while others are free it passes over:
 
-- one a pane on another machine the window shows holds, so a callsign means one pane across them;
+- one a pane on another machine the window shows holds, so a callsign means one pane across them.
+  The daemon keeps the last such list a window gave it, so this holds for a pane `muster pane new`
+  makes straight on the daemon too, such as a helper;
 - one that appears in the pane's directory or in what its other panes and tabs are called, so
   `swan` is not drawn inside a project called swan;
 - the callsign of a pane closed recently, so one still in somebody's messages does not reach a

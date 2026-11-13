@@ -181,6 +181,17 @@ message SessionRequest {
     SetReopenClosed set_reopen_closed = 20;
     // Since 1.14.
     SetCompactionRules set_compaction_rules = 21;
+    // Since 1.16.
+    SetCallsignsElsewhere set_callsigns_elsewhere = 22;
+  }
+
+  // The callsigns the asker's other machines hold, which the daemon passes over for every pane
+  // it makes while another is free - a pane made with no list of its own, as `muster pane new`
+  // makes one straight on the daemon, included. Replaces the list sent before. Kept in memory
+  // only: a window sends it again whenever what its machines hold changes, and on reconnecting.
+  // DONE.
+  message SetCallsignsElsewhere {
+    repeated string callsigns = 1;
   }
 
   message Snapshot {}
