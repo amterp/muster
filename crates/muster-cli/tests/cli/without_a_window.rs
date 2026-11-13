@@ -994,6 +994,45 @@ fn a_window_that_never_answers_is_answered_for_by_the_daemon() {
     );
 }
 
+/// A send the daemon could not queue - the pane's program has stopped reading, and more waits
+/// for it than the daemon holds - is refused, naming why, rather than reported sent with nothing
+/// typed.
+#[test]
+fn a_send_the_daemon_could_not_queue_is_refused() {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    let deaf = proto::pane_request::Create {
+        command: Some("sh -c 'stty raw -echo; printf ready; sleep 120'".to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, deaf);
+    until_text(&mut control, "p1", "ready");
+    // Far more than the pane's queue and its terminal's buffer hold together, so the queue is
+    // full however much of it the writer has moved onto the terminal.
+    let mut input = muster_harness::Input::connect(here.daemon.socket_path());
+    let line = "x".repeat(256);
+    for _ in 0..4096 {
+        input.send(
+            "p1",
+            proto::input_event::Input::Send(proto::input_event::Send {
+                text: line.clone(),
+                ..Default::default()
+            }),
+        );
+    }
+
+    // The flood reaches the queue on its own connection, so the first sends may still fit.
+    let refused = until_some("a send to the full pane to be refused", || {
+        let sent = here.muster(&["pane", "send", "--pane", "p1", "one more"]);
+        (sent.status.code() != Some(0)).then_some(sent)
+    });
+    let refusal = refused_with(&refused, 1);
+    assert!(
+        refusal.contains("stopped reading its input") && refusal.contains("nothing was typed"),
+        "{refusal}"
+    );
+}
+
 /// With a window open, `--no-window` answers from the daemon what the window answers.
 #[test]
 fn the_daemon_and_the_window_say_the_same_about_a_pane() {
