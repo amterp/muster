@@ -664,6 +664,10 @@ pub struct Messaging<S: Store> {
     pub(crate) lately_reached: BTreeMap<String, crate::across::Lately>,
     /// What folding a pane into a name told no machine yet: see [`Self::take_folded`].
     pub(crate) folded: Folded,
+    /// Panes whose place in a group kept elsewhere was owed to a name that has since left every
+    /// group: each as the group's key and the pane, owed a leave at the group's home so that it
+    /// stops listing the pane ([`Self::folds_owed_to`]).
+    pub(crate) leaves_owed: BTreeSet<(String, String)>,
     /// What each pane participant on another machine is called: see [`Saved::called_elsewhere`].
     pub(crate) called_elsewhere: BTreeMap<String, String>,
     /// Names of groups deleted here and not made again, with the last number each issued.
@@ -779,6 +783,7 @@ impl<S: Store> Messaging<S> {
             unanswered: BTreeSet::new(),
             lately_reached: BTreeMap::new(),
             folded: Folded::default(),
+            leaves_owed: saved.leaves_owed.into_iter().collect(),
             human_home: saved.human_home,
             called_elsewhere: saved.called_elsewhere,
             retired,
@@ -1003,7 +1008,11 @@ impl<S: Store> Messaging<S> {
                 self.remove_member(group, &name, now_ms)?;
                 tell.extend(self.tell(group, after, None));
             }
-            self.participants.remove(&name);
+            // A pane folded into the name in a group whose home has not heard of it yet is still
+            // listed there, and nothing here will stand for it any more.
+            if let Some(participant) = self.participants.remove(&name) {
+                self.leaves_owed.extend(participant.folds_owed);
+            }
             let ended = self.waiters.remove(&name).map(|waiter| waiter.ticket);
             Left { name, groups, stopped: true, ended, tell }
         };
@@ -3916,6 +3925,7 @@ impl<S: Store> Messaging<S> {
             human_home: self.human_home.clone(),
             called_elsewhere: self.called_elsewhere.clone(),
             sent: self.operations.sent(),
+            leaves_owed: self.leaves_owed.iter().cloned().collect(),
         }
     }
 }

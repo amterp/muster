@@ -727,8 +727,25 @@ impl<S: Store> Messaging<S> {
         pane.filter(member).or_else(owed)
     }
 
+    /// A pane owed a leave owes nothing once the home has taken it, or refused it because it no
+    /// longer lists the pane in the group or keeps the group.
+    fn leave_answered(&mut self, call: &Call, key: &str, reply: &Reply) {
+        let Call::Leave { name, .. } = call else { return };
+        let settled = match reply {
+            Reply::Left { .. } => true,
+            Reply::Refused { refusal, .. } => {
+                matches!(refusal, Refusal::NoSuchGroup { .. } | Refusal::NotAMember { .. })
+            }
+            _ => false,
+        };
+        if settled {
+            self.leaves_owed.remove(&(key.to_string(), name.clone()));
+        }
+    }
+
     /// The joins this machine owes `machine` for panes folded into names while it could not be
-    /// asked: each puts the name in its pane's place in a group kept there.
+    /// asked: each puts the name in its pane's place in a group kept there. Then the leaves it
+    /// owes for panes whose name has left every group since, which take the pane out.
     pub fn folds_owed_to(&self, machine: &str) -> Vec<Away> {
         let mut owed = Vec::new();
         for participant in self.participants.values() {
@@ -742,6 +759,17 @@ impl<S: Store> Messaging<S> {
                     group: group.to_string(),
                     head: self.head_of(key),
                     was: Some(pane.clone()),
+                };
+                owed.push(Away { machine: machine.to_string(), call });
+            }
+        }
+        for (key, pane) in &self.leaves_owed {
+            let Some((group, at)) = split_machine(key) else { continue };
+            if at == machine {
+                let call = Call::Leave {
+                    name: pane.clone(),
+                    group: group.to_string(),
+                    head: self.head_of(key),
                 };
                 owed.push(Away { machine: machine.to_string(), call });
             }
@@ -1008,6 +1036,7 @@ impl<S: Store> Messaging<S> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_lines, reason = "one arm per reply, each short")]
     fn settled(
         &mut self,
         peer: &Peer,
@@ -1019,6 +1048,7 @@ impl<S: Store> Messaging<S> {
         applied: &mut Applied,
     ) -> Result<Settled, Refusal> {
         let key = peer.inward(call.group());
+        self.leave_answered(call, &key, &reply);
         // A gap here is left for the next refetch: these answers follow the asker's own head.
         let mut apply = |service: &mut Self, caught| {
             service.apply_into(peer, caught, presence, now_ms, applied).unwrap_or_default()

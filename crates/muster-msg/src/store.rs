@@ -83,6 +83,10 @@ pub struct Saved {
     /// Programs' posts sent from here to another machine's group, within the retention period.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sent: Vec<Sent>,
+    /// Panes owed a leave from groups kept on other machines, each as the group's key and the
+    /// pane ([`crate::Messaging::folds_owed_to`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leaves_owed: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
