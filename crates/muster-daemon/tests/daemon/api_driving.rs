@@ -281,3 +281,37 @@ fn during_a_handoff_acting_on_a_pane_is_unavailable_and_does_nothing() {
     let closed = daemon.api().ask(close("p1"));
     assert_eq!(closed.outcome(), api::Outcome::Done, "{:?}", closed.answer);
 }
+
+/// A restart through the API keeps its variables with the pane's resume, as one the CLI asks for
+/// does, and a later restart with none replaces them.
+#[test]
+fn a_restart_through_the_api_keeps_its_environment_for_the_resume() {
+    let (daemon, mut control) = reported(&[], "--model opus", "s-7");
+    let mut api = daemon.api();
+    let state = crate::persistence::state_file(&daemon);
+    let resumed = |control: &mut Control| {
+        let report = proto::pane_request::Report {
+            pane: "p1".to_string(),
+            agent: "claude".to_string(),
+            session_id: Some("s-7".to_string()),
+            ..Default::default()
+        };
+        expect(control, pane(proto::pane_request::Request::Report(report)), proto::Outcome::Done);
+    };
+
+    let with_proxy = on_pane(Pane::Restart(api::RestartAgent {
+        pane: "p1".to_string(),
+        env: [("HTTPS_PROXY".to_string(), "http://proxy:3128".to_string())].into(),
+    }));
+    let asked = api.ask(with_proxy);
+    assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    resumed(&mut control);
+    until("the variable kept with the resume", || written(&state).contains("HTTPS_PROXY"), ());
+
+    let asked = api.ask(restart("p1"));
+    assert_eq!(asked.outcome(), api::Outcome::Done, "{:?}", asked.answer);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    resumed(&mut control);
+    until("a restart with none to replace it", || !written(&state).contains("HTTPS_PROXY"), ());
+}

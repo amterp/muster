@@ -102,7 +102,7 @@ pub(super) fn restart(
             // On this connection's thread, with the session let go: a restart waits seconds on its
             // agent to end, and the connection carries out its requests one at a time.
             Ok(Handled::Restart(restarting)) => {
-                let (reply, changed) = restarting.carried_out();
+                let (reply, changed) = restarting.carried_out_for(shared);
                 restarted(correlation, reply, changed)
             }
             Ok(other) => unreachable!("a restart is carried out or refused, never {other:?}"),

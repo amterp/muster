@@ -247,9 +247,21 @@ pub(crate) enum Failed {
 }
 
 impl Restarting {
+    /// Carries the restart out, and once it has ended the agent, hands its variables to the
+    /// pane, whose resume keeps them for a daemon restart or a reopen. Every path that restarts
+    /// an agent goes through here, so none of them forgets them.
+    pub(crate) fn carried_out_for(self, shared: &crate::session::Shared) -> (Reply, bool) {
+        let (pane, env) = (self.pane.clone(), self.env.clone());
+        let (reply, changed) = self.carried_out();
+        if changed {
+            shared.lock().restarted_with(&pane, env);
+        }
+        (reply, changed)
+    }
+
     /// The answer to the restart, and whether it changed the pane: true unless it stopped before
     /// ending anything.
-    pub(crate) fn carried_out(self) -> (Reply, bool) {
+    fn carried_out(self) -> (Reply, bool) {
         let Restarting { pane, program, session, line, target, .. } = self;
         let outcome = restart(&target, &line, Timing::daemon());
         (said(&pane, &program, &session, &line, &outcome), changed_the_pane(&outcome))
