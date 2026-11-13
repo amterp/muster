@@ -643,9 +643,11 @@ impl Writer {
     /// Kitty keyboard flags in force then were left by a program that has gone, as one killed
     /// mid-turn leaves them, and a shell reads only a plain carriage return as Return.
     ///
-    /// The pane's first process alone is not enough: a command that `exec`s a program, as a
-    /// shell running one command does on its own, keeps the shell's pid for that program, which
-    /// may have asked for those flags itself. So the process in front has to be a shell by name.
+    /// The pane's first process leading the group is not enough. A command that `exec`s a
+    /// program, as a shell running one command does on its own, keeps the shell's pid for that
+    /// program; and with job control off, a shell's child reads the terminal in the shell's own
+    /// group. Either may have asked for those flags itself. So the group has to hold the shell
+    /// alone, a shell by name.
     fn shell_in_front(&self) -> bool {
         use muster_detect::Processes as _;
         let Some(io) = self.io.upgrade() else { return false };
@@ -653,10 +655,8 @@ impl Writer {
             return false;
         };
         let Ok(group) = u32::try_from(group) else { return false };
-        muster_detect::System
-            .leader(group)
-            .and_then(|job| job.processes.into_iter().find(|process| process.pid == group))
-            .is_some_and(|leader| is_shell(&leader.name))
+        let Some(job) = muster_detect::System.job(group, group) else { return false };
+        matches!(job.processes.as_slice(), [only] if only.pid == group && is_shell(&only.name))
     }
 
     fn encode(&mut self, input: Input) -> Vec<u8> {
