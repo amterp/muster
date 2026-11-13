@@ -773,6 +773,33 @@ fn a_post_to_a_pane_on_the_linked_machine_rings_it_there() {
     assert_eq!(msg_answer(&refused).refusal, "no_such_participant", "{}", refused.answer.reason);
 }
 
+/// A post to the name a pane on the linked machine went by before it was renamed is refused
+/// saying what it is called now there, as it is for a pane here, rather than as nobody.
+#[test]
+fn a_name_a_linked_machines_pane_went_by_before_a_rename_says_what_it_is_called_now() {
+    let (near, far) = (daemon(), Daemon::start_detecting());
+    let mut far_control = far.connect();
+    let kelp = proto::pane_request::Create {
+        label: Some("kelp".to_string()),
+        ..create("p2", in_new_tab("t2"))
+    };
+    make(&mut far_control, kelp);
+    far.run_agent("p2");
+    let rename =
+        proto::pane_request::Rename { pane: "p2".to_string(), label: Some("reef".to_string()) };
+    let rename = pane(proto::pane_request::Request::Rename(rename));
+    expect(&mut far_control, rename, proto::Outcome::Done);
+    let mut near_control = near.connect();
+    let mut near_log = following(&near);
+    let _holding = link(&near, &far, &mut near_log, 1);
+    join(&mut near_control, &named("builder"), "builder", "review");
+
+    let refused = near_control.ask(post(&named("builder"), None, &["kelp"], "still there?"));
+    assert_eq!(msg_answer(&refused).refusal, "renamed", "{}", refused.answer.reason);
+    let reason = &refused.answer.reason;
+    assert!(reason.contains("reef") && reason.contains("p2@far"), "{reason}");
+}
+
 /// A name a pane goes by here and one goes by on the linked machine means neither, as it means
 /// neither to `muster pane send`: the near daemon asks the far one before it settles on its own.
 #[test]
