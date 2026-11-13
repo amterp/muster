@@ -221,5 +221,3 @@ codex 0.167.2: raw CR after shell command
 
   probe default · $PROBE_ROOT/project
   ← for agents · ? for shortcuts
-
-

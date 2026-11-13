@@ -470,4 +470,3 @@ The provider received request 10 and Codex returned to idle.
 
   probe default · $PROBE_ROOT/project
   ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view
-
