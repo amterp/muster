@@ -100,6 +100,33 @@ fn a_changed_environment_reaches_the_resumed_agent_alone() {
     assert!(log.contains("HTTPS_PROXY") && !log.contains("secret"), "{log}");
 }
 
+/// A restart's variables stay with the pane's resume, so a daemon restart afterwards brings the
+/// agent back with them. Their values go to the state file, which only the user can read, and
+/// never to the run log.
+#[test]
+fn a_restarts_environment_survives_a_daemon_restart() {
+    let (mut daemon, mut control) = reported(&[], "--model opus", "s-3");
+    let before = std::fs::read_to_string(home(&daemon, "fake-agent-env")).expect("its env");
+    expect(
+        &mut control,
+        restart("p1", &[("HTTPS_PROXY", "http://user:secret@proxy:3128")]),
+        proto::Outcome::Done,
+    );
+    let restarted_env = written_again(&daemon, "fake-agent-env", &before);
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    until_saved(&daemon, "HTTPS_PROXY");
+
+    let mut control = crate::resume::restarted(&mut daemon, &mut control);
+    let env = written_again(&daemon, "fake-agent-env", &restarted_env);
+    assert!(env.lines().any(|line| line == "HTTPS_PROXY=http://user:secret@proxy:3128"), "{env}");
+    daemon.until_agent("p1", proto::AgentState::Idle);
+    let p1 = record(&snapshot(&mut control), "p1").clone();
+    let resume = format!("{:?}", p1.resume);
+    assert!(!resume.contains("secret"), "the record carries no value: {resume}");
+    let log = written(&daemon.root().join("daemon.log"));
+    assert!(!log.contains("secret"), "{log}");
+}
+
 /// A program that has stopped reading leaves what was typed at it in its terminal, where its
 /// shell would read it as a command the moment the program ends. A restart empties it first.
 #[test]
