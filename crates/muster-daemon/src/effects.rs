@@ -181,6 +181,9 @@ pub(crate) enum Reported {
         unreadable: bool,
         prompt_covered_by: Option<String>,
         waiting: Option<String>,
+        /// Blocked again by the dialog a Return or Esc left unchanged, rather than by a new one:
+        /// the pane has been waiting on it since before the key.
+        again: bool,
     },
     /// What the program says with XTSHIFTESCAPE, for the pane's record.
     ShiftCapture(Option<bool>),

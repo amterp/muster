@@ -1968,6 +1968,12 @@ impl Session {
         mirror.agent_state(&pane.pane)
     }
 
+    /// When its daemon says the pane's agent entered the state it is in.
+    fn state_since(&self, pane: &PaneKey) -> Option<u64> {
+        let mirror = poison::lock(&self.backends.get(&pane.daemon)?.mirror, "mirror");
+        mirror.pane(&pane.pane)?.state_since_ms
+    }
+
     /// One pane's agent as this window paints it, if its daemon holds the pane.
     fn agent(&self, key: &PaneKey) -> Option<PaneAgent> {
         let mirror = poison::lock(&self.backends.get(&key.daemon)?.mirror, "mirror");
@@ -2083,7 +2089,8 @@ impl Session {
     /// pane finished in front of somebody.
     fn observe(&mut self, pane: &PaneKey) -> Option<Attend> {
         let state = self.agent_state(pane)?;
-        let observed = self.attention.observed(pane, state, self.finished_unseen(pane));
+        let since_ms = self.state_since(pane);
+        let observed = self.attention.observed(pane, state, self.finished_unseen(pane), since_ms);
         if observed.reported {
             self.report_seen(std::slice::from_ref(pane));
         }

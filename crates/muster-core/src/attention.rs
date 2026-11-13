@@ -278,6 +278,10 @@ pub struct Attention {
     /// the two together would make a preference about banners silently change the state
     /// vocabulary this product is built on.
     raised: BTreeMap<PaneKey, Raised>,
+    /// When each pane's last announced blocked spell began, as its daemon dated it: a pane
+    /// blocked again with the same date is the dialog a Return or Esc left unchanged, which asks
+    /// again without a second banner.
+    blocked_since: BTreeMap<PaneKey, u64>,
 
     /// How many times a pane has started asking, which numbers each [`Raised`].
     raises: u64,
@@ -484,7 +488,17 @@ impl Attention {
     /// A pane the window is focused on and showing raises nothing, in either state. That is
     /// what the border is for, and a banner about a pane somebody is looking at is the fastest
     /// way to teach them to turn banners off. A finish there is reported seen instead.
-    pub fn observed(&mut self, pane: &PaneKey, state: AgentState, finished: bool) -> Observed {
+    ///
+    /// `since_ms` is when its daemon says the pane entered `state`. A blocked spell already
+    /// announced asks again silently: the daemon keeps a dialog's date when a key typed at it
+    /// left it unchanged, and that dialog was on somebody's screen a moment ago.
+    pub fn observed(
+        &mut self,
+        pane: &PaneKey,
+        state: AgentState,
+        finished: bool,
+        since_ms: Option<u64>,
+    ) -> Observed {
         let newly_finished = finished && self.finished.insert(pane.clone());
         if !finished {
             self.finished.remove(pane);
@@ -494,8 +508,17 @@ impl Attention {
             let reported = finished && self.reported.insert(pane.clone());
             return Observed { attend: self.withdraw(pane), reported };
         }
-        let attend = if let Some(alert) = Alert::asked_by(state) {
-            self.raise(pane, alert)
+        let announced_already =
+            since_ms.is_some() && self.blocked_since.get(pane) == since_ms.as_ref();
+        let attend = if state == AgentState::Blocked && announced_already {
+            self.ask_silently(pane, Alert::Blocked);
+            None
+        } else if let Some(alert) = Alert::asked_by(state) {
+            let attend = self.raise(pane, alert);
+            if let (Alert::Blocked, Some(since)) = (alert, since_ms) {
+                self.blocked_since.insert(pane.clone(), since);
+            }
+            attend
         } else if self.alert(pane) == Some(Alert::Notified) {
             // A program's request stands until somebody looks, whatever its agent does next.
             None
@@ -660,6 +683,7 @@ impl Attention {
         self.finished.remove(pane);
         self.reported.remove(pane);
         self.visible.remove(pane);
+        self.blocked_since.remove(pane);
         self.withdraw(pane)
     }
 

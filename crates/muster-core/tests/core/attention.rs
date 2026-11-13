@@ -233,7 +233,8 @@ fn fold(given: &Value) -> Result<Run, CaseError> {
         // A pane's record as its daemon now has it.
         let pane = read_pane(event, "pane")?;
         let state = read_state(event, "state")?;
-        let observed = run.attention.observed(&pane, state, finished(event));
+        let since_ms = event.get("since_ms").and_then(Value::as_u64);
+        let observed = run.attention.observed(&pane, state, finished(event), since_ms);
         match observed.attend {
             Some(Attend::Raised(alert)) => {
                 run.notified.push(format!("{pane} {}", alert.as_str()));

@@ -104,6 +104,11 @@ handing an idle agent work, wait for it to start before waiting for it to stop:
     muster pane wait --pane p1w3r0ab2n --until working --timeout 60 &&
       muster pane wait --pane p1w3r0ab2n --until idle,blocked
 
+A Return or Esc sent to a blocked pane makes it read `working` at once, until its screen shows what
+came of the key. A dialog that ignores the key reads `blocked` again five seconds later, as it is,
+and a wait for `blocked` is answered by it. It keeps the time it first blocked at, so `muster
+window` counts from then, and neither its maker nor a window is told of it a second time.
+
 A wait can also end on how full an agent's context is, which is when an orchestrator wants to
 compact a worker rather than let it run out:
 

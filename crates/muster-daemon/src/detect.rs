@@ -272,6 +272,10 @@ pub(crate) struct Detection {
     /// parsed, so the reader scans the raw output for it too.
     progress: Progress,
     due: Instant,
+    /// Whether a Return or Esc left its dialog unchanged since the last publication.
+    key_ignored: bool,
+    /// Whether the last publication came after such a key.
+    published_after_ignored_key: bool,
 }
 
 impl Detection {
@@ -283,7 +287,13 @@ impl Detection {
         let shell = shell.and_then(|pid| u32::try_from(pid).ok()).unwrap_or(0);
         let mut detector = Detector::new(shell, now);
         detector.limit_waits(screen_wait());
-        Detection { detector, progress: Progress::default(), due: now + Detector::FIRST_TICK }
+        Detection {
+            detector,
+            progress: Progress::default(),
+            due: now + Detector::FIRST_TICK,
+            key_ignored: false,
+            published_after_ignored_key: false,
+        }
     }
 
     /// Where this pane's detection stands, for the daemon it is handed to.
@@ -408,7 +418,13 @@ impl Detection {
         }
         let mut detector = Detector::resumed(shell, carried_here, now, title_writes);
         detector.limit_waits(screen_wait());
-        Detection { detector, progress, due: now + Detector::FIRST_TICK }
+        Detection {
+            detector,
+            progress,
+            due: now + Detector::FIRST_TICK,
+            key_ignored: false,
+            published_after_ignored_key: false,
+        }
     }
 
     /// What the pane's agent says about its own state, ticked on at once.
@@ -427,6 +443,12 @@ impl Detection {
     /// Every chunk of the pane's output, in order.
     pub(crate) fn observe(&mut self, bytes: &[u8]) {
         self.progress.observe(bytes);
+    }
+
+    /// Whether what the last tick published came after a Return or Esc left its dialog
+    /// unchanged, so that blocked is that dialog again.
+    pub(crate) fn published_after_ignored_key(&self) -> bool {
+        self.published_after_ignored_key
     }
 
     /// When the next tick is due.
@@ -456,6 +478,9 @@ impl Detection {
         let tick = self.detector.tick(now, &mut observed, &System, &manifests);
         io.set_agent_group(self.detector.agent_group());
         self.due = now + tick.next;
+        self.key_ignored |= tick.key_ignored.is_some();
+        self.published_after_ignored_key =
+            tick.publication.is_some() && std::mem::take(&mut self.key_ignored);
         if let Some(ignored) = tick.key_ignored {
             let blocked_for = ignored
                 .blocked_for

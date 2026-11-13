@@ -986,6 +986,9 @@ pub(crate) struct Pane {
     pub(crate) block: Option<Block>,
     /// Whether it was quiet before its maker closed (`persist::Pane::quiet_before_orphaned`).
     pub(crate) quiet_before_orphaned: Option<bool>,
+    /// When the pane's agent last started reading blocked, kept once it reads otherwise, for
+    /// the dialog a key left unchanged to go on from ([`crate::effects::Reported::Agent`]).
+    pub(crate) blocked_since_ms: Option<u64>,
     /// The person took it over after its maker closed
     /// (`persist::Pane::kept_after_maker_closed`).
     pub(crate) kept_after_maker_closed: bool,
@@ -1240,6 +1243,7 @@ impl Pane {
             stalls_told: Vec::new(),
             block: None,
             quiet_before_orphaned: None,
+            blocked_since_ms: None,
             kept_after_maker_closed: false,
             hidden_from: None,
             restart_env: crate::persist::Environment::default(),
@@ -1523,6 +1527,8 @@ impl Reader {
     fn detect(&mut self, now: Instant) {
         let published = self.detection.tick(&self.io, &self.detecting, now).map(|publication| {
             let (agent, state) = detect::recorded(&publication);
+            let again =
+                state == proto::AgentState::Blocked && self.detection.published_after_ignored_key();
             let (reported, unreadable) = (publication.reported, publication.unreadable);
             Reported::Agent {
                 agent,
@@ -1531,6 +1537,7 @@ impl Reader {
                 unreadable,
                 waiting: publication.waiting,
                 prompt_covered_by: publication.prompt_covered_by,
+                again,
             }
         });
         if let Some(Reported::Agent { state, .. }) = &published {
@@ -1944,6 +1951,7 @@ mod tests {
             unreadable: false,
             prompt_covered_by: None,
             waiting: None,
+            again: false,
         };
         let mut unsent = None;
         publish_agent(&reports, 1, Some(working.clone()), &mut unsent);

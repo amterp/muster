@@ -3510,6 +3510,7 @@ impl Session {
                 unreadable,
                 waiting: on_screen,
                 prompt_covered_by,
+                again,
             } => {
                 let before = record.clone();
                 // What an agent said about itself leaves with it. Not when a pane with no agent
@@ -3568,7 +3569,7 @@ impl Session {
                 record.state_reported = reported;
                 record.screen_unreadable = unreadable;
                 record.prompt_covered_by = prompt_covered_by;
-                state_since::dated(shown, record, state_since::now_ms());
+                date_state(shown, record, &mut pane.blocked_since_ms, again);
                 if record.screen_unreadable && !before.screen_unreadable {
                     unreadable_warning(&name, record.agent.as_deref());
                 }
@@ -5860,6 +5861,26 @@ fn own_state(report: &mut pane_request::Report) -> Result<Option<muster_detect::
         )) => Ok(Some(detect::state_of(state))),
         Some(_) => Err(Reply::refused("an agent reports itself working, blocked or idle")),
     }
+}
+
+/// Dates the state `record` is in now, which was `shown` ([`state_since::dated`]). The dialog a
+/// Return or Esc left unchanged (`again`) has waited since it first drew, before the key, so it
+/// keeps the date `blocked_since_ms` holds from then rather than starting a new blocked spell
+/// that tells a maker and a window of it again.
+fn date_state(
+    shown: proto::PaneState,
+    record: &mut proto::Pane,
+    blocked_since_ms: &mut Option<u64>,
+    again: bool,
+) {
+    state_since::dated(shown, record, state_since::now_ms());
+    if record.agent_state() != proto::AgentState::Blocked {
+        return;
+    }
+    if again && let Some(since) = *blocked_since_ms {
+        record.state_since_ms = Some(since);
+    }
+    *blocked_since_ms = record.state_since_ms;
 }
 
 /// A refusal for a report declaring a wait until a process exits that has exited already: the
