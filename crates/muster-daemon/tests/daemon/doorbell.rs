@@ -361,6 +361,20 @@ fn a_codex_urgent_post_still_reaches_its_running_turn() {
     assert_eq!(agent.read_in_its_pane(), ["integrator: change course"]);
 }
 
+/// A wake held while its agent cannot be rung is not typed once it can, when the agent read what
+/// it was for meanwhile: the read would find nothing, and the turn would be spent for nothing.
+#[test]
+fn a_held_wake_for_a_message_read_meanwhile_is_not_rung() {
+    let mut agent = Agent::in_a_pane();
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+    std::thread::sleep(QUIET);
+    agent.post("p1", "a review");
+    assert_eq!(agent.read_in_its_pane(), ["integrator: a review"]);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Idle);
+    std::thread::sleep(QUIET + Duration::from_secs(2));
+    assert_eq!(agent.rung(), Vec::<String>::new(), "rung for a message already read");
+}
+
 /// A blocked agent is at a dialog, and a Return would answer it. The message waits, and the
 /// ring comes once the agent is idle and nobody has typed for the quiet period.
 #[test]
