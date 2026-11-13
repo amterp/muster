@@ -133,7 +133,7 @@ fn sent(shared: &Shared, correlation: String, asked: &api::SendToPane) -> api::A
         let text = read_page(read).ok_or_else(|| format!("pane {pane} closed"))?.text;
         Ok(pane_text::PaneText { text, ..Default::default() }.tail(rows).text)
     };
-    let typed = || crate::input::typed(shared, pane, input);
+    let typed = || crate::input::typed(shared, pane, input).map_err(Unconfirmed::Refused);
     let outcome =
         pane_text::send(pane, &asked.text, asked.append, asked.confirm, prompt, read, typed);
     sent_answer(correlation, outcome)

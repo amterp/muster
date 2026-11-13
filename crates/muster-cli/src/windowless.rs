@@ -444,7 +444,16 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     }
     let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
     let prompt = || prompt_of(socket, pane);
-    let typed = || type_send(socket, pane, send).map_err(|trouble| trouble.detail().to_string());
+    let typed = || {
+        type_send(socket, pane, send).map_err(|trouble| match trouble {
+            // Sent, and then the answer was lost, so it may well have been typed.
+            Trouble::Unanswered(why) => pane_text::Unconfirmed::Unknown(format!(
+                "{why} The send may have been typed into pane {pane}; read the pane before \
+                 sending it again."
+            )),
+            refused => pane_text::Unconfirmed::Refused(refused.detail().to_string()),
+        })
+    };
     match pane_text::send(pane, &send.text, send.append, send.confirm, prompt, read, typed) {
         Ok(()) => ok(),
         Err(pane_text::Unconfirmed::Refused(refusal)) => failure(refusal),

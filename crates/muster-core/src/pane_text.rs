@@ -318,7 +318,8 @@ pub fn confirm(
 /// was not asked for, then typed, then confirmed by [`confirm`] when `confirmed` is asked for.
 ///
 /// `prompt` reads what that prompt holds, `read(rows)` reads the pane's last `rows` rows or all
-/// of it for zero, and `typed` types the send, saying why when nothing was typed. A window
+/// of it for zero, and `typed` types the send, saying why when nothing was typed or, when its
+/// answer was lost, that it may have been. A window
 /// sends from its own event loop, with the same rules in its own order.
 pub fn send(
     pane: &str,
@@ -327,13 +328,13 @@ pub fn send(
     confirmed: bool,
     prompt: impl FnOnce() -> Option<String>,
     mut read: impl FnMut(u32) -> Result<String, String>,
-    typed: impl FnOnce() -> Result<(), String>,
+    typed: impl FnOnce() -> Result<(), Unconfirmed>,
 ) -> Result<(), Unconfirmed> {
     if checks_prompt(text, append) {
         into_held_prompt(pane, prompt().as_deref()).map_err(Unconfirmed::Refused)?;
     }
     let before = if confirmed { before_sending(&mut read) } else { String::new() };
-    typed().map_err(Unconfirmed::Refused)?;
+    typed()?;
     if confirmed { confirm(pane, text, &before, read) } else { Ok(()) }
 }
 
@@ -590,9 +591,14 @@ mod tests {
         assert_eq!((typed.get(), reads.get()), (true, 0), "typed, and not read back");
 
         typed.set(false);
-        let refused = send("p1", "hello", false, true, || None, read, || Err("full".to_string()));
+        let full = || Err(Unconfirmed::Refused("full".to_string()));
+        let refused = send("p1", "hello", false, true, || None, read, full);
         assert_eq!(refused, Err(Unconfirmed::Refused("full".to_string())));
         assert_eq!(reads.get(), 1, "only the read before typing");
+
+        let lost = || Err(Unconfirmed::Unknown("answer lost".to_string()));
+        let unknown = send("p1", "hello", false, true, || None, read, lost);
+        assert_eq!(unknown, Err(Unconfirmed::Unknown("answer lost".to_string())), "never refused");
 
         assert_eq!(send("p1", "hello", false, true, || None, read, type_it), Ok(()));
     }

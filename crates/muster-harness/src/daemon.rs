@@ -366,6 +366,15 @@ impl Daemon {
         Relay::start(&self.root, &self.socket_path, Arc::new(pump))
     }
 
+    /// The same, closing the caller's connection in place of each such answer.
+    pub fn hanging_up_before_answers_where(
+        &self,
+        withheld: impl Fn(&proto::Request) -> bool + Send + Sync + 'static,
+    ) -> Relay {
+        let pump = DaemonPump::new(Arc::new(withheld), Holding::HangUp);
+        Relay::start(&self.root, &self.socket_path, Arc::new(pump))
+    }
+
     /// The same, delivering those answers `delay` late.
     pub fn delaying_answers_where(
         &self,

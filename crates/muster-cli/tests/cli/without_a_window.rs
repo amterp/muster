@@ -1066,6 +1066,34 @@ fn a_send_the_daemon_could_not_queue_is_refused() {
     );
 }
 
+/// A send the daemon typed and whose answer was then lost is not reported as refused, since a
+/// refused send is safe to send again and this one may already be on the pane: it exits 4, the
+/// exit that says not to repeat it.
+#[test]
+fn a_send_whose_answer_is_lost_may_have_been_typed() {
+    let here = Here::new(Daemon::start_built());
+    let mut control = here.daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    until_text(&mut control, "p1", "$");
+    let relay = here.daemon.hanging_up_before_answers_where(|request| {
+        matches!(
+            &request.service,
+            Some(proto::request::Service::Pane(proto::PaneRequest {
+                request: Some(proto::pane_request::Request::Send(_)),
+            }))
+        )
+    });
+
+    let sent = here
+        .command(&["pane", "send", "--pane", "p1", "--enter", "echo answer-lost"])
+        .env("MUSTER_DAEMON_SOCKET", relay.socket_path())
+        .output()
+        .unwrap();
+    let said = refused_with(&sent, 4);
+    assert!(said.contains("may have been typed"), "{said}");
+    until_text(&mut control, "p1", "answer-lost\n");
+}
+
 /// With a window open, `--no-window` answers from the daemon what the window answers.
 #[test]
 fn the_daemon_and_the_window_say_the_same_about_a_pane() {

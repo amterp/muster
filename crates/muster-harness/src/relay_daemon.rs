@@ -75,6 +75,7 @@ impl Pump for DaemonPump {
             if welcomed && withholds(&frame, &ids) {
                 match &self.holding {
                     Holding::Forever => continue,
+                    Holding::HangUp => break,
                     Holding::For(delay) => {
                         let to_client = Arc::clone(&to_client);
                         let delay = *delay;

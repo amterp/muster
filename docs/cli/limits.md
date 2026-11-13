@@ -292,7 +292,9 @@ reading. So a send that exited 1 is safe to send again once `muster window` show
 With no window answering, the CLI asks the daemon itself to type the send, and the daemon answers.
 Exit 0 then says the daemon queued the text for the pane's program. Exit 1 says nothing was typed,
 and why: the pane's agent is restarting, or its program has stopped reading and the daemon already
-holds as much of its input as it will. Either way, sending it again later is safe. This is the
+holds as much of its input as it will. Either way, sending it again later is safe. Exit 4 says the
+daemon was asked and its answer was lost, so the text may be on the pane: read it before sending
+again. This is the
 step the API's `pane.send` types by. A daemon older than 0.27 answers no send, so against one the
 CLI types as a window does and exits 0 even when nothing was typed.
 

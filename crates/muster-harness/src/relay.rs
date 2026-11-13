@@ -27,6 +27,9 @@ use std::time::Duration;
 pub enum Holding {
     /// Never delivered: a lost answer.
     Forever,
+    /// Never delivered, and the caller's connection closed in its place: a daemon that did the
+    /// work and hung up before saying so.
+    HangUp,
     /// Delivered this long after the daemon gave it: a late one.
     For(Duration),
     /// Held until a test releases it, while other frames continue through the relay.
