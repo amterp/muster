@@ -1396,6 +1396,35 @@ mod tests {
         assert_eq!(seen, b"a<r>bcdz", "{:?}", String::from_utf8_lossy(&seen));
     }
 
+    /// Replies arriving one after another, as from a program that asks its next query once it
+    /// has its last answer, do not hold a send's next key back: each key waits its gap from the
+    /// last write before its wait began, and no longer.
+    #[test]
+    fn a_stream_of_replies_does_not_hold_back_a_sends_next_key() {
+        const REPLIES: usize = 200;
+        let mut writing = Writing::new();
+        writing.send(crate::input::input_of(send("", &["a", "b"], false)).unwrap());
+        let mut seen = Vec::new();
+        let mut byte = [0];
+        let mut sent = 0;
+        while !seen.contains(&b'b') {
+            writing.written.read_exact(&mut byte).expect("the writer wrote");
+            seen.push(byte[0]);
+            // Each answer, or the first key, is followed a little later by the next query's.
+            if matches!(byte[0], b'a' | b'.') && sent < REPLIES {
+                std::thread::sleep(Duration::from_millis(1));
+                writing.send(Input::Reply(b".".to_vec()));
+                sent += 1;
+            }
+        }
+        let replies = seen.iter().filter(|&&byte| byte == b'.').count();
+        assert!(
+            replies < REPLIES,
+            "b waited for the replies to stop: {:?}",
+            String::from_utf8_lossy(&seen)
+        );
+    }
+
     /// A key a send presses is typed by someone, as a keystroke is, so the doorbell knows a
     /// prompt was touched.
     #[test]
