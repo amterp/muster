@@ -3553,16 +3553,9 @@ impl Session {
                 let screen_wait_ended = wait_on_screen(record, &mut pane.turns, on_screen)
                     && state == proto::AgentState::Idle
                     && record.agent == agent;
-                // Every adapter reports by the end of a turn, so one that has not by now is not
-                // installed, or not running.
-                if turn == Turn::Ended
-                    && record.agent == agent
-                    && record.adapter() == proto::Adapter::Unsaid
-                {
-                    record.set_adapter(proto::Adapter::Silent);
-                }
                 let waiting = is_waiting(record.facts.as_ref());
                 if turn == Turn::Ended && record.agent == agent {
+                    adapter_silent_unless_heard(record);
                     turn_ended(&name, agent.as_deref(), waiting);
                 }
                 if !waiting {
@@ -5792,6 +5785,14 @@ fn adapter_heard(record: &mut proto::Pane, agent: &str) -> bool {
         record.set_adapter(proto::Adapter::Reporting);
     }
     heard
+}
+
+/// Every adapter reports by the end of a turn, so one that has not by then is not installed, or
+/// not running.
+fn adapter_silent_unless_heard(record: &mut proto::Pane) {
+    if record.adapter() == proto::Adapter::Unsaid {
+        record.set_adapter(proto::Adapter::Silent);
+    }
 }
 
 /// Takes facts a report changed into the pane's record, noting a wait declared or withdrawn.
