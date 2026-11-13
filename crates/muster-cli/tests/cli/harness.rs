@@ -269,3 +269,122 @@ fn the_help_names_every_harness_with_an_adapter() {
         assert!(help.contains(harness.dir), "the help leaves out {}: {help}", harness.dir);
     }
 }
+
+impl Home {
+    fn copy(&self) -> PathBuf {
+        self.0.join("home/.codex/plugins/cache/muster/muster-codex/local")
+    }
+
+    fn copied_plugin(&self) {
+        for name in
+            [".codex-plugin/plugin.json", "hooks/hooks.json", "messaging-hooks.json", "README.md"]
+        {
+            let path = self.copy().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::copy(Path::new(EXTRAS).join("codex").join(name), path).unwrap();
+        }
+    }
+
+    fn refresh_codex(&self, listing: &str) {
+        self.codex(listing, "exit 93");
+        let path = self.0.join("bin/codex");
+        let mut script = std::fs::read_to_string(&path).unwrap();
+        script.push_str(&format!(
+            "\nif [ \"$*\" = 'plugin add muster-codex@muster' ]; then\n\
+             /bin/cp -R '{EXTRAS}/codex/.' '{}'\nfi\n",
+            self.copy().display()
+        ));
+        std::fs::write(path, script).unwrap();
+    }
+
+    fn refresh(&self) -> Output {
+        self.muster(&["harness", "refresh", "codex"])
+    }
+}
+
+#[test]
+fn refresh_leaves_a_codex_without_a_plugin_alone() {
+    let home = Home::new("refresh-no-plugin");
+    home.harness("codex", 0);
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(home.asked("codex").is_empty());
+    assert!(text(&ran.stdout).contains("not installed"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn refresh_preserves_hook_trust_when_the_content_matches() {
+    let home = Home::new("refresh-matches");
+    home.copied_plugin();
+    home.harness("codex", 0);
+    std::fs::write(home.copy().join("README.md"), "an older README").unwrap();
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert!(home.asked("codex").is_empty(), "unchanged hooks must not be reinstalled");
+    assert!(text(&ran.stdout).contains("matches"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn refresh_updates_changed_hooks_without_changing_codex_features() {
+    let home = Home::new("refresh-changed");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    let earlier = home.0.join("home/.muster/daemon/0.13.0/extras");
+    home.refresh_codex(&Home::listing(&earlier));
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert_eq!(
+        home.asked("codex"),
+        [
+            "plugin marketplace list --json".to_string(),
+            "plugin marketplace remove muster".to_string(),
+            format!("plugin marketplace add {}", home.extras().display()),
+            "plugin add muster-codex@muster".to_string(),
+        ]
+    );
+    assert_eq!(
+        std::fs::read(home.copy().join("hooks/hooks.json")).unwrap(),
+        std::fs::read(Path::new(EXTRAS).join("codex/hooks/hooks.json")).unwrap()
+    );
+    assert!(text(&ran.stdout).contains("refreshed"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn refresh_never_adds_a_marketplace_that_is_not_registered() {
+    let home = Home::new("refresh-no-marketplace");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.codex(r#"{"marketplaces": []}"#, "exit 93");
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert_eq!(home.asked("codex"), ["plugin marketplace list --json"]);
+    assert!(text(&ran.stdout).contains("not registered"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn refresh_does_not_replace_a_marketplace_from_a_checkout() {
+    let home = Home::new("refresh-checkout");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    let checkout = home.0.join("src/muster/extras");
+    std::fs::create_dir_all(&checkout).unwrap();
+    home.codex(&Home::listing(&checkout), "exit 93");
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(0), "{}", text(&ran.stderr));
+    assert_eq!(home.asked("codex"), ["plugin marketplace list --json"]);
+    assert!(text(&ran.stdout).contains("another source"), "{}", text(&ran.stdout));
+}
+
+#[test]
+fn a_failed_refresh_reports_which_command_failed_and_preserves_the_copy() {
+    let home = Home::new("refresh-failure");
+    home.copied_plugin();
+    std::fs::write(home.copy().join("hooks/hooks.json"), "{}").unwrap();
+    home.harness("codex", 1);
+    let ran = home.refresh();
+    assert_eq!(ran.status.code(), Some(1));
+    let said = text(&ran.stderr);
+    assert!(said.contains("codex plugin marketplace list --json"), "{said}");
+    assert!(said.contains("muster harness install codex"), "{said}");
+    assert_eq!(std::fs::read_to_string(home.copy().join("hooks/hooks.json")).unwrap(), "{}");
+}

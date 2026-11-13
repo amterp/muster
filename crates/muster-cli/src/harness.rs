@@ -444,6 +444,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_timeout_does_not_wait_for_a_child_holding_the_output_pipes() {
+        let began = Instant::now();
+        let ran = run_within(
+            Command::new("/bin/sh").args(["-c", "/bin/sleep 10 & wait"]),
+            Duration::from_millis(100),
+        );
+        assert!(ran.unwrap().is_none());
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "the child's pipes held the timeout open"
+        );
+    }
+
+    #[test]
     fn a_command_that_does_not_finish_in_time_is_stopped() {
         let began = Instant::now();
         let ran = run_within(

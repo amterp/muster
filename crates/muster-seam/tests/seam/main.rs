@@ -1,6 +1,7 @@
 //! muster-seam's integration tests, as one binary rather than one per file: see docs/testing.md.
 
 mod across_machines;
+mod adapter_refresh;
 mod agent_states;
 mod arranging;
 mod asking;
