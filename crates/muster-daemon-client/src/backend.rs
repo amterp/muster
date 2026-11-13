@@ -565,7 +565,7 @@ impl BackendChannel for DaemonBackend {
     }
 
     fn callsigns_elsewhere(&self, held: Vec<String>) {
-        *self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner) = held.clone();
+        self.elsewhere.lock().unwrap_or_else(PoisonError::into_inner).clone_from(&held);
         // The daemon keeps them too, for a pane made there with no list of its own, as `muster
         // pane new` makes one straight on the daemon. Not waited on: this is the window's event
         // path, and an older daemon that refuses the request loses nothing it had.
