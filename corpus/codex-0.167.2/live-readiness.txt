@@ -1,0 +1,16 @@
+Codex 0.167.2, gpt-6.1-terra low, macOS arm64, 2026-11-13.
+./dev --codex, nine checks concurrently; reported load 6.92 / 6.21 / 6.78,
+six performance cores. Six checks passed, three failed:
+
+1. The shared-app-server test waited 20s for Hooks need review and timed out.
+   It recorded no failing screen, so the native startup state is unknown.
+2. The idle-message worker read its message but summarized its reply instruction.
+   The screen and unchanged failing assertion are in idle-reply-worker.txt.
+3. The context test never observed Compacted after /compact within 180s.
+   Its fixture slept 15s after the initial user request before sending /compact,
+   then used 5s and 10s sleeps between clear/new operations. It did not record
+   a failing screen or establish that the initial turn had finished. The exact
+   failed command state is unknown; a fixed delay cannot establish readiness.
+
+The nine-check baseline earlier in the same assignment passed. These failures
+are recorded rather than hidden by repeating the full tier until it passes.
