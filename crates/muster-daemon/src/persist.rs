@@ -238,6 +238,10 @@ pub(crate) struct Resume {
     /// file only the user can read, and never in a record, an event or the run log.
     #[serde(default, skip_serializing_if = "Environment::is_empty")]
     pub(crate) env: Environment,
+    /// The flags in `command` whose value may name a file (`[session] resume_files`), dropped
+    /// when the resume runs if the file has gone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) files: Vec<String>,
 }
 
 /// Variables and their values, which say only their names when debug-printed.
@@ -262,6 +266,36 @@ impl std::fmt::Debug for Environment {
 }
 
 impl Resume {
+    /// The resume as it can run now in `cwd`: less each flag naming a file that has gone, since
+    /// the agent would stop at once without it, and saying so in `uncarried`.
+    pub(crate) fn runnable(&self, pane: &str, cwd: &Path) -> Resume {
+        let exists = |path: &str| cwd.join(path).exists();
+        let (command, dropped) =
+            muster_detect::without_gone_files(&self.command, &self.files, exists);
+        if dropped.is_empty() {
+            return self.clone();
+        }
+        let flags = dropped.join(" ");
+        log::warn(
+            "session.resume.file_gone",
+            fields! {
+                "pane" => pane,
+                "agent" => self.agent,
+                "flags" => flags,
+                "impact" => "the agent's session is resumed without those flags, so whatever the \
+                             files set up, such as settings or MCP servers, is not set up again",
+                "check" => "whether a wrapper deleted the files after the agent read them; a \
+                            wrapper that names its own resume in MUSTER_RESUME sets them up again",
+            },
+        );
+        let said = format!("{flags} named a file that had gone, so it was left out");
+        let uncarried = match &self.uncarried {
+            Some(why) => format!("{why}; {said}"),
+            None => said,
+        };
+        Resume { command, uncarried: Some(uncarried), ..self.clone() }
+    }
+
     /// The line the pane's shell runs to resume the session, with its variables set.
     pub(crate) fn line(&self, shell: &str) -> String {
         let command = crate::spawn::command_line(shell, &self.command);

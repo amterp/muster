@@ -134,7 +134,10 @@ kimi, kiro, maki, pi, qodercli.
   carry nothing. When a word could be a prompt, only `resume_keeps` goes along, `--model` and
   `--effort` for Claude Code (detection engine 15). A wrapper that starts its agent names its own resume in the agent's
   environment, `MUSTER_RESUME='mywrapper --resume {session}'`, which is run instead, so whatever
-  the wrapper sets up is set up again (`docs/configuration.md`, `MUSTER_RESUME`).
+  the wrapper sets up is set up again (`docs/configuration.md`, `MUSTER_RESUME`). Without one,
+  `resume_files` names the flags whose value may be a file, `--settings` and `--mcp-config` for
+  Claude Code (detection engine 20): one naming a file that has gone by the time the session is
+  resumed is left out, since the agent would stop at once, and its row's `resume` says so.
 - **Its own helpers not taken for a nested agent**: a manifest's `helpers` lists the names a
   harness runs its own binary under for work that is not a session (detection engine 13). Codex's
   lists its Linux sandbox, which every command the model runs goes through, so the model's own

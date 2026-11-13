@@ -719,7 +719,9 @@ no quoting, so a wrapper whose path holds a space is named through `PATH`; `{ses
 its own, exactly once, and `{args}`, if it is there, takes the flags that would have gone along.
 One that breaks those rules is set aside for the manifest's resume, and the daemon's log says why
 in `session.resume.named_unusable`. It applies to an agent whose manifest says how to resume it,
-which is Claude Code so far.
+which is Claude Code so far. Without it, a resume leaves out a `--settings` or `--mcp-config`
+whose file has gone, so the agent at least comes back, without what the file set up; the log says
+which in `session.resume.file_gone`.
 
 **Both work on a devenv too**, where the daemon reads that machine's own
 `~/.muster/agent-detection/`. A `[[daemon]]` with a `host` starts the daemon of this Muster's

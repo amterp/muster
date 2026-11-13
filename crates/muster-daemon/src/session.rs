@@ -1977,7 +1977,7 @@ impl Session {
         let called = given_name(label.as_deref()).unwrap_or(&callsign).to_string();
         let which = spawn::Which { pane: &pane, name: &called, callsign: &callsign };
         let shell = self.settings.shell.clone().unwrap_or_default();
-        let resume = saved.resume.clone();
+        let resume = saved.resume.as_ref().map(|resume| resume.runnable(&pane, &saved.cwd));
         let line = resume
             .as_ref()
             .map(|resume| resume.line(&pty::shell(shell.command.as_deref(), &self.inherited)));
@@ -3272,6 +3272,7 @@ impl Session {
             command: resume.command,
             uncarried: resume.uncarried,
             env: self.panes[index].restart_env.clone(),
+            files: resume.files,
         })
     }
 
@@ -4510,7 +4511,8 @@ impl Session {
         let shell_path = self.settings.shell.as_ref().and_then(|shell| shell.command.as_deref());
         let shell_path = pty::shell(shell_path, &self.inherited);
         let env = persist::Environment(restart.env.clone().into_iter().collect());
-        let line = persist::Resume { env: env.clone(), ..resume.clone() }.line(&shell_path);
+        let runnable = resume.runnable(name, Path::new(&pane.record.cwd));
+        let line = persist::Resume { env: env.clone(), ..runnable }.line(&shell_path);
         log::info(
             "daemon.pane.restarting",
             fields! {
@@ -4762,7 +4764,11 @@ impl Session {
             let called = given_name(pane.label.as_deref()).unwrap_or(&callsign).to_string();
             let which = spawn::Which { pane: name, name: &called, callsign: &callsign };
             let shell = self.settings.shell.clone().unwrap_or_default();
-            let resume = pane.resume.clone().filter(|_| self.resumes_agents());
+            let resume = pane
+                .resume
+                .as_ref()
+                .filter(|_| self.resumes_agents())
+                .map(|resume| resume.runnable(name, &pane.cwd));
             let command = resume
                 .as_ref()
                 .map(|resume| resume.line(&pty::shell(shell.command.as_deref(), &self.inherited)));

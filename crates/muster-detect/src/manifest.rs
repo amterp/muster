@@ -38,7 +38,8 @@ use region::Region;
 /// `wakes_when_jobs_end`, saying that a job the agent started starts its next turn when it ends,
 /// and 18 `[session] image_paste`, allowing image paths in a readable composer. Engine 19 adds
 /// `defer_idle_while_working`, holding idle reports behind a positive working signal. Engine 20
-/// adds `[session]` `clear`, the line that empties the session's context.
+/// adds `[session]` `clear`, the line that empties the session's context, and `resume_files`, the
+/// flags whose value may name a file a resume drops once it has gone.
 pub const ENGINE_VERSION: u32 = 20;
 
 const DEFER_IDLE_ENGINE_VERSION: u32 = 19;
@@ -67,6 +68,9 @@ const COMPACT_ENGINE_VERSION: u32 = 11;
 
 /// The engine version that introduced `[session]` `clear`.
 const CLEAR_ENGINE_VERSION: u32 = 20;
+
+/// The engine version that introduced `[session]` `resume_files`.
+const RESUME_FILES_ENGINE_VERSION: u32 = 20;
 
 /// The engine version that introduced `[session]` `resume`, `resume_drops` and `resume_values`.
 const RESUME_ENGINE_VERSION: u32 = 12;
@@ -628,6 +632,8 @@ struct RawSession {
     #[serde(default)]
     resume_keeps: Vec<String>,
     #[serde(default)]
+    resume_files: Vec<String>,
+    #[serde(default)]
     wakes_when_jobs_end: bool,
     #[serde(default)]
     image_paste: bool,
@@ -934,19 +940,32 @@ fn validate_session(manifest: &RawManifest, session: &RawSession) -> Result<(), 
 /// the session's id fills one whole argument, and the arguments carried fill one place, so both
 /// are somewhere exactly once. The flag lists mean nothing without the command.
 fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), String> {
-    let flags =
-        || session.resume_drops.iter().chain(&session.resume_values).chain(&session.resume_keeps);
+    let flags = || {
+        session
+            .resume_drops
+            .iter()
+            .chain(&session.resume_values)
+            .chain(&session.resume_keeps)
+            .chain(&session.resume_files)
+    };
     let Some(resume) = &session.resume else {
         if flags().next().is_some() {
-            return Err(
-                "[session] resume_drops, resume_values and resume_keeps need a resume".to_string()
-            );
+            return Err("[session] resume_drops, resume_values, resume_keeps and resume_files \
+                        need a resume"
+                .to_string());
         }
         return Ok(());
     };
     if manifest.min_engine_version.unwrap_or(0) < RESUME_ENGINE_VERSION {
         return Err(format!(
             "[session] resume needs min_engine_version {RESUME_ENGINE_VERSION} or later"
+        ));
+    }
+    if !session.resume_files.is_empty()
+        && manifest.min_engine_version.unwrap_or(0) < RESUME_FILES_ENGINE_VERSION
+    {
+        return Err(format!(
+            "[session] resume_files needs min_engine_version {RESUME_FILES_ENGINE_VERSION} or later"
         ));
     }
     if !session.resume_keeps.is_empty()
@@ -969,8 +988,8 @@ fn validate_resume(manifest: &RawManifest, session: &RawSession) -> Result<(), S
     }
     if let Some(flag) = flags().find(|flag| !flag.starts_with('-')) {
         return Err(format!(
-            "[session] resume_drops, resume_values and resume_keeps hold flags, and {flag} is not \
-             one"
+            "[session] resume_drops, resume_values, resume_keeps and resume_files hold flags, and \
+             {flag} is not one"
         ));
     }
     Ok(())
@@ -1308,6 +1327,7 @@ fn compile(raw: RawManifest) -> Result<Manifest, String> {
                 drops: session.resume_drops.clone(),
                 values: session.resume_values.clone(),
                 keeps: session.resume_keeps.clone(),
+                files: session.resume_files.clone(),
             })
         }),
         wake: raw.session.and_then(|session| session.wake),

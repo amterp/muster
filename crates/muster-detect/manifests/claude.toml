@@ -42,6 +42,9 @@ resume_values = [
 # Carried even when a word in the arguments could be a prompt and the rest are not: a session
 # resumed on the settings default instead of its own model and effort is not the same session.
 resume_keeps = ["--model", "--effort"]
+# Their value may be a file, which a wrapper can delete once Claude Code has read it, and a resume
+# naming a file that has gone stops at once with 'Settings file not found'; or inline JSON.
+resume_files = ["--settings", "--mcp-config"]
 
 [[rules]]
 id = "osc_title_working"

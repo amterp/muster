@@ -30,6 +30,8 @@ pub(crate) struct Spelling {
     /// Flags carried with their value even when the rest cannot be, because the session is not
     /// the same without them: the model it ran on, and how hard it thought.
     pub(crate) keeps: Vec<String>,
+    /// Flags whose value may name a file, which a resume drops once the file has gone.
+    pub(crate) files: Vec<String>,
 }
 
 /// Whether a command's `{args}` has to be there, as a manifest's before engine 15 does, or may be
@@ -82,6 +84,42 @@ pub struct Resume {
     /// Why the command a `MUSTER_RESUME` named was not used, when one was named and was not;
     /// the manifest's is, instead.
     pub ignored: Option<String>,
+    /// The flags in it whose value may name a file (`[session] resume_files`), for
+    /// [`without_gone_files`] to check when the resume runs.
+    pub files: Vec<String>,
+}
+
+/// `command` less each of `files`' flags whose value names a file `exists` says has gone, given
+/// as `--flag value` or `--flag=value`, with the flags dropped. A value starting with `{` or `[`
+/// is inline JSON rather than a path, and stays. The check is at the resume rather than when it
+/// is built, because a wrapper can delete the file as soon as the agent has read it.
+pub fn without_gone_files(
+    command: &[String],
+    files: &[String],
+    exists: impl Fn(&str) -> bool,
+) -> (Vec<String>, Vec<String>) {
+    let names_a_gone_file = |value: &str| !value.starts_with(['{', '[']) && !exists(value);
+    let (mut kept, mut dropped) = (Vec::with_capacity(command.len()), Vec::new());
+    let mut words = command.iter();
+    while let Some(word) = words.next() {
+        if let Some((flag, value)) = word.split_once('=')
+            && files.iter().any(|file| file == flag)
+            && names_a_gone_file(value)
+        {
+            dropped.push(flag.to_string());
+            continue;
+        }
+        if files.iter().any(|file| file == word) {
+            match words.next() {
+                Some(value) if names_a_gone_file(value) => dropped.push(word.clone()),
+                Some(value) => kept.extend([word.clone(), value.clone()]),
+                None => kept.push(word.clone()),
+            }
+            continue;
+        }
+        kept.push(word.clone());
+    }
+    (kept, dropped)
 }
 
 impl Spelling {
@@ -115,7 +153,7 @@ impl Spelling {
                 _ => command.push(word.clone()),
             }
         }
-        Resume { command, uncarried, ignored: None }
+        Resume { command, uncarried, ignored: None, files: self.files.clone() }
     }
 
     /// The arguments of an agent that was itself started by this spelling, less the words the
@@ -207,7 +245,33 @@ mod tests {
             drops: words(&["-p", "--print", "-c", "--continue", "-r", "--resume", "--session-id"]),
             values: words(&["--model", "--effort", "--permission-mode", "-r", "--resume", "-n"]),
             keeps: words(&["--model", "--effort"]),
+            files: words(&["--settings"]),
         }
+    }
+
+    /// A settings flag whose file has gone is dropped with its value, in either spelling; one
+    /// whose file is there, or whose value is inline JSON, stays, as does every other flag.
+    #[test]
+    fn a_file_flag_whose_file_has_gone_is_dropped() {
+        let words = |words: &[&str]| words.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let files = words(&["--settings", "--mcp-config"]);
+        let exists = |path: &str| path == "/here.json";
+        let (kept, dropped) = without_gone_files(
+            &words(&["claude", "--settings", "/gone.json", "--model", "opus", "--resume", "s-1"]),
+            &files,
+            exists,
+        );
+        assert_eq!(kept.join(" "), "claude --model opus --resume s-1");
+        assert_eq!(dropped, ["--settings"]);
+        let (kept, dropped) = without_gone_files(
+            &words(&["claude", "--mcp-config=/gone.json", "--settings", "/here.json"]),
+            &files,
+            exists,
+        );
+        assert_eq!(kept.join(" "), "claude --settings /here.json");
+        assert_eq!(dropped, ["--mcp-config"]);
+        let inline = words(&["claude", "--settings", "{\"a\":1}", "--add-dir", "/gone.json"]);
+        assert_eq!(without_gone_files(&inline, &files, exists), (inline, Vec::new()));
     }
 
     fn resumed(arguments: &[&str]) -> Resume {
@@ -304,6 +368,7 @@ mod tests {
             drops: Vec::new(),
             values: Vec::new(),
             keeps: Vec::new(),
+            files: Vec::new(),
         };
         let resumed = codex.resume("s-1", &["--approve-for-me".to_string()]);
         assert_eq!(resumed.command.join(" "), "codex resume s-1");
@@ -318,6 +383,7 @@ mod tests {
             drops: words(&["--last", "-i", "--image"]),
             values: words(&["-m", "--model", "-s", "--sandbox", "-c", "-i", "--image"]),
             keeps: words(&["-m", "--model", "-s", "--sandbox", "-c"]),
+            files: Vec::new(),
         }
     }
 

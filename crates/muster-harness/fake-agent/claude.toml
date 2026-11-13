@@ -34,6 +34,7 @@ resume = ["/bin/sh", "-c", "exec \"$HOME/.muster/bin/claude\" \"$@\"", "claude",
 resume_drops = ["-p", "--print", "--resume"]
 resume_values = ["--model", "--effort", "--resume", "--settings"]
 resume_keeps = ["--model", "--effort"]
+resume_files = ["--settings"]
 # Exercise command-delivered wakes with sessions that refuse ("gone"), accept without starting
 # a turn ("dead"), exceed the command timeout ("slow"), or start a turn 8 seconds later ("late").
 # The delayed case came from Codex's former queue route (docs/observations/codex-0.163.0.md).
