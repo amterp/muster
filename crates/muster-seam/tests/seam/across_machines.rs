@@ -2494,7 +2494,7 @@ fn a_change_every_part_refuses_as_stale_is_worked_out_again_and_written() {
         ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 2),
     );
 
-    muster::testing::read_next_rearrangement_stale();
+    muster::testing::read_next_spanning_write_stale();
     assert_ok(&answer(request::Payload::SetSplitRatio(SetSplitRatio {
         tab_id: SPANNING_TAB.to_string(),
         path: Vec::new(),
@@ -2545,6 +2545,43 @@ fn a_pane_placed_beside_another_machines_is_made_when_that_machine_refuses_the_t
         || {
             spanning_copy(&machines.laptop) == Some((laptop.clone(), 2))
                 && spanning_copy(&machines.devenv) == Some((devenv.clone(), 2))
+        },
+        || {
+            format!(
+                "the laptop holds {:?} and the devenv {:?}",
+                spanning_copy(&machines.laptop),
+                spanning_copy(&machines.devenv)
+            )
+        },
+    );
+}
+
+/// A pane made in a tab spanning machines from copies older than its own machine holds by the time
+/// it is placed, as when another write lands first, is refused there. Nothing was made, so the
+/// window works its place out again from the copies as they are now and places it once more.
+#[test]
+fn a_pane_placed_from_a_stale_tree_is_worked_out_again_and_made() {
+    let _turn = muster::testing::fresh_session();
+    let machines = a_tab_spanning_two_machines(
+        &["A", "B"],
+        ("[[A/B 0.50]|~X@devenv 0.50]", 2),
+        ("[[~A@laptop/~B@laptop 0.50]|X 0.50]", 2),
+    );
+
+    muster::testing::read_next_spanning_write_stale();
+    let below = made(answer(request::Payload::SplitPane(SplitPane {
+        pane_id: SPAN_X.to_string(),
+        new_pane_daemon_id: "laptop".to_string(),
+        side: "down".to_string(),
+        ..SplitPane::default()
+    })));
+    let laptop = format!("[[A/B 0.50]|[~X@devenv/{below} 0.50] 0.50]");
+    let devenv = format!("[[~A@laptop/~B@laptop 0.50]|[X/~{below}@laptop 0.50] 0.50]");
+    until(
+        "both copies to hold the new pane below the devenv's",
+        || {
+            spanning_copy(&machines.laptop) == Some((laptop.clone(), 3))
+                && spanning_copy(&machines.devenv) == Some((devenv.clone(), 3))
         },
         || {
             format!(

@@ -904,9 +904,9 @@ pub(crate) struct Session {
     /// since the suite runs only daemons built from this commit (`crate::testing`).
     before_spanning: BTreeSet<DaemonId>,
 
-    /// How many rearrangements a test has asked to read every part's copy one generation behind
-    /// what it holds, as a window does when a newer write lands between reading the copies and
-    /// writing the change (`crate::testing`).
+    /// How many changes to a spanning tab a test has asked to read every part's copy one
+    /// generation behind what it holds, as a window does when a newer write lands between reading
+    /// the copies and writing the change (`crate::testing`).
     stale_reads: u32,
 
     /// Machines whose next write of a tab's tree a test has the window treat as refused, as a part
@@ -1437,7 +1437,7 @@ pub(crate) fn refuse_next_tree_write_to(daemon: &str) {
     poison::lock(&SESSION, "session").refusing_tree_writes.insert(DaemonId::new(daemon));
 }
 
-pub(crate) fn read_next_rearrangement_stale() {
+pub(crate) fn read_next_spanning_write_stale() {
     poison::lock(&SESSION, "session").stale_reads += 1;
 }
 
@@ -7204,7 +7204,11 @@ pub(crate) fn arrive(
     arriving: Arriving<'_>,
 ) -> Result<Outcome, Refusal> {
     let (pane, worked_out, hidden) = {
-        let session = poison::lock(&SESSION, "session");
+        let mut session = poison::lock(&SESSION, "session");
+        let stale = session.stale_reads > 0;
+        if stale {
+            session.stale_reads -= 1;
+        }
         let pane = match &arriving {
             Arriving::Made { .. } => poison::lock(&session.minter, "minter").pane(),
             Arriving::Moved { pane } => pane.clone(),
@@ -7218,12 +7222,17 @@ pub(crate) fn arrive(
         })?;
         let mirrors = session.mirrors();
         let mirror = |machine: &DaemonId| mirrors.get(machine).map(|held| &**held);
-        let (parts, settled) = spanning::parts_of(
+        let (mut parts, settled) = spanning::parts_of(
             held,
             mirror,
             |machine| session.holds_spanning_trees(machine),
             |_| false,
         );
+        if stale {
+            for part in &mut parts {
+                part.generation = part.generation.saturating_sub(1);
+            }
+        }
         let change =
             spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot };
         let hidden = mirrors.values().any(|held| held.tab(tab).is_some_and(|part| part.hidden));

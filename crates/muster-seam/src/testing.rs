@@ -102,12 +102,13 @@ pub fn refuse_next_tree_write_to(daemon: &str) {
     session::refuse_next_tree_write_to(daemon);
 }
 
-/// Has the window's next rearrangement of a tab spanning machines read every part's copy one
-/// generation behind what it holds, as a window does when a newer write lands between reading the
-/// copies and writing the change. Every part then refuses the change as worked out from an older
-/// tree, which is how a test reaches what the window does about that without racing for it.
-pub fn read_next_rearrangement_stale() {
-    session::read_next_rearrangement_stale();
+/// Has the window's next change to a tab spanning machines - a rearrangement, or a pane made or
+/// moved into it - read every part's copy one generation behind what it holds, as a window does
+/// when a newer write lands between reading the copies and writing the change. The parts then
+/// refuse the change as worked out from an older tree, which is how a test reaches what the window
+/// does about that without racing for it.
+pub fn read_next_spanning_write_stale() {
+    session::read_next_spanning_write_stale();
 }
 
 /// How many callers are watching agent states right now.
