@@ -18,6 +18,12 @@
       "body": "2026-11-09 re-triage: moved from next to backlog-lo. It cannot be reproduced on main and has no fix to start on until it recurs with a run log, so it is not ready work.",
       "author": "Alexander Terp",
       "created_at_millis": 1794270034407
+    },
+    {
+      "id": "c_2zBIztTiT",
+      "body": "2026-11-13: still not reproduced. Missing: a recording of a Claude Code pane whose foreground command is queued for minutes by qm run on a contended machine (the 2026-10-24 instance). 965c5e68 recorded a live 2.1.319 foreground command reading working.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794588767975
     }
   ],
   "created_at_millis": 1793143760678,
@@ -30,7 +36,7 @@
   ],
   "title": "A long foreground Claude Code command is reported as blocked at a dialog",
   "type": "bug",
-  "updated_at_millis": 1794270034542,
+  "updated_at_millis": 1794588767975,
   "history": [
     {"field":"column","value":"backlog-hi","at":1793143760678},
     {"field":"column","value":"next","at":1793901357681},

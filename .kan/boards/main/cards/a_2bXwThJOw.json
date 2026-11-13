@@ -6,6 +6,14 @@
     "backend"
   ],
   "column": "backlog-lo",
+  "comments": [
+    {
+      "id": "c_2zBJ08F0Q",
+      "body": "2026-11-13, Codex 0.167.2 (observation section 11, corpus/codex-0.167.2/model-errors.txt): with the provider's port closed Codex was still retrying at six minutes, with and without retry settings at zero, so what fires on giving up is still unknown. HTTP 400/503 end the turn with no Stop or Interrupt; Muster reads done after its 10 s quiet-report fallback.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794588768121
+    }
+  ],
   "created_at_millis": 1791096397172,
   "creator": "Alexander Terp",
   "description": "2026-10-04: with the model provider at 127.0.0.1:9, Codex 0.154 fired UserPromptSubmit and then no hook for over 3 minutes while showing 'Reconnecting... waiting for network'; Muster reads it working, and no declared wait stands. What it fires once it gives up (Stop, Interrupt, nothing) needs a capture longer than 3 minutes (corpus/codex-0.154.0/api-error.txt, observation section 10).",
@@ -13,7 +21,7 @@
   "position": "b0O",
   "title": "Codex: what fires when it stops retrying an unreachable model",
   "type": "chore",
-  "updated_at_millis": 1791096397172,
+  "updated_at_millis": 1794588768121,
   "history": [
     {"field":"column","value":"backlog-lo","at":1791096397172}
   ]
