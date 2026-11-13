@@ -11,7 +11,7 @@ use muster_core::attention::GroupKey;
 use muster_core::composition::PaneKey;
 use muster_core::conversation::{
     Addressed, Answering, Change, Draft, Edit, Entry, Group, Liveness, Member, Message, Policy,
-    Row, ThreadView, What, draft, members, thread,
+    Row, ThreadView, UtcOffsets, What, draft, members, thread,
 };
 use serde_json::{Value, json};
 
@@ -24,11 +24,7 @@ fn conversation_conformance() {
             unread_from: given.get("unread_from").and_then(Value::as_u64),
             open_folds: numbers(given, "open"),
             whole: numbers(given, "whole"),
-            utc_offset_s: given
-                .get("offset")
-                .and_then(Value::as_i64)
-                .and_then(|offset| i32::try_from(offset).ok())
-                .unwrap_or(0),
+            utc_offsets: offsets(given),
         };
         let rows = thread::rows(&group, &reading);
         // A case naming its group is about the header too.
@@ -263,6 +259,19 @@ fn addressed_name(addressed: Addressed) -> &'static str {
         Addressed::Chosen => "chosen",
         Addressed::At => "at",
     }
+}
+
+/// The window's offsets from UTC: `offset`, one for all time, or `offsets`, each change as
+/// `[from_ms, offset_s]`.
+fn offsets(given: &Value) -> UtcOffsets {
+    let offset = |value: &Value| value.as_i64().and_then(|offset| i32::try_from(offset).ok());
+    if let Some(changes) = given.get("offsets").and_then(Value::as_array) {
+        return UtcOffsets::from_moments(changes.iter().filter_map(|change| {
+            let change = change.as_array()?;
+            Some((change.first()?.as_u64()?, offset(change.get(1)?)?))
+        }));
+    }
+    given.get("offset").and_then(offset).map(UtcOffsets::fixed).unwrap_or_default()
 }
 
 fn numbers(given: &Value, key: &str) -> BTreeSet<u64> {

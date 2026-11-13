@@ -21,7 +21,7 @@ use crate::posting;
 pub use draft::{Addressed, Completion, Draft, Edit, Edited};
 pub use log::{Answering, Change, Entry, Log, Message, What};
 pub use members::{Header, Liveness, Member, MemberRow, Unread};
-pub use thread::{Answered, MessageRow, Row, ThreadView};
+pub use thread::{Answered, MessageRow, Row, ThreadView, UtcOffsets};
 
 /// A name kept on another machine, split into the name there and the machine: `review@devenv`.
 /// The rule is the daemon's (`muster_msg::split_machine`), which this crate does not depend on:

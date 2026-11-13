@@ -30,8 +30,36 @@ pub struct ThreadView {
     pub open_folds: BTreeSet<u64>,
     /// The long messages shown whole.
     pub whole: BTreeSet<u64>,
-    /// The window's offset from UTC, in seconds, for the dates on the dividers.
-    pub utc_offset_s: i32,
+    /// The window's offsets from UTC over the thread's time, for the dates on the dividers.
+    pub utc_offsets: UtcOffsets,
+}
+
+/// A time zone's offsets from UTC over a stretch of time, in seconds: each as the moment it
+/// takes effect, in Unix milliseconds, and the offset from then on. The core has no time zone
+/// database, so the shell reads these for the times a thread holds. The first offset holds
+/// before its moment too, and none at all is UTC.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UtcOffsets(Vec<(u64, i32)>);
+
+impl UtcOffsets {
+    pub fn fixed(offset_s: i32) -> UtcOffsets {
+        UtcOffsets(vec![(0, offset_s)])
+    }
+
+    /// From moments and the offset in force at each, in any order, kept where the offset
+    /// changes.
+    pub fn from_moments(moments: impl IntoIterator<Item = (u64, i32)>) -> UtcOffsets {
+        let mut moments: Vec<(u64, i32)> = moments.into_iter().collect();
+        moments.sort_unstable();
+        moments.dedup_by(|later, earlier| later.1 == earlier.1);
+        UtcOffsets(moments)
+    }
+
+    /// The offset in force at `at_ms`.
+    pub fn at(&self, at_ms: u64) -> i32 {
+        let after = self.0.partition_point(|&(from_ms, _)| from_ms <= at_ms);
+        self.0.get(after.saturating_sub(1)).map_or(0, |&(_, offset_s)| offset_s)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,7 +140,7 @@ pub fn rows(group: &Group, view: &ThreadView) -> Vec<Row> {
     let mut changes: Vec<&Entry> = Vec::new();
     let mut unread_marked = false;
     for entry in group.log.entries() {
-        let date = date(entry.at_ms, view.utc_offset_s);
+        let date = date(entry.at_ms, view.utc_offsets.at(entry.at_ms));
         let new_day = day.as_ref() != Some(&date);
         let unread_here =
             !unread_marked && view.unread_from.is_some_and(|first| entry.seq >= first);

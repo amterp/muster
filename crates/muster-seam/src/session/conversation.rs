@@ -16,7 +16,7 @@ use muster_core::attention::GroupKey;
 use muster_core::composition::{DaemonId, PaneKey};
 use muster_core::conversation::{self, Named};
 use muster_core::conversation::{
-    Draft, Edit, Group, Member, ThreadView, Unread, What, draft, members, thread,
+    Draft, Edit, Group, Member, ThreadView, Unread, UtcOffsets, What, draft, members, thread,
 };
 use muster_core::diagnostics::{log, poison};
 use muster_core::fields;
@@ -1159,7 +1159,7 @@ fn announce_parts(windows: &[WindowId], parts: Parts) {
 
 fn conversation(shown: &Showing, shared: &Shared) -> proto::ConversationChanged {
     let group = &shared.group;
-    let view = ThreadView { utc_offset_s: utc_offset_s(), ..shown.view.clone() };
+    let view = ThreadView { utc_offsets: utc_offsets(group), ..shown.view.clone() };
     let rows = thread::rows(group, &view);
     let mut changed = convert::conversation(
         &shown.group,
@@ -1186,18 +1186,26 @@ fn message_box(window: &super::Window, group: &Group) -> proto::MessageBoxChange
     }
 }
 
-/// This machine's offset from UTC now, in seconds, which the thread's dates are in: the window is
-/// on this machine, whichever machine keeps the group. Read at every rebuild, so a change to
-/// daylight saving time moves the dividers with it.
-fn utc_offset_s() -> i32 {
-    // SAFETY: `time` with a null pointer only returns the time, and `localtime_r` writes into the
-    // `tm` it is handed and nothing else, which is why it is the reentrant one.
+/// This machine's offsets from UTC at each time `group` holds an entry from, which the thread's
+/// dates are in: the window is on this machine, whichever machine keeps the group. Read at every
+/// rebuild, and at each entry's own time, so an entry from before a change to daylight saving time
+/// is dated as its own time beside it is, and a change to the zone moves the dividers with it.
+fn utc_offsets(group: &Group) -> UtcOffsets {
+    UtcOffsets::from_moments(group.log.entries().filter_map(|entry| {
+        let at_s = libc::time_t::try_from(entry.at_ms / 1000).ok()?;
+        Some((entry.at_ms, utc_offset_s(at_s)?))
+    }))
+}
+
+/// This machine's offset from UTC at `at_s`, in Unix seconds.
+fn utc_offset_s(at_s: libc::time_t) -> Option<i32> {
+    // SAFETY: `localtime_r` writes into the `tm` it is handed and nothing else, which is why it
+    // is the reentrant one.
     let local = unsafe {
-        let now = libc::time(std::ptr::null_mut());
         let mut local: libc::tm = std::mem::zeroed();
-        (!libc::localtime_r(&raw const now, &raw mut local).is_null()).then_some(local)
+        (!libc::localtime_r(&raw const at_s, &raw mut local).is_null()).then_some(local)
     };
-    local.and_then(|local| i32::try_from(local.tm_gmtoff).ok()).unwrap_or(0)
+    local.and_then(|local| i32::try_from(local.tm_gmtoff).ok())
 }
 
 #[cfg(test)]
