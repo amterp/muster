@@ -151,4 +151,16 @@ fn the_verb_names_its_pane_by_callsign() {
     let (status, said) = run("nobody");
     assert_eq!(status, Some(1));
     assert!(said.contains("no pane nobody") && said.contains("callsign"), "{said}");
+
+    // Named by its callsign, a pane is still its own: a wait on a message from it is refused.
+    let own = Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+        .args(["report", "--pane", &callsign, "--waiting", "myself"])
+        .args(["--until-message-from", &callsign])
+        .env_clear()
+        .env("MUSTER_DAEMON_SOCKET", daemon.socket_path())
+        .output()
+        .expect("the verb runs");
+    let said = String::from_utf8_lossy(&own.stderr);
+    assert_eq!(own.status.code(), Some(1), "{said}");
+    assert!(said.contains("its own pane"), "{said}");
 }
