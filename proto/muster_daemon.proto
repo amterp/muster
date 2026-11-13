@@ -304,6 +304,21 @@ message PaneRequest {
     StoreImage store_image = 16;
     // Since 1.14.
     SetCompaction set_compaction = 17;
+    // Since 1.16.
+    Send send = 18;
+  }
+
+  // Types into a pane as `muster pane send` does: the text, then each key, then Return. DONE
+  // once it is queued for the pane's program, NOT_THERE for a pane this daemon does not hold,
+  // and REFUSED, saying why, with nothing typed, when a key does not read as a chord, the pane's
+  // agent is restarting, or its program has stopped reading and more waits for it than the
+  // daemon holds. An input connection's send is never answered, and so drops in those cases.
+  message Send {
+    string pane = 1;
+    string text = 2;
+    // Each named as a keybinding in Muster's config is: "down", "esc", "ctrl+c".
+    repeated string keys = 3;
+    bool enter = 4;
   }
 
   // Sets one pane's own compaction thresholds, which beat every rule (`SetCompactionRules`)

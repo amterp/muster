@@ -391,6 +391,10 @@ pub(crate) fn serve(mut stream: UnixStream, shared: &Arc<Shared>, client: &str) 
                 };
                 Handled::Reply(reply)
             }
+            // Outside the session's lock, as the API's send is: queueing never waits on a pane.
+            Some(Service::Pane(proto::PaneRequest {
+                request: Some(pane_request::Request::Send(send)),
+            })) => Handled::Reply(sent(shared, &send)),
             // Outside the session's lock: messages have their own (crate::messages).
             Some(Service::Msg(message)) => {
                 let handled = match &sender {
@@ -531,6 +535,26 @@ pub(crate) fn handle(
         shared.doorbell.nudge();
     }
     handled
+}
+
+/// A control connection's send, typed by the step the API's `pane.send` types by.
+fn sent(shared: &Shared, send: &pane_request::Send) -> Reply {
+    let typing = proto::input_event::Send {
+        text: send.text.clone(),
+        keys: send.keys.clone(),
+        enter: send.enter,
+    };
+    let input = match crate::input::sent_input(&typing) {
+        Ok(input) => input,
+        Err(refusal) => return Reply::refused(format!("{refusal}; nothing was sent")),
+    };
+    if shared.lock().pane_io(&send.pane).is_none() {
+        return Reply::not_there(format!("no pane {} on this daemon", send.pane));
+    }
+    match crate::input::typed(shared, &send.pane, input) {
+        Ok(()) => Reply::done(),
+        Err(refusal) => Reply::refused(refusal),
+    }
 }
 
 /// The nearest agent or server above the sender of a report, or of a msg request that names a

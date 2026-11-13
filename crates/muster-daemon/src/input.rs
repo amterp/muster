@@ -164,6 +164,30 @@ fn sent(send: &input_event::Send) -> Option<Input> {
     }
 }
 
+/// Queues `input` for `pane`'s program, or says why nothing was typed: the pane closed, its agent
+/// is restarting, or its program has stopped reading with its queue full. The one typing step of
+/// a send that is answered, from the API and from a control connection alike.
+pub(crate) fn typed(shared: &Shared, pane: &str, input: Input) -> Result<(), String> {
+    let io = shared
+        .lock()
+        .pane_io(pane)
+        .ok_or_else(|| format!("pane {pane} closed; nothing was sent"))?;
+    if io.queue(input) {
+        return Ok(());
+    }
+    Err(if io.discards().is_restarting() {
+        format!(
+            "pane {pane}'s agent is restarting, so nothing was typed; send it again once it is \
+             back"
+        )
+    } else {
+        format!(
+            "pane {pane}'s program has stopped reading its input and more waits for it than the \
+             daemon holds, so nothing was typed"
+        )
+    })
+}
+
 /// What a `pane send` types, or why one of its keys does not read as a chord.
 pub(crate) fn sent_input(send: &input_event::Send) -> Result<Input, String> {
     let keys = send.keys.iter().map(|name| Chord::parse(name).map(Chord::pressed));

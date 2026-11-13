@@ -13,6 +13,10 @@ use crate::Version;
 /// baseline follows, and the `compatible` test holds the two together.
 pub const PROTOCOL: Version = Version { major: 1, minor: 16 };
 
+/// The first minor whose daemon answers a send on the control connection, refusing one it could
+/// not queue. An older one takes sends only on an input connection, which answers nothing.
+pub const SENDS_ANSWERED: u32 = 16;
+
 /// The first minor whose daemon does a delete, pause or resume carried from another machine as the
 /// agent there that asked, named by the carried request's caller. An older one ignores the caller
 /// and does every carried request as the human, so an agent's is not carried to it.

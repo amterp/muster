@@ -429,14 +429,14 @@ fn read_page(
     }
 }
 
-/// Types into a pane on the daemon's input connection, which answers nothing, then confirms it
-/// by reading back when asked to - as the window does, by the same rule.
+/// Types into a pane by the daemon's answered send, then confirms it by reading back when asked
+/// to - as the window does, by the same rule. A send the daemon could not queue is refused, with
+/// its reason, rather than reported sent.
 ///
-/// What goes on the connection is the request's own text, keys and Return, untouched: the window
+/// What goes to the daemon is the request's own text, keys and Return, untouched: the window
 /// hands its daemon the same three, so a harness cannot tell which of the two sent it.
 fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> Response {
-    // The input connection says nothing about a pane it does not have, so a name nobody holds
-    // is refused here, as the window refuses it, rather than reported sent.
+    // Asked first for the wording a window refuses an unknown name with.
     match snapshot(socket) {
         Ok(snapshot) if snapshot.panes.iter().any(|held| held.pane == pane) => {}
         Ok(_) => return not_held(socket, pane, "sent"),
@@ -444,47 +444,78 @@ fn send_to_pane(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> R
     }
     let read = |rows| read_pane(socket, pane, Scope::Newest(rows)).map(|read| read.text);
     let prompt = || prompt_of(socket, pane);
-    let typed = || {
-        daemon::connect_welcomed(socket, ConnectionKind::Input)
-            .and_then(|(mut stream, welcome)| {
-                let keys = daemon_proto::version::KEYS_IN_A_SEND;
-                let speaks = welcome.protocol.as_ref();
-                if !send.keys.is_empty()
-                    && let Some(refused) = daemon_proto::version::too_old(
-                        daemon::OURS,
-                        speaks,
-                        keys,
-                        "press keys",
-                        "sent",
-                    )
-                {
-                    return Err(Trouble::Refused(refused));
-                }
-                let event = daemon_proto::InputEvent {
-                    pane: pane.to_string(),
-                    input: Some(daemon_proto::input_event::Input::Send(
-                        daemon_proto::input_event::Send {
-                            text: send.text.clone(),
-                            enter: send.enter,
-                            keys: send.keys.clone(),
-                        },
-                    )),
-                };
-                connection::send(&mut stream, &event).map_err(|error| {
-                    Trouble::Unreachable(format!(
-                        "nothing was sent to {pane}: the muster-daemon at {} would not take it \
-                         ({error}).",
-                        socket.display()
-                    ))
-                })
-            })
-            .map_err(|trouble| trouble.detail().to_string())
-    };
+    let typed = || type_send(socket, pane, send).map_err(|trouble| trouble.detail().to_string());
     match pane_text::send(pane, &send.text, send.append, send.confirm, prompt, read, typed) {
         Ok(()) => ok(),
         Err(pane_text::Unconfirmed::Refused(refusal)) => failure(refusal),
         Err(pane_text::Unconfirmed::Unknown(reason)) => Response::unanswered(reason),
     }
+}
+
+/// Types the send into `pane`, refused when the daemon says nothing was typed.
+fn type_send(socket: &Path, pane: &str, send: &muster_proto::SendToPane) -> Result<(), Trouble> {
+    let (stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Control)?;
+    let answers_sends = daemon_proto::version::too_old(
+        daemon::OURS,
+        welcome.protocol.as_ref(),
+        daemon_proto::version::SENDS_ANSWERED,
+        "answer a send",
+        "sent",
+    )
+    .is_none();
+    if !answers_sends {
+        return type_send_unanswered(socket, pane, send);
+    }
+    let service =
+        pane_service(daemon_proto::pane_request::Request::Send(daemon_proto::pane_request::Send {
+            pane: pane.to_string(),
+            text: send.text.clone(),
+            keys: send.keys.clone(),
+            enter: send.enter,
+        }));
+    let answer = answered(stream, socket, service)?;
+    match answer.outcome() {
+        daemon_proto::Outcome::Done => Ok(()),
+        daemon_proto::Outcome::NotThere => {
+            Err(Trouble::Refused(not_held_said(socket, pane, "sent")))
+        }
+        _ => Err(Trouble::Refused(answer.reason)),
+    }
+}
+
+/// Types the send on an input connection, for a daemon older than the answered send: it answers
+/// nothing, so a send that daemon could not queue is lost without a word.
+fn type_send_unanswered(
+    socket: &Path,
+    pane: &str,
+    send: &muster_proto::SendToPane,
+) -> Result<(), Trouble> {
+    let (mut stream, welcome) = daemon::connect_welcomed(socket, ConnectionKind::Input)?;
+    if !send.keys.is_empty()
+        && let Some(refused) = daemon_proto::version::too_old(
+            daemon::OURS,
+            welcome.protocol.as_ref(),
+            daemon_proto::version::KEYS_IN_A_SEND,
+            "press keys",
+            "sent",
+        )
+    {
+        return Err(Trouble::Refused(refused));
+    }
+    let event = daemon_proto::InputEvent {
+        pane: pane.to_string(),
+        input: Some(daemon_proto::input_event::Input::Send(daemon_proto::input_event::Send {
+            text: send.text.clone(),
+            enter: send.enter,
+            keys: send.keys.clone(),
+        })),
+    };
+    connection::send(&mut stream, &event).map_err(|error| {
+        Trouble::Unreachable(format!(
+            "nothing was sent to {pane}: the muster-daemon at {} would not take it ({error}).",
+            socket.display()
+        ))
+    })
 }
 
 /// Asks the daemon to compact the agent in a pane, and then to give it `then`, as the window asks

@@ -146,3 +146,36 @@ fn a_program_that_stops_reading_is_sent_none_of_the_pointer_input_meanwhile() {
     assert!(!read.contains(&0x1b), "a wheel turn reached the program");
     assert_eq!(read.len(), typed.len() + b"end".len(), "only what was typed was read");
 }
+
+fn send_request(name: &str, text: &str) -> proto::request::Service {
+    pane(proto::pane_request::Request::Send(proto::pane_request::Send {
+        pane: name.to_string(),
+        text: text.to_string(),
+        ..Default::default()
+    }))
+}
+
+/// A control connection's send is answered: DONE once queued, NOT_THERE for a pane the daemon
+/// does not hold, and REFUSED, naming why, once the program has stopped reading and its queue is
+/// full - where an input connection's send of the same is dropped without a word.
+#[test]
+fn a_send_the_daemon_could_not_queue_is_refused_saying_why() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    running(
+        &mut control,
+        "p1",
+        "stty raw -echo; printf ready; head -c 5 >/dev/null; printf took; sleep 120",
+    );
+    expect(&mut control, send_request("p1", "hello"), proto::Outcome::Done);
+    until_text(&mut control, "p1", "took");
+    expect(&mut control, send_request("p9", "hello"), proto::Outcome::NotThere);
+
+    let line = "x".repeat(256);
+    let refused = (0..4096)
+        .map(|_| control.ask(send_request("p1", &line)).answer)
+        .find(|answer| answer.outcome() != proto::Outcome::Done)
+        .expect("a send to a pane whose program never reads is refused once its queue is full");
+    assert_eq!(refused.outcome(), proto::Outcome::Refused, "{refused:?}");
+    assert!(refused.reason.contains("stopped reading its input"), "{}", refused.reason);
+}

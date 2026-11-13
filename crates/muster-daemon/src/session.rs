@@ -568,7 +568,7 @@ impl Reply {
         Reply { outcome: Outcome::AlreadySo, reason: String::new(), detail: None }
     }
 
-    fn not_there(what: impl Into<String>) -> Reply {
+    pub(crate) fn not_there(what: impl Into<String>) -> Reply {
         Reply { outcome: Outcome::NotThere, reason: what.into(), detail: None }
     }
 
@@ -1425,7 +1425,7 @@ impl Session {
                     None => Reply::not_there(format!("no pane {} on this daemon", read.pane)),
                     Some(reading) => return Handled::Read(Box::new(reading)),
                 },
-                P::StoreImage(_) => Reply::unsupported(),
+                P::StoreImage(_) | P::Send(_) => Reply::unsupported(),
             },
             _ => Reply::unsupported(),
         };

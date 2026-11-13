@@ -133,26 +133,7 @@ fn sent(shared: &Shared, correlation: String, asked: &api::SendToPane) -> api::A
         let text = read_page(read).ok_or_else(|| format!("pane {pane} closed"))?.text;
         Ok(pane_text::PaneText { text, ..Default::default() }.tail(rows).text)
     };
-    let typed = || {
-        let io = shared
-            .lock()
-            .pane_io(pane)
-            .ok_or_else(|| format!("pane {pane} closed; nothing was sent"))?;
-        if io.queue(input) {
-            return Ok(());
-        }
-        Err(if io.discards().is_restarting() {
-            format!(
-                "pane {pane}'s agent is restarting, so nothing was typed; send it again once it \
-                 is back"
-            )
-        } else {
-            format!(
-                "pane {pane}'s program has stopped reading its input and more waits for it than \
-                 the daemon holds, so nothing was typed"
-            )
-        })
-    };
+    let typed = || crate::input::typed(shared, pane, input);
     let outcome =
         pane_text::send(pane, &asked.text, asked.append, asked.confirm, prompt, read, typed);
     sent_answer(correlation, outcome)
