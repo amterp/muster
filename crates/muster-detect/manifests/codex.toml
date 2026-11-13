@@ -1,5 +1,5 @@
 id = "codex"
-version = "2026.11.13.2"
+version = "2026.11.13.3"
 min_engine_version = 20
 updated_at = "2026-11-13T00:00:00Z"
 
@@ -110,6 +110,14 @@ priority = 950
 region = "bottom_non_empty_lines(20)"
 visible_blocker = true
 contains = ["Update now", "Skip until next version"]
+
+[[rules]]
+id = "model_migration"
+state = "blocked"
+priority = 950
+region = "bottom_non_empty_lines(20)"
+visible_blocker = true
+contains = ["Try new model", "Use existing model"]
 
 # 0.160.0's folder trust dialog, which replaced trust_directory's question.
 [[rules]]

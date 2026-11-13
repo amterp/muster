@@ -104,3 +104,18 @@ Pasting a complete line beginning with `!` does not enter shell mode: the pane u
 preliminary probe queued it as a follow-up prompt. Entering the mode with an actual exclamation
 keypress is necessary for this measurement. The Return failure reported on 0.160.0 did not
 reproduce on 0.167.2, so no input encoding changes follow from it.
+
+## 7. The model migration dialog needs an answer
+
+`corpus/codex-0.167.2/model-migration.txt` records a fresh isolated home configured for
+`gpt-5.5`, with the unmodified catalog from `codex debug models --bundled`. Its upgrade entry
+points to `gpt-6-sol` and supplies the migration copy. A fake API key in the scratch `auth.json`
+gets past sign-in; no prompt or model request is sent. Default features show `Try new model`
+and `Use existing model`, as does explicitly enabling `features.model_migrations`. A fresh
+configuration for `gpt-6.1-terra` goes straight to its composer instead.
+
+Both dialog selections use the composer's caret, so the previous detector read them as idle.
+The manifest now reads both option labels as a visible blocker. Down changes the selection but
+leaves the dialog blocked. Return on `Use existing model` closes it and leaves an idle composer.
+All three recorded screens are conformance cases. No new manifest key or engine version is
+needed.
