@@ -452,6 +452,9 @@ message PaneRequest {
   // remembered.
   message Close {
     string pane = 1;
+    // Since 1.16. The pane whose agent asked for the close, empty for a person: the stall watch
+    // holds nobody up on its own messages to a pane it closed.
+    string by = 2;
   }
 
   // Brings back a pane closed within `Settings.reopen_closed_minutes` (`ClosedPane`), under its

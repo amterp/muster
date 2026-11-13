@@ -366,6 +366,7 @@ impl BackendChannel for DaemonBackend {
             BackendIntent::ClosePane { pane } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
                     pane: pane.to_string(),
+                    by: String::new(),
                 }))?;
                 done
             }

@@ -98,7 +98,15 @@ pub fn create_request(create: pane_request::Create) -> Service {
 }
 
 pub fn close_request(name: &str) -> Service {
-    pane(pane_request::Request::Close(pane_request::Close { pane: name.to_string() }))
+    close_request_by(name, "")
+}
+
+/// A close the agent in pane `by` asked for, as `muster pane close` from inside it does.
+pub fn close_request_by(name: &str, by: &str) -> Service {
+    pane(pane_request::Request::Close(pane_request::Close {
+        pane: name.to_string(),
+        by: by.to_string(),
+    }))
 }
 
 /// Asks and insists on an outcome, naming the reason when it differs.

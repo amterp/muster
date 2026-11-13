@@ -893,7 +893,7 @@ fn close_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
     let answer = asked(
         socket,
         pane_service(daemon_proto::pane_request::Request::Close(
-            daemon_proto::pane_request::Close { pane: pane.to_string() },
+            daemon_proto::pane_request::Close { pane: pane.to_string(), by: String::new() },
         )),
     )?;
     Ok(match answer.outcome() {

@@ -2251,6 +2251,29 @@ fn a_helper_closed_with_only_its_makers_message_unread_is_no_stall() {
     assert!(maker.iter().all(|said| !said.contains("(p2)")), "the maker was told: {maker:?}");
 }
 
+/// A pane closed by the agent whose message it had not read holds nobody up: that agent closed
+/// it on purpose. One a person closed with the same message unread still tells the agent.
+#[test]
+fn a_pane_closed_by_the_agent_waiting_on_it_is_no_stall() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_STALL_MS", "2000")]);
+    for (pane, tab) in [("p2", "t2"), ("p3", "t3")] {
+        make(&mut agent.control, create(pane, in_new_tab(tab)));
+        agent.daemon.run_agent(pane);
+    }
+    let mut logging = following(&agent.daemon);
+    post_from_pane(&mut agent.control, "p1", "p2", "Thanks, that is all.");
+    agent.read_in_its_pane();
+    post_from_pane(&mut agent.control, "p1", "p3", "One more thing.");
+    expect(&mut agent.control, close_request_by("p2", "p1"), proto::Outcome::Done);
+    expect(&mut agent.control, close_request("p3"), proto::Outcome::Done);
+
+    logging.logged_until(r#""event":"msg.group.told""#, Duration::from_secs(30));
+    std::thread::sleep(Duration::from_secs(3));
+    let told = agent.read_in_its_pane();
+    assert!(told.iter().any(|said| said.contains("(p3)")), "a person's close: {told:?}");
+    assert!(told.iter().all(|said| !said.contains("(p2)")), "its own close: {told:?}");
+}
+
 /// A daemon whose helper watch settles in a second, with the fake agent idle in pane `p1` and in
 /// each of `helpers`, quiet helpers each in a hidden tab of its own: `(helper, maker)`.
 fn a_maker_with_idle_helpers(helpers: &[(&str, &str)]) -> Agent {

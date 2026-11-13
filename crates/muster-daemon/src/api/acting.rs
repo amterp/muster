@@ -17,7 +17,7 @@ pub(super) fn send(shared: &Shared, caller: &Caller, correlation: String, asked:
 }
 
 pub(super) fn close(shared: &Shared, caller: &Caller, correlation: String, asked: &api::ClosePane) {
-    let close = pane_request::Close { pane: asked.pane.clone() };
+    let close = pane_request::Close { pane: asked.pane.clone(), by: String::new() };
     let answer = match handled(shared, caller, &correlation, pane_request::Request::Close(close)) {
         Ok(handled) => {
             let mut answer = answered(correlation, &replied(handled));

@@ -94,6 +94,7 @@ impl Daemon {
         self.control.ask(Service::Pane(proto::PaneRequest {
             request: Some(pane_request::Request::Close(pane_request::Close {
                 pane: pane.to_string(),
+                by: String::new(),
             })),
         }));
     }
