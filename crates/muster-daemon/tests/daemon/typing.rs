@@ -621,3 +621,29 @@ fn a_sends_return_after_keys_submits_at_a_shell_left_in_the_kitty_keyboard_proto
     expect(&mut control, pane(proto::pane_request::Request::Send(send)), proto::Outcome::Done);
     until("the shell to run what was sent", || marker.exists(), ());
 }
+
+/// With job control off, a shell's child reads the terminal in the shell's own process group,
+/// so the shell leads the group in front. Kitty keys the child asked for are still honored: its
+/// Return arrives as the child asked, not as the shell's carriage return.
+#[test]
+fn a_sends_return_reaches_a_shells_child_in_the_kitty_keys_it_asked_for() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    let heard = daemon.root().join("home/heard");
+    let create = proto::pane_request::Create {
+        command: Some(format!(
+            "set +m; stty raw -echo; printf '\\033[>15u'; printf ready; head -c 5 > {}",
+            heard.display()
+        )),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, create);
+    until_text(&mut control, "p1", "ready");
+    let send =
+        proto::pane_request::Send { pane: "p1".to_string(), enter: true, ..Default::default() };
+    expect(&mut control, pane(proto::pane_request::Request::Send(send)), proto::Outcome::Done);
+    let read = until_some("the program to read its Return", || {
+        std::fs::read(&heard).ok().filter(|read| read.len() >= 5)
+    });
+    assert_eq!(read, b"\x1b[13u", "the Return the program asked for");
+}
