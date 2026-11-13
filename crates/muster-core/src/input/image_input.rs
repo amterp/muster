@@ -135,6 +135,11 @@ impl ImageInput {
         true
     }
 
+    /// Whether typing for `pane` is held behind an image being pasted into it.
+    pub fn holds(&self, pane: &PaneId) -> bool {
+        poison::lock(&self.state, "image input").held.contains_key(pane)
+    }
+
     pub fn forget(&self, pane: &PaneId) {
         let held = poison::lock(&self.state, "image input").held.remove(pane);
         if let Some(held) = held {

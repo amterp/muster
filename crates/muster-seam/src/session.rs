@@ -7550,8 +7550,9 @@ pub(crate) fn toggle_sidebar(window: WindowId) {
 /// By the daemon's answered send, the step a send with no window and the API's `pane.send` type
 /// by: refused, saying why, when the daemon could not queue it, and unanswered when the answer
 /// was lost. The round trip is made with the session let go, as a read's is. A daemon older than
-/// that send gets it on its input connection, which answers nothing, so there a send nothing
-/// could type is lost without a word.
+/// that send, or a pane whose typing waits behind an image being pasted, gets it on the input
+/// connection instead, which answers nothing, so there a send nothing could type is lost without
+/// a word.
 pub(crate) fn send_to_pane(
     daemon: &DaemonId,
     pane: &PaneId,
@@ -7594,8 +7595,11 @@ pub(crate) fn send_to_pane(
         {
             return Err(Refusal::Declined(refused));
         }
+        // Typing held behind an image being pasted is queued and sent once the image lands, so a
+        // send then joins the queue, unanswered, rather than overtaking the image.
         let answers_sends = speaks.is_some()
-            && older_than(muster_daemon_proto::version::SENDS_ANSWERED, "answer a send").is_none();
+            && older_than(muster_daemon_proto::version::SENDS_ANSWERED, "answer a send").is_none()
+            && !backend.images.holds(pane);
         (Arc::clone(&backend.channel), Arc::clone(&backend.input), answers_sends)
     };
     if answers_sends {
