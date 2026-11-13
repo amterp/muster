@@ -2,7 +2,7 @@
 // muster-daemon-proto holds muster_daemon.proto to. A copy, never edited by hand;
 // muster_daemon.proto's header says when it is replaced.
 //
-// Version: 1.15
+// Version: 1.16
 //
 // What Muster says to muster-daemon, and what the daemon says back (MIP-3, section 9).
 //
@@ -187,6 +187,17 @@ message SessionRequest {
     SetReopenClosed set_reopen_closed = 20;
     // Since 1.14.
     SetCompactionRules set_compaction_rules = 21;
+    // Since 1.16.
+    SetCallsignsElsewhere set_callsigns_elsewhere = 22;
+  }
+
+  // The callsigns the asker's other machines hold, which the daemon passes over for every pane
+  // it makes while another is free - a pane made with no list of its own, as `muster pane new`
+  // makes one straight on the daemon, included. Replaces the list sent before. Kept in memory
+  // only: a window sends it again whenever what its machines hold changes, and on reconnecting.
+  // DONE.
+  message SetCallsignsElsewhere {
+    repeated string callsigns = 1;
   }
 
   message Snapshot {}
@@ -310,6 +321,25 @@ message PaneRequest {
     StoreImage store_image = 16;
     // Since 1.14.
     SetCompaction set_compaction = 17;
+    // Since 1.16.
+    Send send = 18;
+    // Since 1.16.
+    Clear clear = 19;
+    // Since 1.16.
+    Unseen unseen = 20;
+  }
+
+  // Types into a pane as `muster pane send` does: the text, then each key, then Return. DONE
+  // once it is queued for the pane's program, NOT_THERE for a pane this daemon does not hold,
+  // and REFUSED, saying why, with nothing typed, when a key does not read as a chord, the pane's
+  // agent is restarting, or its program has stopped reading and more waits for it than the
+  // daemon holds. An input connection's send is never answered, and so drops in those cases.
+  message Send {
+    string pane = 1;
+    string text = 2;
+    // Each named as a keybinding in Muster's config is: "down", "esc", "ctrl+c".
+    repeated string keys = 3;
+    bool enter = 4;
   }
 
   // Sets one pane's own compaction thresholds, which beat every rule (`SetCompactionRules`)
@@ -348,6 +378,14 @@ message PaneRequest {
     repeated string panes = 1;
   }
 
+  // Somebody marked the pane unread: sets its `finished_unseen` as an agent finishing out of
+  // sight does, so it reads `done` until somebody sees it again. REFUSED for a pane running no
+  // agent, or one whose agent is at work or asking, since a finish there is not one; ALREADY_SO
+  // when it already carries one.
+  message Unseen {
+    string pane = 1;
+  }
+
   // Compacts the context of the agent in a pane, by typing what its manifest gives in `[session]
   // compact` at its prompt once it is idle and the prompt is empty, under the doorbell's rules,
   // never while it works (MIP-5, section 10). DONE once it is to be typed, which may be long
@@ -363,6 +401,18 @@ message PaneRequest {
     // run, so an agent compacted mid-task carries on. One line. Absent or blank: none, and the
     // agent waits at its prompt as before. A compaction given up drops its prompt with it.
     optional string then = 3;
+  }
+
+  // Clears the pane's agent's context, beginning a new session, by typing the line its manifest
+  // gives in `[session] clear` at its next idle, empty prompt, as a Compact is typed and in the
+  // same queue: a clear asked replaces a compaction not yet typed, and the other way round.
+  // REFUSED for a pane running no agent, or one whose manifest says no way to clear it; DONE
+  // once it is queued.
+  message Clear {
+    string pane = 1;
+    // A prompt typed at the agent's next idle, empty prompt once the clear has run, as a
+    // Compact's `then` is. One line. Absent or blank: none.
+    optional string then = 2;
   }
 
   // Restarts the pane's agent where it runs, in the session it reported: empties what waits for
@@ -432,6 +482,9 @@ message PaneRequest {
   // remembered.
   message Close {
     string pane = 1;
+    // Since 1.16. The pane whose agent asked for the close, empty for a person: the stall watch
+    // holds nobody up on its own messages to a pane it closed.
+    string by = 2;
   }
 
   // Brings back a pane closed within `Settings.reopen_closed_minutes` (`ClosedPane`), under its
@@ -522,6 +575,8 @@ message PaneRequest {
   // replaces what the pane held; `clear` forgets everything first. A report outside the bounds
   // on `AgentFacts` is refused whole.
   message Report {
+    // The pane's id, or since 1.16 its callsign or the name somebody gave it, which the daemon
+    // reads as the pane's id.
     string pane = 1;
     optional float context_used = 2;
     // Empty removes the model.
@@ -1003,6 +1058,11 @@ message MsgRequest {
     // when the group is kept on a machine whose daemon speaks a protocol before 1.10, which
     // would drop it.
     optional string recommended = 8;
+    // Since 1.16. Its author wants no reply, as a "stand by" does: it wakes whom it is for as
+    // any post does, but a turn it starts is not their going to work, so a helper that reads it
+    // and ends its turn without posting is not reported to its maker as gone idle without
+    // posting. A machine before 1.16 drops it, which only means that report may come.
+    bool no_reply = 9;
   }
 
   // A program's operation id for a post (MIP-10, section 5).
@@ -1360,6 +1420,8 @@ message MsgAnswer {
     optional string via = 7;
     // Since 1.10. The offered answer its author recommends.
     optional string recommended = 8;
+    // Since 1.16. Its author wants no reply.
+    bool no_reply = 9;
   }
 
   message Members {
@@ -1890,6 +1952,14 @@ message Pane {
   // Since 1.14. The thresholds that apply to this pane now, and what set each. Absent from a
   // daemon that applies one percent to every pane.
   AppliedCompaction compaction = 30;
+  // Since 1.16. The pane's agent can be cleared (`PaneRequest.Clear`): its manifest, as this
+  // daemon holds it, says how. False for a pane running no agent, and from a daemon that does not
+  // say, so a view offers clearing only where it is known to work.
+  bool agent_clears = 31;
+  // Since 1.16. Why a wake for the pane's agent is held, in words, as `msg who` says it: "its
+  // prompt holds something typed and not sent". Absent while no wake for it is held at its
+  // prompt. Derived from the doorbell's last look, never persisted.
+  optional string wake_held = 32;
 }
 
 // The compaction thresholds applying to one pane (`Pane.compaction`).
@@ -2455,6 +2525,28 @@ message Handoff {
     // crossing `compact_at` is not carried, because the compaction queued for it is not: a new
     // daemon that believed the crossing spent would leave a full agent uncompacted.
     bool nudged = 16;
+    // Since 1.16. Each stall of the pane's agent holding a group up that whoever waits, or the
+    // person, has been told of, so the new daemon does not tell it again while the same message
+    // is the first one unread.
+    repeated StallTold stalls_told = 17;
+    // Since 1.16. When the dialog the pane is at began, in UTC milliseconds, and whether the
+    // person has been told of it, so the new daemon neither starts its clock again nor tells them
+    // twice. Absent: not at a dialog, or a daemon that sends none.
+    optional Block block = 18;
+  }
+
+  message StallTold {
+    string name = 1;
+    string group = 2;
+    // The first unread message's number when it was told.
+    uint64 first = 3;
+    // The person was told too, as a stall only a person can free.
+    bool escalated = 4;
+  }
+
+  message Block {
+    uint64 since_ms = 1;
+    bool person_told = 2;
   }
 
   enum TypedBy {
@@ -2662,6 +2754,8 @@ message PeerCall {
     optional MsgRequest.Operation operation = 10;
     // Since 1.10.
     optional string recommended = 11;
+    // Since 1.16.
+    bool no_reply = 12;
   }
 
   message Since {
