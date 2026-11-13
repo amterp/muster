@@ -5,16 +5,17 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
   "created_at_millis": 1794585640035,
   "creator": "Alexander Terp",
   "description": "muster pane clear and the API's pane.clear landed on 2026-11-13 without the window's half: the pane and agent-row context menus have no Clear Context item, the keymap has no bindable clear_pane action, and a pane's record does not say whether its harness can clear, so a menu cannot grey the item out.",
   "id": "a_2z9zcjj20",
-  "position": "b38",
+  "position": "YtI",
   "title": "Clear Context in the window: a menu item, a clear_pane action and a record field saying whether an agent clears",
   "type": "feature",
-  "updated_at_millis": 1794585640035,
+  "updated_at_millis": 1794588238587,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1794585640035}
+    {"field":"column","value":"backlog-lo","at":1794585640035},
+    {"field":"column","value":"done","at":1794588238587}
   ]
 }
