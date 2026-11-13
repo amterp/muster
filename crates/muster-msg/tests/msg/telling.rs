@@ -118,32 +118,6 @@ fn the_human_is_told_about_a_closed_pane_by_what_it_was_called() {
     );
 }
 
-/// A helper has posted to its maker when it addressed the maker, or posted unaddressed in a
-/// group the maker is in, and not when it addressed somebody else.
-#[test]
-fn a_post_to_the_maker_is_found_and_one_to_somebody_else_is_not() {
-    let mut messaging = Messaging::new(Memory::default());
-    for pane in ["p1", "p2", "p3"] {
-        join(&mut messaging, pane, "crew");
-    }
-    assert_eq!(messaging.last_post("p2", "p1"), None, "nothing yet");
-
-    let to = |name: &str| vec![name.to_string()];
-    messaging.post(&in_pane("p2"), Some("crew"), &to("critic"), "a question", &Open, 40).unwrap();
-    assert_eq!(messaging.last_post("p2", "p1"), None, "to somebody else");
-
-    messaging.read(&in_pane("p2"), None, &Open).ok();
-    messaging
-        .post(&in_pane("p2"), Some("crew"), &to("integrator"), "my report", &Open, 50)
-        .unwrap();
-    assert_eq!(messaging.last_post("p2", "p1"), Some(50));
-
-    messaging.read(&in_pane("p2"), None, &Open).ok();
-    messaging.post(&in_pane("p2"), Some("crew"), &[], "done", &Open, 60).unwrap();
-    assert_eq!(messaging.last_post("p2", "p1"), Some(60), "unaddressed, in the maker's group");
-    assert_eq!(messaging.last_post("p1", "p2"), None, "the maker has posted nothing");
-}
-
 /// A helper is asked for work by a message for it posted since a moment: addressed to it, or to
 /// nobody in a group that rings it. Not by one for somebody else, its own post, or Muster's.
 #[test]

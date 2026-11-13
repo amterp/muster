@@ -2527,11 +2527,11 @@ fn a_maker_on_another_machine_is_told_of_its_helper_there() {
     assert_eq!(rung.len(), 1);
     assert_eq!(rung[0].1.via, Via::Pane("p1lap".to_string()));
 
-    assert_eq!(wire.devenv.last_post("p2dev", &maker), None, "nothing posted yet");
+    assert_eq!(wire.devenv.last_post_by("p2dev"), None, "nothing posted yet");
     wire.read(Side::Devenv, &in_pane("p2dev"), None);
     let report = wire.post(Side::Devenv, &in_pane("p2dev"), None, &["p1lap"], "my report");
     assert_eq!(report.unwrap().group, "p1lap+p2dev");
-    assert!(wire.devenv.last_post("p2dev", &maker).is_some(), "its report is found");
+    assert!(wire.devenv.last_post_by("p2dev").is_some(), "its report is found");
 }
 
 /// A helper's machine tells its maker in the group the two already share, kept on the maker's

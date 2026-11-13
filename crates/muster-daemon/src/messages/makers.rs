@@ -105,8 +105,11 @@ pub(crate) struct Helper {
     pub(crate) waiting: Option<Waiting>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
-    /// When it last posted to its maker, looked up only while it is idle.
+    /// When it last posted to anybody, looked up only while it is idle: a post to its maker, to
+    /// a helper of its own or to another agent all say it ended its turn on purpose.
     pub(crate) last_post_ms: Option<u64>,
+    /// Whether a helper of its own is at work, waiting or at a dialog, which it is waiting on.
+    pub(crate) helpers_at_work: bool,
     /// Whether something new asks it for work: somebody typed what started its turn, or a
     /// message for it from somebody other than Muster came after its last post. Looked up only
     /// while it is at work or waiting.
@@ -498,6 +501,7 @@ fn need(helper: &Helper, worked_since_ms: Option<u64>) -> Option<Need> {
     match helper.activity {
         Some(Activity::Blocked) => Some(Need::Blocked),
         Some(Activity::Waiting) if helper.waiting.is_some() => Some(Need::Waiting),
+        Some(Activity::Idle) if helper.helpers_at_work => None,
         Some(Activity::Idle) => {
             let worked = worked_since_ms?;
             let posted = helper.last_post_ms.is_some_and(|posted| posted >= worked);
@@ -796,7 +800,17 @@ fn helpers(
             maker_here,
             pane: pane.clone(),
             maker: maker.clone(),
-            last_post_ms: if idle { service.last_post(pane, &to) } else { None },
+            last_post_ms: if idle { service.last_post_by(pane) } else { None },
+            helpers_at_work: idle
+                && panes.makers().any(|(own, its_maker)| {
+                    its_maker == pane
+                        && panes.get(own).is_some_and(|own| {
+                            matches!(
+                                own.activity,
+                                Some(Activity::Working | Activity::Waiting | Activity::Blocked)
+                            )
+                        })
+                }),
             asked: matches!(seen.activity, Some(Activity::Working | Activity::Waiting))
                 && (seen.io.turn_typed_by() == Some(TypedBy::Someone)
                     || service.asked_since(pane, service.last_post_by(pane).unwrap_or(0))),
@@ -1101,6 +1115,7 @@ mod tests {
             waiting: None,
             stopped: None,
             last_post_ms: None,
+            helpers_at_work: false,
             asked: true,
             maker_busy: false,
             maker_here: true,

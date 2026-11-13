@@ -523,7 +523,7 @@ menu, and the pills', offer Show Helpers and Hide Helpers. A helper still runnin
 closed is listed under Hidden, since there is no row to list it under.
 
 A helper is quiet because its maker hears from it instead of you. When a helper becomes blocked or
-stuck, or goes idle without having posted to its maker since it last went to work, and stays so
+stuck, or goes idle without having posted since it last went to work, and stays so
 for 10 seconds, its daemon tells the maker once, in a message from `@muster` that says why and
 what answers it (`muster docs msg`), whether or not the helper is quiet. While the maker is at
 work it is told once its turn ends, and only if the helper still needs it: a maker approving its

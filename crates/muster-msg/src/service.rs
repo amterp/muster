@@ -1385,35 +1385,6 @@ impl<S: Store> Messaging<S> {
         }
     }
 
-    /// When an agent in `author_pane` last posted to `reader`, in the milliseconds of the
-    /// group's home: a message in a group holding both, addressed to the reader or to nobody in
-    /// particular, which reaches every member it rings. `reader` is a pane here, or somebody on
-    /// another machine as this machine writes them. Read from the groups' logs, so a host that
-    /// restarted still knows.
-    pub fn last_post(&self, author_pane: &str, reader: &str) -> Option<u64> {
-        let authors = self.in_pane(author_pane);
-        let readers =
-            if split_machine(reader).is_some() { vec![reader] } else { self.in_pane(reader) };
-        let holds =
-            |group: &Group, names: &[&str]| names.iter().any(|n| group.members.contains(*n));
-        self.groups
-            .values()
-            .filter(|group| holds(group, &authors) && holds(group, &readers))
-            .filter_map(|group| {
-                group.log.iter().rev().find_map(|entry| match &entry.what {
-                    What::Message { author, to, .. }
-                        if authors.contains(&author.as_str())
-                            && (to.is_empty()
-                                || to.iter().any(|name| readers.contains(&name.as_str()))) =>
-                    {
-                        Some(entry.at_ms)
-                    }
-                    _ => None,
-                })
-            })
-            .max()
-    }
-
     /// When an agent in `pane` last posted anything, to anybody, in the milliseconds of the
     /// group's home.
     pub fn last_post_by(&self, pane: &str) -> Option<u64> {
