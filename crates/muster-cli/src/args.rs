@@ -530,6 +530,58 @@ impl FontChange {
     }
 }
 
+/// clap's refusal of a word it did not expect, with a tip naming `--pane` when the word came after
+/// a pane verb that takes its pane only that way: an agent types `muster pane new otter` the way
+/// `msg post --to otter` reads, and the bare usage line does not say where the pane goes.
+fn with_pane_tip(mut error: clap::Error, argv: &[String]) -> clap::Error {
+    use clap::error::{ContextKind, ContextValue, ErrorKind};
+    if error.kind() != ErrorKind::UnknownArgument
+        || argv.first().map(String::as_str) != Some("pane")
+    {
+        return error;
+    }
+    let command = Cli::command();
+    let Some(verb) = argv
+        .get(1)
+        .and_then(|verb| command.find_subcommand("pane")?.find_subcommand(verb).cloned())
+    else {
+        return error;
+    };
+    let takes = |id: &str| verb.get_arguments().any(|argument| argument.get_id() == id);
+    if takes("pane") && !takes("bare_pane") && !takes("bare_panes") {
+        error.insert(
+            ContextKind::Suggested,
+            ContextValue::StyledStrs(vec!["name the pane with '--pane <REF>'".into()]),
+        );
+    }
+    error
+}
+
+impl Doing {
+    /// Moves a pane given bare (`muster pane close otter`) to where `--pane` puts it, so every
+    /// verb reads its pane from one place. clap refuses giving both.
+    fn take_bare_pane(&mut self) {
+        match self {
+            Doing::Restart { pane, bare_pane, .. }
+            | Doing::Compaction { pane, bare_pane, .. }
+            | Doing::Hide { pane, bare_pane, .. }
+            | Doing::Show { pane, bare_pane, .. }
+            | Doing::Quiet { pane, bare_pane, .. }
+            | Doing::Read { pane, bare_pane, .. }
+            | Doing::Reattach { pane, bare_pane, .. }
+            | Doing::Close { pane, bare_pane, .. }
+            | Doing::Remove { pane, bare_pane, .. }
+            | Doing::Reopen { pane, bare_pane, .. } => {
+                if let Some(bare) = bare_pane.take() {
+                    *pane = Some(bare);
+                }
+            }
+            Doing::Wait { pane, bare_panes, .. } => pane.append(bare_panes),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Doing {
     /// Split a pane, and print the name of the one that appears
@@ -645,6 +697,10 @@ enum Doing {
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
+
         /// Tell the agent to compact itself once its context is this full, in percent
         #[arg(
             long,
@@ -685,6 +741,10 @@ enum Doing {
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
+
         /// A variable to set for the resumed agent, as NAME=value; give it more than once for more
         #[arg(long, value_name = "NAME=VALUE", value_parser = variable)]
         env: Vec<(String, String)>,
@@ -695,6 +755,14 @@ enum Doing {
         /// The pane to hide, or the one this is running in
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(
+            value_name = "REF",
+            value_parser = reference,
+            conflicts_with_all = ["pane", "helpers_of"]
+        )]
+        bare_pane: Option<String>,
 
         /// Hide this pane's helpers instead, whose tab goes back whole; a helper moved into a
         /// tab with anything else in it stays
@@ -712,6 +780,10 @@ enum Doing {
         #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
+        /// The pane, as --pane names it
+        #[arg(group = "shown", value_name = "REF", value_parser = reference)]
+        bare_pane: Option<String>,
+
         /// Bring this pane's hidden helpers back instead, together in the tab they share, just
         /// after the tab holding this pane and arranged as they were
         #[arg(long, group = "shown", value_name = "REF", value_parser = reference)]
@@ -728,6 +800,10 @@ enum Doing {
         /// The pane to make quiet, or the one this is running in
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
 
         /// Let it notify again
         #[arg(long)]
@@ -794,8 +870,17 @@ enum Doing {
         //
         // Required, unlike every other pane command, and $MUSTER_PANE is not read: the pane
         // this is running in is running this, so waiting on it has no useful answer.
-        #[arg(long, value_name = "REF", value_parser = reference, required = true)]
+        #[arg(
+            long,
+            value_name = "REF",
+            value_parser = reference,
+            required_unless_present = "bare_panes"
+        )]
         pane: Vec<String>,
+
+        /// The panes, as --pane names them
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_panes: Vec<String>,
 
         /// The states to wait for, comma-separated. idle is also met by done, and not by waiting
         #[arg(
@@ -832,6 +917,10 @@ enum Doing {
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
 
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
+
         /// How many rows back to ask for. Omit for as far as the window will go
         #[arg(long, value_name = "N", conflicts_with = "turn")]
         rows: Option<u32>,
@@ -852,6 +941,10 @@ enum Doing {
         /// The pane to reattach, or the one this is running in
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
     },
 
     /// Close a pane, which ends what is running in it
@@ -859,6 +952,10 @@ enum Doing {
         /// The pane to close, or the one this is running in - which ends this command's own shell
         #[arg(long, value_name = "REF", value_parser = reference)]
         pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
+        bare_pane: Option<String>,
     },
 
     /// Take a pane whose machine is unreachable out of its tab, leaving it running there
@@ -869,10 +966,15 @@ enum Doing {
     //
     // Required, and $MUSTER_PANE is not read: the pane this runs in is on a machine that
     // answers, so it is never one to remove.
+    #[command(group = ArgGroup::new("removed").required(true))]
     Remove {
         /// The pane, by the id `muster window --layout` draws in its unreachable place
-        #[arg(long, value_name = "REF", value_parser = reference)]
-        pane: String,
+        #[arg(long, group = "removed", value_name = "REF", value_parser = reference)]
+        pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(group = "removed", value_name = "REF", value_parser = reference)]
+        bare_pane: Option<String>,
     },
 
     /// Bring back a pane closed in the last hour, under its name and callsign, where it was,
@@ -885,6 +987,14 @@ enum Doing {
         /// most recently in this window
         #[arg(long, value_name = "REF", value_parser = reference, conflicts_with = "list")]
         pane: Option<String>,
+
+        /// The pane, as --pane names it
+        #[arg(
+            value_name = "REF",
+            value_parser = reference,
+            conflicts_with_all = ["pane", "list"]
+        )]
+        bare_pane: Option<String>,
 
         /// List the closed panes that can be brought back, newest first, instead
         #[arg(long)]
@@ -1110,7 +1220,11 @@ pub fn parse(
     // a caller reached through a symlink or a wrapper would otherwise see that name in its own
     // help and completions, which is a different command from the one these documents.
     let words = std::iter::once("muster".to_string()).chain(argv.iter().cloned());
-    let cli = Cli::try_parse_from(words).map_err(|error| Failure::Usage(Box::new(error)))?;
+    let mut cli = Cli::try_parse_from(words)
+        .map_err(|error| Failure::Usage(Box::new(with_pane_tip(error, argv))))?;
+    if let What::Pane { doing } = &mut cli.what {
+        doing.take_bare_pane();
+    }
 
     let asking = match &cli.what {
         What::Window { watch: true, layout: true, .. } => Asking::WatchLayout {
@@ -1358,7 +1472,7 @@ fn pane(
                 ..HideHelpers::default()
             }))
         }
-        Doing::Hide { pane, helpers_of: None } => send(request::Payload::HidePane(HidePane {
+        Doing::Hide { pane, helpers_of: None, .. } => send(request::Payload::HidePane(HidePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..HidePane::default()
         })),
@@ -1369,14 +1483,14 @@ fn pane(
                 ..ShowHelpers::default()
             }))
         }
-        Doing::Show { pane, focus, helpers_of: None } => {
+        Doing::Show { pane, focus, helpers_of: None, .. } => {
             send(request::Payload::ShowPane(ShowPane {
                 pane_id: pane.clone().unwrap_or_default(),
                 take_focus: *focus,
                 ..ShowPane::default()
             }))
         }
-        Doing::Compaction { pane, nudge_at, no_nudge, compact_at, no_compact, clear } => {
+        Doing::Compaction { pane, nudge_at, no_nudge, compact_at, no_compact, clear, .. } => {
             send(request::Payload::PaneCompaction(PaneCompaction {
                 pane_id: pane_ref(pane.as_ref(), environment),
                 nudge_at: *nudge_at,
@@ -1387,7 +1501,7 @@ fn pane(
                 ..PaneCompaction::default()
             }))
         }
-        Doing::Quiet { pane, off } => send(request::Payload::QuietPane(QuietPane {
+        Doing::Quiet { pane, off, .. } => send(request::Payload::QuietPane(QuietPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             quiet: Some(!*off),
             ..QuietPane::default()
@@ -1414,7 +1528,7 @@ fn pane(
         Doing::Compact { pane, focus, then } => {
             compact(pane.as_ref(), focus, then.as_deref(), environment)
         }
-        Doing::Restart { pane, env } => send(request::Payload::RestartAgent(RestartAgent {
+        Doing::Restart { pane, env, .. } => send(request::Payload::RestartAgent(RestartAgent {
             pane_id: pane_ref(pane.as_ref(), environment),
             env: env.iter().cloned().collect(),
             ..RestartAgent::default()
@@ -1442,8 +1556,8 @@ fn pane(
                 None => Asking::Send(request),
             }
         }
-        Doing::Wait { pane, until, context, timeout } => wait(pane, until, *context, *timeout),
-        Doing::Read { pane, rows, turn } => send(request::Payload::ReadPane(ReadPane {
+        Doing::Wait { pane, until, context, timeout, .. } => wait(pane, until, *context, *timeout),
+        Doing::Read { pane, rows, turn, .. } => send(request::Payload::ReadPane(ReadPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             // Zero is what the window reads as "as far as you will go", and it is also what
             // proto3 sends for an absent number - so omitting `--rows` and asking for
@@ -1452,25 +1566,25 @@ fn pane(
             turn: *turn,
             ..ReadPane::default()
         })),
-        Doing::Reattach { pane } => send(request::Payload::ReattachPane(ReattachPane {
+        Doing::Reattach { pane, .. } => send(request::Payload::ReattachPane(ReattachPane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ReattachPane::default()
         })),
         Doing::Reopen { list: true, .. } => {
             send(request::Payload::ReadClosedPanes(ReadClosedPanes::default()))
         }
-        Doing::Reopen { pane, focus, list: false } => {
+        Doing::Reopen { pane, focus, list: false, .. } => {
             send(request::Payload::ReopenPane(ReopenPane {
                 pane: pane.clone().unwrap_or_default(),
                 take_focus: *focus,
             }))
         }
-        Doing::Close { pane } => send(request::Payload::ClosePane(ClosePane {
+        Doing::Close { pane, .. } => send(request::Payload::ClosePane(ClosePane {
             pane_id: pane_ref(pane.as_ref(), environment),
             ..ClosePane::default()
         })),
-        Doing::Remove { pane } => send(request::Payload::RemoveFromTab(RemoveFromTab {
-            pane_id: pane.clone(),
+        Doing::Remove { pane, .. } => send(request::Payload::RemoveFromTab(RemoveFromTab {
+            pane_id: pane.clone().unwrap_or_default(),
             ..RemoveFromTab::default()
         })),
         // clap holds the three destinations in one required group, so exactly one is set here.

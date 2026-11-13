@@ -3504,6 +3504,140 @@
       "expect": {
         "usage": "ArgumentConflict"
       }
+    },
+    {
+      "name": "a pane to close can be given bare",
+      "why": "An agent types a pane after the verb the way `msg post --to otter` reads, and was refused with a usage error that did not say where the pane goes (kan a_2vDjgTHGc). The verbs whose only target is a pane take it bare as well as by --pane.",
+      "given": {
+        "argv": [
+          "pane",
+          "close",
+          "p1w3r0ab2n"
+        ],
+        "env": {
+          "MUSTER_PANE": "p1w3r07bsd"
+        }
+      },
+      "expect": {
+        "request": {
+          "close_pane": {
+            "pane_id": "p1w3r0ab2n"
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane to read can be given bare",
+      "why": "An agent types a pane after the verb the way `msg post --to otter` reads, and was refused with a usage error that did not say where the pane goes (kan a_2vDjgTHGc). The verbs whose only target is a pane take it bare as well as by --pane.",
+      "given": {
+        "argv": [
+          "pane",
+          "read",
+          "p1w3r0ab2n",
+          "--turn"
+        ]
+      },
+      "expect": {
+        "request": {
+          "read_pane": {
+            "pane_id": "p1w3r0ab2n",
+            "turn": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane given bare and by --pane is refused",
+      "why": "Two answers to which pane, even when they agree, is a command line that was not written the way it reads.",
+      "given": {
+        "argv": [
+          "pane",
+          "read",
+          "p1w3r0ab2n",
+          "--pane",
+          "p1w3r0ab2n"
+        ]
+      },
+      "expect": {
+        "usage": "ArgumentConflict"
+      }
+    },
+    {
+      "name": "panes to wait on can be given bare",
+      "why": "An agent types a pane after the verb the way `msg post --to otter` reads, and was refused with a usage error that did not say where the pane goes (kan a_2vDjgTHGc). The verbs whose only target is a pane take it bare as well as by --pane. A wait takes several, as --pane given more than once does.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "p1w3r07bsd",
+          "p1w3r0ab2n",
+          "--until",
+          "idle"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd",
+              "p1w3r0ab2n"
+            ],
+            "until": [
+              "idle"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "a hidden pane to show can be given bare",
+      "why": "An agent types a pane after the verb the way `msg post --to otter` reads, and was refused with a usage error that did not say where the pane goes (kan a_2vDjgTHGc). The verbs whose only target is a pane take it bare as well as by --pane.",
+      "given": {
+        "argv": [
+          "pane",
+          "show",
+          "p1w3r07bsd"
+        ]
+      },
+      "expect": {
+        "request": {
+          "show_pane": {
+            "pane_id": "p1w3r07bsd"
+          }
+        }
+      }
+    },
+    {
+      "name": "a pane to remove can be given bare",
+      "why": "An agent types a pane after the verb the way `msg post --to otter` reads, and was refused with a usage error that did not say where the pane goes (kan a_2vDjgTHGc). The verbs whose only target is a pane take it bare as well as by --pane.",
+      "given": {
+        "argv": [
+          "pane",
+          "remove",
+          "p1w3r0x0ab"
+        ]
+      },
+      "expect": {
+        "request": {
+          "remove_from_tab": {
+            "pane_id": "p1w3r0x0ab"
+          }
+        }
+      }
+    },
+    {
+      "name": "a verb that takes no bare pane still refuses one",
+      "why": "`pane new` splits from --pane and has no bare argument, so a word after it is not taken as anything. The refusal names --pane, which the binary's own test checks.",
+      "given": {
+        "argv": [
+          "pane",
+          "new",
+          "p1w3r0ab2n"
+        ]
+      },
+      "expect": {
+        "usage": "UnknownArgument"
+      }
     }
   ]
 }

@@ -476,3 +476,21 @@ fn answers_here(asking: &Asking) -> Option<Value> {
         Asking::RefreshCodex { .. } => Some(json!("refreshing Codex's installed adapter")),
     }
 }
+
+/// A word after a pane verb that takes its pane only by `--pane` is refused saying so, rather
+/// than with a usage line that leaves an agent a `--help` round trip from the answer
+/// (kan a_2vDjgTHGc). A verb that takes a bare pane says nothing of the kind.
+#[test]
+fn a_word_a_pane_verb_cannot_take_is_refused_naming_pane() {
+    let refusal = |argv: &[&str]| {
+        let argv: Vec<String> = argv.iter().map(|word| (*word).to_string()).collect();
+        match args::parse(&argv, &BTreeMap::new(), None) {
+            Err(args::Failure::Usage(error)) => error.to_string(),
+            other => panic!("{argv:?} was not refused by clap: {other:?}"),
+        }
+    };
+    let new = refusal(&["pane", "new", "otter"]);
+    assert!(new.contains("--pane <REF>"), "{new}");
+    let close = refusal(&["pane", "close", "otter", "llama"]);
+    assert!(!close.contains("name the pane with"), "{close}");
+}

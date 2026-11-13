@@ -65,6 +65,11 @@ Giving it empty is not leaving it out: `--pane ""` is refused, as is an empty ta
 `msg post --to` name, because it is nearly always a shell variable that was never set, and the pane
 the keyboard is on is the worst place for that to land.
 
+A verb whose only target is a pane also takes it bare: `muster pane close otter` is `muster pane
+close --pane otter`, and so are `read`, `wait`, `restart`, `hide`, `show`, `quiet`, `reattach`,
+`compaction`, `remove` and `reopen`. Giving both is refused. `send`, `compact` and `rename` take
+only `--pane`, because the words after them are the text, the focus or the name.
+
 Muster sets three variables in every pane it creates: `$MUSTER_PANE`, the id, `$MUSTER_CALLSIGN`,
 the callsign, and `$MUSTER_PANE_NAME`, what the pane was called as it was made. A program's
 environment cannot follow a rename, so `muster window` says what a pane is called now. A pane
