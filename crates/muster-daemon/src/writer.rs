@@ -591,6 +591,15 @@ impl Writer {
         true
     }
 
+    /// Whether the pane's shell is the foreground process group, with nothing running over it.
+    /// Kitty keyboard flags in force then were left by a program that has gone, as one killed
+    /// mid-turn leaves them, and a shell reads only a plain carriage return as Return.
+    fn shell_in_front(&self) -> bool {
+        self.io
+            .upgrade()
+            .is_some_and(|io| io.shell().is_some_and(|shell| io.foreground_group() == Some(shell)))
+    }
+
     fn encode(&mut self, input: Input) -> Vec<u8> {
         let shared = Arc::clone(&self.encoding);
         let mut encoding = poison::lock(&shared, "daemon.pane.encoding");
@@ -660,7 +669,9 @@ impl Writer {
             | Input::Ring { text, enter }
             | Input::Chore { text, enter } => {
                 let mut bytes = sent_text(text, modes.bracketed_paste);
-                if enter {
+                if enter && self.shell_in_front() {
+                    bytes.push(b'\r');
+                } else if enter {
                     bytes.extend(self.pressed(&mut encoding, &KeyEvent::press(Key::Enter)));
                 }
                 bytes
