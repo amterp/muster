@@ -223,7 +223,7 @@ impl Shared {
                     naming: HashMap::new(),
                     released: VecDeque::new(),
                     callsigns_elsewhere: Vec::new(),
-                    closed_helpers: VecDeque::new(),
+                    closed_by: VecDeque::new(),
                     closed: closed_panes,
                     persister,
                     log,
@@ -478,10 +478,10 @@ pub(crate) struct Session {
     /// The callsigns a window last said its other machines hold, which a draw passes over for
     /// every pane made here, one asked for with no list of its own included.
     callsigns_elsewhere: Vec<String>,
-    /// The helpers closed by request most recently, each with the maker it had, oldest first:
-    /// the stall watch holds nobody up on a maker's message to a helper closed while it was
-    /// unread.
-    closed_helpers: VecDeque<(String, String)>,
+    /// The panes closed by request most recently, each with the pane whose agent closed it,
+    /// oldest first: the one that asked, else a helper's maker. The stall watch holds nobody up on
+    /// a message of theirs to a pane they closed while it was unread.
+    closed_by: VecDeque<(String, String)>,
     /// The closed panes a reopen can still bring back, oldest first, at most
     /// [`muster_daemon_proto::CLOSED_PANES_KEPT`].
     /// One past its time is dropped whenever the list is next looked at.
@@ -897,8 +897,8 @@ const REOPEN_CLOSED_MINUTES: u32 = 60;
 /// machine with a few dozen panes open still has most words to draw from.
 const RELEASED_CALLSIGNS: usize = 128;
 
-/// How many closed helpers' makers are kept for the stall watch, newest first.
-const CLOSED_HELPERS_KEPT: usize = 64;
+/// How many closed panes' closers are kept for the stall watch, newest first.
+const CLOSED_BY_KEPT: usize = 64;
 
 /// How long restoring waits to learn whether a pane's saved directory is there. A directory on a
 /// mount that has hung never answers, and would otherwise hold every tab after it back.
@@ -1425,7 +1425,7 @@ impl Session {
             Service::Pane(proto::PaneRequest { request: Some(request) }) => match request {
                 P::Create(create) => return self.create(create),
                 P::Reopen(reopen) => return self.reopen(reopen),
-                P::Close(close) => self.close_pane(&close.pane),
+                P::Close(close) => self.close_pane(&close.pane, &close.by),
                 P::Resize(resize) => self.resize(&resize),
                 P::Zoom(zoom) => self.zoom(&zoom),
                 P::Swap(swap) => self.swap(&swap),
@@ -3339,9 +3339,13 @@ impl Session {
         reply
     }
 
-    fn close_pane(&mut self, pane: &str) -> Reply {
+    fn close_pane(&mut self, pane: &str, by: &str) -> Reply {
         if self.pane_index(pane).is_none() {
             return Reply::not_there(format!("no pane {pane} on this daemon"));
+        }
+        self.closed_by.retain(|(closed, _)| closed != pane);
+        if !by.is_empty() {
+            self.note_closed_by(pane, by);
         }
         self.remember_closing(pane, false);
         self.remove(pane, proto::CloseReason::Requested, None);
@@ -3383,9 +3387,16 @@ impl Session {
         log::info("daemon.pane.remembered", fields! { "pane" => pane, "minutes" => minutes });
     }
 
-    /// Each helper closed by request recently, with the maker it had.
-    pub(crate) fn closed_helpers(&self) -> impl Iterator<Item = &(String, String)> {
-        self.closed_helpers.iter()
+    /// Each pane closed by request recently, with the pane whose agent closed it.
+    pub(crate) fn closed_by(&self) -> impl Iterator<Item = &(String, String)> {
+        self.closed_by.iter()
+    }
+
+    fn note_closed_by(&mut self, pane: &str, by: &str) {
+        self.closed_by.push_back((pane.to_string(), by.to_string()));
+        if self.closed_by.len() > CLOSED_BY_KEPT {
+            self.closed_by.pop_front();
+        }
     }
 
     /// The latest a reopen can bring `pane` back, while it is remembered.
@@ -3571,11 +3582,10 @@ impl Session {
         let closed_by_request = reason == proto::CloseReason::Requested
             && !self.stopping
             && self.replacing == Replacing::No;
-        if let Some(maker) = removed.record.maker.clone().filter(|_| closed_by_request) {
-            self.closed_helpers.push_back((pane.to_string(), maker));
-            if self.closed_helpers.len() > CLOSED_HELPERS_KEPT {
-                self.closed_helpers.pop_front();
-            }
+        // A helper closed with no agent saying it asked is taken as its maker's close.
+        let said = self.closed_by.iter().any(|(closed, _)| closed == pane);
+        if let Some(maker) = removed.record.maker.clone().filter(|_| closed_by_request && !said) {
+            self.note_closed_by(pane, &maker);
         }
         let maker = &removed.record;
         self.orphan(&maker.pane, maker.callsign.as_deref().unwrap_or(&maker.pane));

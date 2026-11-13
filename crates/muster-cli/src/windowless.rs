@@ -168,7 +168,7 @@ pub fn ask(request: &Request, environment: &BTreeMap<String, String>) -> Result<
         }
         Some(request::Payload::ClosePane(close)) => {
             let pane = named(&close.pane_id, "closed")?;
-            respond(close_pane(&socket, pane)?)
+            respond(close_pane(&socket, pane, &request.from_pane)?)
         }
         Some(request::Payload::SplitPane(split)) => {
             respond(make_pane(&socket, split, environment)?)
@@ -889,11 +889,12 @@ fn rename_pane(socket: &Path, pane: &str, name: &str) -> Result<Response, Troubl
     })
 }
 
-fn close_pane(socket: &Path, pane: &str) -> Result<Response, Trouble> {
+/// Closes `pane`, as the agent in `by` when the request came from a pane.
+fn close_pane(socket: &Path, pane: &str, by: &str) -> Result<Response, Trouble> {
     let answer = asked(
         socket,
         pane_service(daemon_proto::pane_request::Request::Close(
-            daemon_proto::pane_request::Close { pane: pane.to_string(), by: String::new() },
+            daemon_proto::pane_request::Close { pane: pane.to_string(), by: by.to_string() },
         )),
     )?;
     Ok(match answer.outcome() {

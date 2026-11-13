@@ -3037,7 +3037,7 @@ pub(crate) fn submit_from(
             // A hidden pane is in no window, so no region could ever be asked for, and it is
             // reached only by its name - from the hidden list or a script that made it - never
             // by being whatever the keyboard happened to be on.
-            BackendIntent::ClosePane { pane } if session.hidden(daemon, pane) => None,
+            BackendIntent::ClosePane { pane, .. } if session.hidden(daemon, pane) => None,
             // Where a new pane goes is a fact about the tab's tree, on the same terms as
             // moving one, so this asks the window rather than requiring it: the keyboard
             // follows the new pane when a region is showing the tab it landed in, and stays
@@ -3050,7 +3050,7 @@ pub(crate) fn submit_from(
             // risk is not: it destroys something, and `muster docs limits` already singles
             // it out as the one command whose default destroys the pane it runs in.
             BackendIntent::SplitPane { pane, .. } => session.region_holding(window, daemon, pane),
-            BackendIntent::ClosePane { pane }
+            BackendIntent::ClosePane { pane, .. }
             | BackendIntent::ResizePane { pane, .. }
             | BackendIntent::ZoomPane { pane } => Some(
                 session

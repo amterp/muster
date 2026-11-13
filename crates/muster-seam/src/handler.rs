@@ -148,7 +148,7 @@ fn handle(mut request: Request, origin: Origin) -> Response {
 
     let leaves = leaves_the_conversation(&payload, origin);
     let goes_to_a_tab = goes_to_a_tab(&payload);
-    let response = route(resolved.to, payload);
+    let response = route(resolved.to, payload, &request.from_pane);
     // Choosing where to look returns a window from a conversation to its panes
     // (mip/0009-group-conversation.md, section 1), once the choice is carried out: the keyboard
     // is on what was chosen by then, and a choice that failed leaves the human reading.
@@ -238,7 +238,7 @@ fn about_the_whole_app(payload: &request::Payload) -> bool {
 // A table with one arm per request: split into helpers it would be the same length with the
 // correspondence broken up.
 #[allow(clippy::too_many_lines)]
-fn route(window: WindowId, payload: request::Payload) -> Response {
+fn route(window: WindowId, payload: request::Payload, from_pane: &str) -> Response {
     match payload {
         request::Payload::Startup(startup) => start(&startup),
         request::Payload::LogRecord(record) => write(record),
@@ -295,8 +295,9 @@ fn route(window: WindowId, payload: request::Payload) -> Response {
             reattach_pane(window, &reattach.daemon_id, &reattach.pane_id)
         }
         request::Payload::ClosePane(close) => {
+            let by = (!from_pane.is_empty()).then(|| PaneId::new(from_pane));
             act(window, &close.daemon_id, &close.pane_id, Keyboard::Follows, |pane| {
-                BackendIntent::ClosePane { pane }
+                BackendIntent::ClosePane { pane, by }
             })
         }
         request::Payload::ReadBindings(_) => read_bindings(),

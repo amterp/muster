@@ -188,6 +188,8 @@ pub enum BackendIntent {
     },
     ClosePane {
         pane: PaneId,
+        /// The pane whose agent asked for it, or nothing when a person did.
+        by: Option<PaneId>,
     },
     /// Makes a tab, with one pane of its own in it. The adapter mints the pane's name and says
     /// it in [`Outcome::created`].
@@ -281,9 +283,7 @@ pub enum BackendIntent {
     ///
     /// A toggle, because that is what one key does. The adapter reads what is zoomed now from
     /// its mirror and asks the daemon for the other.
-    ZoomPane {
-        pane: PaneId,
-    },
+    ZoomPane { pane: PaneId },
 
     /// Exchanges two panes' places in their tab's tree.
     ///
@@ -293,29 +293,21 @@ pub enum BackendIntent {
     /// dragging one row expects.
     ///
     /// Both panes are in the same tab. Crossing tabs is [`BackendIntent::MovePane`].
-    SwapPanes {
-        pane: PaneId,
-        with: PaneId,
-    },
+    SwapPanes { pane: PaneId, with: PaneId },
 
     /// Moves a pane out of its place and puts it somewhere else.
     ///
     /// Asked of the daemon running the pane, which keeps running it: a pane is a PTY the daemon
     /// owns, so a move changes where it sits and never which machine it is on. Beside another
     /// machine's pane is a place in a tab's tree like any other ([`MoveDestination::InTree`]).
-    MovePane {
-        pane: PaneId,
-        to: MoveDestination,
-    },
+    MovePane { pane: PaneId, to: MoveDestination },
 
     /// Closes a tab, and every pane in it with it.
     ///
     /// The one verb here that destroys more than it names. Muster sends it rather than closing
     /// the panes one at a time because a daemon closing its own tab is one act, where N closes
     /// is N chances to be interrupted half way and left with a tab holding one pane.
-    CloseTab {
-        tab: TabId,
-    },
+    CloseTab { tab: TabId },
 
     /// Moves one divider in a tab's tree.
     SetSplitRatio {
@@ -391,10 +383,7 @@ pub enum BackendIntent {
     /// `None` is the other of what it is now, read from the mirror as zoom is, which is what a
     /// menu item means; `Some` is what a script means, which must not depend on what the pane
     /// was before.
-    QuietPane {
-        pane: PaneId,
-        quiet: Option<bool>,
-    },
+    QuietPane { pane: PaneId, quiet: Option<bool> },
 
     /// Calls a tab what somebody wants to call it.
     ///

@@ -363,10 +363,10 @@ impl BackendChannel for DaemonBackend {
                 let cwd = cwd.map(Directory::Named);
                 self.create_named(pane, in_tree(&at), Making { cwd, run, name, quiet, maker })
             }
-            BackendIntent::ClosePane { pane } => {
+            BackendIntent::ClosePane { pane, by } => {
                 self.pane_request(pane_request::Request::Close(pane_request::Close {
                     pane: pane.to_string(),
-                    by: String::new(),
+                    by: by.map(|by| by.to_string()).unwrap_or_default(),
                 }))?;
                 done
             }

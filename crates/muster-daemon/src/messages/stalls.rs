@@ -953,7 +953,7 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
         .service
         .holding()
         .into_iter()
-        .filter(|holding| !closed_by_its_maker(messages, panes, holding))
+        .filter(|holding| !closed_by_who_waits(messages, panes, holding))
         .map(|holding| {
             let seen = panes.get(&holding.pane);
             Member {
@@ -984,17 +984,18 @@ pub(crate) fn members(messages: &Messages, panes: &Panes) -> Vec<Member> {
         .collect()
 }
 
-/// Whether `holding` waits only on messages from the maker of a helper that was closed by
-/// request: the maker closed it on purpose, as it does a reviewer it has thanked, and nothing is
-/// stalled. Anybody else's message to it still holds them up, since they did not close it.
-fn closed_by_its_maker(messages: &Messages, panes: &Panes, holding: &Holding) -> bool {
+/// Whether `holding` waits only on messages from the agent that closed its pane by request, or
+/// for a helper closed with no agent saying so, from its maker: whoever closed it did so on
+/// purpose, as an agent does a reviewer it has thanked, and nothing is stalled. Anybody else's
+/// message to it still holds them up, since they did not close it.
+fn closed_by_who_waits(messages: &Messages, panes: &Panes, holding: &Holding) -> bool {
     if panes.exists(&holding.pane) {
         return false;
     }
-    let Some(maker) = panes.closed_helpers_maker(&holding.pane) else { return false };
-    let makers = messages.service.in_pane(maker);
+    let Some(closer) = panes.closed_by(&holding.pane) else { return false };
+    let closers = messages.service.in_pane(closer);
     !holding.authors.is_empty()
-        && holding.authors.iter().all(|author| makers.contains(&author.as_str()))
+        && holding.authors.iter().all(|author| closers.contains(&author.as_str()))
 }
 
 /// What each pane and each participant named after one is called, by id, to say `members` by.

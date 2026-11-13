@@ -398,9 +398,11 @@ the member asks the group's machine to post it there, naming the member as that 
 stall is in the log alone. Members waiting on each other with everything read
 are not watched, since that is also what a finished group looks like. A newer daemon taking the panes
 over, as every upgrade does, is handed what was told and says none of it again while the same
-message is the first unread. Nor is a helper closed by
-request with only its maker's messages unread, as a reviewer its maker thanked and then closed:
-the maker closed it on purpose. A message from anybody else to it is still told to them.
+message is the first unread. Nor is a pane an agent closed
+with `muster pane close` while only that agent's messages were unread, as a reviewer it thanked
+and then closed: it closed it on purpose. A helper closed with no agent saying so, as from its
+menu, is taken as its maker's close. A message from anybody else to it is still
+told to them.
 
 **A stall only a person can free is told to you, after half an hour.** When the member is at a
 dialog, or something covers its prompt, its poster is told at two minutes as above, but is often an
