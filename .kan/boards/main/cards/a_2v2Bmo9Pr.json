@@ -5,16 +5,25 @@
   "area": [
     "shell"
   ],
-  "column": "backlog-lo",
+  "column": "done",
+  "comments": [
+    {
+      "id": "c_2zCFYmZec",
+      "body": "2026-11-13: already fixed by 4a7152ed (helper pills replaced the nested helpers line).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1794591019129
+    }
+  ],
   "created_at_millis": 1793975987910,
   "creator": "Alexander Terp",
   "description": "In the sidebar, when a helper has helpers of its own, the collapsed line for them (\"1 helper · 1 done\") sits directly under that helper, but its dot and text start left of the helper's dot. It reads as a sibling of the helper, or as part of the maker's group, rather than as the helper's child. Seen 2026-11-06 on a devenv tab whose maker had six helpers, three of them (satin, knot, dolphin) with helpers of their own: the three nested lines looked like rows of the outer \"6 helpers\" group. `muster window` draws the same tree correctly, each nested helper indented under its owner.\n\nLikely cause: SidebarRowView.show (Sources/MusterMac/Sidebar.swift, `indent = (row.isPane || row.isHelpers ? 1 : 0) + row.depth`) gives a helpers line the same indent step as its maker's helpers (appendHelpers passes depth + 1), but a pane row also reserves the number column and dot before its name, and a helpers line does not, so the same indent lands further left. Want: a helpers line starts at or past its maker's name, at every depth.",
   "id": "a_2v2Bmo9Pr",
-  "position": "b2B",
+  "position": "Yt7",
   "title": "A helper's own helpers line is drawn left of the helper it belongs to",
   "type": "bug",
-  "updated_at_millis": 1793975987910,
+  "updated_at_millis": 1794591019129,
   "history": [
-    {"field":"column","value":"backlog-lo","at":1793975987910}
+    {"field":"column","value":"backlog-lo","at":1793975987910},
+    {"field":"column","value":"done","at":1794591018800}
   ]
 }
