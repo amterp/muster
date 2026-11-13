@@ -2096,6 +2096,33 @@ fn a_stall_told_before_a_handoff_is_not_told_again() {
     assert_eq!(agent.read_as("integrator"), Vec::<String>::new(), "told again");
 }
 
+/// A helper's dialog the person was told of before a newer daemon took its pane over is not
+/// told to them again, and the newer daemon goes on timing the same block rather than starting it
+/// over.
+#[test]
+fn a_helpers_dialog_told_to_the_person_is_not_told_again_after_a_handoff() {
+    let mut agent = Agent::in_a_pane_with(&[("MUSTER_DAEMON_HELPER_SETTLE_MS", "100")]);
+    let mut logging = following(&agent.daemon);
+    make(&mut agent.control, helper("p2", "p1", among_helpers("t2", "p1's helpers")));
+    agent.daemon.run_agent("p2");
+    agent.daemon.set_agent_state("p2", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p2", proto::AgentState::Blocked);
+    logging.logged_until(r#""event":"msg.helper.escalated""#, Duration::from_secs(40));
+    assert_eq!(agent.reading(msg_request::Caller::default()).len(), 1, "told before");
+
+    let answer = agent.daemon.replace(None);
+    assert_eq!(answer.outcome(), proto::Outcome::Done, "{}", answer.reason);
+    agent.control = agent.daemon.connect();
+    until_some("the helper to read blocked on the new daemon", || {
+        let panes = snapshot(&mut agent.control).panes;
+        let helper = panes.into_iter().find(|pane| pane.pane == "p2")?;
+        (helper.agent_state() == proto::AgentState::Blocked).then_some(())
+    });
+    // More than the 18 seconds a block takes to reach the person at this settle.
+    std::thread::sleep(Duration::from_secs(24));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told again");
+}
+
 /// A helper still blocked as a newer daemon takes its pane over has told its maker already, and
 /// the new daemon does not tell it again.
 #[test]
