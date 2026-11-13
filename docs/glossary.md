@@ -8,7 +8,8 @@ One name per concept; docs and code use these terms. Alphabetical.
   Daemon-detected, except `done`: a finish the daemon holds as `finished_unseen`, which a window paints until it is
   seen; `waiting`: an idle agent whose facts, or whose screen, say what it ended its turn to wait on; `stuck`: an
   agent whose program the daemon measured has stopped reading its input (`unread_input` on the pane's record); and `unreachable`: a pane whose
-  daemon the window cannot reach, which keeps what it read before as `last_state`.
+  daemon the window cannot reach, which keeps what it read before as `last_state`. A wait for `reading` is met by any
+  state but `stuck`: a pane whose program reads its input, as a stuck one does again once it recovers.
 - **backend** - the daemon system that owns sessions: `muster-daemon`, Muster's own since it replaced herdr (MIP-3).
 - **backend session** - one live connection to one daemon.
 - **banner** - a message for the human drawn by Muster over the top right of the panes while Muster is in front, with a

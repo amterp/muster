@@ -3638,6 +3638,32 @@
       "expect": {
         "usage": "UnknownArgument"
       }
+    },
+    {
+      "name": "a wait for a stuck pane to read again",
+      "why": "A wait ends refused once its pane is stuck, since nothing it does can free the pane, so seeing one recover meant polling `muster window` (kan a_2dmIFLTi2). `reading` is no state: it is met by any state but stuck.",
+      "given": {
+        "argv": [
+          "pane",
+          "wait",
+          "--pane",
+          "p1w3r07bsd",
+          "--until",
+          "reading"
+        ]
+      },
+      "expect": {
+        "request": {
+          "watch_panes": {
+            "pane_ids": [
+              "p1w3r07bsd"
+            ],
+            "until": [
+              "reading"
+            ]
+          }
+        }
+      }
     }
   ]
 }

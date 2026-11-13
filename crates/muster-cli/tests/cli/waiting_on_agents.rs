@@ -227,20 +227,15 @@ fn a_wait_on_an_agent_that_stops_reading_is_refused(open: &Open) {
     assert_eq!(ended.status.code(), Some(1), "{said}");
     assert!(said.contains("is stuck") && said.contains("stopped reading its input"), "{said}");
 
-    // A wait would be refused while it is stuck, so the window is asked until it reads again.
-    until(
-        "the agent to read again once it stops sleeping",
-        || {
-            let listed = muster(open, &["--json", "window"]);
-            let listed: Value = serde_json::from_slice(&listed.stdout).unwrap_or_default();
-            listed["panes"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|pane| pane["pane"] == json!(open.pane) && pane["state"] != json!("stuck"))
-        },
-        || "it still reads as stuck".to_string(),
+    // A wait for it to read again is not refused, and ends once it stops sleeping (kan
+    // a_2dmIFLTi2).
+    let recovered = muster(
+        open,
+        &["pane", "wait", "--pane", &open.pane, "--until", "reading", "--timeout", "60"],
     );
+    let said = String::from_utf8_lossy(&recovered.stdout);
+    assert_eq!(recovered.status.code(), Some(0), "{}", String::from_utf8_lossy(&recovered.stderr));
+    assert!(said.starts_with(&open.pane) && !said.contains("stuck"), "{said}");
 }
 
 /// `window --watch --layout --json` prints the layout, then the layout again each time the

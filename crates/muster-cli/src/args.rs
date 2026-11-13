@@ -492,6 +492,9 @@ enum Awaited {
     Idle,
     Done,
     Unknown,
+    /// Not a state: the pane's program reading its input, which a stuck pane does again once it
+    /// recovers.
+    Reading,
 }
 
 impl Awaited {
@@ -504,6 +507,7 @@ impl Awaited {
             Awaited::Idle => "idle",
             Awaited::Done => "done",
             Awaited::Unknown => "unknown",
+            Awaited::Reading => "reading",
         }
     }
 }
@@ -882,7 +886,8 @@ enum Doing {
         #[arg(value_name = "REF", value_parser = reference, conflicts_with = "pane")]
         bare_panes: Vec<String>,
 
-        /// The states to wait for, comma-separated. idle is also met by done, and not by waiting
+        /// The states to wait for, comma-separated. idle is also met by done, and not by waiting.
+        /// reading waits for a stuck pane to read its input again
         #[arg(
             long,
             value_name = "STATE",

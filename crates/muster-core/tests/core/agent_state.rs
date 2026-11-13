@@ -110,6 +110,26 @@ fn a_wait_nothing_can_meet_is_refused() {
     );
 }
 
+/// `reading` waits for a stuck pane to read its input again: met by every state but stuck, so a
+/// pane not stuck meets it at once, and never stranded by a pane getting stuck, which every other
+/// wait still is (kan a_2dmIFLTi2).
+#[test]
+fn a_wait_for_reading_is_met_once_a_stuck_pane_reads_again() {
+    let reading = Until::parse(&["reading".to_string()], None).unwrap();
+    assert!(reading.is_wait());
+    for state in [AgentState::Working, AgentState::Blocked, AgentState::Idle, AgentState::Unknown] {
+        assert!(reading.met(state, None), "{state:?}");
+    }
+    assert!(!reading.met(AgentState::Stuck, None));
+    assert!(!reading.met(AgentState::Unreachable, None));
+    assert!(!reading.stranded(AgentState::Stuck));
+    assert_eq!(reading.spelled(), "reading");
+
+    let idle = Until::parse(&["idle".to_string()], None).unwrap();
+    assert!(idle.stranded(AgentState::Stuck), "a wait that did not ask still ends refused");
+    assert!(idle.stranded_because("p1", None).contains("--until reading"));
+}
+
 /// What a compaction queued for an agent waits for, in the words `muster window` and `pane
 /// compact` both use, naming sub-agents only while they can hold a turn open.
 #[test]

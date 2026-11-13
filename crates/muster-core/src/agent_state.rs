@@ -139,21 +139,33 @@ impl AgentState {
 /// What ends a wait on panes (`WatchPanes.until` and `context_at_least`): a state a pane gets
 /// to, or its agent saying its context is at least so full, whichever comes first.
 ///
+/// Or `reading`, which is no state: the pane's program reading its input, so any state but
+/// `stuck` meets it - a wait for a stuck pane to recover.
+///
 /// A condition rather than an event, so a pane already there meets it. Parsed in one place
 /// because two watches evaluate it - the window's, and the CLI's own when no window answers -
 /// and a wait that ended differently depending on which one answered would be two features.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Until {
     states: Vec<AgentState>,
+    reading: bool,
     context_at_least: Option<f32>,
 }
+
+/// The word that waits for a pane's program to read its input again.
+const READING: &str = "reading";
 
 impl Until {
     /// Reads the state words a caller sent and the context it asked for, or says why there is
     /// nothing to wait for.
     pub fn parse(words: &[String], context_at_least: Option<f32>) -> Result<Until, String> {
         let mut states = Vec::new();
+        let mut reading = false;
         for word in words {
+            if word == READING {
+                reading = true;
+                continue;
+            }
             // Strict rather than `from_backend`, which reads a word it does not know as
             // `unknown`: a caller who typed `idel` would otherwise be waiting for a shell.
             if word == AgentState::Unreachable.as_str() {
@@ -171,7 +183,7 @@ impl Until {
                     .collect();
                 return Err(format!(
                     "`{word}` is not a state a pane can be in, so there is nothing to wait for. \
-                     The states are {}.",
+                     The states are {}, and `{READING}` waits for a stuck pane to read again.",
                     states.join(", ")
                 ));
             };
@@ -185,12 +197,12 @@ impl Until {
                  agent; context is said in percent, so ask for more than 0 and at most 100."
             ));
         }
-        Ok(Until { states, context_at_least })
+        Ok(Until { states, reading, context_at_least })
     }
 
     /// Whether anything ends it. A watch with nothing to wait for runs until its caller leaves.
     pub fn is_wait(&self) -> bool {
-        !self.states.is_empty() || self.context_at_least.is_some()
+        !self.states.is_empty() || self.reading || self.context_at_least.is_some()
     }
 
     /// The context, in percent, that ends it on its own, if any.
@@ -208,14 +220,19 @@ impl Until {
             return false;
         }
         self.states.iter().any(|wanted| state.counts_as(*wanted))
+            || (self.reading && state != AgentState::Stuck)
             || self.context_at_least.zip(context_used).is_some_and(|(wanted, used)| used >= wanted)
     }
 
     /// Whether a pane in `state` can no longer get where this waits for, so the wait ends refused
     /// rather than waiting on: a stuck agent gets nowhere until its program reads again, which
-    /// nothing in a wait can make it do. A wait that asks for `stuck` is waiting for exactly that.
+    /// nothing in a wait can make it do. A wait that asks for `stuck` is waiting for exactly that,
+    /// and one that asks for `reading` for the program to read again.
     pub fn stranded(&self, state: AgentState) -> bool {
-        self.is_wait() && state == AgentState::Stuck && !self.states.contains(&AgentState::Stuck)
+        self.is_wait()
+            && state == AgentState::Stuck
+            && !self.states.contains(&AgentState::Stuck)
+            && !self.reading
     }
 
     /// Why a wait on `pane` ends refused, once [`Until::stranded`] says it does: which program
@@ -231,7 +248,8 @@ impl Until {
         format!(
             "pane {pane} is stuck: {stopped}, so it will not be {} until it reads again, and \
              nothing a wait does can make it. Interrupting the program, or ending it and resuming \
-             its session, frees it; `--until stuck` waits for a pane to get stuck instead.",
+             its session, frees it; `--until reading` waits for it to read again, and `--until \
+             stuck` for a pane to get stuck instead.",
             self.spelled()
         )
     }
@@ -240,6 +258,9 @@ impl Until {
     pub fn spelled(&self) -> String {
         let mut said: Vec<String> =
             self.states.iter().map(|state| state.as_str().to_string()).collect();
+        if self.reading {
+            said.push(READING.to_string());
+        }
         if let Some(percent) = self.context_at_least {
             said.push(format!("at {percent}% context"));
         }
