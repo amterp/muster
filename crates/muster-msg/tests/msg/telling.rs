@@ -144,6 +144,39 @@ fn a_post_to_the_maker_is_found_and_one_to_somebody_else_is_not() {
     assert_eq!(messaging.last_post("p1", "p2"), None, "the maker has posted nothing");
 }
 
+/// A helper is asked for work by a message for it posted since a moment: addressed to it, or to
+/// nobody in a group that rings it. Not by one for somebody else, its own post, or Muster's.
+#[test]
+fn a_message_for_the_helper_asks_it_for_work_and_its_own_or_musters_do_not() {
+    let mut messaging = Messaging::new(Memory::default());
+    for pane in ["p1", "p2", "p3"] {
+        join(&mut messaging, pane, "crew");
+    }
+    let to = |name: &str| vec![name.to_string()];
+    messaging.post(&in_pane("p1"), Some("crew"), &to("critic"), "for critic", &Open, 40).unwrap();
+    assert!(!messaging.asked_since("p2", 0), "for somebody else");
+
+    assert_eq!(messaging.last_post_by("p2"), None, "nothing posted yet");
+    messaging.read(&in_pane("p2"), None, &Open).ok();
+    messaging.post(&in_pane("p2"), Some("crew"), &to("critic"), "aside", &Open, 45).unwrap();
+    assert_eq!(messaging.last_post_by("p2"), Some(45), "a post to anybody");
+    messaging.read(&in_pane("p2"), None, &Open).ok();
+    messaging.post(&in_pane("p2"), Some("crew"), &to("integrator"), "report", &Open, 50).unwrap();
+    assert!(!messaging.asked_since("p2", 0), "its own post");
+
+    messaging.tell_as_muster("p2", "p1", Some("integrator"), "a notice", &Open, 60).unwrap();
+    assert!(!messaging.asked_since("p2", 0), "Muster's notice");
+
+    messaging.read(&in_pane("p1"), None, &Open).ok();
+    messaging.post(&in_pane("p1"), Some("crew"), &to("maple"), "a brief", &Open, 70).unwrap();
+    assert!(messaging.asked_since("p2", 60), "addressed to it");
+    assert!(!messaging.asked_since("p2", 70), "not since it was posted");
+
+    messaging.read(&in_pane("p3"), None, &Open).ok();
+    messaging.post(&in_pane("p3"), Some("crew"), &[], "everyone", &Open, 80).unwrap();
+    assert!(messaging.asked_since("p2", 70), "unaddressed in a group that rings it");
+}
+
 /// What Muster tells a maker about its helper does not hold the helper's next post, since the
 /// helper needs nothing in it before reporting. What Muster tells the helper itself still does.
 #[test]

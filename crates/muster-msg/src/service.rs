@@ -1414,6 +1414,49 @@ impl<S: Store> Messaging<S> {
             .max()
     }
 
+    /// When an agent in `pane` last posted anything, to anybody, in the milliseconds of the
+    /// group's home.
+    pub fn last_post_by(&self, pane: &str) -> Option<u64> {
+        let authors = self.in_pane(pane);
+        self.groups
+            .values()
+            .filter_map(|group| {
+                group.log.iter().rev().find_map(|entry| match &entry.what {
+                    What::Message { author, .. } if authors.contains(&author.as_str()) => {
+                        Some(entry.at_ms)
+                    }
+                    _ => None,
+                })
+            })
+            .max()
+    }
+
+    /// Whether somebody has posted the agent in `pane` a message since `after_ms`, in the
+    /// milliseconds of the group's home: one addressed to it, or to nobody in particular in a
+    /// group whose policy rings it for that author. Muster's own notices do not count, nor does
+    /// anything the agent posted itself: neither asks it for work.
+    pub fn asked_since(&self, pane: &str, after_ms: u64) -> bool {
+        let names = self.in_pane(pane);
+        self.groups.values().any(|group| {
+            let members: Vec<&str> =
+                names.iter().copied().filter(|name| group.members.contains(*name)).collect();
+            !members.is_empty()
+                && group.log.iter().rev().take_while(|entry| entry.at_ms > after_ms).any(|entry| {
+                    let What::Message { author, to, .. } = &entry.what else { return false };
+                    if is_muster(author) || names.contains(&author.as_str()) {
+                        return false;
+                    }
+                    members.iter().any(|name| {
+                        if to.is_empty() {
+                            group.policy.rings(author, name)
+                        } else {
+                            to.iter().any(|addressee| addressee == name)
+                        }
+                    })
+                })
+        })
+    }
+
     /// What became of the wakes a post returned: a participant whose inbox would not take one
     /// is gone until it joins again.
     pub fn delivered(&mut self, wake: &Wake, reached: bool) -> Result<(), Refusal> {

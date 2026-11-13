@@ -107,6 +107,10 @@ pub(crate) struct Helper {
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to its maker, looked up only while it is idle.
     pub(crate) last_post_ms: Option<u64>,
+    /// Whether something new asks it for work: somebody typed what started its turn, or a
+    /// message for it from somebody other than Muster came after its last post. Looked up only
+    /// while it is at work or waiting.
+    pub(crate) asked: bool,
     /// Whether its maker would not be woken by a post now: an agent here at work, at a dialog or
     /// stuck, whose hooks do not fetch messages mid-turn; or one on another machine its machine
     /// last said was any of those, hooks or not, since the link does not say.
@@ -788,6 +792,9 @@ fn helpers(
             pane: pane.clone(),
             maker: maker.clone(),
             last_post_ms: if idle { service.last_post(pane, &to) } else { None },
+            asked: matches!(seen.activity, Some(Activity::Working | Activity::Waiting))
+                && (seen.io.turn_typed_by() == Some(TypedBy::Someone)
+                    || service.asked_since(pane, service.last_post_by(pane).unwrap_or(0))),
             to,
             activity: seen.activity,
             chores_turn: seen.io.turn_typed_by() == Some(TypedBy::Chore),
@@ -1089,6 +1096,7 @@ mod tests {
             waiting: None,
             stopped: None,
             last_post_ms: None,
+            asked: true,
             maker_busy: false,
             maker_here: true,
         }
@@ -1421,6 +1429,62 @@ mod tests {
             let again = makers.judge(&[on(2, Activity::Idle, true)], &called, 80_000);
             assert!(again.is_empty(), "told again (found late: {found_late}): {again:?}");
         }
+    }
+
+    /// A turn nothing new started, as a wake with no new message, a daemon handing the pane over
+    /// or Muster's own notice does, is not the helper going to work: idle again after its report
+    /// is not told of. A turn something new started is work, and idle after it is.
+    #[test]
+    fn a_turn_nothing_new_started_is_not_going_to_work() {
+        let called = called();
+        let mut makers = makers();
+        let on = |activity, asked| Helper { last_post_ms: Some(5_000), asked, ..maple(activity) };
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        makers.judge(&[on(Activity::Idle, false)], &called, 10_000);
+        makers.judge(&[on(Activity::Working, false)], &called, 20_000);
+        makers.judge(&[on(Activity::Idle, false)], &called, 30_000);
+        let tells = makers.judge(&[on(Activity::Idle, false)], &called, 60_000);
+        assert!(tells.is_empty(), "nothing new started it: {tells:?}");
+
+        makers.judge(&[on(Activity::Working, false)], &called, 70_000);
+        makers.judge(&[on(Activity::Working, true)], &called, 75_000);
+        makers.judge(&[on(Activity::Idle, false)], &called, 80_000);
+        let tells = makers.judge(&[on(Activity::Idle, false)], &called, 90_000);
+        assert_eq!(needs(&tells), [Need::Unreported], "a message came mid-turn");
+    }
+
+    /// A helper whose maker was told it went idle without posting is not told again after a
+    /// turn nothing new started: the maker would read a second notice with no cause.
+    #[test]
+    fn a_turn_nothing_new_started_does_not_tell_the_maker_twice() {
+        let called = called();
+        let mut makers = makers();
+        let on = |activity, asked| Helper { asked, ..maple(activity) };
+        makers.judge(&[on(Activity::Working, true)], &called, 0);
+        makers.judge(&[on(Activity::Idle, false)], &called, 10_000);
+        assert_eq!(
+            needs(&makers.judge(&[on(Activity::Idle, false)], &called, 20_000)),
+            [Need::Unreported]
+        );
+        makers.judge(&[on(Activity::Working, false)], &called, 80_000);
+        makers.judge(&[on(Activity::Idle, false)], &called, 90_000);
+        let again = makers.judge(&[on(Activity::Idle, false)], &called, 120_000);
+        assert!(again.is_empty(), "told again: {again:?}");
+    }
+
+    /// A helper's first work counts whatever started it: one given its prompt on its command
+    /// line had nothing typed and no message.
+    #[test]
+    fn a_helpers_first_work_is_work_whatever_started_it() {
+        let called = called();
+        let mut makers = makers();
+        let on = |activity| Helper { asked: false, ..maple(activity) };
+        makers.judge(&[on(Activity::Working)], &called, 0);
+        makers.judge(&[on(Activity::Idle)], &called, 10_000);
+        assert_eq!(
+            needs(&makers.judge(&[on(Activity::Idle)], &called, 20_000)),
+            [Need::Unreported]
+        );
     }
 
     /// The person is told every helper a closed maker left running, and how to bring them back.
