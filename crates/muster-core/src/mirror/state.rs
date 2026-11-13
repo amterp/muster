@@ -494,6 +494,7 @@ fn relabelled(before: &Pane, now: &Pane) -> bool {
         || before.maker_closed != now.maker_closed
         || before.agent != now.agent
         || before.compactable != now.compactable
+        || before.clearable != now.clearable
         || before.quiet != now.quiet
         || before.name != now.name
         || before.callsign != now.callsign

@@ -92,6 +92,9 @@ pub enum Action {
     /// No focus, unlike the CLI, because a chord cannot carry one and a sheet asking for one
     /// would stand in front of every compaction when most want none.
     CompactPane,
+    /// Clears the context of the agent in the pane the keyboard is on, at its next idle, empty
+    /// prompt - the CLI's `pane clear` with no prompt to follow.
+    ClearPane,
     /// Restarts the agent in the pane the keyboard is on, resuming its session - the CLI's
     /// `pane restart` with no environment. The window asks first, since it ends the agent.
     RestartAgent,
@@ -219,7 +222,7 @@ impl Action {
     /// Deliberately not alphabetical: a menu is read top to bottom, and the order here is what
     /// somebody scanning it expects - making something, then arranging it, then moving around
     /// it. A shell that sorted these would produce a menu nobody can find anything in.
-    pub const ALL: [Action; 66] = [
+    pub const ALL: [Action; 67] = [
         Action::NewWindow,
         Action::ReopenWindow,
         Action::CloseWindow,
@@ -234,6 +237,7 @@ impl Action {
         Action::SplitUp,
         Action::RenamePane,
         Action::CompactPane,
+        Action::ClearPane,
         Action::RestartAgent,
         Action::MovePaneToNewTab,
         Action::HidePane,
@@ -311,6 +315,7 @@ impl Action {
             Action::SplitUp => "split_up",
             Action::RenamePane => "rename_pane",
             Action::CompactPane => "compact_pane",
+            Action::ClearPane => "clear_pane",
             Action::RestartAgent => "restart_agent",
             Action::RenameTab => "rename_tab",
             Action::CloseTab => "close_tab",
@@ -417,6 +422,7 @@ impl Action {
             | Action::SplitUp
             | Action::MovePaneToNewTab
             | Action::CompactPane
+            | Action::ClearPane
             | Action::RestartAgent
             | Action::HidePane
             | Action::QuietPane

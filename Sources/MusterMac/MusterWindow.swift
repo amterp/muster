@@ -944,6 +944,7 @@ extension MusterWindow: NSMenuItemValidation {
     case #selector(leaveConversation(_:)): covered
     case #selector(focusPaneAsking(_:)): Core.anythingAsking
     case #selector(compactAgent(_:)): keyboard?.compactable ?? false
+    case #selector(clearAgent(_:)): keyboard?.clearable ?? false
     case #selector(restartAgent(_:)): !(keyboard?.resumesAs.isEmpty ?? true)
     default: true
     }
@@ -954,7 +955,8 @@ extension MusterWindow {
   /// The actions that act on the pane the keyboard is on, rather than choosing where to look or
   /// making something new.
   static let aboutTheKeyboardsPane: Set<Selector> = [
-    #selector(renamePane(_:)), #selector(compactAgent(_:)), #selector(restartAgent(_:)),
+    #selector(renamePane(_:)), #selector(compactAgent(_:)), #selector(clearAgent(_:)),
+    #selector(restartAgent(_:)),
     #selector(movePaneToNewTab(_:)), #selector(hidePane(_:)), #selector(quietPane(_:)),
     #selector(closePane(_:)), #selector(resizePaneLeft(_:)), #selector(resizePaneRight(_:)),
     #selector(resizePaneUp(_:)), #selector(resizePaneDown(_:)), #selector(zoomPane(_:)),
@@ -1248,6 +1250,12 @@ extension MusterWindow {
     if let why = Core.compactPane() { tell(PaneRefusal.compact, why) }
   }
 
+  /// Clears the context of the agent in the pane the keyboard is on. Which pane that is is the
+  /// core's, as compacting's is.
+  @objc public func clearAgent(_ sender: Any?) {
+    if let why = Core.clearAgent() { tell(PaneRefusal.clear, why) }
+  }
+
   /// Restarts the agent in the pane the keyboard is on, once asked. The window's own idea of
   /// which pane that is, unlike compacting's, because the sheet has to name it.
   @objc public func restartAgent(_ sender: Any?) {
@@ -1407,6 +1415,7 @@ extension MusterWindow {
       pane, surface: surfaces.chrome(for: pane)?.surface,
       machines: speaking { Core.machines() }.map(\.daemon),
       canCompact: namedPane(pane)?.compactable ?? false,
+      canClear: namedPane(pane)?.clearable ?? false,
       canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true),
       quiet: namedPane(pane)?.quiet ?? false, window: name,
       rename: { [weak self] in self?.rename(pane: $0) },
@@ -1439,6 +1448,7 @@ extension MusterWindow {
       guard let pane = row.pane else { return nil }
       let menu = ContextMenus.agentRow(
         pane, onScreen: row.onScreen, canCompact: namedPane(pane)?.compactable ?? false,
+        canClear: namedPane(pane)?.clearable ?? false,
         canRestart: !(namedPane(pane)?.resumesAs.isEmpty ?? true), quiet: row.quiet,
         helpers: roster.helpers(of: pane),
         window: name, rename: { [weak self] in self?.rename(pane: $0) },

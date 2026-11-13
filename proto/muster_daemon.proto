@@ -1936,6 +1936,10 @@ message Pane {
   // Since 1.14. The thresholds that apply to this pane now, and what set each. Absent from a
   // daemon that applies one percent to every pane.
   AppliedCompaction compaction = 30;
+  // Since 1.16. The pane's agent can be cleared (`PaneRequest.Clear`): its manifest, as this
+  // daemon holds it, says how. False for a pane running no agent, and from a daemon that does not
+  // say, so a view offers clearing only where it is known to work.
+  bool agent_clears = 31;
 }
 
 // The compaction thresholds applying to one pane (`Pane.compaction`).

@@ -589,6 +589,18 @@ public enum Core {
     return refusal(send(request))
   }
 
+  /// Clears the context of the agent in a pane, at its next idle, empty prompt. No prompt to
+  /// follow: the CLI's `pane clear --then` is where one is given.
+  @discardableResult
+  public static func clearAgent(daemonID: String = "", paneID: String = "") -> String? {
+    var clear = Muster_ClearAgent()
+    clear.daemonID = daemonID
+    clear.paneID = paneID
+    var request = Muster_Request()
+    request.clearAgent_p = clear
+    return refusal(send(request))
+  }
+
   /// Restarts the agent in a pane, in its session, and calls `then` on the main thread with the
   /// core's refusal, or nil once the daemon has typed the resume.
   ///

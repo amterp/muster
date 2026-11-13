@@ -3560,8 +3560,9 @@ impl Session {
                             record.finished_unseen,
                         );
                 }
-                record.agent_compacts =
-                    agent_compacts(self.detecting.manifests().as_deref(), agent.as_deref());
+                let manifests = self.detecting.manifests();
+                record.agent_compacts = agent_compacts(manifests.as_deref(), agent.as_deref());
+                record.agent_clears = agent_clears(manifests.as_deref(), agent.as_deref());
                 record.agent = agent;
                 record.set_agent_state(state);
                 record.state_reported = reported;
@@ -4647,17 +4648,20 @@ impl Session {
         Reply::done()
     }
 
-    /// Says again of every pane whether its agent compacts. An override can give an agent a
-    /// compact line or take one away while detection still finds the same agent, and a pane taken
-    /// over from an older daemon arrives saying nothing of it; the app sends its manifests on
-    /// every connect, which brings both here.
+    /// Says again of every pane whether its agent compacts and clears. An override can give an
+    /// agent a compact or clear line or take one away while detection still finds the same agent,
+    /// and a pane taken over from an older daemon arrives saying nothing of it; the app sends its
+    /// manifests on every connect, which brings both here.
     fn say_which_agents_compact(&mut self) {
         let manifests = self.detecting.manifests();
         let mut changed = Vec::new();
         for pane in &mut self.panes {
-            let compacts = agent_compacts(manifests.as_deref(), pane.record.agent.as_deref());
-            if pane.record.agent_compacts != compacts {
+            let agent = pane.record.agent.as_deref();
+            let compacts = agent_compacts(manifests.as_deref(), agent);
+            let clears = agent_clears(manifests.as_deref(), agent);
+            if (pane.record.agent_compacts, pane.record.agent_clears) != (compacts, clears) {
                 pane.record.agent_compacts = compacts;
+                pane.record.agent_clears = clears;
                 changed.push(pane.record.clone());
             }
         }
@@ -5595,6 +5599,12 @@ fn agent_compacts(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
     manifests
         .zip(agent)
         .is_some_and(|(manifests, agent)| manifests.compacts(&muster_detect::Agent::new(agent)))
+}
+
+fn agent_clears(manifests: Option<&Manifests>, agent: Option<&str>) -> bool {
+    manifests.zip(agent).is_some_and(|(manifests, agent)| {
+        manifests.session_clear(&muster_detect::Agent::new(agent)).is_some()
+    })
 }
 
 fn turn_ended(pane: &str, agent: Option<&str>, waiting: bool) {

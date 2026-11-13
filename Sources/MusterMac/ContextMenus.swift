@@ -69,7 +69,7 @@ public enum ContextMenuModel {
   /// list only the machine the pane is already on, and most windows never attach a second.
   public static func pane(
     machines: [String], hasSelection: Bool, canPaste: Bool, canCompact: Bool = false,
-    canRestart: Bool = false, quiet: Bool = false
+    canClear: Bool = false, canRestart: Bool = false, quiet: Bool = false
   ) -> [ContextEntry] {
     var entries: [ContextEntry] = [
       .item(.copy, enabled: hasSelection),
@@ -93,6 +93,7 @@ public enum ContextMenuModel {
       .item(.action("move_pane_to_new_tab")),
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
+      .item(.action("clear_pane"), enabled: canClear),
       .item(.action("restart_agent"), enabled: canRestart),
       .item(.action("hide_pane")),
       .toggle(.action("quiet_pane"), on: quiet),
@@ -147,12 +148,13 @@ public enum ContextMenuModel {
   /// A pane with helpers gets Show Helpers and Hide Helpers beside Hide Pane; one with none gets
   /// neither, which is most panes.
   public static func agentRow(
-    onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false, quiet: Bool = false,
-    helpers: Helpers? = nil
+    onScreen: Bool, canCompact: Bool = false, canClear: Bool = false, canRestart: Bool = false,
+    quiet: Bool = false, helpers: Helpers? = nil
   ) -> [ContextEntry] {
     [
       .item(.action("rename_pane")),
       .item(.action("compact_pane"), enabled: canCompact),
+      .item(.action("clear_pane"), enabled: canClear),
       .item(.action("restart_agent"), enabled: canRestart),
       .item(.action("move_pane_to_new_tab")),
       .item(.action("hide_pane")),
@@ -320,6 +322,7 @@ public enum PaneRefusal {
   public static let move = "The pane was not moved"
   public static let moveToNewTab = "The pane was not moved to a new tab"
   public static let compact = "The agent was not compacted"
+  public static let clear = "The agent's context was not cleared"
   public static let removeFromTab = "The pane was not removed from its tab"
 }
 
@@ -341,7 +344,7 @@ public enum ContextMenus {
   /// only in a test that has none.
   public static func pane(
     _ pane: PaneKey, surface: SurfaceView?, machines: [String], canCompact: Bool = false,
-    canRestart: Bool = false, quiet: Bool = false, window: String = "",
+    canClear: Bool = false, canRestart: Bool = false, quiet: Bool = false, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
     close: (@MainActor (PaneKey) -> Void)? = nil,
@@ -350,8 +353,8 @@ public enum ContextMenus {
     let pasteboard = surface?.pasteboard ?? .general
     let entries = ContextMenuModel.pane(
       machines: machines, hasSelection: surface?.hasSelection ?? false,
-      canPaste: surface?.canPaste ?? false, canCompact: canCompact, canRestart: canRestart,
-      quiet: quiet)
+      canPaste: surface?.canPaste ?? false, canCompact: canCompact, canClear: canClear,
+      canRestart: canRestart, quiet: quiet)
     return ContextMenu.build(entries, subject: subject(pane), window: window) { choice in
       switch choice {
       case .copy: surface?.copy(nil)
@@ -390,8 +393,8 @@ public enum ContextMenus {
   /// and the window asks first. So is `close`, because closing a pane that runs an agent ends it
   /// too; a menu with no `close` closes at once, which only a test wants.
   public static func agentRow(
-    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canRestart: Bool = false,
-    quiet: Bool = false, helpers: ContextMenuModel.Helpers? = nil,
+    _ pane: PaneKey, onScreen: Bool, canCompact: Bool = false, canClear: Bool = false,
+    canRestart: Bool = false, quiet: Bool = false, helpers: ContextMenuModel.Helpers? = nil,
     pasteboard: NSPasteboard = .general, window: String = "",
     rename: @escaping @MainActor (PaneKey) -> Void,
     restart: @escaping @MainActor (PaneKey) -> Void = { _ in },
@@ -400,8 +403,8 @@ public enum ContextMenus {
   ) -> NSMenu {
     ContextMenu.build(
       ContextMenuModel.agentRow(
-        onScreen: onScreen, canCompact: canCompact, canRestart: canRestart, quiet: quiet,
-        helpers: helpers),
+        onScreen: onScreen, canCompact: canCompact, canClear: canClear, canRestart: canRestart,
+        quiet: quiet, helpers: helpers),
       subject: subject(pane), window: window
     ) { choice in
       if case .action("restart_agent") = choice {
@@ -523,6 +526,10 @@ public enum ContextMenus {
     case .action("compact_pane"):
       if let why = Core.compactPane(daemonID: pane.daemon, paneID: pane.pane) {
         refused(PaneRefusal.compact, why)
+      }
+    case .action("clear_pane"):
+      if let why = Core.clearAgent(daemonID: pane.daemon, paneID: pane.pane) {
+        refused(PaneRefusal.clear, why)
       }
     case .action("hide_pane"):
       if let why = Core.hidePane(daemonID: pane.daemon, paneID: pane.pane) {

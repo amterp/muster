@@ -60,6 +60,7 @@ pub(crate) fn pane_state(agent: &PaneAgent) -> proto::PaneStateChanged {
         }),
         compaction: agent.compaction.as_str().to_string(),
         thresholds: agent.thresholds.as_deref().map(|applied| Box::new(thresholds(applied))),
+        clearable: agent.clearable,
     }
 }
 
@@ -244,6 +245,7 @@ fn roster_tab(tab: &RosterTab, numbering: Option<&Numbering>) -> proto::RosterTa
                     beside_callsign: pane.beside_callsign.clone(),
                     directory: pane.directory.clone(),
                     compactable: pane.compactable,
+                    clearable: pane.clearable,
                     agent: pane.agent.clone().unwrap_or_default(),
                     resumes_as: pane.resumes_as.clone().unwrap_or_default(),
                     quiet: pane.quiet,

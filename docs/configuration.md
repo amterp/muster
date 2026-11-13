@@ -100,7 +100,7 @@ modifiers and a key, in any order and any case, spelled the way you would say th
 `opt`, `ctrl`, `shift`, and `left`, `return`, `f5`, `[`. The actions are `new_window`, `reopen_window`, `close_window`, `new_tab`,
 `next_tab`, `previous_tab`, `split_*` for each direction, `close_pane`, `reopen_pane`, `next_pane`,
 `previous_pane`, `focus_*` and `resize_*` for each direction, `numbered_chord_1` to
-`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
+`numbered_chord_9`, `focus_asking`, `focus_back`, `focus_forward`, `rename_pane`, `compact_pane`, `clear_pane`, `restart_agent`, `hide_pane`, `quiet_pane`, `rename_tab`, `close_tab`, `move_pane_to_new_tab`, `find`,
 `find_next`, `find_previous`, `send_message`, `leave_conversation`, `zoom`, `equalize_panes`, `scroll_to_top`, `scroll_to_bottom`, `scroll_page_up`,
 `scroll_page_down`, `jump_to_previous_prompt`, `jump_to_next_prompt`, `select_all`,
 `clear_screen`, `reset_terminal`, `increase_font_size`, `decrease_font_size`, `reset_font_size`, `toggle_sidebar`,
@@ -164,7 +164,9 @@ and a chord for that is one somebody finds by losing their screen.
 `compact_pane` is the eighth, and Muster's own: Ghostty has nothing like it. It compacts the
 context of the agent in the pane the keyboard is on, at its next idle, empty prompt, and its menu
 item, Compact Agent, is greyed out while that pane runs no agent its daemon can compact. It
-keeps nothing in particular; `muster pane compact` is the way to say what to keep.
+keeps nothing in particular; `muster pane compact` is the way to say what to keep. `clear_pane`
+goes with it: Clear Context empties that agent's context instead, greyed out the same way, and a
+chord for it would be one somebody finds by losing a conversation (`muster pane clear`).
 
 `hide_pane` and `quiet_pane` are the ninth and tenth, Muster's own for the same reason. Hide Pane
 takes the pane the keyboard is on out of the window into the Hidden list, its agent still running.

@@ -533,6 +533,7 @@ fn agent_pane(id: &PaneId, tab: &TabId) -> Pane {
         finished_unseen: false,
         agent: Some("claude".to_string()),
         compactable: true,
+        clearable: true,
         image_paste: false,
         cwd: "/tmp".to_string(),
         name: None,

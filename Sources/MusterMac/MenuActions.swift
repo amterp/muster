@@ -104,6 +104,10 @@ public enum MenuActions {
     // No ellipsis: it asks nothing first. What to keep is the CLI's to say.
     "compact_pane": Described(
       title: "Compact Agent", selector: #selector(MusterWindow.compactAgent(_:)), group: .pane),
+    // No ellipsis: it asks nothing first, as Compact does. The harness keeps the old
+    // conversation, which its own resume brings back.
+    "clear_pane": Described(
+      title: "Clear Context", selector: #selector(MusterWindow.clearAgent(_:)), group: .pane),
     // An ellipsis: it asks first, since it ends the agent.
     "restart_agent": Described(
       title: "Restart Agent…", selector: #selector(MusterWindow.restartAgent(_:)), group: .pane),

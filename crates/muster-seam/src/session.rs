@@ -2181,6 +2181,7 @@ impl Session {
                 .map(|id| Box::new(AgentSession { id, resume: pane.resume.clone() })),
             compaction: pane.compaction,
             thresholds: pane.thresholds.clone().map(Box::new),
+            clearable: pane.clearable,
         }
     }
 
@@ -5168,6 +5169,7 @@ pub(crate) struct OtherWindow {
 
 /// One pane's agent, as this window paints it.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(clippy::struct_excessive_bools, reason = "independent facts about an agent, one each")]
 pub(crate) struct PaneAgent {
     pub pane: PaneKey,
     pub state: AgentState,
@@ -5198,6 +5200,8 @@ pub(crate) struct PaneAgent {
     pub compaction: muster_core::mirror::PendingCompaction,
     /// The compaction thresholds applying to the pane, boxed as the session is.
     pub thresholds: Option<Box<muster_core::compaction::Applied>>,
+    /// Whether its agent can be cleared, by the manifests its daemon holds.
+    pub clearable: bool,
 }
 
 /// The session a pane's agent runs, as it reported it, and how its daemon resumes it.

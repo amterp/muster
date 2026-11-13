@@ -174,6 +174,7 @@ impl RosterTab {
 
 /// One pane, as something to list rather than something to render.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(clippy::struct_excessive_bools, reason = "independent facts about a pane, one each")]
 pub struct RosterPane {
     pub key: PaneKey,
 
@@ -244,6 +245,9 @@ pub struct RosterPane {
     /// Whether its agent can be compacted, as its daemon says: what a menu offering to compact it
     /// greys itself out on.
     pub compactable: bool,
+    /// Whether its agent can be cleared, as its daemon says: what Clear Context greys itself
+    /// out on.
+    pub clearable: bool,
     /// The harness its daemon detected in it (`claude`), or `None` for a pane running no agent.
     ///
     /// What the window asks on before closing the pane: the same fact the label's harness suffix
@@ -571,6 +575,7 @@ impl Roster {
                             directory: pane.cwd.clone(),
                             on_screen: showing.contains(&key),
                             compactable: pane.compactable,
+                            clearable: pane.clearable,
                             agent: detected_harness(pane),
                             resumes_as: resumes_as(pane),
                             quiet: pane.quiet,
@@ -744,6 +749,7 @@ fn hidden_tabs<'a>(
                     directory: pane.cwd.clone(),
                     on_screen: false,
                     compactable: pane.compactable,
+                    clearable: pane.clearable,
                     agent: detected_harness(pane),
                     resumes_as: resumes_as(pane),
                     quiet: pane.quiet,

@@ -55,6 +55,12 @@ fn roster_conformance() {
                     .filter(|panes| !panes.is_empty())
                     .map(|panes| json!(panes)),
             ),
+            (
+                "clearable",
+                Some(clearable(&roster))
+                    .filter(|panes| !panes.is_empty())
+                    .map(|panes| json!(panes)),
+            ),
             // Only for a case about which panes run an agent, for the same reason.
             (
                 "harnesses",
@@ -141,6 +147,16 @@ fn restartable(roster: &Roster) -> Vec<String> {
         .tabs()
         .flat_map(|tab| tab.panes.iter())
         .filter_map(|pane| Some(format!("{} {}", pane.key, pane.resumes_as.as_ref()?)))
+        .collect()
+}
+
+/// The panes a menu would offer to clear.
+fn clearable(roster: &Roster) -> Vec<String> {
+    roster
+        .tabs()
+        .flat_map(|tab| tab.panes.iter())
+        .filter(|pane| pane.clearable)
+        .map(|pane| pane.key.to_string())
         .collect()
 }
 

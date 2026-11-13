@@ -173,6 +173,7 @@ pub(crate) fn read_pane(given: &Value) -> Pane {
         finished_unseen: given.get("finishedUnseen").and_then(Value::as_bool).unwrap_or_default(),
         agent: optional(given, "agent"),
         compactable: given.get("compactable").and_then(Value::as_bool).unwrap_or_default(),
+        clearable: given.get("clearable").and_then(Value::as_bool).unwrap_or_default(),
         image_paste: given.get("image_paste").and_then(Value::as_bool).unwrap_or_default(),
         cwd: text(given, "cwd"),
         name: optional(given, "name"),

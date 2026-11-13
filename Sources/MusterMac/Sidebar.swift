@@ -44,6 +44,9 @@ public struct Roster: Equatable {
     /// Whether its daemon can compact its agent. What Compact Agent greys itself out on.
     public let compactable: Bool
 
+    /// Whether its daemon can clear its agent. What Clear Context greys itself out on.
+    public let clearable: Bool
+
     /// The harness its daemon detected in it (`claude`), empty for a pane running no agent. What
     /// closing the pane asks on: the same fact the row's label draws its harness from.
     public let agent: String
@@ -77,7 +80,8 @@ public struct Roster: Equatable {
     public init(
       key: PaneKey, place: Int = 0, tabPress: Int = 0, press: Int = 0, label: String,
       subtitle: String = "", givenName: String = "", onScreen: Bool, compactable: Bool = false,
-      agent: String = "", resumesAs: String = "", quiet: Bool = false, callsign: String = "",
+      clearable: Bool = false, agent: String = "", resumesAs: String = "", quiet: Bool = false,
+      callsign: String = "",
       besideCallsign: String? = nil, directory: String = "",
       maker: String = "", under: String = ""
     ) {
@@ -90,6 +94,7 @@ public struct Roster: Equatable {
       self.givenName = givenName
       self.onScreen = onScreen
       self.compactable = compactable
+      self.clearable = clearable
       self.agent = agent
       self.resumesAs = resumesAs
       self.quiet = quiet

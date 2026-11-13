@@ -328,6 +328,11 @@ clear asked for while a compaction waits replaces it, and the other way round, a
 shows a waiting clear as `compaction queued`. A harness that gives no way to clear it from its
 prompt is refused with the reason (`muster docs harnesses`), and so is a pane running no agent.
 
+The window asks the same, with no prompt to follow: Clear Context in a pane's and an agent row's
+right-click menu and in the Pane menu, greyed where the pane's daemon says its agent cannot be
+cleared, and on the `clear_pane` action, which ships with no chord since a clear throws the
+context away. `muster window --json` gives that answer as each agent's `clearable`.
+
 Codex reports its new session only at the first prompt after a clear, so until that prompt the
 pane's `resume` still names the conversation the clear left, and a restart or a daemon restart in
 that window brings the old one back. `--then` closes the window at once.

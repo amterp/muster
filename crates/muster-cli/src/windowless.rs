@@ -1186,6 +1186,7 @@ fn pane_state(daemon_id: &str, pane: &daemon_proto::Pane) -> muster_proto::PaneS
         }
         .to_string(),
         thresholds: pane_thresholds(pane).map(Box::new),
+        clearable: pane.agent_clears,
     }
 }
 

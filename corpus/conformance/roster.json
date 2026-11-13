@@ -3167,7 +3167,8 @@
                 "id": "w1:p1",
                 "cwd": "/src/alpha",
                 "agent": "claude",
-                "compactable": true
+                "compactable": true,
+                "clearable": true
               },
               {
                 "id": "w1:p2",
@@ -3196,6 +3197,9 @@
       },
       "expect": {
         "compactable": [
+          "local/w1:p1"
+        ],
+        "clearable": [
           "local/w1:p1"
         ],
         "machines": [

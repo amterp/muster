@@ -26,7 +26,8 @@ struct ContextMenuTests {
     #expect(
       titles(menu) == [
         "Copy", "Paste", "-", "Split Right", "Split Down", "Split Left", "Split Up", "-",
-        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "Restart Agent…",
+        "Zoom Pane", "Move Pane to New Tab", "Rename Pane…", "Compact Agent", "Clear Context",
+        "Restart Agent…",
         "Hide Pane", "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
   }
@@ -290,6 +291,39 @@ struct ContextMenuTests {
     }
   }
 
+  /// Clearing is typed by the daemon too, from a line its manifest may not give.
+  @Test("Clear Context is offered only where the pane's daemon says its agent clears")
+  func clearNeedsAnAgentThatClears() {
+    _ = recorder()
+    let menus: [(Bool) -> NSMenu] = [
+      { ContextMenus.pane(laptopPane, surface: nil, machines: [], canClear: $0, rename: { _ in }) },
+      { ContextMenus.agentRow(laptopPane, onScreen: false, canClear: $0, rename: { _ in }) },
+    ]
+    for menu in menus {
+      #expect(item("Clear Context", in: menu(false))?.isEnabled == false)
+      #expect(item("Clear Context", in: menu(true))?.isEnabled == true)
+    }
+  }
+
+  @Test("Clear Context clears the pane that was right-clicked, with no prompt to follow")
+  func clearNamesItsPane() {
+    let recorder = recorder()
+    let menus = [
+      ContextMenus.pane(laptopPane, surface: nil, machines: [], canClear: true, rename: { _ in }),
+      ContextMenus.agentRow(laptopPane, onScreen: false, canClear: true, rename: { _ in }),
+    ]
+    let mark = recorder.requests.count
+
+    for menu in menus { choose("Clear Context", in: menu) }
+
+    let sent = recorder.sent(since: mark) {
+      if case .clearAgent_p = $0.payload { true } else { false }
+    }.map(\.clearAgent_p)
+    #expect(sent.count == 2)
+    #expect(sent.allSatisfy { $0.daemonID == "laptop" && $0.paneID == "p1w3r07bsd" })
+    #expect(sent.allSatisfy { $0.then.isEmpty })
+  }
+
   /// A restart ends the agent, so a pick asks the window, which asks the person, rather than
   /// sending anything; and it is offered only where there is a session to resume.
   @Test("Restart Agent asks the window about the pane that was right-clicked, and sends nothing")
@@ -350,7 +384,8 @@ struct ContextMenuTests {
 
     #expect(
       titles(offScreen) == [
-        "Rename Pane…", "Compact Agent", "Restart Agent…", "Move Pane to New Tab", "Hide Pane",
+        "Rename Pane…", "Compact Agent", "Clear Context", "Restart Agent…", "Move Pane to New Tab",
+        "Hide Pane",
         "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
     #expect(item("Close Pane", in: offScreen)?.isEnabled == false)
@@ -420,7 +455,8 @@ struct ContextMenuTests {
 
     #expect(
       titles(menu) == [
-        "Rename Pane…", "Compact Agent", "Restart Agent…", "Move Pane to New Tab", "Hide Pane",
+        "Rename Pane…", "Compact Agent", "Clear Context", "Restart Agent…", "Move Pane to New Tab",
+        "Hide Pane",
         "Show Helpers", "Hide Helpers", "Quiet Pane", "-", "Copy Pane ID", "-", "Close Pane",
       ])
     #expect(item("Hide Helpers", in: menu)?.isEnabled == false)

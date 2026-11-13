@@ -3461,6 +3461,10 @@ message RosterPane {
   // core as it opens; false for a pane running no agent.
   bool compactable = 11;
 
+  // Whether this pane's agent can be cleared (ClearAgent), as its daemon says, carried for the
+  // same reason; false for a pane running no agent or a daemon that does not say.
+  bool clearable = 21;
+
   // What its daemon would run to resume its agent's session (RestartAgent), words joined by
   // spaces, for a person to read. Empty when its agent cannot be restarted: no agent, or one
   // that reported no session its harness can resume. What a menu greys Restart Agent on, and what
@@ -3750,6 +3754,10 @@ message PaneStateChanged {
 
   // The compaction thresholds applying to the pane. Absent from a daemon that says none.
   PaneThresholds thresholds = 18;
+
+  // Whether its agent can be cleared (ClearAgent), by the manifests its daemon holds. False
+  // for a pane running no agent, and from a daemon that does not say.
+  bool clearable = 19;
 }
 
 // The command that resumes a pane's agent session, run in the pane's directory.

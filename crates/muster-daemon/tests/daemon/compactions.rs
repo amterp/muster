@@ -560,6 +560,11 @@ fn a_panes_record_says_whether_its_agent_compacts() {
     };
     assert_eq!(compacts("p1"), Some(true), "claude's manifest gives `/compact`");
     assert_eq!(compacts("p2"), Some(false), "a shell has no agent to compact");
+    let clears = |name: &str| {
+        records.iter().find(|record| record.pane == name).map(|record| record.agent_clears)
+    };
+    assert_eq!(clears("p1"), Some(true), "claude's manifest gives `/clear`");
+    assert_eq!(clears("p2"), Some(false), "a shell has no agent to clear");
 }
 
 /// An override saved while an agent runs can give it a compact line or take one away, and

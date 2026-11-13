@@ -187,6 +187,7 @@ pub fn pane(record: proto::Pane) -> Pane {
         finished_unseen: record.finished_unseen,
         agent: record.agent,
         compactable: record.agent_compacts,
+        clearable: record.agent_clears,
         image_paste: record.image_paste,
         cwd: record.cwd,
         name: record.label,

@@ -116,6 +116,7 @@ extension Roster.Pane {
       givenName: pane.givenName,
       onScreen: pane.onScreen,
       compactable: pane.compactable,
+      clearable: pane.clearable,
       agent: pane.agent,
       resumesAs: pane.resumesAs,
       quiet: pane.quiet,
