@@ -7203,16 +7203,61 @@ pub(crate) fn arrive(
     spot: spanning::Spot,
     arriving: Arriving<'_>,
 ) -> Result<Outcome, Refusal> {
-    let (pane, worked_out, hidden) = {
+    let pane = match &arriving {
+        Arriving::Made { .. } => {
+            poison::lock(&poison::lock(&SESSION, "session").minter, "minter").pane()
+        }
+        Arriving::Moved { pane } => pane.clone(),
+    };
+    let (at, writes, read) = arrival(window, daemon, tab, &pane, spot.clone())?;
+    // The pane's own machine refused, which is what it says when a newer write landed after its
+    // copy was read: another window's, or this one's own catch-up. Nothing was placed, so the
+    // pane it was to be is placed once more, on the tree as the copies hold it now, as a
+    // rearrangement is ([`rearrange`]). A pane id minted for it was never used, so it is kept.
+    let (outcome, writes) = match place(window, daemon, &pane, at, &arriving) {
+        Ok(outcome) => (outcome, writes),
+        Err(refusal) if matches!(refusal, Refusal::Unanswered { .. }) => return Err(refusal),
+        Err(refusal) => {
+            let Ok((at, writes, now)) = arrival(window, daemon, tab, &pane, spot) else {
+                return Err(refusal);
+            };
+            if now == read {
+                return Err(refusal);
+            }
+            log::info(
+                "tab.layout.arrive_retried",
+                fields! {
+                    "tab" => tab.to_string(),
+                    "pane" => pane.to_string(),
+                    "refused" => refusal.to_string(),
+                },
+            );
+            (place(window, daemon, &pane, at, &arriving)?, writes)
+        }
+    };
+    // The pane is placed whatever the other parts answer, so their answer is not this request's:
+    // each refusal is logged as it comes, and the next merge catches that part up from the
+    // pane's own machine, whose copy is now the newest. Answering with a refusal here would tell
+    // a caller a pane it can see was never made, and asking again would make a second one.
+    drop(write_trees(window, tab, writes));
+    Ok(outcome)
+}
+
+/// Where `pane` goes in `tab` at `spot`, worked out on the tab's whole tree as the mirrors hold
+/// it now: its own machine's place, the trees for every other part, and what each part had said.
+fn arrival(
+    window: WindowId,
+    daemon: &DaemonId,
+    tab: &TabId,
+    pane: &PaneId,
+    spot: spanning::Spot,
+) -> Result<(InTree, Vec<spanning::Write>, Read), Refusal> {
+    let (worked_out, read, hidden) = {
         let mut session = poison::lock(&SESSION, "session");
         let stale = session.stale_reads > 0;
         if stale {
             session.stale_reads -= 1;
         }
-        let pane = match &arriving {
-            Arriving::Made { .. } => poison::lock(&session.minter, "minter").pane(),
-            Arriving::Moved { pane } => pane.clone(),
-        };
         let held = session.windows[window].composition.tab(tab).ok_or_else(|| {
             Refusal::NotThere(format!(
                 "this window holds no tab called {tab}, so nothing was placed in it. Either it \
@@ -7233,10 +7278,14 @@ pub(crate) fn arrive(
                 part.generation = part.generation.saturating_sub(1);
             }
         }
+        let read: Read = parts
+            .iter()
+            .map(|part| (part.daemon.clone(), part.generation, part.holds.clone()))
+            .collect();
         let change =
             spanning::Change::Place { pane: pane.clone(), daemon: daemon.clone(), at: spot };
         let hidden = mirrors.values().any(|held| held.tab(tab).is_some_and(|part| part.hidden));
-        (pane, spanning::rearrange(&parts, &settled, &change), hidden)
+        (spanning::rearrange(&parts, &settled, &change), read, hidden)
     };
     let mut writes = worked_out
         .map_err(|detail| {
@@ -7266,22 +7315,36 @@ pub(crate) fn arrive(
         based_on: own.based_on,
         hidden,
     };
-    let outcome = match arriving {
+    Ok((at, writes, read))
+}
+
+/// Has `daemon` make or move in `pane` at `at`.
+fn place(
+    window: WindowId,
+    daemon: &DaemonId,
+    pane: &PaneId,
+    at: InTree,
+    arriving: &Arriving<'_>,
+) -> Result<Outcome, Refusal> {
+    match arriving {
         Arriving::Made { cwd, run, name, quiet, maker, keyboard, split } => {
-            let intent = BackendIntent::CreateInTree { pane, at, cwd, run, name, quiet, maker };
-            submit_from(window, daemon, &intent, keyboard, split)?
+            let intent = BackendIntent::CreateInTree {
+                pane: pane.clone(),
+                at,
+                cwd: cwd.clone(),
+                run: run.clone(),
+                name: name.clone(),
+                quiet: *quiet,
+                maker: maker.clone(),
+            };
+            submit_from(window, daemon, &intent, *keyboard, *split)
         }
-        Arriving::Moved { pane } => {
-            let intent = BackendIntent::MovePane { pane, to: MoveDestination::InTree(at) };
-            submit(window, daemon, &intent, Keyboard::StaysPut)?
+        Arriving::Moved { .. } => {
+            let intent =
+                BackendIntent::MovePane { pane: pane.clone(), to: MoveDestination::InTree(at) };
+            submit(window, daemon, &intent, Keyboard::StaysPut)
         }
-    };
-    // The pane is placed whatever the other parts answer, so their answer is not this request's:
-    // each refusal is logged as it comes, and the next merge catches that part up from the
-    // pane's own machine, whose copy is now the newest. Answering with a refusal here would tell
-    // a caller a pane it can see was never made, and asking again would make a second one.
-    drop(write_trees(window, tab, writes));
-    Ok(outcome)
+    }
 }
 
 /// Tells every other daemon holding helpers of `maker`, which `daemon` just closed, that it has
