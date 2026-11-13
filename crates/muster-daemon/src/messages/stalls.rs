@@ -28,6 +28,7 @@ use muster_msg::{Activity, Holding, Peer, Presence, Ringable, Via};
 
 use super::busy::ASK_BUSY_AGAIN;
 use super::doorbell::Held;
+use super::long_blocks::{self, Blocked, LongBlocks};
 use super::makers::{self, Makers};
 use super::presence::Panes;
 use super::prompt::{Judged, Unseen};
@@ -222,6 +223,8 @@ pub(crate) struct Stalls {
     /// Whether what is posted to the human here reaches them now, as of this look: a stall only a
     /// person can free waits to be told to them until it does.
     human_in_reach: bool,
+    /// Every pane at a dialog, which the person is told of once it has sat there for hours.
+    long_blocks: LongBlocks,
 }
 
 impl Stalls {
@@ -243,6 +246,7 @@ impl Stalls {
             working_since: HashMap::new(),
             started_ms,
             human_in_reach: true,
+            long_blocks: LongBlocks::new(),
         }
     }
 
@@ -815,8 +819,28 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
         (members, others, called)
     };
     let acts = stalls.judge(&members, &called, now_ms());
+    let escalated: HashSet<&str> = acts
+        .iter()
+        .filter_map(|act| match act {
+            Act::Escalate { pane, .. } => Some(pane.as_str()),
+            _ => None,
+        })
+        .collect();
+    let blocked: Vec<Blocked> = panes
+        .iter()
+        .filter(|(_, seen)| seen.activity == Some(Activity::Blocked))
+        .map(|(pane, _)| Blocked {
+            pane,
+            helper: panes.maker_of(pane).is_some(),
+            unread: members.iter().any(|member| member.holding.pane == *pane),
+        })
+        .collect();
+    let long = stalls.long_blocks.judge(&blocked, &escalated, stalls.human_in_reach, now_ms());
     for act in acts {
         act_on(shared, &panes, act, &others);
+    }
+    for (pane, held_ms) in long {
+        tell_of_long_block(shared, &panes, &pane, held_ms);
     }
     let held = stalls.held_for();
     for (name, group) in held.iter().filter(|(name, _)| elsewhere.contains(name)) {
@@ -1103,6 +1127,34 @@ fn escalate(shared: &Arc<Shared>, panes: &Panes, name: &str, pane: &str, group: 
         called.as_deref(),
         body,
         "msg.group.escalated",
+        untold,
+    );
+}
+
+/// Tells the person of `pane`, at a dialog for `held_ms` with nothing waiting on it.
+fn tell_of_long_block(shared: &Arc<Shared>, panes: &Panes, pane: &str, held_ms: u64) {
+    let called = panes.name_of(pane);
+    let body = long_blocks::body(pane, called.as_deref(), held_ms);
+    let unblocked = pane.to_string();
+    let untold = move |why: &str| {
+        log::warn(
+            "msg.pane.long_block_untold",
+            fields! {
+                "pane" => unblocked,
+                "reason" => why,
+                "impact" => "a pane has sat at a dialog for hours with nothing waiting on it, and \
+                             the person was not told; nobody else will be",
+                "check" => "the reason; the pane, which only somebody at it can answer",
+            },
+        );
+    };
+    notices::tell_the_person(
+        shared,
+        panes,
+        pane,
+        called.as_deref(),
+        &body,
+        "msg.pane.long_block_told",
         untold,
     );
 }

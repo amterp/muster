@@ -2136,6 +2136,33 @@ fn a_helper_that_posted_to_anybody_or_waits_on_its_own_helpers_is_not_reported()
     assert_eq!(agent.read_in_its_pane(), Vec::<String>::new(), "its own helper works");
 }
 
+/// A pane left at a dialog with nothing waiting on it is told to the person once it has sat
+/// there long enough, two hours outside a test, and only once.
+#[test]
+fn a_pane_at_a_dialog_for_hours_is_told_to_the_person_once() {
+    let mut agent = Agent::in_a_pane_with(&[
+        ("MUSTER_DAEMON_LONG_BLOCK_MS", "1000"),
+        ("MUSTER_DAEMON_STALL_MS", "2000"),
+    ]);
+    let mut logging = following(&agent.daemon);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Working);
+    agent.daemon.set_agent_state("p1", proto::AgentState::Blocked);
+
+    let told = r#""event":"msg.pane.long_block_told""#;
+    let logged = logging.logged_until(told, Duration::from_secs(30));
+    assert!(logged.iter().any(|line| line.line.contains(told)), "never told the person");
+    let read = agent.reading(msg_request::Caller::default());
+    assert_eq!(read.len(), 1, "{read:?}");
+    assert!(
+        read[0].starts_with("@muster: ")
+            && read[0].contains(" (p1) has been at a dialog for ")
+            && read[0].contains("`muster pane show --pane "),
+        "{read:?}"
+    );
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(agent.reading(msg_request::Caller::default()), Vec::<String>::new(), "told twice");
+}
+
 /// A helper its maker closed with the maker's own message unread holds nobody up: the maker
 /// closed it on purpose and is not told it never read it. One closed with somebody else's
 /// message unread still is, since they did not close it.

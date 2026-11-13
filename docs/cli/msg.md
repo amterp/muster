@@ -409,6 +409,14 @@ helper, whose maker is told and can answer, nor when the message is yours. A mem
 goes to work or leaves first was never stuck, and nothing is said. On a machine your window is not
 on, the notice waits until that machine is linked to yours.
 
+**A pane at a dialog for two hours is told to you, once.** An agent that asked a question nobody
+is waiting on holds no group up, so the stall rule never sees it, and the blocked banner is shown
+only once. So a pane that has sat at a dialog for two hours with no message waiting on it is told
+to you from `@muster`, with the command that brings it forward, once for each time it blocks. Not
+a helper, whose maker hears of it and then you, nor a pane the stall rule above already told you
+of. There is no setting: two hours is longer than anyone at the window leaves a dialog they can
+see.
+
 **A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An
 agent's helpers") becomes blocked, becomes stuck, or goes idle without having posted since it last
 went to work, and stays that way for 10 seconds, its daemon tells the maker, once

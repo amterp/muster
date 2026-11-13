@@ -12,6 +12,7 @@ mod compact_nudges;
 mod compacts;
 mod doorbell;
 mod inbox;
+mod long_blocks;
 mod makers;
 mod notices;
 pub(crate) mod peer;
