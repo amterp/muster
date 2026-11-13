@@ -1039,6 +1039,48 @@
       },
       "name": "codex 0.167.2: clear accepted after a Stop hook",
       "why": "After the held Stop hook returned, another separately pasted and submitted /clear cleared the conversation."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  Meet GPT-6 Sol\n\n  Our latest Sol is more intelligent and more efficient so your usage limits go further. This\n  model is a great daily driver for complex tasks, especially coding.\n\n› 1. Try new model\n  2. Use existing model\n\n  enter/esc confirm · ⌃c quit\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "\n  Meet GPT-6 Sol\n\n  Our latest Sol is more intelligent and more efficient so your usage limits go further. This\n  model is a great daily driver for complex tasks, especially coding.\n\n› 1. Try new model\n  2. Use existing model\n\n  enter/esc           ⌃c"
+      },
+      "name": "codex 0.167.2: model migration dialog",
+      "why": "Startup with a bundled catalog and no model request."
+    },
+    {
+      "expect": {
+        "state": "blocked"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  Meet GPT-6 Sol\n\n  Our latest Sol is more intelligent and more efficient so your usage limits go further. This\n  model is a great daily driver for complex tasks, especially coding.\n\n  1. Try new model\n› 2. Use existing model\n\n  enter/esc confirm · ⌃c quit\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "title": "",
+        "typed": "\n  Meet GPT-6 Sol\n\n  Our latest Sol is more intelligent and more efficient so your usage limits go further. This\n  model is a great daily driver for complex tasks, especially coding.\n\n  1. Try new model\n› 2. Use existing model\n\n  enter/esc           ⌃c"
+      },
+      "name": "codex 0.167.2: migration existing model selected",
+      "why": "Down selected Use existing model; the dialog still awaits Return."
+    },
+    {
+      "expect": {
+        "state": "idle"
+      },
+      "given": {
+        "agent": "codex",
+        "progress": "",
+        "screen": "\n  >_ OpenAI Codex (v0.167.2)\n     $PROBE_ROOT/project\n\n  To get started, describe a task or try one of these commands:\n\n  /init - create an AGENTS.md file with instructions for Codex\n  /status - show current session configuration\n  /permissions - choose what Codex is allowed to do\n  /model - choose what model and reasoning effort to use\n  /review - review any changes and find issues\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  GPT-5.5 default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts\n",
+        "title": "migration-default",
+        "typed": "\n  >_ OpenAI Codex\n\n\n\n\n  /init\n  /status\n  /permissions\n  /model\n  /review\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n›\n\n  GPT-5.5 default · $PROBE_ROOT/project\n  ← for agents · ? for shortcuts"
+      },
+      "name": "codex 0.167.2: migration existing model accepted",
+      "why": "Return accepted Use existing model; the composer is available."
     }
   ]
 }

@@ -1,0 +1,113 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, 100x30 bare PTY.
+Isolated HOME/CODEX_HOME, fake auth.json API key. No prompt or model request was sent.
+Bundled catalog from: codex debug models --bundled
+config: model="gpt-5.5", model_catalog_json points to that catalog, update check disabled.
+Command: codex --no-daemon
+The bundled gpt-5.5 upgrade targets gpt-6-sol and supplies the displayed migration copy.
+The dialog appears with default features, features.model_migrations=true, and with that feature
+plus notice.model_migrations={"gpt-5.5"=""}. Fresh gpt-6.1-terra shows its composer instead.
+No credentials or configuration from the user home were read or changed.
+
+codex 0.167.2: model migration dialog
+Startup with a bundled catalog and no model request.
+
+
+  Meet GPT-6 Sol
+
+  Our latest Sol is more intelligent and more efficient so your usage limits go further. This
+  model is a great daily driver for complex tasks, especially coding.
+
+› 1. Try new model
+  2. Use existing model
+
+  enter/esc confirm · ⌃c quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+codex 0.167.2: migration existing model selected
+Down selected Use existing model; the dialog still awaits Return.
+
+
+  Meet GPT-6 Sol
+
+  Our latest Sol is more intelligent and more efficient so your usage limits go further. This
+  model is a great daily driver for complex tasks, especially coding.
+
+  1. Try new model
+› 2. Use existing model
+
+  enter/esc confirm · ⌃c quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+codex 0.167.2: migration existing model accepted
+Return accepted Use existing model; the composer is available.
+
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/project
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-5.5 default · $PROBE_ROOT/project
+  ← for agents · ? for shortcuts
