@@ -517,6 +517,7 @@ impl Attention {
             self.reported.remove(pane);
             self.marked.remove(pane);
         }
+        let finish_stands = finished || self.marked.contains(pane);
         if self.seen(pane) {
             let reported = finished && self.reported.insert(pane.clone());
             return Observed { attend: self.withdraw(pane), reported };
@@ -537,7 +538,7 @@ impl Attention {
             None
         } else if newly_finished {
             self.raise(pane, Alert::Done)
-        } else if finished && self.alert(pane) == Some(Alert::Done) {
+        } else if finish_stands && self.alert(pane) == Some(Alert::Done) {
             None
         } else {
             self.withdraw(pane)
