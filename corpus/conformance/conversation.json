@@ -290,6 +290,25 @@
       }
     },
     {
+      "name": "each divider's date uses the offset in force when its messages were posted",
+      "why": "Across a daylight saving change, a message near midnight belongs to the day its own offset puts it on, as its time beside it says; today's offset would put it on the next day. Daylight saving time ends here at 07:00 UTC on 2026-11-01, from -5 hours to -6.",
+      "given": {
+        "offsets": [[0, -18000], [1793516400000, -21600]],
+        "entries": [
+          { "seq": 1, "at_ms": 1793421000000, "author": "otter", "to": ["@human"] },
+          { "seq": 2, "at_ms": 1793597400000, "author": "otter", "to": ["@human"] }
+        ]
+      },
+      "expect": {
+        "rows": [
+          { "divider": "2026-10-30" },
+          { "message": 1, "author": "otter", "to": ["you"], "to_you": true },
+          { "divider": "2026-11-01" },
+          { "message": 2, "author": "otter", "to": ["you"], "to_you": true }
+        ]
+      }
+    },
+    {
       "name": "a body over 40 lines shows its first 40, and all of it once asked",
       "why": "A body runs to 1 MiB; drawing it whole would bury the thread under one message. Show all is per message, and asking for it must show the rest.",
       "given": {
