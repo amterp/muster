@@ -5,17 +5,18 @@
   "area": [
     "backend"
   ],
-  "column": "in-progress",
+  "column": "done",
   "created_at_millis": 1794003507011,
   "creator": "Alexander Terp",
   "description": "Seen 2026-11-05 on the devenv, twice in one session: `muster pane close fudge` and `muster pane read llama` each failed with clap's usage error, and the agent needed a `--help` round trip to learn the pane goes in `--pane`. Still so on 0.22.0:\n\n    error: unexpected argument 'somepane' found\n\n    Usage: muster pane close [OPTIONS]\n\n    For more information, try '--help'.\n\n`muster msg post --to \u003cname\u003e` and the muster skill's examples make a bare pane name read as though it would work.\n\nCosts: one wasted call per verb an agent has not used before.\n\nPossibly: accept the pane as an optional positional on the pane verbs (close, read, compact, restart, wait), or have the usage error name `--pane \u003cref\u003e`.",
   "id": "a_2vDjgTHGc",
-  "position": "Zt",
+  "position": "Ytm",
   "title": "pane verbs refuse a pane named as a positional, and the usage error does not point at --pane",
   "type": "enhancement",
-  "updated_at_millis": 1794577254684,
+  "updated_at_millis": 1794580251762,
   "history": [
     {"field":"column","value":"backlog-lo","at":1794003507011},
-    {"field":"column","value":"in-progress","at":1794577254684}
+    {"field":"column","value":"in-progress","at":1794577254684},
+    {"field":"column","value":"done","at":1794580251762}
   ]
 }

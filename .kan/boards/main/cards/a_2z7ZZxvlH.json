@@ -1,0 +1,20 @@
+{
+  "_v": 4,
+  "alias": "typing-a-click-is",
+  "alias_explicit": false,
+  "area": [
+    "testing"
+  ],
+  "column": "backlog-lo",
+  "created_at_millis": 1794579872333,
+  "creator": "Alexander Terp",
+  "description": "Seen once 2026-11-13 in a worker's ./dev -tl with two other worktrees building (load 14.2): timed out waiting for the program to receive the click. Passed 3 of 3 alone. The range under test touched no mouse input.",
+  "id": "a_2z7ZZxvlH",
+  "position": "b35",
+  "title": "🎲 typing::a_click_is_reported_only_to_a_program_tracking_the_mouse_and_never_with_shift timed out at load 14",
+  "type": "bug",
+  "updated_at_millis": 1794579872333,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1794579872333}
+  ]
+}

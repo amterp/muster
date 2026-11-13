@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "done",
   "created_at_millis": 1794382992754,
   "creator": "Alexander Terp",
   "description": "Sighting 2026-11-11 (minor): after a maker closed a reviewer pane that still had the maker's thank-you post unread, the stall watch told the maker it 'has not read #6 ... no agent is in its pane any more'. A pane closed on purpose by the agent waiting on it arguably should not count as a stall.",
   "id": "a_2xmxqHbeY",
-  "position": "an",
+  "position": "Ytq",
   "title": "A pane its maker closed on purpose is reported as a stall",
   "type": "bug",
-  "updated_at_millis": 1794382992754,
+  "updated_at_millis": 1794580251187,
   "history": [
-    {"field":"column","value":"uncommitted","at":1794382992754}
+    {"field":"column","value":"uncommitted","at":1794382992754},
+    {"field":"column","value":"done","at":1794580251187}
   ]
 }

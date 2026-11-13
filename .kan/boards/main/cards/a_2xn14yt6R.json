@@ -5,16 +5,17 @@
   "area": [
     "backend"
   ],
-  "column": "uncommitted",
+  "column": "done",
   "created_at_millis": 1794383117194,
   "creator": "Alexander Terp",
   "description": "Sighting 2026-11-11 (minor): the maker posted a helper a closing message that asked for no reply. The helper read it and went idle, and @muster told the maker it 'went idle without posting to you since it went to work 90s ago'. A second identical notice followed about a minute later ('23s ago') with no new post from the maker in between. The first is arguably right by the rule but noise for a message that wanted no answer; the second has no visible cause.",
   "id": "a_2xn14yt6R",
-  "position": "ao",
+  "position": "Ytr",
   "title": "A helper told 'nothing further' earns its maker two idle-without-posting notices",
   "type": "bug",
-  "updated_at_millis": 1794383117194,
+  "updated_at_millis": 1794580251038,
   "history": [
-    {"field":"column","value":"uncommitted","at":1794383117194}
+    {"field":"column","value":"uncommitted","at":1794383117194},
+    {"field":"column","value":"done","at":1794580251038}
   ]
 }
