@@ -271,6 +271,57 @@ fn a_line_the_program_took_and_redrew_away_is_unanswered_rather_than_refused() {
 }
 
 /// A daemon holding one pane, running `program` in place of an interactive shell.
+/// A send the daemon could not queue - the pane's program has stopped reading, and more waits for
+/// it than the daemon holds - is refused naming why, as it is with no window, rather than answered
+/// as sent with nothing typed.
+#[test]
+fn a_send_the_daemon_could_not_queue_is_refused() {
+    let _turn = muster::testing::fresh_session();
+    let daemon = Daemon::start_built();
+    make(
+        &mut daemon.connect(),
+        pane_request::Create {
+            command: Some("sh -c 'stty raw -echo; printf ready; sleep 120'".to_string()),
+            ..create("p1", in_new_tab("t1"))
+        },
+    );
+    assert_ok(&answer(request::Payload::Startup(Startup {
+        config_path: daemon.muster_config().to_string_lossy().into_owned(),
+        ..Startup::default()
+    })));
+    assert_ok(&answer(request::Payload::OpenWindow(OpenWindow::default())));
+    let pane = the_only_pane();
+    until("the pane's program to start", || read(&pane).contains("ready"), || read(&pane));
+    // Far more than the pane's queue and its terminal's buffer hold together.
+    let mut input = muster_harness::Input::connect(daemon.socket_path());
+    let line = "x".repeat(256);
+    for _ in 0..4096 {
+        input.send(
+            "p1",
+            muster_daemon_proto::input_event::Input::Send(muster_daemon_proto::input_event::Send {
+                text: line.clone(),
+                ..Default::default()
+            }),
+        );
+    }
+
+    let last = std::cell::RefCell::new(String::new());
+    until(
+        "a send to the full pane to be refused",
+        || {
+            let sent = answer(request::Payload::SendToPane(SendToPane {
+                pane_id: pane.clone(),
+                text: "one more".to_string(),
+                ..SendToPane::default()
+            }));
+            *last.borrow_mut() = format!("{sent:?}");
+            matches!(sent.payload, Some(response::Payload::Failure(_)))
+        },
+        || format!("the send kept answering {}", last.borrow()),
+    );
+    assert!(last.borrow().contains("stopped reading its input"), "{}", last.borrow());
+}
+
 fn daemon_running(program: &Path) -> Daemon {
     let daemon = Daemon::start_built();
     make(
