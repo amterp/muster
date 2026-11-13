@@ -28,7 +28,7 @@
 pub(crate) struct Compaction {
     wanted: Option<Wanted>,
     /// The prompt a compaction taken was asked to be followed by, still to be typed.
-    follow_up: Option<String>,
+    follow_up: Option<FollowUp>,
     /// Its agent's context has crossed the threshold since it was last below it, so the
     /// threshold has had its one compaction for this crossing.
     crossed: bool,
@@ -53,10 +53,19 @@ pub(crate) struct Nudge {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct FollowUp {
+    prompt: String,
+    /// It follows a clear, so the new session the clear began is the one it is for.
+    after_clear: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct Wanted {
     line: String,
     by: By,
     then: Option<String>,
+    /// It clears the context rather than compacting it, beginning a new session.
+    clears: bool,
 }
 
 /// A line to type at the agent's prompt: its compaction, or the prompt owed once that has run.
@@ -86,7 +95,7 @@ impl Compaction {
     pub(crate) fn wanted(&self) -> Option<Step> {
         match (&self.wanted, &self.follow_up) {
             (Some(wanted), _) => Some(Step { line: wanted.line.clone(), follow_up: false }),
-            (None, Some(then)) => Some(Step { line: then.clone(), follow_up: true }),
+            (None, Some(then)) => Some(Step { line: then.prompt.clone(), follow_up: true }),
             (None, None) => None,
         }
     }
@@ -103,7 +112,17 @@ impl Compaction {
     /// compaction not yet typed and a prompt still owed, since the later ask is the one its asker
     /// means.
     pub(crate) fn ask(&mut self, line: String, then: Option<String>) {
-        self.wanted = Some(Wanted { line, by: By::Asked, then });
+        self.asked(Wanted { line, by: By::Asked, then, clears: false });
+    }
+
+    /// Somebody asked for the agent's context to be cleared, and then for it to be given `then`,
+    /// in the compaction's place.
+    pub(crate) fn ask_clear(&mut self, line: String, then: Option<String>) {
+        self.asked(Wanted { line, by: By::Asked, then, clears: true });
+    }
+
+    fn asked(&mut self, wanted: Wanted) {
+        self.wanted = Some(wanted);
         self.follow_up = None;
         // The agent is about to be compacted, so a nudge not yet posted would have it do it twice.
         self.nudge = None;
@@ -123,7 +142,7 @@ impl Compaction {
     /// compacts the agent all the same, and keeps what its asker wanted kept.
     pub(crate) fn crossed(&mut self, line: String) {
         if self.wanted.is_none() {
-            self.wanted = Some(Wanted { line, by: By::Threshold, then: None });
+            self.wanted = Some(Wanted { line, by: By::Threshold, then: None, clears: false });
         }
     }
 
@@ -213,8 +232,10 @@ impl Compaction {
     /// one was being typed, is still to be typed.
     pub(crate) fn taken(&mut self, line: &str) {
         if self.wanted.as_ref().is_some_and(|wanted| wanted.line == line) {
-            self.follow_up = self.wanted.take().and_then(|wanted| wanted.then);
-        } else if self.follow_up.as_deref() == Some(line) {
+            let wanted = self.wanted.take().expect("just matched");
+            let after_clear = wanted.clears;
+            self.follow_up = wanted.then.map(|prompt| FollowUp { prompt, after_clear });
+        } else if self.follow_up.as_ref().is_some_and(|then| then.prompt == line) {
             self.follow_up = None;
         }
     }
@@ -226,7 +247,7 @@ impl Compaction {
         if self.wanted.as_ref().is_some_and(|wanted| wanted.line == line) {
             return self.wanted.take().and_then(|wanted| wanted.then);
         }
-        if self.follow_up.as_deref() == Some(line) {
+        if self.follow_up.as_ref().is_some_and(|then| then.prompt == line) {
             self.follow_up = None;
         }
         None
@@ -237,11 +258,52 @@ impl Compaction {
     pub(crate) fn cleared(&mut self) {
         *self = Compaction::default();
     }
+
+    /// The agent's session started afresh, as its harness reported: what was wanted of the last
+    /// one goes, except the prompt a clear was asked to be followed by, since the clear is what
+    /// began this session. Its harness can report the new session before the clear's line reads
+    /// as taken, and then the clear has run all the same.
+    pub(crate) fn session_began(&mut self) {
+        let owed = match (&self.wanted, &self.follow_up) {
+            (Some(wanted), _) if wanted.clears => wanted.then.clone(),
+            (None, Some(then)) if then.after_clear => Some(then.prompt.clone()),
+            _ => None,
+        };
+        self.cleared();
+        self.follow_up = owed.map(|prompt| FollowUp { prompt, after_clear: true });
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A clear's harness reports the new session either before or after the clear's line reads
+    /// as taken; its prompt is owed to that session either way. A compaction's is not.
+    #[test]
+    fn a_clears_prompt_survives_the_session_it_begins() {
+        let mut before = Compaction::default();
+        before.ask_clear("/clear".to_string(), Some("read brief.md".to_string()));
+        before.session_began();
+        assert_eq!(before.pending(), Pending::FollowUp, "reported before the line read as taken");
+        before.taken("/clear");
+        assert_eq!(before.wanted().map(|step| step.line).as_deref(), Some("read brief.md"));
+
+        let mut after = Compaction::default();
+        after.ask_clear("/clear".to_string(), Some("read brief.md".to_string()));
+        after.taken("/clear");
+        after.session_began();
+        assert_eq!(after.wanted().map(|step| step.line).as_deref(), Some("read brief.md"));
+        after.taken("read brief.md");
+        after.session_began();
+        assert_eq!(after.pending(), Pending::Nothing);
+
+        let mut compacted = Compaction::default();
+        compacted.ask("/compact".to_string(), Some("carry on".to_string()));
+        compacted.taken("/compact");
+        compacted.session_began();
+        assert_eq!(compacted.pending(), Pending::Nothing, "a compaction's prompt is not owed");
+    }
 
     #[test]
     fn a_nudge_is_owed_once_per_crossing() {

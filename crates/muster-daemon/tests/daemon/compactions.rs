@@ -768,3 +768,24 @@ fn a_clear_is_refused_where_nothing_could_type_it() {
     std::thread::sleep(WOULD_HAVE_TYPED);
     assert_eq!(p1.clears_heard(), Vec::<String>::new());
 }
+
+/// Claude Code's and Codex's hooks report a clear as the new session starts; the prompt the
+/// clear was asked to be followed by is for that session, and is still typed.
+#[test]
+fn a_clears_prompt_is_typed_after_its_harness_reports_the_new_session() {
+    let mut p1 = Pane::with_an_agent();
+    assert_eq!(p1.clear_then(Some("read brief.md")), proto::Outcome::Done);
+    p1.until_heard_line("/clear");
+    let began = proto::pane_request::Report {
+        pane: "p1".to_string(),
+        agent: "claude".to_string(),
+        clear: true,
+        ..Default::default()
+    };
+    expect(
+        &mut p1.control,
+        pane(proto::pane_request::Request::Report(began)),
+        proto::Outcome::Done,
+    );
+    p1.until_heard_line("read brief.md");
+}

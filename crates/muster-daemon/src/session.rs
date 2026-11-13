@@ -2942,7 +2942,7 @@ impl Session {
                 "daemon.report.context_session_changed",
                 fields! { "pane" => pane.record.pane },
             );
-            pane.compaction.cleared();
+            pane.compaction.session_began();
         }
         switched
     }
@@ -2954,7 +2954,7 @@ impl Session {
         let pane = &mut self.panes[index];
         let threshold = applied_percent(&pane.record, |applied| applied.compact_at.as_ref());
         if cleared {
-            pane.compaction.cleared();
+            pane.compaction.session_began();
         }
         let Some(used) = context_used else { return false };
         if !pane.compaction.reported(used, threshold) {
@@ -4458,7 +4458,7 @@ impl Session {
             "daemon.clear.asked",
             fields! { "pane" => clear.pane, "agent" => agent, "then" => then.is_some() },
         );
-        self.panes[index].compaction.ask(line, then.map(str::to_string));
+        self.panes[index].compaction.ask_clear(line, then.map(str::to_string));
         self.compaction_changed(index);
         Reply::done()
     }
