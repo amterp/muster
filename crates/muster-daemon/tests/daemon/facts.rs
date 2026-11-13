@@ -164,3 +164,48 @@ fn the_verb_names_its_pane_by_callsign() {
     assert_eq!(own.status.code(), Some(1), "{said}");
     assert!(said.contains("its own pane"), "{said}");
 }
+
+/// A report the daemon took and never answered may have landed, and the verb says so with exit 4,
+/// since a repeated --subagent-started counts twice; one no daemon ever took says nothing was
+/// reported, and that reporting again is safe (kan a_2vDjfsyZ2).
+#[test]
+fn the_verb_says_whether_a_report_it_gave_up_on_may_have_landed() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    make(&mut control, create("p1", in_new_tab("t1")));
+    let run = |socket: &std::path::Path| {
+        let output = Command::new(env!("CARGO_BIN_EXE_muster-daemon"))
+            .args(["report", "--pane", "p1", "--model", "Opus"])
+            .env_clear()
+            .env("MUSTER_DAEMON_SOCKET", socket)
+            .output()
+            .expect("the verb runs");
+        (output.status.code(), String::from_utf8_lossy(&output.stderr).into_owned())
+    };
+
+    let relay = daemon.withholding_answers_where(|request| {
+        matches!(
+            &request.service,
+            Some(proto::request::Service::Pane(proto::PaneRequest {
+                request: Some(proto::pane_request::Request::Report(_)),
+            }))
+        )
+    });
+    let (status, said) = run(relay.socket_path());
+    assert_eq!(status, Some(4), "{said}");
+    assert!(said.contains("may have landed"), "{said}");
+    assert_eq!(facts_of(&mut control, "p1").and_then(|facts| facts.model).as_deref(), Some("Opus"));
+
+    let silent = daemon.root().join("silent.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&silent).unwrap();
+    std::thread::spawn(move || {
+        // Held, not read: the handshake never completes.
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+    let (status, said) = run(&silent);
+    assert_eq!(status, Some(1), "{said}");
+    assert!(said.contains("nothing was reported"), "{said}");
+}
