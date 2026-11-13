@@ -1,0 +1,351 @@
+Codex 0.167.2, macOS arm64, 2026-11-13, 80x24 panes of isolated daemons.
+Each case has scratch HOME/CODEX_HOME and project hooks: this checkout's state adapter plus
+recording hooks for SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PermissionRequest,
+Stop, Interrupt and SessionEnd. Recording hooks run before adapter hooks for the same event.
+Codex starts --no-daemon --dangerously-bypass-hook-trust -a on-request -s read-only.
+All cases use gpt-6.1-terra through an explicit custom Responses provider, updates disabled.
+No real model or user account is contacted. Prompt: Reply with the single word hi.
+State is sampled about once per second; a multi-case loop can take longer around CLI calls.
+State times below are from immediately before pane send. Hook times in the JSONL companion
+are from UserPromptSubmit; native event times use its wall-clock timestamp instead.
+Private paths and session IDs in the committed data are placeholders.
+
+Connection failure: http://127.0.0.1:9/v1 (the port refused a connection before the run).
+Default provider retry settings: still reconnecting at 361.188s, working/reported, no wait.
+Explicit request_max_retries=0 and stream_max_retries=0: same at 360.568s.
+Only SessionStart and UserPromptSubmit fire before the cap in each case.
+At the cap, the driver sends Esc. Interrupt then fires; the native rollout records
+turn_aborted(reason=interrupted), not a natural task_complete. No Stop appears.
+Afterward, a local ! printf command displays UNREACHABLE_INPUT_OK. Its input contains only
+octal escapes for that string, so seeing the decoded line proves execution, not just arrival.
+The natural give-up outcome for connection failure is not reached in this observation.
+
+HTTP controls: independent custom loopback servers return 400 or 503, with both provider retry settings zero.
+The native duration_ms values are 104 ms (400) and 77 ms (503), with no assistant message.
+Neither case fires Stop or Interrupt before the local input check more than 30 seconds later.
+Muster initially retains working/reported, then first samples done/unreported at 10.7 s (400)
+and 10.4 s (503). No declared wait is present. Both accept the local shell input check.
+These controls establish HTTP-error termination only, not connection-refused termination.
+
+=== default ===
+Configuration:
+model = "gpt-6.1-terra"
+model_provider = "dead"
+check_for_update_on_startup = false
+[features]
+daemon_auto_start = false
+[model_providers.dead]
+name = "closed loopback port"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+
+milestone-180.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/default/project
+
+
+› Reply with the single word hi.
+
+
+
+
+
+
+
+
+
+◦ Reconnecting... waiting for network (3m 00s • esc to interrupt)
+  └ Connection failed: error sending request
+  └ Tip: Start a fresh idea with /new; the previous session stays in history.
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/default/proj…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-before-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/default/project
+
+
+› Reply with the single word hi.
+
+
+
+
+
+
+
+
+
+◦ Reconnecting... waiting for network (6m 01s • esc to interrupt)
+  └ Connection failed: error sending request
+  └ Tip: Start a fresh idea with /new; the previous session stays in history.
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/default/proj…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-after-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/default/project
+
+
+› Reply with the single word hi.
+
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+• You ran printf
+  │ '\125\116\122\105\101\103\110\101\102\114\105\137\111\116\120\125\124\137\11
+  │ 7\113\n'
+  └ UNREACHABLE_INPUT_OK
+
+
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/default/proj…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+=== zero ===
+Configuration:
+model = "gpt-6.1-terra"
+model_provider = "dead"
+check_for_update_on_startup = false
+[features]
+daemon_auto_start = false
+[model_providers.dead]
+name = "closed loopback port"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+
+milestone-180.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/zero/project
+
+
+› Reply with the single word hi.
+
+
+
+
+
+
+
+
+
+• Reconnecting... waiting for network (3m 00s • esc to interrupt)
+  └ Connection failed: error sending request
+  └ Tip: You can resume a previous conversation by running codex resume
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/zero/project
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-before-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/zero/project
+
+
+› Reply with the single word hi.
+
+
+
+
+
+
+
+
+
+• Reconnecting... waiting for network (6m 00s • esc to interrupt)
+  └ Connection failed: error sending request
+  └ Tip: You can resume a previous conversation by running codex resume
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/zero/project
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-after-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/zero/project
+
+
+› Reply with the single word hi.
+
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+• You ran printf
+  │ '\125\116\122\105\101\103\110\101\102\114\105\137\111\116\120\125\124\137\11
+  │ 7\113\n'
+  └ UNREACHABLE_INPUT_OK
+
+  Worked for <1s • 10:34
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/zero/project
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+=== http400 ===
+Configuration:
+model = "gpt-6.1-terra"
+model_provider = "dead"
+check_for_update_on_startup = false
+[features]
+daemon_auto_start = false
+[model_providers.dead]
+name = "closed loopback port"
+base_url = "http://127.0.0.1:$PORT/case400/v1"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+
+final-before-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/case400/project
+
+
+› Reply with the single word hi.
+
+
+■ {"error": {"message": "Local probe error 400", "type": "probe_error"}}
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/case400/proje…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-after-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/case400/project
+
+
+› Reply with the single word hi.
+
+
+■ {"error": {"message": "Local probe error 400", "type": "probe_error"}}
+
+• You ran printf
+  │ '\125\116\122\105\101\103\110\101\102\114\105\137\111\116\120\125\124\137\11
+  │ 7\113\n'
+  └ UNREACHABLE_INPUT_OK
+
+  Worked for <1s • 10:33
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/case400/proje…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+=== http503 ===
+Configuration:
+model = "gpt-6.1-terra"
+model_provider = "dead"
+check_for_update_on_startup = false
+[features]
+daemon_auto_start = false
+[model_providers.dead]
+name = "closed loopback port"
+base_url = "http://127.0.0.1:$PORT/case503/v1"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+
+final-before-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/case503/project
+
+
+› Reply with the single word hi.
+
+
+■ unexpected status 503 Service Unavailable: Local probe error 503, url:
+http://127.0.0.1:$PORT/case503/v1/responses
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/case503/proje…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view
+
+
+final-after-input.txt
+
+  >_ OpenAI Codex (v0.167.2)
+     $PROBE_ROOT/case503/project
+
+
+› Reply with the single word hi.
+
+
+■ unexpected status 503 Service Unavailable: Local probe error 503, url:
+http://127.0.0.1:$PORT/case503/v1/responses
+
+• You ran printf
+  │ '\125\116\122\105\101\103\110\101\102\114\105\137\111\116\120\125\124\137\11
+  │ 7\113\n'
+  └ UNREACHABLE_INPUT_OK
+
+  Worked for <1s • 10:33
+
+
+
+› Ask Codex to do anything
+
+  GPT-6.1 Terra default · $PROBE_ROOT/case503/proje…
+  ← for agents · ? for shortcuts                       ⚠ 1 warning · f2 to view

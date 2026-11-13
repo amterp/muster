@@ -178,3 +178,39 @@ found that the diagnostic had switched from ten-millisecond polling to a two-sec
 which could miss the end of the wait. The fixture now keeps the original twenty-second budget
 and polling interval, and includes the failure screen through the harness's detail callback.
 The original failure's missing screen cannot establish its cause.
+
+## 11. Connection failure keeps retrying; HTTP errors can end without Stop
+
+`corpus/codex-0.167.2/model-errors.txt` extends the old three-minute connection-failure capture
+to six minutes on this version. Each case runs in an isolated daemon and scratch home, with
+this checkout's adapter plus recording hooks. The model provider is explicitly custom and
+local; no real model or user account is contacted. A closed port is checked before the run.
+The companion JSONL files contain the hook inputs, relevant native rollout events, and sampled
+Muster states. State sampling is about once per second, rather than an exact transition clock.
+
+| Case | Observed initial-turn outcome | Hooks before intervention | Muster state |
+| --- | --- | --- | --- |
+| Closed port, default retry settings | Still reconnecting at 361.2 s | SessionStart, UserPromptSubmit | Working/reported, no declared wait |
+| Closed port, both provider retry settings zero | Still reconnecting at 360.6 s | SessionStart, UserPromptSubmit | Working/reported, no declared wait |
+| Local HTTP 400, both retry settings zero | `task_complete` with error, native duration 104 ms | SessionStart, UserPromptSubmit | First done/unreported sample at 10.7 s |
+| Local HTTP 503, both retry settings zero | `task_complete` with error, native duration 77 ms | SessionStart, UserPromptSubmit | First done/unreported sample at 10.4 s |
+
+The two connection-failure turns show `Reconnecting... waiting for network` at both three and
+six minutes. Neither naturally completes within the capture. Only after that observation does
+the driver press Esc: Interrupt fires and the rollout records `turn_aborted` with reason
+`interrupted`. No Stop appears. A local shell command then runs successfully. Its input uses
+octal escapes, so the decoded output marker proves execution rather than merely arriving in
+the composer. Those interventions are separated from the initial turn in the recordings.
+
+The HTTP controls are different experiments. A local server returns the specified status; both
+request and stream retry settings are zero. The initial task completes with an error and no
+assistant message, but neither Stop nor Interrupt fires during more than thirty seconds of
+observation. Muster initially keeps the working report, then uses its screen rules once the
+report expires after ten seconds without output (`detector/reporting.rs`, `QUIET`). It correctly
+returns to done/unreported. These controls establish HTTP-error termination, not natural
+termination after a refused connection.
+
+No production behavior changes follow from these recordings. The question of what fires if a
+closed-port connection failure eventually gives up remains open: this capture did not reach
+that event. Setting the two provider retry values to zero did not bound the observed network
+wait to six minutes. That is a measured limit, not a claim that it retries forever.

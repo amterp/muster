@@ -1,0 +1,16 @@
+{"case": "default", "turn": "initial_model_request", "after_user_prompt_wall_s": -0.123, "event": {"type": "task_started"}}
+{"case": "default", "turn": "initial_model_request", "after_user_prompt_wall_s": 361.476, "event": {"type": "turn_aborted", "reason": "interrupted", "duration_ms": 361604}}
+{"case": "default", "turn": "local_input_check", "after_user_prompt_wall_s": 362.625, "event": {"type": "task_started"}}
+{"case": "default", "turn": "local_input_check", "after_user_prompt_wall_s": 362.724, "event": {"type": "task_complete", "duration_ms": 139, "last_agent_message": null}}
+{"case": "zero", "turn": "initial_model_request", "after_user_prompt_wall_s": -0.105, "event": {"type": "task_started"}}
+{"case": "zero", "turn": "initial_model_request", "after_user_prompt_wall_s": 360.503, "event": {"type": "turn_aborted", "reason": "interrupted", "duration_ms": 360607}}
+{"case": "zero", "turn": "local_input_check", "after_user_prompt_wall_s": 361.68, "event": {"type": "task_started"}}
+{"case": "zero", "turn": "local_input_check", "after_user_prompt_wall_s": 361.698, "event": {"type": "task_complete", "duration_ms": 18, "last_agent_message": null}}
+{"case": "http400", "turn": "initial_model_request", "after_user_prompt_wall_s": -0.089, "event": {"type": "task_started"}}
+{"case": "http400", "turn": "initial_model_request", "after_user_prompt_wall_s": 0.01, "event": {"type": "task_complete", "duration_ms": 104, "last_agent_message": null, "error": {"message": "{\"error\": {\"message\": \"Local probe error 400\", \"type\": \"probe_error\"}}", "codex_error_info": "other"}}}
+{"case": "http400", "turn": "local_input_check", "after_user_prompt_wall_s": 31.093, "event": {"type": "task_started"}}
+{"case": "http400", "turn": "local_input_check", "after_user_prompt_wall_s": 31.125, "event": {"type": "task_complete", "duration_ms": 33, "last_agent_message": null}}
+{"case": "http503", "turn": "initial_model_request", "after_user_prompt_wall_s": -0.069, "event": {"type": "task_started"}}
+{"case": "http503", "turn": "initial_model_request", "after_user_prompt_wall_s": 0.007, "event": {"type": "task_complete", "duration_ms": 77, "last_agent_message": null, "error": {"message": "unexpected status 503 Service Unavailable: Local probe error 503, url: http://127.0.0.1:$PORT/case503/v1/responses", "codex_error_info": {"http_connection_failed": {"http_status_code": 503}}}}}
+{"case": "http503", "turn": "local_input_check", "after_user_prompt_wall_s": 31.388, "event": {"type": "task_started"}}
+{"case": "http503", "turn": "local_input_check", "after_user_prompt_wall_s": 31.411, "event": {"type": "task_complete", "duration_ms": 22, "last_agent_message": null}}
