@@ -164,9 +164,10 @@ A key is spelled as a keybinding in the config file is: `up`, `down`, `left`, `r
 a letter or a digit, with `ctrl+`, `alt+`, `shift+` or `cmd+` in front (`ctrl+c`). Give `--key`
 once per key. A send goes out in one order wherever its flags are written: the text, then each
 key in the order given, then Return. Each key is pressed on its own, a moment after the last, so
-the dialog has drawn what one key did before it reads the next. Read the pane first: an option's
-place in the list, and which one starts highlighted, are the harness's, and a list can wrap from
-its last option to its first.
+the dialog has drawn what one key did before it reads the next. Anything else typed into the pane
+waits for the send's last key, so one send presses at most 32 keys and refuses more without
+sending any. Read the pane first: an option's place in the list, and which one starts highlighted,
+are the harness's, and a list can wrap from its last option to its first.
 
 A key reaches a program outside a dialog too, encoded as a terminal encodes it for that program's
 modes. `--key shift+tab` is how one agent cycles another Claude Code's permission mode:

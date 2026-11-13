@@ -188,8 +188,10 @@ pub(crate) fn typed(shared: &Shared, pane: &str, input: Input) -> Result<(), Str
     })
 }
 
-/// What a `pane send` types, or why one of its keys does not read as a chord.
+/// What a `pane send` types, or why it presses too many keys or one that does not read as a
+/// chord.
 pub(crate) fn sent_input(send: &input_event::Send) -> Result<Input, String> {
+    muster_core::input::check_key_count(send.keys.len())?;
     let keys = send.keys.iter().map(|name| Chord::parse(name).map(Chord::pressed));
     let keys = keys.collect::<Result<Vec<_>, _>>()?;
     Ok(Input::Send { text: send.text.clone(), keys, enter: send.enter })

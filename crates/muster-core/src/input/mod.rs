@@ -22,5 +22,5 @@ pub use keymap::{Binding, Keymap, Resolution, TEXT_EDITING};
 pub use option_as_alt::OptionAsAlt;
 pub use pane_channel::{InputEvent, InputSink, Mouse, MouseAction, MouseButton, NotSent, Wheel};
 pub use pane_input::PaneInput;
-pub use pressed::check_sent_keys;
+pub use pressed::{MAX_SENT_KEYS, check_key_count, check_sent_keys};
 pub use settings::PaneInputSettings;

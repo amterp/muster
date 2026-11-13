@@ -10,6 +10,7 @@
 //! [`Encoding`], so encoding never waits for a parse or a replay (MIP-3 section 6). The mouse and
 //! wheel decisions are Ghostty's, from `Surface.zig`, made once by the side that writes.
 
+use std::collections::VecDeque;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -513,7 +514,10 @@ impl Writer {
 
     /// Writes everything queued for a pane until the pane lets go of its queue, or of its PTY.
     pub(crate) fn write(mut self, queued: &Receiver<Stamped>, master: &OwnedFd, wake: &OwnedFd) {
-        for Stamped { seq, input, counted_only } in queued {
+        let mut held = VecDeque::new();
+        while let Some(Stamped { seq, input, counted_only }) =
+            held.pop_front().or_else(|| queued.recv().ok())
+        {
             if counted_only || self.discards.is_stale(seq, &input) {
                 // A press or release still counts, so motion after a dropped release is not
                 // encoded as a drag.
@@ -532,17 +536,52 @@ impl Writer {
                 input => input,
             };
             for (input, paced) in input.writes() {
-                let pause = if paced {
-                    pause_before(self.last_write, Instant::now())
-                } else {
-                    Duration::ZERO
-                };
-                if !pause.is_zero() {
-                    std::thread::sleep(pause);
+                if paced && !self.pace(queued, &mut held, master, wake) {
+                    return;
                 }
                 if !self.write_one(seq, input, master, wake) {
                     return;
                 }
+            }
+        }
+    }
+
+    /// Waits out the pause before a key `pane send` presses, writing every reply that arrives
+    /// meanwhile and holding anything else for after the send. False once the pane can take no
+    /// more.
+    ///
+    /// A program waiting on the answer to a terminal query would otherwise wait out every key
+    /// of a send queued before it. A reply answers the program rather than typing at it, so it
+    /// cannot land in a dialog the keys are working through; what somebody types still waits,
+    /// in order.
+    fn pace(
+        &mut self,
+        queued: &Receiver<Stamped>,
+        held: &mut VecDeque<Stamped>,
+        master: &OwnedFd,
+        wake: &OwnedFd,
+    ) -> bool {
+        loop {
+            let pause = pause_before(self.last_write, Instant::now());
+            if pause.is_zero() {
+                return true;
+            }
+            let stamped = match queued.recv_timeout(pause) {
+                Ok(stamped) => stamped,
+                Err(mpsc::RecvTimeoutError::Timeout) => return true,
+                // Nothing more can arrive, and the send's last keys still wait their turn.
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    std::thread::sleep(pause);
+                    return true;
+                }
+            };
+            let writable = !stamped.counted_only
+                && matches!(stamped.input, Input::Reply(_))
+                && !self.discards.is_stale(stamped.seq, &stamped.input);
+            if !writable {
+                held.push_back(stamped);
+            } else if !self.write_one(stamped.seq, stamped.input, master, wake) {
+                return false;
             }
         }
     }
@@ -1338,6 +1377,23 @@ mod tests {
         assert_eq!(pause_before(Some(now), now), KEY_GAP);
         assert_eq!(pause_before(Some(now), now + KEY_GAP / 2), KEY_GAP / 2);
         assert_eq!(pause_before(Some(now), now + KEY_GAP * 2), Duration::ZERO);
+    }
+
+    /// A reply to a terminal query is written while a send's keys wait out their gaps, rather
+    /// than after the last of them; what somebody types meanwhile waits for the send, in order.
+    #[test]
+    fn a_reply_skips_a_sends_pacing_and_a_typed_key_does_not() {
+        let mut writing = Writing::new();
+        writing.send(crate::input::input_of(send("", &["a", "b", "c", "d"], false)).unwrap());
+        writing.send(crate::input::input_of(key("z")).unwrap());
+        writing.send(Input::Reply(b"<r>".to_vec()));
+        let mut seen = Vec::new();
+        let mut byte = [0];
+        while !seen.ends_with(b"z") {
+            writing.written.read_exact(&mut byte).expect("the writer wrote");
+            seen.push(byte[0]);
+        }
+        assert_eq!(seen, b"a<r>bcdz", "{:?}", String::from_utf8_lossy(&seen));
     }
 
     /// A key a send presses is typed by someone, as a keystroke is, so the doorbell knows a

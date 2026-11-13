@@ -2,11 +2,29 @@
 
 use super::{Chord, Key, KeyEvent, Modifiers};
 
+/// The most keys one `pane send` presses.
+///
+/// Each key waits out a gap after the last on the pane's one writer, so everything queued behind
+/// a send - somebody typing, the doorbell's ring - waits for all of them; at 50 ms a key, this
+/// keeps that wait under two seconds.
+pub const MAX_SENT_KEYS: usize = 32;
+
+/// Refuses a send pressing more than [`MAX_SENT_KEYS`] keys.
+pub fn check_key_count(count: usize) -> Result<(), String> {
+    if count > MAX_SENT_KEYS {
+        return Err(format!(
+            "{count} keys, and a send presses at most {MAX_SENT_KEYS}; split them across sends"
+        ));
+    }
+    Ok(())
+}
+
 /// Refuses the first of a `pane send`'s keys that names no key, before anything is sent.
 ///
 /// Checked before the send rather than left to the daemon, which can only drop a send it cannot
 /// read: an input connection answers nothing, so the caller would hear success.
 pub fn check_sent_keys(keys: &[String]) -> Result<(), String> {
+    check_key_count(keys.len()).map_err(|refusal| format!("nothing was sent: {refusal}"))?;
     for key in keys {
         Chord::parse(key).map_err(|refusal| format!("nothing was sent: {refusal}"))?;
     }
@@ -110,6 +128,14 @@ mod tests {
 
     fn pressed(chord: &str) -> KeyEvent {
         Chord::parse(chord).expect("a chord").pressed()
+    }
+
+    #[test]
+    fn a_send_of_more_keys_than_the_most_one_presses_is_refused() {
+        let keys = |count| vec!["down".to_string(); count];
+        assert!(check_sent_keys(&keys(MAX_SENT_KEYS)).is_ok());
+        let refused = check_sent_keys(&keys(MAX_SENT_KEYS + 1)).unwrap_err();
+        assert!(refused.starts_with("nothing was sent: 33 keys"), "{refused}");
     }
 
     #[test]
