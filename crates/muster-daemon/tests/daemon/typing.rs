@@ -597,3 +597,28 @@ fn a_sends_return_reaches_an_execd_program_in_the_kitty_keys_it_asked_for() {
     });
     assert_eq!(read, b"\x1b[13u", "the Return the program asked for");
 }
+
+/// A send that presses keys before its Return reaches the same shell, and its Return is the
+/// shell's plain carriage return too, not the kitty keys the program before it left in force.
+#[test]
+fn a_sends_return_after_keys_submits_at_a_shell_left_in_the_kitty_keyboard_protocol() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    std::fs::write(daemon.root().join("home/.zshrc"), "PS1='READY> '\n").unwrap();
+    let create = proto::pane_request::Create {
+        command: Some("printf '\\033[>15u'; exec zsh -i".to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, create);
+    until_text(&mut control, "p1", "READY>");
+    let marker = daemon.root().join("home/marker");
+    let send = proto::pane_request::Send {
+        pane: "p1".to_string(),
+        text: format!("echo sent > {}", marker.display()),
+        keys: vec!["end".to_string()],
+        enter: true,
+        ..Default::default()
+    };
+    expect(&mut control, pane(proto::pane_request::Request::Send(send)), proto::Outcome::Done);
+    until("the shell to run what was sent", || marker.exists(), ());
+}
