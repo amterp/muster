@@ -31,8 +31,18 @@ pub(crate) struct Blocked<'a> {
     pub(crate) pane: &'a str,
     /// Whether it is a helper, whose maker is told and then the person (`super::makers`).
     pub(crate) helper: bool,
+    /// Whether it was made quiet, which promises nobody is told of it.
+    pub(crate) quiet: bool,
     /// Whether a message waits on it, which the stall watch tells of.
     pub(crate) unread: bool,
+}
+
+impl Blocked<'_> {
+    /// Whether this watch times it: not a helper, which the maker watch tells of, nor a quiet
+    /// pane, which nobody is told of.
+    fn watched(&self) -> bool {
+        !self.helper && !self.quiet
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -110,11 +120,11 @@ impl LongBlocks {
         now_ms: u64,
     ) -> Vec<(String, u64)> {
         // A pane no longer at a dialog has ended its block, and a later one is told afresh.
-        self.blocks.retain(|pane, _| blocked.iter().any(|at| at.pane == pane && !at.helper));
+        self.blocks.retain(|pane, _| blocked.iter().any(|at| at.pane == pane && at.watched()));
         let at_a_dialog = |pane: &str| blocked.iter().any(|at| at.pane == pane);
         self.carried.retain(|pane, _| !seen.contains(pane.as_str()) || at_a_dialog(pane));
         let mut due = Vec::new();
-        for at in blocked.iter().filter(|at| !at.helper) {
+        for at in blocked.iter().filter(|at| at.watched()) {
             let carried = &mut self.carried;
             let block = self.blocks.entry(at.pane.to_string()).or_insert_with(|| {
                 carried.remove(at.pane).map_or(Block { since_ms: now_ms, told: false }, |was| {
@@ -153,7 +163,7 @@ mod tests {
     const HOUR_MS: u64 = 3_600_000;
 
     fn at(pane: &str) -> Blocked<'_> {
-        Blocked { pane, helper: false, unread: false }
+        Blocked { pane, helper: false, quiet: false, unread: false }
     }
 
     fn told(watch: &mut LongBlocks, blocked: &[Blocked<'_>], now_ms: u64) -> Vec<String> {
@@ -178,12 +188,13 @@ mod tests {
     }
 
     #[test]
-    fn a_helper_or_a_dialog_a_message_waits_on_is_left_to_the_other_watches() {
+    fn a_helper_a_quiet_pane_or_a_dialog_a_message_waits_on_is_not_told() {
         let mut watch = LongBlocks::after(LONG_BLOCK);
         let helper = Blocked { helper: true, ..at("p2") };
+        let quiet = Blocked { quiet: true, ..at("p4") };
         let unread = Blocked { unread: true, ..at("p3") };
-        told(&mut watch, &[helper, unread], 0);
-        assert!(told(&mut watch, &[helper, unread], 3 * HOUR_MS).is_empty());
+        told(&mut watch, &[helper, unread, quiet], 0);
+        assert!(told(&mut watch, &[helper, unread, quiet], 3 * HOUR_MS).is_empty());
         assert_eq!(told(&mut watch, &[helper, at("p3")], 3 * HOUR_MS + 1), ["p3"], "read since");
     }
 

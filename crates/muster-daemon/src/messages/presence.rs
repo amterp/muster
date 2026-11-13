@@ -40,6 +40,8 @@ pub(crate) struct Seen {
     /// What the wait its agent declared was on, when that ran out and it has not worked since.
     pub(crate) ran_out: Option<String>,
     pub(crate) waiting: Option<super::makers::Waiting>,
+    /// Whether the pane was made quiet, which promises no notice of it.
+    pub(crate) quiet: bool,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -176,6 +178,7 @@ impl Panes {
                         .as_ref()
                         .map(|unread| (unread.program.clone(), unread.bytes)),
                     ran_out: pane.ran_out.clone(),
+                    quiet: record.quiet,
                     waiting: waits.get(&record.pane).cloned(),
                     agent,
                     io: io.clone(),

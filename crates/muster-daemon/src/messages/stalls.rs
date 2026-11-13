@@ -888,9 +888,10 @@ pub(crate) fn look(shared: &Arc<Shared>, stalls: &mut Stalls, makers: &Makers) -
     let blocked: Vec<Blocked> = panes
         .iter()
         .filter(|(_, seen)| seen.activity == Some(Activity::Blocked))
-        .map(|(pane, _)| Blocked {
+        .map(|(pane, seen)| Blocked {
             pane,
             helper: panes.maker_of(pane).is_some(),
+            quiet: seen.quiet,
             unread: members.iter().any(|member| member.holding.pane == *pane),
         })
         .collect();

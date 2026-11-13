@@ -415,8 +415,8 @@ on, the notice waits until that machine is linked to yours.
 is waiting on holds no group up, so the stall rule never sees it, and the blocked banner is shown
 only once. So a pane that has sat at a dialog for two hours with no message waiting on it is told
 to you from `@muster`, with the command that brings it forward, once for each time it blocks. Not
-a helper, whose maker hears of it and then you, nor a pane the stall rule above already told you
-of. There is no setting: two hours is longer than anyone at the window leaves a dialog they can
+a helper, whose maker hears of it and then you, nor a quiet pane, nor a pane the stall rule
+above already told you of. There is no setting: two hours is longer than anyone at the window leaves a dialog they can
 see.
 
 **A helper that needs somebody tells its maker, once.** When a helper (`muster docs agents`, "An
