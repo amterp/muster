@@ -803,7 +803,11 @@ mod tests {
         let sent = send_within(socket.clone(), parsed(&[], Some("p1")).unwrap(), step + step / 5);
         let took = started.elapsed();
         let _ = std::fs::remove_file(&socket);
-        assert!(sent.unwrap_err().contains("did not answer"));
+        // The report was written before the deadline passed, so it may have landed.
+        assert!(
+            matches!(&sent, Err(Unreported::AnswerLost(why)) if why.contains("did not answer")),
+            "{sent:?}"
+        );
         assert!(took < step * 9 / 5, "the report waited {took:?}");
     }
 }
