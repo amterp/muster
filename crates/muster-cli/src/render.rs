@@ -1314,7 +1314,7 @@ fn bytes(count: u32) -> String {
 /// matters less here than it did for working: a waiting agent needs nobody, so its row is one
 /// to skip rather than to find.
 ///
-/// Stuck is magenta, which no other state has and the window's pink is nearest to: an agent that
+/// Stuck is magenta, which no other state has and the window's purple is nearest to: an agent that
 /// will not go on until somebody frees its program. Not red, which the window keeps for a nearly
 /// full context ring so that a ring is never read as an agent asking for something.
 ///
@@ -2256,7 +2256,7 @@ mod tests {
             "the window paints blocked orange, and yellow is the nearest of the sixteen"
         );
         assert_eq!(agent_style("done"), hue(AnsiColor::Green), "the window paints done green");
-        assert_eq!(agent_style("stuck"), hue(AnsiColor::Magenta), "the window paints stuck pink");
+        assert_eq!(agent_style("stuck"), hue(AnsiColor::Magenta), "the window paints stuck purple");
     }
 
     /// An adapter that could report and does not is a note on the pane's row; one with nothing to

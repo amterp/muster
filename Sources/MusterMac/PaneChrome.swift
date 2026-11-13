@@ -46,13 +46,19 @@ public enum PaneAppearance {
     return defaultBorderColor(state: state)
   }
 
+  /// Stuck's color, kept apart from the red of a full context ring on the same row for the
+  /// common color-vision deficiencies: protanopia and deuteranopia keep only the blue-yellow
+  /// axis, which reads red as a dark olive and purple as blue. Pink read as red to anyone at the
+  /// size of a row's icon.
+  public static let stuckColor = NSColor.systemPurple
+
   /// The legend Muster ships, with nothing configured. What the tripwire pins, and what
   /// `docs/architecture.md` states.
   public static func defaultBorderColor(state: String) -> NSColor {
     switch state {
     case "working": return NSColor.systemCyan
     case "blocked": return NSColor.systemOrange
-    case "stuck": return NSColor.systemPink
+    case "stuck": return stuckColor
     case "waiting": return NSColor.systemIndigo
     case "done": return NSColor.systemGreen
     case "idle": return NSColor.systemGray

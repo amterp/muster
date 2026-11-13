@@ -306,7 +306,7 @@ refuses, as it refuses every change partway through a handoff, is taken back the
 until the next look reports it again. It is not sent again at once, since a daemon still handing over would refuse
 that too.
 
-**One legend, and the window holds it.** working cyan, blocked orange, stuck pink, waiting indigo, done green, idle
+**One legend, and the window holds it.** working cyan, blocked orange, stuck purple, waiting indigo, done green, idle
 grey, and unknown a fainter grey rather than a hue of its own, which unreachable shares: neither is an answer the
 window can vouch for. The window's palette is canonical because that is where attention lives: a person reads
 headers and icons all day and reads `muster window` when something has already gone strangely, so the surface with
@@ -354,9 +354,12 @@ nobody, so it must not read as blocked; it has not finished, so it must not read
 not working either. Indigo sits apart from all three and from the accent ring's blue by weight. The CLI spells it
 blue, the nearest of the sixteen, and blue's poor legibility matters less on a row nobody has to find.
 
-**Stuck is pink because red is taken.** A stuck agent needs somebody as much as a blocked one, so it has to be loud,
+**Stuck is purple because red is taken.** A stuck agent needs somebody as much as a blocked one, so it has to be loud,
 and red would be loudest; but red is the full end of the context ring, kept off every state so that a nearly full
-ring never reads as an agent asking for something. The CLI spells pink magenta.
+ring never reads as an agent asking for something. Stuck was pink until a stuck row beside an 83% ring read as one
+color: at a row's size the two are close for anybody, and closer for protanopia and deuteranopia, which keep only the
+blue-yellow axis. Purple reads as blue there, and red as a dark olive. Its nearest neighbor is now waiting's indigo,
+which is darker and has a shape of its own. The CLI spells purple magenta, the nearest of the sixteen.
 
 **A pane says its state in a header, and its edge says only where the keyboard is.** Each pane has a 24 point header
 across its top - a pane under 60 points tall has none - carrying what its row carries: the chord as keycaps, the

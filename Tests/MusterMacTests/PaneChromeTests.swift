@@ -37,7 +37,7 @@ struct PaneChromeTests {
     #expect(PaneAppearance.defaultBorderColor(state: "working") == NSColor.systemCyan)
     #expect(PaneAppearance.defaultBorderColor(state: "waiting") == NSColor.systemIndigo)
     #expect(PaneAppearance.defaultBorderColor(state: "blocked") == NSColor.systemOrange)
-    #expect(PaneAppearance.defaultBorderColor(state: "stuck") == NSColor.systemPink)
+    #expect(PaneAppearance.defaultBorderColor(state: "stuck") == NSColor.systemPurple)
     #expect(PaneAppearance.defaultBorderColor(state: "done") == NSColor.systemGreen)
     #expect(PaneAppearance.defaultBorderColor(state: "idle") == NSColor.systemGray)
     #expect(PaneAppearance.defaultBorderColor(state: "unknown") == NSColor.tertiaryLabelColor)
