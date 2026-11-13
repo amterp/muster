@@ -169,6 +169,18 @@ fn a_compaction_reaches_the_agent_through_the_window(open: &Open) {
         },
         || std::fs::read_to_string(&heard).unwrap_or_default(),
     );
+    // The agent records a line before painting its prompt again, and until the daemon has read
+    // that paint the prompt still holds the compaction, which refuses the next gesture's send.
+    let last_line = || {
+        let read = muster(open, &["pane", "read", "--pane", &open.pane]);
+        let text = String::from_utf8_lossy(&read.stdout).into_owned();
+        text.lines().rev().find(|line| !line.trim().is_empty()).unwrap_or_default().to_string()
+    };
+    until(
+        "the agent's prompt to be empty again after the compaction",
+        || last_line().trim_end() == "PROBE-PROMPT>",
+        || format!("the pane's last line is {:?}", last_line()),
+    );
 }
 
 /// `pane wait --until idle` blocks while the agent works, and exits 0 naming the pane when it stops.
