@@ -547,3 +547,28 @@ fn keys_for_a_name_reach_the_pane_that_has_it_now() {
     input.send("p1", key(KEY_Z, "z"));
     received(&second, b"z");
 }
+
+/// A program that turned on the kitty keyboard protocol and exited without turning it off, as an
+/// agent killed mid-turn can, leaves the pane's shell behind it. A send's Return is for that
+/// shell, which reads only a plain carriage return as one.
+#[test]
+fn a_sends_return_submits_at_a_shell_left_in_the_kitty_keyboard_protocol() {
+    let daemon = daemon();
+    let mut control = daemon.connect();
+    std::fs::write(daemon.root().join("home/.zshrc"), "PS1='READY> '\n").unwrap();
+    let create = proto::pane_request::Create {
+        command: Some("printf '\\033[>15u'; exec zsh -i".to_string()),
+        ..create("p1", in_new_tab("t1"))
+    };
+    make(&mut control, create);
+    until_text(&mut control, "p1", "READY>");
+    let marker = daemon.root().join("home/marker");
+    let send = proto::pane_request::Send {
+        pane: "p1".to_string(),
+        text: format!("echo sent > {}", marker.display()),
+        enter: true,
+        ..Default::default()
+    };
+    expect(&mut control, pane(proto::pane_request::Request::Send(send)), proto::Outcome::Done);
+    until("the shell to run what was sent", || marker.exists(), ());
+}
