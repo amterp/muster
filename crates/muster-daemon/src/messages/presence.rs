@@ -42,6 +42,9 @@ pub(crate) struct Seen {
     pub(crate) waiting: Option<super::makers::Waiting>,
     /// Whether the pane was made quiet, which promises no notice of it.
     pub(crate) quiet: bool,
+    /// When its agent started reading blocked, while it does: a dialog a key left unchanged
+    /// keeps the time it first drew at.
+    pub(crate) blocked_since_ms: Option<u64>,
     pub(crate) io: Arc<PaneIo>,
 }
 
@@ -179,6 +182,9 @@ impl Panes {
                         .map(|unread| (unread.program.clone(), unread.bytes)),
                     ran_out: pane.ran_out.clone(),
                     quiet: record.quiet,
+                    blocked_since_ms: record
+                        .state_since_ms
+                        .filter(|_| record.agent_state() == proto::AgentState::Blocked),
                     waiting: waits.get(&record.pane).cloned(),
                     agent,
                     io: io.clone(),

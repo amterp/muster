@@ -104,6 +104,8 @@ pub(crate) struct Helper {
     /// has not gone to work since.
     pub(crate) ran_out: Option<String>,
     pub(crate) waiting: Option<Waiting>,
+    /// When it started reading blocked, while it does ([`super::presence::Seen`]).
+    pub(crate) blocked_since_ms: Option<u64>,
     /// The program in its pane that has stopped reading, and what it left unread.
     pub(crate) stopped: Option<(String, u32)>,
     /// When it last posted to anybody, looked up only while it is idle: a post to its maker, to
@@ -184,6 +186,9 @@ struct Watch {
     held: bool,
     waiting_since_ms: Option<u64>,
     told_wait_since_ms: Option<u64>,
+    /// When the blocked spell its maker was last told of began: a dialog a key left unchanged
+    /// blocks again with the same time, and is not told again.
+    told_blocked_since_ms: Option<u64>,
     retry_at_ms: Option<u64>,
 }
 
@@ -205,7 +210,12 @@ impl Watch {
         let need = need(helper, self.worked_since_ms);
         if self.need.map(|(was, _)| was) != need {
             self.need = need.map(|need| {
-                (need, if need == Need::Waiting { waiting_since.unwrap_or(now_ms) } else { now_ms })
+                let since = match need {
+                    Need::Waiting => waiting_since,
+                    Need::Blocked => helper.blocked_since_ms,
+                    _ => None,
+                };
+                (need, since.unwrap_or(now_ms))
             });
             self.told = need == Some(Need::Unreported)
                 && self.worked_since_ms.is_some()
@@ -216,6 +226,10 @@ impl Watch {
                 if self.told {
                     self.told_wait_since_ms = waiting_since;
                 }
+            }
+            if need == Some(Need::Blocked) {
+                self.told = helper.blocked_since_ms.is_some()
+                    && self.told_blocked_since_ms == helper.blocked_since_ms;
             }
             if need == Some(Need::Unreported)
                 && helper.ran_out.is_some()
@@ -429,6 +443,9 @@ impl Makers {
             }
             if need == Need::Waiting {
                 watch.told_wait_since_ms = waiting_since;
+            }
+            if need == Need::Blocked {
+                watch.told_blocked_since_ms = helper.blocked_since_ms;
             }
             let worked_ms = now_ms.saturating_sub(watch.worked_since_ms.unwrap_or(now_ms));
             tells.push(Tell {
@@ -876,6 +893,7 @@ fn helpers(
             turn: seen.io.turn_serial(),
             ran_out: seen.ran_out.clone(),
             waiting: seen.waiting.clone(),
+            blocked_since_ms: seen.blocked_since_ms,
             stopped: seen.stopped.clone(),
         });
     }
@@ -1169,6 +1187,7 @@ mod tests {
             turn: 1,
             ran_out: None,
             waiting: None,
+            blocked_since_ms: None,
             stopped: None,
             last_post_ms: None,
             helpers_at_work: false,
@@ -1196,6 +1215,32 @@ mod tests {
             said.extend(makers.escalations.drain(..).map(|(_, body)| body));
         }
         said
+    }
+
+    /// A dialog a Return or Esc left unchanged reads working for a moment and blocked again with
+    /// the time it first blocked at: its maker, told of it once, is not told of it again. A dialog
+    /// that blocks later is a new one, and is told.
+    #[test]
+    fn a_dialog_blocked_again_after_an_ignored_key_is_told_once() {
+        let mut makers = makers();
+        let called = called();
+        let blocked = |since| Helper { blocked_since_ms: Some(since), ..maple(Activity::Blocked) };
+        makers.judge(&[maple(Activity::Working)], &called, 0);
+        makers.judge(&[blocked(1_000)], &called, 1_000);
+        let told = makers.judge(&[blocked(1_000)], &called, 1_000 + SETTLE_MS);
+        assert_eq!(needs(&told), [Need::Blocked]);
+
+        let at = 2_000 + SETTLE_MS;
+        makers.judge(&[maple(Activity::Working)], &called, at);
+        makers.judge(&[blocked(1_000)], &called, at + 5_000);
+        let again = makers.judge(&[blocked(1_000)], &called, at + 5_000 + SETTLE_MS);
+        assert_eq!(needs(&again), [], "the same dialog, told already");
+
+        let later = at + 30_000;
+        makers.judge(&[maple(Activity::Working)], &called, later);
+        makers.judge(&[blocked(later + 1_000)], &called, later + 1_000);
+        let new = makers.judge(&[blocked(later + 1_000)], &called, later + 1_000 + SETTLE_MS);
+        assert_eq!(needs(&new), [Need::Blocked], "a dialog that drew later");
     }
 
     /// A helper at a dialog its maker has left for half an hour is told to the person, once,
