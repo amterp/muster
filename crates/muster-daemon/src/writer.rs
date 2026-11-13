@@ -1419,7 +1419,7 @@ mod tests {
                 sent += 1;
             }
         }
-        let replies = seen.iter().filter(|&&byte| byte == b'.').count();
+        let replies = seen.len() - 2;
         assert!(
             replies < REPLIES,
             "b waited for the replies to stop: {:?}",
